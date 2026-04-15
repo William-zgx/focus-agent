@@ -1,0 +1,244 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from langchain.messages import AIMessage, HumanMessage
+
+from focus_agent.services.chat import ChatService
+from focus_agent.config import Settings
+from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
+from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.skills.registry import SkillRegistry
+
+
+class FakeGraph:
+    def get_state(self, _config):
+        return SimpleNamespace(values={})
+
+
+class RecordingGraph:
+    def __init__(self):
+        self.values: dict[str, object] = {}
+        self.last_payload = None
+        self.last_context = None
+
+    def invoke(self, payload, *, config, context, version):
+        self.last_payload = payload
+        self.last_context = context
+        self.values = {
+            "messages": [AIMessage(content="planned")],
+            "active_skill_ids": list(payload.get("active_skill_ids", [])),
+            "selected_model": payload.get("selected_model", ""),
+            "selected_thinking_mode": payload.get("selected_thinking_mode", ""),
+        }
+        return {}
+
+    def get_state(self, _config):
+        return SimpleNamespace(values=self.values, interrupts=[])
+
+
+class BackfillImportGraph:
+    def __init__(self):
+        self.values = {
+            "messages": [AIMessage(content="existing assistant reply")],
+            "merge_queue": [
+                {
+                    "branch_id": "branch-1",
+                    "branch_name": "explore-alternatives",
+                    "summary": "Recovered conclusion from child branch.",
+                    "key_findings": ["Finding A"],
+                    "evidence_refs": ["doc-1"],
+                }
+            ],
+            "rolling_summary": "Existing summary.",
+        }
+        self.updates: list[tuple[dict[str, object], str | None]] = []
+
+    def get_state(self, _config):
+        return SimpleNamespace(values=self.values, interrupts=[])
+
+    def update_state(self, _config, values, as_node=None):
+        self.updates.append((values, as_node))
+        if "messages" in values:
+            self.values["messages"] = list(self.values.get("messages", [])) + list(values["messages"])
+        if "rolling_summary" in values:
+            self.values["rolling_summary"] = values["rolling_summary"]
+
+
+def test_stream_message_raises_permission_error_before_streaming(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=FakeGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    with pytest.raises(PermissionError):
+        chat.stream_message(thread_id="root-1", user_id="other-user", message="hello")
+
+
+def test_sse_frame_serializes_message_objects():
+    frame = ChatService._sse_frame(
+        event="agent.update",
+        data={"messages": [HumanMessage(content="hello")]},
+    )
+
+    assert 'event: agent.update' in frame
+    assert '"content": "hello"' in frame
+
+
+def test_get_thread_state_falls_back_to_repo_when_branch_meta_is_incomplete(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.ensure_thread_owner(thread_id="child-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="b-1",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-1",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Recovered Branch",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+            branch_status=BranchStatus.ACTIVE,
+            is_archived=True,
+            archived_at="2026-04-12 10:00:00",
+        )
+    )
+
+    class BrokenBranchGraph:
+        def get_state(self, _config):
+            return SimpleNamespace(values={"branch_meta": {"is_archived": True, "archived_at": "2026-04-12 10:00:00"}})
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=BrokenBranchGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.get_thread_state(thread_id="child-1", user_id="owner-1")
+
+    assert payload["thread_id"] == "child-1"
+    assert payload["branch_meta"]["branch_id"] == "b-1"
+    assert payload["branch_meta"]["branch_name"] == "Recovered Branch"
+    assert "conclusion_policy" not in payload["branch_meta"]
+
+
+def test_get_thread_state_falls_back_to_repo_when_branch_meta_is_missing(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.ensure_thread_owner(thread_id="child-2", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="b-2",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-2",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Fresh Branch",
+            branch_role=BranchRole.EXPLORE_ALTERNATIVES,
+            branch_depth=1,
+            branch_status=BranchStatus.ACTIVE,
+        )
+    )
+
+    class MissingBranchMetaGraph:
+        def get_state(self, _config):
+            return SimpleNamespace(values={})
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=MissingBranchMetaGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.get_thread_state(thread_id="child-2", user_id="owner-1")
+
+    assert payload["thread_id"] == "child-2"
+    assert payload["root_thread_id"] == "root-1"
+    assert payload["branch_meta"]["branch_id"] == "b-2"
+    assert payload["branch_meta"]["parent_thread_id"] == "root-1"
+    assert "conclusion_policy" not in payload["branch_meta"]
+
+
+def test_send_message_activates_skills_from_prefix(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    skill_dir = tmp_path / "skills"
+    plan_dir = skill_dir / "plan"
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    (plan_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: plan",
+                "description: Planning mode",
+                "triggers: plan:",
+                "prompt_mode: explore",
+                "---",
+                "",
+                "# Plan",
+                "",
+                "Plan first.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    graph = RecordingGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        skill_registry=SkillRegistry([skill_dir]),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="plan: map the rollout",
+        model="moonshot:kimi-k2.5",
+        thinking_mode="disabled",
+    )
+
+    assert graph.last_context.skill_hints == ("plan",)
+    assert graph.last_payload["task_brief"] == "map the rollout"
+    assert graph.last_payload["active_skill_ids"] == ["plan"]
+    assert graph.last_payload["selected_model"] == "moonshot:kimi-k2.5"
+    assert graph.last_payload["selected_thinking_mode"] == "disabled"
+    assert payload["active_skill_ids"] == ["plan"]
+    assert payload["selected_model"] == "moonshot:kimi-k2.5"
+    assert payload["selected_thinking_mode"] == "disabled"
+
+
+def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    graph = BackfillImportGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+
+    system_messages = [message for message in payload["messages"] if message["type"] == "system"]
+    assert system_messages
+    assert "Imported conclusion from branch 'explore-alternatives':" in system_messages[-1]["content"]
+    assert "Recovered conclusion from child branch." in system_messages[-1]["content"]
+    assert payload["rolling_summary"].endswith(
+        "Imported from explore-alternatives: Recovered conclusion from child branch."
+    )
+    assert graph.updates
+    assert graph.updates[0][1] == "bootstrap_turn"

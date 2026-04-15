@@ -1,0 +1,39 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="420" rx="28" fill="#F7FAFE"/>
+  <text x="72" y="78" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="30" font-weight="700">What comes with the starter project</text>
+  <g>
+    <rect x="72" y="124" width="250" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="100" y="166" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Branching</text>
+    <text x="100" y="197" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">split work, explore, and bring back conclusions</text>
+  </g>
+  <g>
+    <rect x="346" y="124" width="250" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="374" y="166" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Live updates</text>
+    <text x="374" y="197" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">stream text and events while work is happening</text>
+  </g>
+  <g>
+    <rect x="620" y="124" width="250" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="648" y="166" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Web UI</text>
+    <text x="648" y="197" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">use the app immediately without building a client first</text>
+  </g>
+  <g>
+    <rect x="894" y="124" width="234" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="922" y="166" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Access control</text>
+    <text x="922" y="197" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">keep each conversation owned and protected</text>
+  </g>
+  <g>
+    <rect x="72" y="260" width="342" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="100" y="302" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Built-in tools</text>
+    <text x="100" y="333" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">search code, read files, check git state, and search the web</text>
+  </g>
+  <g>
+    <rect x="438" y="260" width="328" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="466" y="302" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Frontend SDK</text>
+    <text x="466" y="333" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">connect browsers and Node clients to the live protocol</text>
+  </g>
+  <g>
+    <rect x="790" y="260" width="338" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="818" y="302" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Focused context</text>
+    <text x="818" y="333" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">keep only the useful parts of the conversation moving forward</text>
+  </g>
+</svg>

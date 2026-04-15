@@ -1,0 +1,39 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="420" rx="28" fill="#F7FAFE"/>
+  <text x="72" y="78" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="700">这个起步项目自带什么能力</text>
+  <g>
+    <rect x="72" y="124" width="250" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="100" y="166" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">分支探索</text>
+    <text x="100" y="197" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">拆分工作、分别探索、再带回结论</text>
+  </g>
+  <g>
+    <rect x="346" y="124" width="250" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="374" y="166" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">实时更新</text>
+    <text x="374" y="197" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">工作进行时就能持续看到输出和事件</text>
+  </g>
+  <g>
+    <rect x="620" y="124" width="250" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="648" y="166" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">Web 界面</text>
+    <text x="648" y="197" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">不用先写客户端，也可以直接开始使用</text>
+  </g>
+  <g>
+    <rect x="894" y="124" width="234" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="922" y="166" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">访问控制</text>
+    <text x="922" y="197" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">保护每条会话的归属和访问权限</text>
+  </g>
+  <g>
+    <rect x="72" y="260" width="342" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="100" y="302" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">内置工具</text>
+    <text x="100" y="333" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">搜索仓库、读取文件、看 git 状态、网页搜索</text>
+  </g>
+  <g>
+    <rect x="438" y="260" width="328" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="466" y="302" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">前端 SDK</text>
+    <text x="466" y="333" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">让浏览器和 Node 更容易接入实时协议</text>
+  </g>
+  <g>
+    <rect x="790" y="260" width="338" height="112" rx="22" fill="#FFFFFF" stroke="#D7E5F4"/>
+    <text x="818" y="302" fill="#18314E" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">聚焦上下文</text>
+    <text x="818" y="333" fill="#5D7798" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="600">让真正有用的对话内容继续往前走</text>
+  </g>
+</svg>

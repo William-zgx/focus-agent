@@ -1,0 +1,97 @@
+#!/bin/bash
+set -euo pipefail
+
+FORMAT="text"
+MAX_RESULTS=5
+QUERY_PARTS=()
+
+usage() {
+    cat <<'EOF'
+Usage: search [--format text|json] [--max-results N] <query>
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --format)
+            FORMAT="${2:-}"
+            shift 2
+            ;;
+        --max-results)
+            MAX_RESULTS="${2:-}"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            QUERY_PARTS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+QUERY="${QUERY_PARTS[*]:-}"
+if [[ -z "$QUERY" ]]; then
+    usage
+    exit 1
+fi
+
+if [[ "$FORMAT" != "text" && "$FORMAT" != "json" ]]; then
+    echo "Error: --format must be 'text' or 'json'" >&2
+    exit 1
+fi
+
+API_KEY="${TAVILY_API_KEY:-}"
+if [[ -z "$API_KEY" ]]; then
+    echo "Error: TAVILY_API_KEY not set" >&2
+    exit 1
+fi
+
+PAYLOAD="$(python3 - "$QUERY" "$MAX_RESULTS" <<'PY'
+import json
+import sys
+
+query = sys.argv[1]
+max_results = int(sys.argv[2])
+print(json.dumps({
+    "query": query,
+    "max_results": max_results,
+    "include_answer": True,
+}))
+PY
+)"
+
+RESPONSE="$(
+    curl -s -X POST "https://api.tavily.com/search" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $API_KEY" \
+      -d "$PAYLOAD"
+)"
+
+if [[ "$FORMAT" == "json" ]]; then
+    printf '%s\n' "$RESPONSE"
+    exit 0
+fi
+
+python3 - <<'PY' <<<"$RESPONSE"
+import json
+import sys
+
+data = json.load(sys.stdin)
+answer = data.get("answer")
+results = data.get("results", [])
+
+if answer:
+    print("Answer:")
+    print(answer)
+    print()
+
+print("Sources:")
+for item in results:
+    title = item.get("title", "No title")
+    url = item.get("url", "")
+    print(f"- {title}")
+    print(f"  {url}")
+PY

@@ -1,0 +1,22 @@
+<svg width="960" height="280" viewBox="0 0 960 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="focus-agent-wordmark-accent" x1="58" y1="42" x2="204" y2="208" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F62FE"/>
+      <stop offset="1" stop-color="#6BA9FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="28" y="28" width="184" height="184" rx="46" fill="#F6F9FF"/>
+  <circle cx="88" cy="120" r="34" stroke="url(#focus-agent-wordmark-accent)" stroke-width="10"/>
+  <circle cx="88" cy="120" r="12" fill="url(#focus-agent-wordmark-accent)"/>
+  <path d="M122 120H148V84H176" stroke="#1D3557" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M148 120V156H176" stroke="#1D3557" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="176" cy="84" r="10" fill="#1D3557"/>
+  <circle cx="148" cy="120" r="10" fill="#1D3557"/>
+  <circle cx="176" cy="156" r="10" fill="#1D3557"/>
+  <text x="260" y="118" fill="#132033" font-family="Avenir Next, Nunito Sans, Inter, Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="-1.5">
+    Focus Agent
+  </text>
+  <text x="264" y="170" fill="#60708F" font-family="Avenir Next, Nunito Sans, Inter, Arial, sans-serif" font-size="28" font-weight="500" letter-spacing="0.8">
+    Focused conversations with branch-aware exploration
+  </text>
+</svg>

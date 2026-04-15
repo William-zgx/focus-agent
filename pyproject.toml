@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "focus-agent"
+version = "1.0.0"
+description = "A concise long-dialogue research agent with branchable conversations built on LangChain/LangGraph."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+dependencies = [
+  "langchain>=1.2.0,<2.0.0",
+  "langgraph>=1.1.0,<2.0.0",
+  "langgraph-sdk>=0.1.0",
+  "langgraph-checkpoint-postgres>=3.0.0,<4.0.0",
+  "langsmith>=0.4.43",
+  "pydantic>=2.8.0",
+  "fastapi>=0.115.0,<1.0.0",
+  "uvicorn>=0.34.0,<1.0.0",
+  "ddgs>=9.6.0",
+]
+
+[project.optional-dependencies]
+openai = ["langchain-openai>=1.0.0"]
+anthropic = ["langchain-anthropic>=1.0.0"]
+dev = ["pytest>=8.2.0", "ruff>=0.8.0", "httpx>=0.28.0"]
+
+[project.scripts]
+focus-agent-demo = "focus_agent.demo:main"
+focus-agent-api = "focus_agent.api.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+focus_agent = ["skills/builtin/*/SKILL.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

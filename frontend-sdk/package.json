@@ -1,0 +1,26 @@
+{
+  "name": "@focus-agent/web-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "TypeScript SDK for Focus Agent SSE chat and branch streaming",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}

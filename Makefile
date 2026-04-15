@@ -1,0 +1,76 @@
+.PHONY: help venv install install-openai install-anthropic setup-local api dev test lint check sdk-install sdk-check sdk-build clean
+
+UV ?= uv
+PYTHON ?= .venv/bin/python
+PIP ?= .venv/bin/pip
+PYTEST ?= .venv/bin/pytest
+RUFF ?= .venv/bin/ruff
+FOCUS_AGENT_API ?= .venv/bin/focus-agent-api
+NPM ?= npm
+SDK_DIR ?= frontend-sdk
+
+help:
+	@printf '%s\n' \
+		'Focus Agent Make targets:' \
+		'  make venv              Create .venv with uv' \
+		'  make install           Install OpenAI + dev dependencies into .venv' \
+		'  make install-openai    Same as install' \
+		'  make install-anthropic Install Anthropic + dev dependencies into .venv' \
+		'  make setup-local       Create local config files if missing' \
+		'  make api               Start the API server' \
+		'  make dev               Start the API server with API_RELOAD=1' \
+		'  make test              Run pytest' \
+		'  make lint              Run ruff check .' \
+		'  make check             Run lint + test + sdk-check' \
+		'  make sdk-install       Install frontend SDK dependencies' \
+		'  make sdk-check         Run frontend SDK type-check' \
+		'  make sdk-build         Build frontend SDK' \
+		'  make clean             Remove Python/pytest caches'
+
+.venv/bin/python:
+	$(UV) venv
+
+venv: .venv/bin/python
+
+install: install-openai
+
+install-openai: .venv/bin/python
+	$(UV) pip install -e '.[openai,dev]'
+
+install-anthropic: .venv/bin/python
+	$(UV) pip install -e '.[anthropic,dev]'
+
+setup-local:
+	@test -f .env || cp .env.example .env
+	@mkdir -p .focus_agent
+	@test -f .focus_agent/local-model-config.md || cp docs/local-model-config.example.md .focus_agent/local-model-config.md
+	@printf '%s\n' 'Local config files are ready.'
+
+api: .venv/bin/python
+	$(FOCUS_AGENT_API)
+
+dev: .venv/bin/python
+	API_RELOAD=1 $(FOCUS_AGENT_API)
+
+test: .venv/bin/python
+	$(PYTEST)
+
+lint: .venv/bin/python
+	$(RUFF) check .
+
+check: lint test sdk-check
+
+$(SDK_DIR)/node_modules:
+	cd $(SDK_DIR) && $(NPM) install
+
+sdk-install: $(SDK_DIR)/node_modules
+
+sdk-check: $(SDK_DIR)/node_modules
+	cd $(SDK_DIR) && $(NPM) run check
+
+sdk-build: $(SDK_DIR)/node_modules
+	cd $(SDK_DIR) && $(NPM) run build
+
+clean:
+	rm -rf .pytest_cache
+	find . -type d -name '__pycache__' -prune -exec rm -rf {} +

@@ -1,0 +1,130 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="74" y1="58" x2="1190" y2="592" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#07111D"/>
+      <stop offset="1" stop-color="#0C1E31"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1084 134) rotate(133.211) scale(430.27 506.809)">
+      <stop stop-color="#39C5FF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#39C5FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(318 600) rotate(-59.6054) scale(379.48 465.487)">
+      <stop stop-color="#2DE2A6" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#2DE2A6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brand" x1="184" y1="154" x2="254" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#32C6FF"/>
+      <stop offset="1" stop-color="#7DAEFF"/>
+    </linearGradient>
+    <linearGradient id="panelStroke" x1="724" y1="104" x2="1172" y2="548" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DCEBFB" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#C9DCF1" stop-opacity="0.46"/>
+    </linearGradient>
+    <linearGradient id="pillBlue" x1="0" y1="0" x2="104" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10304E"/>
+      <stop offset="1" stop-color="#143A5E"/>
+    </linearGradient>
+    <filter id="shadow" x="684" y="86" width="520" height="490" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="26"/>
+      <feGaussianBlur stdDeviation="22"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0156863 0 0 0 0 0.054902 0 0 0 0 0.109804 0 0 0 0.34 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" rx="36" fill="url(#bg)"/>
+  <rect width="1280" height="640" rx="36" fill="url(#glow1)"/>
+  <rect width="1280" height="640" rx="36" fill="url(#glow2)"/>
+
+  <g opacity="0.18">
+    <path d="M88 82H1192" stroke="#82A7D1" stroke-width="1"/>
+    <path d="M88 558H1192" stroke="#82A7D1" stroke-width="1"/>
+    <path d="M88 82V558" stroke="#82A7D1" stroke-width="1"/>
+    <path d="M1192 82V558" stroke="#82A7D1" stroke-width="1"/>
+  </g>
+
+  <g>
+    <rect x="118" y="126" width="132" height="132" rx="34" fill="#F1F7FF" fill-opacity="0.98"/>
+    <circle cx="160" cy="191" r="24" stroke="url(#brand)" stroke-width="8"/>
+    <circle cx="160" cy="191" r="8.5" fill="url(#brand)"/>
+    <path d="M184 191H202V165H221" stroke="#16304F" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M202 191V217H221" stroke="#16304F" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="221" cy="165" r="7.5" fill="#16304F"/>
+    <circle cx="202" cy="191" r="7.5" fill="#16304F"/>
+    <circle cx="221" cy="217" r="7.5" fill="#16304F"/>
+  </g>
+
+  <text x="118" y="320" fill="#F5FAFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="-1.6">Focus Agent</text>
+  <text x="118" y="370" fill="#9DB8D6" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="24" font-weight="500">Keep the work focused.</text>
+
+  <g>
+    <rect x="118" y="416" width="148" height="42" rx="21" fill="#122843"/>
+    <circle cx="140" cy="437" r="6" fill="#32C6FF"/>
+    <text x="156" y="444" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Branch-aware</text>
+
+    <rect x="278" y="416" width="132" height="42" rx="21" fill="#122843"/>
+    <circle cx="300" cy="437" r="6" fill="#2DE2A6"/>
+    <text x="316" y="444" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Streaming</text>
+
+    <rect x="422" y="416" width="116" height="42" rx="21" fill="#122843"/>
+    <circle cx="444" cy="437" r="6" fill="#FFB84D"/>
+    <text x="460" y="444" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Merge</text>
+
+    <rect x="538" y="416" width="144" height="42" rx="21" fill="#122843"/>
+    <circle cx="560" cy="437" r="6" fill="#7DAEFF"/>
+    <text x="576" y="444" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Secure API</text>
+  </g>
+
+  <text x="118" y="506" fill="#DCEAFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500">Built for research flows where threads branch, tools stream, and conclusions merge back with control.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="730" y="130" width="428" height="402" rx="30" fill="#F8FBFF"/>
+    <rect x="730" y="130" width="428" height="402" rx="30" stroke="url(#panelStroke)"/>
+
+    <rect x="730" y="130" width="428" height="46" rx="30" fill="#EFF5FC"/>
+    <circle cx="760" cy="153" r="6" fill="#FF8A8A"/>
+    <circle cx="780" cy="153" r="6" fill="#FFC857"/>
+    <circle cx="800" cy="153" r="6" fill="#49D98C"/>
+    <text x="834" y="159" fill="#5E7898" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Focus Agent Console</text>
+
+    <rect x="752" y="194" width="108" height="316" rx="20" fill="#122A45"/>
+    <text x="770" y="222" fill="#8FC7FF" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="700">threads</text>
+    <rect x="766" y="238" width="80" height="40" rx="14" fill="#1B4268"/>
+    <circle cx="780" cy="258" r="5" fill="#32C6FF"/>
+    <text x="792" y="262" fill="#EFF7FF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">main</text>
+    <rect x="766" y="288" width="80" height="40" rx="14" fill="#173751"/>
+    <circle cx="780" cy="308" r="5" fill="#2DE2A6"/>
+    <text x="792" y="312" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">verify</text>
+    <rect x="766" y="338" width="80" height="40" rx="14" fill="#173751"/>
+    <circle cx="780" cy="358" r="5" fill="#FFB84D"/>
+    <text x="792" y="362" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">deep</text>
+    <path d="M780 263V303" stroke="#4F7094" stroke-width="2" stroke-linecap="round"/>
+    <path d="M780 313V353" stroke="#4F7094" stroke-width="2" stroke-linecap="round"/>
+
+    <rect x="878" y="194" width="258" height="152" rx="20" fill="#F2F7FD"/>
+    <text x="898" y="220" fill="#5D7798" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="700">chat</text>
+
+    <rect x="894" y="236" width="158" height="34" rx="14" fill="#DBEAF8"/>
+    <text x="908" y="257" fill="#24476B" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Research the trade-offs.</text>
+
+    <rect x="966" y="280" width="154" height="46" rx="16" fill="#12304D"/>
+    <text x="980" y="300" fill="#84CFFF" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="10" font-weight="700">visible_text.delta</text>
+    <text x="980" y="315" fill="#F4FAFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">Streaming answer chunks...</text>
+
+    <rect x="894" y="356" width="242" height="58" rx="18" fill="#F2F7FD"/>
+    <text x="912" y="379" fill="#59B7EF" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="10" font-weight="700">branch proposal</text>
+    <text x="912" y="397" fill="#24476B" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">Create a verification branch and keep the</text>
+    <text x="912" y="412" fill="#24476B" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">main thread focused on synthesis.</text>
+
+    <rect x="878" y="430" width="258" height="80" rx="20" fill="#112943"/>
+    <text x="898" y="454" fill="#8EF0CB" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="700">tool events</text>
+    <rect x="896" y="466" width="104" height="24" rx="12" fill="url(#pillBlue)"/>
+    <text x="911" y="482" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">search_code</text>
+    <rect x="1008" y="466" width="110" height="24" rx="12" fill="#183654"/>
+    <text x="1024" y="482" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">web_search</text>
+    <text x="898" y="502" fill="#DDECFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">Structured tool lifecycle events for richer UI and debugging.</text>
+  </g>
+</svg>

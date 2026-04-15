@@ -1,0 +1,25 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="420" rx="28" fill="#0F2136"/>
+  <text x="72" y="78" fill="#F5FAFF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="30" font-weight="700">A simple layered structure</text>
+  <text x="72" y="112" fill="#A8C0DB" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="500">The project is organized so the main ideas are easy to find and change.</text>
+
+  <rect x="96" y="154" width="1008" height="44" rx="18" fill="#1A3B5E"/>
+  <text x="122" y="182" fill="#EAF5FF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="700">API layer</text>
+  <text x="286" y="182" fill="#B9D2EA" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="16" font-weight="600">requests, live streaming, access control</text>
+
+  <rect x="96" y="210" width="1008" height="44" rx="18" fill="#20486F"/>
+  <text x="122" y="238" fill="#EAF5FF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="700">Conversation layer</text>
+  <text x="344" y="238" fill="#B9D2EA" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="16" font-weight="600">main thread, branches, review before merge-back</text>
+
+  <rect x="96" y="266" width="1008" height="44" rx="18" fill="#28567F"/>
+  <text x="122" y="294" fill="#EAF5FF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="700">App layer</text>
+  <text x="286" y="294" fill="#B9D2EA" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="16" font-weight="600">chat flow, memory, built-in tools, app behavior</text>
+
+  <rect x="96" y="322" width="494" height="44" rx="18" fill="#2E648F"/>
+  <text x="122" y="350" fill="#EAF5FF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="700">Client layer</text>
+  <text x="250" y="350" fill="#D5E7F7" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="16" font-weight="600">web app + frontend SDK</text>
+
+  <rect x="610" y="322" width="494" height="44" rx="18" fill="#35759F"/>
+  <text x="636" y="350" fill="#EAF5FF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="700">Quality layer</text>
+  <text x="770" y="350" fill="#D5E7F7" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="16" font-weight="600">tests for behavior and safety</text>
+</svg>

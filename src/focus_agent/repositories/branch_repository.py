@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+from ..core.branching import BranchRecord, BranchStatus, MergeDecision, MergeProposal
+
+
+class BranchRepository(ABC):
+    @abstractmethod
+    def create(self, record: BranchRecord) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self, branch_id: str) -> BranchRecord:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_by_parent_thread_id(self, parent_thread_id: str) -> list[BranchRecord]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_merge_proposal(self, branch_id: str, proposal: MergeProposal) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_merge_decision(self, branch_id: str, decision: MergeDecision) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_status(self, branch_id: str, status: BranchStatus) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_archive_state(self, branch_id: str, *, is_archived: bool) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_branch_name(self, branch_id: str, branch_name: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def ensure_thread_owner(self, *, thread_id: str, root_thread_id: str, owner_user_id: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def assert_thread_owner(self, *, thread_id: str, owner_user_id: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_thread_owner(self, *, thread_id: str) -> str | None:
+        raise NotImplementedError

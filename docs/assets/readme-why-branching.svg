@@ -1,0 +1,31 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="56" y1="44" x2="1140" y2="382" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1B2D"/>
+      <stop offset="1" stop-color="#10253D"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="420" rx="28" fill="url(#bg2)"/>
+  <text x="72" y="78" fill="#F5FAFF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="30" font-weight="700">Without branches, one thread becomes noisy fast</text>
+  <text x="72" y="112" fill="#A9C0DB" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="18" font-weight="500">Separate workspaces keep experiments, checking, and synthesis from stepping on each other.</text>
+
+  <rect x="82" y="152" width="458" height="202" rx="24" fill="#16304E"/>
+  <text x="110" y="186" fill="#8FC7FF" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Flat chat</text>
+  <rect x="110" y="210" width="318" height="24" rx="12" fill="#2A4A6D"/>
+  <rect x="110" y="246" width="358" height="24" rx="12" fill="#305376"/>
+  <rect x="110" y="282" width="286" height="24" rx="12" fill="#2A4A6D"/>
+  <rect x="110" y="318" width="392" height="24" rx="12" fill="#305376"/>
+  <text x="110" y="372" fill="#B5C9DE" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">everything mixed together</text>
+
+  <rect x="660" y="152" width="458" height="202" rx="24" fill="#F6FAFF"/>
+  <text x="688" y="186" fill="#18314E" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="20" font-weight="700">Branch-aware flow</text>
+  <path d="M720 236H1010" stroke="#2EC5FF" stroke-width="5" stroke-linecap="round"/>
+  <path d="M830 236C872 236 884 198 924 198H1042" stroke="#2DE2A6" stroke-width="4" stroke-linecap="round"/>
+  <path d="M830 236C872 236 884 278 924 278H1060" stroke="#FFB84D" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="720" cy="236" r="12" fill="#2EC5FF"/>
+  <circle cx="830" cy="236" r="12" fill="#4FA8FF"/>
+  <circle cx="1010" cy="236" r="12" fill="#7DAEFF"/>
+  <circle cx="1042" cy="198" r="11" fill="#2DE2A6"/>
+  <circle cx="1060" cy="278" r="11" fill="#FFB84D"/>
+  <text x="688" y="332" fill="#5D7798" font-family="Avenir Next, Nunito Sans, Arial, sans-serif" font-size="15" font-weight="600">main thread stays readable, branches hold the exploration</text>
+</svg>

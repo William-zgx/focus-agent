@@ -1,0 +1,16 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="focus-agent-accent" x1="54" y1="44" x2="198" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F62FE"/>
+      <stop offset="1" stop-color="#6BA9FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="208" height="208" rx="52" fill="#F6F9FF"/>
+  <circle cx="92" cy="128" r="40" stroke="url(#focus-agent-accent)" stroke-width="12"/>
+  <circle cx="92" cy="128" r="14" fill="url(#focus-agent-accent)"/>
+  <path d="M132 128H162V86H194" stroke="#1D3557" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M162 128V170H194" stroke="#1D3557" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="194" cy="86" r="13" fill="#1D3557"/>
+  <circle cx="162" cy="128" r="13" fill="#1D3557"/>
+  <circle cx="194" cy="170" r="13" fill="#1D3557"/>
+</svg>
