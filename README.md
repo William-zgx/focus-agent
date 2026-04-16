@@ -17,6 +17,8 @@ It is designed for teams that need a clear starting point for longer AI workflow
 
 Most agent demos assume one chat box and one final answer. Focus Agent is built around a different core assumption:
 
+Long AI sessions lose focus for a simple reason: conversation is linear, but serious thinking is not. Research, debugging, writing, and review work all involve trying side paths, checking evidence, and returning only the conclusions that survive. When every detour lives in the same chat log, the thread gets noisy for both people and models.
+
 - real research work often requires splitting one problem into multiple branches, exploring them independently, and then bringing the useful conclusions back to the main thread
 
 That is the center of the project. Live updates, access control, the web app, and the SDK are important, but they are there to support this branching workflow rather than define the project by themselves.
@@ -42,11 +44,25 @@ In real work, a team often needs to:
 - compare competing lines of reasoning before deciding what belongs in the final answer
 - keep exploratory noise out of the primary conversation state
 
+That shows up in concrete workflows such as:
+
+- researching several competitors in parallel and merging back only the findings worth comparing
+- trying alternative outlines or implementation strategies without overwriting the accepted direction
+- investigating an uncertain review finding in a branch by reading code, checking logs, or running tests before reporting back
+
 Flat chat logs handle these workflows poorly. Once every exploration is mixed into one thread, the conversation becomes noisy, harder to review, and harder to keep using.
 
 Focus Agent treats the main thread as the place for shared progress and treats branches as temporary workspaces for exploration. That makes it a better fit for research, analysis, checking, and writing workflows where the path to a good answer is rarely linear.
 
 This design also tends to reduce token waste as a side effect: the system can keep the active conversation focused, summarize branch work instead of replaying it in full, and bring back only the conclusions that matter.
+
+## Mental Model
+
+- Main thread: the clean record of shared progress, accepted decisions, and working conclusions
+- Branch: a temporary workspace for exploration, verification, comparison, or experiments
+- Review and merge-back: the point where useful outcomes return to the main thread as distilled conclusions instead of raw transcript replay
+
+If Git is a familiar analogy, that mapping is intentional. The main thread plays the role of `main`, branches act like short-lived feature branches, and merge-back is controlled by review. The difference is that Focus Agent manages conversation state and context rather than source code.
 
 ## Core Capabilities
 
