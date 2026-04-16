@@ -37,6 +37,9 @@ class FakeRepo:
         if self.thread_owners.get(thread_id) != owner_user_id:
             raise PermissionError(thread_id)
 
+    def get_thread_owner(self, *, thread_id: str) -> str | None:
+        return self.thread_owners.get(thread_id)
+
     def ensure_thread_owner(self, *, thread_id: str, root_thread_id: str, owner_user_id: str) -> None:
         del root_thread_id
         self.thread_owners[thread_id] = owner_user_id
@@ -140,6 +143,23 @@ def test_fork_branch_populates_branch_meta_without_conclusion_policy():
 
     child_state = service.graph.states[record.child_thread_id]
     assert "conclusion_policy" not in child_state["branch_meta"]
+
+
+def test_fork_branch_registers_unseen_root_thread_before_first_branch():
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo()
+    service.graph = FakeGraph({"root-1": {}})
+    service.thread_client = None
+    service.proposal_model = None
+    service.settings = SimpleNamespace(branch_max_depth=5)
+    service.store = None
+    service.memory_writer = None
+
+    record = service.fork_branch(parent_thread_id="root-1", user_id="user-1")
+
+    assert record.root_thread_id == "root-1"
+    assert service.repo.thread_owners["root-1"] == "user-1"
+
 
 def test_prepare_merge_proposal_persists_findings_and_proposal(monkeypatch):
     record = _make_record()

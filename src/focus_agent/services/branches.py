@@ -444,6 +444,25 @@ class BranchService:
             children=[self._build_tree_node(child, by_parent) for child in by_parent.get(record.child_thread_id, [])],
         )
 
+    def _ensure_root_thread_access(self, *, root_thread_id: str, user_id: str) -> None:
+        owner = self.repo.get_thread_owner(thread_id=root_thread_id)
+        if owner is None:
+            self.repo.ensure_thread_owner(
+                thread_id=root_thread_id,
+                root_thread_id=root_thread_id,
+                owner_user_id=user_id,
+            )
+            return
+        self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
+
+    def _ensure_parent_thread_access(self, *, parent_thread_id: str, user_id: str) -> None:
+        try:
+            self.repo.get_by_child_thread_id(parent_thread_id)
+        except Exception:
+            self._ensure_root_thread_access(root_thread_id=parent_thread_id, user_id=user_id)
+            return
+        self.repo.assert_thread_owner(thread_id=parent_thread_id, owner_user_id=user_id)
+
     def fork_branch(
         self,
         *,
@@ -454,7 +473,7 @@ class BranchService:
         branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
         fork_checkpoint_id: str | None = None,
     ) -> BranchRecord:
-        self.repo.assert_thread_owner(thread_id=parent_thread_id, owner_user_id=user_id)
+        self._ensure_parent_thread_access(parent_thread_id=parent_thread_id, user_id=user_id)
         parent_config = {'configurable': {'thread_id': parent_thread_id}}
         parent_snapshot = self.graph.get_state(parent_config)
         parent_values = deepcopy(parent_snapshot.values)
@@ -788,7 +807,7 @@ class BranchService:
         return imported
 
     def get_branch_tree(self, *, root_thread_id: str, user_id: str) -> BranchTreeNode:
-        self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
+        self._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
         records = self.repo.list_by_root_thread_id(root_thread_id)
         by_parent: dict[str, list[BranchRecord]] = defaultdict(list)
         for record in records:
@@ -808,7 +827,7 @@ class BranchService:
         )
 
     def list_archived_branches(self, *, root_thread_id: str, user_id: str) -> list[BranchTreeNode]:
-        self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
+        self._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
         records = self.repo.list_by_root_thread_id(root_thread_id)
         archived_records = [record for record in records if record.is_archived]
         archived_records.sort(key=lambda record: (record.branch_depth, record.branch_name, record.child_thread_id))

@@ -47,6 +47,9 @@ class FakeRepo:
         if self.thread_owners.get(thread_id) != owner_user_id:
             raise PermissionError(thread_id)
 
+    def get_thread_owner(self, *, thread_id: str) -> str | None:
+        return self.thread_owners.get(thread_id)
+
     def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:
         return [record for record in self.records.values() if record.root_thread_id == root_thread_id]
 
@@ -138,6 +141,29 @@ def test_get_branch_tree_hides_archived_subtrees_and_lists_archived_branches():
     assert [child.thread_id for child in tree.children[0].children] == ["visible-grandchild"]
     assert [node.thread_id for node in archived] == ["child-archived"]
     assert archived[0].is_archived is True
+
+
+def test_get_branch_tree_registers_unseen_root_thread_for_first_owner():
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo(
+        [
+            _record(
+                branch_id="b-active",
+                parent_thread_id="root-1",
+                child_thread_id="child-active",
+                branch_name="active branch",
+                branch_depth=1,
+            )
+        ]
+    )
+    service.repo.thread_owners.pop("root-1", None)
+
+    tree = service.get_branch_tree(root_thread_id="root-1", user_id="user-1")
+    archived = service.list_archived_branches(root_thread_id="root-1", user_id="user-1")
+
+    assert tree.thread_id == "root-1"
+    assert archived == []
+    assert service.repo.thread_owners["root-1"] == "user-1"
 
 
 def test_archive_and_activate_branch_update_repo_and_graph_metadata():
