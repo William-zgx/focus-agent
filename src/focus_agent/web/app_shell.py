@@ -1028,6 +1028,13 @@ BRANCH_TREE_HTML = """<!doctype html>
       flex:1 1 auto;
       order:1;
     }
+    .composer-model-controls {
+      display:flex;
+      align-items:stretch;
+      gap:6px;
+      width:100%;
+      min-width:0;
+    }
     .composer-model-trigger {
       min-height:34px;
       width:100%;
@@ -1082,6 +1089,32 @@ BRANCH_TREE_HTML = """<!doctype html>
       width:100%;
       max-width:none;
       margin-left:0;
+    }
+    #stop-stream {
+      width:34px;
+      min-width:34px;
+      min-height:34px;
+      height:34px;
+      padding:0;
+      border-radius:999px;
+      background:color-mix(in srgb, rgba(190, 55, 92, 0.18) 78%, var(--panel-3) 22%);
+      border-color:color-mix(in srgb, rgba(190, 55, 92, 0.34) 70%, var(--border) 30%);
+      color:color-mix(in srgb, #C4476C 78%, var(--text) 22%);
+      box-shadow:none;
+    }
+    #stop-stream .composer-action-icon {
+      width:14px;
+      height:14px;
+      color:currentColor;
+    }
+    #stop-stream .composer-action-icon svg {
+      width:14px;
+      height:14px;
+    }
+    #stop-stream:hover {
+      background:color-mix(in srgb, rgba(190, 55, 92, 0.28) 82%, var(--panel-3) 18%);
+      border-color:color-mix(in srgb, rgba(190, 55, 92, 0.46) 76%, var(--border) 24%);
+      color:color-mix(in srgb, #D14C73 88%, white 12%);
     }
     .composer-model-panel {
       position:absolute;
@@ -2620,6 +2653,9 @@ BRANCH_TREE_HTML = """<!doctype html>
         width:100%;
         flex:0 0 auto;
       }
+      .composer-model-controls {
+        width:100%;
+      }
       .composer-model-anchor {
         max-width:none;
         flex-basis:100%;
@@ -2857,32 +2893,42 @@ BRANCH_TREE_HTML = """<!doctype html>
               </div>
             </div>
             <div class="composer-model-row">
-              <div class="composer-model-anchor">
-                <button id="composer-model-trigger" type="button" class="composer-model-trigger" aria-label="Model selector" aria-expanded="false">
-                  <span class="composer-model-trigger-copy">
-                    <span id="composer-model-trigger-logo" class="composer-model-logo-shell">
-                      <span class="composer-model-logo-fallback">M</span>
+              <div class="composer-model-controls">
+                <div class="composer-model-anchor">
+                  <button id="composer-model-trigger" type="button" class="composer-model-trigger" aria-label="Model selector" aria-expanded="false">
+                    <span class="composer-model-trigger-copy">
+                      <span id="composer-model-trigger-logo" class="composer-model-logo-shell">
+                        <span class="composer-model-logo-fallback">M</span>
+                      </span>
+                      <span id="composer-model-trigger-label" class="composer-model-trigger-label">Loading models...</span>
+                      <span id="composer-model-trigger-provider" class="composer-model-trigger-provider">...</span>
                     </span>
-                    <span id="composer-model-trigger-label" class="composer-model-trigger-label">Loading models...</span>
-                    <span id="composer-model-trigger-provider" class="composer-model-trigger-provider">...</span>
-                  </span>
-                  <span class="composer-model-trigger-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20">
-                      <path d="M5.25 7.5 10 12.25 14.75 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                  </span>
-                </button>
-                <div id="composer-model-panel" class="composer-model-panel" hidden>
-                  <div class="composer-model-panel-head">
-                    <div class="composer-model-panel-title">
-                      <span>Model selector</span>
-                      <small>command palette</small>
+                    <span class="composer-model-trigger-icon" aria-hidden="true">
+                      <svg viewBox="0 0 20 20">
+                        <path d="M5.25 7.5 10 12.25 14.75 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                      </svg>
+                    </span>
+                  </button>
+                  <div id="composer-model-panel" class="composer-model-panel" hidden>
+                    <div class="composer-model-panel-head">
+                      <div class="composer-model-panel-title">
+                        <span>Model selector</span>
+                        <small>command palette</small>
+                      </div>
+                    </div>
+                    <div id="composer-model-list" class="composer-model-list">
+                      <div class="composer-model-empty">Loading models...</div>
                     </div>
                   </div>
-                  <div id="composer-model-list" class="composer-model-list">
-                    <div class="composer-model-empty">Loading models...</div>
-                  </div>
                 </div>
+                <button id="stop-stream" type="button" class="composer-action-button" aria-label="Stop generation" title="Stop generation" disabled>
+                  <span class="composer-action-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20">
+                      <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="2.2" fill="currentColor"></rect>
+                    </svg>
+                  </span>
+                  <span id="stop-stream-label" class="sr-only">Stop generation</span>
+                </button>
               </div>
             </div>
           </div>
@@ -3006,7 +3052,6 @@ BRANCH_TREE_HTML = """<!doctype html>
       </div>
     </div>
   </section>
-
   <script>
     const DEMO_USER_ID = "researcher-1";
     const DEMO_TENANT_ID = "demo-tenant";
@@ -4271,10 +4316,6 @@ BRANCH_TREE_HTML = """<!doctype html>
       return labels[target] || target || "return_thread";
     }
 
-    function noneLabel() {
-      return "(none)";
-    }
-
     function threadReadyMessage(threadLabel) {
       return isChineseUi()
         ? `${threadLabel} 已切换完成，可以在这里继续对话。`
@@ -4607,21 +4648,6 @@ BRANCH_TREE_HTML = """<!doctype html>
       createMessageBubble("system", turnFailedBubbleText(message), isChineseUi() ? "系统" : "System", "error");
       if (state.currentAssistantBubble && !bubbleRawText(state.currentAssistantBubble)) {
         setBubbleContent(state.currentAssistantBubble, message);
-      }
-    }
-
-    function renderModalList(id, items) {
-      const root = $(id);
-      root.innerHTML = "";
-      const normalized = (items || []).filter((item) => String(item || "").trim());
-      if (!normalized.length) {
-        root.innerHTML = `<li>${noneLabel()}</li>`;
-        return;
-      }
-      for (const item of normalized) {
-        const li = document.createElement("li");
-        li.textContent = String(item);
-        root.appendChild(li);
       }
     }
 
@@ -6660,6 +6686,48 @@ BRANCH_TREE_HTML = """<!doctype html>
       }
     }
 
+    function stopGenerationLabel() {
+      return isChineseUi() ? "停止生成" : "Stop generation";
+    }
+
+    function stoppingGenerationLabel() {
+      return isChineseUi() ? "停止生成中" : "stopping generation";
+    }
+
+    function generationStoppedLabel() {
+      return isChineseUi() ? "已停止生成" : "generation stopped";
+    }
+
+    function syncComposerStreamingControls() {
+      const stopButton = $("stop-stream");
+      const stopLabel = $("stop-stream-label");
+      if (!stopButton) {
+        return;
+      }
+      const label = stopGenerationLabel();
+      stopButton.title = label;
+      stopButton.setAttribute("aria-label", label);
+      if (stopLabel) {
+        stopLabel.textContent = label;
+      }
+      stopButton.disabled = !Boolean(
+        state.abortController &&
+        !state.abortController.signal.aborted &&
+        state.streamingResponseActive
+      );
+    }
+
+    function stopStream() {
+      const controller = state.abortController;
+      if (!controller || controller.signal.aborted || !state.streamingResponseActive) {
+        return;
+      }
+      controller._focusAgentAbortReason = "stopped";
+      setStatus(stoppingGenerationLabel(), "warn");
+      controller.abort();
+      syncComposerStreamingControls();
+    }
+
     function handleEvent(eventName, payload, threadId = state.activeThreadId) {
       const targetThreadId = threadId || state.activeThreadId;
       const isVisibleThread = targetThreadId === state.activeThreadId;
@@ -6697,9 +6765,9 @@ BRANCH_TREE_HTML = """<!doctype html>
       } else if (eventName === "reasoning.delta") {
         setStatus("thinking", "warn", null, targetThreadId);
       } else if (eventName === "tool_call.delta") {
-        setStatus(`using ${payload.name || "tool"}`, "warn", null, targetThreadId);
+        setStatus(`using ${payload.display_name || payload.name || "tool"}`, "warn", null, targetThreadId);
       } else if (eventName.startsWith("tool.")) {
-        const label = payload.tool_name || payload.name || "tool";
+        const label = payload.display_name || payload.tool_name || payload.name || "tool";
         if (eventName === "tool.error") {
           setStatus(`${label} failed`, "danger", payload.error || payload.message || label, targetThreadId);
         } else if (eventName === "tool.result" || eventName === "tool.end") {
@@ -6713,6 +6781,7 @@ BRANCH_TREE_HTML = """<!doctype html>
           return;
         }
         state.streamingResponseActive = false;
+        syncComposerStreamingControls();
         presentTurnFailure(payload);
       } else if (eventName === "turn.completed") {
         if (!isVisibleThread) {
@@ -6720,6 +6789,7 @@ BRANCH_TREE_HTML = """<!doctype html>
           return;
         }
         state.streamingResponseActive = false;
+        syncComposerStreamingControls();
         setStatus("turn completed", "success", null, targetThreadId);
         clearThreadUiState(targetThreadId);
         clearAgentActivityBubble();
@@ -6728,6 +6798,7 @@ BRANCH_TREE_HTML = """<!doctype html>
         }
       } else if (eventName === "turn.interrupt") {
         state.streamingResponseActive = false;
+        syncComposerStreamingControls();
         setStatus("waiting for resume", "warn", null, targetThreadId);
         if (!isVisibleThread) {
           return;
@@ -6742,6 +6813,8 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
 
     async function openStream() {
+      let streamThreadId = state.activeThreadId;
+      let requestController = null;
       try {
         const message = $("stream-message").value.trim();
         if (!message) {
@@ -6749,12 +6822,18 @@ BRANCH_TREE_HTML = """<!doctype html>
         }
         if (!state.token) await issueToken();
         syncDefaultThreadIds();
-        if (state.abortController) state.abortController.abort();
-        state.abortController = new AbortController();
+        if (state.abortController && !state.abortController.signal.aborted) {
+          state.abortController._focusAgentAbortReason = "replaced";
+          state.abortController.abort();
+        }
+        requestController = new AbortController();
+        requestController._focusAgentAbortReason = "";
+        state.abortController = requestController;
         state.currentVisibleText = "";
         state.chatAutoFollow = true;
         state.streamingResponseActive = true;
-        const streamThreadId = state.activeThreadId;
+        syncComposerStreamingControls();
+        streamThreadId = state.activeThreadId;
         updateActiveThreadPill();
         setStatus("connecting", "warn");
         beginChatTurn();
@@ -6768,7 +6847,7 @@ BRANCH_TREE_HTML = """<!doctype html>
             model: state.selectedModel || undefined,
             thinking_mode: state.selectedThinkingMode || undefined,
           }),
-          signal: state.abortController.signal,
+          signal: requestController.signal,
         });
         if (!response.ok) {
           throw new Error(await readErrorMessage(response));
@@ -6803,7 +6882,20 @@ BRANCH_TREE_HTML = """<!doctype html>
           }
         }
       } catch (error) {
-        state.streamingResponseActive = false;
+        const isAbortError = error instanceof Error && error.name === "AbortError";
+        const abortReason = requestController?._focusAgentAbortReason || "";
+        if (isAbortError) {
+          if (abortReason === "stopped" && state.activeThreadId === streamThreadId) {
+            setStatus(generationStoppedLabel(), "warn", null, streamThreadId);
+          } else if (state.activeThreadId !== streamThreadId) {
+            clearThreadUiState(streamThreadId);
+          }
+          return;
+        }
+        if (state.abortController === requestController) {
+          state.streamingResponseActive = false;
+          syncComposerStreamingControls();
+        }
         const message = error instanceof Error ? error.message : String(error);
         if (state.activeThreadId === streamThreadId) {
           showUiError("request failed", message);
@@ -6812,6 +6904,12 @@ BRANCH_TREE_HTML = """<!doctype html>
         }
         if (state.activeThreadId === streamThreadId && state.currentAssistantBubble && !bubbleRawText(state.currentAssistantBubble)) {
           setBubbleContent(state.currentAssistantBubble, message);
+        }
+      } finally {
+        if (state.abortController === requestController) {
+          state.abortController = null;
+          state.streamingResponseActive = false;
+          syncComposerStreamingControls();
         }
       }
     }
@@ -6908,6 +7006,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       }
     });
     $("open-stream").addEventListener("click", openStream);
+    $("stop-stream").addEventListener("click", stopStream);
     $("chat-history").addEventListener("scroll", syncChatAutoFollowFromScroll, { passive: true });
     $("chat-history").addEventListener("wheel", handleChatWheel, { passive: true });
     $("chat-history").addEventListener("touchstart", handleChatTouchStart, { passive: true });
@@ -6928,6 +7027,7 @@ BRANCH_TREE_HTML = """<!doctype html>
     $("clear-stream").addEventListener("click", () => {
       clearComposerInput();
     });
+    syncComposerStreamingControls();
     bindPreferenceToggle("language", switchUiLanguage);
     bindPreferenceToggle("theme", applyColorMode);
     bindPreferenceToggle("color", applyAccentTheme);
@@ -7211,6 +7311,9 @@ ZH_REPLACEMENTS = [
     ),
     ('<span class="sr-only">Message</span>', '<span class="sr-only">消息</span>'),
     ('aria-label="Message"', 'aria-label="消息"'),
+    ('aria-label="Stop generation"', 'aria-label="停止生成"'),
+    ('title="Stop generation"', 'title="停止生成"'),
+    ('>Stop generation</span>', '>停止生成</span>'),
     ("thread: researcher-1-main", "线程: researcher-1-main"),
     ("You · ", "你 · "),
     ("Focus Agent · ", "Focus Agent · "),

@@ -91,7 +91,9 @@ source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
 cp .env.example .env
 mkdir -p .focus_agent
-cp docs/local-model-config.example.md .focus_agent/local-model-config.md
+cp docs/local.env.example .focus_agent/local.env
+cp docs/models.example.toml .focus_agent/models.toml
+cp docs/tools.example.toml .focus_agent/tools.toml
 focus-agent-api
 ```
 
@@ -138,13 +140,18 @@ make dev
 make test
 make lint
 make check
+make ui-smoke
 ```
+
+`make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, verifies the model picker, confirms the page no longer renders the Skills directory entry, sends one chat turn, and fails if the final visible reply still contains DSML or tool-call markup.
 
 ## More Docs
 
 - Frontend SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
 - Roadmap: [`docs/current-roadmap.md`](docs/current-roadmap.md)
-- Local config example: [`docs/local-model-config.example.md`](docs/local-model-config.example.md)
+- Local env example: [`docs/local.env.example`](docs/local.env.example)
+- Model catalog example: [`docs/models.example.toml`](docs/models.example.toml)
+- Tool catalog example: [`docs/tools.example.toml`](docs/tools.example.toml)
 - Release checklist: [`docs/release-checklist.md`](docs/release-checklist.md)
 - License notes: [`docs/license-guide.md`](docs/license-guide.md)
 

@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local api dev test lint check sdk-install sdk-check sdk-build clean
+.PHONY: help venv install install-openai install-anthropic setup-local api dev test lint check sdk-install sdk-check sdk-build ui-smoke clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -25,6 +25,7 @@ help:
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
 		'  make sdk-build         Build frontend SDK' \
+		'  make ui-smoke          Run the real-browser UI smoke test' \
 		'  make clean             Remove Python/pytest caches'
 
 .venv/bin/python:
@@ -43,7 +44,9 @@ install-anthropic: .venv/bin/python
 setup-local:
 	@test -f .env || cp .env.example .env
 	@mkdir -p .focus_agent
-	@test -f .focus_agent/local-model-config.md || cp docs/local-model-config.example.md .focus_agent/local-model-config.md
+	@test -f .focus_agent/local.env || cp docs/local.env.example .focus_agent/local.env
+	@test -f .focus_agent/models.toml || cp docs/models.example.toml .focus_agent/models.toml
+	@test -f .focus_agent/tools.toml || cp docs/tools.example.toml .focus_agent/tools.toml
 	@printf '%s\n' 'Local config files are ready.'
 
 api: .venv/bin/python
@@ -70,6 +73,9 @@ sdk-check: $(SDK_DIR)/node_modules
 
 sdk-build: $(SDK_DIR)/node_modules
 	cd $(SDK_DIR) && $(NPM) run build
+
+ui-smoke: .venv/bin/python
+	$(PYTHON) scripts/ui_smoke_test.py
 
 clean:
 	rm -rf .pytest_cache

@@ -17,6 +17,8 @@ def test_render_chat_app_html_defaults_to_english():
     assert "thread-nav" in html
     assert "focus-branch-tree" in html
     assert "prepare-merge" in html
+    assert 'id="open-skills"' not in html
+    assert 'id="skills-modal"' not in html
     assert "composer-input-shell" in html
     assert "composer-footer-row" in html
     assert "composer-actions-row" in html
@@ -26,6 +28,8 @@ def test_render_chat_app_html_defaults_to_english():
     assert 'id="composer-model-panel"' in html
     assert 'id="composer-model-list"' in html
     assert 'id="composer-model-trigger-logo"' in html
+    assert 'id="stop-stream"' in html
+    assert 'id="stop-stream-label"' in html
     assert "composer-model-thinking-toggle" in html
     assert 'id="composer-thinking-shell"' not in html
     assert "composer-model-logo-shell" in html
@@ -106,6 +110,7 @@ def test_render_chat_app_html_defaults_to_english():
     assert '<select id="color-select">' not in html
     assert "Color" in html
     assert "Model selector" in html
+    assert "Stop generation" in html
     assert "White" in html
     assert "Blue" in html
     assert "Mint" in html
@@ -186,7 +191,10 @@ def test_render_chat_app_html_defaults_to_english():
     assert 'function shouldSubmitComposerOnEnter(event)' in html
     assert '$("stream-message").addEventListener("keydown", (event) => {' in html
     assert 'function clearComposerInput({ focus = true } = {})' in html
+    assert 'function syncComposerStreamingControls()' in html
+    assert 'function stopStream()' in html
     assert '$("clear-stream").addEventListener("click", () => {' in html
+    assert '$("stop-stream").addEventListener("click", stopStream);' in html
     assert 'event.stopPropagation();' in html
     assert 'thinkingMode: "enabled"' in html
     assert 'thinkingMode: "disabled"' in html
@@ -232,6 +240,8 @@ def test_render_chat_app_html_supports_chinese():
     assert "回到主分支" in html
     assert "回到上一层" in html
     assert "生成带回结论" in html
+    assert 'id="open-skills"' not in html
+    assert 'id="skills-modal"' not in html
     assert "重新生成结论" in html
     assert "带回目标" in html
     assert "开放问题" in html
@@ -297,6 +307,8 @@ def test_render_chat_app_html_supports_chinese():
     assert 'id="composer-model-panel"' in html
     assert 'id="composer-model-list"' in html
     assert 'id="composer-model-trigger-logo"' in html
+    assert 'id="stop-stream"' in html
+    assert 'id="stop-stream-label"' in html
     assert "composer-model-thinking-toggle" in html
     assert 'id="composer-thinking-shell"' not in html
     assert "composer-model-logo-shell" in html
@@ -314,6 +326,7 @@ def test_render_chat_app_html_supports_chinese():
     assert "浅色" in html
     assert "深色" in html
     assert "色系" in html
+    assert "停止生成" in html
     assert "白色" in html
     assert "蓝色" in html
     assert "薄荷" in html

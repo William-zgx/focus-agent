@@ -91,7 +91,9 @@ source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
 cp .env.example .env
 mkdir -p .focus_agent
-cp docs/local-model-config.example.md .focus_agent/local-model-config.md
+cp docs/local.env.example .focus_agent/local.env
+cp docs/models.example.toml .focus_agent/models.toml
+cp docs/tools.example.toml .focus_agent/tools.toml
 focus-agent-api
 ```
 
@@ -138,13 +140,18 @@ make dev
 make test
 make lint
 make check
+make ui-smoke
 ```
+
+`make ui-smoke` 会启动一个带临时 profile 的独立 Chrome 窗口，打开本地应用，校验模型选择器，确认页面上已经没有技能目录入口，发送一轮聊天，并在最终可见回复仍然包含 DSML 或工具调用标记时直接失败。
 
 ## 更多文档
 
 - 前端 SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
 - 路线图: [`docs/current-roadmap.md`](docs/current-roadmap.md)
-- 本地配置示例: [`docs/local-model-config.example.md`](docs/local-model-config.example.md)
+- 本地环境变量示例: [`docs/local.env.example`](docs/local.env.example)
+- 模型目录示例: [`docs/models.example.toml`](docs/models.example.toml)
+- 工具目录示例: [`docs/tools.example.toml`](docs/tools.example.toml)
 - 发布检查清单: [`docs/release-checklist.md`](docs/release-checklist.md)
 - License 说明: [`docs/license-guide.md`](docs/license-guide.md)
 

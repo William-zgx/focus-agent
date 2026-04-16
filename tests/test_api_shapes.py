@@ -1,4 +1,5 @@
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
+from focus_agent.api.main import create_app
 from focus_agent.api.schemas import BranchTreeResponse, ForkBranchRequest, ModelCatalogResponse
 from focus_agent.core.branching import BranchRole, BranchStatus, BranchTreeNode
 
@@ -98,3 +99,12 @@ def test_apply_merge_decision_request_allows_proposal_overrides():
 
     assert dumped["proposal_overrides"]["summary"] == "Edited summary"
     assert dumped["proposal_overrides"]["key_findings"] == ["Finding A"]
+
+
+def test_public_api_no_longer_exposes_skill_catalog_routes():
+    app = create_app()
+
+    route_paths = {route.path for route in app.routes}
+
+    assert "/v1/skills" not in route_paths
+    assert "/v1/skills/{skill_id}" not in route_paths
