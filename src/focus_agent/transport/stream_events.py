@@ -27,6 +27,14 @@ TOOL_BLOCK_TYPES = {
     'server_tool_call_chunk',
 }
 
+TEXTUAL_TOOL_ARTIFACT_MARKERS = (
+    'function_calls',
+    'invoke name=',
+    '<｜dsml｜',
+    '<tool_call',
+    '"tool_name"',
+)
+
 
 def _stringify(value: Any) -> str:
     if value is None:
@@ -53,25 +61,41 @@ def _iter_blocks(message_chunk: Any) -> list[Any]:
     return []
 
 
+def _looks_like_textual_tool_artifact(text: str) -> bool:
+    lowered = str(text or '').lower()
+    if not lowered:
+        return False
+    return any(marker in lowered for marker in TEXTUAL_TOOL_ARTIFACT_MARKERS)
+
+
 def extract_visible_text_delta(message_chunk: Any) -> str:
+    if str(getattr(message_chunk, 'type', '') or '') == 'tool':
+        return ''
+
     content = getattr(message_chunk, 'content', None)
     if isinstance(content, str):
+        if _looks_like_textual_tool_artifact(content):
+            return ''
         return content
 
     parts: list[str] = []
     for block in _iter_blocks(message_chunk):
         if isinstance(block, str):
+            if _looks_like_textual_tool_artifact(block):
+                continue
             parts.append(block)
             continue
         if not isinstance(block, dict):
-            parts.append(_stringify(block))
+            text = _stringify(block)
+            if text and not _looks_like_textual_tool_artifact(text):
+                parts.append(text)
             continue
         block_type = str(block.get('type') or '')
         if block_type in REASONING_BLOCK_TYPES or block_type in TOOL_BLOCK_TYPES:
             continue
         if block_type in TEXT_BLOCK_TYPES or ('text' in block and block_type not in TOOL_BLOCK_TYPES):
             text = _stringify(block.get('text') or block.get('content') or block.get('value'))
-            if text:
+            if text and not _looks_like_textual_tool_artifact(text):
                 parts.append(text)
     return ''.join(parts)
 

@@ -9,9 +9,10 @@ from focus_agent.transport.stream_events import (
 
 
 class DummyChunk:
-    def __init__(self, content=None, content_blocks=None):
+    def __init__(self, content=None, content_blocks=None, message_type=None):
         self.content = content
         self.content_blocks = content_blocks
+        self.type = message_type
 
 
 class DummyMessage:
@@ -34,6 +35,27 @@ def test_extract_visible_text_delta_from_content_blocks():
         ]
     )
     assert extract_visible_text_delta(chunk) == 'hello world'
+
+
+def test_extract_visible_text_delta_ignores_tool_messages():
+    chunk = DummyChunk(content='{"provider":"tavily"}', message_type='tool')
+    assert extract_visible_text_delta(chunk) == ''
+
+
+def test_extract_visible_text_delta_ignores_textual_tool_call_string_payload():
+    chunk = DummyChunk(content='<｜DSML｜function_calls><｜DSML｜invoke name="read_file"></｜DSML｜invoke>')
+    assert extract_visible_text_delta(chunk) == ''
+
+
+def test_extract_visible_text_delta_ignores_textual_tool_call_text_blocks():
+    chunk = DummyChunk(
+        content=[
+            {'type': 'text', 'text': '<｜DSML｜function_calls>'},
+            {'type': 'text_delta', 'text': '<｜DSML｜invoke name="read_file">'},
+            {'type': 'text_delta', 'text': 'OK'},
+        ]
+    )
+    assert extract_visible_text_delta(chunk) == 'OK'
 
 
 def test_extract_reasoning_delta_from_content_blocks():

@@ -20,6 +20,21 @@ from ..model_registry import create_chat_model
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
 
+_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
+_TOOL_EXHAUSTION_NOTE = (
+    "You have enough tool results for this turn. Do not call more tools. "
+    "Answer the user directly using the information already gathered, and state any uncertainty plainly."
+)
+_TOOL_CALL_PROTOCOL_REPAIR_NOTE = (
+    "If you need a tool, emit a real tool call through the tool-calling interface. "
+    "Do not write DSML tags, XML, or function-call payloads into the assistant text. "
+    "If no tool is needed, answer directly in natural language."
+)
+_TOOL_CALL_MARKUP_REPAIR_NOTE = (
+    "Do not emit tool-call markup, XML, JSON function-call payloads, or DSML tags. "
+    "Write only the final user-facing answer in natural language."
+)
+
 
 def _has_tool_calls(message: Any) -> bool:
     return bool(getattr(message, "tool_calls", None))
@@ -49,11 +64,41 @@ def _messages_for_model(state: AgentState) -> list[Any]:
     return [*recent_messages, *messages[trailing_tool_span_start:]]
 
 
+def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
+    rounds = 0
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None):
+            rounds += 1
+    return rounds
+
+
+def _should_force_tool_free_answer(messages: list[Any]) -> bool:
+    if not messages or not isinstance(messages[-1], ToolMessage):
+        return False
+    return _count_tool_call_rounds_since_latest_human(messages) >= _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS
+
+
 def _message_text(message: Any) -> str:
     content = getattr(message, "content", "")
     if isinstance(content, list):
         return json.dumps(content, ensure_ascii=False)
     return str(content)
+
+
+def _looks_like_textual_tool_call_artifact(message: Any) -> bool:
+    text = _message_text(message).lower()
+    if not text:
+        return False
+    markers = (
+        "function_calls",
+        "invoke name=",
+        "<｜dsml｜",
+        "<tool_call",
+        '"tool_name"',
+    )
+    return any(marker in text for marker in markers)
 
 
 def _latest_human_message_text(messages: list[Any]) -> str:
@@ -68,6 +113,39 @@ def _latest_final_ai_text(messages: list[Any]) -> str:
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
             return _message_text(message)
     return ""
+
+
+def _repair_textual_tool_call_response(
+    *,
+    response: Any,
+    prompt_messages: list[Any],
+    selected_model: str,
+    selected_thinking_mode: str,
+    model_for,
+    model_with_tools_for,
+) -> Any:
+    if not _looks_like_textual_tool_call_artifact(response):
+        return response
+
+    repaired = model_with_tools_for(selected_model, selected_thinking_mode).invoke(
+        [
+            prompt_messages[0],
+            SystemMessage(content=_TOOL_CALL_PROTOCOL_REPAIR_NOTE),
+            *prompt_messages[1:],
+            AIMessage(content=_message_text(response)),
+        ]
+    )
+    if not _looks_like_textual_tool_call_artifact(repaired):
+        return repaired
+
+    return model_for(selected_model, selected_thinking_mode).invoke(
+        [
+            prompt_messages[0],
+            SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
+            *prompt_messages[1:],
+            AIMessage(content=_message_text(repaired)),
+        ]
+    )
 
 
 def _resolve_prompt_mode(state: AgentState) -> PromptMode:
@@ -100,19 +178,39 @@ def build_graph(
     )
     tools = list(effective_tool_registry.tools)
     tools_by_name = effective_tool_registry.by_name
+    base_model_cache: dict[str, Any] = {}
+    model_cache: dict[str, Any] = {}
     model_with_tools_cache: dict[str, Any] = {}
 
-    def model_with_tools_for(model_id: str, thinking_mode: str):
+    def base_model_for(model_id: str, thinking_mode: str):
         cache_key = f"{model_id}|{thinking_mode or ''}"
-        cached = model_with_tools_cache.get(cache_key)
+        cached = base_model_cache.get(cache_key)
         if cached is not None:
             return cached
         model = create_chat_model(
             model_id,
             temperature=settings.temperature,
             thinking_mode=thinking_mode or None,
+            settings=settings,
         )
-        bound = model.bind_tools(tools).with_config({"run_name": "focus_agent_model"})
+        base_model_cache[cache_key] = model
+        return model
+
+    def model_for(model_id: str, thinking_mode: str):
+        cache_key = f"{model_id}|{thinking_mode or ''}"
+        cached = model_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        model = base_model_for(model_id, thinking_mode).with_config({"run_name": "focus_agent_model"})
+        model_cache[cache_key] = model
+        return model
+
+    def model_with_tools_for(model_id: str, thinking_mode: str):
+        cache_key = f"{model_id}|{thinking_mode or ''}"
+        cached = model_with_tools_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        bound = base_model_for(model_id, thinking_mode).bind_tools(tools).with_config({"run_name": "focus_agent_model"})
         model_with_tools_cache[cache_key] = bound
         return bound
 
@@ -223,10 +321,37 @@ def build_graph(
     ) -> dict[str, Any]:
         del runtime
         messages = _messages_for_model(state)
-        prompt_messages = [SystemMessage(content=state.get("assembled_context", "")), *messages]
         selected_model = str(state.get("selected_model") or settings.model)
         selected_thinking_mode = str(state.get("selected_thinking_mode") or "")
-        response = model_with_tools_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+        prompt_messages = [SystemMessage(content=state.get("assembled_context", "")), *messages]
+        if _should_force_tool_free_answer(list(state.get("messages", []) or [])):
+            response = model_for(selected_model, selected_thinking_mode).invoke(
+                [
+                    prompt_messages[0],
+                    SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
+                    *prompt_messages[1:],
+                ]
+            )
+            if _looks_like_textual_tool_call_artifact(response):
+                response = model_for(selected_model, selected_thinking_mode).invoke(
+                    [
+                        prompt_messages[0],
+                        SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
+                        SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
+                        *prompt_messages[1:],
+                        AIMessage(content=_message_text(response)),
+                    ]
+                )
+        else:
+            response = model_with_tools_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+            response = _repair_textual_tool_call_response(
+                response=response,
+                prompt_messages=prompt_messages,
+                selected_model=selected_model,
+                selected_thinking_mode=selected_thinking_mode,
+                model_for=model_for,
+                model_with_tools_for=model_with_tools_for,
+            )
         return {
             "messages": [response],
             "llm_calls": state.get("llm_calls", 0) + 1,
