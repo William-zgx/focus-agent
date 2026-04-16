@@ -19,6 +19,7 @@ from focus_agent.core.branching import (
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import FindingItem
 from focus_agent.services.branches import BranchService
+from focus_agent.config import Settings
 
 
 class FakeRepo:
@@ -143,6 +144,68 @@ def test_fork_branch_populates_branch_meta_without_conclusion_policy():
 
     child_state = service.graph.states[record.child_thread_id]
     assert "conclusion_policy" not in child_state["branch_meta"]
+
+
+def test_branch_service_prefers_helper_model_for_internal_flows(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_create_chat_model(
+        model_id: str,
+        *,
+        temperature: float,
+        thinking_mode: str | None = None,
+        settings=None,
+    ):
+        captured["model_id"] = model_id
+        captured["temperature"] = temperature
+        captured["thinking_mode"] = thinking_mode
+        captured["settings"] = settings
+        return object()
+
+    monkeypatch.setattr("focus_agent.services.branches.create_chat_model", fake_create_chat_model)
+
+    service = BranchService(
+        settings=Settings(model="ollama:gemma4-hauhau:q8", helper_model="openai:deepseek-reasoner"),
+        graph=object(),
+        repo=FakeRepo(),
+    )
+
+    assert service.proposal_model is not None
+    assert captured["model_id"] == "openai:deepseek-reasoner"
+    assert captured["temperature"] == 0
+    assert captured["thinking_mode"] is None
+    assert captured["settings"] is not None
+
+
+def test_branch_service_falls_back_to_main_model_when_helper_model_is_unset(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_create_chat_model(
+        model_id: str,
+        *,
+        temperature: float,
+        thinking_mode: str | None = None,
+        settings=None,
+    ):
+        captured["model_id"] = model_id
+        captured["temperature"] = temperature
+        captured["thinking_mode"] = thinking_mode
+        captured["settings"] = settings
+        return object()
+
+    monkeypatch.setattr("focus_agent.services.branches.create_chat_model", fake_create_chat_model)
+
+    service = BranchService(
+        settings=Settings(model="moonshot:kimi-k2.5", helper_model=None),
+        graph=object(),
+        repo=FakeRepo(),
+    )
+
+    assert service.proposal_model is not None
+    assert captured["model_id"] == "moonshot:kimi-k2.5"
+    assert captured["temperature"] == 0
+    assert captured["thinking_mode"] is None
+    assert captured["settings"] is not None
 
 
 def test_fork_branch_registers_unseen_root_thread_before_first_branch():

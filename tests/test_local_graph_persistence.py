@@ -4,6 +4,7 @@ from pathlib import Path
 
 from langgraph.graph import END, START, StateGraph
 
+from focus_agent.core.types import PromptMode
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 
 
@@ -38,3 +39,16 @@ def test_persistent_in_memory_store_restores_items(tmp_path: Path):
 
     assert item is not None
     assert item.value["summary"] == "existing conclusion"
+
+
+def test_persistent_in_memory_saver_allows_prompt_mode_without_warning(tmp_path: Path, caplog):
+    checkpoint_path = tmp_path / "langgraph-checkpoints.pkl"
+    saver = PersistentInMemorySaver(checkpoint_path)
+
+    caplog.set_level("WARNING", logger="langgraph.checkpoint.serde.jsonplus")
+
+    encoded = saver.serde.dumps_typed(PromptMode.EXPLORE)
+    decoded = saver.serde.loads_typed(encoded)
+
+    assert decoded == PromptMode.EXPLORE
+    assert "Deserializing unregistered type focus_agent.core.types.PromptMode" not in caplog.text

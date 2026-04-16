@@ -38,10 +38,12 @@ uv pip install -e '.[anthropic,dev]'
 ```bash
 cp .env.example .env
 mkdir -p .focus_agent
-cp docs/local-model-config.example.md .focus_agent/local-model-config.md
+cp docs/local.env.example .focus_agent/local.env
+cp docs/models.example.toml .focus_agent/models.toml
+cp docs/tools.example.toml .focus_agent/tools.toml
 ```
 
-Keep provider credentials in `.focus_agent/local-model-config.md` or other untracked local configuration. Do not commit secrets, tokens, or private endpoints.
+Keep provider credentials in `.focus_agent/local.env` or other untracked local configuration. Do not commit secrets, tokens, or private endpoints.
 
 ## Running the Project
 

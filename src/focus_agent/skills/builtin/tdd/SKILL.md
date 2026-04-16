@@ -3,6 +3,7 @@ name: tdd
 description: Drive implementation through tests first, then make the smallest change that turns the suite green.
 triggers: tdd:
 when_to_use: The task changes behavior, Regression protection matters, The user explicitly asks for TDD
+recommended_tools: list_files, search_code, read_file, git_status, git_diff, write_text_artifact
 prompt_mode: execute
 ---
 # TDD

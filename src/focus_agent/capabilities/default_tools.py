@@ -34,12 +34,6 @@ _SKIP_DIR_NAMES = {
     "dist",
     "build",
 }
-_MAX_LIST_FILES_RESULTS = 500
-_MAX_SEARCH_RESULTS = 100
-_MAX_READ_FILE_LINES = 400
-_MAX_READ_FILE_CHARS = 50000
-_MAX_CODEBASE_FILES = 10000
-_MAX_GIT_DIFF_CHARS = 20000
 _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
     ".c": "C",
     ".cc": "C++",
@@ -189,7 +183,44 @@ def get_default_tools(settings: Settings):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     workspace_root = Path(settings.workspace_root).expanduser().resolve()
-    tavily_api_key = os.environ.get("TAVILY_API_KEY", "").strip()
+    resolved_env = settings.resolved_env or os.environ
+    tool_catalog = settings.tool_catalog
+    web_search_config = settings.web_search
+    tool_configs = {**tool_catalog.by_name, "web_search": web_search_config}
+    _base_emit_tool_event = globals()["_emit_tool_event"]
+
+    tool_display_names = {
+        tool_name: config.label
+        for tool_name, config in tool_configs.items()
+    }
+
+    def _emit_tool_event(*, tool_name: str, stage: str, **payload: Any) -> None:
+        display_name = tool_display_names.get(tool_name)
+        if display_name:
+            payload.setdefault("display_name", display_name)
+        _base_emit_tool_event(tool_name=tool_name, stage=stage, **payload)
+
+    def _apply_tool_metadata(tool_obj: Any, *, label: str, description: str) -> Any:
+        tool_obj.description = description
+        if hasattr(tool_obj, "metadata") and isinstance(getattr(tool_obj, "metadata"), dict):
+            tool_obj.metadata = {**tool_obj.metadata, "display_name": label}
+        else:
+            tool_obj.metadata = {"display_name": label}
+        return tool_obj
+    preferred_web_search_provider = str(web_search_config.provider or "auto").strip().lower() or "auto"
+    fallback_web_search_provider = (
+        str(web_search_config.fallback_provider).strip().lower()
+        if web_search_config.fallback_provider
+        else None
+    )
+    tavily_api_key = (
+        (
+            resolved_env.get(web_search_config.api_key_env, "").strip()
+            if web_search_config.api_key_env
+            else ""
+        )
+        or str(web_search_config.api_key_default or "").strip()
+    )
 
     def _run_tavily_search(*, query: str, max_results: int) -> dict[str, Any]:
         if not tavily_api_key:
@@ -291,9 +322,19 @@ def get_default_tools(settings: Settings):
             message = "Query must not be empty."
             _emit_tool_event(tool_name=tool_name, stage='error', error=message)
             raise ValueError(message)
+        if not web_search_config.enabled:
+            message = "web_search is disabled by tools configuration."
+            _emit_tool_event(tool_name=tool_name, stage='error', error=message)
+            raise RuntimeError(message)
+
+        should_try_tavily = preferred_web_search_provider in {"auto", "tavily"}
+        should_try_duckduckgo = (
+            preferred_web_search_provider == "duckduckgo"
+            or fallback_web_search_provider == "duckduckgo"
+        )
 
         tavily_error: str | None = None
-        if tavily_api_key:
+        if should_try_tavily and tavily_api_key:
             try:
                 payload = _run_tavily_search(query=normalized_query, max_results=capped_results)
                 result = json.dumps(payload, ensure_ascii=False)
@@ -314,27 +355,34 @@ def get_default_tools(settings: Settings):
                     message='Primary Tavily search failed; falling back to DuckDuckGo.',
                     error=tavily_error,
                 )
+        elif should_try_tavily and not tavily_api_key:
+            tavily_error = "Tavily search is configured but the API key is missing."
 
-        try:
-            payload = _run_duckduckgo_search(query=normalized_query, max_results=capped_results)
-        except RuntimeError as exc:
-            message = (
-                f"Web search failed. Tavily error: {tavily_error}. DuckDuckGo error: {exc}"
-                if tavily_error
-                else f"Web search failed. DuckDuckGo error: {exc}"
+        if should_try_duckduckgo:
+            try:
+                payload = _run_duckduckgo_search(query=normalized_query, max_results=capped_results)
+            except RuntimeError as exc:
+                message = (
+                    f"Web search failed. Tavily error: {tavily_error}. DuckDuckGo error: {exc}"
+                    if tavily_error
+                    else f"Web search failed. DuckDuckGo error: {exc}"
+                )
+                _emit_tool_event(tool_name=tool_name, stage='error', error=message)
+                raise RuntimeError(message) from exc
+
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(
+                tool_name=tool_name,
+                stage='end',
+                provider=payload["provider"],
+                result_count=len(payload["results"]),
+                output=result[:800],
             )
-            _emit_tool_event(tool_name=tool_name, stage='error', error=message)
-            raise RuntimeError(message) from exc
+            return result
 
-        result = json.dumps(payload, ensure_ascii=False)
-        _emit_tool_event(
-            tool_name=tool_name,
-            stage='end',
-            provider=payload["provider"],
-            result_count=len(payload["results"]),
-            output=result[:800],
-        )
-        return result
+        message = tavily_error or "No web search provider is configured."
+        _emit_tool_event(tool_name=tool_name, stage='error', error=message)
+        raise RuntimeError(message)
 
     @tool
     def current_utc_time() -> str:
@@ -367,7 +415,7 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
-    def list_files(path: str = ".", pattern: str = "**/*", max_results: int = 200) -> str:
+    def list_files(path: str = ".", pattern: str = "**/*", max_results: int | None = None) -> str:
         """List workspace files under a directory using a glob-like pattern."""
         tool_name = 'list_files'
         _emit_tool_event(tool_name=tool_name, stage='start', path=path, pattern=pattern, max_results=max_results)
@@ -375,7 +423,12 @@ def get_default_tools(settings: Settings):
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
                 raise FileNotFoundError(path)
-            capped_results = max(1, min(int(max_results), _MAX_LIST_FILES_RESULTS))
+            requested_results = (
+                tool_catalog.list_files.default_max_results
+                if max_results is None
+                else int(max_results)
+            )
+            capped_results = max(1, min(requested_results, tool_catalog.list_files.max_results_cap))
             matches: list[str] = []
             truncated = False
             if root.is_file():
@@ -408,7 +461,7 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
-    def read_file(path: str, start_line: int = 1, end_line: int = 200) -> str:
+    def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
         """Read a UTF-8 text file from the workspace with line numbers."""
         tool_name = 'read_file'
         _emit_tool_event(tool_name=tool_name, stage='start', path=path, start_line=start_line, end_line=end_line)
@@ -418,22 +471,23 @@ def get_default_tools(settings: Settings):
                 raise IsADirectoryError(path)
             if start_line < 1:
                 raise ValueError("start_line must be at least 1.")
-            if end_line < start_line:
+            requested_end_line = tool_catalog.read_file.default_end_line if end_line is None else int(end_line)
+            if requested_end_line < start_line:
                 raise ValueError("end_line must be greater than or equal to start_line.")
-            capped_end_line = min(end_line, start_line + _MAX_READ_FILE_LINES - 1)
+            capped_end_line = min(requested_end_line, start_line + tool_catalog.read_file.max_lines - 1)
             content = _read_text_file(resolved)
             all_lines = content.splitlines()
             selected_lines = all_lines[start_line - 1 : capped_end_line]
             rendered = _format_numbered_lines(selected_lines, start_line=start_line) if selected_lines else ""
-            if len(rendered) > _MAX_READ_FILE_CHARS:
-                rendered = rendered[:_MAX_READ_FILE_CHARS]
+            if len(rendered) > tool_catalog.read_file.max_chars:
+                rendered = rendered[: tool_catalog.read_file.max_chars]
             payload = {
                 "path": _coerce_relative_posix(resolved, workspace_root),
                 "start_line": start_line,
                 "end_line": capped_end_line,
                 "total_lines": len(all_lines),
                 "content": rendered,
-                "truncated": end_line > capped_end_line,
+                "truncated": requested_end_line > capped_end_line,
             }
             result = json.dumps(payload, ensure_ascii=False)
             _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
@@ -449,7 +503,7 @@ def get_default_tools(settings: Settings):
         glob: str | None = None,
         literal: bool = False,
         case_sensitive: bool = False,
-        max_results: int = 30,
+        max_results: int | None = None,
     ) -> str:
         """Search for matching text in workspace files and return matching lines."""
         tool_name = 'search_code'
@@ -467,7 +521,12 @@ def get_default_tools(settings: Settings):
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
                 raise FileNotFoundError(path)
-            capped_results = max(1, min(int(max_results), _MAX_SEARCH_RESULTS))
+            requested_results = (
+                tool_catalog.search_code.default_max_results
+                if max_results is None
+                else int(max_results)
+            )
+            capped_results = max(1, min(requested_results, tool_catalog.search_code.max_results_cap))
             normalized_query = query.strip()
             if not normalized_query:
                 raise ValueError("query must not be empty.")
@@ -530,7 +589,7 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
-    def codebase_stats(path: str = ".", max_files: int = 5000) -> str:
+    def codebase_stats(path: str = ".", max_files: int | None = None) -> str:
         """Summarize file counts and line counts for the current workspace."""
         tool_name = 'codebase_stats'
         _emit_tool_event(tool_name=tool_name, stage='start', path=path, max_files=max_files)
@@ -538,7 +597,12 @@ def get_default_tools(settings: Settings):
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
                 raise FileNotFoundError(path)
-            capped_files = max(1, min(int(max_files), _MAX_CODEBASE_FILES))
+            requested_files = (
+                tool_catalog.codebase_stats.default_max_files
+                if max_files is None
+                else int(max_files)
+            )
+            capped_files = max(1, min(requested_files, tool_catalog.codebase_stats.max_files_cap))
             file_counter = 0
             total_lines = 0
             total_bytes = 0
@@ -613,7 +677,7 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
-    def git_diff(pathspec: str = "", staged: bool = False, context_lines: int = 3) -> str:
+    def git_diff(pathspec: str = "", staged: bool = False, context_lines: int | None = None) -> str:
         """Return a git diff for the workspace, optionally narrowed to one path."""
         tool_name = 'git_diff'
         _emit_tool_event(
@@ -624,7 +688,13 @@ def get_default_tools(settings: Settings):
             context_lines=context_lines,
         )
         try:
-            args = ["diff", "--no-color", f"--unified={max(0, min(int(context_lines), 20))}"]
+            requested_context_lines = (
+                tool_catalog.git_diff.default_context_lines
+                if context_lines is None
+                else int(context_lines)
+            )
+            capped_context_lines = max(0, min(requested_context_lines, tool_catalog.git_diff.max_context_lines))
+            args = ["diff", "--no-color", f"--unified={capped_context_lines}"]
             if staged:
                 args.append("--cached")
             if pathspec.strip():
@@ -634,8 +704,8 @@ def get_default_tools(settings: Settings):
             payload = {
                 "pathspec": pathspec or None,
                 "staged": staged,
-                "diff": output[:_MAX_GIT_DIFF_CHARS],
-                "truncated": len(output) > _MAX_GIT_DIFF_CHARS,
+                "diff": output[: tool_catalog.git_diff.max_diff_chars],
+                "truncated": len(output) > tool_catalog.git_diff.max_diff_chars,
             }
             result = json.dumps(payload, ensure_ascii=False)
             _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
@@ -645,12 +715,13 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
-    def git_log(limit: int = 10) -> str:
+    def git_log(limit: int | None = None) -> str:
         """Return recent commits from the current repository."""
         tool_name = 'git_log'
         _emit_tool_event(tool_name=tool_name, stage='start', limit=limit)
         try:
-            capped_limit = max(1, min(int(limit), 50))
+            requested_limit = tool_catalog.git_log.default_limit if limit is None else int(limit)
+            capped_limit = max(1, min(requested_limit, tool_catalog.git_log.max_limit))
             output = _run_git_command(
                 workspace_root=workspace_root,
                 args=["log", f"-n{capped_limit}", "--pretty=format:%H%x09%h%x09%s"],
@@ -673,25 +744,36 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
-    def web_search(query: str, max_results: int = 5) -> str:
+    def web_search(query: str, max_results: int | None = None) -> str:
         """Search the live web with Tavily first and DuckDuckGo as a fallback."""
-        return _run_web_search(query=query, max_results=max_results, tool_name='web_search')
+        requested_results = 5 if max_results is None else int(max_results)
+        return _run_web_search(query=query, max_results=requested_results, tool_name='web_search')
 
-    @tool
-    def tavily_search(query: str, max_results: int = 5) -> str:
-        """Compatibility alias for web_search using the same Tavily-first fallback logic."""
-        return _run_web_search(query=query, max_results=max_results, tool_name='tavily_search')
+    registered_tools = {
+        "current_utc_time": current_utc_time,
+        "write_text_artifact": write_text_artifact,
+        "list_files": list_files,
+        "read_file": read_file,
+        "search_code": search_code,
+        "codebase_stats": codebase_stats,
+        "git_status": git_status,
+        "git_diff": git_diff,
+        "git_log": git_log,
+        "web_search": web_search,
+    }
 
-    return [
-        current_utc_time,
-        write_text_artifact,
-        list_files,
-        read_file,
-        search_code,
-        codebase_stats,
-        git_status,
-        git_diff,
-        git_log,
-        web_search,
-        tavily_search,
-    ]
+    tools: list[Any] = []
+    for tool_name in tool_catalog.section_names:
+        tool_obj = registered_tools.get(tool_name)
+        if tool_obj is None:
+            continue
+        config = tool_configs[tool_name]
+        tool_obj = _apply_tool_metadata(
+            tool_obj,
+            label=config.label,
+            description=config.description,
+        )
+        if config.enabled:
+            tools.append(tool_obj)
+
+    return tools

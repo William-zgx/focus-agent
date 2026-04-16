@@ -93,7 +93,7 @@ This is important because resume requests do not carry the original message pref
 The new `ToolRegistry` composes default tools with two skill tools:
 
 - repository inspection tools such as `list_files`, `read_file`, `search_code`, `codebase_stats`, `git_status`, `git_diff`, and `git_log`
-- web search tools such as `web_search` and the compatibility alias `tavily_search`
+- the shared `web_search` tool for live web lookup
 - `skills_list`
 - `skill_view`
 

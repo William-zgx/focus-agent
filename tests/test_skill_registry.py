@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from focus_agent.capabilities.tool_registry import build_tool_registry
-from focus_agent.config import Settings
+from focus_agent.config import Settings, SkillViewToolConfig, SkillsListToolConfig, ToolCatalogConfig
 from focus_agent.core.types import PromptMode
 from focus_agent.skills.registry import (
     SkillRegistry,
@@ -19,6 +19,7 @@ def _write_skill(
     description: str,
     triggers: str = "",
     when_to_use: str = "",
+    recommended_tools: str = "",
     prompt_mode: str = "",
     body: str = "Follow the steps carefully.",
 ):
@@ -33,6 +34,8 @@ def _write_skill(
         lines.append(f"triggers: {triggers}")
     if when_to_use:
         lines.append(f"when_to_use: {when_to_use}")
+    if recommended_tools:
+        lines.append(f"recommended_tools: {recommended_tools}")
     if prompt_mode:
         lines.append(f"prompt_mode: {prompt_mode}")
     lines.extend(
@@ -54,6 +57,7 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
         description="Planning mode",
         triggers="plan:",
         when_to_use="The user wants a plan first",
+        recommended_tools="list_files,read_file",
         prompt_mode="explore",
     )
 
@@ -66,9 +70,11 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
     assert listed["success"] is True
     assert listed["skills"][0]["name"] == "plan"
     assert listed["skills"][0]["when_to_use"] == ["The user wants a plan first"]
+    assert listed["skills"][0]["recommended_tools"] == ["list_files", "read_file"]
     assert viewed["success"] is True
     assert viewed["prompt_mode"] == "explore"
     assert viewed["when_to_use"] == ["The user wants a plan first"]
+    assert viewed["recommended_tools"] == ["list_files", "read_file"]
     assert "Follow the steps carefully." in viewed["content"]
 
 
@@ -103,6 +109,7 @@ def test_tool_registry_exposes_skill_tools(tmp_path):
         description="Planning mode",
         triggers="plan:",
         when_to_use="The user wants a plan first",
+        recommended_tools="list_files,read_file",
         prompt_mode="explore",
     )
     registry = SkillRegistry([tmp_path])
@@ -116,8 +123,89 @@ def test_tool_registry_exposes_skill_tools(tmp_path):
 
     assert listed["skills"][0]["name"] == "plan"
     assert listed["skills"][0]["when_to_use"] == ["The user wants a plan first"]
+    assert listed["skills"][0]["recommended_tools"] == ["list_files", "read_file"]
     assert viewed["name"] == "plan"
     assert viewed["when_to_use"] == ["The user wants a plan first"]
+    assert viewed["recommended_tools"] == ["list_files", "read_file"]
+
+
+def test_tool_registry_respects_skill_tool_configuration(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="plan",
+        description="Planning mode",
+        triggers="plan:",
+        when_to_use="The user wants a plan first",
+        prompt_mode="explore",
+    )
+    registry = SkillRegistry([tmp_path])
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                skills_list=SkillsListToolConfig(enabled=False),
+                skill_view=SkillViewToolConfig(enabled=True),
+            )
+        ),
+        skill_registry=registry,
+    )
+
+    assert "skills_list" not in tool_registry.by_name
+    assert "skill_view" in tool_registry.by_name
+
+
+def test_skill_tools_use_configured_label_and_description(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="plan",
+        description="Planning mode",
+        triggers="plan:",
+        when_to_use="The user wants a plan first",
+        prompt_mode="explore",
+    )
+    registry = SkillRegistry([tmp_path])
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                skills_list=SkillsListToolConfig(
+                    label="Skill Catalog",
+                    description="Browse all registered skills.",
+                ),
+                skill_view=SkillViewToolConfig(
+                    label="Skill Inspector",
+                    description="Open one skill definition.",
+                ),
+            )
+        ),
+        skill_registry=registry,
+    )
+
+    assert tool_registry.by_name["skills_list"].description == "Browse all registered skills."
+    assert tool_registry.by_name["skills_list"].metadata["display_name"] == "Skill Catalog"
+    assert tool_registry.by_name["skill_view"].description == "Open one skill definition."
+    assert tool_registry.by_name["skill_view"].metadata["display_name"] == "Skill Inspector"
+
+
+def test_tool_registry_uses_tool_catalog_section_order(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="plan",
+        description="Planning mode",
+        triggers="plan:",
+        when_to_use="The user wants a plan first",
+        prompt_mode="explore",
+    )
+    registry = SkillRegistry([tmp_path])
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                section_order=("skills_list", "list_files", "skill_view", "web_search"),
+            )
+        ),
+        skill_registry=registry,
+    )
+
+    ordered_names = tuple(tool.name for tool in tool_registry.tools[:4])
+    assert ordered_names == ("skills_list", "list_files", "skill_view", "web_search")
 
 
 def test_bundled_registry_contains_copied_practical_skills():
@@ -164,9 +252,9 @@ def test_optional_project_local_skills_use_project_ready_metadata():
         assert skill.prompt_mode is not None, skill.skill_id
 
 
-def test_execution_skills_reference_focus_agent_native_tools():
+def test_execution_skills_publish_recommended_focus_agent_native_tools():
     registry = SkillRegistry([bundled_skills_dir()])
-    required_markers = {
+    required_tools = {
         "tdd": ("list_files", "search_code", "read_file"),
         "review": ("git_status", "git_diff", "read_file"),
         "autopilot": ("list_files", "search_code", "git_diff"),
@@ -174,8 +262,8 @@ def test_execution_skills_reference_focus_agent_native_tools():
         "ultrawork": ("list_files", "search_code", "git_diff"),
     }
 
-    for skill_id, markers in required_markers.items():
+    for skill_id, markers in required_tools.items():
         skill = registry.resolve(skill_id)
         assert skill is not None
         for marker in markers:
-            assert marker in skill.body, (skill_id, marker)
+            assert marker in skill.recommended_tools, (skill_id, marker, skill.recommended_tools)

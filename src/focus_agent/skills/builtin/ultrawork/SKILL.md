@@ -3,6 +3,7 @@ name: ultrawork
 description: Break a larger task into parallel-style workstreams while still delivering one coherent result.
 triggers: ulw:, ultrawork:
 when_to_use: The task has independent subproblems, A larger effort needs structure without losing momentum
+recommended_tools: list_files, search_code, git_status, git_diff
 prompt_mode: execute
 ---
 # Ultrawork

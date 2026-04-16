@@ -21,13 +21,19 @@ class ToolRegistry:
 
 
 def build_tool_registry(*, settings: Settings, skill_registry: SkillRegistry) -> ToolRegistry:
-    skill_tools = _build_skill_tools(skill_registry)
+    default_tools = {tool_.name: tool_ for tool_ in get_default_tools(settings)}
+    skill_tools = {tool_.name: tool_ for tool_ in _build_skill_tools(settings=settings, skill_registry=skill_registry)}
+    all_tools = {**default_tools, **skill_tools}
     return ToolRegistry(
-        tools=tuple([*get_default_tools(settings), *skill_tools]),
+        tools=tuple(
+            all_tools[tool_name]
+            for tool_name in settings.tool_catalog.section_names
+            if tool_name in all_tools
+        ),
     )
 
 
-def _build_skill_tools(skill_registry: SkillRegistry) -> list[Any]:
+def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> list[Any]:
     @tool
     def skills_list() -> str:
         """List bundled and local skills with their descriptions and trigger prefixes."""
@@ -38,4 +44,14 @@ def _build_skill_tools(skill_registry: SkillRegistry) -> list[Any]:
         """Load the full instructions for a named skill."""
         return render_skill_view_json(skill_registry, skill_id=name)
 
-    return [skills_list, skill_view]
+    skills_list.description = settings.tool_catalog.skills_list.description
+    skills_list.metadata = {"display_name": settings.tool_catalog.skills_list.label}
+    skill_view.description = settings.tool_catalog.skill_view.description
+    skill_view.metadata = {"display_name": settings.tool_catalog.skill_view.label}
+
+    tools: list[Any] = []
+    if settings.tool_catalog.skills_list.enabled:
+        tools.append(skills_list)
+    if settings.tool_catalog.skill_view.enabled:
+        tools.append(skill_view)
+    return tools

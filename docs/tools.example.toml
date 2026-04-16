@@ -1,0 +1,76 @@
+[current_utc_time]
+enabled = true
+label = "Current UTC Time"
+description = "Return the current UTC timestamp in ISO-8601 format."
+
+[write_text_artifact]
+enabled = true
+label = "Write Text Artifact"
+description = "Write a text artifact to disk and return its location."
+
+[list_files]
+enabled = true
+label = "List Files"
+description = "List workspace files under a directory using a glob-like pattern."
+default_max_results = 200
+max_results_cap = 500
+
+[read_file]
+enabled = true
+label = "Read File"
+description = "Read a UTF-8 text file from the workspace with line numbers."
+default_end_line = 200
+max_lines = 400
+max_chars = 50000
+
+[search_code]
+enabled = true
+label = "Search Code"
+description = "Search for matching text in workspace files and return matching lines."
+default_max_results = 30
+max_results_cap = 100
+
+[codebase_stats]
+enabled = true
+label = "Codebase Stats"
+description = "Summarize file counts and line counts for the current workspace."
+default_max_files = 5000
+max_files_cap = 10000
+
+[git_status]
+enabled = true
+label = "Git Status"
+description = "Inspect the current repository status from the workspace root."
+
+[git_diff]
+enabled = true
+label = "Git Diff"
+description = "Return a git diff for the workspace, optionally narrowed to one path."
+default_context_lines = 3
+max_context_lines = 20
+max_diff_chars = 20000
+
+[git_log]
+enabled = true
+label = "Git Log"
+description = "Return recent commits from the current repository."
+default_limit = 10
+max_limit = 50
+
+[skills_list]
+enabled = true
+label = "Skills List"
+description = "List bundled and local skills with their descriptions and trigger prefixes."
+
+[skill_view]
+enabled = true
+label = "Skill View"
+description = "Load the full instructions for a named skill."
+
+[web_search]
+enabled = true
+label = "Web Search"
+description = "Search the live web with Tavily first and DuckDuckGo as a fallback."
+provider = "tavily"
+fallback_provider = "duckduckgo"
+api_key_env = "TAVILY_API_KEY"

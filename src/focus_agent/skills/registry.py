@@ -187,6 +187,7 @@ class SkillRegistry:
                 "description": skill.description,
                 "triggers": list(skill.triggers),
                 "when_to_use": list(skill.when_to_use),
+                "recommended_tools": list(skill.recommended_tools),
                 "prompt_mode": skill.prompt_mode.value if skill.prompt_mode else None,
                 "path": str(skill.path),
             }
@@ -202,6 +203,7 @@ class SkillRegistry:
             "description": skill.description,
             "triggers": list(skill.triggers),
             "when_to_use": list(skill.when_to_use),
+            "recommended_tools": list(skill.recommended_tools),
             "prompt_mode": skill.prompt_mode.value if skill.prompt_mode else None,
             "path": str(skill.path),
             "content": skill.body,
@@ -273,6 +275,7 @@ class SkillRegistry:
             raw_text=raw_text,
             triggers=_normalize_list(frontmatter.get("triggers")),
             when_to_use=_normalize_list(frontmatter.get("when_to_use")),
+            recommended_tools=_normalize_list(frontmatter.get("recommended_tools")),
             prompt_mode=_coerce_prompt_mode(frontmatter.get("prompt_mode")),
         )
 

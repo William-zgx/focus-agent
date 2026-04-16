@@ -3,6 +3,7 @@ name: systematic-debugging
 description: Investigate bugs and failing tests in a disciplined order: reproduce, isolate, compare, then fix the root cause.
 triggers: debug:, systematic-debugging:
 when_to_use: A bug or failing test needs root-cause analysis, Quick patches are tempting but risky, The issue has resisted a first attempt
+recommended_tools: git_status, git_diff, git_log, search_code, read_file
 prompt_mode: execute
 ---
 

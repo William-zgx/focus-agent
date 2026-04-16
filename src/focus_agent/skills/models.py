@@ -15,6 +15,7 @@ class SkillDefinition:
     raw_text: str
     triggers: tuple[str, ...] = ()
     when_to_use: tuple[str, ...] = ()
+    recommended_tools: tuple[str, ...] = ()
     prompt_mode: PromptMode | None = None
 
 

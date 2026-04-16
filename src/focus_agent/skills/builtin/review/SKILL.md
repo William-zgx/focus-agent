@@ -3,6 +3,7 @@ name: review
 description: Review provided code or design changes with a findings-first mindset focused on risk and regressions.
 triggers: review:
 when_to_use: The user asks for a review, You need to evaluate changes instead of implementing them
+recommended_tools: git_status, git_diff, read_file, git_log, search_code
 prompt_mode: synthesize
 ---
 # Review

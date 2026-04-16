@@ -3,6 +3,7 @@ name: ralph
 description: Apply maximum persistence, retry strategy changes, and deeper debugging before giving up.
 triggers: ralph:
 when_to_use: The problem is stubborn, Previous attempts failed, The user wants maximum effort before escalation
+recommended_tools: git_status, git_diff, search_code, read_file, git_log
 prompt_mode: execute
 ---
 # Ralph

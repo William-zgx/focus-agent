@@ -1,0 +1,48 @@
+default_model = "ollama:qwen2.5:7b"
+helper_model = "openai:gpt-4.1-mini"
+model_choices = [
+  "ollama:qwen2.5:7b",
+  "openai:gpt-4.1-mini",
+  "moonshot:kimi-k2.5",
+]
+
+[[providers]]
+id = "openai"
+label = "OpenAI Compatible"
+backend_provider = "openai"
+base_url_env = "OPENAI_BASE_URL"
+api_key_env = "OPENAI_API_KEY"
+
+[[providers]]
+id = "moonshot"
+label = "Moonshot AI"
+backend_provider = "openai"
+base_url_env = "MOONSHOT_BASE_URL"
+base_url_default = "https://api.moonshot.cn/v1"
+api_key_env = "MOONSHOT_API_KEY"
+aliases = ["kimi"]
+
+[[providers]]
+id = "ollama"
+label = "Ollama"
+backend_provider = "openai"
+base_url_env = "OLLAMA_BASE_URL"
+base_url_default = "http://127.0.0.1:11434/v1"
+api_key_env = "OLLAMA_API_KEY"
+api_key_default = "ollama"
+
+[[models]]
+id = "openai:gpt-4.1-mini"
+label = "GPT-4.1 Mini"
+
+[[models]]
+id = "moonshot:kimi-k2.5"
+label = "Kimi K2.5"
+supports_thinking = true
+default_thinking_enabled = true
+no_temperature = true
+thinking_disable_extra_body_type = "disabled"
+
+[[models]]
+id = "ollama:qwen2.5:7b"
+label = "Qwen 2.5 7B"

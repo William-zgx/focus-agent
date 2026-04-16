@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import uvicorn
 
-from focus_agent.config import Settings, load_local_env_document
+from focus_agent.config import Settings, load_local_env_file
 
 
 def run_api() -> None:
     # The API process needs provider credentials available in os.environ
     # because the model SDK reads them during application startup.
-    load_local_env_document()
+    load_local_env_file()
     settings = Settings.from_env()
     uvicorn.run(
         "focus_agent.api.main:app",

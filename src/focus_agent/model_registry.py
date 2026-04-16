@@ -6,28 +6,80 @@ from typing import Mapping
 
 from langchain.chat_models import init_chat_model
 
-from .config import Settings
+from .config import ConfiguredModel, ModelCatalogConfig, ProviderConfig, Settings
 
 
-_PROVIDER_ALIASES = {
-    "kimi": "moonshot",
-}
-
-_PROVIDER_LABELS = {
-    "anthropic": "Anthropic",
-    "moonshot": "Moonshot AI",
-    "ollama": "Ollama",
-    "openai": "OpenAI Compatible",
-}
-
-_MODEL_LABELS = {
-    "claude-3-5-sonnet-latest": "Claude 3.5 Sonnet",
-    "deepseek-chat": "DeepSeek Chat",
-    "deepseek-reasoner": "DeepSeek Reasoner",
-    "gpt-4.1": "GPT-4.1",
-    "gpt-4.1-mini": "GPT-4.1 Mini",
-    "kimi-k2.5": "Kimi K2.5",
-}
+_BUILTIN_MODEL_CATALOG = ModelCatalogConfig(
+    providers=(
+        ProviderConfig(
+            id="anthropic",
+            label="Anthropic",
+            backend_provider="anthropic",
+            api_key_env="ANTHROPIC_API_KEY",
+        ),
+        ProviderConfig(
+            id="moonshot",
+            label="Moonshot AI",
+            backend_provider="openai",
+            aliases=("kimi",),
+            base_url_env="MOONSHOT_BASE_URL",
+            base_url_default="https://api.moonshot.cn/v1",
+            api_key_env="MOONSHOT_API_KEY",
+        ),
+        ProviderConfig(
+            id="ollama",
+            label="Ollama",
+            backend_provider="openai",
+            base_url_env="OLLAMA_BASE_URL",
+            base_url_default="http://127.0.0.1:11434/v1",
+            api_key_env="OLLAMA_API_KEY",
+            api_key_default="ollama",
+        ),
+        ProviderConfig(
+            id="openai",
+            label="OpenAI Compatible",
+            backend_provider="openai",
+            base_url_env="OPENAI_BASE_URL",
+            api_key_env="OPENAI_API_KEY",
+        ),
+    ),
+    models=(
+        ConfiguredModel(
+            id="anthropic:claude-3-5-sonnet-latest",
+            label="Claude 3.5 Sonnet",
+        ),
+        ConfiguredModel(
+            id="openai:deepseek-chat",
+            label="DeepSeek Chat",
+            supports_thinking=True,
+            default_thinking_enabled=False,
+            thinking_enable_extra_body_type="enabled",
+        ),
+        ConfiguredModel(
+            id="openai:deepseek-reasoner",
+            label="DeepSeek Reasoner",
+            supports_thinking=True,
+            default_thinking_enabled=True,
+            thinking_disable_switch_model="deepseek-chat",
+        ),
+        ConfiguredModel(
+            id="openai:gpt-4.1",
+            label="GPT-4.1",
+        ),
+        ConfiguredModel(
+            id="openai:gpt-4.1-mini",
+            label="GPT-4.1 Mini",
+        ),
+        ConfiguredModel(
+            id="moonshot:kimi-k2.5",
+            label="Kimi K2.5",
+            supports_thinking=True,
+            default_thinking_enabled=True,
+            no_temperature=True,
+            thinking_disable_extra_body_type="disabled",
+        ),
+    ),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,26 +104,38 @@ class ResolvedModelConfig:
     request_kwargs: dict[str, object]
 
 
-def supports_thinking_mode(model_id: str) -> bool:
-    provider, name = parse_model_id(model_id)
-    return (provider == "moonshot" and name == "kimi-k2.5") or (
-        provider == "openai" and name in {"deepseek-chat", "deepseek-reasoner"}
-    )
+def _merged_provider_configs(settings: Settings | None = None) -> dict[str, ProviderConfig]:
+    merged = {item.id: item for item in _BUILTIN_MODEL_CATALOG.providers}
+    if settings is None:
+        return merged
+    for item in settings.model_catalog.providers:
+        merged[item.id] = item
+    return merged
 
 
-def default_thinking_enabled(model_id: str) -> bool:
-    provider, name = parse_model_id(model_id)
-    return (provider == "moonshot" and name == "kimi-k2.5") or (
-        provider == "openai" and name == "deepseek-reasoner"
-    )
+def _merged_model_configs(settings: Settings | None = None) -> dict[str, ConfiguredModel]:
+    merged = {item.id: item for item in _BUILTIN_MODEL_CATALOG.models}
+    if settings is None:
+        return merged
+    for item in settings.model_catalog.models:
+        merged[item.id] = item
+    return merged
 
 
-def normalize_provider_name(value: str) -> str:
+def _provider_alias_map(settings: Settings | None = None) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for provider in _merged_provider_configs(settings).values():
+        for alias in provider.aliases:
+            aliases[alias] = provider.id
+    return aliases
+
+
+def normalize_provider_name(value: str, *, settings: Settings | None = None) -> str:
     lowered = value.strip().lower()
-    return _PROVIDER_ALIASES.get(lowered, lowered)
+    return _provider_alias_map(settings).get(lowered, lowered)
 
 
-def parse_model_id(model_id: str) -> tuple[str, str]:
+def parse_model_id(model_id: str, *, settings: Settings | None = None) -> tuple[str, str]:
     raw = str(model_id or "").strip()
     if not raw:
         raise ValueError("Model identifier cannot be empty.")
@@ -79,19 +143,45 @@ def parse_model_id(model_id: str) -> tuple[str, str]:
         provider, name = raw.split(":", 1)
     else:
         provider, name = "openai", raw
-    provider = normalize_provider_name(provider)
+    provider = normalize_provider_name(provider, settings=settings)
     name = name.strip()
     if not name:
         raise ValueError(f"Model identifier {raw!r} is missing a model name.")
     return provider, name
 
 
-def _provider_label(provider: str) -> str:
-    return _PROVIDER_LABELS.get(provider, provider.replace("_", " ").title())
+def canonical_model_id(model_id: str, *, settings: Settings | None = None) -> str:
+    provider, name = parse_model_id(model_id, settings=settings)
+    return f"{provider}:{name}"
 
 
-def _model_label(name: str) -> str:
-    return _MODEL_LABELS.get(name, name)
+def _configured_model(model_id: str, *, settings: Settings | None = None) -> ConfiguredModel | None:
+    return _merged_model_configs(settings).get(canonical_model_id(model_id, settings=settings))
+
+
+def supports_thinking_mode(model_id: str, *, settings: Settings | None = None) -> bool:
+    configured = _configured_model(model_id, settings=settings)
+    return bool(configured.supports_thinking) if configured is not None else False
+
+
+def default_thinking_enabled(model_id: str, *, settings: Settings | None = None) -> bool:
+    configured = _configured_model(model_id, settings=settings)
+    return bool(configured.default_thinking_enabled) if configured is not None else False
+
+
+def _provider_label(provider: str, *, settings: Settings | None = None) -> str:
+    provider_config = _merged_provider_configs(settings).get(provider)
+    if provider_config and provider_config.label:
+        return provider_config.label
+    return provider.replace("_", " ").title()
+
+
+def _model_label(model_id: str, *, settings: Settings | None = None) -> str:
+    configured = _configured_model(model_id, settings=settings)
+    if configured and configured.label:
+        return configured.label
+    _, name = parse_model_id(model_id, settings=settings)
+    return name
 
 
 def build_model_catalog(
@@ -103,8 +193,9 @@ def build_model_catalog(
     ordered_ids: list[str] = [settings.model, *settings.model_choices]
     deduped_ids: list[str] = []
     seen: set[str] = set()
+    default_model_id = canonical_model_id(settings.model, settings=settings)
     for model_id in ordered_ids:
-        normalized = str(model_id or "").strip()
+        normalized = canonical_model_id(model_id, settings=settings)
         if not normalized or normalized in seen:
             continue
         deduped_ids.append(normalized)
@@ -112,9 +203,9 @@ def build_model_catalog(
 
     options: list[ModelOption] = []
     for model_id in deduped_ids:
-        provider, name = parse_model_id(model_id)
-        provider_label = _provider_label(provider)
-        model_label = _model_label(name)
+        provider, name = parse_model_id(model_id, settings=settings)
+        provider_label = _provider_label(provider, settings=settings)
+        model_label = _model_label(model_id, settings=settings)
         options.append(
             ModelOption(
                 id=model_id,
@@ -122,9 +213,9 @@ def build_model_catalog(
                 provider_label=provider_label,
                 name=name,
                 label=f"{model_label} · {provider_label}",
-                is_default=model_id == settings.model,
-                supports_thinking=supports_thinking_mode(model_id),
-                default_thinking_enabled=default_thinking_enabled(model_id),
+                is_default=model_id == default_model_id,
+                supports_thinking=supports_thinking_mode(model_id, settings=settings),
+                default_thinking_enabled=default_thinking_enabled(model_id, settings=settings),
             )
         )
     return options
@@ -135,50 +226,46 @@ def resolve_model_config(
     *,
     thinking_mode: str | None = None,
     environ: Mapping[str, str] | None = None,
+    settings: Settings | None = None,
 ) -> ResolvedModelConfig:
-    env = environ or os.environ
-    provider, name = parse_model_id(model_id)
-    backend_provider = provider
+    env = environ or (settings.resolved_env if settings is not None and settings.resolved_env else os.environ)
+    provider, name = parse_model_id(model_id, settings=settings)
+    provider_config = _merged_provider_configs(settings).get(provider)
+    backend_provider = provider_config.backend_provider if provider_config and provider_config.backend_provider else provider
     client_kwargs: dict[str, str] = {}
     request_kwargs: dict[str, object] = {}
 
-    if provider == "moonshot":
-        backend_provider = "openai"
-        base_url = (
-            env.get("MOONSHOT_BASE_URL")
-            or env.get("KIMI_BASE_URL")
-            or "https://api.moonshot.cn/v1"
-        )
-        api_key = env.get("MOONSHOT_API_KEY") or env.get("KIMI_API_KEY")
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        if api_key:
-            client_kwargs["api_key"] = api_key
-        if name == "kimi-k2.5" and thinking_mode == "disabled":
-            request_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
-    elif provider == "ollama":
-        backend_provider = "openai"
-        base_url = env.get("OLLAMA_BASE_URL") or "http://127.0.0.1:11434/v1"
-        api_key = env.get("OLLAMA_API_KEY") or "ollama"
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        if api_key:
-            client_kwargs["api_key"] = api_key
-    elif provider == "openai":
-        base_url = env.get("OPENAI_BASE_URL")
-        api_key = env.get("OPENAI_API_KEY")
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        if api_key:
-            client_kwargs["api_key"] = api_key
-        if name == "deepseek-chat" and thinking_mode == "enabled":
-            request_kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
-        if name == "deepseek-reasoner" and thinking_mode == "disabled":
-            name = "deepseek-chat"
-    elif provider == "anthropic":
-        api_key = env.get("ANTHROPIC_API_KEY")
-        if api_key:
-            client_kwargs["api_key"] = api_key
+    if provider_config is not None:
+        if provider_config.base_url_env or provider_config.base_url_default:
+            base_url = (
+                env.get(provider_config.base_url_env)
+                if provider_config.base_url_env
+                else None
+            ) or provider_config.base_url_default
+            if base_url:
+                client_kwargs["base_url"] = base_url
+        if provider_config.api_key_env or provider_config.api_key_default:
+            api_key = (
+                env.get(provider_config.api_key_env)
+                if provider_config.api_key_env
+                else None
+            ) or provider_config.api_key_default
+            if api_key:
+                client_kwargs["api_key"] = api_key
+
+    configured = _configured_model(f"{provider}:{name}", settings=settings)
+    if configured is not None:
+        if thinking_mode == "enabled" and configured.thinking_enable_extra_body_type:
+            request_kwargs["extra_body"] = {
+                "thinking": {"type": configured.thinking_enable_extra_body_type}
+            }
+        if thinking_mode == "disabled":
+            if configured.thinking_disable_switch_model:
+                name = configured.thinking_disable_switch_model
+            elif configured.thinking_disable_extra_body_type:
+                request_kwargs["extra_body"] = {
+                    "thinking": {"type": configured.thinking_disable_extra_body_type}
+                }
 
     return ResolvedModelConfig(
         model_id=f"{provider}:{name}",
@@ -190,20 +277,35 @@ def resolve_model_config(
     )
 
 
-def _effective_temperature(model_id: str, temperature: float) -> float | None:
-    provider, name = parse_model_id(model_id)
-    if provider == "moonshot" and name == "kimi-k2.5":
+def _effective_temperature(
+    model_id: str,
+    temperature: float,
+    *,
+    settings: Settings | None = None,
+) -> float | None:
+    configured = _configured_model(model_id, settings=settings)
+    if configured is not None and configured.no_temperature:
         return None
     return temperature
 
 
-def create_chat_model(model_id: str, *, temperature: float, thinking_mode: str | None = None):
-    resolved = resolve_model_config(model_id, thinking_mode=thinking_mode)
+def create_chat_model(
+    model_id: str,
+    *,
+    temperature: float,
+    thinking_mode: str | None = None,
+    settings: Settings | None = None,
+):
+    resolved = resolve_model_config(
+        model_id,
+        thinking_mode=thinking_mode,
+        settings=settings,
+    )
     init_kwargs: dict[str, object] = {
         **resolved.client_kwargs,
         **resolved.request_kwargs,
     }
-    effective_temperature = _effective_temperature(model_id, temperature)
+    effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
     return init_chat_model(
@@ -216,6 +318,7 @@ __all__ = [
     "ModelOption",
     "ResolvedModelConfig",
     "build_model_catalog",
+    "canonical_model_id",
     "create_chat_model",
     "default_thinking_enabled",
     "normalize_provider_name",

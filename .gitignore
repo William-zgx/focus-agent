@@ -2,7 +2,7 @@
 .idea/
 .env
 .focus_agent/
-.focus_agent/local-model-config.md
+.focus_agent/local.env
 .venv/
 __pycache__/
 *.pyc

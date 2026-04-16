@@ -5,11 +5,11 @@ import json
 
 from .core.branching import BranchRole, MergeDecision
 from .core.request_context import RequestContext
-from .config import load_local_env_document
+from .config import load_local_env_file
 from .engine.runtime import create_runtime
 
 
-load_local_env_document()
+load_local_env_file()
 
 
 def cmd_run(args) -> None:

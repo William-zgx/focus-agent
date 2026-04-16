@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 
 from focus_agent.capabilities.default_tools import get_default_tools
-from focus_agent.config import Settings
+from focus_agent.config import (
+    GitLogToolConfig,
+    ListFilesToolConfig,
+    ReadFileToolConfig,
+    SearchCodeToolConfig,
+    Settings,
+    ToolCatalogConfig,
+    WebSearchConfig,
+)
 
 
 class _FakeHttpResponse:
@@ -96,6 +104,54 @@ def test_web_search_prefers_tavily_when_available(monkeypatch):
     assert payload["results"][0]["title"] == "Official docs"
 
 
+def test_web_search_uses_configured_api_key_env_from_settings(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    _install_fake_ddgs(monkeypatch)
+
+    def fake_urlopen(request, timeout=0):
+        assert request.headers["Authorization"] == "Bearer alt-key"
+        return _FakeHttpResponse(
+            json.dumps(
+                {
+                    "answer": "Configured env",
+                    "results": [
+                        {"title": "Configured", "url": "https://example.com/configured", "content": "ok"},
+                    ],
+                }
+            )
+        )
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+
+    tools = _tool_map(
+        Settings(
+            web_search=WebSearchConfig(provider="tavily", api_key_env="ALT_TAVILY_API_KEY"),
+            resolved_env={"ALT_TAVILY_API_KEY": "alt-key"},
+        )
+    )
+    payload = json.loads(tools["web_search"].invoke({"query": "configured env"}))
+
+    assert payload["provider"] == "tavily"
+    assert payload["answer"] == "Configured env"
+
+
+def test_tool_metadata_uses_configured_label_and_description(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    _install_fake_ddgs(monkeypatch)
+    tools = _tool_map(
+        Settings(
+            web_search=WebSearchConfig(
+                label="Live Search",
+                description="Use live search with provider fallback.",
+                provider="duckduckgo",
+            )
+        )
+    )
+
+    assert tools["web_search"].description == "Use live search with provider fallback."
+    assert tools["web_search"].metadata["display_name"] == "Live Search"
+
+
 def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
@@ -134,21 +190,6 @@ def test_web_search_falls_back_to_duckduckgo_when_tavily_fails(monkeypatch):
     assert payload["results"][0]["title"] == "Fallback"
 
 
-def test_tavily_search_alias_matches_web_search(monkeypatch):
-    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-    _install_fake_ddgs(monkeypatch)
-    _FakeDDGS.results = [
-        {"title": "Alias", "href": "https://example.com/alias", "body": "same shape"},
-    ]
-    _FakeDDGS.raised = None
-    tools = _tool_map(Settings())
-
-    web_payload = json.loads(tools["web_search"].invoke({"query": "compat"}))
-    alias_payload = json.loads(tools["tavily_search"].invoke({"query": "compat"}))
-
-    assert web_payload == alias_payload
-
-
 def test_web_search_raises_when_both_providers_fail(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
@@ -160,13 +201,13 @@ def test_web_search_raises_when_both_providers_fail(monkeypatch):
         tools["web_search"].invoke({"query": "hello"})
 
 
-def test_default_tools_include_web_search_and_tavily_alias(monkeypatch):
+def test_default_tools_expose_only_one_web_search_tool(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
     tools = _tool_map(Settings())
 
     assert "web_search" in tools
-    assert "tavily_search" in tools
+    assert "tavily_search" not in tools
     assert "list_files" in tools
     assert "read_file" in tools
     assert "search_code" in tools
@@ -174,6 +215,54 @@ def test_default_tools_include_web_search_and_tavily_alias(monkeypatch):
     assert "git_status" in tools
     assert "git_diff" in tools
     assert "git_log" in tools
+
+
+def test_disabled_tools_are_removed_from_registry(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    _install_fake_ddgs(monkeypatch)
+    tools = _tool_map(
+        Settings(
+            tool_catalog=ToolCatalogConfig(
+                list_files=ListFilesToolConfig(enabled=False),
+                git_log=GitLogToolConfig(enabled=False),
+            ),
+            web_search=WebSearchConfig(provider="duckduckgo"),
+        )
+    )
+
+    assert "list_files" not in tools
+    assert "git_log" not in tools
+    assert "read_file" in tools
+    assert "web_search" in tools
+
+
+def test_web_search_respects_duckduckgo_only_configuration(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    _install_fake_ddgs(monkeypatch)
+    _FakeDDGS.results = [
+        {"title": "DDG only", "href": "https://example.com/ddg-only", "body": "fallback content"},
+    ]
+    _FakeDDGS.raised = None
+
+    def unexpected_urlopen(_request, timeout=0):
+        raise AssertionError("Tavily should not be called when provider=duckduckgo")
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", unexpected_urlopen)
+
+    tools = _tool_map(Settings(web_search=WebSearchConfig(provider="duckduckgo")))
+    payload = json.loads(tools["web_search"].invoke({"query": "hello"}))
+
+    assert payload["provider"] == "duckduckgo"
+    assert payload["results"][0]["title"] == "DDG only"
+
+
+def test_web_search_respects_disabled_configuration(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    _install_fake_ddgs(monkeypatch)
+
+    tools = _tool_map(Settings(web_search=WebSearchConfig(enabled=False)))
+
+    assert "web_search" not in tools
 
 
 def test_read_file_and_search_code_stay_within_workspace(tmp_path):
@@ -233,7 +322,67 @@ def test_list_files_default_glob_includes_workspace_root_files(tmp_path):
     payload = json.loads(tools["list_files"].invoke({"path": ".", "pattern": "**/*"}))
 
     assert "README.md" in payload["results"]
-    assert "src/main.py" in payload["results"]
+
+
+def test_list_files_uses_configured_default_max_results(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    for index in range(5):
+        (project / f"file-{index}.txt").write_text("demo\n", encoding="utf-8")
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            tool_catalog=ToolCatalogConfig(
+                list_files=ListFilesToolConfig(default_max_results=2, max_results_cap=4)
+            ),
+        )
+    )
+
+    payload = json.loads(tools["list_files"].invoke({"path": "."}))
+
+    assert len(payload["results"]) == 2
+    assert payload["truncated"] is True
+
+
+def test_read_file_uses_configured_default_end_line(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    sample = project / "notes.txt"
+    sample.write_text("a\nb\nc\nd\n", encoding="utf-8")
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            tool_catalog=ToolCatalogConfig(
+                read_file=ReadFileToolConfig(default_end_line=2, max_lines=2, max_chars=1000)
+            ),
+        )
+    )
+
+    payload = json.loads(tools["read_file"].invoke({"path": "notes.txt"}))
+
+    assert payload["end_line"] == 2
+    assert "3 |" not in payload["content"]
+
+
+def test_search_code_uses_configured_default_max_results(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    sample = project / "sample.py"
+    sample.write_text("match()\nmatch()\nmatch()\n", encoding="utf-8")
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            tool_catalog=ToolCatalogConfig(
+                search_code=SearchCodeToolConfig(default_max_results=2, max_results_cap=3)
+            ),
+        )
+    )
+
+    payload = json.loads(tools["search_code"].invoke({"query": "match", "literal": True}))
+
+    assert len(payload["results"]) == 2
+    assert payload["truncated"] is True
+    assert all(item["path"] == "sample.py" for item in payload["results"])
 
 
 def test_search_code_glob_matches_root_level_files_with_double_star(tmp_path):

@@ -3,6 +3,7 @@ name: autopilot
 description: Execute a task end-to-end with strong ownership, verification, and concise progress reporting.
 triggers: autopilot:
 when_to_use: The user wants autonomous execution, The task should be carried through without repeated confirmation
+recommended_tools: list_files, search_code, read_file, git_status, git_diff, write_text_artifact
 prompt_mode: execute
 ---
 # Autopilot

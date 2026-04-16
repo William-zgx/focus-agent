@@ -8,7 +8,22 @@ from threading import RLock
 from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.memory import InMemoryStore
+
+_FOCUS_AGENT_ALLOWED_MSGPACK_TYPES: tuple[tuple[str, str], ...] = (
+    ("focus_agent.core.types", "PromptMode"),
+    ("focus_agent.core.types", "PinnedFact"),
+    ("focus_agent.core.types", "ConstraintItem"),
+    ("focus_agent.core.types", "FindingItem"),
+    ("focus_agent.core.types", "ArtifactRef"),
+    ("focus_agent.core.types", "CitationRef"),
+    ("focus_agent.core.types", "ContextBudget"),
+)
+
+
+def _focus_agent_checkpoint_serde() -> JsonPlusSerializer:
+    return JsonPlusSerializer(allowed_msgpack_modules=_FOCUS_AGENT_ALLOWED_MSGPACK_TYPES)
 
 
 def _atomic_pickle_dump(path: Path, payload: Any) -> None:
@@ -30,7 +45,7 @@ class PersistentInMemorySaver(InMemorySaver):
     def __init__(self, path: str | Path):
         self.path = Path(path).expanduser()
         self._lock = RLock()
-        super().__init__()
+        super().__init__(serde=_focus_agent_checkpoint_serde())
         self._restore()
 
     def _restore(self) -> None:

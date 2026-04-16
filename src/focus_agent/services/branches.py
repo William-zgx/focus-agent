@@ -95,7 +95,11 @@ class BranchService:
         self.store = store
         self.memory_writer = memory_writer
         self.thread_client = get_sync_client(url=settings.langgraph_api_url) if settings.langgraph_api_url else None
-        self.proposal_model = create_chat_model(settings.model, temperature=0)
+        self.proposal_model = create_chat_model(
+            settings.helper_model or settings.model,
+            temperature=0,
+            settings=settings,
+        )
 
     def _persist_branch_findings_to_branch_memory(
         self,
