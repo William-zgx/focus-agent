@@ -28,9 +28,28 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'thinking_mode' in types_text
     assert 'provider_label' in types_text
     assert 'supports_thinking' in types_text
+    assert 'FocusAgentMergeProposal' in types_text
+    assert 'FocusAgentApplyMergeDecisionRequest' in types_text
+    assert 'preparing_merge_review' in types_text
+    assert 'FocusAgentCreateConversationRequest' in types_text
+    assert 'FocusAgentUpdateConversationRequest' in types_text
 
     client_text = (root / 'src' / 'client.ts').read_text()
     assert 'class FocusAgentClient' in client_text
+    assert 'class FocusAgentRequestError' in client_text
     assert 'listModels' in client_text
+    assert 'listConversations' in client_text
+    assert 'createConversation' in client_text
+    assert 'renameConversation' in client_text
+    assert 'archiveConversation' in client_text
+    assert 'activateConversation' in client_text
+    assert 'getThreadState' in client_text
+    assert 'getBranchTree' in client_text
     assert 'streamTurn' in client_text
     assert 'streamResume' in client_text
+    assert 'forkBranch' in client_text
+    assert 'archiveBranch' in client_text
+    assert 'activateBranch' in client_text
+    assert 'prepareMergeProposal' in client_text
+    assert 'applyMergeDecision' in client_text
+    assert 'new FocusAgentRequestError(response.status, response.statusText)' in client_text

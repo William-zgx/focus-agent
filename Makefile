@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local api dev test lint check sdk-install sdk-check sdk-build ui-smoke clean
+.PHONY: help venv install install-openai install-anthropic setup-local api dev test lint check sdk-install sdk-check sdk-build web-install web-dev web-check web-build ui-smoke clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -8,6 +8,8 @@ RUFF ?= .venv/bin/ruff
 FOCUS_AGENT_API ?= .venv/bin/focus-agent-api
 NPM ?= npm
 SDK_DIR ?= frontend-sdk
+PNPM ?= pnpm
+WEB_DIR ?= apps/web
 
 help:
 	@printf '%s\n' \
@@ -25,6 +27,10 @@ help:
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
 		'  make sdk-build         Build frontend SDK' \
+		'  make web-install       Install frontend workspace dependencies' \
+		'  make web-dev           Start the React frontend app' \
+		'  make web-check         Run frontend app type-check' \
+		'  make web-build         Build the React frontend app' \
 		'  make ui-smoke          Run the real-browser UI smoke test' \
 		'  make clean             Remove Python/pytest caches'
 
@@ -73,6 +79,20 @@ sdk-check: $(SDK_DIR)/node_modules
 
 sdk-build: $(SDK_DIR)/node_modules
 	cd $(SDK_DIR) && $(NPM) run build
+
+node_modules:
+	$(PNPM) install --registry=https://registry.npmjs.org
+
+web-install: node_modules
+
+web-dev: node_modules
+	$(PNPM) --filter @focus-agent/web-app dev
+
+web-check: node_modules
+	$(PNPM) web:check
+
+web-build: node_modules
+	$(PNPM) web:build
 
 ui-smoke: .venv/bin/python
 	$(PYTHON) scripts/ui_smoke_test.py

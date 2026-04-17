@@ -1,0 +1,12 @@
+{
+  "name": "focus-agent-frontend-workspace",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "web:dev": "pnpm --filter @focus-agent/web-app dev",
+    "web:build": "pnpm --filter @focus-agent/web-app build",
+    "web:check": "pnpm --filter @focus-agent/web-app check",
+    "sdk:build": "pnpm --filter @focus-agent/web-sdk build",
+    "sdk:check": "pnpm --filter @focus-agent/web-sdk check"
+  }
+}

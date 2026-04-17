@@ -1,3 +1,7 @@
-from .app_shell import render_branch_tree_html, render_chat_app_html
+from .frontend_app import has_frontend_build, render_frontend_entry_html, resolve_frontend_dist_dir
 
-__all__ = ["render_chat_app_html", "render_branch_tree_html"]
+__all__ = [
+    "has_frontend_build",
+    "render_frontend_entry_html",
+    "resolve_frontend_dist_dir",
+]

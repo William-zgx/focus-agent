@@ -1,15 +1,26 @@
 import { iterSSEEvents } from "./parser";
 import { reduceStreamEvent, createInitialStreamState } from "./reducers";
 import type {
+  FocusAgentApplyMergeDecisionRequest,
+  FocusAgentApplyMergeDecisionResponse,
+  FocusAgentBranchRecord,
+  FocusAgentConversationListResponse,
+  FocusAgentConversationSummary,
+  FocusAgentCreateConversationRequest,
   FocusAgentDemoTokenRequest,
   FocusAgentEvent,
+  FocusAgentForkBranchRequest,
   FocusAgentModelsResponse,
   FocusAgentPrincipalResponse,
+  FocusAgentRenameBranchRequest,
+  FocusAgentUpdateConversationRequest,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
   FocusAgentTokenResponse,
   FocusAgentTurnRequest,
   FocusAgentResumeRequest,
+  BranchTreeResponse,
+  ThreadStateResponse,
   FocusAgentToolEvent,
 } from "./types";
 
@@ -18,6 +29,18 @@ export interface FocusAgentClientOptions {
   token?: string;
   getToken?: () => string | null | Promise<string | null>;
   fetchImpl?: typeof fetch;
+}
+
+export class FocusAgentRequestError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+
+  constructor(status: number, statusText: string) {
+    super(`FocusAgent request failed: ${status} ${statusText}`);
+    this.name = "FocusAgentRequestError";
+    this.status = status;
+    this.statusText = statusText;
+  }
 }
 
 export class FocusAgentClient {
@@ -30,7 +53,7 @@ export class FocusAgentClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.token = options.token;
     this.getTokenFn = options.getToken;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
   setToken(token: string | undefined): void {
@@ -59,12 +82,143 @@ export class FocusAgentClient {
     }, true);
   }
 
-  async streamTurn(request: FocusAgentTurnRequest): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
-    return this.stream("/v1/chat/turns/stream", request);
+  async listConversations(): Promise<FocusAgentConversationListResponse> {
+    return this.requestJson<FocusAgentConversationListResponse>("/v1/conversations", {
+      method: "GET",
+      headers: {},
+    }, true);
   }
 
-  async streamResume(request: FocusAgentResumeRequest): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
-    return this.stream("/v1/chat/resume/stream", request);
+  async createConversation(
+    request: FocusAgentCreateConversationRequest = {},
+  ): Promise<FocusAgentConversationSummary> {
+    return this.requestJson<FocusAgentConversationSummary>("/v1/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async renameConversation(
+    rootThreadId: string,
+    request: FocusAgentUpdateConversationRequest,
+  ): Promise<FocusAgentConversationSummary> {
+    return this.requestJson<FocusAgentConversationSummary>(
+      `/v1/conversations/${encodeURIComponent(rootThreadId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async archiveConversation(rootThreadId: string): Promise<FocusAgentConversationSummary> {
+    return this.requestJson<FocusAgentConversationSummary>(
+      `/v1/conversations/${encodeURIComponent(rootThreadId)}/archive`,
+      {
+        method: "POST",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async activateConversation(rootThreadId: string): Promise<FocusAgentConversationSummary> {
+    return this.requestJson<FocusAgentConversationSummary>(
+      `/v1/conversations/${encodeURIComponent(rootThreadId)}/activate`,
+      {
+        method: "POST",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getThreadState(threadId: string): Promise<ThreadStateResponse> {
+    return this.requestJson<ThreadStateResponse>(`/v1/threads/${encodeURIComponent(threadId)}`, {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async getBranchTree(rootThreadId: string): Promise<BranchTreeResponse> {
+    return this.requestJson<BranchTreeResponse>(`/v1/branches/tree/${encodeURIComponent(rootThreadId)}`, {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async forkBranch(request: FocusAgentForkBranchRequest): Promise<FocusAgentBranchRecord> {
+    return this.requestJson<FocusAgentBranchRecord>("/v1/branches/fork", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async archiveBranch(threadId: string): Promise<FocusAgentBranchRecord> {
+    return this.requestJson<FocusAgentBranchRecord>(`/v1/branches/${encodeURIComponent(threadId)}/archive`, {
+      method: "POST",
+      headers: {},
+    }, true);
+  }
+
+  async activateBranch(threadId: string): Promise<FocusAgentBranchRecord> {
+    return this.requestJson<FocusAgentBranchRecord>(`/v1/branches/${encodeURIComponent(threadId)}/activate`, {
+      method: "POST",
+      headers: {},
+    }, true);
+  }
+
+  async renameBranch(threadId: string, request: FocusAgentRenameBranchRequest): Promise<FocusAgentBranchRecord> {
+    return this.requestJson<FocusAgentBranchRecord>(`/v1/branches/${encodeURIComponent(threadId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async prepareMergeProposal(threadId: string): Promise<ThreadStateResponse["merge_proposal"]> {
+    return this.requestJson<ThreadStateResponse["merge_proposal"]>(
+      `/v1/branches/${encodeURIComponent(threadId)}/proposal`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      true,
+    );
+  }
+
+  async applyMergeDecision(
+    threadId: string,
+    request: FocusAgentApplyMergeDecisionRequest,
+  ): Promise<FocusAgentApplyMergeDecisionResponse> {
+    return this.requestJson<FocusAgentApplyMergeDecisionResponse>(
+      `/v1/branches/${encodeURIComponent(threadId)}/merge`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async streamTurn(
+    request: FocusAgentTurnRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+    return this.stream("/v1/chat/turns/stream", request, options);
+  }
+
+  async streamResume(
+    request: FocusAgentResumeRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+    return this.stream("/v1/chat/resume/stream", request, options);
   }
 
   async collectStream(
@@ -108,11 +262,16 @@ export class FocusAgentClient {
     return state;
   }
 
-  private async stream(path: string, body: unknown): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+  private async stream(
+    path: string,
+    body: unknown,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: await this.buildHeaders({ "Content-Type": "application/json", Accept: "text/event-stream" }, true),
       body: JSON.stringify(body),
+      signal: options.signal,
     });
     this.ensureOk(response);
     if (!response.body) {
@@ -147,6 +306,6 @@ export class FocusAgentClient {
 
   private ensureOk(response: Response): void {
     if (response.ok) return;
-    throw new Error(`FocusAgent request failed: ${response.status} ${response.statusText}`);
+    throw new FocusAgentRequestError(response.status, response.statusText);
   }
 }

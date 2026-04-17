@@ -460,6 +460,8 @@ class Settings:
     api_port: int = 8000
     api_reload: bool = False
     app_version: str = "1.0.0"
+    web_app_dist_dir: str | None = None
+    web_app_dev_server_url: str | None = None
     auth_enabled: bool = True
     auth_demo_tokens_enabled: bool = True
     auth_jwt_secret: str = "focus-agent-dev-secret"
@@ -509,6 +511,8 @@ class Settings:
             api_port=int(env.get("API_PORT", str(defaults.api_port))),
             api_reload=env.get("API_RELOAD", "false").lower() in {"1", "true", "yes", "on"},
             app_version=env.get("APP_VERSION", defaults.app_version),
+            web_app_dist_dir=env.get("WEB_APP_DIST_DIR") or None,
+            web_app_dev_server_url=env.get("WEB_APP_DEV_SERVER_URL") or None,
             auth_enabled=env.get("AUTH_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
             auth_demo_tokens_enabled=env.get("AUTH_DEMO_TOKENS_ENABLED", "true").lower()
             in {"1", "true", "yes", "on"},

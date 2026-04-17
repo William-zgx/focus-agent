@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ConversationRecord
@@ -14,7 +15,12 @@ from focus_agent.config import Settings
 from focus_agent.core.branching import MergeDecision
 from focus_agent.engine.runtime import AppRuntime, create_runtime
 from focus_agent.services.chat import ChatService
-from focus_agent.web.app_shell import render_chat_app_html
+from focus_agent.web.frontend_app import (
+    build_frontend_dev_server_redirect_url,
+    render_frontend_entry_html,
+    resolve_frontend_dev_server_url,
+    resolve_frontend_dist_dir,
+)
 
 from .contracts import (
     ApplyMergeDecisionRequest,
@@ -95,25 +101,67 @@ def _event_stream_response(stream: AsyncIterator[str]) -> StreamingResponse:
     )
 
 
+def _render_frontend_or_raise(*, settings: Settings) -> str:
+    try:
+        return render_frontend_entry_html(settings=settings)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Frontend build is missing. Run `pnpm web:build` or `make web-build` "
+                "before opening /app."
+            ),
+        ) from exc
+
+
+def _frontend_dev_redirect(
+    *,
+    settings: Settings,
+    path: str = "",
+    query: str = "",
+) -> RedirectResponse | None:
+    target = build_frontend_dev_server_redirect_url(settings=settings, path=path, query=query)
+    if target is None:
+        return None
+    return RedirectResponse(url=target, status_code=307)
+
+
 def create_app() -> FastAPI:
+    settings = Settings.from_env()
     app = FastAPI(
         title='focus-agent',
-        version=Settings.from_env().app_version,
+        version=settings.app_version,
         description='Long-dialogue research agent API with branchable conversations.',
         lifespan=app_lifespan,
     )
+
+    frontend_dist_dir = resolve_frontend_dist_dir(settings)
+    frontend_assets_dir = frontend_dist_dir / "assets"
+    frontend_dev_server_url = resolve_frontend_dev_server_url(settings)
+    if frontend_dev_server_url is None and frontend_assets_dir.exists():
+        app.mount("/app/assets", StaticFiles(directory=frontend_assets_dir), name="frontend_assets")
 
     @app.get('/healthz')
     def health_check() -> dict[str, str]:
         return {'status': 'ok'}
 
     @app.get('/app', response_class=HTMLResponse)
-    def render_chat_app_page(lang: str = "en") -> str:
-        return render_chat_app_html(lang)
+    def render_chat_app_page(request: Request):
+        redirect = _frontend_dev_redirect(settings=settings, query=request.url.query)
+        if redirect is not None:
+            return redirect
+        return _render_frontend_or_raise(settings=settings)
 
     @app.get('/app/zh', response_class=HTMLResponse)
     def redirect_chinese_chat_app() -> RedirectResponse:
-        return RedirectResponse(url='/app?lang=zh', status_code=307)
+        return RedirectResponse(url='/app', status_code=307)
+
+    @app.get('/app/{path:path}', response_class=HTMLResponse)
+    def render_chat_app_subpath(path: str, request: Request):
+        redirect = _frontend_dev_redirect(settings=settings, path=path, query=request.url.query)
+        if redirect is not None:
+            return redirect
+        return _render_frontend_or_raise(settings=settings)
 
     @app.post('/v1/auth/demo-token', response_model=TokenResponse)
     def issue_demo_token(payload: DemoTokenRequest, runtime: AppRuntime = Depends(get_app_runtime)) -> TokenResponse:

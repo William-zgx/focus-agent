@@ -11,8 +11,10 @@ __pycache__/
 .ruff_cache/
 artifacts/
 log/
+node_modules/
 frontend-sdk/node_modules/
 frontend-sdk/dist/
+apps/web/dist/
 src/*.egg-info/
 src/**/__pycache__/
 src/focus_agent.egg-info/

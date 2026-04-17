@@ -71,7 +71,7 @@ If Git is a familiar analogy, that mapping is intentional. The main thread plays
 - Branchable conversations with controlled merge-back
 - API endpoints for normal responses and live streaming
 - A conversation engine that emits structured live events
-- Built-in web app at `/app` and `/app/zh`
+- Built-in React web app at `/app`
 - Access control with per-conversation ownership checks
 - Lower-noise context management through focused working context and selective merge-back from branches
 - Built-in tools for searching the repo, reading files, checking git state, and searching the web
@@ -83,7 +83,7 @@ Requirements:
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
-- Node.js 18+ only if you want to build the frontend SDK
+- Node.js 18+ if you want to build the web frontend and SDK
 
 ```bash
 uv venv
@@ -94,6 +94,8 @@ mkdir -p .focus_agent
 cp docs/local.env.example .focus_agent/local.env
 cp docs/models.example.toml .focus_agent/models.toml
 cp docs/tools.example.toml .focus_agent/tools.toml
+pnpm install --registry=https://registry.npmjs.org
+pnpm web:build
 focus-agent-api
 ```
 
@@ -102,7 +104,6 @@ By default, runtime persistence and AI-generated artifacts stay under `.focus_ag
 Then open:
 
 - `http://127.0.0.1:8000/app`
-- `http://127.0.0.1:8000/app/zh`
 - `http://127.0.0.1:8000/healthz`
 
 For local auth, create a demo token:
@@ -145,7 +146,7 @@ make check
 make ui-smoke
 ```
 
-`make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, verifies the model picker, confirms the page no longer renders the Skills directory entry, sends one chat turn, and fails if the final visible reply still contains DSML or tool-call markup.
+`make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, creates a conversation when needed, sends one chat turn, forks a branch, enters merge review, and fails if the visible response still contains DSML or tool-call markup.
 
 ## More Docs
 

@@ -16,9 +16,9 @@ from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
 
-DEFAULT_APP_URL = "http://127.0.0.1:8000/app/zh"
+DEFAULT_APP_URL = "http://127.0.0.1:8000/app"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"
-DEFAULT_MESSAGE = "你好，做一个 UI 冒烟测试，简短回复 OK 即可"
+DEFAULT_MESSAGE = "请简短回复 OK"
 
 
 def _http_get_json(url: str) -> object:
@@ -192,41 +192,108 @@ def build_smoke_expression(message: str) -> str:
     }}
     throw new Error('Timed out waiting for ' + label);
   }};
-  const text = (selector) => document.querySelector(selector)?.textContent?.trim() || '';
+  const bodyText = () => document.body?.innerText || '';
+  const buttonMatches = (item, labels) => {{
+    const candidates = [
+      item.textContent?.trim() || '',
+      item.getAttribute('aria-label') || '',
+      item.getAttribute('title') || '',
+    ].map((value) => value.trim());
+    return labels.some((label) => candidates.includes(label));
+  }};
+  const findButton = (...labels) => Array.from(document.querySelectorAll('button')).find(
+    (item) => buttonMatches(item, labels)
+  );
+  const clickButton = (...labels) => {{
+    const button = findButton(...labels);
+    if (!button) throw new Error('Missing button: ' + labels.join(' / '));
+    button.click();
+  }};
+  const openReviewFlow = async () => {{
+    if (findButton('Generate proposal')) {{
+      clickButton('Generate proposal');
+      return;
+    }}
+    if (findButton('Review branch')) {{
+      clickButton('Review branch');
+      await waitFor(
+        () => location.pathname.endsWith('/review') || findButton('Generate proposal'),
+        20000,
+        'review entry'
+      );
+      if (findButton('Generate proposal')) {{
+        clickButton('Generate proposal');
+      }}
+      return;
+    }}
+    throw new Error('Missing review entry action.');
+  }};
+  const setTextareaValue = (value) => {{
+    const textarea = document.querySelector('textarea');
+    if (!textarea) throw new Error('Message composer was not found.');
+    const descriptor = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+    descriptor?.set?.call(textarea, value);
+    textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+    return textarea;
+  }};
+  const hasThreadRoute = () => /^\/app\/c\/[^/]+\/t\/[^/]+/.test(location.pathname);
   const result = {{}};
-  await waitFor(() => document.getElementById('composer-model-trigger'), 20000, 'model trigger');
+  await waitFor(() => findButton('New', 'New conversation'), 20000, 'conversation sidebar');
   result.title = document.title;
   result.url = location.href;
-  result.skillsButtonPresent = Boolean(document.getElementById('open-skills'));
-  document.getElementById('composer-model-trigger').click();
-  await waitFor(() => !document.getElementById('composer-model-panel')?.hidden, 20000, 'model panel open');
-  result.modelPanelOpened = true;
-  result.modelLabel = text('#composer-model-trigger-label');
-  result.modelProvider = text('#composer-model-trigger-provider');
-  result.modelOptionsCount = document.querySelectorAll('#composer-model-list > *').length;
-  document.getElementById('composer-model-trigger').click();
-  const composer = document.getElementById('stream-message');
-  composer.value = smokeMessage;
-  composer.dispatchEvent(new Event('input', {{ bubbles: true }}));
-  document.getElementById('open-stream').click();
-  await waitFor(() => document.querySelectorAll('.message-row.user').length > 0, 10000, 'user message render');
+  await waitFor(
+    () => bodyText().includes('Failed to load conversations.') || hasThreadRoute() || !bodyText().includes('Loading conversations...'),
+    20000,
+    'initial conversation state'
+  );
+  if (bodyText().includes('Failed to load conversations.')) {{
+    throw new Error('Conversation list failed to load.');
+  }}
+  const currentThreadPath = location.pathname;
+  const originalPrompt = window.prompt;
+  window.prompt = () => 'Smoke Test';
+  try {{
+    clickButton('New', 'New conversation');
+  }} finally {{
+    window.prompt = originalPrompt;
+  }}
+  await waitFor(
+    () => hasThreadRoute() && location.pathname !== currentThreadPath,
+    20000,
+    'new conversation route'
+  );
+  result.threadPath = location.pathname;
+  await waitFor(
+    () => document.querySelector('textarea') && findButton('Fork branch', 'New branch'),
+    20000,
+    'thread page ready'
+  );
+  setTextareaValue(smokeMessage);
+  await waitFor(() => {{
+    const button = findButton('Send', 'Send message');
+    return button && !button.disabled ? button : null;
+  }}, 5000, 'send button enabled');
+  clickButton('Send', 'Send message');
+  await waitFor(() => bodyText().includes(smokeMessage), 10000, 'user message render');
   const finalText = await waitFor(() => {{
-    const rows = Array.from(document.querySelectorAll('.message-row.assistant .message-bubble, .message-row.system .message-bubble'));
-    const last = rows.at(-1);
-    const value = last && last.textContent.trim().length > 0 ? last.textContent.trim() : '';
-    if (value && !value.includes('<｜DSML｜') && !value.includes('function_calls')) {{
-      return value;
+    const text = bodyText();
+    const hasAssistantReply =
+      (text.includes('Assistant') || text.includes('Focus Agent')) &&
+      !text.includes('<｜DSML｜') &&
+      !text.includes('function_calls');
+    if (hasAssistantReply) {{
+      return text;
     }}
     return '';
-  }}, 90000, 'assistant or system natural-language response');
-  const responseRows = Array.from(document.querySelectorAll('.message-row.assistant, .message-row.system'));
-  const lastRow = responseRows.at(-1);
+  }}, 90000, 'assistant natural-language response');
   result.lastResponseText = finalText;
-  result.responseRole = lastRow?.className || '';
-  result.statusText = document.getElementById('status-text')?.textContent?.trim() || '';
-  if (result.skillsButtonPresent) {{
-    throw new Error('Skills directory button is still rendered on the page.');
-  }}
+  clickButton('Fork branch', 'New branch');
+  await waitFor(() => hasThreadRoute() && location.pathname !== result.threadPath, 20000, 'branch route');
+  result.branchPath = location.pathname;
+  await openReviewFlow();
+  await waitFor(() => location.pathname.endsWith('/review'), 20000, 'review route');
+  await waitFor(() => bodyText().includes('Summary override'), 20000, 'merge review form');
+  result.reviewPath = location.pathname;
   return JSON.stringify(result);
 }})()
 """
@@ -260,7 +327,7 @@ def run_ui_smoke_test(
 
     try:
         wait_for_devtools(port)
-        target = create_page_target(port, app_url)
+        target = create_page_target(port, "about:blank")
         websocket_url = str(target.get("webSocketDebuggerUrl") or "")
         if not websocket_url:
             raise RuntimeError(f"Missing webSocketDebuggerUrl in target payload: {target!r}")
@@ -269,6 +336,55 @@ def run_ui_smoke_test(
         try:
             client.send("Page.enable")
             client.send("Runtime.enable")
+            client.send(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": """
+window.__faFetches = [];
+window.__faErrors = [];
+window.__faConsole = [];
+const __faConsoleError = console.error.bind(console);
+console.error = (...args) => {
+  window.__faConsole.push(args.map((item) => String(item)));
+  __faConsoleError(...args);
+};
+const __faFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const url = String(args[0]);
+  const init = args[1] || {};
+  window.__faFetches.push({ stage: "start", url, method: init.method || "GET" });
+  try {
+    const response = await __faFetch(...args);
+    window.__faFetches.push({ stage: "end", url, status: response.status, ok: response.ok });
+    return response;
+  } catch (error) {
+    window.__faFetches.push({
+      stage: "error",
+      url,
+      message: error && error.message ? error.message : String(error),
+    });
+    throw error;
+  }
+};
+window.addEventListener("error", (event) => {
+  window.__faErrors.push({
+    type: "error",
+    message: event.message,
+    source: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason;
+  window.__faErrors.push({
+    type: "unhandledrejection",
+    message: reason && reason.message ? reason.message : String(reason),
+  });
+});
+""",
+                },
+            )
             client.send("Page.navigate", {"url": app_url})
             time.sleep(2.0)
             response = client.send(
@@ -289,7 +405,34 @@ def run_ui_smoke_test(
         )
         payload = raw_value.get("value", "")
         if not isinstance(payload, str) or not payload.strip():
-            raise RuntimeError(f"Unexpected smoke-test payload: {response!r}")
+            diagnostics = {}
+            try:
+                diagnostic_response = client.send(
+                    "Runtime.evaluate",
+                    {
+                        "expression": """
+JSON.stringify({
+  body: document.body?.innerText || "",
+  fetches: window.__faFetches || [],
+  errors: window.__faErrors || [],
+  console: window.__faConsole || [],
+})
+""",
+                        "awaitPromise": True,
+                        "returnByValue": True,
+                    },
+                )
+                diagnostic_result = (
+                    diagnostic_response.get("result", {})
+                    if isinstance(diagnostic_response.get("result"), dict)
+                    else {}
+                )
+                diagnostic_payload = diagnostic_result.get("value", "")
+                if isinstance(diagnostic_payload, str) and diagnostic_payload.strip():
+                    diagnostics = json.loads(diagnostic_payload)
+            except Exception as exc:  # noqa: BLE001
+                diagnostics = {"diagnostic_error": str(exc)}
+            raise RuntimeError(f"Unexpected smoke-test payload: {response!r}; diagnostics={diagnostics!r}")
 
         result = json.loads(payload)
         if result.get("__error"):

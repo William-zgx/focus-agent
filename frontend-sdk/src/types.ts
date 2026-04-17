@@ -225,15 +225,38 @@ export interface FocusAgentModelsResponse {
   models: FocusAgentModelOption[];
 }
 
+export interface FocusAgentConversationSummary {
+  root_thread_id: string;
+  title: string;
+  is_archived: boolean;
+  archived_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface FocusAgentConversationListResponse {
+  conversations: FocusAgentConversationSummary[];
+}
+
+export interface FocusAgentCreateConversationRequest {
+  title?: string | null;
+}
+
+export interface FocusAgentUpdateConversationRequest {
+  title: string;
+}
+
 export type BranchRole = "main" | "explore_alternatives" | "deep_dive" | "verify" | "writeup";
 export type BranchStatus =
   | "active"
   | "paused"
+  | "preparing_merge_review"
   | "awaiting_merge_review"
   | "merged"
   | "discarded"
   | "closed";
 export type MergeMode = "none" | "summary_only" | "summary_plus_evidence" | "selected_artifacts";
+export type MergeTarget = "return_thread" | "root_thread";
 
 export interface BranchMeta {
   branch_id: string;
@@ -270,6 +293,54 @@ export interface BranchTreeResponse {
   archived_branches: BranchTreeNode[];
 }
 
+export interface FocusAgentMergeProposal {
+  summary: string;
+  key_findings: string[];
+  open_questions: string[];
+  evidence_refs: string[];
+  artifacts: string[];
+  recommended_import_mode: MergeMode;
+}
+
+export interface FocusAgentMergeProposalOverrides {
+  summary?: string | null;
+  key_findings?: string[] | null;
+  open_questions?: string[] | null;
+  evidence_refs?: string[] | null;
+  artifacts?: string[] | null;
+  recommended_import_mode?: MergeMode | null;
+}
+
+export interface FocusAgentImportedConclusion {
+  branch_id: string;
+  branch_name: string;
+  mode: MergeMode;
+  summary: string;
+  key_findings: string[];
+  evidence_refs: string[];
+  artifacts: string[];
+  rationale?: string | null;
+}
+
+export interface FocusAgentBranchRecord {
+  branch_id: string;
+  root_thread_id: string;
+  parent_thread_id: string;
+  child_thread_id: string;
+  return_thread_id: string;
+  owner_user_id: string;
+  branch_name: string;
+  branch_role: BranchRole;
+  branch_depth: number;
+  branch_status: BranchStatus;
+  is_archived: boolean;
+  archived_at?: string | null;
+  fork_checkpoint_id?: string | null;
+  fork_strategy: string;
+  merge_proposal?: FocusAgentMergeProposal | null;
+  merge_decision?: Record<string, unknown> | null;
+}
+
 export interface ThreadStateResponse {
   thread_id: string;
   root_thread_id: string;
@@ -278,13 +349,38 @@ export interface ThreadStateResponse {
   selected_model: string;
   selected_thinking_mode: string;
   branch_meta?: BranchMeta | null;
-  merge_proposal?: Record<string, unknown> | null;
+  merge_proposal?: FocusAgentMergeProposal | null;
   merge_decision?: Record<string, unknown> | null;
-  merge_queue: Array<Record<string, unknown>>;
+  merge_queue: FocusAgentImportedConclusion[];
   active_skill_ids: string[];
   messages: Array<Record<string, unknown>>;
   interrupts: unknown[];
   trace: Record<string, unknown>;
+}
+
+export interface FocusAgentForkBranchRequest {
+  parent_thread_id: string;
+  branch_name?: string;
+  name_source?: string;
+  branch_role?: BranchRole;
+  fork_checkpoint_id?: string;
+}
+
+export interface FocusAgentRenameBranchRequest {
+  branch_name: string;
+}
+
+export interface FocusAgentApplyMergeDecisionRequest {
+  approved?: boolean;
+  mode?: MergeMode;
+  target?: MergeTarget;
+  rationale?: string | null;
+  selected_artifacts?: string[];
+  proposal_overrides?: FocusAgentMergeProposalOverrides | null;
+}
+
+export interface FocusAgentApplyMergeDecisionResponse {
+  imported?: FocusAgentImportedConclusion | null;
 }
 
 export type FocusAgentToolCallEvent =
