@@ -213,7 +213,8 @@ def test_render_chat_app_html_defaults_to_english():
     assert '$("stop-stream").addEventListener("click", stopStream);' in html
     assert 'sendButton.hidden = isStreaming;' in html
     assert 'stopButton.hidden = !isStreaming;' in html
-    assert 'skipUserBubble: true' in html
+    assert 'restoreInlineMessageBubble(session.bubble, session.originalText);' in html
+    assert 'skipUserBubble: true' not in html
     assert 'event.stopPropagation();' in html
     assert 'thinkingMode: "enabled"' in html
     assert 'thinkingMode: "disabled"' in html
@@ -446,6 +447,8 @@ def test_render_chat_app_html_supports_chinese():
     assert "签发演示 Token" not in html
     assert "查看当前身份" not in html
     assert "工具事件流" not in html
+    assert "messageTextOverrides" not in html
+    assert "skipUserBubble: true" not in html
     assert '\\n\\n[等待继续执行决策]' in html
     assert 'textContent += "\n\n[等待继续执行决策]"' not in html
     assert "readErrorMessage" in html

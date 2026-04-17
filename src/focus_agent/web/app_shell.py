@@ -3264,7 +3264,6 @@ BRANCH_TREE_HTML = """<!doctype html>
       abortController: null,
       currentAssistantBubble: null,
       inlineMessageEdit: null,
-      messageTextOverrides: {},
       lastUserMessage: "",
       themePreference: "system",
       accentPreference: "white",
@@ -5602,15 +5601,11 @@ BRANCH_TREE_HTML = """<!doctype html>
         cancelInlineMessageEdit({ focus: false });
         return;
       }
-      if (session.messageId) {
-        state.messageTextOverrides[session.messageId] = nextText;
-      }
-      restoreInlineMessageBubble(session.bubble, nextText);
+      restoreInlineMessageBubble(session.bubble, session.originalText);
       state.inlineMessageEdit = null;
       await openStream({
         messageOverride: nextText,
         preserveComposer: true,
-        skipUserBubble: true,
       });
     }
 
@@ -5907,15 +5902,12 @@ BRANCH_TREE_HTML = """<!doctype html>
         const messageType = String(message.type || "").toLowerCase();
         const content = String(message.content || "").trim();
         const messageId = String(message.id || "").trim();
-        const displayContent = messageId && state.messageTextOverrides[messageId]
-          ? String(state.messageTextOverrides[messageId] || "").trim()
-          : content;
         if (!content) {
           continue;
         }
         if (messageType === "human") {
-          latestHumanContent = displayContent;
-          createMessageBubble("user", displayContent, `You · ${threadLabel}`, "", false, {
+          latestHumanContent = content;
+          createMessageBubble("user", content, `You · ${threadLabel}`, "", false, {
             messageId,
             actions: ({ bubble }) => [
               {
