@@ -20,6 +20,8 @@ def test_render_chat_app_html_defaults_to_english():
     assert 'id="open-skills"' not in html
     assert 'id="skills-modal"' not in html
     assert "composer-input-shell" in html
+    assert "composer-edit-banner" in html
+    assert "composer-edit-cancel" in html
     assert "composer-footer-row" in html
     assert "composer-actions-row" in html
     assert "composer-model-row" in html
@@ -151,6 +153,18 @@ def test_render_chat_app_html_defaults_to_english():
     assert "code-copy-button" in html
     assert "buildMessageContent" in html
     assert "copyTextToClipboard" in html
+    assert "message-actions" in html
+    assert "message-action-button" in html
+    assert "createMessageActionButton" in html
+    assert "startEditingMessage" in html
+    assert "cancelInlineMessageEdit" in html
+    assert "submitInlineMessageEdit" in html
+    assert "message-inline-editor" in html
+    assert "message-inline-editor-input" in html
+    assert "Send edited message" in html
+    assert "Regenerate response" in html
+    assert "Edit message" in html
+    assert "Copy message" in html
     assert "function isChatNearBottom(threshold = 48)" in html
     assert "function shouldAutoFollowChat({ forceScroll = false } = {})" in html
     assert 'function syncChatAutoFollowFromScroll()' in html
@@ -164,7 +178,7 @@ def test_render_chat_app_html_defaults_to_english():
     assert "chatTouchY: null" in html
     assert "streamingResponseActive: false" in html
     assert 'const shouldFollow = shouldAutoFollowChat({ forceScroll });' in html
-    assert 'createMessageBubble("user", message, `You · ${threadLabel}`, "", true);' in html
+    assert 'beginChatTurn(message, { skipUserBubble: options.skipUserBubble === true });' in html
     assert "applyInlineMarkdown" in html
     assert "renderInlineMarkdown" in html
     assert "sanitizeMessageHref" in html
@@ -173,10 +187,12 @@ def test_render_chat_app_html_defaults_to_english():
     assert "message-bubble ul" in html
     assert "message-bubble blockquote" in html
     assert "message-bubble a" in html
+    assert ".message-row:hover .message-actions" in html
+    assert ".message-row.is-editing .message-actions" in html
     assert 'if (messageType === "system") {' in html
-    assert 'createMessageBubble("system", content, `${isChineseUi() ? "系统" : "System"} · ${threadLabel}`, "success");' in html
-    assert 'createMessageBubble("system", `${title}: ${message}`, "System", "error");' in html
-    assert 'createMessageBubble("system", turnFailedBubbleText(message), isChineseUi() ? "系统" : "System", "error");' in html
+    assert 'createMessageBubble("system", content, `${isChineseUi() ? "系统" : "System"} · ${threadLabel}`, "success", false, {' in html
+    assert 'createMessageBubble("system", `${title}: ${message}`, "System", "error", false, {' in html
+    assert 'createMessageBubble("system", turnFailedBubbleText(message), isChineseUi() ? "系统" : "System", "error", false, {' in html
     assert "--system-bubble-text:#8E2344;" in html
     assert "--system-code-header-text:#A73358;" in html
     assert "--system-success-bubble-text:#17684B;" in html
@@ -195,6 +211,9 @@ def test_render_chat_app_html_defaults_to_english():
     assert 'function stopStream()' in html
     assert '$("clear-stream").addEventListener("click", () => {' in html
     assert '$("stop-stream").addEventListener("click", stopStream);' in html
+    assert 'sendButton.hidden = isStreaming;' in html
+    assert 'stopButton.hidden = !isStreaming;' in html
+    assert 'skipUserBubble: true' in html
     assert 'event.stopPropagation();' in html
     assert 'thinkingMode: "enabled"' in html
     assert 'thinkingMode: "disabled"' in html
@@ -230,6 +249,12 @@ def test_render_chat_app_html_supports_chinese():
     assert "带分支能力的研究对话界面" not in html
     assert "发送消息" in html
     assert "清空输入" in html
+    assert "正在编辑消息" in html
+    assert "修改后的内容会作为新一轮对话发送。" in html
+    assert "编辑消息" in html
+    assert "复制消息" in html
+    assert "发送修改" in html
+    assert "重新生成回复" in html
     assert "新建分支" in html
     assert "分支如何使用" in html
     assert "刷新分支树" in html
@@ -392,7 +417,7 @@ def test_render_chat_app_html_supports_chinese():
     assert "chatTouchY: null" in html
     assert "streamingResponseActive: false" in html
     assert 'const shouldFollow = shouldAutoFollowChat({ forceScroll });' in html
-    assert 'createMessageBubble("user", message, `你 · ${threadLabel}`, "", true);' in html
+    assert 'beginChatTurn(message, { skipUserBubble: options.skipUserBubble === true });' in html
     assert "applyInlineMarkdown" in html
     assert "renderInlineMarkdown" in html
     assert "sanitizeMessageHref" in html

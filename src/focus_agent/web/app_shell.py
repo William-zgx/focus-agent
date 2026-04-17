@@ -604,6 +604,13 @@ BRANCH_TREE_HTML = """<!doctype html>
       display:grid;
       gap:8px;
     }
+    .message-stack {
+      display:grid;
+      gap:8px;
+      width:fit-content;
+      max-width:min(720px, 88%);
+      justify-items:stretch;
+    }
     .message-row.user {
       justify-items:end;
     }
@@ -618,8 +625,101 @@ BRANCH_TREE_HTML = """<!doctype html>
       text-transform:uppercase;
       letter-spacing:.08em;
     }
+    .message-head {
+      display:grid;
+      gap:0;
+      justify-items:start;
+      width:100%;
+    }
+    .message-actions {
+      display:inline-flex;
+      align-items:center;
+      justify-content:flex-start;
+      flex-wrap:wrap;
+      gap:6px;
+      width:100%;
+      opacity:0;
+      transform:translateY(-2px);
+      pointer-events:none;
+      transition:
+        opacity var(--duration-fast) var(--ease-default),
+        transform var(--duration-fast) var(--ease-default);
+    }
+    .message-row:hover .message-actions,
+    .message-row:focus-within .message-actions,
+    .message-row.is-editing .message-actions {
+      opacity:1;
+      transform:none;
+      pointer-events:auto;
+    }
+    .message-action-button {
+      width:28px;
+      height:28px;
+      min-width:28px;
+      min-height:28px;
+      padding:0;
+      border-radius:999px;
+      border:1px solid color-mix(in srgb, var(--border) 78%, transparent);
+      background:color-mix(in srgb, var(--panel-2) 82%, transparent);
+      color:var(--muted);
+      box-shadow:none;
+    }
+    .message-action-button:hover {
+      transform:none;
+      background:color-mix(in srgb, var(--panel-3) 74%, transparent);
+      border-color:color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+      color:var(--text);
+    }
+    .message-action-button.is-confirmed {
+      color:var(--success);
+      border-color:color-mix(in srgb, var(--success) 40%, var(--border) 60%);
+    }
+    .message-action-icon {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:14px;
+      height:14px;
+      color:currentColor;
+    }
+    .message-action-icon svg {
+      width:14px;
+      height:14px;
+      display:block;
+    }
+    .message-bubble.is-editing {
+      padding:12px 14px;
+    }
+    .message-inline-editor {
+      display:grid;
+      gap:8px;
+    }
+    .message-inline-editor-input {
+      width:100%;
+      min-height:108px;
+      max-height:240px;
+      resize:none;
+      border:none;
+      outline:none;
+      background:transparent;
+      color:inherit;
+      font:inherit;
+      line-height:1.6;
+      padding:0;
+      margin:0;
+      overflow:auto;
+    }
+    .message-inline-editor-input::placeholder {
+      color:color-mix(in srgb, currentColor 52%, transparent);
+    }
+    .message-inline-editor-hint {
+      font-size:11px;
+      line-height:1.4;
+      color:inherit;
+      opacity:.68;
+    }
     .message-bubble {
-      max-width:min(720px, 88%);
+      max-width:100%;
       padding:14px 16px;
       border-radius:20px;
       line-height:1.55;
@@ -870,6 +970,20 @@ BRANCH_TREE_HTML = """<!doctype html>
       color:color-mix(in srgb, var(--accent) 28%, var(--muted) 72%);
       letter-spacing:.11em;
     }
+    .message-row.user .message-action-button {
+      background:color-mix(in srgb, var(--panel-2) 84%, transparent);
+      border-color:color-mix(in srgb, var(--accent) 20%, var(--border) 80%);
+      color:color-mix(in srgb, var(--accent) 34%, var(--text) 66%);
+    }
+    .message-row.user .message-action-button:hover {
+      background:color-mix(in srgb, var(--panel-3) 76%, transparent);
+      border-color:color-mix(in srgb, var(--accent) 32%, var(--border) 68%);
+      color:var(--text);
+    }
+    .message-row.user .message-action-button.is-confirmed {
+      color:var(--success);
+      border-color:color-mix(in srgb, var(--success) 40%, var(--border) 60%);
+    }
     .message-row.assistant .message-bubble {
       background:
         linear-gradient(180deg, color-mix(in srgb, var(--assistant-bubble) 98%, transparent), color-mix(in srgb, var(--panel) 94%, transparent)),
@@ -953,6 +1067,16 @@ BRANCH_TREE_HTML = """<!doctype html>
       border-color:rgba(148,163,184,.36);
       color:#0F172A;
     }
+    :root[data-accent="white"] .message-row.user .message-action-button {
+      background:rgba(248,250,252,.92);
+      border-color:rgba(148,163,184,.34);
+      color:#475569;
+    }
+    :root[data-accent="white"] .message-row.user .message-action-button:hover {
+      background:rgba(241,245,249,.96);
+      border-color:rgba(148,163,184,.44);
+      color:#0F172A;
+    }
     :root[data-accent="white"] .message-row.user .message-code-header {
       color:#334155;
       border-bottom-color:rgba(148,163,184,.36);
@@ -1004,19 +1128,76 @@ BRANCH_TREE_HTML = """<!doctype html>
       align-items:stretch;
       min-height:34px;
     }
+    .composer-edit-banner {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:8px 12px;
+      border-radius:14px;
+      border:1px solid color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
+      background:color-mix(in srgb, var(--panel-2) 84%, transparent);
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.4;
+    }
+    .composer-edit-banner[hidden] {
+      display:none;
+    }
+    .composer-edit-copy {
+      min-width:0;
+      display:grid;
+      gap:2px;
+    }
+    .composer-edit-title {
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      color:var(--text);
+    }
+    .composer-edit-note {
+      min-width:0;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .composer-edit-cancel {
+      min-height:26px;
+      padding:0 10px;
+      border-radius:999px;
+      border:1px solid color-mix(in srgb, var(--border) 78%, transparent);
+      background:color-mix(in srgb, var(--panel) 72%, transparent);
+      color:var(--muted);
+      box-shadow:none;
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      flex:0 0 auto;
+    }
+    .composer-edit-cancel:hover {
+      transform:none;
+      background:color-mix(in srgb, var(--panel-3) 72%, transparent);
+      border-color:color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+      color:var(--text);
+    }
     .composer-footer-row {
       display:flex;
       align-items:center;
       justify-content:flex-end;
+      flex-wrap:nowrap;
       gap:6px;
       min-height:34px;
       width:100%;
+      min-width:0;
     }
     .composer-actions-row {
       display:flex;
       align-items:center;
       justify-content:flex-end;
       gap:6px;
+      flex:0 0 auto;
       order:2;
     }
     .composer-model-row {
@@ -1025,21 +1206,22 @@ BRANCH_TREE_HTML = """<!doctype html>
       justify-content:flex-end;
       gap:6px;
       min-width:0;
-      flex:1 1 auto;
+      flex:1 1 0;
       order:1;
     }
     .composer-model-controls {
       display:flex;
       align-items:stretch;
       gap:6px;
-      width:100%;
       min-width:0;
+      width:auto;
+      flex:1 1 auto;
     }
     .composer-model-trigger {
       min-height:34px;
       width:100%;
       max-width:none;
-      padding:0 10px 0 8px;
+      padding:0 10px 0 6px;
       border-radius:999px;
       border:1px solid color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
       background:
@@ -1056,7 +1238,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       min-width:0;
       flex:1 1 auto;
       align-items:center;
-      gap:5px;
+      gap:4px;
     }
     .composer-model-trigger-label {
       min-width:0;
@@ -1076,19 +1258,22 @@ BRANCH_TREE_HTML = """<!doctype html>
       justify-content:center;
       width:16px;
       height:16px;
+      margin-left:4px;
       color:var(--muted);
       flex:0 0 auto;
+      transform:rotate(-90deg);
       transition:transform .18s ease;
     }
     .composer-model-trigger[aria-expanded="true"] .composer-model-trigger-icon {
-      transform:rotate(180deg);
+      transform:rotate(0deg);
     }
     .composer-model-anchor {
       position:relative;
       flex:1 1 auto;
-      width:100%;
+      width:auto;
       max-width:none;
       margin-left:0;
+      min-width:0;
     }
     #stop-stream {
       width:34px;
@@ -1097,24 +1282,31 @@ BRANCH_TREE_HTML = """<!doctype html>
       height:34px;
       padding:0;
       border-radius:999px;
-      background:color-mix(in srgb, rgba(190, 55, 92, 0.18) 78%, var(--panel-3) 22%);
-      border-color:color-mix(in srgb, rgba(190, 55, 92, 0.34) 70%, var(--border) 30%);
-      color:color-mix(in srgb, #C4476C 78%, var(--text) 22%);
-      box-shadow:none;
+      background:linear-gradient(135deg, #E2536F 0%, #C83D58 100%);
+      border-color:color-mix(in srgb, #D84A66 58%, var(--border) 42%);
+      color:white;
+      box-shadow:0 0 20px color-mix(in srgb, rgba(216, 74, 102, 0.58) 74%, transparent);
     }
     #stop-stream .composer-action-icon {
-      width:14px;
-      height:14px;
+      width:12px;
+      height:12px;
       color:currentColor;
     }
     #stop-stream .composer-action-icon svg {
-      width:14px;
-      height:14px;
+      width:12px;
+      height:12px;
     }
     #stop-stream:hover {
-      background:color-mix(in srgb, rgba(190, 55, 92, 0.28) 82%, var(--panel-3) 18%);
-      border-color:color-mix(in srgb, rgba(190, 55, 92, 0.46) 76%, var(--border) 24%);
-      color:color-mix(in srgb, #D14C73 88%, white 12%);
+      background:linear-gradient(135deg, #EA617C 0%, #D14762 100%);
+      border-color:color-mix(in srgb, #DF546F 66%, var(--border) 34%);
+      box-shadow:0 0 30px color-mix(in srgb, rgba(223, 84, 111, 0.7) 80%, transparent);
+    }
+    #stop-stream:disabled {
+      opacity:.58;
+      box-shadow:none;
+    }
+    #stop-stream:disabled:hover {
+      box-shadow:none;
     }
     .composer-model-panel {
       position:absolute;
@@ -2868,6 +3060,13 @@ BRANCH_TREE_HTML = """<!doctype html>
       <section class="card composer">
         <label class="composer-input-shell">
           <span class="sr-only">Message</span>
+          <div id="composer-edit-banner" class="composer-edit-banner" hidden>
+            <div class="composer-edit-copy">
+              <div id="composer-edit-title" class="composer-edit-title">Editing message</div>
+              <div id="composer-edit-note" class="composer-edit-note">Your changes will be sent as a new turn.</div>
+            </div>
+            <button id="composer-edit-cancel" type="button" class="composer-edit-cancel">Cancel</button>
+          </div>
           <div class="composer-input-row">
             <textarea id="stream-message" rows="1" aria-label="Message" placeholder="Start on the main thread, and create a branch only when you want to explore a separate direction."></textarea>
           </div>
@@ -2889,6 +3088,14 @@ BRANCH_TREE_HTML = """<!doctype html>
                     </svg>
                   </span>
                   <span class="sr-only">Send message</span>
+                </button>
+                <button id="stop-stream" type="button" class="composer-action-button" aria-label="Stop generation" title="Stop generation" hidden disabled>
+                  <span class="composer-action-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20">
+                      <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="2.2" fill="currentColor"></rect>
+                    </svg>
+                  </span>
+                  <span id="stop-stream-label" class="sr-only">Stop generation</span>
                 </button>
               </div>
             </div>
@@ -2921,14 +3128,6 @@ BRANCH_TREE_HTML = """<!doctype html>
                     </div>
                   </div>
                 </div>
-                <button id="stop-stream" type="button" class="composer-action-button" aria-label="Stop generation" title="Stop generation" disabled>
-                  <span class="composer-action-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20">
-                      <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="2.2" fill="currentColor"></rect>
-                    </svg>
-                  </span>
-                  <span id="stop-stream-label" class="sr-only">Stop generation</span>
-                </button>
               </div>
             </div>
           </div>
@@ -3064,6 +3263,8 @@ BRANCH_TREE_HTML = """<!doctype html>
       currentVisibleText: "",
       abortController: null,
       currentAssistantBubble: null,
+      inlineMessageEdit: null,
+      messageTextOverrides: {},
       lastUserMessage: "",
       themePreference: "system",
       accentPreference: "white",
@@ -4481,7 +4682,9 @@ BRANCH_TREE_HTML = """<!doctype html>
     function showUiError(title, message) {
       clearAgentActivityBubble();
       setStatus(title, "danger");
-      createMessageBubble("system", `${title}: ${message}`, "System", "error");
+      createMessageBubble("system", `${title}: ${message}`, "System", "error", false, {
+        actions: [createCopyMessageAction(() => `${title}: ${message}`)],
+      });
     }
 
     function createThreadUiState() {
@@ -4645,7 +4848,9 @@ BRANCH_TREE_HTML = """<!doctype html>
       setStatus(statusLabel, "danger", message);
       clearThreadUiState(state.activeThreadId);
       clearAgentActivityBubble();
-      createMessageBubble("system", turnFailedBubbleText(message), isChineseUi() ? "系统" : "System", "error");
+      createMessageBubble("system", turnFailedBubbleText(message), isChineseUi() ? "系统" : "System", "error", false, {
+        actions: [createCopyMessageAction(() => turnFailedBubbleText(message))],
+      });
       if (state.currentAssistantBubble && !bubbleRawText(state.currentAssistantBubble)) {
         setBubbleContent(state.currentAssistantBubble, message);
       }
@@ -4864,7 +5069,15 @@ BRANCH_TREE_HTML = """<!doctype html>
       }
       clearThreadUiState(state.activeThreadId);
       clearAgentActivityBubble();
-      state.currentAssistantBubble = createMessageBubble("assistant", "", `Focus Agent · ${threadLabel}`);
+      const actions = [createCopyMessageAction(() => bubbleRawText(state.currentAssistantBubble))];
+      if (state.lastUserMessage) {
+        actions.push({
+          label: regenerateMessageActionLabel(),
+          icon: "regenerate",
+          onClick: () => openStream({ messageOverride: state.lastUserMessage, preserveComposer: true }),
+        });
+      }
+      state.currentAssistantBubble = createMessageBubble("assistant", "", `Focus Agent · ${threadLabel}`, "", false, { actions });
       return state.currentAssistantBubble;
     }
 
@@ -5192,6 +5405,301 @@ BRANCH_TREE_HTML = """<!doctype html>
       return isChineseUi() ? "复制失败" : "Copy failed";
     }
 
+    function copyMessageActionLabel() {
+      return isChineseUi() ? "复制消息" : "Copy message";
+    }
+
+    function copiedMessageActionLabel() {
+      return isChineseUi() ? "消息已复制" : "Message copied";
+    }
+
+    function editMessageActionLabel() {
+      return isChineseUi() ? "编辑消息" : "Edit message";
+    }
+
+    function regenerateMessageActionLabel() {
+      return isChineseUi() ? "重新生成回复" : "Regenerate response";
+    }
+
+    function sendEditedMessageLabel() {
+      return isChineseUi() ? "发送修改" : "Send edited message";
+    }
+
+    function editingMessageTitle() {
+      return isChineseUi() ? "正在编辑消息" : "Editing message";
+    }
+
+    function editingMessageNote() {
+      return isChineseUi() ? "修改后的内容会作为新一轮对话发送。" : "Your changes will be sent as a new turn.";
+    }
+
+    function cancelEditMessageLabel() {
+      return isChineseUi() ? "取消" : "Cancel";
+    }
+
+    function messageActionIconSvg(icon) {
+      if (icon === "confirm") {
+        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.5 2.5 6-6"/></svg>';
+      }
+      if (icon === "cancel") {
+        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4 12 12"/><path d="M12 4 4 12"/></svg>';
+      }
+      if (icon === "edit") {
+        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.75V13h1.25L11.9 5.35 10.65 4.1 3 11.75Z"/><path d="m9.95 4.8 1.25 1.25"/><path d="M9.95 4.8 11.1 3.65a1.06 1.06 0 0 1 1.5 0l.75.75a1.06 1.06 0 0 1 0 1.5L12.2 7.05"/></svg>';
+      }
+      if (icon === "regenerate") {
+        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5V2.5h-2.5"/><path d="M13 2.5 9.9 5.6"/><path d="M12.2 8A4.7 4.7 0 1 1 8 3.3c1.1 0 2.15.38 2.95 1.08"/></svg>';
+      }
+      return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="3.2" width="7.3" height="9.3" rx="1.6"/><path d="M3.5 10.8V4.9c0-.88.72-1.6 1.6-1.6H9"/></svg>';
+    }
+
+    function markMessageActionConfirmed(button, label) {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      button.classList.add("is-confirmed");
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      if (button._messageActionTimer) {
+        window.clearTimeout(button._messageActionTimer);
+      }
+      button._messageActionTimer = window.setTimeout(() => {
+        button.classList.remove("is-confirmed");
+        const originalLabel = button.dataset.defaultLabel || "";
+        button.title = originalLabel;
+        button.setAttribute("aria-label", originalLabel);
+        button._messageActionTimer = null;
+      }, 1400);
+    }
+
+    function createMessageActionButton({ label, icon = "copy", onClick }) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "message-action-button";
+      button.dataset.defaultLabel = label;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+
+      const iconShell = document.createElement("span");
+      iconShell.className = "message-action-icon";
+      iconShell.setAttribute("aria-hidden", "true");
+      iconShell.innerHTML = messageActionIconSvg(icon);
+      button.appendChild(iconShell);
+
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void onClick?.(event, button);
+      });
+      return button;
+    }
+
+    function createCopyMessageAction(getText) {
+      return {
+        label: copyMessageActionLabel(),
+        icon: "copy",
+        onClick: async (_event, button) => {
+          try {
+            await copyTextToClipboard(String(getText?.() || "").trim());
+            markMessageActionConfirmed(button, copiedMessageActionLabel());
+          } catch {
+            button.classList.remove("is-confirmed");
+          }
+        },
+      };
+    }
+
+    function renderMessageActions(actionRow, actions) {
+      if (!(actionRow instanceof HTMLElement)) {
+        return;
+      }
+      actionRow.replaceChildren();
+      for (const action of actions || []) {
+        actionRow.appendChild(createMessageActionButton(action));
+      }
+    }
+
+    function resolveMessageActions(actionSpec, context) {
+      if (typeof actionSpec === "function") {
+        return actionSpec(context) || [];
+      }
+      return Array.isArray(actionSpec) ? actionSpec : [];
+    }
+
+    function refreshMessageActions(bubble) {
+      if (!(bubble instanceof HTMLElement)) {
+        return;
+      }
+      const actionRow = bubble._messageActionRow;
+      if (!(actionRow instanceof HTMLElement)) {
+        return;
+      }
+      const actions = resolveMessageActions(bubble._messageActionSpec, {
+        bubble,
+        row: bubble._messageRow,
+        actionRow,
+        messageId: bubble._messageId || "",
+      });
+      renderMessageActions(actionRow, actions);
+    }
+
+    function autoResizeInlineMessageEditor(textarea) {
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        return;
+      }
+      const computed = window.getComputedStyle(textarea);
+      const lineHeight = Number.parseFloat(computed.lineHeight) || 24;
+      const minHeight = Math.max(108, Math.ceil(lineHeight * 3));
+      const maxHeight = 240;
+      textarea.style.height = "0px";
+      const nextHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+      textarea.style.height = `${nextHeight}px`;
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+    }
+
+    function restoreInlineMessageBubble(bubble, text) {
+      if (!(bubble instanceof HTMLElement)) {
+        return;
+      }
+      bubble.classList.remove("is-editing");
+      bubble.removeAttribute("data-editing");
+      bubble.style.width = "";
+      bubble.style.maxWidth = "";
+      setBubbleContent(bubble, text);
+      const row = bubble._messageRow;
+      if (row instanceof HTMLElement) {
+        row.classList.remove("is-editing");
+      }
+      refreshMessageActions(bubble);
+    }
+
+    function cancelInlineMessageEdit({ focus = true } = {}) {
+      const session = state.inlineMessageEdit;
+      if (!session) {
+        return;
+      }
+      restoreInlineMessageBubble(session.bubble, session.originalText);
+      const actionRow = session.actionRow;
+      state.inlineMessageEdit = null;
+      if (focus && actionRow instanceof HTMLElement) {
+        const firstButton = actionRow.querySelector("button");
+        if (firstButton instanceof HTMLButtonElement) {
+          firstButton.focus();
+        }
+      }
+    }
+
+    async function submitInlineMessageEdit() {
+      const session = state.inlineMessageEdit;
+      if (!session) {
+        return;
+      }
+      const nextText = String(session.textarea?.value || "").trim();
+      if (!nextText) {
+        return;
+      }
+      if (nextText === session.originalText) {
+        cancelInlineMessageEdit({ focus: false });
+        return;
+      }
+      if (session.messageId) {
+        state.messageTextOverrides[session.messageId] = nextText;
+      }
+      restoreInlineMessageBubble(session.bubble, nextText);
+      state.inlineMessageEdit = null;
+      await openStream({
+        messageOverride: nextText,
+        preserveComposer: true,
+        skipUserBubble: true,
+      });
+    }
+
+    function startEditingMessage(bubble) {
+      if (!(bubble instanceof HTMLElement)) {
+        return;
+      }
+      const existingSession = state.inlineMessageEdit;
+      if (existingSession?.bubble === bubble) {
+        existingSession.textarea?.focus();
+        return;
+      }
+      if (existingSession) {
+        cancelInlineMessageEdit({ focus: false });
+      }
+
+      const originalText = bubbleRawText(bubble);
+      const bubbleWidth = Math.ceil(bubble.getBoundingClientRect().width);
+      const row = bubble._messageRow;
+      const actionRow = bubble._messageActionRow;
+      bubble.classList.add("is-editing");
+      bubble.dataset.editing = "true";
+      if (bubbleWidth > 0) {
+        bubble.style.width = `${bubbleWidth}px`;
+        bubble.style.maxWidth = `${bubbleWidth}px`;
+      }
+      if (row instanceof HTMLElement) {
+        row.classList.add("is-editing");
+      }
+
+      const editor = document.createElement("div");
+      editor.className = "message-inline-editor";
+
+      const textarea = document.createElement("textarea");
+      textarea.className = "message-inline-editor-input";
+      textarea.value = originalText;
+      textarea.setAttribute("aria-label", editingMessageTitle());
+      textarea.setAttribute("spellcheck", "false");
+      textarea.addEventListener("input", () => {
+        autoResizeInlineMessageEditor(textarea);
+      });
+      textarea.addEventListener("keydown", (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          void submitInlineMessageEdit();
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelInlineMessageEdit();
+        }
+      });
+
+      const hint = document.createElement("div");
+      hint.className = "message-inline-editor-hint";
+      hint.textContent = editingMessageNote();
+
+      editor.appendChild(textarea);
+      editor.appendChild(hint);
+      bubble.replaceChildren(editor);
+      autoResizeInlineMessageEditor(textarea);
+
+      if (actionRow instanceof HTMLElement) {
+        renderMessageActions(actionRow, [
+          {
+            label: sendEditedMessageLabel(),
+            icon: "confirm",
+            onClick: () => submitInlineMessageEdit(),
+          },
+          {
+            label: cancelEditMessageLabel(),
+            icon: "cancel",
+            onClick: () => cancelInlineMessageEdit(),
+          },
+        ]);
+      }
+      state.inlineMessageEdit = {
+        bubble,
+        row,
+        actionRow,
+        textarea,
+        originalText,
+        messageId: bubble._messageId || "",
+        threadId: state.activeThreadId,
+      };
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+
     function autoResizeComposerInput() {
       const input = $("stream-message");
       if (!input) {
@@ -5316,7 +5824,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       return bubble.dataset.rawText || "";
     }
 
-    function createMessageBubble(role, text, meta, tone = "", forceScroll = false) {
+    function createMessageBubble(role, text, meta, tone = "", forceScroll = false, options = {}) {
       removeChatEmptyState();
       const shouldFollow = shouldAutoFollowChat({ forceScroll });
       const row = document.createElement("div");
@@ -5325,16 +5833,44 @@ BRANCH_TREE_HTML = """<!doctype html>
         row.classList.add(tone);
       }
 
+      const stack = document.createElement("div");
+      stack.className = "message-stack";
+
+      const head = document.createElement("div");
+      head.className = "message-head";
+
       const metaLine = document.createElement("div");
       metaLine.className = "message-meta";
       metaLine.textContent = meta;
+      head.appendChild(metaLine);
 
       const bubble = document.createElement("div");
       bubble.className = "message-bubble";
       setBubbleContent(bubble, text);
 
-      row.appendChild(metaLine);
-      row.appendChild(bubble);
+      bubble._messageRow = row;
+      bubble._messageId = String(options.messageId || "");
+      bubble._messageActionSpec = options.actions || null;
+
+      const actions = resolveMessageActions(bubble._messageActionSpec, {
+        bubble,
+        row,
+        messageId: bubble._messageId,
+      }).filter(Boolean);
+      let actionRow = null;
+      if (actions.length) {
+        actionRow = document.createElement("div");
+        actionRow.className = "message-actions";
+        renderMessageActions(actionRow, actions);
+        bubble._messageActionRow = actionRow;
+      }
+
+      stack.appendChild(head);
+      stack.appendChild(bubble);
+      if (actionRow) {
+        stack.appendChild(actionRow);
+      }
+      row.appendChild(stack);
       $("chat-history").appendChild(row);
       if (shouldFollow) {
         scrollChatToBottom();
@@ -5353,6 +5889,9 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
 
     function renderThreadMessages(messages, threadId) {
+      if (state.inlineMessageEdit) {
+        state.inlineMessageEdit = null;
+      }
       const history = $("chat-history");
       history.innerHTML = "";
       clearAgentActivityBubble();
@@ -5362,46 +5901,95 @@ BRANCH_TREE_HTML = """<!doctype html>
       state.chatLastScrollTop = 0;
       let rendered = 0;
       const threadLabel = branchLabelForThread(threadId, state.activeThreadId === threadId ? state.activeBranchMeta : null);
-      for (const message of messages || []) {
+      const items = Array.isArray(messages) ? messages : [];
+      let latestHumanContent = "";
+      for (const message of items) {
         const messageType = String(message.type || "").toLowerCase();
         const content = String(message.content || "").trim();
+        const messageId = String(message.id || "").trim();
+        const displayContent = messageId && state.messageTextOverrides[messageId]
+          ? String(state.messageTextOverrides[messageId] || "").trim()
+          : content;
         if (!content) {
           continue;
         }
         if (messageType === "human") {
-          createMessageBubble("user", content, `You · ${threadLabel}`);
+          latestHumanContent = displayContent;
+          createMessageBubble("user", displayContent, `You · ${threadLabel}`, "", false, {
+            messageId,
+            actions: ({ bubble }) => [
+              {
+                label: editMessageActionLabel(),
+                icon: "edit",
+                onClick: () => startEditingMessage(bubble),
+              },
+              createCopyMessageAction(() => bubbleRawText(bubble)),
+            ],
+          });
           rendered += 1;
           continue;
         }
         if (messageType === "ai") {
-          createMessageBubble("assistant", content, `Focus Agent · ${threadLabel}`);
+          const replyPrompt = latestHumanContent;
+          createMessageBubble("assistant", content, `Focus Agent · ${threadLabel}`, "", false, {
+            messageId,
+            actions: ({ bubble }) => {
+              const nextActions = [createCopyMessageAction(() => bubbleRawText(bubble))];
+              if (replyPrompt) {
+                nextActions.push({
+                  label: regenerateMessageActionLabel(),
+                  icon: "regenerate",
+                  onClick: () => openStream({ messageOverride: replyPrompt, preserveComposer: true }),
+                });
+              }
+              return nextActions;
+            },
+          });
           rendered += 1;
           continue;
         }
         if (messageType === "system") {
-          createMessageBubble("system", content, `${isChineseUi() ? "系统" : "System"} · ${threadLabel}`, "success");
+          createMessageBubble("system", content, `${isChineseUi() ? "系统" : "System"} · ${threadLabel}`, "success", false, {
+            messageId,
+            actions: ({ bubble }) => [createCopyMessageAction(() => bubbleRawText(bubble))],
+          });
           rendered += 1;
           continue;
         }
       }
+      state.lastUserMessage = latestHumanContent;
       if (!rendered) {
+        state.lastUserMessage = "";
         resetChatHistory(threadReadyMessage(threadLabel));
       }
     }
 
-    function beginChatTurn() {
+    function beginChatTurn(message, options = {}) {
       const threadId = state.activeThreadId;
-      const message = $("stream-message").value.trim();
       const threadLabel = branchLabelForThread(threadId, state.activeBranchMeta);
       state.lastUserMessage = message;
       state.currentAssistantBubble = null;
       clearThreadUiState(threadId);
-      createMessageBubble("user", message, `You · ${threadLabel}`, "", true);
+      if (!options.skipUserBubble) {
+        createMessageBubble("user", message, `You · ${threadLabel}`, "", true, {
+          actions: ({ bubble }) => [
+            {
+              label: editMessageActionLabel(),
+              icon: "edit",
+              onClick: () => startEditingMessage(bubble),
+            },
+            createCopyMessageAction(() => bubbleRawText(bubble)),
+          ],
+        });
+      }
       createAgentActivityBubble(`Focus Agent · ${threadLabel}`, threadId);
       state.loadedThreadId = threadId;
     }
 
     async function selectThread(threadId) {
+      if (state.inlineMessageEdit && state.inlineMessageEdit.threadId !== threadId) {
+        cancelInlineMessageEdit({ focus: false });
+      }
       state.activeThreadId = threadId;
       syncDefaultThreadIds();
       renderTree();
@@ -6699,8 +7287,17 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
 
     function syncComposerStreamingControls() {
+      const sendButton = $("open-stream");
       const stopButton = $("stop-stream");
       const stopLabel = $("stop-stream-label");
+      const isStreaming = Boolean(
+        state.abortController &&
+        !state.abortController.signal.aborted &&
+        state.streamingResponseActive
+      );
+      if (sendButton) {
+        sendButton.hidden = isStreaming;
+      }
       if (!stopButton) {
         return;
       }
@@ -6710,11 +7307,8 @@ BRANCH_TREE_HTML = """<!doctype html>
       if (stopLabel) {
         stopLabel.textContent = label;
       }
-      stopButton.disabled = !Boolean(
-        state.abortController &&
-        !state.abortController.signal.aborted &&
-        state.streamingResponseActive
-      );
+      stopButton.hidden = !isStreaming;
+      stopButton.disabled = !isStreaming;
     }
 
     function stopStream() {
@@ -6812,11 +7406,12 @@ BRANCH_TREE_HTML = """<!doctype html>
       }
     }
 
-    async function openStream() {
+    async function openStream(options = {}) {
       let streamThreadId = state.activeThreadId;
       let requestController = null;
       try {
-        const message = $("stream-message").value.trim();
+        const rawMessage = options.messageOverride ?? $("stream-message").value ?? "";
+        const message = String(rawMessage).trim();
         if (!message) {
           return;
         }
@@ -6836,7 +7431,10 @@ BRANCH_TREE_HTML = """<!doctype html>
         streamThreadId = state.activeThreadId;
         updateActiveThreadPill();
         setStatus("connecting", "warn");
-        beginChatTurn();
+        if (state.inlineMessageEdit && options.skipUserBubble !== true) {
+          cancelInlineMessageEdit({ focus: false });
+        }
+        beginChatTurn(message, { skipUserBubble: options.skipUserBubble === true });
 
         const response = await fetch(`${apiBase()}/v1/chat/turns/stream`, {
           method: "POST",
