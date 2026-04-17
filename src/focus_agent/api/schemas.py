@@ -10,6 +10,9 @@ from .contracts import (
     BranchTreeResponse,
     ChatResumeRequest,
     ChatTurnRequest,
+    ConversationListResponse,
+    ConversationSummaryResponse,
+    CreateConversationRequest,
     DemoTokenRequest,
     ForkBranchRequest,
     ModelCatalogResponse,
@@ -18,6 +21,8 @@ from .contracts import (
     PrincipalResponse,
     ThreadStateResponse,
     TokenResponse,
+    UpdateBranchNameRequest,
+    UpdateConversationRequest,
 )
 
 __all__ = [
@@ -26,6 +31,9 @@ __all__ = [
     "BranchTreeResponse",
     "ChatResumeRequest",
     "ChatTurnRequest",
+    "ConversationListResponse",
+    "ConversationSummaryResponse",
+    "CreateConversationRequest",
     "DemoTokenRequest",
     "ForkBranchRequest",
     "ModelCatalogResponse",
@@ -34,4 +42,6 @@ __all__ = [
     "PrincipalResponse",
     "ThreadStateResponse",
     "TokenResponse",
+    "UpdateBranchNameRequest",
+    "UpdateConversationRequest",
 ]

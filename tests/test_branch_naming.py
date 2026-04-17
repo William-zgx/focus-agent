@@ -44,7 +44,7 @@ def test_ai_branch_name_is_generated_from_child_branch_conversation():
 
         def invoke(self, messages):
             self.seen_messages = messages
-            return "Fast Sorting Plan"
+            return "快速排序方案"
 
     fake_model = FakeModel()
     service.proposal_model = fake_model
@@ -61,7 +61,12 @@ def test_ai_branch_name_is_generated_from_child_branch_conversation():
         branch_role=BranchRole.DEEP_DIVE,
     )
 
-    assert branch_name == "Fast Sorting Plan"
+    assert branch_name == "快速排序方案"
     assert fake_model.seen_messages is not None
-    assert "Recent branch conversation" in fake_model.seen_messages[1].content
+    assert "Use Chinese to match the conversation language." in fake_model.seen_messages[0].content
+    assert "最近对话" in fake_model.seen_messages[1].content
     assert "快速排序" in fake_model.seen_messages[1].content
+
+
+def test_fallback_branch_name_uses_chinese_role_name_for_chinese_session():
+    assert BranchService._fallback_branch_name("", BranchRole.VERIFY, language="zh") == "验证"

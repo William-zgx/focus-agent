@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from ..core.branching import BranchRecord, BranchStatus, MergeDecision, MergeProposal
+from ..core.types import ConversationRecord
 
 
 class BranchRepository(ABC):
@@ -56,4 +57,37 @@ class BranchRepository(ABC):
 
     @abstractmethod
     def get_thread_owner(self, *, thread_id: str) -> str | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_conversation(self, record: ConversationRecord) -> ConversationRecord:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_conversation(self, root_thread_id: str) -> ConversationRecord:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_conversations(self, *, owner_user_id: str) -> list[ConversationRecord]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_conversation_title(
+        self,
+        *,
+        root_thread_id: str,
+        owner_user_id: str,
+        title: str,
+        title_pending_ai: bool | None = None,
+    ) -> ConversationRecord:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_conversation_archive_state(
+        self,
+        *,
+        root_thread_id: str,
+        owner_user_id: str,
+        is_archived: bool,
+    ) -> ConversationRecord:
         raise NotImplementedError

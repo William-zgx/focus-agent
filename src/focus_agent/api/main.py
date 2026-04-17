@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from focus_agent.core.request_context import RequestContext
+from focus_agent.core.types import ConversationRecord
 from focus_agent.security.tokens import Principal, create_access_token
 from focus_agent.config import Settings
 from focus_agent.core.branching import MergeDecision
@@ -20,6 +22,9 @@ from .contracts import (
     BranchTreeResponse,
     ChatResumeRequest,
     ChatTurnRequest,
+    ConversationListResponse,
+    ConversationSummaryResponse,
+    CreateConversationRequest,
     DemoTokenRequest,
     ForkBranchRequest,
     ModelCatalogResponse,
@@ -27,9 +32,44 @@ from .contracts import (
     PrincipalResponse,
     ThreadStateResponse,
     TokenResponse,
+    UpdateBranchNameRequest,
+    UpdateConversationRequest,
 )
 from .deps import get_app_runtime, get_chat_service, get_current_principal
 from focus_agent.model_registry import build_model_catalog
+
+
+def _conversation_response(record: ConversationRecord) -> ConversationSummaryResponse:
+    return ConversationSummaryResponse(
+        root_thread_id=record.root_thread_id,
+        title=record.title,
+        is_archived=record.is_archived,
+        archived_at=record.archived_at,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def _list_or_bootstrap_conversations(*, runtime: AppRuntime, user_id: str) -> list[ConversationRecord]:
+    conversations = runtime.repo.list_conversations(owner_user_id=user_id)
+    if conversations:
+        return conversations
+
+    default_root_thread_id = f"{user_id}-main"
+    runtime.repo.ensure_thread_owner(
+        thread_id=default_root_thread_id,
+        root_thread_id=default_root_thread_id,
+        owner_user_id=user_id,
+    )
+    runtime.repo.create_conversation(
+        ConversationRecord(
+            root_thread_id=default_root_thread_id,
+            owner_user_id=user_id,
+            title="Main",
+            title_pending_ai=True,
+        )
+    )
+    return runtime.repo.list_conversations(owner_user_id=user_id)
 
 
 @asynccontextmanager
@@ -122,6 +162,98 @@ def create_app() -> FastAPI:
                 for item in build_model_catalog(runtime.settings)
             ],
         )
+
+    @app.get('/v1/conversations', response_model=ConversationListResponse)
+    def list_conversations(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> ConversationListResponse:
+        conversations = _list_or_bootstrap_conversations(runtime=runtime, user_id=principal.user_id)
+        return ConversationListResponse(
+            conversations=[_conversation_response(item) for item in conversations],
+        )
+
+    @app.post('/v1/conversations', response_model=ConversationSummaryResponse)
+    def create_conversation(
+        payload: CreateConversationRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> ConversationSummaryResponse:
+        existing = _list_or_bootstrap_conversations(runtime=runtime, user_id=principal.user_id)
+        requested_title = str(payload.title or '').strip()
+        title = requested_title or f"Conversation {len(existing) + 1}"
+        root_thread_id = f"{principal.user_id}-{uuid4()}"
+        runtime.repo.ensure_thread_owner(
+            thread_id=root_thread_id,
+            root_thread_id=root_thread_id,
+            owner_user_id=principal.user_id,
+        )
+        record = runtime.repo.create_conversation(
+            ConversationRecord(
+                root_thread_id=root_thread_id,
+                owner_user_id=principal.user_id,
+                title=title,
+                title_pending_ai=not bool(requested_title),
+            )
+        )
+        return _conversation_response(record)
+
+    @app.patch('/v1/conversations/{root_thread_id}', response_model=ConversationSummaryResponse)
+    def update_conversation(
+        root_thread_id: str,
+        payload: UpdateConversationRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> ConversationSummaryResponse:
+        title = str(payload.title or '').strip()
+        if not title:
+            raise HTTPException(status_code=400, detail='Conversation title cannot be empty.')
+        try:
+            record = runtime.repo.update_conversation_title(
+                root_thread_id=root_thread_id,
+                owner_user_id=principal.user_id,
+                title=title,
+                title_pending_ai=False,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _conversation_response(record)
+
+    @app.post('/v1/conversations/{root_thread_id}/archive', response_model=ConversationSummaryResponse)
+    def archive_conversation(
+        root_thread_id: str,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> ConversationSummaryResponse:
+        try:
+            record = runtime.branch_service.archive_conversation(
+                root_thread_id=root_thread_id,
+                user_id=principal.user_id,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _conversation_response(record)
+
+    @app.post('/v1/conversations/{root_thread_id}/activate', response_model=ConversationSummaryResponse)
+    def activate_conversation(
+        root_thread_id: str,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> ConversationSummaryResponse:
+        try:
+            record = runtime.branch_service.activate_conversation(
+                root_thread_id=root_thread_id,
+                user_id=principal.user_id,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _conversation_response(record)
 
     @app.post('/v1/chat/turns', response_model=ThreadStateResponse)
     def post_chat_turn(
@@ -230,6 +362,28 @@ def create_app() -> FastAPI:
             record = runtime.branch_service.archive_branch(
                 child_thread_id=child_thread_id,
                 user_id=principal.user_id,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return record.model_dump(mode='json')
+
+    @app.patch('/v1/branches/{child_thread_id}')
+    def rename_branch_route(
+        child_thread_id: str,
+        payload: UpdateBranchNameRequest,
+        runtime: AppRuntime = Depends(get_app_runtime),
+        principal: Principal = Depends(get_current_principal),
+    ):
+        branch_name = str(payload.branch_name or '').strip()
+        if not branch_name:
+            raise HTTPException(status_code=400, detail='Branch name cannot be empty.')
+        try:
+            record = runtime.branch_service.rename_branch(
+                child_thread_id=child_thread_id,
+                user_id=principal.user_id,
+                branch_name=branch_name,
             )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc

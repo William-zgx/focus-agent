@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from focus_agent.core.types import ConversationRecord
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 
@@ -110,3 +111,51 @@ def test_thread_access_rejects_other_user(tmp_path: Path):
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="user-1")
     with pytest.raises(PermissionError):
         repo.assert_thread_owner(thread_id="root-1", owner_user_id="user-2")
+
+
+def test_conversation_roundtrip_and_backfill(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="user-1-main", root_thread_id="user-1-main", owner_user_id="user-1")
+    repo.ensure_thread_owner(thread_id="root-2", root_thread_id="root-2", owner_user_id="user-1")
+
+    created = repo.create_conversation(
+        ConversationRecord(
+            root_thread_id="root-2",
+            owner_user_id="user-1",
+            title="Conversation 2",
+            title_pending_ai=True,
+            is_archived=False,
+        )
+    )
+
+    assert created.root_thread_id == "root-2"
+    assert created.title == "Conversation 2"
+    assert created.title_pending_ai is True
+    assert created.is_archived is False
+    assert created.archived_at is None
+
+    listed = repo.list_conversations(owner_user_id="user-1")
+    titles_by_id = {item.root_thread_id: item.title for item in listed}
+
+    assert titles_by_id["root-2"] == "Conversation 2"
+    assert titles_by_id["user-1-main"] == "Main"
+
+    archived = repo.update_conversation_archive_state(
+        root_thread_id="root-2",
+        owner_user_id="user-1",
+        is_archived=True,
+    )
+
+    assert archived.is_archived is True
+    assert archived.archived_at is not None
+
+    renamed = repo.update_conversation_title(
+        root_thread_id="root-2",
+        owner_user_id="user-1",
+        title="Renamed conversation",
+        title_pending_ai=False,
+    )
+
+    assert renamed.title == "Renamed conversation"
+    assert renamed.title_pending_ai is False
+    assert renamed.is_archived is True

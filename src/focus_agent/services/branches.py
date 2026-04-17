@@ -22,7 +22,7 @@ from ..core.branching import (
 )
 from ..core.merge_review import generate_merge_proposal
 from ..core.request_context import RequestContext
-from ..core.types import FindingItem
+from ..core.types import ConversationRecord, FindingItem
 from ..memory import MemoryWriter
 from ..model_registry import create_chat_model
 from ..repositories.branch_repository import BranchRepository
@@ -40,6 +40,13 @@ class BranchService:
         BranchRole.DEEP_DIVE: "Deep Dive",
         BranchRole.VERIFY: "Verification",
         BranchRole.WRITEUP: "Writeup",
+    }
+    _ROLE_FALLBACK_NAMES_ZH = {
+        BranchRole.MAIN: "主线",
+        BranchRole.EXPLORE_ALTERNATIVES: "备选方案",
+        BranchRole.DEEP_DIVE: "深入分析",
+        BranchRole.VERIFY: "验证",
+        BranchRole.WRITEUP: "整理",
     }
     _BRANCH_NAME_STOPWORDS = {
         "a",
@@ -263,6 +270,23 @@ class BranchService:
             return ""
         return str(content).strip()
 
+    @staticmethod
+    def _detect_naming_language(raw_text: str) -> str:
+        text = str(raw_text or "").strip()
+        if not text:
+            return "en"
+        cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
+        latin_count = len(re.findall(r"[A-Za-z]", text))
+        if cjk_count >= max(2, latin_count):
+            return "zh"
+        return "en"
+
+    @classmethod
+    def _fallback_role_name(cls, *, branch_role: BranchRole, language: str) -> str:
+        if language == "zh":
+            return cls._ROLE_FALLBACK_NAMES_ZH[branch_role]
+        return cls._ROLE_FALLBACK_NAMES[branch_role]
+
     @classmethod
     def _sanitize_branch_name(cls, value: str | None, *, branch_role: BranchRole) -> str:
         text = str(value or "").strip()
@@ -281,7 +305,7 @@ class BranchService:
         return (text[:36].strip() or cls._ROLE_FALLBACK_NAMES[branch_role]).strip()
 
     @classmethod
-    def _fallback_branch_name(cls, raw_text: str, branch_role: BranchRole) -> str:
+    def _fallback_branch_name(cls, raw_text: str, branch_role: BranchRole, *, language: str) -> str:
         cjk_chunks = re.findall(r"[\u4e00-\u9fff]{2,}", raw_text or "")
         if cjk_chunks:
             return cls._sanitize_branch_name("".join(cjk_chunks), branch_role=branch_role)
@@ -294,12 +318,35 @@ class BranchService:
         if meaningful:
             label = " ".join(word.capitalize() for word in meaningful[:4])
             return cls._sanitize_branch_name(label, branch_role=branch_role)
-        return cls._ROLE_FALLBACK_NAMES[branch_role]
+        return cls._fallback_role_name(branch_role=branch_role, language=language)
 
-    def _collect_branch_name_context(self, *, thread_values: dict, name_source: str | None = None) -> str:
+    def _collect_branch_name_seed(self, *, thread_values: dict, name_source: str | None = None) -> str:
+        parts: list[str] = []
+        if name_source and name_source.strip():
+            parts.append(name_source.strip())
+        summary = str(thread_values.get("rolling_summary") or "").strip()
+        if summary:
+            parts.append(summary)
+        messages = thread_values.get("messages") or []
+        for message in reversed(messages):
+            content = self._message_content_to_text(getattr(message, "content", ""))
+            if content:
+                parts.append(content)
+            if len(parts) >= 6:
+                break
+        return "\n".join(parts).strip()
+
+    def _collect_branch_name_context(
+        self,
+        *,
+        thread_values: dict,
+        name_source: str | None = None,
+        language: str = "en",
+    ) -> str:
         sections: list[str] = []
         if name_source and name_source.strip():
-            sections.append(f"Draft focus:\n{name_source.strip()}")
+            heading = "命名线索" if language == "zh" else "Draft focus"
+            sections.append(f"{heading}:\n{name_source.strip()}")
         messages = thread_values.get("messages") or []
         recent_messages: list[str] = []
         for message in reversed(messages):
@@ -307,28 +354,37 @@ class BranchService:
             content = self._message_content_to_text(getattr(message, "content", ""))
             if not content:
                 continue
-            speaker = "User" if message_type == "human" else "Assistant" if message_type == "ai" else message_type.title()
+            if language == "zh":
+                speaker = "用户" if message_type == "human" else "助手" if message_type == "ai" else "系统"
+            else:
+                speaker = "User" if message_type == "human" else "Assistant" if message_type == "ai" else message_type.title()
             recent_messages.append(f"{speaker}: {content}")
             if len(recent_messages) == 4:
                 break
         if recent_messages:
-            sections.append("Recent branch conversation:\n" + "\n".join(reversed(recent_messages)))
+            heading = "最近对话" if language == "zh" else "Recent branch conversation"
+            sections.append(f"{heading}:\n" + "\n".join(reversed(recent_messages)))
         summary = str(thread_values.get("rolling_summary") or "").strip()
         if summary:
-            sections.append(f"Branch summary:\n{summary[:400]}")
+            heading = "对话摘要" if language == "zh" else "Branch summary"
+            sections.append(f"{heading}:\n{summary[:400]}")
         return "\n\n".join(section for section in sections if section.strip())
 
     def _generate_branch_name(self, *, thread_values: dict, branch_role: BranchRole) -> str:
-        context = self._collect_branch_name_context(thread_values=thread_values)
+        seed_text = self._collect_branch_name_seed(thread_values=thread_values)
+        language = self._detect_naming_language(seed_text)
+        context = self._collect_branch_name_context(thread_values=thread_values, language=language)
         model = getattr(self, "proposal_model", None)
         if model and context:
             try:
+                language_label = "Chinese" if language == "zh" else "English"
                 response = model.invoke(
                     [
                         SystemMessage(
                             content=(
                                 "Generate a concise branch name for a research assistant. "
-                                "Return only the name, 2 to 4 words, with no quotes or punctuation unless a hyphen is necessary."
+                                f"Return only the name, 2 to 4 words, with no quotes or punctuation unless a hyphen is necessary. "
+                                f"Use {language_label} to match the conversation language."
                             )
                         ),
                         HumanMessage(
@@ -344,7 +400,7 @@ class BranchService:
                     return self._sanitize_branch_name(candidate, branch_role=branch_role)
             except Exception:
                 pass
-        return self._fallback_branch_name(context, branch_role)
+        return self._fallback_branch_name(seed_text or context, branch_role, language=language)
 
     def _resolve_branch_name(
         self,
@@ -372,6 +428,9 @@ class BranchService:
             return self._sanitize_branch_name(preferred_name, branch_role=branch_role)
         del parent_values, name_source
         return self._DEFAULT_PENDING_BRANCH_NAME
+
+    def _generate_conversation_name(self, *, thread_values: dict) -> str:
+        return self._generate_branch_name(thread_values=thread_values, branch_role=BranchRole.MAIN)
 
     def _derive_root_thread_id(self, parent_thread_id: str, parent_state: dict) -> str:
         meta = parent_state.get('branch_meta') or {}
@@ -628,6 +687,85 @@ class BranchService:
         except Exception:
             return None
 
+    def rename_branch(
+        self,
+        *,
+        child_thread_id: str,
+        user_id: str,
+        branch_name: str,
+    ) -> BranchRecord:
+        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
+        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
+        next_name = self._sanitize_branch_name(branch_name, branch_role=branch_record.branch_role)
+        self.repo.update_branch_name(branch_record.branch_id, next_name)
+        child_config = {'configurable': {'thread_id': child_thread_id}}
+        snapshot = self.graph.get_state(child_config)
+        values = deepcopy(snapshot.values)
+        updated_record = branch_record.model_copy(update={'branch_name': next_name})
+        updated_meta = self._branch_meta_payload_from_record(
+            updated_record,
+            existing_meta=dict(values.get('branch_meta') or {}),
+        )
+        updated_meta['branch_name_pending_ai'] = False
+        self.graph.update_state(
+            child_config,
+            {'branch_meta': updated_meta},
+            as_node='bootstrap_turn',
+        )
+        return updated_record
+
+    def refresh_conversation_title_after_first_turn(
+        self,
+        *,
+        root_thread_id: str,
+        user_id: str,
+    ) -> ConversationRecord | None:
+        try:
+            self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
+            record = self.repo.get_conversation(root_thread_id)
+            if not record.title_pending_ai:
+                return None
+            snapshot = self.graph.get_state({'configurable': {'thread_id': root_thread_id}})
+            values = deepcopy(getattr(snapshot, 'values', {}) or {})
+            generated_name = self._generate_conversation_name(thread_values=values)
+            next_title = self._sanitize_branch_name(generated_name, branch_role=BranchRole.MAIN)
+            return self.repo.update_conversation_title(
+                root_thread_id=root_thread_id,
+                owner_user_id=user_id,
+                title=next_title,
+                title_pending_ai=False,
+            )
+        except Exception:
+            return None
+
+    def _set_conversation_archive_state(
+        self,
+        *,
+        root_thread_id: str,
+        user_id: str,
+        is_archived: bool,
+    ) -> ConversationRecord:
+        self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
+        return self.repo.update_conversation_archive_state(
+            root_thread_id=root_thread_id,
+            owner_user_id=user_id,
+            is_archived=is_archived,
+        )
+
+    def archive_conversation(self, *, root_thread_id: str, user_id: str) -> ConversationRecord:
+        return self._set_conversation_archive_state(
+            root_thread_id=root_thread_id,
+            user_id=user_id,
+            is_archived=True,
+        )
+
+    def activate_conversation(self, *, root_thread_id: str, user_id: str) -> ConversationRecord:
+        return self._set_conversation_archive_state(
+            root_thread_id=root_thread_id,
+            user_id=user_id,
+            is_archived=False,
+        )
+
     def prepare_merge_proposal(self, *, child_thread_id: str, user_id: str) -> MergeProposal:
         self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
         child_config = {'configurable': {'thread_id': child_thread_id}}
@@ -813,6 +951,11 @@ class BranchService:
     def get_branch_tree(self, *, root_thread_id: str, user_id: str) -> BranchTreeNode:
         self._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
         records = self.repo.list_by_root_thread_id(root_thread_id)
+        try:
+            conversation = self.repo.get_conversation(root_thread_id)
+            root_branch_name = conversation.title
+        except Exception:
+            root_branch_name = 'main'
         by_parent: dict[str, list[BranchRecord]] = defaultdict(list)
         for record in records:
             if record.is_archived:
@@ -822,7 +965,7 @@ class BranchService:
         return BranchTreeNode(
             thread_id=root_thread_id,
             root_thread_id=root_thread_id,
-            branch_name='main',
+            branch_name=root_branch_name,
             branch_role=BranchRole.MAIN,
             branch_status=BranchStatus.ACTIVE,
             is_archived=False,

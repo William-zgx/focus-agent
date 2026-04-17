@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from ..core.branching import BranchRecord, BranchStatus, MergeDecision, MergeProposal
+from ..core.types import ConversationRecord
 from .branch_repository import BranchRepository
 
 
@@ -61,6 +62,27 @@ class SQLiteBranchRepository(BranchRepository):
                 """
             )
             conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    root_thread_id TEXT PRIMARY KEY,
+                    owner_user_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    title_pending_ai INTEGER NOT NULL DEFAULT 0,
+                    is_archived INTEGER NOT NULL DEFAULT 0,
+                    archived_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conversation_columns = {row['name'] for row in conn.execute('PRAGMA table_info(conversations)').fetchall()}
+            if 'title_pending_ai' not in conversation_columns:
+                conn.execute("ALTER TABLE conversations ADD COLUMN title_pending_ai INTEGER NOT NULL DEFAULT 0")
+            if 'is_archived' not in conversation_columns:
+                conn.execute("ALTER TABLE conversations ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+            if 'archived_at' not in conversation_columns:
+                conn.execute("ALTER TABLE conversations ADD COLUMN archived_at TEXT")
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_branches_root_thread ON branches(root_thread_id)"
             )
             conn.execute(
@@ -68,6 +90,9 @@ class SQLiteBranchRepository(BranchRepository):
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_thread_access_root_thread ON thread_access(root_thread_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_owner_created ON conversations(owner_user_id, created_at DESC)"
             )
             conn.commit()
 
@@ -91,6 +116,53 @@ class SQLiteBranchRepository(BranchRepository):
             merge_proposal=json.loads(row['merge_proposal_json']) if row['merge_proposal_json'] else None,
             merge_decision=json.loads(row['merge_decision_json']) if row['merge_decision_json'] else None,
         )
+
+    @staticmethod
+    def _row_to_conversation(row: sqlite3.Row) -> ConversationRecord:
+        return ConversationRecord(
+            root_thread_id=row['root_thread_id'],
+            owner_user_id=row['owner_user_id'],
+            title=row['title'],
+            title_pending_ai=bool(row['title_pending_ai']),
+            is_archived=bool(row['is_archived']),
+            archived_at=row['archived_at'],
+            created_at=row['created_at'],
+            updated_at=row['updated_at'],
+        )
+
+    @staticmethod
+    def _default_conversation_title(root_thread_id: str) -> str:
+        return 'Main' if root_thread_id.endswith('-main') else root_thread_id
+
+    def _backfill_conversations(self, *, owner_user_id: str) -> None:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT ta.root_thread_id
+                FROM thread_access ta
+                LEFT JOIN conversations c ON c.root_thread_id = ta.root_thread_id
+                WHERE ta.owner_user_id = ?
+                  AND ta.thread_id = ta.root_thread_id
+                  AND c.root_thread_id IS NULL
+                ORDER BY ta.created_at DESC, ta.root_thread_id DESC
+                """,
+                (owner_user_id,),
+            ).fetchall()
+            for row in rows:
+                root_thread_id = str(row['root_thread_id'])
+                conn.execute(
+                    """
+                    INSERT INTO conversations (root_thread_id, owner_user_id, title, title_pending_ai, is_archived, archived_at)
+                    VALUES (?, ?, ?, ?, 0, NULL)
+                    """,
+                    (
+                        root_thread_id,
+                        owner_user_id,
+                        self._default_conversation_title(root_thread_id),
+                        1,
+                    ),
+                )
+            conn.commit()
 
     def create(self, record: BranchRecord) -> None:
         with self._connect() as conn:
@@ -231,3 +303,114 @@ class SQLiteBranchRepository(BranchRepository):
                 'SELECT owner_user_id FROM thread_access WHERE thread_id = ?', (thread_id,)
             ).fetchone()
         return None if row is None else str(row['owner_user_id'])
+
+    def create_conversation(self, record: ConversationRecord) -> ConversationRecord:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO conversations (root_thread_id, owner_user_id, title, title_pending_ai, is_archived, archived_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.root_thread_id,
+                    record.owner_user_id,
+                    record.title,
+                    int(record.title_pending_ai),
+                    int(record.is_archived),
+                    record.archived_at,
+                ),
+            )
+            conn.commit()
+        return self.get_conversation(record.root_thread_id)
+
+    def get_conversation(self, root_thread_id: str) -> ConversationRecord:
+        with self._connect() as conn:
+            row = conn.execute(
+                'SELECT * FROM conversations WHERE root_thread_id = ?',
+                (root_thread_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f'Unknown root_thread_id: {root_thread_id}')
+        return self._row_to_conversation(row)
+
+    def list_conversations(self, *, owner_user_id: str) -> list[ConversationRecord]:
+        self._backfill_conversations(owner_user_id=owner_user_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM conversations
+                WHERE owner_user_id = ?
+                ORDER BY is_archived ASC, created_at DESC, root_thread_id DESC
+                """,
+                (owner_user_id,),
+            ).fetchall()
+        return [self._row_to_conversation(row) for row in rows]
+
+    def update_conversation_title(
+        self,
+        *,
+        root_thread_id: str,
+        owner_user_id: str,
+        title: str,
+        title_pending_ai: bool | None = None,
+    ) -> ConversationRecord:
+        self._backfill_conversations(owner_user_id=owner_user_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                'SELECT owner_user_id FROM conversations WHERE root_thread_id = ?',
+                (root_thread_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f'Unknown root_thread_id: {root_thread_id}')
+            if str(row['owner_user_id']) != owner_user_id:
+                raise PermissionError(f'User {owner_user_id} cannot update conversation {root_thread_id}.')
+            if title_pending_ai is None:
+                conn.execute(
+                    """
+                    UPDATE conversations
+                    SET title = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE root_thread_id = ?
+                    """,
+                    (title, root_thread_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE conversations
+                    SET title = ?, title_pending_ai = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE root_thread_id = ?
+                    """,
+                    (title, int(title_pending_ai), root_thread_id),
+                )
+            conn.commit()
+        return self.get_conversation(root_thread_id)
+
+    def update_conversation_archive_state(
+        self,
+        *,
+        root_thread_id: str,
+        owner_user_id: str,
+        is_archived: bool,
+    ) -> ConversationRecord:
+        self._backfill_conversations(owner_user_id=owner_user_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                'SELECT owner_user_id FROM conversations WHERE root_thread_id = ?',
+                (root_thread_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f'Unknown root_thread_id: {root_thread_id}')
+            if str(row['owner_user_id']) != owner_user_id:
+                raise PermissionError(f'User {owner_user_id} cannot update conversation {root_thread_id}.')
+            conn.execute(
+                """
+                UPDATE conversations
+                SET is_archived = ?,
+                    archived_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE root_thread_id = ?
+                """,
+                (int(is_archived), int(is_archived), root_thread_id),
+            )
+            conn.commit()
+        return self.get_conversation(root_thread_id)

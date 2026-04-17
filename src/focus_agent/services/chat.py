@@ -416,7 +416,16 @@ class ChatService:
         branch_meta: BranchMeta | None,
         kind: str,
     ) -> None:
-        if kind != 'chat.turn' or branch_meta is None:
+        if kind != 'chat.turn':
+            return
+        if branch_meta is None:
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self.runtime.branch_service.refresh_conversation_title_after_first_turn,
+                    root_thread_id=thread_id,
+                    user_id=user_id,
+                )
+            )
             return
         asyncio.create_task(
             asyncio.to_thread(

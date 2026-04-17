@@ -1,6 +1,15 @@
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
 from focus_agent.api.main import create_app
-from focus_agent.api.schemas import BranchTreeResponse, ForkBranchRequest, ModelCatalogResponse
+from focus_agent.api.schemas import (
+    BranchTreeResponse,
+    ConversationListResponse,
+    ConversationSummaryResponse,
+    CreateConversationRequest,
+    ForkBranchRequest,
+    ModelCatalogResponse,
+    UpdateBranchNameRequest,
+    UpdateConversationRequest,
+)
 from focus_agent.core.branching import BranchRole, BranchStatus, BranchTreeNode
 
 
@@ -83,6 +92,29 @@ def test_model_catalog_response_shape():
     assert dumped["models"][0]["default_thinking_enabled"] is True
 
 
+def test_conversation_contract_shapes():
+    created = ConversationSummaryResponse(
+        root_thread_id="root-1",
+        title="Conversation 1",
+        is_archived=False,
+        created_at="2026-04-17 10:00:00",
+        updated_at="2026-04-17 10:05:00",
+    )
+    listing = ConversationListResponse(conversations=[created])
+    request = CreateConversationRequest()
+    update = UpdateConversationRequest(title="Renamed")
+    rename_branch = UpdateBranchNameRequest(branch_name="Renamed node")
+
+    dumped = listing.model_dump(mode="json")
+
+    assert dumped["conversations"][0]["root_thread_id"] == "root-1"
+    assert dumped["conversations"][0]["title"] == "Conversation 1"
+    assert dumped["conversations"][0]["is_archived"] is False
+    assert request.title is None
+    assert update.title == "Renamed"
+    assert rename_branch.branch_name == "Renamed node"
+
+
 def test_apply_merge_decision_request_allows_proposal_overrides():
     payload = ApplyMergeDecisionRequest.model_validate(
         {
@@ -106,5 +138,10 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
 
     route_paths = {route.path for route in app.routes}
 
+    assert "/v1/conversations" in route_paths
+    assert "/v1/conversations/{root_thread_id}" in route_paths
+    assert "/v1/conversations/{root_thread_id}/archive" in route_paths
+    assert "/v1/conversations/{root_thread_id}/activate" in route_paths
+    assert "/v1/branches/{child_thread_id}" in route_paths
     assert "/v1/skills" not in route_paths
     assert "/v1/skills/{skill_id}" not in route_paths

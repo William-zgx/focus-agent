@@ -350,9 +350,70 @@ BRANCH_TREE_HTML = """<!doctype html>
     .chat-header-copy {
       display:flex;
       align-items:center;
+      gap:12px;
       min-width:auto;
       flex:0 0 auto;
       max-width:none;
+    }
+    .conversation-switcher {
+      position:relative;
+      display:flex;
+      align-items:center;
+      min-width:220px;
+      max-width:min(360px, 38vw);
+      flex:0 1 320px;
+    }
+    .conversation-switcher::after {
+      content:"";
+      position:absolute;
+      right:14px;
+      width:9px;
+      height:9px;
+      border-right:1.8px solid currentColor;
+      border-bottom:1.8px solid currentColor;
+      transform:translateY(-2px) rotate(45deg);
+      color:color-mix(in srgb, var(--text) 64%, transparent);
+      pointer-events:none;
+    }
+    .conversation-select {
+      width:100%;
+      min-width:0;
+      appearance:none;
+      border-radius:14px;
+      border:1px solid color-mix(in srgb, var(--border) 76%, transparent);
+      background:linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 94%, transparent), color-mix(in srgb, var(--panel) 94%, transparent));
+      color:var(--text);
+      padding:10px 40px 10px 14px;
+      font-size:13px;
+      font-weight:700;
+      letter-spacing:.01em;
+      line-height:1.2;
+      box-shadow:0 10px 24px rgba(4,10,22,.08);
+      transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      cursor:pointer;
+    }
+    .conversation-select:hover {
+      border-color:color-mix(in srgb, var(--accent) 34%, var(--border) 66%);
+      box-shadow:0 14px 28px rgba(4,10,22,.12);
+      transform:translateY(-1px);
+    }
+    .conversation-select:focus-visible {
+      outline:none;
+      border-color:color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
+      box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+    .conversation-select:disabled {
+      cursor:wait;
+      opacity:.72;
+      transform:none;
+      box-shadow:none;
+    }
+    .conversation-rename-button,
+    .conversation-archive-button {
+      width:40px;
+      min-width:40px;
+      padding:0;
+      justify-content:center;
     }
     .chat-brand-lockup {
       gap:0;
@@ -469,7 +530,8 @@ BRANCH_TREE_HTML = """<!doctype html>
       font-size:12px;
       font-weight:600;
       line-height:1.35;
-      white-space:nowrap;
+      white-space:pre-line;
+      text-align:left;
       pointer-events:none;
       opacity:0;
       z-index:260;
@@ -669,6 +731,16 @@ BRANCH_TREE_HTML = """<!doctype html>
       background:color-mix(in srgb, var(--panel-3) 74%, transparent);
       border-color:color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
       color:var(--text);
+    }
+    .message-action-button:disabled,
+    .message-action-button:disabled:hover {
+      opacity:.5;
+      cursor:not-allowed;
+      transform:none;
+      box-shadow:none;
+      background:color-mix(in srgb, var(--panel-2) 82%, transparent);
+      border-color:color-mix(in srgb, var(--border) 78%, transparent);
+      color:var(--muted);
     }
     .message-action-button.is-confirmed {
       color:var(--success);
@@ -1123,6 +1195,20 @@ BRANCH_TREE_HTML = """<!doctype html>
         linear-gradient(180deg, color-mix(in srgb, var(--panel) 82%, transparent), color-mix(in srgb, var(--panel-2) 98%, transparent)),
         radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 18%, transparent), transparent 54%);
     }
+    .composer-input-shell.is-readonly {
+      border-color:color-mix(in srgb, var(--border) 82%, transparent);
+      box-shadow:none;
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--panel) 90%, transparent), color-mix(in srgb, var(--panel-2) 90%, transparent)),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--muted) 10%, transparent), transparent 56%);
+    }
+    .composer-input-shell.is-readonly:focus-within {
+      border-color:color-mix(in srgb, var(--border) 82%, transparent);
+      box-shadow:none;
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--panel) 90%, transparent), color-mix(in srgb, var(--panel-2) 90%, transparent)),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--muted) 10%, transparent), transparent 56%);
+    }
     .composer-input-row {
       display:flex;
       align-items:stretch;
@@ -1498,6 +1584,10 @@ BRANCH_TREE_HTML = """<!doctype html>
       resize:none;
       line-height:1.4;
       font-size:12px;
+    }
+    .composer-input-shell textarea[readonly] {
+      cursor:not-allowed;
+      opacity:.72;
     }
     .composer-input-shell textarea:focus {
       outline:none;
@@ -2035,32 +2125,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       box-shadow:0 8px 18px rgba(4,10,22,.18);
     }
     .hover-tip {
-      position:absolute;
-      top:calc(100% + 8px);
-      left:50%;
-      width:min(250px, 70vw);
-      padding:12px 14px;
-      border-radius:16px;
-      background:color-mix(in srgb, var(--panel) 92%, transparent);
-      border:1px solid rgba(94,194,255,.22);
-      color:#d7e7ff;
-      font-size:12px;
-      line-height:1.55;
-      box-shadow:var(--shadow);
-      opacity:0;
-      pointer-events:none;
-      transform:translate(-50%, -4px);
-      transition:opacity .16s ease, transform .16s ease;
-      z-index:10;
-    }
-    .tree-help:hover .hover-tip,
-    .tree-help:focus-within .hover-tip {
-      opacity:1;
-      transform:translate(-50%, 0);
-    }
-    :root[data-theme="light"] .hover-tip {
-      color:#1d3557;
-      border-color:rgba(15,98,254,.2);
+      display:none;
     }
     .tree-actions {
       display:flex;
@@ -2790,6 +2855,10 @@ BRANCH_TREE_HTML = """<!doctype html>
       .chat-header-top {
         grid-template-columns:auto minmax(0, 1fr);
       }
+      .conversation-switcher {
+        min-width:160px;
+        max-width:none;
+      }
       .chat-header-actions {
         justify-content:flex-end;
       }
@@ -3000,6 +3069,38 @@ BRANCH_TREE_HTML = """<!doctype html>
                 </svg>
               </span>
             </button>
+            <label class="conversation-switcher toolbar-tooltip-host" data-tooltip="Switch or create a conversation">
+              <span class="sr-only">Conversation</span>
+              <select id="conversation-select" class="conversation-select" aria-label="Conversation">
+                <option>Loading conversations...</option>
+              </select>
+            </label>
+            <button
+              id="conversation-rename"
+              type="button"
+              class="chat-toolbar-button conversation-rename-button toolbar-tooltip-host"
+              data-tooltip="Rename conversation"
+              aria-label="Rename conversation"
+              title="Rename conversation"
+            >
+              <span class="toolbar-icon" aria-hidden="true">✎</span>
+            </button>
+            <button
+              id="conversation-archive"
+              type="button"
+              class="chat-toolbar-button conversation-archive-button toolbar-tooltip-host"
+              data-tooltip="Archive conversation"
+              aria-label="Archive conversation"
+              title="Archive conversation"
+            >
+              <span class="toolbar-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20">
+                  <path d="M3.5 4.5h13v3h-13z" fill="currentColor"></path>
+                  <path d="M5.5 8.5h9v7h-9z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
+                  <path d="M8 11h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+                </svg>
+              </span>
+            </button>
           </div>
           <div class="chat-header-actions">
             <div class="chat-header-primary-actions">
@@ -3073,7 +3174,7 @@ BRANCH_TREE_HTML = """<!doctype html>
           <div class="composer-footer-row">
             <div class="composer-actions-row">
               <div class="composer-inline-actions">
-                <button id="clear-stream" type="button" class="composer-action-button" aria-label="Clear input" title="Clear input">
+                <button id="clear-stream" type="button" class="composer-action-button toolbar-tooltip-host" data-tooltip="Clear input" aria-label="Clear input" title="Clear input">
                   <span class="composer-action-icon" aria-hidden="true">
                     <svg viewBox="0 0 20 20">
                       <path fill-rule="evenodd" clip-rule="evenodd" d="M7.65 3.25c-.83 0-1.5.67-1.5 1.5v.4H4.5a.85.85 0 0 0 0 1.7h.58l.63 8.02a2.05 2.05 0 0 0 2.05 1.88h4.48a2.05 2.05 0 0 0 2.05-1.88l.63-8.02h.58a.85.85 0 1 0 0-1.7h-1.65v-.4c0-.83-.67-1.5-1.5-1.5h-4.7Zm.2 1.7h4.3v.2h-4.3v-.2Zm-.63 1.9-.63 8a.35.35 0 0 0 .35.35h6.12a.35.35 0 0 0 .35-.35l-.63-8H7.22Zm1.28 2.2a.85.85 0 1 1 1.7 0v4.35a.85.85 0 1 1-1.7 0V9.05Zm3.3 0a.85.85 0 1 1 1.7 0v4.35a.85.85 0 1 1-1.7 0V9.05Z" fill="currentColor"></path>
@@ -3081,7 +3182,7 @@ BRANCH_TREE_HTML = """<!doctype html>
                   </span>
                   <span class="sr-only">Clear input</span>
                 </button>
-                <button id="open-stream" type="button" class="composer-action-button" aria-label="Send message" title="Send message">
+                <button id="open-stream" type="button" class="composer-action-button toolbar-tooltip-host" data-tooltip="Send message" aria-label="Send message" title="Send message">
                   <span class="composer-action-icon" aria-hidden="true">
                     <svg viewBox="0 0 20 20">
                       <path d="M16.99 3.01a.9.9 0 0 0-.94-.16L3.58 8.38a.9.9 0 0 0 .07 1.68l5 1.88 1.88 5a.9.9 0 0 0 1.68.07l5.53-12.47a.9.9 0 0 0-.75-1.53Zm-7.21 8.31L6.2 9.97l8.19-3.62-3.62 8.19-1.35-3.58a.9.9 0 0 1 .2-.95l3.14-3.14a.6.6 0 0 0-.85-.85l-3.14 3.14a.9.9 0 0 1-.95.2l1.96 1.96Z" fill="currentColor"></path>
@@ -3089,7 +3190,7 @@ BRANCH_TREE_HTML = """<!doctype html>
                   </span>
                   <span class="sr-only">Send message</span>
                 </button>
-                <button id="stop-stream" type="button" class="composer-action-button" aria-label="Stop generation" title="Stop generation" hidden disabled>
+                <button id="stop-stream" type="button" class="composer-action-button toolbar-tooltip-host" data-tooltip="Stop generation" aria-label="Stop generation" title="Stop generation" hidden disabled>
                   <span class="composer-action-icon" aria-hidden="true">
                     <svg viewBox="0 0 20 20">
                       <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="2.2" fill="currentColor"></rect>
@@ -3257,6 +3358,7 @@ BRANCH_TREE_HTML = """<!doctype html>
 
     const state = {
       token: null,
+      conversations: [],
       tree: null,
       archivedBranches: [],
       pendingBranch: null,
@@ -3267,6 +3369,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       lastUserMessage: "",
       themePreference: "system",
       accentPreference: "white",
+      activeConversationId: null,
       rootThreadId: `${DEMO_USER_ID}-main`,
       activeThreadId: `${DEMO_USER_ID}-main`,
       loadedThreadId: null,
@@ -3283,6 +3386,11 @@ BRANCH_TREE_HTML = """<!doctype html>
       activityRow: null,
       activityBubble: null,
       threadUiById: {},
+      lastActiveThreadByConversation: {},
+      completedThreadStateById: {},
+      treeLoadRequestId: 0,
+      threadLoadRequestId: 0,
+      conversationSelectionRequestId: 0,
       toolbarTooltipAnchor: null,
       availableModels: [],
       defaultModelId: null,
@@ -3297,6 +3405,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       chatLastScrollTop: 0,
       chatTouchY: null,
       streamingResponseActive: false,
+      streamingThreadId: null,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -4117,12 +4226,199 @@ BRANCH_TREE_HTML = """<!doctype html>
       return DEMO_USER_ID;
     }
 
+    function conversationLabel() {
+      return isChineseUi() ? "对话" : "Conversation";
+    }
+
+    function loadingConversationsLabel() {
+      return isChineseUi() ? "正在加载对话..." : "Loading conversations...";
+    }
+
+    function newConversationLabel() {
+      return isChineseUi() ? "新建对话" : "New conversation";
+    }
+
+    function createConversationStatusLabel() {
+      return isChineseUi() ? "正在新建对话" : "creating conversation";
+    }
+
+    function sendMessageLabel() {
+      return isChineseUi() ? "发送消息" : "Send message";
+    }
+
+    function clearInputLabel() {
+      return isChineseUi() ? "清空输入" : "Clear input";
+    }
+
+    function composerMessageLabel() {
+      return isChineseUi() ? "消息" : "Message";
+    }
+
+    function mergedBranchReadOnlyLabel() {
+      return isChineseUi() ? "已合并分支不允许继续对话" : "Merged branches are read-only";
+    }
+
+    function renameConversationLabel() {
+      return isChineseUi() ? "重命名对话" : "Rename conversation";
+    }
+
+    function archiveConversationLabel() {
+      return isChineseUi() ? "归档对话" : "Archive conversation";
+    }
+
+    function renameConversationStatusLabel() {
+      return isChineseUi() ? "正在重命名对话" : "renaming conversation";
+    }
+
+    function archiveConversationStatusLabel() {
+      return isChineseUi() ? "正在归档对话" : "archiving conversation";
+    }
+
+    function activateConversationStatusLabel() {
+      return isChineseUi() ? "正在恢复对话" : "activating conversation";
+    }
+
+    function renameNodeStatusLabel() {
+      return isChineseUi() ? "正在重命名节点" : "renaming node";
+    }
+
+    function conversationTitlePromptLabel() {
+      return isChineseUi() ? "请输入对话名称" : "Enter a conversation name";
+    }
+
+    function conversationTitleEmptyLabel() {
+      return isChineseUi() ? "对话名称不能为空。" : "Conversation title cannot be empty.";
+    }
+
+    function branchTitlePromptLabel() {
+      return isChineseUi() ? "请输入节点名称" : "Enter a node name";
+    }
+
+    function branchTitleEmptyLabel() {
+      return isChineseUi() ? "节点名称不能为空。" : "Node name cannot be empty.";
+    }
+
+    function createBranchDefaultName() {
+      return isChineseUi() ? "新节点" : "New Branch";
+    }
+
+    function renameNodeLabel() {
+      return isChineseUi() ? "重命名节点" : "Rename node";
+    }
+
+    function conversationReadyLabel() {
+      return isChineseUi() ? "对话已切换" : "conversation ready";
+    }
+
+    function switchConversationStatusLabel() {
+      return isChineseUi() ? "正在切换对话" : "switching conversation";
+    }
+
+    function conversationArchivedLabel() {
+      return isChineseUi() ? "对话已归档" : "conversation archived";
+    }
+
+    function archivedConversationsLabel() {
+      return isChineseUi() ? "已归档对话" : "Archived conversations";
+    }
+
+    function defaultConversationTitle(index = 1) {
+      return isChineseUi() ? `对话 ${index}` : `Conversation ${index}`;
+    }
+
+    function activeConversations() {
+      return state.conversations.filter((item) => !item.is_archived);
+    }
+
+    function archivedConversations() {
+      return state.conversations.filter((item) => item.is_archived);
+    }
+
+    function currentConversationRecord(rootThreadId = state.activeConversationId || state.rootThreadId) {
+      return state.conversations.find((item) => item.root_thread_id === rootThreadId) || null;
+    }
+
+    function archivedConversationOptionValue(rootThreadId) {
+      return `__archived__:${rootThreadId}`;
+    }
+
+    function parseArchivedConversationOptionValue(value) {
+      const text = String(value || "");
+      return text.startsWith("__archived__:") ? text.slice("__archived__:".length) : "";
+    }
+
+    function conversationTitleForRoot(rootThreadId) {
+      const match = state.conversations.find((item) => item.root_thread_id === rootThreadId);
+      return String(match?.title || "").trim() || mainBranchLabel();
+    }
+
+    function renderConversationOptions(selectedId = state.activeConversationId || state.rootThreadId) {
+      const select = $("conversation-select");
+      const renameButton = $("conversation-rename");
+      const archiveButton = $("conversation-archive");
+      if (!select) {
+        return;
+      }
+      const currentValue = selectedId || "";
+      const options = [];
+      const activeItems = activeConversations();
+      const archivedItems = archivedConversations();
+      for (const conversation of activeItems) {
+        const title = String(conversation.title || "").trim() || conversation.root_thread_id;
+        options.push(
+          `<option value="${escapeHtml(conversation.root_thread_id)}">${escapeHtml(title)}</option>`
+        );
+      }
+      if (archivedItems.length) {
+        options.push(`<optgroup label="${escapeHtml(archivedConversationsLabel())}">`);
+        for (const conversation of archivedItems) {
+          const title = String(conversation.title || "").trim() || conversation.root_thread_id;
+          options.push(
+            `<option value="${escapeHtml(archivedConversationOptionValue(conversation.root_thread_id))}">${escapeHtml(title)}</option>`
+          );
+        }
+        options.push(`</optgroup>`);
+      }
+      options.push(
+        `<option value="__new__">${escapeHtml(`+ ${newConversationLabel()}`)}</option>`
+      );
+      select.innerHTML = options.join("");
+      if (currentValue && activeItems.some((item) => item.root_thread_id === currentValue)) {
+        select.value = currentValue;
+      } else if (currentValue && archivedItems.some((item) => item.root_thread_id === currentValue)) {
+        select.value = archivedConversationOptionValue(currentValue);
+      } else if (activeItems.length) {
+        select.value = activeItems[0].root_thread_id;
+      } else if (archivedItems.length) {
+        select.value = archivedConversationOptionValue(archivedItems[0].root_thread_id);
+      } else {
+        select.innerHTML = `<option value="">${escapeHtml(loadingConversationsLabel())}</option>`;
+        select.value = "";
+      }
+      select.title = conversationLabel();
+      select.setAttribute("aria-label", conversationLabel());
+      if (renameButton) {
+        const disabled = !currentConversationRecord();
+        renameButton.disabled = disabled;
+        renameButton.title = renameConversationLabel();
+        renameButton.setAttribute("aria-label", renameConversationLabel());
+        renameButton.dataset.fullLabel = renameConversationLabel();
+      }
+      if (archiveButton) {
+        const currentConversation = currentConversationRecord();
+        archiveButton.disabled = !currentConversation || currentConversation.is_archived;
+        archiveButton.title = archiveConversationLabel();
+        archiveButton.setAttribute("aria-label", archiveConversationLabel());
+        archiveButton.dataset.fullLabel = archiveConversationLabel();
+      }
+    }
+
     function mainBranchLabel() {
       return isChineseUi() ? "主线" : "Main";
     }
 
     function defaultThreadId() {
-      return `${currentUserId()}-main`;
+      return state.activeConversationId || state.rootThreadId || `${currentUserId()}-main`;
     }
 
     function branchLabelForThread(threadId, branchMeta = null) {
@@ -4160,6 +4456,10 @@ BRANCH_TREE_HTML = """<!doctype html>
       return isChineseUi()
         ? `最多只支持 ${MAX_BRANCH_DEPTH} 层子分支`
         : `Branch depth is limited to ${MAX_BRANCH_DEPTH} levels`;
+    }
+
+    function isMergedReadOnlyThread(branchMeta = state.activeBranchMeta) {
+      return String(branchMeta?.branch_status || "") === "merged";
     }
 
     function countBranchNodes(node) {
@@ -4215,13 +4515,14 @@ BRANCH_TREE_HTML = """<!doctype html>
       const isCreating = Boolean(state.pendingBranch);
       const currentDepth = Number(state.activeBranchMeta?.branch_depth || 0);
       const hitDepthLimit = currentDepth >= MAX_BRANCH_DEPTH;
+      const isReadOnly = isMergedReadOnlyThread();
       const sidebarButton = $("create-branch");
       const toolbarButton = $("composer-create-branch");
       const toolbarLabel = $("composer-create-branch-label");
       const buttonLabel = isCreating ? pendingBranchButtonLabel() : newBranchButtonLabel();
-      const actionLabel = hitDepthLimit ? branchDepthLimitLabel() : buttonLabel;
-      sidebarButton.disabled = isCreating || hitDepthLimit;
-      toolbarButton.disabled = isCreating || hitDepthLimit;
+      const actionLabel = isReadOnly ? mergedBranchReadOnlyLabel() : hitDepthLimit ? branchDepthLimitLabel() : buttonLabel;
+      sidebarButton.disabled = isCreating || hitDepthLimit || isReadOnly;
+      toolbarButton.disabled = isCreating || hitDepthLimit || isReadOnly;
       sidebarButton.textContent = buttonLabel;
       toolbarLabel.textContent = buttonLabel;
       sidebarButton.title = actionLabel;
@@ -4229,6 +4530,30 @@ BRANCH_TREE_HTML = """<!doctype html>
       toolbarButton.title = actionLabel;
       toolbarButton.setAttribute("aria-label", actionLabel);
       toolbarButton.dataset.fullLabel = actionLabel;
+      toolbarButton.dataset.tooltip = actionLabel;
+    }
+
+    function syncComposerReadOnlyUi() {
+      const inputShell = document.querySelector(".composer-input-shell");
+      const input = $("stream-message");
+      const sendButton = $("open-stream");
+      const isReadOnly = isMergedReadOnlyThread();
+      const reason = mergedBranchReadOnlyLabel();
+      const sendLabel = isReadOnly ? reason : sendMessageLabel();
+      if (inputShell instanceof HTMLElement) {
+        inputShell.classList.toggle("is-readonly", isReadOnly);
+      }
+      if (input instanceof HTMLTextAreaElement) {
+        input.readOnly = isReadOnly;
+        input.title = isReadOnly ? reason : "";
+        input.setAttribute("aria-label", isReadOnly ? `${composerMessageLabel()} - ${reason}` : composerMessageLabel());
+      }
+      if (sendButton instanceof HTMLButtonElement) {
+        sendButton.disabled = isReadOnly;
+        sendButton.title = sendLabel;
+        sendButton.setAttribute("aria-label", sendLabel);
+        sendButton.dataset.tooltip = sendLabel;
+      }
     }
 
     function updateActiveThreadPill(branchMeta = state.activeBranchMeta) {
@@ -4252,12 +4577,38 @@ BRANCH_TREE_HTML = """<!doctype html>
       const themeLabel = isChineseUi() ? "主题" : "Theme";
       const colorLabel = isChineseUi() ? "色系" : "Color";
       const prepareMergeLabel = mergeButtonLabel();
+      const sendLabel = isMergedReadOnlyThread() ? mergedBranchReadOnlyLabel() : sendMessageLabel();
+      const clearLabel = clearInputLabel();
+      const stopLabel = stopGenerationLabel();
+      const conversationSwitcher = document.querySelector(".conversation-switcher");
+      if (conversationSwitcher instanceof HTMLElement) {
+        conversationSwitcher.dataset.tooltip = isChineseUi() ? "切换或新建对话" : "Switch or create a conversation";
+      }
       $("back-to-main").setAttribute("aria-label", mainLabel);
       $("back-to-main").dataset.fullLabel = mainLabel;
       $("back-to-parent").setAttribute("aria-label", parentLabel);
       $("back-to-parent").dataset.fullLabel = parentLabel;
       $("prepare-merge").setAttribute("aria-label", prepareMergeLabel);
       $("prepare-merge").dataset.fullLabel = prepareMergeLabel;
+      $("conversation-select").title = conversationLabel();
+      $("conversation-select").setAttribute("aria-label", conversationLabel());
+      $("conversation-rename").title = renameConversationLabel();
+      $("conversation-rename").setAttribute("aria-label", renameConversationLabel());
+      $("conversation-rename").dataset.fullLabel = renameConversationLabel();
+      $("conversation-rename").dataset.tooltip = renameConversationLabel();
+      $("conversation-archive").title = archiveConversationLabel();
+      $("conversation-archive").setAttribute("aria-label", archiveConversationLabel());
+      $("conversation-archive").dataset.fullLabel = archiveConversationLabel();
+      $("conversation-archive").dataset.tooltip = archiveConversationLabel();
+      $("open-stream").title = sendLabel;
+      $("open-stream").setAttribute("aria-label", sendLabel);
+      $("open-stream").dataset.tooltip = sendLabel;
+      $("clear-stream").title = clearLabel;
+      $("clear-stream").setAttribute("aria-label", clearLabel);
+      $("clear-stream").dataset.tooltip = clearLabel;
+      $("stop-stream").title = stopLabel;
+      $("stop-stream").setAttribute("aria-label", stopLabel);
+      $("stop-stream").dataset.tooltip = stopLabel;
       $("language-select").title = languageLabel;
       $("theme-select").title = themeLabel;
       $("color-select").title = colorLabel;
@@ -4658,13 +5009,45 @@ BRANCH_TREE_HTML = """<!doctype html>
 
     function syncDefaultThreadIds() {
       const fallback = defaultThreadId();
+      if (!state.activeConversationId || state.activeConversationId === "main-1") {
+        state.activeConversationId = fallback;
+      }
       if (!state.rootThreadId || state.rootThreadId === "main-1") {
-        state.rootThreadId = fallback;
+        state.rootThreadId = state.activeConversationId || fallback;
       }
       if (!state.activeThreadId || state.activeThreadId === "main-1") {
-        state.activeThreadId = fallback;
+        state.activeThreadId = state.rootThreadId || state.activeConversationId || fallback;
       }
       updateActiveThreadPill();
+    }
+
+    function rememberActiveThread(rootThreadId, threadId) {
+      if (!rootThreadId || !threadId) {
+        return;
+      }
+      state.lastActiveThreadByConversation[rootThreadId] = threadId;
+    }
+
+    function rememberedThreadForConversation(rootThreadId) {
+      if (!rootThreadId) {
+        return null;
+      }
+      return state.lastActiveThreadByConversation[rootThreadId] || rootThreadId;
+    }
+
+    function conversationContainsThread(rootThreadId, threadId) {
+      if (!rootThreadId || !threadId) {
+        return false;
+      }
+      if (threadId === rootThreadId) {
+        return true;
+      }
+      if (state.tree?.thread_id === rootThreadId && findNodeByThreadId(state.tree, threadId)) {
+        return true;
+      }
+      return state.archivedBranches.some(
+        (item) => item.root_thread_id === rootThreadId && item.thread_id === threadId
+      );
     }
 
     async function readErrorMessage(response) {
@@ -4856,7 +5239,7 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
 
     async function openBranchCreateModal() {
-      if (state.pendingBranch) {
+      if (state.pendingBranch || isMergedReadOnlyThread()) {
         return;
       }
       await createBranch();
@@ -5070,11 +5453,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       clearAgentActivityBubble();
       const actions = [createCopyMessageAction(() => bubbleRawText(state.currentAssistantBubble))];
       if (state.lastUserMessage) {
-        actions.push({
-          label: regenerateMessageActionLabel(),
-          icon: "regenerate",
-          onClick: () => openStream({ messageOverride: state.lastUserMessage, preserveComposer: true }),
-        });
+        actions.push(createRegenerateMessageAction(state.lastUserMessage));
       }
       state.currentAssistantBubble = createMessageBubble("assistant", "", `Focus Agent · ${threadLabel}`, "", false, { actions });
       return state.currentAssistantBubble;
@@ -5346,15 +5725,17 @@ BRANCH_TREE_HTML = """<!doctype html>
         return;
       }
       const lines = value.split("\\n");
-      if (lines.length === 1) {
-        const heading = value.match(/^(#{1,6})\\s+(.*)$/);
-        if (heading) {
-          const level = Math.min(heading[1].length, 6);
-          const node = document.createElement(`h${level}`);
-          node.innerHTML = renderInlineMarkdown(heading[2]);
-          parent.appendChild(node);
-          return;
+      const heading = lines[0].match(/^(#{1,6})\\s+(.*)$/);
+      if (heading) {
+        const level = Math.min(heading[1].length, 6);
+        const node = document.createElement(`h${level}`);
+        node.innerHTML = renderInlineMarkdown(heading[2]);
+        parent.appendChild(node);
+        const remaining = lines.slice(1).join("\\n").trim();
+        if (remaining) {
+          appendPlainText(parent, remaining);
         }
+        return;
       }
       if (lines.every((line) => /^\\s*>\\s?/.test(line))) {
         appendBlockquote(parent, lines);
@@ -5471,13 +5852,15 @@ BRANCH_TREE_HTML = """<!doctype html>
       }, 1400);
     }
 
-    function createMessageActionButton({ label, icon = "copy", onClick }) {
+    function createMessageActionButton({ label, icon = "copy", onClick, disabled = false, disabledLabel = "" }) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "message-action-button";
+      const effectiveDisabledLabel = String(disabledLabel || label || "").trim();
       button.dataset.defaultLabel = label;
-      button.title = label;
-      button.setAttribute("aria-label", label);
+      button.title = disabled ? effectiveDisabledLabel : label;
+      button.setAttribute("aria-label", disabled ? effectiveDisabledLabel : label);
+      button.disabled = disabled;
 
       const iconShell = document.createElement("span");
       iconShell.className = "message-action-icon";
@@ -5486,6 +5869,11 @@ BRANCH_TREE_HTML = """<!doctype html>
       button.appendChild(iconShell);
 
       button.addEventListener("click", (event) => {
+        if (button.disabled) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         void onClick?.(event, button);
@@ -5505,6 +5893,28 @@ BRANCH_TREE_HTML = """<!doctype html>
             button.classList.remove("is-confirmed");
           }
         },
+      };
+    }
+
+    function createEditMessageAction(bubble) {
+      const isReadOnly = isMergedReadOnlyThread();
+      return {
+        label: editMessageActionLabel(),
+        icon: "edit",
+        disabled: isReadOnly,
+        disabledLabel: isReadOnly ? mergedBranchReadOnlyLabel() : editMessageActionLabel(),
+        onClick: () => startEditingMessage(bubble),
+      };
+    }
+
+    function createRegenerateMessageAction(replyPrompt) {
+      const isReadOnly = isMergedReadOnlyThread();
+      return {
+        label: regenerateMessageActionLabel(),
+        icon: "regenerate",
+        disabled: isReadOnly,
+        disabledLabel: isReadOnly ? mergedBranchReadOnlyLabel() : regenerateMessageActionLabel(),
+        onClick: () => openStream({ messageOverride: replyPrompt, preserveComposer: true }),
       };
     }
 
@@ -5611,6 +6021,9 @@ BRANCH_TREE_HTML = """<!doctype html>
 
     function startEditingMessage(bubble) {
       if (!(bubble instanceof HTMLElement)) {
+        return;
+      }
+      if (isMergedReadOnlyThread()) {
         return;
       }
       const existingSession = state.inlineMessageEdit;
@@ -5910,11 +6323,7 @@ BRANCH_TREE_HTML = """<!doctype html>
           createMessageBubble("user", content, `You · ${threadLabel}`, "", false, {
             messageId,
             actions: ({ bubble }) => [
-              {
-                label: editMessageActionLabel(),
-                icon: "edit",
-                onClick: () => startEditingMessage(bubble),
-              },
+              createEditMessageAction(bubble),
               createCopyMessageAction(() => bubbleRawText(bubble)),
             ],
           });
@@ -5928,11 +6337,7 @@ BRANCH_TREE_HTML = """<!doctype html>
             actions: ({ bubble }) => {
               const nextActions = [createCopyMessageAction(() => bubbleRawText(bubble))];
               if (replyPrompt) {
-                nextActions.push({
-                  label: regenerateMessageActionLabel(),
-                  icon: "regenerate",
-                  onClick: () => openStream({ messageOverride: replyPrompt, preserveComposer: true }),
-                });
+                nextActions.push(createRegenerateMessageAction(replyPrompt));
               }
               return nextActions;
             },
@@ -5965,11 +6370,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       if (!options.skipUserBubble) {
         createMessageBubble("user", message, `You · ${threadLabel}`, "", true, {
           actions: ({ bubble }) => [
-            {
-              label: editMessageActionLabel(),
-              icon: "edit",
-              onClick: () => startEditingMessage(bubble),
-            },
+            createEditMessageAction(bubble),
             createCopyMessageAction(() => bubbleRawText(bubble)),
           ],
         });
@@ -5984,6 +6385,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       }
       state.activeThreadId = threadId;
       syncDefaultThreadIds();
+      syncComposerStreamingControls();
       renderTree();
       resetChatHistory(threadLoadingMessage(branchLabelForThread(threadId)));
       setStatus("loading thread", "warn", null, threadId, { recordInActivity: false });
@@ -6078,6 +6480,7 @@ BRANCH_TREE_HTML = """<!doctype html>
       branchNameRefreshTimer = window.setTimeout(async () => {
         branchNameRefreshTimer = null;
         try {
+          await loadConversations();
           await loadTree();
           if (state.activeThreadId === childThreadId) {
             await loadThreadState(childThreadId);
@@ -6484,6 +6887,31 @@ BRANCH_TREE_HTML = """<!doctype html>
       overlay.style.top = `${top}px`;
     }
 
+    function tooltipTextForHost(host) {
+      if (!(host instanceof HTMLElement)) {
+        return "";
+      }
+      const direct = String(host.dataset.tooltip || "").trim();
+      if (direct) {
+        return direct;
+      }
+      const helpTip = host.querySelector(".hover-tip");
+      if (!(helpTip instanceof HTMLElement)) {
+        return "";
+      }
+      return String(helpTip.innerText || helpTip.textContent || "").trim();
+    }
+
+    function tooltipAnchorForHost(host) {
+      if (!(host instanceof HTMLElement)) {
+        return null;
+      }
+      if (host.classList.contains("tree-help")) {
+        return host.querySelector(".info-trigger") || host;
+      }
+      return host;
+    }
+
     function showToolbarTooltip(anchor, text) {
       const overlay = toolbarTooltipOverlay();
       if (!overlay || !(anchor instanceof HTMLElement) || !text) {
@@ -6661,6 +7089,34 @@ BRANCH_TREE_HTML = """<!doctype html>
       const actions = document.createElement("div");
       actions.className = "branch-node-actions";
       const isPendingMerge = state.pendingMergeProposal && state.activeMergeThreadId === node.thread_id;
+
+      if (!node.is_pending) {
+        const renameButton = document.createElement("button");
+        renameButton.type = "button";
+        renameButton.dataset.branchAction = "rename";
+        renameButton.className = "branch-inline-action";
+        renameButton.textContent = renameNodeLabel();
+        renameButton.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          try {
+            const currentName = node.branch_name || node.thread_id;
+            const nextName = promptBranchTitle(currentName);
+            if (nextName === null || nextName === currentName) {
+              return;
+            }
+            if (node.branch_id) {
+              await renameBranch(node.thread_id, nextName);
+            } else {
+              await renameConversation(node.thread_id, nextName);
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            showUiError("rename node failed", message);
+          }
+        });
+        actions.appendChild(renameButton);
+      }
 
       if (node.branch_id && !node.is_pending) {
         if (!["merged", "discarded", "closed"].includes(String(node.branch_status || ""))) {
@@ -6912,6 +7368,23 @@ BRANCH_TREE_HTML = """<!doctype html>
       return wrapper;
     }
 
+    function resolveCompletedThreadStatePayload(rawPayload, requestedThreadId) {
+      const resolvedThreadId = rawPayload?.thread_id || requestedThreadId || null;
+      if (!resolvedThreadId) {
+        return { payload: rawPayload, resolvedThreadId: null, usedCachedState: false };
+      }
+      const cachedPayload = state.completedThreadStateById[resolvedThreadId];
+      if (!cachedPayload) {
+        return { payload: rawPayload, resolvedThreadId, usedCachedState: false };
+      }
+      const payloadMessages = Array.isArray(rawPayload?.messages) ? rawPayload.messages.length : 0;
+      const cachedMessages = Array.isArray(cachedPayload?.messages) ? cachedPayload.messages.length : 0;
+      if (cachedMessages < payloadMessages) {
+        return { payload: rawPayload, resolvedThreadId, usedCachedState: false };
+      }
+      return { payload: cachedPayload, resolvedThreadId, usedCachedState: true };
+    }
+
     async function issueToken() {
       syncDefaultThreadIds();
       const response = await fetch(`${apiBase()}/v1/auth/demo-token`, {
@@ -6931,14 +7404,26 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
 
     async function loadThreadState(threadId = state.activeThreadId) {
+      const requestedThreadId = threadId || state.activeThreadId;
+      const requestId = state.threadLoadRequestId + 1;
+      state.threadLoadRequestId = requestId;
       if (!state.token) await issueToken();
-      const response = await fetch(`${apiBase()}/v1/threads/${encodeURIComponent(threadId)}`, { headers: headers(false) });
+      const response = await fetch(`${apiBase()}/v1/threads/${encodeURIComponent(requestedThreadId)}`, { headers: headers(false) });
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
-      const payload = await response.json();
+      const rawPayload = await response.json();
+      if (requestId !== state.threadLoadRequestId) {
+        return rawPayload;
+      }
+      const { payload, resolvedThreadId, usedCachedState } = resolveCompletedThreadStatePayload(rawPayload, requestedThreadId);
+      if (usedCachedState && resolvedThreadId) {
+        delete state.completedThreadStateById[resolvedThreadId];
+      }
       state.rootThreadId = payload.root_thread_id || state.rootThreadId || defaultThreadId();
-      state.activeThreadId = payload.thread_id || threadId;
+      state.activeConversationId = state.rootThreadId;
+      state.activeThreadId = payload.thread_id || requestedThreadId;
+      rememberActiveThread(state.rootThreadId, state.activeThreadId);
       state.loadedThreadId = payload.thread_id;
       state.activeBranchMeta = payload.branch_meta || null;
       if (state.activeBranchMeta?.branch_status === "preparing_merge_review") {
@@ -6968,6 +7453,7 @@ BRANCH_TREE_HTML = """<!doctype html>
         applyComposerModelSelection(state.defaultModelId, { persist: false });
       }
       updateBranchCreationUi();
+      syncComposerReadOnlyUi();
       updateActiveThreadPill(state.activeBranchMeta);
       updateThreadNav();
       renderThreadMessages(payload.messages || [], payload.thread_id);
@@ -6975,22 +7461,183 @@ BRANCH_TREE_HTML = """<!doctype html>
       return payload;
     }
 
-    async function loadTree() {
+    async function loadConversations() {
       if (!state.token) await issueToken();
-      syncDefaultThreadIds();
-      const rootThreadId = state.rootThreadId || defaultThreadId();
-      if (!rootThreadId) return;
-      const response = await fetch(`${apiBase()}/v1/branches/tree/${encodeURIComponent(rootThreadId)}`, { headers: headers(false) });
+      const select = $("conversation-select");
+      if (select) {
+        select.disabled = true;
+        select.innerHTML = `<option value="">${escapeHtml(loadingConversationsLabel())}</option>`;
+      }
+      const response = await fetch(`${apiBase()}/v1/conversations`, { headers: headers(false) });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const previousRootThreadId = state.rootThreadId;
+      const payload = await response.json();
+      state.conversations = Array.isArray(payload?.conversations) ? payload.conversations : [];
+      const activeFallbackConversation = state.conversations.find((item) => !item.is_archived) || null;
+      const fallback =
+        activeFallbackConversation?.root_thread_id ||
+        state.conversations[0]?.root_thread_id ||
+        `${currentUserId()}-main`;
+      const activeConversationStillSelectable = state.conversations.some(
+        (item) => item.root_thread_id === state.activeConversationId && !item.is_archived
+      );
+      const rootConversationStillSelectable = state.conversations.some(
+        (item) => item.root_thread_id === state.rootThreadId && !item.is_archived
+      );
+      if (!state.activeConversationId || !activeConversationStillSelectable) {
+        state.activeConversationId = (rootConversationStillSelectable ? state.rootThreadId : null) || fallback;
+      }
+      if (!state.rootThreadId || !rootConversationStillSelectable) {
+        state.rootThreadId = state.activeConversationId || fallback;
+      }
+      if (!state.activeThreadId || state.activeThreadId === "main-1" || previousRootThreadId !== state.rootThreadId) {
+        state.activeThreadId = rememberedThreadForConversation(state.rootThreadId) || state.rootThreadId;
+      }
+      renderConversationOptions();
+      if (select) {
+        select.disabled = false;
+      }
+      return state.conversations;
+    }
+
+    function promptConversationTitle(initialValue) {
+      const value = window.prompt(conversationTitlePromptLabel(), initialValue);
+      if (value === null) {
+        return null;
+      }
+      const trimmed = String(value).trim();
+      if (!trimmed) {
+        throw new Error(conversationTitleEmptyLabel());
+      }
+      return trimmed;
+    }
+
+    function promptBranchTitle(initialValue) {
+      const value = window.prompt(branchTitlePromptLabel(), initialValue);
+      if (value === null) {
+        return null;
+      }
+      const trimmed = String(value).trim();
+      if (!trimmed) {
+        throw new Error(branchTitleEmptyLabel());
+      }
+      return trimmed;
+    }
+
+    async function createConversation(title = null) {
+      if (!state.token) await issueToken();
+      setStatus(createConversationStatusLabel(), "warn");
+      const response = await fetch(`${apiBase()}/v1/conversations`, {
+        method: "POST",
+        headers: headers(true),
+        body: JSON.stringify(title ? { title } : {}),
+      });
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
       const payload = await response.json();
+      await loadConversations();
+      return payload;
+    }
+
+    async function renameConversation(rootThreadId, title) {
+      if (!state.token) await issueToken();
+      setStatus(renameConversationStatusLabel(), "warn");
+      const response = await fetch(`${apiBase()}/v1/conversations/${encodeURIComponent(rootThreadId)}`, {
+        method: "PATCH",
+        headers: headers(true),
+        body: JSON.stringify({ title }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      await loadConversations();
+      if (state.rootThreadId === rootThreadId) {
+        await loadTree();
+        if (state.activeThreadId) {
+          await loadThreadState(state.activeThreadId);
+        }
+      }
+      renderConversationOptions(rootThreadId);
+      return payload;
+    }
+
+    async function archiveConversation(rootThreadId) {
+      if (!state.token) await issueToken();
+      setStatus(archiveConversationStatusLabel(), "warn");
+      const response = await fetch(`${apiBase()}/v1/conversations/${encodeURIComponent(rootThreadId)}/archive`, {
+        method: "POST",
+        headers: headers(false),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      await loadConversations();
+      renderConversationOptions();
+      return payload;
+    }
+
+    async function activateConversation(rootThreadId) {
+      if (!state.token) await issueToken();
+      setStatus(activateConversationStatusLabel(), "warn");
+      const response = await fetch(`${apiBase()}/v1/conversations/${encodeURIComponent(rootThreadId)}/activate`, {
+        method: "POST",
+        headers: headers(false),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      await loadConversations();
+      renderConversationOptions(rootThreadId);
+      return payload;
+    }
+
+    async function renameBranch(threadId, branchName) {
+      if (!state.token) await issueToken();
+      setStatus(renameNodeStatusLabel(), "warn");
+      const response = await fetch(`${apiBase()}/v1/branches/${encodeURIComponent(threadId)}`, {
+        method: "PATCH",
+        headers: headers(true),
+        body: JSON.stringify({ branch_name: branchName }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      await loadTree();
+      if (state.activeThreadId === threadId) {
+        await loadThreadState(threadId);
+      }
+      return payload;
+    }
+
+    async function loadTree() {
+      const requestedRootThreadId = state.rootThreadId || defaultThreadId();
+      const requestId = state.treeLoadRequestId + 1;
+      state.treeLoadRequestId = requestId;
+      if (!state.token) await issueToken();
+      syncDefaultThreadIds();
+      if (!requestedRootThreadId) return;
+      const response = await fetch(`${apiBase()}/v1/branches/tree/${encodeURIComponent(requestedRootThreadId)}`, { headers: headers(false) });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const payload = await response.json();
+      if (requestId !== state.treeLoadRequestId) {
+        return payload;
+      }
       if (!payload || !payload.root || !payload.root.thread_id) {
         throw new Error("Invalid branch tree payload.");
       }
       state.tree = payload.root;
       state.archivedBranches = payload.archived_branches || [];
       state.rootThreadId = payload.root.thread_id;
+      state.activeConversationId = payload.root.thread_id;
       if (
         state.detailThreadId &&
         !findNodeByThreadId(state.tree, state.detailThreadId) &&
@@ -7002,6 +7649,39 @@ BRANCH_TREE_HTML = """<!doctype html>
       renderArchivedBranches();
       updateTreeBranchSummary();
       refreshBranchDetailOverlay();
+    }
+
+    async function selectConversation(rootThreadId) {
+      if (!rootThreadId || rootThreadId === state.activeConversationId) {
+        renderConversationOptions();
+        return;
+      }
+      const selectionRequestId = state.conversationSelectionRequestId + 1;
+      state.conversationSelectionRequestId = selectionRequestId;
+      if (state.inlineMessageEdit) {
+        cancelInlineMessageEdit({ focus: false });
+      }
+      state.activeConversationId = rootThreadId;
+      state.rootThreadId = rootThreadId;
+      state.activeThreadId = rememberedThreadForConversation(rootThreadId) || rootThreadId;
+      syncComposerStreamingControls();
+      state.tree = null;
+      state.archivedBranches = [];
+      renderConversationOptions(rootThreadId);
+      renderTree();
+      renderArchivedBranches();
+      updateTreeBranchSummary();
+      resetChatHistory(threadLoadingMessage(conversationTitleForRoot(rootThreadId)));
+      setStatus(switchConversationStatusLabel(), "warn", null, rootThreadId, { recordInActivity: false });
+      await loadTree();
+      const targetThreadId = conversationContainsThread(rootThreadId, state.activeThreadId)
+        ? state.activeThreadId
+        : rootThreadId;
+      await loadThreadState(targetThreadId);
+      if (selectionRequestId !== state.conversationSelectionRequestId || state.activeConversationId !== rootThreadId) {
+        return;
+      }
+      setStatus(conversationReadyLabel(), "success", null, rootThreadId, { recordInActivity: false });
     }
 
     async function archiveBranch(node) {
@@ -7058,6 +7738,9 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
 
     async function createBranch({ branchName = null } = {}) {
+      if (isMergedReadOnlyThread()) {
+        return;
+      }
       if (state.pendingBranch) {
         return;
       }
@@ -7285,7 +7968,8 @@ BRANCH_TREE_HTML = """<!doctype html>
       const isStreaming = Boolean(
         state.abortController &&
         !state.abortController.signal.aborted &&
-        state.streamingResponseActive
+        state.streamingResponseActive &&
+        state.streamingThreadId === state.activeThreadId
       );
       if (sendButton) {
         sendButton.hidden = isStreaming;
@@ -7317,6 +8001,12 @@ BRANCH_TREE_HTML = """<!doctype html>
     function handleEvent(eventName, payload, threadId = state.activeThreadId) {
       const targetThreadId = threadId || state.activeThreadId;
       const isVisibleThread = targetThreadId === state.activeThreadId;
+      if (eventName === "turn.completed" && payload?.thread_state) {
+        const completedThreadId = payload.thread_state.thread_id || targetThreadId;
+        if (completedThreadId) {
+          state.completedThreadStateById[completedThreadId] = payload.thread_state;
+        }
+      }
       if (eventName === "visible_text.delta") {
         if (!isVisibleThread) {
           clearThreadUiState(targetThreadId);
@@ -7379,9 +8069,7 @@ BRANCH_TREE_HTML = """<!doctype html>
         setStatus("turn completed", "success", null, targetThreadId);
         clearThreadUiState(targetThreadId);
         clearAgentActivityBubble();
-        if (state.activeBranchMeta?.branch_id) {
-          scheduleBranchNameBackfillRefresh(state.activeThreadId);
-        }
+        scheduleBranchNameBackfillRefresh(state.activeThreadId);
       } else if (eventName === "turn.interrupt") {
         state.streamingResponseActive = false;
         syncComposerStreamingControls();
@@ -7402,6 +8090,9 @@ BRANCH_TREE_HTML = """<!doctype html>
       let streamThreadId = state.activeThreadId;
       let requestController = null;
       try {
+        if (isMergedReadOnlyThread()) {
+          return;
+        }
         const rawMessage = options.messageOverride ?? $("stream-message").value ?? "";
         const message = String(rawMessage).trim();
         if (!message) {
@@ -7416,11 +8107,13 @@ BRANCH_TREE_HTML = """<!doctype html>
         requestController = new AbortController();
         requestController._focusAgentAbortReason = "";
         state.abortController = requestController;
+        delete state.completedThreadStateById[streamThreadId];
         state.currentVisibleText = "";
         state.chatAutoFollow = true;
         state.streamingResponseActive = true;
-        syncComposerStreamingControls();
         streamThreadId = state.activeThreadId;
+        state.streamingThreadId = streamThreadId;
+        syncComposerStreamingControls();
         updateActiveThreadPill();
         setStatus("connecting", "warn");
         if (state.inlineMessageEdit && options.skipUserBubble !== true) {
@@ -7484,6 +8177,7 @@ BRANCH_TREE_HTML = """<!doctype html>
         }
         if (state.abortController === requestController) {
           state.streamingResponseActive = false;
+          state.streamingThreadId = null;
           syncComposerStreamingControls();
         }
         const message = error instanceof Error ? error.message : String(error);
@@ -7499,6 +8193,7 @@ BRANCH_TREE_HTML = """<!doctype html>
         if (state.abortController === requestController) {
           state.abortController = null;
           state.streamingResponseActive = false;
+          state.streamingThreadId = null;
           syncComposerStreamingControls();
         }
       }
@@ -7578,6 +8273,70 @@ BRANCH_TREE_HTML = """<!doctype html>
     });
     $("merge-decision-select").addEventListener("change", updateMergeArtifactsField);
     $("merge-mode-select").addEventListener("change", updateMergeArtifactsField);
+    $("conversation-select").addEventListener("change", async (event) => {
+      const select = event.currentTarget;
+      const value = String(select?.value || "");
+      try {
+        if (value === "__new__") {
+          const created = await createConversation();
+          await selectConversation(created.root_thread_id);
+        } else if (parseArchivedConversationOptionValue(value)) {
+          const rootThreadId = parseArchivedConversationOptionValue(value);
+          await activateConversation(rootThreadId);
+          await selectConversation(rootThreadId);
+        } else if (value) {
+          await selectConversation(value);
+        } else {
+          renderConversationOptions();
+        }
+      } catch (error) {
+        renderConversationOptions();
+        const message = error instanceof Error ? error.message : String(error);
+        showUiError("switch conversation failed", message);
+      }
+    });
+    $("conversation-rename").addEventListener("click", async () => {
+      try {
+        const rootThreadId = state.activeConversationId || state.rootThreadId;
+        if (!rootThreadId) {
+          return;
+        }
+        const currentTitle = conversationTitleForRoot(rootThreadId);
+        const nextTitle = promptConversationTitle(currentTitle);
+        if (nextTitle === null || nextTitle === currentTitle) {
+          return;
+        }
+        await renameConversation(rootThreadId, nextTitle);
+        setStatus(conversationReadyLabel(), "success", null, rootThreadId, { recordInActivity: false });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showUiError("rename conversation failed", message);
+      }
+    });
+    $("conversation-archive").addEventListener("click", async () => {
+      try {
+        const currentConversation = currentConversationRecord();
+        if (!currentConversation || currentConversation.is_archived) {
+          return;
+        }
+        await archiveConversation(currentConversation.root_thread_id);
+        let nextRootThreadId =
+          activeConversations().find((item) => item.root_thread_id !== currentConversation.root_thread_id)?.root_thread_id ||
+          activeConversations()[0]?.root_thread_id ||
+          null;
+        if (!nextRootThreadId) {
+          const created = await createConversation();
+          nextRootThreadId = created.root_thread_id;
+        }
+        if (nextRootThreadId) {
+          await selectConversation(nextRootThreadId);
+          setStatus(conversationArchivedLabel(), "success", null, nextRootThreadId, { recordInActivity: false });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showUiError("archive conversation failed", message);
+      }
+    });
     $("focus-branch-tree").addEventListener("click", focusBranchTreePanel);
     $("back-to-main").addEventListener("click", async () => {
       try {
@@ -7625,18 +8384,22 @@ BRANCH_TREE_HTML = """<!doctype html>
       if (!(event.target instanceof Element)) {
         return;
       }
-      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip]");
-      const actions = document.querySelector(".chat-header-actions");
-      if (!(host instanceof HTMLElement) || !actions?.classList.contains("is-compact")) {
+      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip], .tree-help");
+      if (!(host instanceof HTMLElement)) {
         return;
       }
-      showToolbarTooltip(host, host.dataset.tooltip || "");
+      const text = tooltipTextForHost(host);
+      const anchor = tooltipAnchorForHost(host);
+      if (!text || !(anchor instanceof HTMLElement)) {
+        return;
+      }
+      showToolbarTooltip(anchor, text);
     });
     document.addEventListener("pointerout", (event) => {
       if (!(event.target instanceof Element)) {
         return;
       }
-      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip]");
+      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip], .tree-help");
       if (!(host instanceof HTMLElement)) {
         return;
       }
@@ -7649,19 +8412,24 @@ BRANCH_TREE_HTML = """<!doctype html>
       if (!(event.target instanceof Element)) {
         return;
       }
-      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip]");
-      const actions = document.querySelector(".chat-header-actions");
-      if (!(host instanceof HTMLElement) || !actions?.classList.contains("is-compact")) {
+      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip], .tree-help");
+      if (!(host instanceof HTMLElement)) {
         hideToolbarTooltip();
         return;
       }
-      showToolbarTooltip(host, host.dataset.tooltip || "");
+      const text = tooltipTextForHost(host);
+      const anchor = tooltipAnchorForHost(host);
+      if (!text || !(anchor instanceof HTMLElement)) {
+        hideToolbarTooltip();
+        return;
+      }
+      showToolbarTooltip(anchor, text);
     });
     document.addEventListener("focusout", (event) => {
       if (!(event.target instanceof Element)) {
         return;
       }
-      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip]");
+      const host = event.target.closest(".toolbar-tooltip-host[data-tooltip], .tree-help");
       if (!(host instanceof HTMLElement)) {
         return;
       }
@@ -7820,6 +8588,7 @@ BRANCH_TREE_HTML = """<!doctype html>
     }
     Promise.resolve(issueToken())
       .then(() => loadAvailableModels())
+      .then(() => loadConversations())
       .then(() => loadTree())
       .then(() => loadThreadState(state.activeThreadId))
       .catch((error) => {
@@ -7849,6 +8618,14 @@ ZH_REPLACEMENTS = [
     ("Archived branches are hidden from the tree until you activate them again.", "已归档分支不会出现在分支树中，重新激活后才会回来。"),
     ("No archived branches.", "暂无已归档分支。"),
     ("Collapse sidebar", "收起侧栏"),
+    ("Switch or create a conversation", "切换或新建对话"),
+    (">Conversation<", ">对话<"),
+    ("Conversation", "对话"),
+    ("Loading conversations...", "正在加载对话..."),
+    ("New conversation", "新建对话"),
+    ("Rename conversation", "重命名对话"),
+    ("Archive conversation", "归档对话"),
+    ("Archived conversations", "已归档对话"),
     ("Show branches", "显示分支树"),
     ("New branch", "新建分支"),
     ("Refresh branches", "刷新分支树"),
@@ -7932,6 +8709,7 @@ ZH_REPLACEMENTS = [
     ('showUiError("create branch failed", message);', 'showUiError("创建分支失败", message);'),
     ('showUiError("load tree failed", message);', 'showUiError("加载分支树失败", message);'),
     ('showUiError("load thread failed", message);', 'showUiError("加载线程失败", message);'),
+    ('showUiError("archive conversation failed", message);', 'showUiError("归档对话失败", message);'),
     ('showUiError("archive branch failed", message);', 'showUiError("归档分支失败", message);'),
     ('showUiError("activate branch failed", message);', 'showUiError("激活分支失败", message);'),
     ('showUiError("merge action failed", message);', 'showUiError("带回上游失败", message);'),

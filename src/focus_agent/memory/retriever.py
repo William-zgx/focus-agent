@@ -70,9 +70,13 @@ class MemoryRetriever:
                 "importance": value.get("importance", 0.5),
                 "promoted_to_main": value.get("promoted_to_main", False),
                 "fingerprint": value.get("fingerprint"),
-                "created_at": value.get("created_at"),
-                "updated_at": value.get("updated_at"),
             }
+            created_at = value.get("created_at")
+            updated_at = value.get("updated_at")
+            if created_at is not None:
+                payload["created_at"] = created_at
+            if updated_at is not None:
+                payload["updated_at"] = updated_at
             record = MemoryRecord.model_validate(payload)
             hits.append(
                 MemorySearchHit(

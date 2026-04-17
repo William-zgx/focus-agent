@@ -59,3 +59,14 @@ class ContextBudget(StateModel):
     findings_limit: int = Field(default=8, ge=0)
     artifact_limit: int = Field(default=6, ge=0)
     citation_limit: int = Field(default=10, ge=0)
+
+
+class ConversationRecord(StateModel):
+    root_thread_id: str
+    owner_user_id: str = "unknown"
+    title: str
+    title_pending_ai: bool = False
+    is_archived: bool = False
+    archived_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None

@@ -45,6 +45,27 @@ def test_render_chat_app_html_defaults_to_english():
     assert 'return normalizeThinkingMode(preferredMode) || pageDefaultThinkingModeForModel(model);' in html
     assert "composer-actions-note" in html
     assert "branch-tree-panel" in html
+    assert 'id="conversation-select"' in html
+    assert 'id="conversation-rename"' in html
+    assert 'id="conversation-archive"' in html
+    assert 'data-tooltip="Rename conversation"' in html
+    assert 'data-tooltip="Archive conversation"' in html
+    assert "Loading conversations..." in html
+    assert "Switch or create a conversation" in html
+    assert "Rename conversation" in html
+    assert "Archive conversation" in html
+    assert "Rename node" in html
+    assert "Merged branches are read-only" in html
+    assert "function mergedBranchReadOnlyLabel()" in html
+    assert 'function isMergedReadOnlyThread(branchMeta = state.activeBranchMeta)' in html
+    assert 'sidebarButton.disabled = isCreating || hitDepthLimit || isReadOnly;' in html
+    assert 'toolbarButton.disabled = isCreating || hitDepthLimit || isReadOnly;' in html
+    assert 'function syncComposerReadOnlyUi()' in html
+    assert 'inputShell.classList.toggle("is-readonly", isReadOnly);' in html
+    assert 'input.readOnly = isReadOnly;' in html
+    assert 'sendButton.disabled = isReadOnly;' in html
+    assert 'disabledLabel: isReadOnly ? mergedBranchReadOnlyLabel() : editMessageActionLabel(),' in html
+    assert 'disabledLabel: isReadOnly ? mergedBranchReadOnlyLabel() : regenerateMessageActionLabel(),' in html
     assert "branch-graph" in html
     assert "tree-graph-legend" in html
     assert "branch-graph-root-label" in html
@@ -54,6 +75,8 @@ def test_render_chat_app_html_defaults_to_english():
     assert "BRANCH_DETAIL_HIDE_DELAY_MS" in html
     assert "scheduleHideBranchDetail" in html
     assert 'branchDetailOverlay().addEventListener("focusout"' in html
+    assert 'function tooltipTextForHost(host)' in html
+    assert 'function tooltipAnchorForHost(host)' in html
     assert "mainTimelineLabel" in html
     assert "Hover or click any node to inspect its branch details" in html
     assert "brand-lockup" in html
@@ -86,6 +109,12 @@ def test_render_chat_app_html_defaults_to_english():
     assert "agent-run-bubble" in html
     assert "createAgentActivityBubble" in html
     assert "ensureAssistantBubble" in html
+    assert "completedThreadStateById: {}" in html
+    assert "treeLoadRequestId: 0" in html
+    assert "threadLoadRequestId: 0" in html
+    assert "conversationSelectionRequestId: 0" in html
+    assert "streamingThreadId: null" in html
+    assert "state.streamingThreadId === state.activeThreadId" in html
     assert 'id="language-select"' in html
     assert '<select id="language-select">' not in html
     assert "Language" in html
@@ -130,6 +159,7 @@ def test_render_chat_app_html_defaults_to_english():
     assert "Tool feed" not in html
     assert "request failed" in html
     assert "load thread failed" in html
+    assert "archive conversation failed" in html
     assert "archive branch failed" in html
     assert "activate branch failed" in html
     assert 'id="branch-policy-select"' not in html
@@ -165,6 +195,8 @@ def test_render_chat_app_html_defaults_to_english():
     assert "Regenerate response" in html
     assert "Edit message" in html
     assert "Copy message" in html
+    assert 'if (state.pendingBranch || isMergedReadOnlyThread()) {' in html
+    assert 'if (isMergedReadOnlyThread()) {' in html
     assert "function isChatNearBottom(threshold = 48)" in html
     assert "function shouldAutoFollowChat({ forceScroll = false } = {})" in html
     assert 'function syncChatAutoFollowFromScroll()' in html
@@ -183,6 +215,9 @@ def test_render_chat_app_html_defaults_to_english():
     assert "renderInlineMarkdown" in html
     assert "sanitizeMessageHref" in html
     assert "appendMarkdownBlock" in html
+    assert 'const heading = lines[0].match(/^(#{1,6})\\s+(.*)$/);' in html
+    assert 'const remaining = lines.slice(1).join("\\n").trim();' in html
+    assert 'appendPlainText(parent, remaining);' in html
     assert "message-bubble h1" in html
     assert "message-bubble ul" in html
     assert "message-bubble blockquote" in html
@@ -209,6 +244,20 @@ def test_render_chat_app_html_defaults_to_english():
     assert 'function clearComposerInput({ focus = true } = {})' in html
     assert 'function syncComposerStreamingControls()' in html
     assert 'function stopStream()' in html
+    assert 'function archivedConversationsLabel()' in html
+    assert 'function archivedConversationOptionValue(rootThreadId)' in html
+    assert 'parseArchivedConversationOptionValue(value)' in html
+    assert 'async function createConversation(title = null)' in html
+    assert 'async function archiveConversation(rootThreadId)' in html
+    assert 'async function activateConversation(rootThreadId)' in html
+    assert 'body: JSON.stringify(title ? { title } : {}),' in html
+    assert 'async function createConversation(title = defaultConversationTitle((state.conversations?.length || 0) + 1))' not in html
+    assert 'function resolveCompletedThreadStatePayload(rawPayload, requestedThreadId)' in html
+    assert 'if (requestId !== state.threadLoadRequestId) {' in html
+    assert 'if (requestId !== state.treeLoadRequestId) {' in html
+    assert 'if (selectionRequestId !== state.conversationSelectionRequestId || state.activeConversationId !== rootThreadId) {' in html
+    assert 'state.completedThreadStateById[completedThreadId] = payload.thread_state;' in html
+    assert 'delete state.completedThreadStateById[resolvedThreadId];' in html
     assert '$("clear-stream").addEventListener("click", () => {' in html
     assert '$("stop-stream").addEventListener("click", stopStream);' in html
     assert 'sendButton.hidden = isStreaming;' in html
@@ -280,6 +329,28 @@ def test_render_chat_app_html_supports_chinese():
     assert "推荐导入方式：" in html
     assert "focus-branch-tree" in html
     assert "branch-tree-panel" in html
+    assert 'id="conversation-select"' in html
+    assert 'id="conversation-rename"' in html
+    assert 'id="conversation-archive"' in html
+    assert 'data-tooltip="重命名对话"' in html
+    assert 'data-tooltip="归档对话"' in html
+    assert "正在加载对话..." in html
+    assert "切换或新建对话" in html
+    assert "重命名对话" in html
+    assert "归档对话" in html
+    assert "已归档对话" in html
+    assert "重命名节点" in html
+    assert "已合并分支不允许继续对话" in html
+    assert "function mergedBranchReadOnlyLabel()" in html
+    assert 'function isMergedReadOnlyThread(branchMeta = state.activeBranchMeta)' in html
+    assert 'sidebarButton.disabled = isCreating || hitDepthLimit || isReadOnly;' in html
+    assert 'toolbarButton.disabled = isCreating || hitDepthLimit || isReadOnly;' in html
+    assert 'function syncComposerReadOnlyUi()' in html
+    assert 'inputShell.classList.toggle("is-readonly", isReadOnly);' in html
+    assert 'input.readOnly = isReadOnly;' in html
+    assert 'sendButton.disabled = isReadOnly;' in html
+    assert 'disabledLabel: isReadOnly ? mergedBranchReadOnlyLabel() : editMessageActionLabel(),' in html
+    assert 'disabledLabel: isReadOnly ? mergedBranchReadOnlyLabel() : regenerateMessageActionLabel(),' in html
     assert "branch-graph" in html
     assert "tree-graph-legend" in html
     assert "branch-graph-root-label" in html
@@ -423,6 +494,11 @@ def test_render_chat_app_html_supports_chinese():
     assert "renderInlineMarkdown" in html
     assert "sanitizeMessageHref" in html
     assert "appendMarkdownBlock" in html
+    assert 'const heading = lines[0].match(/^(#{1,6})\\s+(.*)$/);' in html
+    assert 'const remaining = lines.slice(1).join("\\n").trim();' in html
+    assert 'appendPlainText(parent, remaining);' in html
+    assert 'if (state.pendingBranch || isMergedReadOnlyThread()) {' in html
+    assert 'if (isMergedReadOnlyThread()) {' in html
     assert "message-bubble h1" in html
     assert "message-bubble ul" in html
     assert "message-bubble blockquote" in html

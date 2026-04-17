@@ -39,6 +39,27 @@ class ModelCatalogResponse(BaseModel):
     models: list[ModelOptionResponse] = Field(default_factory=list)
 
 
+class ConversationSummaryResponse(BaseModel):
+    root_thread_id: str
+    title: str
+    is_archived: bool = False
+    archived_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationSummaryResponse] = Field(default_factory=list)
+
+
+class CreateConversationRequest(BaseModel):
+    title: str | None = None
+
+
+class UpdateConversationRequest(BaseModel):
+    title: str
+
+
 class ChatResumeRequest(BaseModel):
     thread_id: str
     resume: Any
@@ -69,6 +90,10 @@ class ForkBranchRequest(BaseModel):
     branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES
     fork_checkpoint_id: str | None = None
     user_id: str | None = None
+
+
+class UpdateBranchNameRequest(BaseModel):
+    branch_name: str
 
 
 class PrepareMergeProposalRequest(BaseModel):
@@ -120,6 +145,9 @@ __all__ = [
     "BranchTreeResponse",
     "ChatResumeRequest",
     "ChatTurnRequest",
+    "ConversationListResponse",
+    "ConversationSummaryResponse",
+    "CreateConversationRequest",
     "DemoTokenRequest",
     "ForkBranchRequest",
     "ModelCatalogResponse",
@@ -128,4 +156,6 @@ __all__ = [
     "PrincipalResponse",
     "ThreadStateResponse",
     "TokenResponse",
+    "UpdateBranchNameRequest",
+    "UpdateConversationRequest",
 ]
