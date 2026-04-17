@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local api dev test lint check sdk-install sdk-check sdk-build web-install web-dev web-check web-build ui-smoke clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check sdk-install sdk-check sdk-build web-install web-dev web-check web-build ui-smoke clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -19,6 +19,9 @@ help:
 		'  make install-openai    Same as install' \
 		'  make install-anthropic Install Anthropic + dev dependencies into .venv' \
 		'  make setup-local       Create local config files if missing' \
+		'  make serve             Alias for make serve-dev' \
+		'  make serve-dev         Start backend + frontend dev servers with hot reload' \
+		'  make serve-prod        Build static frontend and start backend without reload' \
 		'  make api               Start the API server' \
 		'  make dev               Start the API server with API_RELOAD=1' \
 		'  make test              Run pytest' \
@@ -54,6 +57,15 @@ setup-local:
 	@test -f .focus_agent/models.toml || cp docs/models.example.toml .focus_agent/models.toml
 	@test -f .focus_agent/tools.toml || cp docs/tools.example.toml .focus_agent/tools.toml
 	@printf '%s\n' 'Local config files are ready.'
+
+serve:
+	./scripts/serve-dev.sh
+
+serve-dev:
+	./scripts/serve-dev.sh
+
+serve-prod:
+	./scripts/serve-prod.sh
 
 api: .venv/bin/python
 	$(FOCUS_AGENT_API)

@@ -108,6 +108,8 @@ Then open:
 
 For local frontend development, run `make web-dev` in a second shell and set `WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app` in `.focus_agent/local.env` when you want `/app` to redirect to the Vite dev server. In that mode the frontend lives at `http://127.0.0.1:5173/app/` while FastAPI continues serving the API on port `8000`.
 
+If you want one command that starts both sides with hot reload, use `make serve-dev` or its compatibility alias `make serve`. It runs the Vite dev server for the frontend and starts the API with reload enabled for local development. For a production-style local run, use `make serve-prod`, which builds the static frontend bundle first and then starts only the backend without reload.
+
 Merged branches are read-only after a merge is applied. If you want to continue exploration, fork a new branch from the parent or main thread instead of sending more turns into the merged branch.
 
 For local auth, create a demo token:
@@ -123,6 +125,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
 Focus Agent ships with development-friendly defaults. Treat the quick start and demo token flow as local-only setup, not production guidance.
 
 - `/v1/auth/demo-token` is intended for local development and demos only
+- do not use `make serve`, `make serve-dev`, Vite HMR, or `API_RELOAD=1` as a production deployment mode
 - set `AUTH_DEMO_TOKENS_ENABLED=false` before any shared, hosted, or public deployment
 - replace `AUTH_JWT_SECRET` with a strong secret in any non-local environment
 - review [`SECURITY.md`](SECURITY.md) and [`docs/release-checklist.md`](docs/release-checklist.md) before publishing or deploying the project
@@ -143,6 +146,9 @@ Focus Agent ships with development-friendly defaults. Treat the quick start and 
 make help
 make install
 make setup-local
+make serve
+make serve-dev
+make serve-prod
 make dev
 make test
 make lint
@@ -152,7 +158,7 @@ make web-build
 make ui-smoke
 ```
 
-`make web-dev` starts the Vite development server for the React app. `make web-build` produces the static frontend bundle that FastAPI serves at `/app`.
+`make serve` is an alias for `make serve-dev`. `make serve-dev` starts the frontend Vite dev server and the backend API together with hot reload enabled. `make serve-prod` builds the static frontend bundle and starts only the backend without reload so `/app` is served from FastAPI. `make web-dev` starts only the React frontend dev server. `make web-build` produces the static frontend bundle that FastAPI serves at `/app`.
 
 `make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, creates a conversation when needed, sends one chat turn, forks a branch, enters merge review, and fails if the visible response still contains DSML or tool-call markup.
 

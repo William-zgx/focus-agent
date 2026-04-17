@@ -599,6 +599,7 @@ E2E：
 
 - `apps/web` 启动 Vite dev server
 - Vite 代理 `/v1/*`、`/healthz` 到 FastAPI
+- 仓库可通过 `make serve-dev`（兼容别名 `make serve`）一次拉起前端 HMR 与后端 reload，作为本地调试便利入口
 
 这样可以获得：
 
@@ -613,6 +614,8 @@ E2E：
 - `apps/web` build 输出静态资源
 - FastAPI 挂载静态目录并继续提供 `/app`
 - API 与前端同域部署
+- 可提供 `make serve-prod` 这类“先构建静态前端、再以非 reload 模式启动后端”的近生产运行入口
+- 不使用 Vite dev server、HMR 或后端 reload 作为线上运行模式
 
 优点：
 
