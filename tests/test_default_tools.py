@@ -265,6 +265,23 @@ def test_web_search_respects_disabled_configuration(monkeypatch):
     assert "web_search" not in tools
 
 
+def test_write_text_artifact_defaults_to_local_focus_agent_directory(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            artifact_dir=str(project / ".focus_agent" / "artifacts"),
+        )
+    )
+
+    result = str(tools["write_text_artifact"].invoke({"title": "AI Notes", "body": "Local only"}))
+
+    expected_path = project / ".focus_agent" / "artifacts" / "ai-notes.md"
+    assert result == f"artifact_saved:{expected_path}"
+    assert expected_path.read_text(encoding="utf-8") == "# AI Notes\n\nLocal only\n"
+
+
 def test_read_file_and_search_code_stay_within_workspace(tmp_path):
     project = tmp_path / "project"
     project.mkdir()

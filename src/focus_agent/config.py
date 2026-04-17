@@ -455,7 +455,7 @@ class Settings:
     langgraph_api_url: str | None = None
     langsmith_project: str = "focus-agent"
     branch_db_path: str = ".focus_agent/branches.sqlite3"
-    artifact_dir: str = "./artifacts"
+    artifact_dir: str = ".focus_agent/artifacts"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_reload: bool = False

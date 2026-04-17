@@ -97,6 +97,8 @@ cp docs/tools.example.toml .focus_agent/tools.toml
 focus-agent-api
 ```
 
+默认情况下，运行时持久化和 AI 生成产物都会放在 `.focus_agent/` 下，包括 `.focus_agent/artifacts/`，这样本地输出不会污染仓库。只有当你明确希望纳入 git 管理时，再把生成文件迁到 `docs/` 之类的受版本控制目录。
+
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`

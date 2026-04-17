@@ -97,6 +97,8 @@ cp docs/tools.example.toml .focus_agent/tools.toml
 focus-agent-api
 ```
 
+By default, runtime persistence and AI-generated artifacts stay under `.focus_agent/`, including `.focus_agent/artifacts/`, so local outputs do not pollute the repository. Move generated files into tracked paths like `docs/` only when you explicitly want to keep them in git.
+
 Then open:
 
 - `http://127.0.0.1:8000/app`
