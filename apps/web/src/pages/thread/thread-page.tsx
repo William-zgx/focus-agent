@@ -58,7 +58,7 @@ export function ThreadPage() {
       <div className="fa-transcript-panel">
         <section className="fa-chat-transcript">
           <div className="fa-chat-history">
-            <div className="fa-chat-history-shell">
+            <div className="fa-chat-history-content">
               {isLoading ? (
                 <div className="fa-inline-notice">
                   {isChineseUi ? "正在加载线程状态..." : "Loading thread state..."}
@@ -92,7 +92,7 @@ export function ThreadPage() {
           </div>
         </section>
 
-        <section className="fa-composer-panel">
+        <section className="fa-composer-slot">
           <MessageComposer
             editDraft={editDraft}
             isReadOnly={isMergedReadOnlyThread}

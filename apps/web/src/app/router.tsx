@@ -61,7 +61,7 @@ function HomePage() {
     <div className="fa-thread-layout">
       <section className="fa-chat-transcript">
         <div className="fa-chat-history">
-          <div className="fa-chat-history-shell">
+          <div className="fa-chat-history-content">
             <div className="fa-chat-empty">
               {isChineseUi
                 ? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
@@ -71,7 +71,7 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="fa-composer-panel">
+      <section className="fa-composer-slot">
         <div className="fa-inline-notice">
           {isChineseUi
             ? "在这里发送第一条消息。需要探索另一条路径时，再新建分支。"

@@ -1,10 +1,21 @@
 # Focus Agent 当前完整规划（唯一保留的迭代规划文档）
 
-这份文档基于 2026-04-14 仓库现状重新整理，已经替代更早的迭代规划文档；状态判断以“代码已经落了什么、还缺什么”为准。
+这份文档基于 2026-04-14 的规划框架整理，并在 2026-04-18 按当前仓库状态补充了关键进展说明；状态判断以“代码已经落了什么、还缺什么”为准。
 
 仓库只保留这一份整体迭代计划。阶段性拆解、执行批次和临时推进清单不再长期保存在 `docs/` 中，而应放到 issue、PR 或项目管理工具里维护。
 
-更新时间：2026-04-14
+更新时间：2026-04-18
+
+## 0. 最近状态补记
+
+相较于最初整理这份路线图时，仓库已经新增了几项需要默认纳入基线的变化：
+
+- `apps/web` React Web App 已经接管 `/app` 主入口，旧的 Python 单文件内嵌页面实现已经删除
+- FastAPI 现在支持同时服务构建后的前端产物，并在配置 `WEB_APP_DEV_SERVER_URL` 时把 `/app` 重定向到本地 Vite dev server
+- `frontend-sdk` 已补齐 conversation、branch tree、branch action、merge review 等 typed client 方法，不再只是最小流式层
+- merged branch 现在在前后端两侧都被视为只读，不能继续发送新 turn，也不能再从已合并分支继续 fork
+
+下面各阶段规划仍然保留，用于描述后续优先级；但阅读时请以上述实现基线为准，而不是把 React 前端接入本身再当成未开始工作。
 
 ## 1. 规划结论
 
@@ -14,8 +25,8 @@
 - context assembly 已经从 graph 节点中抽离
 - memory package 与 branch/main namespace 基础链路已经接好
 - Skill System 第一版已经落地
-- 内置 Web UI 已经具备 branch tree 与 merge review 最小产品形态
-- frontend-sdk 已经具备 typed client、parser、reducer 基础层
+- React Web App 已经具备 branch tree、archive/activate、merge review、会话切换等主路径
+- `frontend-sdk` 已经具备 typed client、parser、reducer，以及 conversation / branch / merge 相关 JSON helper
 
 因此新的规划不应该再把这些部分当成“未开始”，而应该分成四层：
 
@@ -35,8 +46,8 @@
 - `engine/runtime.py`、`engine/graph_builder.py` 的 memory 基础接线
 - `services/branches.py` 的基础 branch findings / imported findings / promote 流程
 - Skill Registry、Tool Registry、内置技能、默认工具
-- 内置 Web UI 的 branch tree、archive/activate、merge review modal
-- `frontend-sdk` 基础层：client / parser / reducers / guards / types
+- React Web App 的 branch tree、archive/activate、merge review、conversation toolbar 主路径
+- `frontend-sdk`：client / parser / reducers / guards / types，以及 conversation / branch / merge request helpers
 - 基础 tracing metadata / tags
 - `/healthz` 端点
 
@@ -85,7 +96,7 @@
 ### Phase 2：产品接入层补齐
 
 目标：
-让现有能力不仅能在 built-in app shell 跑通，也能被外部前端稳定复用。
+让现有能力不仅能在内置 React Web App 跑通，也能被外部前端稳定复用。
 
 包含主题：
 
@@ -93,12 +104,12 @@
 - branch tree / merge review 组件化
 - 前端流式状态模型固化
 - tracing 字段标准化
-- README / SDK 类型 / built-in UI 与服务端 contract 对齐
+- README / SDK 类型 / React Web App 与服务端 contract 对齐
 
 阶段产出：
 
 - React 客户端无需手写 SSE 和 merge 管线
-- SDK 与 built-in UI 使用同一套字段和交互模型
+- SDK 与内置 React Web App 使用同一套字段和交互模型
 - trace 可以按模式、分支、状态筛选
 
 状态：
@@ -228,7 +239,7 @@
 
 要做什么：
 
-- 将 built-in app shell 已验证过的交互抽成 SDK 组件
+- 将内置 React Web App 已验证过的交互抽成 SDK 组件
 - 对齐 props、状态模型、事件回调
 
 完成标准：

@@ -154,7 +154,10 @@ def create_app() -> FastAPI:
 
     @app.get('/app/zh', response_class=HTMLResponse)
     def redirect_chinese_chat_app() -> RedirectResponse:
-        return RedirectResponse(url='/app', status_code=307)
+        redirect = _frontend_dev_redirect(settings=settings, query="lang=zh")
+        if redirect is not None:
+            return redirect
+        return RedirectResponse(url='/app?lang=zh', status_code=307)
 
     @app.get('/app/{path:path}', response_class=HTMLResponse)
     def render_chat_app_subpath(path: str, request: Request):

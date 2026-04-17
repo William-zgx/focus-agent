@@ -106,6 +106,10 @@ Then open:
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/healthz`
 
+For local frontend development, run `make web-dev` in a second shell and set `WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app` in `.focus_agent/local.env` when you want `/app` to redirect to the Vite dev server. In that mode the frontend lives at `http://127.0.0.1:5173/app/` while FastAPI continues serving the API on port `8000`.
+
+Merged branches are read-only after a merge is applied. If you want to continue exploration, fork a new branch from the parent or main thread instead of sending more turns into the merged branch.
+
 For local auth, create a demo token:
 
 ```bash
@@ -143,8 +147,12 @@ make dev
 make test
 make lint
 make check
+make web-dev
+make web-build
 make ui-smoke
 ```
+
+`make web-dev` starts the Vite development server for the React app. `make web-build` produces the static frontend bundle that FastAPI serves at `/app`.
 
 `make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, creates a conversation when needed, sends one chat turn, forks a branch, enters merge review, and fails if the visible response still contains DSML or tool-call markup.
 

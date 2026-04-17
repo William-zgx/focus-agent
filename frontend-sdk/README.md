@@ -22,10 +22,12 @@ This SDK packages those concerns into a small, typed client layer.
 ## Features
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
+- Conversation, branch tree, branch action, and merge review request helpers
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
 - Reducer helpers for accumulating stream state
 - Type guards for common event routing paths
+- `FocusAgentRequestError` for structured HTTP failure handling
 - Compatibility support for older `message.*` event names alongside `visible_text.*`
 
 ## Package Layout
@@ -98,6 +100,11 @@ console.log(finalState.visibleText);
 - `createDemoToken()` - request a local development token
 - `getPrincipal()` - inspect the authenticated principal
 - `listModels()` - fetch the current model catalog
+- `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
+- `getThreadState()` - fetch the current thread payload used by the app
+- `getBranchTree()` - fetch the branch tree rooted at a conversation
+- `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
+- `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows
 - `streamTurn()` - stream a new chat turn
 - `streamResume()` - continue from an interrupt or resume payload
 - `collectStream()` - iterate a stream and accumulate a final derived state
@@ -110,6 +117,8 @@ Authentication can be provided either by:
 - providing `getToken()` for lazy or async token resolution
 
 You can also override `fetch` with `fetchImpl` when integrating in custom runtimes or tests.
+
+`streamTurn()` and `streamResume()` also accept an optional `AbortSignal` wrapper so UI code can cancel in-flight streams cleanly.
 
 ## Event Model
 
@@ -224,5 +233,5 @@ make sdk-build
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch-related types are exported from `src/types.ts` for frontend consumers, even though branch-specific client convenience methods are not included yet.
-- Request failures currently throw a simple `Error` with HTTP status information.
+- Branch, conversation, merge proposal, and imported-conclusion types are exported from `src/types.ts` for frontend consumers.
+- HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.

@@ -5345,3 +5345,31 @@ body.fa-is-resizing {
   min-width: 74px !important;
   grid-template-columns: 34px 34px !important;
 }
+
+/* Single-surface chat cleanup */
+.fa-chat-history-content {
+  min-height: 100%;
+}
+
+.fa-chat-main-body .fa-chat-history {
+  padding: 24px;
+  background: transparent;
+}
+
+.fa-chat-main-body .fa-chat-history-content {
+  min-width: 0;
+}
+
+.fa-chat-main-body .fa-composer-slot {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  align-self: end;
+}
+
+@media (max-width: 900px) {
+  .fa-chat-main-body .fa-chat-history {
+    padding: 18px 16px;
+  }
+}

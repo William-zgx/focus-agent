@@ -66,3 +66,22 @@ def test_app_route_redirects_to_vite_dev_server_when_configured(monkeypatch, tmp
     assert app_response.headers["location"] == "http://127.0.0.1:5173/app/c/demo/t/demo?lang=zh"
     assert asset_response.status_code == 307
     assert asset_response.headers["location"] == "http://127.0.0.1:5173/app/assets/main.js"
+
+
+def test_chinese_app_route_preserves_explicit_locale_redirect(monkeypatch, tmp_path: Path):
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "index.html").write_text(
+        "<!doctype html><html><body><div id='root'>react-app</div></body></html>",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("WEB_APP_DIST_DIR", str(dist_dir))
+    monkeypatch.setenv("WEB_APP_DEV_SERVER_URL", "")
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/app/zh", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/app?lang=zh"

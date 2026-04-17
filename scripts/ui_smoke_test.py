@@ -193,6 +193,7 @@ def build_smoke_expression(message: str) -> str:
     throw new Error('Timed out waiting for ' + label);
   }};
   const bodyText = () => document.body?.innerText || '';
+  const includesAny = (text, labels) => labels.some((label) => text.includes(label));
   const buttonMatches = (item, labels) => {{
     const candidates = [
       item.textContent?.trim() || '',
@@ -210,23 +211,14 @@ def build_smoke_expression(message: str) -> str:
     button.click();
   }};
   const openReviewFlow = async () => {{
-    if (findButton('Generate proposal')) {{
-      clickButton('Generate proposal');
-      return;
+    const entryLabels = ['Generate conclusion', '生成结论', '生成分支结论'];
+    await waitFor(() => findButton(...entryLabels), 20000, 'review entry action');
+    clickButton(...entryLabels);
+    await waitFor(() => location.pathname.endsWith('/review'), 120000, 'review route');
+    const proposalLabels = ['Generate conclusion', '生成带回结论'];
+    if (findButton(...proposalLabels)) {{
+      clickButton(...proposalLabels);
     }}
-    if (findButton('Review branch')) {{
-      clickButton('Review branch');
-      await waitFor(
-        () => location.pathname.endsWith('/review') || findButton('Generate proposal'),
-        20000,
-        'review entry'
-      );
-      if (findButton('Generate proposal')) {{
-        clickButton('Generate proposal');
-      }}
-      return;
-    }}
-    throw new Error('Missing review entry action.');
   }};
   const setTextareaValue = (value) => {{
     const textarea = document.querySelector('textarea');
@@ -238,22 +230,32 @@ def build_smoke_expression(message: str) -> str:
   }};
   const hasThreadRoute = () => /^\/app\/c\/[^/]+\/t\/[^/]+/.test(location.pathname);
   const result = {{}};
-  await waitFor(() => findButton('New', 'New conversation'), 20000, 'conversation sidebar');
+  const newConversationLabels = ['New', 'New conversation', '新建', '新建对话'];
+  const newBranchLabels = ['Fork branch', 'New branch', '新建分支', '创建分支'];
+  const createBranchLabels = ['Create branch', '创建分支'];
+  const sendLabels = ['Send', 'Send message', '发送', '发送消息'];
+  const failedConversationLabels = ['Failed to load conversations.', '加载对话失败。'];
+  const loadingConversationLabels = ['Loading conversations...', '正在加载对话...'];
+  const mergeFormLabels = ['Summary', '摘要'];
+  await waitFor(() => findButton(...newConversationLabels), 20000, 'conversation sidebar');
   result.title = document.title;
   result.url = location.href;
   await waitFor(
-    () => bodyText().includes('Failed to load conversations.') || hasThreadRoute() || !bodyText().includes('Loading conversations...'),
+    () =>
+      includesAny(bodyText(), failedConversationLabels) ||
+      hasThreadRoute() ||
+      !includesAny(bodyText(), loadingConversationLabels),
     20000,
     'initial conversation state'
   );
-  if (bodyText().includes('Failed to load conversations.')) {{
+  if (includesAny(bodyText(), failedConversationLabels)) {{
     throw new Error('Conversation list failed to load.');
   }}
   const currentThreadPath = location.pathname;
   const originalPrompt = window.prompt;
   window.prompt = () => 'Smoke Test';
   try {{
-    clickButton('New', 'New conversation');
+    clickButton(...newConversationLabels);
   }} finally {{
     window.prompt = originalPrompt;
   }}
@@ -264,16 +266,16 @@ def build_smoke_expression(message: str) -> str:
   );
   result.threadPath = location.pathname;
   await waitFor(
-    () => document.querySelector('textarea') && findButton('Fork branch', 'New branch'),
+    () => document.querySelector('textarea') && findButton(...newBranchLabels),
     20000,
     'thread page ready'
   );
   setTextareaValue(smokeMessage);
   await waitFor(() => {{
-    const button = findButton('Send', 'Send message');
+    const button = findButton(...sendLabels);
     return button && !button.disabled ? button : null;
   }}, 5000, 'send button enabled');
-  clickButton('Send', 'Send message');
+  clickButton(...sendLabels);
   await waitFor(() => bodyText().includes(smokeMessage), 10000, 'user message render');
   const finalText = await waitFor(() => {{
     const text = bodyText();
@@ -287,16 +289,46 @@ def build_smoke_expression(message: str) -> str:
     return '';
   }}, 90000, 'assistant natural-language response');
   result.lastResponseText = finalText;
-  clickButton('Fork branch', 'New branch');
+  clickButton(...newBranchLabels);
+  await waitFor(() => findButton(...createBranchLabels), 10000, 'create branch dialog');
+  clickButton(...createBranchLabels);
   await waitFor(() => hasThreadRoute() && location.pathname !== result.threadPath, 20000, 'branch route');
   result.branchPath = location.pathname;
   await openReviewFlow();
-  await waitFor(() => location.pathname.endsWith('/review'), 20000, 'review route');
-  await waitFor(() => bodyText().includes('Summary override'), 20000, 'merge review form');
+  await waitFor(() => includesAny(bodyText(), mergeFormLabels), 120000, 'merge review form');
   result.reviewPath = location.pathname;
   return JSON.stringify(result);
 }})()
 """
+
+
+def collect_browser_diagnostics(client: CdpWebSocket) -> dict[str, object]:
+    diagnostic_response = client.send(
+        "Runtime.evaluate",
+        {
+            "expression": """
+JSON.stringify({
+  body: document.body?.innerText || "",
+  fetches: window.__faFetches || [],
+  errors: window.__faErrors || [],
+  console: window.__faConsole || [],
+})
+""",
+            "awaitPromise": True,
+            "returnByValue": True,
+        },
+    )
+    diagnostic_result = (
+        diagnostic_response.get("result", {})
+        if isinstance(diagnostic_response.get("result"), dict)
+        else {}
+    )
+    diagnostic_payload = diagnostic_result.get("value", "")
+    if isinstance(diagnostic_payload, str) and diagnostic_payload.strip():
+        parsed = json.loads(diagnostic_payload)
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
 
 
 def run_ui_smoke_test(
@@ -395,49 +427,27 @@ window.addEventListener("unhandledrejection", (event) => {
                     "returnByValue": True,
                 },
             )
+
+            raw_value = (
+                response.get("result", {})
+                if isinstance(response.get("result"), dict)
+                else {}
+            )
+            payload = raw_value.get("value", "")
+            if not isinstance(payload, str) or not payload.strip():
+                diagnostics = {}
+                try:
+                    diagnostics = collect_browser_diagnostics(client)
+                except Exception as exc:  # noqa: BLE001
+                    diagnostics = {"diagnostic_error": str(exc)}
+                raise RuntimeError(f"Unexpected smoke-test payload: {response!r}; diagnostics={diagnostics!r}")
+
+            result = json.loads(payload)
+            if result.get("__error"):
+                raise RuntimeError(str(result["__error"]))
+            return result
         finally:
             client.close()
-
-        raw_value = (
-            response.get("result", {})
-            if isinstance(response.get("result"), dict)
-            else {}
-        )
-        payload = raw_value.get("value", "")
-        if not isinstance(payload, str) or not payload.strip():
-            diagnostics = {}
-            try:
-                diagnostic_response = client.send(
-                    "Runtime.evaluate",
-                    {
-                        "expression": """
-JSON.stringify({
-  body: document.body?.innerText || "",
-  fetches: window.__faFetches || [],
-  errors: window.__faErrors || [],
-  console: window.__faConsole || [],
-})
-""",
-                        "awaitPromise": True,
-                        "returnByValue": True,
-                    },
-                )
-                diagnostic_result = (
-                    diagnostic_response.get("result", {})
-                    if isinstance(diagnostic_response.get("result"), dict)
-                    else {}
-                )
-                diagnostic_payload = diagnostic_result.get("value", "")
-                if isinstance(diagnostic_payload, str) and diagnostic_payload.strip():
-                    diagnostics = json.loads(diagnostic_payload)
-            except Exception as exc:  # noqa: BLE001
-                diagnostics = {"diagnostic_error": str(exc)}
-            raise RuntimeError(f"Unexpected smoke-test payload: {response!r}; diagnostics={diagnostics!r}")
-
-        result = json.loads(payload)
-        if result.get("__error"):
-            raise RuntimeError(str(result["__error"]))
-        return result
     finally:
         if keep_open:
             print(f"Chrome remains open with user data dir: {temp_dir.name}", file=sys.stderr)

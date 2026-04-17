@@ -140,6 +140,10 @@ export function AppShell({ children }: PropsWithChildren) {
   const isChineseUi = languagePreference === "zh";
 
   useEffect(() => {
+    const urlLanguage = new URLSearchParams(window.location.search).get("lang");
+    if (urlLanguage === "en" || urlLanguage === "zh") {
+      setLanguagePreference(urlLanguage);
+    }
     const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
     if (stored === "1") {
       setSidebarCollapsed(true);
@@ -150,7 +154,10 @@ export function AppShell({ children }: PropsWithChildren) {
     } else {
       setSidebarWidth(getSidebarDefaultWidth());
     }
-    const savedLanguage = window.localStorage.getItem(LANGUAGE_KEY);
+    const savedLanguage =
+      urlLanguage === "en" || urlLanguage === "zh"
+        ? urlLanguage
+        : window.localStorage.getItem(LANGUAGE_KEY);
     if (savedLanguage === "en" || savedLanguage === "zh") {
       setLanguagePreference(savedLanguage);
     }

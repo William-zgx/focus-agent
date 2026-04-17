@@ -106,6 +106,10 @@ focus-agent-api
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/healthz`
 
+如果你是在本地联调前端，建议在另一个 shell 里运行 `make web-dev`，并在 `.focus_agent/local.env` 中设置 `WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app`。这样访问 `/app` 时会自动跳转到 Vite 开发服务器；此时前端地址是 `http://127.0.0.1:5173/app/`，FastAPI 仍继续在 `8000` 端口提供 API。
+
+分支一旦完成 merge，就会进入只读状态。后续如果还想继续探索，请从父分支或主线程重新 fork 新分支，而不是继续往已合并分支里发送新一轮对话。
+
 本地鉴权可先创建 demo token：
 
 ```bash
@@ -143,8 +147,12 @@ make dev
 make test
 make lint
 make check
+make web-dev
+make web-build
 make ui-smoke
 ```
+
+`make web-dev` 用来启动 React Web App 的 Vite 开发服务器，`make web-build` 用来生成由 FastAPI 在 `/app` 下托管的静态前端产物。
 
 `make ui-smoke` 会启动一个带临时 profile 的独立 Chrome 窗口，打开本地应用，必要时创建会话，发送一轮聊天，再 fork 一个分支并进入合并评审；如果最终可见回复仍然包含 DSML 或工具调用标记，就会直接失败。
 

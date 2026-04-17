@@ -48,6 +48,8 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
 
     index_html_text = (web_root / "index.html").read_text()
     assert 'rel="icon"' in index_html_text
+    assert 'new URLSearchParams(window.location.search).get("lang")' in index_html_text
+    assert '["en", "zh"].includes(queryLanguage)' in index_html_text
 
     provider_text = (web_root / "src" / "shared" / "sdk" / "focus-agent-provider.tsx").read_text()
     assert "createDemoToken" in provider_text
@@ -68,6 +70,11 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     ).read_text()
     assert 'to: "/c/$conversationId/t/$threadId"' in conversation_toolbar_text
     assert "threadId: rootThreadId" in conversation_toolbar_text
+
+    app_shell_text = (web_root / "src" / "app" / "shell" / "app-shell.tsx").read_text()
+    assert 'new URLSearchParams(window.location.search).get("lang")' in app_shell_text
+    assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
+    assert 'window.localStorage.getItem(LANGUAGE_KEY)' in app_shell_text
 
     stream_hook_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"

@@ -20,7 +20,10 @@
           }
         };
 
-        const language = readStoredValue("fa:language", ["en", "zh"], "zh");
+        const queryLanguage = new URLSearchParams(window.location.search).get("lang");
+        const language = ["en", "zh"].includes(queryLanguage)
+          ? queryLanguage
+          : readStoredValue("fa:language", ["en", "zh"], "zh");
         const theme = readStoredValue("fa:theme", ["system", "light", "dark"], "system");
         const color = readStoredValue(
           "fa:color",
