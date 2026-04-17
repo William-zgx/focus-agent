@@ -453,6 +453,20 @@ class BranchService:
             return 0
         return record.branch_depth
 
+    def _derive_parent_branch_status(self, parent_thread_id: str, parent_state: dict) -> BranchStatus | None:
+        meta = parent_state.get('branch_meta') or {}
+        raw_status = meta.get('branch_status')
+        if raw_status is not None:
+            try:
+                return BranchStatus(str(raw_status))
+            except ValueError:
+                pass
+        try:
+            record = self.repo.get_by_child_thread_id(parent_thread_id)
+        except Exception:
+            return None
+        return record.branch_status
+
     def _max_branch_depth(self) -> int:
         settings = getattr(self, "settings", None)
         value = getattr(settings, "branch_max_depth", self._DEFAULT_MAX_BRANCH_DEPTH)
@@ -468,6 +482,11 @@ class BranchService:
         if next_depth > max_depth:
             raise ValueError(f"Maximum branch depth is {max_depth}.")
         return next_depth
+
+    def _ensure_parent_branch_can_fork(self, *, parent_thread_id: str, parent_values: dict) -> None:
+        parent_status = self._derive_parent_branch_status(parent_thread_id, parent_values)
+        if parent_status == BranchStatus.MERGED:
+            raise ValueError("Merged branches cannot create new branches.")
 
     @staticmethod
     def _branch_meta_payload_from_record(record: BranchRecord, existing_meta: dict | None = None) -> dict[str, object]:
@@ -540,6 +559,10 @@ class BranchService:
         parent_config = {'configurable': {'thread_id': parent_thread_id}}
         parent_snapshot = self.graph.get_state(parent_config)
         parent_values = deepcopy(parent_snapshot.values)
+        self._ensure_parent_branch_can_fork(
+            parent_thread_id=parent_thread_id,
+            parent_values=parent_values,
+        )
         root_thread_id = self._derive_root_thread_id(parent_thread_id, parent_values)
         next_branch_depth = self._ensure_branch_depth_allowed(
             parent_thread_id=parent_thread_id,

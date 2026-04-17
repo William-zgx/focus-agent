@@ -9,7 +9,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 from pydantic import ValidationError
 
-from ..core.branching import BranchMeta
+from ..core.branching import BranchMeta, BranchStatus
 from ..core.request_context import RequestContext
 from ..core.state import normalize_agent_state
 from ..engine.runtime import AppRuntime
@@ -190,6 +190,7 @@ class ChatService:
         thread_id: str,
         user_id: str,
         explicit_skill_hints: tuple[str, ...] | None = None,
+        require_writable: bool = False,
     ) -> tuple[RequestContext, BranchMeta | None, dict[str, Any]]:
         context, branch_meta, values = self._context_for_thread(
             thread_id=thread_id,
@@ -197,6 +198,8 @@ class ChatService:
             explicit_skill_hints=explicit_skill_hints,
         )
         self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        if require_writable:
+            self._ensure_thread_writable(branch_meta)
         return context, branch_meta, values
 
     def _ensure_access(self, *, thread_id: str, user_id: str, context: RequestContext) -> None:
@@ -209,6 +212,11 @@ class ChatService:
             )
         else:
             self.runtime.repo.assert_thread_owner(thread_id=thread_id, owner_user_id=user_id)
+
+    @staticmethod
+    def _ensure_thread_writable(branch_meta: BranchMeta | None) -> None:
+        if branch_meta and branch_meta.branch_status == BranchStatus.MERGED:
+            raise PermissionError('Merged branches are read-only.')
 
     def _normalize_result(self, result: Any) -> tuple[dict[str, Any], list[Any]]:
         if hasattr(result, 'value') and hasattr(result, 'interrupts'):
@@ -283,6 +291,7 @@ class ChatService:
             thread_id=thread_id,
             user_id=user_id,
             explicit_skill_hints=context_skill_hints,
+            require_writable=True,
         )
         config = build_invoke_config(
             settings=self.runtime.settings,
@@ -657,6 +666,7 @@ class ChatService:
             thread_id=thread_id,
             user_id=user_id,
             explicit_skill_hints=selection.skill_ids,
+            require_writable=True,
         )
         return self._astream_result(
             thread_id=thread_id,
@@ -668,7 +678,11 @@ class ChatService:
         )
 
     def stream_resume(self, *, thread_id: str, user_id: str, resume: Any) -> AsyncIterator[str]:
-        self._preflight_thread_access(thread_id=thread_id, user_id=user_id)
+        self._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
+            require_writable=True,
+        )
         return self._astream_result(
             thread_id=thread_id,
             user_id=user_id,

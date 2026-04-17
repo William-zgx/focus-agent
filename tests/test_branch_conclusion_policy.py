@@ -271,6 +271,25 @@ def test_prepare_merge_proposal_reverts_status_when_generation_fails(monkeypatch
     assert child_updates[-1][1]["branch_meta"]["branch_status"] == "active"
 
 
+def test_fork_branch_rejects_merged_parent_branch():
+    parent_record = _make_record(
+        branch_id="parent-branch",
+        parent_thread_id="root-1",
+        child_thread_id="child-merged",
+    ).model_copy(update={"branch_status": BranchStatus.MERGED})
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([parent_record])
+    service.graph = FakeGraph({"child-merged": {}})
+    service.thread_client = None
+    service.proposal_model = None
+    service.settings = SimpleNamespace(branch_max_depth=5)
+    service.store = None
+    service.memory_writer = None
+
+    with pytest.raises(ValueError, match="Merged branches cannot create new branches."):
+        service.fork_branch(parent_thread_id="child-merged", user_id="user-1")
+
+
 def test_apply_merge_decision_marks_branch_merged():
     record = _make_record()
     service = object.__new__(BranchService)
