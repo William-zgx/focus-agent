@@ -12,6 +12,21 @@ export default defineConfig({
       "@focus-agent/web-sdk": path.resolve(__dirname, "../../frontend-sdk/src/index.ts"),
     },
   },
+  build: {
+    target: "es2022",
+    sourcemap: false,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "router": ["@tanstack/react-router"],
+          "query": ["@tanstack/react-query", "@tanstack/react-query-devtools"],
+          "state": ["zustand"],
+        },
+      },
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: 5173,

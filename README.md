@@ -164,8 +164,11 @@ make ui-smoke
 
 ## More Docs
 
+- Documentation index: [`docs/README.md`](docs/README.md)
+- **Architecture & Deployment**: [`docs/architecture.md`](docs/architecture.md) — current system design and production guidelines
+- Roadmap: [`docs/roadmap.md`](docs/roadmap.md)
+- Agent intelligence design: [`docs/agent-roadmap.md`](docs/agent-roadmap.md)
 - Frontend SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
-- Roadmap: [`docs/current-roadmap.md`](docs/current-roadmap.md)
 - Tool and skill boundary design: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
 - Local env example: [`docs/local.env.example`](docs/local.env.example)
 - Model catalog example: [`docs/models.example.toml`](docs/models.example.toml)

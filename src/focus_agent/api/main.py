@@ -42,6 +42,8 @@ from .contracts import (
     UpdateConversationRequest,
 )
 from .deps import get_app_runtime, get_chat_service, get_current_principal
+from .errors import register_exception_handlers
+from .middleware import configure_middleware
 from focus_agent.model_registry import build_model_catalog
 
 
@@ -134,6 +136,9 @@ def create_app() -> FastAPI:
         description='Long-dialogue research agent API with branchable conversations.',
         lifespan=app_lifespan,
     )
+
+    configure_middleware(app, settings=settings)
+    register_exception_handlers(app)
 
     frontend_dist_dir = resolve_frontend_dist_dir(settings)
     frontend_assets_dir = frontend_dist_dir / "assets"

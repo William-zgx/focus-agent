@@ -564,6 +564,11 @@ class Settings:
     auth_jwt_issuer: str = "focus-agent"
     auth_access_token_ttl_seconds: int = 8 * 60 * 60
     sse_heartbeat_seconds: float = 1.5
+    cors_allowed_origins: tuple[str, ...] = ()
+    cors_allow_credentials: bool = True
+    rate_limit_enabled: bool = False
+    rate_limit_per_minute: int = 60
+    rate_limit_chat_per_minute: int = 20
     local_checkpoint_path: str | None = None
     local_store_path: str | None = None
     branch_max_depth: int = 5
@@ -622,6 +627,17 @@ class Settings:
             ),
             sse_heartbeat_seconds=float(
                 env.get("SSE_HEARTBEAT_SECONDS", str(defaults.sse_heartbeat_seconds))
+            ),
+            cors_allowed_origins=_split_csv(env.get("CORS_ALLOWED_ORIGINS")),
+            cors_allow_credentials=env.get("CORS_ALLOW_CREDENTIALS", "true").lower()
+            in {"1", "true", "yes", "on"},
+            rate_limit_enabled=env.get("RATE_LIMIT_ENABLED", "false").lower()
+            in {"1", "true", "yes", "on"},
+            rate_limit_per_minute=int(
+                env.get("RATE_LIMIT_PER_MINUTE", str(defaults.rate_limit_per_minute))
+            ),
+            rate_limit_chat_per_minute=int(
+                env.get("RATE_LIMIT_CHAT_PER_MINUTE", str(defaults.rate_limit_chat_per_minute))
             ),
             local_checkpoint_path=env.get("LOCAL_CHECKPOINT_PATH") or None,
             local_store_path=env.get("LOCAL_STORE_PATH") or None,

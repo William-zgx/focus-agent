@@ -164,8 +164,11 @@ make ui-smoke
 
 ## 更多文档
 
+- 文档索引: [`docs/README.md`](docs/README.md)
+- 架构与部署: [`docs/architecture.md`](docs/architecture.md)
+- 路线图: [`docs/roadmap.md`](docs/roadmap.md)
+- Agent 能力设计: [`docs/agent-roadmap.md`](docs/agent-roadmap.md)
 - 前端 SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
-- 路线图: [`docs/current-roadmap.md`](docs/current-roadmap.md)
 - Tool / Skill 边界设计: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
 - 本地环境变量示例: [`docs/local.env.example`](docs/local.env.example)
 - 模型目录示例: [`docs/models.example.toml`](docs/models.example.toml)
