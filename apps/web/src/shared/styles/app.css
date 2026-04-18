@@ -261,7 +261,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .fa-sidebar-brand-row .fa-brand-lockup {
@@ -269,188 +269,198 @@ select {
   min-width: 0;
 }
 
-.fa-sidebar-toggle-button {
-  width: 38px;
-  height: 38px;
-  min-width: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(37, 37, 48, 0.98), rgba(18, 18, 24, 0.98));
-  color: var(--fa-text);
-  box-shadow: 0 8px 18px rgba(4, 10, 22, 0.12);
+.fa-sidebar-brand-row .fa-brand-copy,
+.fa-sidebar-brand-row .fa-brand-title-row,
+.fa-sidebar-brand-row .fa-brand-title {
+  min-width: 0;
 }
 
-.fa-sidebar-toggle-button:hover {
-  border-color: rgba(129, 140, 248, 0.32);
-  background: linear-gradient(180deg, rgba(44, 44, 58, 0.98), rgba(25, 25, 34, 0.98));
-}
-
-.fa-sidebar-toggle-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.fa-sidebar-settings {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  width: 100%;
-  scrollbar-width: none;
-}
-
-.fa-sidebar-settings::-webkit-scrollbar {
-  display: none;
-}
-
-.fa-sidebar-preferences-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: auto;
-  min-width: max-content;
-  flex: 0 0 auto;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--fa-toolbar-shell-bg, linear-gradient(180deg, rgba(37, 37, 48, 0.92), rgba(20, 20, 28, 0.92)));
-  border: 1px solid var(--fa-toolbar-shell-border, rgba(129, 140, 248, 0.16));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    var(--fa-toolbar-shell-shadow, 0 10px 22px rgba(4, 10, 22, 0.12));
-}
-
-.fa-sidebar-preference-toggle {
-  --fa-preference-accent: var(--fa-accent);
-  min-width: 96px;
-  min-height: 40px;
-  padding: 0 14px 0 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fa-preference-accent) 18%, var(--fa-border) 82%);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--fa-panel-2) 94%, white 6%), color-mix(in srgb, var(--fa-panel-1) 94%, white 2%)),
-    radial-gradient(circle at top left, color-mix(in srgb, var(--fa-preference-accent) 14%, transparent), transparent 52%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--fa-text);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 16px rgba(0, 0, 0, 0.18);
-}
-
-.fa-sidebar-preference-toggle.is-active {
-  border-color: color-mix(in srgb, var(--fa-preference-accent) 24%, var(--fa-border) 76%);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--fa-panel-2) 90%, white 4%), color-mix(in srgb, var(--fa-panel-3) 90%, var(--fa-preference-accent) 10%)),
-    radial-gradient(circle at top left, color-mix(in srgb, var(--fa-preference-accent) 20%, transparent), transparent 52%);
-  box-shadow: 0 12px 26px color-mix(in srgb, var(--fa-preference-accent) 16%, transparent);
-}
-
-.fa-sidebar-picker-text {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.fa-sidebar-preference-value {
-  color: var(--fa-toolbar-label-contrast, var(--fa-text));
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
-  white-space: nowrap;
+.fa-sidebar-brand-row .fa-brand-title {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.fa-sidebar-preference-icon {
-  width: 28px;
-  height: 28px;
+.fa-sidebar-toggle-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: color-mix(in srgb, var(--fa-toolbar-label-contrast, var(--fa-text)) 92%, var(--fa-preference-accent) 8%);
-  border-radius: 999px;
-  background: linear-gradient(180deg, color-mix(in srgb, white 74%, var(--fa-preference-accent) 26%), color-mix(in srgb, var(--fa-panel-2) 88%, var(--fa-preference-accent) 12%));
-  border: 1px solid color-mix(in srgb, var(--fa-preference-accent) 28%, var(--fa-border) 72%);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 80%, transparent);
+  background: color-mix(in srgb, var(--fa-panel-2) 68%, transparent);
+  color: color-mix(in srgb, var(--fa-text) 84%, var(--fa-text-muted) 16%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 2px 6px color-mix(in srgb, var(--fa-preference-accent) 12%, transparent);
-  flex: 0 0 auto;
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 5px 12px rgba(4, 10, 22, 0.08);
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
 }
 
-.fa-sidebar-preference-icon svg {
-  width: 18px;
-  height: 18px;
+.fa-sidebar-toggle-button:hover {
+  border-color: color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border) 72%);
+  background: color-mix(in srgb, var(--fa-panel-3) 74%, var(--fa-accent) 8%);
+  color: var(--fa-text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 16px rgba(4, 10, 22, 0.1);
+  transform: translateY(-1px);
+}
+
+.fa-sidebar-toggle-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-sidebar-toggle-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fa-sidebar-inline-preferences {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 28px;
+  padding: 2px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 74%, transparent);
+  background: color-mix(in srgb, var(--fa-panel-2) 52%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  flex: 0 0 auto;
+  backdrop-filter: blur(12px);
+}
+
+.fa-sidebar-preference-button {
+  width: 26px;
+  height: 24px;
+  min-width: 26px;
+  padding: 0;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--fa-text-muted) 82%, var(--fa-text) 18%);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.fa-sidebar-language-button {
+  width: 31px;
+  min-width: 31px;
+}
+
+.fa-sidebar-theme-icon {
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fa-sidebar-theme-icon svg {
+  width: 15px;
+  height: 15px;
   display: block;
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="language"] {
-  --fa-preference-accent: #6c8dff;
+.fa-sidebar-preference-button:hover {
+  background: color-mix(in srgb, var(--fa-panel-3) 62%, var(--fa-accent) 8%);
+  color: var(--fa-text);
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="language"][data-preference-value="zh"] {
-  --fa-preference-accent: #3b82f6;
+.fa-sidebar-preference-button:active {
+  transform: translateY(1px);
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="theme"][data-preference-value="system"] {
-  --fa-preference-accent: #7c8cf8;
+.fa-sidebar-preference-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
+  outline-offset: 2px;
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="theme"][data-preference-value="light"] {
-  --fa-preference-accent: #6366f1;
+.fa-sidebar-preference-button[data-preference-group="language"],
+.fa-sidebar-preference-button[data-preference-group="theme"] {
+  background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-3) 86%);
+  color: var(--fa-text);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 22%, transparent),
+    0 2px 6px color-mix(in srgb, var(--fa-accent-primary-glow) 18%, transparent);
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="theme"][data-preference-value="dark"] {
-  --fa-preference-accent: #818cf8;
+.fa-sidebar-color-button {
+  --fa-swatch-color: var(--fa-accent);
+  background: color-mix(in srgb, var(--fa-swatch-color) 10%, var(--fa-panel-3) 90%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fa-swatch-color) 18%, transparent);
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="color"][data-preference-value="blue"] {
-  --fa-preference-accent: #6366f1;
+.fa-sidebar-color-swatch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fa-swatch-color);
+  border: 1px solid color-mix(in srgb, var(--fa-swatch-color) 72%, rgba(255, 255, 255, 0.34));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 1px 3px rgba(4, 10, 22, 0.12);
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="color"][data-preference-value="white"] {
-  --fa-preference-accent: #e5e7eb;
+.fa-sidebar-color-button .fa-sidebar-color-swatch-dot {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--fa-panel-1) 86%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--fa-swatch-color) 54%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="color"][data-preference-value="mint"] {
-  --fa-preference-accent: #22d3ee;
+.fa-sidebar-color-button[data-accent-value="white"] {
+  --fa-swatch-color: #e5e7eb;
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="color"][data-preference-value="sunset"] {
-  --fa-preference-accent: #fb7185;
+.fa-sidebar-color-button[data-accent-value="blue"] {
+  --fa-swatch-color: #6366f1;
 }
 
-.fa-sidebar-preference-toggle[data-preference-group="color"][data-preference-value="graphite"] {
-  --fa-preference-accent: #64748b;
+.fa-sidebar-color-button[data-accent-value="mint"] {
+  --fa-swatch-color: #22d3ee;
+}
+
+.fa-sidebar-color-button[data-accent-value="sunset"] {
+  --fa-swatch-color: #fb7185;
+}
+
+.fa-sidebar-color-button[data-accent-value="graphite"] {
+  --fa-swatch-color: #64748b;
 }
 
 .fa-sidebar-scroll {
   min-height: 0;
   overflow-y: auto;
-  padding: 18px;
+  padding: 14px;
 }
 
 .fa-panel-resizer {
   position: relative;
+  z-index: 3;
   margin: 10px 0;
   cursor: col-resize;
   border-radius: 999px;
   outline: none;
+  touch-action: none;
   transition: background 0.18s ease;
 }
 
@@ -1439,19 +1449,19 @@ body.fa-is-resizing {
 .fa-tree-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 5px;
 }
 
 .fa-tree-legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 5px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
   background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-2) 90%);
   color: var(--fa-text);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1459,8 +1469,8 @@ body.fa-is-resizing {
 
 .fa-tree-legend-item::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: #818cf8;
   box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.12);
@@ -1483,13 +1493,16 @@ body.fa-is-resizing {
 
 .fa-tree-canvas {
   min-height: 220px;
-  border-radius: 20px;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  border-radius: 18px;
   border: 1px solid rgba(129, 140, 248, 0.08);
   background:
     radial-gradient(circle at top left, rgba(99, 102, 241, 0.08), transparent 36%),
     linear-gradient(180deg, rgba(20, 20, 28, 0.96), rgba(12, 12, 17, 0.98));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  padding: 14px;
+  padding: 10px;
   overflow: auto;
 }
 
@@ -2465,13 +2478,14 @@ body.fa-is-resizing {
 
 .fa-branch-graph-shell {
   display: grid;
-  gap: 12px;
+  min-width: max-content;
+  place-items: center;
 }
 
 .fa-branch-graph-main {
   position: relative;
-  min-height: 220px;
-  min-width: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 .fa-branch-graph-node-shell {
@@ -5087,28 +5101,28 @@ body.fa-is-resizing {
   }
 }
 
-/* Default the desktop split to a 1:2 sidebar-to-chat ratio. */
+/* Default the desktop split to 1:2, while allowing drag resize up to 1:1. */
 .fa-app-shell {
   grid-template-columns:
-    minmax(260px, min(var(--fa-sidebar-width, calc((100vw - 52px) / 3)), calc((100vw - 52px) / 3)))
+    minmax(260px, min(var(--fa-sidebar-width, calc((100vw - 52px) / 3)), calc((100vw - 52px) / 2)))
     16px
     minmax(0, 1fr);
 }
 
 .fa-sidebar-panel {
-  max-width: calc((100vw - 52px) / 3);
+  max-width: calc((100vw - 52px) / 2);
 }
 
 @media (max-width: 1280px) {
   .fa-app-shell {
     grid-template-columns:
-      minmax(240px, min(var(--fa-sidebar-width, calc((100vw - 48px) / 3)), calc((100vw - 48px) / 3)))
+      minmax(240px, min(var(--fa-sidebar-width, calc((100vw - 48px) / 3)), calc((100vw - 48px) / 2)))
       12px
       minmax(0, 1fr);
   }
 
   .fa-sidebar-panel {
-    max-width: calc((100vw - 48px) / 3);
+    max-width: calc((100vw - 48px) / 2);
   }
 }
 
@@ -5372,4 +5386,132 @@ body.fa-is-resizing {
   .fa-chat-main-body .fa-chat-history {
     padding: 18px 16px;
   }
+}
+
+/* Compact conversation header */
+.fa-chat-panel {
+  gap: 12px;
+}
+
+.fa-header-card {
+  border-radius: 20px;
+  padding: 10px 12px;
+}
+
+.fa-chat-header-top {
+  gap: 12px;
+}
+
+.fa-chat-header-copy,
+.fa-toolbar-cluster {
+  gap: 8px;
+}
+
+.fa-chat-header-actions {
+  gap: 10px;
+  padding-bottom: 0;
+}
+
+.fa-chat-header-primary-actions,
+.fa-chat-header-nav {
+  gap: 8px;
+}
+
+.fa-chat-logo-toggle .fa-brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  box-shadow: 0 8px 18px rgba(4, 10, 22, 0.16);
+}
+
+.fa-chat-logo-toggle .fa-brand-mark svg {
+  width: 23px;
+  height: 23px;
+}
+
+.fa-conversation-switcher {
+  flex-basis: 148px;
+}
+
+.fa-conversation-switcher::after {
+  right: 12px;
+  width: 7px;
+  height: 7px;
+}
+
+.fa-conversation-select {
+  min-height: 34px;
+  padding: 8px 32px 8px 10px;
+  border-radius: 11px;
+  font-size: 12px;
+}
+
+.fa-chat-toolbar-pill,
+.fa-chat-toolbar-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 11px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.fa-conversation-icon-button,
+.fa-chat-header-actions.is-compact [data-compact-button="true"],
+.fa-chat-header-actions.is-compact .fa-focus-branches-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.fa-toolbar-icon,
+.fa-toolbar-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 900px) {
+  .fa-header-card {
+    padding: 10px;
+  }
+
+  .fa-chat-header-top {
+    gap: 8px;
+  }
+}
+
+/* Keep the branch tree adaptive: tall enough to work in, capped before it crowds the sidebar. */
+.fa-branch-panel {
+  --fa-branch-tree-card-min-height: 380px;
+  --fa-branch-tree-card-max-height: 620px;
+  --fa-branch-tree-canvas-min-height: 280px;
+  --fa-branch-tree-canvas-max-height: 460px;
+  min-height: 0;
+  align-content: start;
+}
+
+.fa-branch-panel > .fa-tree-card:not(.is-archived) {
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  display: grid;
+  align-content: start;
+  align-self: start;
+}
+
+.fa-branch-panel > .fa-tree-card:not(.is-archived) .fa-tree-panel-body {
+  min-height: 0;
+  align-content: start;
+  grid-template-rows: auto auto auto;
+}
+
+.fa-tree-canvas {
+  min-height: var(--fa-branch-tree-canvas-min-height);
+  width: 100%;
+  height: clamp(
+    var(--fa-branch-tree-canvas-min-height),
+    38vh,
+    var(--fa-branch-tree-canvas-max-height)
+  );
+  max-height: var(--fa-branch-tree-canvas-max-height);
 }

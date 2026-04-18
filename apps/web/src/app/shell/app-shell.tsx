@@ -40,13 +40,27 @@ const DEFAULT_COLOR_PREFERENCE: ColorPreference = "white";
 const SIDEBAR_WIDTH_DEFAULT = 300;
 const SIDEBAR_WIDTH_MIN = 260;
 const SIDEBAR_DEFAULT_RATIO = 1 / 3;
+const SIDEBAR_MAX_RATIO = 1 / 2;
 const SHELL_PADDING_DESKTOP = 18;
 const SHELL_PADDING_MOBILE = 12;
 const RESIZER_WIDTH_DESKTOP = 16;
 const RESIZER_WIDTH_TABLET = 12;
-const LANGUAGE_OPTIONS = ["en", "zh"] as const;
-const THEME_OPTIONS = ["system", "light", "dark"] as const;
-const COLOR_OPTIONS = ["white", "blue", "mint", "sunset", "graphite"] as const;
+const LANGUAGE_OPTIONS = [
+  { value: "zh", shortLabel: "中", labelZh: "中文", labelEn: "Chinese" },
+  { value: "en", shortLabel: "EN", labelZh: "英文", labelEn: "English" },
+] as const;
+const THEME_OPTIONS = [
+  { value: "system", labelZh: "跟随系统", labelEn: "Follow system" },
+  { value: "light", labelZh: "浅色", labelEn: "Light" },
+  { value: "dark", labelZh: "深色", labelEn: "Dark" },
+] as const;
+const COLOR_OPTIONS = [
+  { value: "white", labelZh: "白色", labelEn: "White" },
+  { value: "blue", labelZh: "蓝色", labelEn: "Blue" },
+  { value: "mint", labelZh: "薄荷", labelEn: "Mint" },
+  { value: "sunset", labelZh: "暮光", labelEn: "Sunset" },
+  { value: "graphite", labelZh: "石墨", labelEn: "Graphite" },
+] as const;
 
 function getSidebarAvailableWidth() {
   if (typeof window === "undefined") {
@@ -73,7 +87,7 @@ function getSidebarViewportMax() {
 
   return Math.max(
     SIDEBAR_WIDTH_MIN,
-    Math.floor(getSidebarAvailableWidth() * SIDEBAR_DEFAULT_RATIO),
+    Math.floor(getSidebarAvailableWidth() * SIDEBAR_MAX_RATIO),
   );
 }
 
@@ -83,7 +97,78 @@ function clampSidebarWidth(value: number) {
 }
 
 function getSidebarDefaultWidth() {
-  return clampSidebarWidth(getSidebarViewportMax());
+  if (typeof window === "undefined") {
+    return SIDEBAR_WIDTH_DEFAULT;
+  }
+
+  if (window.innerWidth <= 900) {
+    return SIDEBAR_WIDTH_MIN;
+  }
+
+  return clampSidebarWidth(Math.floor(getSidebarAvailableWidth() * SIDEBAR_DEFAULT_RATIO));
+}
+
+function renderThemeIcon(value: ThemePreference) {
+  if (value === "light") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="10" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.45" />
+        <path
+          d="M10 2.9v2M10 15.1v2M17.1 10h-2M5.1 10h-2M15 5l-1.4 1.4M6.4 13.6 5 15M15 15l-1.4-1.4M6.4 6.4 5 5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.45"
+        />
+      </svg>
+    );
+  }
+
+  if (value === "dark") {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path
+          d="M11.2 3.2a6.2 6.2 0 1 0 5.6 8.8 5.1 5.1 0 0 1-5.6-8.8Z"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.45"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <rect
+        x="4.3"
+        y="4.6"
+        width="11.4"
+        height="8"
+        rx="1.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+      />
+      <path
+        d="M7.4 15.4h5.2M10 12.6v2.8"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.35"
+      />
+    </svg>
+  );
+}
+
+function cycleOptionValue<T extends string>(
+  current: T,
+  options: readonly { value: T }[],
+) {
+  const currentIndex = options.findIndex((option) => option.value === current);
+  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
+  return options[nextIndex].value;
 }
 
 export function AppShell({ children }: PropsWithChildren) {
@@ -433,12 +518,6 @@ export function AppShell({ children }: PropsWithChildren) {
     setBranchCreateName("");
   }
 
-  function cyclePreference<T extends string>(current: T, options: readonly T[]) {
-    const currentIndex = options.indexOf(current);
-    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
-    return options[nextIndex];
-  }
-
   function handleResizerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (sidebarCollapsed) return;
     resizeSessionRef.current = {
@@ -477,39 +556,15 @@ export function AppShell({ children }: PropsWithChildren) {
     "--fa-sidebar-width": `${sidebarWidth}px`,
   } as CSSProperties;
 
-  const languageLabel = languagePreference === "zh" ? "中文" : "English";
-  const themeLabel =
-    themePreference === "system"
-      ? languagePreference === "zh"
-        ? "跟随系统"
-        : "Follow system"
-      : themePreference === "light"
-        ? languagePreference === "zh"
-          ? "浅色"
-          : "Light"
-        : languagePreference === "zh"
-          ? "深色"
-          : "Dark";
-  const colorLabel =
-    colorPreference === "blue"
-      ? languagePreference === "zh"
-        ? "蓝色"
-        : "Blue"
-      : colorPreference === "mint"
-        ? languagePreference === "zh"
-          ? "薄荷"
-          : "Mint"
-        : colorPreference === "sunset"
-          ? languagePreference === "zh"
-            ? "暮光"
-            : "Sunset"
-          : colorPreference === "graphite"
-            ? languagePreference === "zh"
-              ? "石墨"
-              : "Graphite"
-      : languagePreference === "zh"
-        ? "白色"
-        : "White";
+  const selectedLanguage =
+    LANGUAGE_OPTIONS.find((option) => option.value === languagePreference) ?? LANGUAGE_OPTIONS[0];
+  const selectedTheme =
+    THEME_OPTIONS.find((option) => option.value === themePreference) ?? THEME_OPTIONS[0];
+  const selectedColor =
+    COLOR_OPTIONS.find((option) => option.value === colorPreference) ?? COLOR_OPTIONS[0];
+  const selectedLanguageLabel = isChineseUi ? selectedLanguage.labelZh : selectedLanguage.labelEn;
+  const selectedThemeLabel = isChineseUi ? selectedTheme.labelZh : selectedTheme.labelEn;
+  const selectedColorLabel = isChineseUi ? selectedColor.labelZh : selectedColor.labelEn;
   async function submitBranchCreate() {
     if (!conversationId || !branchCreateParentThreadId) return;
     setBranchCreateBusy(true);
@@ -607,6 +662,83 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="fa-sidebar-brand">
               <div className="fa-sidebar-brand-row">
                 <FocusAgentBrand />
+                <div
+                  className="fa-sidebar-inline-preferences"
+                  aria-label={isChineseUi ? "侧栏偏好设置" : "Sidebar preferences"}
+                  role="group"
+                >
+                  <button
+                    aria-label={
+                      isChineseUi
+                        ? `切换语言，当前${selectedLanguageLabel}`
+                        : `Switch language, current ${selectedLanguageLabel}`
+                    }
+                    className="fa-sidebar-preference-button fa-sidebar-language-button"
+                    data-preference-group="language"
+                    data-preference-value={languagePreference}
+                    {...tooltipProps(
+                      isChineseUi
+                        ? `语言：${selectedLanguageLabel}`
+                        : `Language: ${selectedLanguageLabel}`,
+                    )}
+                    onBlur={handleTooltipHide}
+                    onClick={() =>
+                      setLanguagePreference((value) => cycleOptionValue(value, LANGUAGE_OPTIONS))
+                    }
+                    onFocus={handleTooltipShow}
+                    onMouseEnter={handleTooltipShow}
+                    onMouseLeave={handleTooltipHide}
+                    type="button"
+                  >
+                    {selectedLanguage.shortLabel}
+                  </button>
+                  <button
+                    aria-label={
+                      isChineseUi
+                        ? `切换主题，当前${selectedThemeLabel}`
+                        : `Switch theme, current ${selectedThemeLabel}`
+                    }
+                    className="fa-sidebar-preference-button"
+                    data-preference-group="theme"
+                    data-preference-value={themePreference}
+                    {...tooltipProps(
+                      isChineseUi ? `主题：${selectedThemeLabel}` : `Theme: ${selectedThemeLabel}`,
+                    )}
+                    onBlur={handleTooltipHide}
+                    onClick={() =>
+                      setThemePreference((value) => cycleOptionValue(value, THEME_OPTIONS))
+                    }
+                    onFocus={handleTooltipShow}
+                    onMouseEnter={handleTooltipShow}
+                    onMouseLeave={handleTooltipHide}
+                    type="button"
+                  >
+                    <span className="fa-sidebar-theme-icon">{renderThemeIcon(themePreference)}</span>
+                  </button>
+                  <button
+                    aria-label={
+                      isChineseUi
+                        ? `切换色系，当前${selectedColorLabel}`
+                        : `Switch accent color, current ${selectedColorLabel}`
+                    }
+                    className="fa-sidebar-preference-button fa-sidebar-color-button"
+                    data-accent-value={colorPreference}
+                    data-preference-group="color"
+                    {...tooltipProps(
+                      isChineseUi ? `色系：${selectedColorLabel}` : `Color: ${selectedColorLabel}`,
+                    )}
+                    onBlur={handleTooltipHide}
+                    onClick={() =>
+                      setColorPreference((value) => cycleOptionValue(value, COLOR_OPTIONS))
+                    }
+                    onFocus={handleTooltipShow}
+                    onMouseEnter={handleTooltipShow}
+                    onMouseLeave={handleTooltipHide}
+                    type="button"
+                  >
+                    <span className="fa-sidebar-color-swatch-dot" aria-hidden="true" />
+                  </button>
+                </div>
                 <button
                   className="fa-sidebar-toggle-button"
                   {...tooltipProps(isChineseUi ? "收起侧栏" : "Collapse sidebar")}
@@ -626,102 +758,6 @@ export function AppShell({ children }: PropsWithChildren) {
                     />
                   </svg>
                 </button>
-              </div>
-              <div className="fa-sidebar-settings">
-                <div
-                  className="fa-sidebar-preferences-row"
-                  aria-label={isChineseUi ? "侧栏偏好设置" : "Sidebar preferences"}
-                >
-                  <button
-                    className={`fa-sidebar-preference-toggle ${
-                      languagePreference === "zh" ? "is-active" : ""
-                    }`}
-                    data-preference-group="language"
-                    data-preference-value={languagePreference}
-                    {...tooltipProps(isChineseUi ? "切换语言" : "Switch language")}
-                    onBlur={handleTooltipHide}
-                    onFocus={handleTooltipShow}
-                    onMouseEnter={handleTooltipShow}
-                    onMouseLeave={handleTooltipHide}
-                    onClick={() =>
-                      setLanguagePreference((value) => cyclePreference(value, LANGUAGE_OPTIONS))
-                    }
-                    type="button"
-                  >
-                    <span className="fa-sidebar-picker-text">
-                      {languagePreference === "zh" ? "语言" : "Language"}
-                    </span>
-                    <span className="fa-sidebar-preference-icon" aria-hidden="true">
-                      <svg viewBox="0 0 20 20">
-                        <path
-                          d="M4.5 6.2h7.8M8.4 4v2.2c0 3-1.8 5.7-4.6 7.1M6 9.9c.8 1.2 1.8 2.2 3 3.1M12.7 5.2h2.8m-1.4 0v8.6m-2.3-2.1h4.6"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.45"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span className="fa-sidebar-preference-value">{languageLabel}</span>
-                  </button>
-                  <button
-                    className={`fa-sidebar-preference-toggle ${
-                      themePreference !== "system" ? "is-active" : ""
-                    }`}
-                    data-preference-group="theme"
-                    data-preference-value={themePreference}
-                    {...tooltipProps(isChineseUi ? "切换主题" : "Switch theme")}
-                    onBlur={handleTooltipHide}
-                    onFocus={handleTooltipShow}
-                    onMouseEnter={handleTooltipShow}
-                    onMouseLeave={handleTooltipHide}
-                    onClick={() => setThemePreference((value) => cyclePreference(value, THEME_OPTIONS))}
-                    type="button"
-                  >
-                    <span className="fa-sidebar-picker-text">
-                      {languagePreference === "zh" ? "主题" : "Theme"}
-                    </span>
-                    <span className="fa-sidebar-preference-icon" aria-hidden="true">
-                      <svg viewBox="0 0 20 20">
-                        <path
-                          d="M10 3.4a5.8 5.8 0 1 0 5.6 7.5 4.9 4.9 0 1 1-5.6-7.5Z"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.45"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span className="fa-sidebar-preference-value">{themeLabel}</span>
-                  </button>
-                  <button
-                    className={`fa-sidebar-preference-toggle ${
-                      colorPreference !== "white" ? "is-active" : ""
-                    }`}
-                    data-preference-group="color"
-                    data-preference-value={colorPreference}
-                    {...tooltipProps(isChineseUi ? "切换色系" : "Switch accent color")}
-                    onBlur={handleTooltipHide}
-                    onFocus={handleTooltipShow}
-                    onMouseEnter={handleTooltipShow}
-                    onMouseLeave={handleTooltipHide}
-                    onClick={() => setColorPreference((value) => cyclePreference(value, COLOR_OPTIONS))}
-                    type="button"
-                  >
-                    <span className="fa-sidebar-picker-text">
-                      {languagePreference === "zh" ? "色系" : "Color"}
-                    </span>
-                    <span className="fa-sidebar-preference-icon" aria-hidden="true">
-                      <svg viewBox="0 0 20 20">
-                        <circle cx="10" cy="10" r="5.8" fill="none" stroke="currentColor" strokeWidth="1.45" />
-                        <path d="M10 4.2v11.6M4.2 10h11.6" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
-                      </svg>
-                    </span>
-                    <span className="fa-sidebar-preference-value">{colorLabel}</span>
-                  </button>
-                </div>
               </div>
             </div>
           </div>

@@ -20,10 +20,12 @@ type GraphEdge = {
   color: string;
 };
 
-const NODE_X_START = 34;
-const NODE_X_GAP = 94;
+const NODE_X_START = 42;
+const NODE_X_GAP = 108;
 const NODE_Y_START = 48;
 const NODE_Y_GAP = 76;
+const GRAPH_FOCUS_TARGET_Y = 184;
+const GRAPH_TOP_PADDING = 34;
 const BRANCH_DETAIL_WIDTH = 228;
 const BRANCH_DETAIL_HIDE_DELAY_MS = 120;
 
@@ -146,7 +148,7 @@ function depthMetaLabel(isChineseUi: boolean) {
   return isChineseUi ? "层级" : "Depth";
 }
 
-function buildGraph(root?: BranchTreeNode | null): {
+function buildGraph(root?: BranchTreeNode | null, focusThreadId?: string): {
   nodes: GraphNode[];
   edges: GraphEdge[];
   width: number;
@@ -192,10 +194,25 @@ function buildGraph(root?: BranchTreeNode | null): {
   walk(root, 0);
 
   const maxY = Math.max(...nodes.map((item) => item.y), NODE_Y_START);
-  const width = NODE_X_START * 2 + maxDepth * NODE_X_GAP + BRANCH_DETAIL_WIDTH + 54;
-  const height = Math.max(220, maxY + NODE_Y_START);
+  const minY = Math.min(...nodes.map((item) => item.y), NODE_Y_START);
+  const focusNode = focusThreadId
+    ? nodes.find((item) => item.node.thread_id === focusThreadId)
+    : undefined;
+  const requestedShift = focusNode ? GRAPH_FOCUS_TARGET_Y - focusNode.y : 0;
+  const minShift = GRAPH_TOP_PADDING - minY;
+  const verticalShift = Math.max(minShift, requestedShift);
+  const shiftedNodes =
+    verticalShift === 0
+      ? nodes
+      : nodes.map((item) => ({
+          ...item,
+          y: item.y + verticalShift,
+        }));
+  const shiftedMaxY = Math.max(...shiftedNodes.map((item) => item.y), NODE_Y_START);
+  const width = Math.max(240, NODE_X_START * 2 + maxDepth * NODE_X_GAP + 56);
+  const height = Math.max(220, shiftedMaxY + NODE_Y_START);
 
-  return { nodes, edges, width, height };
+  return { nodes: shiftedNodes, edges, width, height };
 }
 
 function edgePath(from: GraphNode, to: GraphNode) {
@@ -242,15 +259,6 @@ export function BranchTreePanel() {
     }
   }, [params.threadId, data?.root?.thread_id]);
 
-  const graph = useMemo(() => buildGraph(data?.root), [data?.root]);
-  const nodeIndex = useMemo(() => {
-    const index = new Map<string, GraphNode>();
-    for (const item of graph.nodes) {
-      index.set(item.node.thread_id, item);
-    }
-    return index;
-  }, [graph.nodes]);
-
   const contextThreadId = detailThreadId || focusedThreadId || params.threadId || "";
   const selectedNode =
     findNode(data?.root, contextThreadId) ??
@@ -258,6 +266,14 @@ export function BranchTreePanel() {
     data?.archived_branches?.[0] ??
     null;
   const selectedThreadId = contextThreadId || selectedNode?.thread_id || "";
+  const graph = useMemo(() => buildGraph(data?.root, selectedThreadId), [data?.root, selectedThreadId]);
+  const nodeIndex = useMemo(() => {
+    const index = new Map<string, GraphNode>();
+    for (const item of graph.nodes) {
+      index.set(item.node.thread_id, item);
+    }
+    return index;
+  }, [graph.nodes]);
   const createBranchTargetThreadId = selectedThreadId || params.threadId || "";
   const createBranchTargetNode =
     findNode(data?.root, createBranchTargetThreadId) ??
@@ -604,8 +620,8 @@ export function BranchTreePanel() {
         <div className="fa-tree-panel-body">
           <div className="fa-tree-summary">
             {isChineseUi
-              ? "悬浮或点击任意节点查看分支详情，需要切换上下文时再打开它。"
-              : "Hover or click any node to inspect its branch details, then open it only when you want to switch context."}
+              ? "悬浮查看详情，点击切换上下文。"
+              : "Hover for details; click to switch context."}
           </div>
           <div className="fa-tree-legend">
             <span className="fa-tree-legend-item is-role-main">{isChineseUi ? "主线时间轴" : "Main timeline"}</span>
@@ -631,6 +647,7 @@ export function BranchTreePanel() {
                   className={`fa-branch-graph-main ${
                     selectedThreadId ? "has-active-selection" : ""
                   }`}
+                  style={{ width: `${graph.width}px`, height: `${graph.height}px` }}
                 >
                   <div
                     className="fa-branch-graph-root-label"
