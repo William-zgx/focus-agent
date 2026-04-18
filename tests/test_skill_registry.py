@@ -215,9 +215,9 @@ def test_bundled_registry_contains_copied_practical_skills():
     assert "systematic-debugging" in names
     assert "writing-plans" in names
     assert "codebase-inspection" in names
-    assert "github-code-review" in names
     assert "code-documentation" in names
-    assert "consulting-analysis" in names
+    assert "research" in names
+    assert "security-review" in names
 
 
 def test_bundled_skills_use_project_ready_metadata_and_content():
@@ -225,7 +225,6 @@ def test_bundled_skills_use_project_ready_metadata_and_content():
     legacy_markers = (
         "search_files",
         "delegate_task",
-        "web_fetch",
         "/mnt/user-data/uploads",
         "~/.hermes",
         "Hermes Agent Integration",

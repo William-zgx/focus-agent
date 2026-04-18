@@ -70,6 +70,8 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     tool_registry = build_tool_registry(
         settings=settings,
         skill_registry=skill_registry,
+        store=store,
+        checkpointer=checkpointer,
     )
     graph = build_graph(
         settings=settings,

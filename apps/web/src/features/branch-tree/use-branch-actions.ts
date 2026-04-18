@@ -29,11 +29,13 @@ export function useBranchActions(scope: BranchScope) {
     parentThreadId: string;
     branchName?: string;
     branchRole?: BranchRole;
+    language?: "en" | "zh";
   }): Promise<FocusAgentBranchRecord> {
     const record = await client.forkBranch({
       parent_thread_id: input.parentThreadId,
       branch_name: input.branchName,
       branch_role: input.branchRole,
+      language: input.language,
     });
     await invalidate(input.parentThreadId);
     await queryClient.invalidateQueries({ queryKey: queryKeys.thread(record.child_thread_id) });

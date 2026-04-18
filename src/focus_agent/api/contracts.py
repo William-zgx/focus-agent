@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -89,6 +89,7 @@ class ForkBranchRequest(BaseModel):
     name_source: str | None = None
     branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES
     fork_checkpoint_id: str | None = None
+    language: Literal["en", "zh"] | None = None
     user_id: str | None = None
 
 

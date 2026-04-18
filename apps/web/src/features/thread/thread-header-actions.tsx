@@ -40,7 +40,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
   });
   const [isWorking, setIsWorking] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
-  const { openBranchCreateModal, setShellStatus, isChineseUi } = useShellUi();
+  const { createBranch, isCreatingBranch, setShellStatus, isChineseUi } = useShellUi();
   const isMergedBranch = branchMeta?.branch_status === "merged";
   const defaultNewBranchTooltip = isChineseUi ? "从当前线程创建分支" : "Create a branch from this thread";
   const newBranchTooltip = isMergedBranch
@@ -202,7 +202,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
 
   async function handleForkBranch() {
     if (!threadId || isMergedBranch) return;
-    openBranchCreateModal({ parentThreadId: threadId });
+    await createBranch({ parentThreadId: threadId });
   }
 
   async function handleBackMain() {
@@ -295,7 +295,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
             defaultTooltip: defaultNewBranchTooltip,
           })}
           aria-label={isChineseUi ? "新建分支" : "New branch"}
-          disabled={!threadId || isWorking || isMergedBranch}
+          disabled={!threadId || isWorking || isMergedBranch || isCreatingBranch}
           onClick={() => void handleForkBranch()}
           type="button"
         >

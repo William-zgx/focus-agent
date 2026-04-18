@@ -63,6 +63,7 @@ def test_fork_branch_request_allows_auto_generated_names():
 
     assert payload.branch_name is None
     assert payload.name_source is None
+    assert payload.language is None
     assert payload.branch_role == BranchRole.EXPLORE_ALTERNATIVES
 
 

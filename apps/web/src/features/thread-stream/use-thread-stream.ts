@@ -27,12 +27,19 @@ export function useThreadStream(options: UseThreadStreamOptions) {
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
   const [streamState, setStreamState] = useState<FocusAgentStreamState | null>(null);
+  const [pendingUserMessage, setPendingUserMessage] = useState<{ id: string; content: string } | null>(
+    null,
+  );
   const [isStreaming, setIsStreaming] = useState(false);
 
   async function sendMessage(message: string, overrides?: SendMessageOverrides) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    setPendingUserMessage({
+      id: `optimistic-user-${Date.now()}`,
+      content: message,
+    });
     setStreamState(createInitialStreamState());
     setIsStreaming(true);
 
@@ -59,6 +66,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.thread(options.threadId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(options.rootThreadId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+      setPendingUserMessage(null);
       setStreamState(null);
     }
   }
@@ -69,6 +77,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 
   return {
     streamState,
+    pendingUserMessage,
     isStreaming,
     sendMessage,
     stopStreaming,

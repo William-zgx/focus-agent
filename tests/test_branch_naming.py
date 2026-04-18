@@ -21,6 +21,21 @@ def test_initial_branch_name_defaults_to_new_branch_without_model_invoke():
     assert branch_name == "New Branch"
 
 
+def test_initial_branch_name_defaults_to_new_branch_in_current_language():
+    service = object.__new__(BranchService)
+    service.proposal_model = None
+
+    branch_name = service._resolve_initial_branch_name(
+        preferred_name=None,
+        parent_values={},
+        name_source=None,
+        branch_role=BranchRole.EXPLORE_ALTERNATIVES,
+        language="zh",
+    )
+
+    assert branch_name == "新分支"
+
+
 def test_branch_name_preserves_explicit_preferred_name_after_sanitizing():
     service = object.__new__(BranchService)
     service.proposal_model = None

@@ -17,8 +17,10 @@
 - Python runtime: `src/focus_agent/skills/`
 - Bundled skills: `src/focus_agent/skills/builtin/<skill>/SKILL.md`
 - Optional local overlays: `FOCUS_AGENT_SKILLS_DIRS` or the default `.focus_agent/skills`
+- Legacy repo-root installer artifacts such as `skills/` and `skills-lock.json` are not part of the runtime and should not be used for active Focus Agent skills
 
 Bundled skills are versioned with the repo so the agent has a stable baseline even when no local skills exist.
+Local overlays are intended for per-user or per-maintainer workflows and are typically kept out of git.
 
 ## Skill document format
 
@@ -106,12 +108,12 @@ This iteration bundles a pragmatic baseline:
 - `autopilot`
 - `codebase-inspection`
 - `code-documentation`
-- `consulting-analysis`
 - `eco`
-- `github-code-review`
 - `plan`
+- `research`
 - `ralph`
 - `review`
+- `security-review`
 - `systematic-debugging`
 - `tdd`
 - `ultrawork`
@@ -119,7 +121,9 @@ This iteration bundles a pragmatic baseline:
 
 These skills intentionally steer behavior that the current runtime can already support. For example, `ultrawork` encourages workstream decomposition, but it does not claim hidden sub-agent execution.
 
-We also copy a small number of practical skills from local reference repositories such as `hermes-agent` and `deer-flow`, then rewrite them into shorter Focus-Agent-specific variants so they can be activated safely in this runtime.
+Provider-specific guidance should stay behind the stable tool boundary. For example, live search belongs to the built-in `web_search` tool, while the bundled `research` skill explains when to search and how to synthesize evidence without exposing provider details such as Tavily in the skill name.
+
+User-local overlays under `.focus_agent/skills` are the right place for maintainer or team-specific workflows such as PR shipping, release readiness checks, and house build-fix routines.
 
 ## Configuration
 

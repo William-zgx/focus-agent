@@ -3,19 +3,30 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime, timezone
 import fnmatch
+from html.parser import HTMLParser
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 from typing import Any, Iterable
+from urllib import parse as urllib_parse
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from langchain.tools import tool
-from langgraph.config import get_stream_writer
+from langgraph.config import get_config, get_stream_writer
 
 from ..config import Settings
+from ..memory import MemoryWriter
+from ..memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
+from ..storage.namespaces import (
+    conversation_main_namespace,
+    project_memory_namespace,
+    root_thread_episodic_namespace,
+    user_profile_namespace,
+)
 
 _SKIP_DIR_NAMES = {
     ".git",
@@ -151,6 +162,54 @@ def _read_text_file(path: Path) -> str:
     return (chunk + remainder).decode("utf-8", errors="replace")
 
 
+class _ReadableHTMLExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title_parts: list[str] = []
+        self.text_parts: list[str] = []
+        self._skip_depth = 0
+        self._in_title = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        lowered = tag.lower()
+        if lowered in {"script", "style", "noscript", "svg"}:
+            self._skip_depth += 1
+        elif lowered == "title":
+            self._in_title = True
+        elif lowered in {"p", "div", "br", "li", "section", "article", "h1", "h2", "h3"}:
+            self.text_parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered in {"script", "style", "noscript", "svg"} and self._skip_depth:
+            self._skip_depth -= 1
+        elif lowered == "title":
+            self._in_title = False
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        if not text:
+            return
+        if self._in_title:
+            self.title_parts.append(text)
+        if self._skip_depth == 0 and not self._in_title:
+            self.text_parts.append(text)
+
+    @property
+    def title(self) -> str:
+        return _collapse_whitespace(" ".join(self.title_parts))
+
+    @property
+    def text(self) -> str:
+        return _collapse_whitespace("\n".join(self.text_parts))
+
+
+def _collapse_whitespace(value: str) -> str:
+    lines = [re.sub(r"\s+", " ", line).strip() for line in value.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
 def _format_numbered_lines(lines: list[str], *, start_line: int) -> str:
     width = max(len(str(start_line + len(lines) - 1)), 2)
     return "\n".join(f"{start_line + index:{width}d} | {line}" for index, line in enumerate(lines))
@@ -179,7 +238,160 @@ def _run_git_command(*, workspace_root: Path, args: list[str]) -> str:
     return completed.stdout
 
 
-def get_default_tools(settings: Settings):
+def _parse_namespace(value: str) -> tuple[str, ...]:
+    parts = [
+        part.strip()
+        for part in re.split(r"[:/,]", value)
+        if part.strip()
+    ]
+    if not parts:
+        raise ValueError("namespace must not be empty.")
+    return tuple(parts)
+
+
+def _get_current_thread_id() -> str | None:
+    try:
+        config = get_config()
+    except Exception:  # noqa: BLE001
+        return None
+    configurable = dict(config.get("configurable") or {})
+    value = configurable.get("thread_id")
+    return str(value) if value else None
+
+
+def _default_memory_namespaces(
+    *,
+    user_id: str | None = None,
+    root_thread_id: str | None = None,
+) -> list[tuple[str, ...]]:
+    effective_user_id = (user_id or "default").strip() or "default"
+    effective_thread_id = (root_thread_id or _get_current_thread_id() or "").strip()
+    namespaces = [
+        user_profile_namespace(effective_user_id),
+        project_memory_namespace("default"),
+    ]
+    if effective_thread_id:
+        namespaces.append(root_thread_episodic_namespace(effective_thread_id))
+        namespaces.append(conversation_main_namespace(effective_thread_id))
+    return namespaces
+
+
+def _resolve_memory_namespace(
+    *,
+    namespace: str | None,
+    scope: str,
+    user_id: str | None = None,
+    root_thread_id: str | None = None,
+) -> tuple[str, ...]:
+    if namespace and namespace.strip():
+        return _parse_namespace(namespace)
+    normalized_scope = scope.strip().lower()
+    if normalized_scope == MemoryScope.PROJECT.value:
+        return project_memory_namespace("default")
+    if normalized_scope in {MemoryScope.ROOT_THREAD.value, "conversation"}:
+        effective_thread_id = (root_thread_id or _get_current_thread_id() or "default").strip() or "default"
+        return root_thread_episodic_namespace(effective_thread_id)
+    return user_profile_namespace((user_id or "default").strip() or "default")
+
+
+def _coerce_memory_scope(scope: str, *, namespace: str | None = None) -> MemoryScope:
+    normalized_scope = scope.strip().lower()
+    if normalized_scope == "conversation":
+        return MemoryScope.ROOT_THREAD
+    if normalized_scope in {MemoryScope.BRANCH.value, MemoryScope.SKILL.value} and not (namespace or "").strip():
+        raise ValueError(f"scope={normalized_scope!r} requires an explicit namespace.")
+    return MemoryScope(normalized_scope)
+
+
+def _json_safe_memory_item(item: Any, *, namespace: tuple[str, ...]) -> dict[str, Any]:
+    value = getattr(item, "value", item)
+    key = getattr(item, "key", None)
+    if not isinstance(value, dict):
+        value = {"content": str(value)}
+    memory_id = str(value.get("memory_id") or key or "")
+    return {
+        "memory_id": memory_id,
+        "namespace": list(value.get("namespace") or namespace),
+        "kind": value.get("kind"),
+        "scope": value.get("scope"),
+        "visibility": value.get("visibility"),
+        "content": value.get("content") or "",
+        "summary": value.get("summary") or "",
+        "tags": value.get("tags") or [],
+        "confidence": value.get("confidence"),
+        "importance": value.get("importance"),
+        "created_at": value.get("created_at"),
+        "updated_at": value.get("updated_at"),
+    }
+
+
+def _resolve_artifact_path(*, artifact_dir: Path, artifact_id: str) -> Path:
+    if not artifact_id.strip():
+        raise ValueError("artifact_id must not be empty.")
+    candidate = Path(artifact_id).expanduser()
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+    else:
+        resolved = (artifact_dir / candidate).resolve()
+    try:
+        resolved.relative_to(artifact_dir.resolve())
+    except ValueError as exc:
+        raise ValueError(f"Artifact path must stay within artifact directory: {artifact_dir}") from exc
+    return resolved
+
+
+def _is_blocked_fetch_host(host: str | None) -> bool:
+    if not host:
+        return True
+    normalized = host.strip().lower().strip("[]")
+    if normalized in {"localhost", "localhost.localdomain"} or normalized.endswith(".local"):
+        return True
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+    )
+
+
+def _extract_checkpoint_state(checkpoint: dict[str, Any] | None) -> dict[str, Any]:
+    if not checkpoint:
+        return {}
+    values = checkpoint.get("channel_values") or {}
+    if isinstance(values, dict):
+        root = values.get("__root__")
+        if isinstance(root, dict):
+            return dict(root)
+        return dict(values)
+    return {}
+
+
+def _message_role(message: Any) -> str:
+    role = getattr(message, "type", None) or getattr(message, "role", None)
+    return str(role or type(message).__name__).replace("Message", "").lower()
+
+
+def _message_content(message: Any) -> str:
+    content = getattr(message, "content", message)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(str(item.get("text") or item.get("content") or item))
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+    return str(content)
+
+
+def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     workspace_root = Path(settings.workspace_root).expanduser().resolve()
@@ -412,6 +624,117 @@ def get_default_tools(settings: Settings):
             return result
         except Exception as exc:  # noqa: BLE001
             _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), title=title)
+            raise
+
+    @tool
+    def artifact_list(max_results: int | None = None) -> str:
+        """List text artifacts saved in the configured artifact directory."""
+        tool_name = 'artifact_list'
+        _emit_tool_event(tool_name=tool_name, stage='start', max_results=max_results)
+        try:
+            requested_results = (
+                tool_catalog.artifact_list.default_max_results
+                if max_results is None
+                else int(max_results)
+            )
+            capped_results = max(1, min(requested_results, tool_catalog.artifact_list.max_results_cap))
+            artifacts: list[dict[str, Any]] = []
+            truncated = False
+            for candidate in sorted(artifact_dir.rglob("*")):
+                if not candidate.is_file():
+                    continue
+                try:
+                    relative = candidate.relative_to(artifact_dir).as_posix()
+                except ValueError:
+                    continue
+                stat = candidate.stat()
+                artifacts.append(
+                    {
+                        "artifact_id": relative,
+                        "path": str(candidate),
+                        "title": candidate.stem.replace("-", " ").strip().title() or candidate.name,
+                        "size_bytes": stat.st_size,
+                        "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    }
+                )
+                if len(artifacts) >= capped_results:
+                    truncated = True
+                    break
+            result = json.dumps(
+                {
+                    "artifact_dir": str(artifact_dir),
+                    "artifacts": artifacts,
+                    "truncated": truncated,
+                },
+                ensure_ascii=False,
+            )
+            _emit_tool_event(tool_name=tool_name, stage='end', result_count=len(artifacts), output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc))
+            raise
+
+    @tool
+    def artifact_read(artifact_id: str) -> str:
+        """Read a saved text artifact by filename or artifact id."""
+        tool_name = 'artifact_read'
+        _emit_tool_event(tool_name=tool_name, stage='start', artifact_id=artifact_id)
+        try:
+            path = _resolve_artifact_path(artifact_dir=artifact_dir, artifact_id=artifact_id)
+            if not path.exists():
+                raise FileNotFoundError(artifact_id)
+            if path.is_dir():
+                raise IsADirectoryError(artifact_id)
+            content = _read_text_file(path)
+            truncated = len(content) > tool_catalog.artifact_read.max_chars
+            payload = {
+                "artifact_id": path.relative_to(artifact_dir.resolve()).as_posix(),
+                "path": str(path),
+                "content": content[: tool_catalog.artifact_read.max_chars],
+                "truncated": truncated,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), artifact_id=artifact_id)
+            raise
+
+    @tool
+    def artifact_update(artifact_id: str, body: str, mode: str = "replace") -> str:
+        """Replace, append to, or prepend content in an existing text artifact."""
+        tool_name = 'artifact_update'
+        _emit_tool_event(tool_name=tool_name, stage='start', artifact_id=artifact_id, mode=mode)
+        try:
+            path = _resolve_artifact_path(artifact_dir=artifact_dir, artifact_id=artifact_id)
+            if not path.exists():
+                raise FileNotFoundError(artifact_id)
+            if path.is_dir():
+                raise IsADirectoryError(artifact_id)
+            existing = _read_text_file(path)
+            normalized_mode = mode.strip().lower()
+            if normalized_mode == "replace":
+                updated = body
+            elif normalized_mode == "append":
+                separator = "" if existing.endswith("\n") or not existing else "\n"
+                updated = f"{existing}{separator}{body}"
+            elif normalized_mode == "prepend":
+                separator = "" if body.endswith("\n") or not existing else "\n"
+                updated = f"{body}{separator}{existing}"
+            else:
+                raise ValueError("mode must be one of: replace, append, prepend.")
+            path.write_text(updated, encoding="utf-8")
+            payload = {
+                "artifact_id": path.relative_to(artifact_dir.resolve()).as_posix(),
+                "path": str(path),
+                "mode": normalized_mode,
+                "size_bytes": path.stat().st_size,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), artifact_id=artifact_id)
             raise
 
     @tool
@@ -744,6 +1067,255 @@ def get_default_tools(settings: Settings):
             raise
 
     @tool
+    def web_fetch(url: str, max_chars: int | None = None) -> str:
+        """Fetch and extract readable text from a user-provided HTTP or HTTPS URL."""
+        tool_name = 'web_fetch'
+        _emit_tool_event(tool_name=tool_name, stage='start', url=url, max_chars=max_chars)
+        try:
+            parsed = urllib_parse.urlparse(url.strip())
+            if parsed.scheme not in {"http", "https"}:
+                raise ValueError("Only http and https URLs are supported.")
+            if _is_blocked_fetch_host(parsed.hostname):
+                raise ValueError("Refusing to fetch localhost, private, reserved, or link-local hosts.")
+            requested_chars = (
+                tool_catalog.web_fetch.default_max_chars
+                if max_chars is None
+                else int(max_chars)
+            )
+            capped_chars = max(1, min(requested_chars, tool_catalog.web_fetch.max_chars_cap))
+            request = urllib_request.Request(
+                urllib_parse.urlunparse(parsed),
+                headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
+                method="GET",
+            )
+            with urllib_request.urlopen(request, timeout=30) as response:
+                raw = response.read(min(capped_chars * 4, tool_catalog.web_fetch.max_chars_cap * 4))
+                final_url = response.geturl() if hasattr(response, "geturl") else urllib_parse.urlunparse(parsed)
+                headers = getattr(response, "headers", {}) or {}
+                content_type = headers.get("content-type", "") if hasattr(headers, "get") else ""
+                charset = (
+                    headers.get_content_charset()
+                    if hasattr(headers, "get_content_charset")
+                    else None
+                ) or "utf-8"
+            decoded = raw.decode(charset, errors="replace")
+            title = ""
+            if "html" in content_type.lower() or "<html" in decoded[:500].lower():
+                parser = _ReadableHTMLExtractor()
+                parser.feed(decoded)
+                title = parser.title
+                content = parser.text
+            else:
+                content = _collapse_whitespace(decoded)
+            truncated = len(content) > capped_chars
+            payload = {
+                "url": url,
+                "final_url": final_url,
+                "title": title,
+                "content_type": content_type,
+                "content": content[:capped_chars],
+                "truncated": truncated,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), url=url)
+            raise
+
+    @tool
+    def memory_save(
+        content: str,
+        kind: str = "user_preference",
+        scope: str = "user",
+        namespace: str | None = None,
+        summary: str = "",
+        tags: list[str] | None = None,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+        confidence: float | None = None,
+        importance: float = 0.6,
+    ) -> str:
+        """Save an explicit durable memory such as a user preference or project fact."""
+        tool_name = 'memory_save'
+        _emit_tool_event(tool_name=tool_name, stage='start', kind=kind, scope=scope, namespace=namespace)
+        try:
+            if store is None:
+                raise RuntimeError("Memory store is not configured.")
+            if not content.strip():
+                raise ValueError("content must not be empty.")
+            memory_kind = MemoryKind(kind.strip())
+            memory_scope = _coerce_memory_scope(scope, namespace=namespace)
+            resolved_namespace = _resolve_memory_namespace(
+                namespace=namespace,
+                scope=memory_scope.value,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+            )
+            record = MemoryWriteRequest(
+                kind=memory_kind,
+                scope=memory_scope,
+                visibility=MemoryVisibility.PRIVATE,
+                namespace=resolved_namespace,
+                content=content.strip(),
+                summary=(summary or content).strip()[:240],
+                tags=tags or [],
+                root_thread_id=root_thread_id or _get_current_thread_id(),
+                user_id=(user_id or "default").strip() or "default",
+                confidence=confidence,
+                importance=importance,
+            )
+            keys = MemoryWriter(store=store).write_records([record])
+            payload = {
+                "memory_id": keys[0] if keys else None,
+                "namespace": list(resolved_namespace),
+                "kind": memory_kind.value,
+                "scope": memory_scope.value,
+                "saved": bool(keys),
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc))
+            raise
+
+    @tool
+    def memory_search(
+        query: str,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+        limit: int | None = None,
+    ) -> str:
+        """Search durable memories by query across the default memory namespaces."""
+        tool_name = 'memory_search'
+        _emit_tool_event(tool_name=tool_name, stage='start', query=query, namespace=namespace, limit=limit)
+        try:
+            if store is None:
+                raise RuntimeError("Memory store is not configured.")
+            if not query.strip():
+                raise ValueError("query must not be empty.")
+            requested_limit = (
+                tool_catalog.memory_search.default_limit
+                if limit is None
+                else int(limit)
+            )
+            capped_limit = max(1, min(requested_limit, tool_catalog.memory_search.max_limit))
+            namespaces = (
+                [_parse_namespace(namespace)]
+                if namespace and namespace.strip()
+                else _default_memory_namespaces(user_id=user_id, root_thread_id=root_thread_id)
+            )
+            results: list[dict[str, Any]] = []
+            for candidate_namespace in namespaces:
+                for item in store.search(candidate_namespace, query=query.strip(), limit=capped_limit) or []:
+                    results.append(_json_safe_memory_item(item, namespace=candidate_namespace))
+                    if len(results) >= capped_limit:
+                        break
+                if len(results) >= capped_limit:
+                    break
+            payload = {
+                "query": query,
+                "namespaces": [list(item) for item in namespaces],
+                "results": results,
+                "truncated": len(results) >= capped_limit,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', result_count=len(results), output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), query=query)
+            raise
+
+    @tool
+    def memory_forget(
+        memory_id: str,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+    ) -> str:
+        """Delete a saved memory by id from an explicit or default memory namespace."""
+        tool_name = 'memory_forget'
+        _emit_tool_event(tool_name=tool_name, stage='start', memory_id=memory_id, namespace=namespace)
+        try:
+            if store is None:
+                raise RuntimeError("Memory store is not configured.")
+            normalized_id = memory_id.strip()
+            if not normalized_id:
+                raise ValueError("memory_id must not be empty.")
+            namespaces = (
+                [_parse_namespace(namespace)]
+                if namespace and namespace.strip()
+                else _default_memory_namespaces(user_id=user_id, root_thread_id=root_thread_id)
+            )
+            deleted_namespace: tuple[str, ...] | None = None
+            for candidate_namespace in namespaces:
+                if store.get(candidate_namespace, normalized_id) is None:
+                    continue
+                store.delete(candidate_namespace, normalized_id)
+                deleted_namespace = candidate_namespace
+                break
+            payload = {
+                "memory_id": normalized_id,
+                "deleted": deleted_namespace is not None,
+                "namespace": list(deleted_namespace) if deleted_namespace else None,
+                "searched_namespaces": [list(item) for item in namespaces],
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), memory_id=memory_id)
+            raise
+
+    @tool
+    def conversation_summary(thread_id: str = "", recent_messages: int | None = None) -> str:
+        """Return the latest saved rolling summary and recent messages for a thread."""
+        tool_name = 'conversation_summary'
+        _emit_tool_event(tool_name=tool_name, stage='start', thread_id=thread_id, recent_messages=recent_messages)
+        try:
+            if checkpointer is None:
+                raise RuntimeError("Conversation checkpointer is not configured.")
+            effective_thread_id = thread_id.strip() or _get_current_thread_id()
+            if not effective_thread_id:
+                raise ValueError("thread_id is required outside an active graph run.")
+            requested_messages = (
+                tool_catalog.conversation_summary.default_recent_messages
+                if recent_messages is None
+                else int(recent_messages)
+            )
+            capped_messages = max(
+                0,
+                min(requested_messages, tool_catalog.conversation_summary.max_recent_messages),
+            )
+            checkpoint = checkpointer.get({"configurable": {"thread_id": effective_thread_id}})
+            state = _extract_checkpoint_state(checkpoint)
+            messages = list(state.get("messages", []) or [])
+            recent = [
+                {
+                    "role": _message_role(message),
+                    "content": _message_content(message)[:1200],
+                }
+                for message in messages[-capped_messages:]
+            ]
+            payload = {
+                "thread_id": effective_thread_id,
+                "rolling_summary": state.get("rolling_summary", ""),
+                "task_brief": state.get("task_brief", ""),
+                "branch_meta": state.get("branch_meta"),
+                "active_skill_ids": state.get("active_skill_ids", []),
+                "message_count": len(messages),
+                "recent_messages": recent,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            _emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), thread_id=thread_id)
+            raise
+
+    @tool
     def web_search(query: str, max_results: int | None = None) -> str:
         """Search the live web with Tavily first and DuckDuckGo as a fallback."""
         requested_results = 5 if max_results is None else int(max_results)
@@ -752,6 +1324,9 @@ def get_default_tools(settings: Settings):
     registered_tools = {
         "current_utc_time": current_utc_time,
         "write_text_artifact": write_text_artifact,
+        "artifact_list": artifact_list,
+        "artifact_read": artifact_read,
+        "artifact_update": artifact_update,
         "list_files": list_files,
         "read_file": read_file,
         "search_code": search_code,
@@ -759,6 +1334,11 @@ def get_default_tools(settings: Settings):
         "git_status": git_status,
         "git_diff": git_diff,
         "git_log": git_log,
+        "web_fetch": web_fetch,
+        "memory_save": memory_save,
+        "memory_search": memory_search,
+        "memory_forget": memory_forget,
+        "conversation_summary": conversation_summary,
         "web_search": web_search,
     }
 

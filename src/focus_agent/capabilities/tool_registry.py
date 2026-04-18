@@ -20,8 +20,21 @@ class ToolRegistry:
         return {tool_.name: tool_ for tool_ in self.tools}
 
 
-def build_tool_registry(*, settings: Settings, skill_registry: SkillRegistry) -> ToolRegistry:
-    default_tools = {tool_.name: tool_ for tool_ in get_default_tools(settings)}
+def build_tool_registry(
+    *,
+    settings: Settings,
+    skill_registry: SkillRegistry,
+    store=None,
+    checkpointer=None,
+) -> ToolRegistry:
+    default_tools = {
+        tool_.name: tool_
+        for tool_ in get_default_tools(
+            settings,
+            store=store,
+            checkpointer=checkpointer,
+        )
+    }
     skill_tools = {tool_.name: tool_ for tool_ in _build_skill_tools(settings=settings, skill_registry=skill_registry)}
     all_tools = {**default_tools, **skill_tools}
     return ToolRegistry(

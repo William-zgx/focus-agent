@@ -364,6 +364,7 @@ export interface FocusAgentForkBranchRequest {
   name_source?: string;
   branch_role?: BranchRole;
   fork_checkpoint_id?: string;
+  language?: "en" | "zh";
 }
 
 export interface FocusAgentRenameBranchRequest {
