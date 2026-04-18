@@ -232,7 +232,6 @@ def build_smoke_expression(message: str) -> str:
   const result = {{}};
   const newConversationLabels = ['New', 'New conversation', '新建', '新建对话'];
   const newBranchLabels = ['Fork branch', 'New branch', '新建分支', '创建分支'];
-  const createBranchLabels = ['Create branch', '创建分支'];
   const sendLabels = ['Send', 'Send message', '发送', '发送消息'];
   const failedConversationLabels = ['Failed to load conversations.', '加载对话失败。'];
   const loadingConversationLabels = ['Loading conversations...', '正在加载对话...'];
@@ -290,8 +289,6 @@ def build_smoke_expression(message: str) -> str:
   }}, 90000, 'assistant natural-language response');
   result.lastResponseText = finalText;
   clickButton(...newBranchLabels);
-  await waitFor(() => findButton(...createBranchLabels), 10000, 'create branch dialog');
-  clickButton(...createBranchLabels);
   await waitFor(() => hasThreadRoute() && location.pathname !== result.threadPath, 20000, 'branch route');
   result.branchPath = location.pathname;
   await openReviewFlow();

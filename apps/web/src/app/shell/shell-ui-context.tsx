@@ -26,10 +26,8 @@ interface ShellUiContextValue {
   setColorPreference: (value: ColorPreference) => void;
   shellStatus: ShellStatus | null;
   setShellStatus: (status: ShellStatus | null, options?: { autoClearMs?: number }) => void;
-  openBranchCreateModal: (options?: { parentThreadId?: string }) => void;
-  closeBranchCreateModal: () => void;
-  branchCreateOpen: boolean;
-  branchCreateParentThreadId: string | null;
+  createBranch: (options?: { parentThreadId?: string }) => Promise<void>;
+  isCreatingBranch: boolean;
   isChineseUi: boolean;
 }
 
@@ -88,4 +86,3 @@ export function useTransientShellStatus(
 
   return [status, setShellStatus];
 }
-

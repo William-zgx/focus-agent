@@ -247,7 +247,7 @@ export function BranchTreePanel() {
   const detailAnchorRef = useRef<HTMLElement | null>(null);
   const detailOverlayRef = useRef<HTMLDivElement | null>(null);
   const detailHideTimerRef = useRef<number | null>(null);
-  const { isChineseUi, openBranchCreateModal } = useShellUi();
+  const { createBranch, isCreatingBranch, isChineseUi } = useShellUi();
 
   useEffect(() => {
     if (params.threadId) {
@@ -274,6 +274,7 @@ export function BranchTreePanel() {
     }
     return index;
   }, [graph.nodes]);
+
   const createBranchTargetThreadId = selectedThreadId || params.threadId || "";
   const createBranchTargetNode =
     findNode(data?.root, createBranchTargetThreadId) ??
@@ -528,7 +529,7 @@ export function BranchTreePanel() {
 
   async function handleCreateBranch() {
     if (!createBranchTargetThreadId || isMergedCreateTarget) return;
-    openBranchCreateModal({ parentThreadId: createBranchTargetThreadId });
+    await createBranch({ parentThreadId: createBranchTargetThreadId });
   }
 
   async function handleRenameBranch(node: BranchTreeNode) {
@@ -595,7 +596,7 @@ export function BranchTreePanel() {
               {...tooltipProps(createBranchTooltip, {
                 defaultTooltip: isChineseUi ? "从当前选中节点创建新分支" : "Create a branch from the selected node",
               })}
-              disabled={!createBranchTargetThreadId || isMergedCreateTarget}
+              disabled={!createBranchTargetThreadId || isMergedCreateTarget || isCreatingBranch}
               onClick={() => void handleCreateBranch()}
               type="button"
             >

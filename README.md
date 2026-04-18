@@ -166,6 +166,7 @@ make ui-smoke
 
 - Frontend SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
 - Roadmap: [`docs/current-roadmap.md`](docs/current-roadmap.md)
+- Tool and skill boundary design: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
 - Local env example: [`docs/local.env.example`](docs/local.env.example)
 - Model catalog example: [`docs/models.example.toml`](docs/models.example.toml)
 - Tool catalog example: [`docs/tools.example.toml`](docs/tools.example.toml)

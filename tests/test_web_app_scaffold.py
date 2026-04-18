@@ -100,12 +100,29 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "disabled={isReadOnly}" in message_list_text
     assert "Merged branches are read-only" in composer_text
     assert 'const isMergedBranch = branchMeta?.branch_status === "merged";' in header_actions_text
-    assert 'disabled={!threadId || isWorking || isMergedBranch}' in header_actions_text
+    assert 'disabled={!threadId || isWorking || isMergedBranch || isCreatingBranch}' in header_actions_text
     assert "Merged branches cannot create new branches" in header_actions_text
     assert 'const isMergedCreateTarget = createBranchTargetNode?.branch_status === "merged";' in branch_tree_text
-    assert 'disabled={!createBranchTargetThreadId || isMergedCreateTarget}' in branch_tree_text
+    assert 'disabled={!createBranchTargetThreadId || isMergedCreateTarget || isCreatingBranch}' in branch_tree_text
     assert "Create a branch from the selected node" in branch_tree_text
     assert "Merged branches cannot create new branches" in branch_tree_text
+
+
+def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():
+    root = Path(__file__).resolve().parents[1]
+    web_root = root / "apps" / "web" / "src"
+
+    thread_page_text = (web_root / "pages" / "thread" / "thread-page.tsx").read_text()
+    message_list_text = (web_root / "entities" / "messages" / "message-list.tsx").read_text()
+    styles_text = (web_root / "shared" / "styles" / "app.css").read_text()
+
+    assert "assistantMessage={data?.assistant_message}" in thread_page_text
+    assert "buildTranscriptItems(messages, assistantMessage)" in message_list_text
+    assert 'kind: "tool-activity"' in message_list_text
+    assert 'className="fa-tool-activity-card"' in message_list_text
+    assert 'id: `${lastItem.id}-summary`' in message_list_text
+    assert ".fa-tool-activity-card" in styles_text
+    assert ".fa-tool-activity-summary" in styles_text
 
 
 def test_react_web_app_marks_merged_branch_status_in_danger_tone():

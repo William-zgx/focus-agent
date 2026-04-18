@@ -175,6 +175,8 @@ def build_graph(
     effective_tool_registry = tool_registry or build_tool_registry(
         settings=settings,
         skill_registry=effective_skill_registry,
+        store=store,
+        checkpointer=checkpointer,
     )
     tools = list(effective_tool_registry.tools)
     tools_by_name = effective_tool_registry.by_name

@@ -392,6 +392,7 @@ def create_app() -> FastAPI:
                 user_id=principal.user_id,
                 branch_name=payload.branch_name,
                 name_source=payload.name_source,
+                language=payload.language,
                 branch_role=payload.branch_role,
                 fork_checkpoint_id=payload.fork_checkpoint_id,
             )

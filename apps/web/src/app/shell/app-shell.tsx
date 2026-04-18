@@ -198,9 +198,6 @@ export function AppShell({ children }: PropsWithChildren) {
   const [colorPreference, setColorPreference] = useState<ColorPreference>(
     DEFAULT_COLOR_PREFERENCE,
   );
-  const [branchCreateOpen, setBranchCreateOpen] = useState(false);
-  const [branchCreateParentThreadId, setBranchCreateParentThreadId] = useState<string | null>(null);
-  const [branchCreateName, setBranchCreateName] = useState("");
   const [branchCreateBusy, setBranchCreateBusy] = useState(false);
   const [shellStatus, setShellStatus] = useTransientShellStatus();
   const [tooltipState, setTooltipState] = useState<{
@@ -315,11 +312,11 @@ export function AppShell({ children }: PropsWithChildren) {
   }, [themePreference, colorPreference, languagePreference]);
 
   useEffect(() => {
-    document.body.classList.toggle("has-modal", branchCreateOpen || isReviewRoute);
+    document.body.classList.toggle("has-modal", isReviewRoute);
     return () => {
       document.body.classList.remove("has-modal");
     };
-  }, [branchCreateOpen, isReviewRoute]);
+  }, [isReviewRoute]);
 
   useEffect(() => {
     function closestTooltipTarget(target: EventTarget | null) {
@@ -413,24 +410,18 @@ export function AppShell({ children }: PropsWithChildren) {
   }, [tooltipState]);
 
   useEffect(() => {
-    if (!branchCreateOpen && !isReviewRoute) return;
+    if (!isReviewRoute) return;
 
     function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key !== "Escape") return;
-      if (branchCreateOpen) {
-        closeBranchCreateModal();
-        return;
-      }
-      if (isReviewRoute) {
-        void closeMergeReviewModal();
-      }
+      void closeMergeReviewModal();
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [branchCreateOpen, isReviewRoute]);
+  }, [isReviewRoute]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -506,18 +497,6 @@ export function AppShell({ children }: PropsWithChildren) {
     setTooltipState(null);
   }
 
-  function openBranchCreateModal(options?: { parentThreadId?: string }) {
-    setBranchCreateParentThreadId(options?.parentThreadId ?? threadId ?? null);
-    setBranchCreateName("");
-    setBranchCreateOpen(true);
-  }
-
-  function closeBranchCreateModal() {
-    if (branchCreateBusy) return;
-    setBranchCreateOpen(false);
-    setBranchCreateName("");
-  }
-
   function handleResizerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (sidebarCollapsed) return;
     resizeSessionRef.current = {
@@ -555,7 +534,6 @@ export function AppShell({ children }: PropsWithChildren) {
   const shellStyle = {
     "--fa-sidebar-width": `${sidebarWidth}px`,
   } as CSSProperties;
-
   const selectedLanguage =
     LANGUAGE_OPTIONS.find((option) => option.value === languagePreference) ?? LANGUAGE_OPTIONS[0];
   const selectedTheme =
@@ -565,8 +543,10 @@ export function AppShell({ children }: PropsWithChildren) {
   const selectedLanguageLabel = isChineseUi ? selectedLanguage.labelZh : selectedLanguage.labelEn;
   const selectedThemeLabel = isChineseUi ? selectedTheme.labelZh : selectedTheme.labelEn;
   const selectedColorLabel = isChineseUi ? selectedColor.labelZh : selectedColor.labelEn;
-  async function submitBranchCreate() {
-    if (!conversationId || !branchCreateParentThreadId) return;
+
+  async function createBranch(options?: { parentThreadId?: string }) {
+    const parentThreadId = options?.parentThreadId ?? threadId ?? null;
+    if (!conversationId || !parentThreadId || branchCreateBusy) return;
     setBranchCreateBusy(true);
     try {
       setShellStatus(
@@ -577,11 +557,9 @@ export function AppShell({ children }: PropsWithChildren) {
         { autoClearMs: 2400 },
       );
       const record = await forkBranch({
-        parentThreadId: branchCreateParentThreadId,
-        branchName: branchCreateName.trim() || undefined,
+        parentThreadId,
+        language: languagePreference,
       });
-      setBranchCreateOpen(false);
-      setBranchCreateName("");
       await navigate({
         to: "/c/$conversationId/t/$threadId",
         params: {
@@ -625,12 +603,7 @@ export function AppShell({ children }: PropsWithChildren) {
     });
   }
 
-  const modalOpen = branchCreateOpen || isReviewRoute;
   async function dismissModal() {
-    if (branchCreateOpen) {
-      closeBranchCreateModal();
-      return;
-    }
     if (isReviewRoute) {
       await closeMergeReviewModal();
     }
@@ -647,10 +620,8 @@ export function AppShell({ children }: PropsWithChildren) {
         setColorPreference,
         shellStatus,
         setShellStatus,
-        openBranchCreateModal,
-        closeBranchCreateModal,
-        branchCreateOpen,
-        branchCreateParentThreadId,
+        createBranch,
+        isCreatingBranch: branchCreateBusy,
       }}
     >
       <div
@@ -827,7 +798,7 @@ export function AppShell({ children }: PropsWithChildren) {
         </main>
       </div>
 
-      {modalOpen ? (
+      {isReviewRoute ? (
         <button
           aria-label={isChineseUi ? "关闭弹层" : "Close dialog"}
           className="fa-modal-backdrop"
@@ -844,66 +815,6 @@ export function AppShell({ children }: PropsWithChildren) {
         >
           {tooltipState.text}
         </div>
-      ) : null}
-
-      {branchCreateOpen ? (
-        <section className="fa-focus-modal" role="dialog" aria-modal="true" aria-labelledby="fa-branch-create-title">
-          <div className="fa-focus-modal-card">
-            <div className="fa-focus-modal-head">
-              <div className="fa-focus-modal-copy">
-                <h3 id="fa-branch-create-title">
-                  {isChineseUi ? "创建分支" : "Create branch"}
-                </h3>
-                <p>
-                  {isChineseUi
-                    ? "可选填写分支名称。新分支默认可以在之后把结论带回上游。"
-                    : "Choose an optional branch name. New branches can return conclusions upstream by default."}
-                </p>
-              </div>
-              <button
-                aria-label={isChineseUi ? "关闭创建分支弹层" : "Close create branch dialog"}
-                className="fa-focus-modal-close"
-                onClick={closeBranchCreateModal}
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-            <div className="fa-focus-modal-form">
-              <label className="fa-focus-modal-field">
-                <span>{isChineseUi ? "分支名称（可选）" : "Branch name (optional)"}</span>
-                <input
-                  value={branchCreateName}
-                  onChange={(event) => setBranchCreateName(event.target.value)}
-                  placeholder={
-                    isChineseUi
-                      ? "留空则自动生成名称"
-                      : "Leave blank to auto-generate a name"
-                  }
-                />
-              </label>
-              <div className="fa-focus-modal-note">
-                {isChineseUi
-                  ? "如果输入区里已有草稿内容，仍会把它当作分支命名的上下文。所有分支后续都可以由你决定是否带回上游。"
-                  : "The current composer draft will still be sent as branch naming context when available. You decide later whether to merge upstream."}
-              </div>
-            </div>
-            <div className="fa-focus-modal-actions">
-              <button onClick={closeBranchCreateModal} type="button">
-                {isChineseUi ? "取消" : "Cancel"}
-              </button>
-              <button onClick={() => void submitBranchCreate()} type="button" disabled={branchCreateBusy}>
-                {branchCreateBusy
-                  ? isChineseUi
-                    ? "创建中..."
-                    : "Creating..."
-                  : isChineseUi
-                    ? "创建分支"
-                    : "Create branch"}
-              </button>
-            </div>
-          </div>
-        </section>
       ) : null}
 
       {isReviewRoute && threadId ? (

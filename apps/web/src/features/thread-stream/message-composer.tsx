@@ -370,69 +370,6 @@ export function MessageComposer({
         </div>
 
         <div className="fa-composer-footer-row">
-          <div className="fa-composer-actions-row">
-            <div className="fa-composer-inline-actions">
-              <button
-                className="fa-composer-icon-button is-clear"
-                {...tooltipProps(isChineseUi ? "清空输入" : "Clear input")}
-                disabled={isStreaming || !message}
-                onClick={() => setMessage("")}
-                type="button"
-              >
-                <span className="fa-composer-icon" aria-hidden="true">
-                  <svg viewBox="0 0 20 20">
-                    <path
-                      d="M7.65 3.25c-.83 0-1.5.67-1.5 1.5v.4H4.5a.85.85 0 0 0 0 1.7h.58l.63 8.02a2.05 2.05 0 0 0 2.05 1.88h4.48a2.05 2.05 0 0 0 2.05-1.88l.63-8.02h.58a.85.85 0 1 0 0-1.7h-1.65v-.4c0-.83-.67-1.5-1.5-1.5h-4.7Z"
-                      fill="currentColor"
-                      opacity="0.9"
-                    />
-                    <path d="M8.5 9.1v4.2M11.5 9.1v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </span>
-                <span className="sr-only">{isChineseUi ? "清空输入" : "Clear input"}</span>
-              </button>
-
-              {isStreaming ? (
-                <button
-                  className="fa-composer-icon-button is-stop"
-                  {...tooltipProps(isChineseUi ? "停止生成" : "Stop generation")}
-                  type="button"
-                  onClick={onStopStreaming}
-                >
-                  <span className="fa-composer-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20">
-                      <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="2.2" fill="currentColor" />
-                    </svg>
-                  </span>
-                  <span className="sr-only">{isChineseUi ? "停止生成" : "Stop generation"}</span>
-                </button>
-              ) : (
-                <button
-                  className="fa-composer-icon-button is-send"
-                  {...tooltipProps(isReadOnly ? readOnlyReason : isChineseUi ? "发送消息" : "Send message")}
-                  disabled={isStreaming || isReadOnly || !message.trim()}
-                  type="submit"
-                >
-                  <span className="fa-composer-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20">
-                      <path
-                        d="M16.99 3.01a.9.9 0 0 0-.94-.16L3.58 8.38a.9.9 0 0 0 .07 1.68l5 1.88 1.88 5a.9.9 0 0 0 1.68.07l5.53-12.47a.9.9 0 0 0-.75-1.53Z"
-                        fill="currentColor"
-                      />
-                      <path
-                        d="m8.14 10.12 4.25-4.25"
-                        stroke="rgba(255,255,255,0.92)"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </span>
-                  <span className="sr-only">{isChineseUi ? "发送消息" : "Send message"}</span>
-                </button>
-              )}
-            </div>
-          </div>
-
           <div className="fa-composer-model-row">
             <div className="fa-composer-model-controls">
               <div className="fa-composer-model-anchor fa-composer-model-shell">
@@ -568,6 +505,69 @@ export function MessageComposer({
                   </div>
                 ) : null}
               </div>
+            </div>
+          </div>
+
+          <div className="fa-composer-actions-row">
+            <div className="fa-composer-inline-actions">
+              <button
+                className="fa-composer-icon-button is-clear"
+                {...tooltipProps(isChineseUi ? "清空输入" : "Clear input")}
+                disabled={isStreaming || !message}
+                onClick={() => setMessage("")}
+                type="button"
+              >
+                <span className="fa-composer-icon" aria-hidden="true">
+                  <svg viewBox="0 0 20 20">
+                    <path
+                      d="M7.65 3.25c-.83 0-1.5.67-1.5 1.5v.4H4.5a.85.85 0 0 0 0 1.7h.58l.63 8.02a2.05 2.05 0 0 0 2.05 1.88h4.48a2.05 2.05 0 0 0 2.05-1.88l.63-8.02h.58a.85.85 0 1 0 0-1.7h-1.65v-.4c0-.83-.67-1.5-1.5-1.5h-4.7Z"
+                      fill="currentColor"
+                      opacity="0.9"
+                    />
+                    <path d="M8.5 9.1v4.2M11.5 9.1v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </span>
+                <span className="sr-only">{isChineseUi ? "清空输入" : "Clear input"}</span>
+              </button>
+
+              {isStreaming ? (
+                <button
+                  className="fa-composer-icon-button is-stop"
+                  {...tooltipProps(isChineseUi ? "停止生成" : "Stop generation")}
+                  type="button"
+                  onClick={onStopStreaming}
+                >
+                  <span className="fa-composer-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20">
+                      <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="2.2" fill="currentColor" />
+                    </svg>
+                  </span>
+                  <span className="sr-only">{isChineseUi ? "停止生成" : "Stop generation"}</span>
+                </button>
+              ) : (
+                <button
+                  className="fa-composer-icon-button is-send"
+                  {...tooltipProps(isReadOnly ? readOnlyReason : isChineseUi ? "发送消息" : "Send message")}
+                  disabled={isStreaming || isReadOnly || !message.trim()}
+                  type="submit"
+                >
+                  <span className="fa-composer-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20">
+                      <path
+                        d="M16.99 3.01a.9.9 0 0 0-.94-.16L3.58 8.38a.9.9 0 0 0 .07 1.68l5 1.88 1.88 5a.9.9 0 0 0 1.68.07l5.53-12.47a.9.9 0 0 0-.75-1.53Z"
+                        fill="currentColor"
+                      />
+                      <path
+                        d="m8.14 10.12 4.25-4.25"
+                        stroke="rgba(255,255,255,0.92)"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+                  <span className="sr-only">{isChineseUi ? "发送消息" : "Send message"}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

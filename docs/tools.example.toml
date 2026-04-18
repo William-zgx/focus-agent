@@ -8,6 +8,24 @@ enabled = true
 label = "Write Text Artifact"
 description = "Write a text artifact to disk and return its location."
 
+[artifact_list]
+enabled = true
+label = "Artifact List"
+description = "List text artifacts saved in the configured artifact directory."
+default_max_results = 50
+max_results_cap = 200
+
+[artifact_read]
+enabled = true
+label = "Artifact Read"
+description = "Read a saved text artifact by filename or artifact id."
+max_chars = 50000
+
+[artifact_update]
+enabled = true
+label = "Artifact Update"
+description = "Replace, append to, or prepend content in an existing text artifact."
+
 [list_files]
 enabled = true
 label = "List Files"
@@ -56,6 +74,37 @@ label = "Git Log"
 description = "Return recent commits from the current repository."
 default_limit = 10
 max_limit = 50
+
+[web_fetch]
+enabled = true
+label = "Web Fetch"
+description = "Fetch and extract readable text from a user-provided HTTP or HTTPS URL."
+default_max_chars = 12000
+max_chars_cap = 50000
+
+[memory_save]
+enabled = true
+label = "Memory Save"
+description = "Save an explicit durable memory such as a user preference or project fact."
+
+[memory_search]
+enabled = true
+label = "Memory Search"
+description = "Search durable memories by query across the default memory namespaces."
+default_limit = 5
+max_limit = 20
+
+[memory_forget]
+enabled = true
+label = "Memory Forget"
+description = "Delete a saved memory by id from an explicit or default memory namespace."
+
+[conversation_summary]
+enabled = true
+label = "Conversation Summary"
+description = "Return the latest saved rolling summary and recent messages for a thread."
+default_recent_messages = 8
+max_recent_messages = 30
 
 [skills_list]
 enabled = true

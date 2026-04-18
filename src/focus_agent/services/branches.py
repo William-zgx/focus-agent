@@ -34,6 +34,7 @@ from ..config import Settings
 class BranchService:
     _DEFAULT_MAX_BRANCH_DEPTH = 5
     _DEFAULT_PENDING_BRANCH_NAME = "New Branch"
+    _DEFAULT_PENDING_BRANCH_NAME_ZH = "新分支"
     _ROLE_FALLBACK_NAMES = {
         BranchRole.MAIN: "Main",
         BranchRole.EXPLORE_ALTERNATIVES: "Alternative Path",
@@ -423,10 +424,13 @@ class BranchService:
         parent_values: dict,
         name_source: str | None,
         branch_role: BranchRole,
+        language: str | None = None,
     ) -> str:
         if preferred_name and preferred_name.strip():
             return self._sanitize_branch_name(preferred_name, branch_role=branch_role)
         del parent_values, name_source
+        if str(language or "").strip().lower() == "zh":
+            return self._DEFAULT_PENDING_BRANCH_NAME_ZH
         return self._DEFAULT_PENDING_BRANCH_NAME
 
     def _generate_conversation_name(self, *, thread_values: dict) -> str:
@@ -552,6 +556,7 @@ class BranchService:
         user_id: str,
         branch_name: str | None = None,
         name_source: str | None = None,
+        language: str | None = None,
         branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
         fork_checkpoint_id: str | None = None,
     ) -> BranchRecord:
@@ -573,6 +578,7 @@ class BranchService:
             parent_values=parent_values,
             name_source=name_source,
             branch_role=branch_role,
+            language=language,
         )
         branch_id = str(uuid.uuid4())
         child_thread_id: str

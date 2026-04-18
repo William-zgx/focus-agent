@@ -8,6 +8,7 @@ import { createElement, Fragment, type ReactNode, useMemo, useState } from "reac
 interface MessageListProps {
   isReadOnly?: boolean;
   messages: Array<Record<string, unknown>>;
+  assistantMessage?: string | null;
   streamVisibleText?: string;
   streamReasoningText?: string;
   streamToolCalls?: FocusAgentToolCallEvent[];
@@ -17,8 +18,40 @@ interface MessageListProps {
   onEditMessage?: (message: { id: string; content: string }) => void;
 }
 
+interface TranscriptDisplayMessage {
+  kind: "message";
+  id: string;
+  type: string;
+  content: string;
+}
+
+interface ToolDetailEntry {
+  id: string;
+  label: string;
+  content: string;
+  language: string;
+}
+
+interface ToolActivityItem {
+  kind: "tool-activity";
+  id: string;
+  toolNames: string[];
+  summaryText: string;
+  details: ToolDetailEntry[];
+}
+
+type TranscriptItem = TranscriptDisplayMessage | ToolActivityItem;
+
+function normalizeMessageType(type: unknown) {
+  return String(type || "").trim().toLowerCase();
+}
+
+function normalizeText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
 function roleLabel(type: unknown, isChineseUi = false) {
-  const normalized = String(type || "").toLowerCase();
+  const normalized = normalizeMessageType(type);
   if (normalized === "human") return isChineseUi ? "你" : "You";
   if (normalized === "ai") return "Focus Agent";
   if (normalized === "system") return isChineseUi ? "系统" : "System";
@@ -26,7 +59,7 @@ function roleLabel(type: unknown, isChineseUi = false) {
 }
 
 function bubbleClass(type: unknown) {
-  const normalized = String(type || "").toLowerCase();
+  const normalized = normalizeMessageType(type);
   if (normalized === "human") {
     return "fa-message-bubble is-user";
   }
@@ -37,7 +70,7 @@ function bubbleClass(type: unknown) {
 }
 
 function messageLayoutClass(type: unknown) {
-  const normalized = String(type || "").toLowerCase();
+  const normalized = normalizeMessageType(type);
   if (normalized === "human") {
     return "fa-message-row is-user user";
   }
@@ -48,7 +81,7 @@ function messageLayoutClass(type: unknown) {
 }
 
 function roleClass(type: unknown) {
-  const normalized = String(type || "").toLowerCase();
+  const normalized = normalizeMessageType(type);
   if (normalized === "human") {
     return "fa-message-role fa-message-meta is-user";
   }
@@ -125,6 +158,252 @@ function failureText(failed: TurnFailedPayload, isChineseUi: boolean) {
     return isChineseUi ? "本轮执行失败。" : "This turn failed.";
   }
   return isChineseUi ? `本轮执行失败。\n\n${message}` : `This turn failed.\n\n${message}`;
+}
+
+function truncateText(text: string, maxLength = 220) {
+  const normalized = normalizeText(text).replace(/\s+/g, " ");
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function parseJsonValue(text: string): unknown | null {
+  const candidate = normalizeText(text);
+  if (!candidate) {
+    return null;
+  }
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function extractToolSummaryCandidate(value: unknown): string {
+  if (typeof value === "string") {
+    return normalizeText(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = extractToolSummaryCandidate(item);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return "";
+  }
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["answer", "summary", "message", "content", "result", "output", "text"]) {
+    const candidate = extractToolSummaryCandidate(record[key]);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const results = record.results;
+  if (Array.isArray(results) && results.length > 0) {
+    for (const item of results) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const resultRecord = item as Record<string, unknown>;
+      const candidate =
+        extractToolSummaryCandidate(resultRecord.content) ||
+        extractToolSummaryCandidate(resultRecord.snippet) ||
+        extractToolSummaryCandidate(resultRecord.title);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+
+  return "";
+}
+
+function summarizeToolResult(content: string) {
+  const parsed = parseJsonValue(content);
+  if (parsed !== null) {
+    return truncateText(extractToolSummaryCandidate(parsed));
+  }
+  return truncateText(content);
+}
+
+function formatToolDetailContent(content: string) {
+  const parsed = parseJsonValue(content);
+  if (parsed !== null) {
+    return {
+      content: JSON.stringify(parsed, null, 2),
+      language: "json",
+    };
+  }
+  return {
+    content: normalizeText(content),
+    language: "text",
+  };
+}
+
+function uniqueToolNames(toolNames: string[]) {
+  return [...new Set(toolNames.map((item) => normalizeText(item)).filter(Boolean))];
+}
+
+function toolActivityTitle(toolNames: string[], isChineseUi: boolean) {
+  if (toolNames.length === 0) {
+    return isChineseUi ? "工具调用已完成" : "Tool activity completed";
+  }
+  if (toolNames.length === 1) {
+    return isChineseUi ? `已调用 ${toolNames[0]}` : `Used ${toolNames[0]}`;
+  }
+  return isChineseUi ? `已调用 ${toolNames.length} 个工具` : `Used ${toolNames.length} tools`;
+}
+
+function toolActivityNote(toolNames: string[], isChineseUi: boolean) {
+  if (toolNames.length > 1) {
+    return toolNames.join(" · ");
+  }
+  return isChineseUi ? "结果已收集，可展开查看详情。" : "Results captured. Expand for details.";
+}
+
+function toolDetailsToggleLabel(isChineseUi: boolean, isOpen: boolean) {
+  if (isOpen) {
+    return isChineseUi ? "收起详情" : "Hide details";
+  }
+  return isChineseUi ? "查看详情" : "View details";
+}
+
+function toolSummaryLabel(isChineseUi: boolean) {
+  return isChineseUi ? "结果摘要" : "Result summary";
+}
+
+function toolLabel(isChineseUi: boolean) {
+  return isChineseUi ? "工具" : "Tool";
+}
+
+function buildTranscriptItems(
+  messages: Array<Record<string, unknown>>,
+  assistantMessage?: string | null,
+): TranscriptItem[] {
+  const items: TranscriptItem[] = [];
+  let pendingToolActivity: ToolActivityItem | null = null;
+
+  function flushToolActivity() {
+    if (!pendingToolActivity) {
+      return;
+    }
+    pendingToolActivity.toolNames = uniqueToolNames(pendingToolActivity.toolNames);
+    pendingToolActivity.summaryText = truncateText(pendingToolActivity.summaryText);
+    items.push(pendingToolActivity);
+    pendingToolActivity = null;
+  }
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index] ?? {};
+    const type = normalizeMessageType(message.type);
+    const content = String(message.content ?? "");
+    const messageId = String(message.id ?? `${type || "message"}-${index}`);
+    const toolCalls = Array.isArray(message.tool_calls)
+      ? (message.tool_calls as Array<Record<string, unknown>>)
+      : [];
+
+    if (type === "ai" && toolCalls.length > 0) {
+      flushToolActivity();
+      pendingToolActivity = {
+        kind: "tool-activity",
+        id: `tool-activity-${messageId}`,
+        toolNames: toolCalls
+          .map((call) => normalizeText(call.name))
+          .filter(Boolean),
+        summaryText: "",
+        details: [],
+      };
+      continue;
+    }
+
+    if (type === "tool") {
+      if (!pendingToolActivity) {
+        pendingToolActivity = {
+          kind: "tool-activity",
+          id: `tool-activity-${messageId}`,
+          toolNames: [],
+          summaryText: "",
+          details: [],
+        };
+      }
+
+      const toolName = normalizeText(message.name);
+      if (toolName) {
+        pendingToolActivity.toolNames.push(toolName);
+      }
+      if (!pendingToolActivity.summaryText) {
+        pendingToolActivity.summaryText = summarizeToolResult(content);
+      }
+      const detail = formatToolDetailContent(content);
+      if (detail.content) {
+        pendingToolActivity.details.push({
+          id: `${pendingToolActivity.id}-detail-${pendingToolActivity.details.length}`,
+          label: toolName || `tool-${pendingToolActivity.details.length + 1}`,
+          content: detail.content,
+          language: detail.language,
+        });
+      }
+      continue;
+    }
+
+    flushToolActivity();
+
+    if (!normalizeText(content)) {
+      continue;
+    }
+
+    items.push({
+      kind: "message",
+      id: messageId,
+      type: type || "message",
+      content,
+    });
+  }
+
+  flushToolActivity();
+
+  const normalizedAssistantMessage = normalizeText(assistantMessage);
+  const hasVisibleAssistantMessage = items.some(
+    (item) =>
+      item.kind === "message" &&
+      normalizeMessageType(item.type) === "ai" &&
+      normalizeText(item.content) === normalizedAssistantMessage,
+  );
+
+  if (normalizedAssistantMessage && !hasVisibleAssistantMessage) {
+    items.push({
+      kind: "message",
+      id: "assistant-message-fallback",
+      type: "ai",
+      content: normalizedAssistantMessage,
+    });
+    return items;
+  }
+
+  const lastItem = items.at(-1);
+  if (lastItem?.kind === "tool-activity" && lastItem.summaryText) {
+    items.push({
+      kind: "message",
+      id: `${lastItem.id}-summary`,
+      type: "ai",
+      content: lastItem.summaryText,
+    });
+  }
+
+  return items;
 }
 
 function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
@@ -460,6 +739,64 @@ function MessageActions({
   );
 }
 
+function ToolActivityCard({
+  activity,
+  isChineseUi,
+}: {
+  activity: ToolActivityItem;
+  isChineseUi: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="fa-message-row is-assistant assistant">
+      <div className="fa-message-stack fa-tool-activity-stack">
+        <details
+          className="fa-tool-activity-card"
+          onToggle={(event) =>
+            setIsOpen((event.currentTarget as HTMLDetailsElement).open)
+          }
+        >
+          <summary className="fa-tool-activity-summary">
+            <span className="fa-tool-activity-badge">{toolLabel(isChineseUi)}</span>
+            <span className="fa-tool-activity-copy">
+              <span className="fa-tool-activity-title">
+                {toolActivityTitle(activity.toolNames, isChineseUi)}
+              </span>
+              <span className="fa-tool-activity-note">
+                {toolActivityNote(activity.toolNames, isChineseUi)}
+              </span>
+            </span>
+            <span className="fa-tool-activity-toggle">
+              {toolDetailsToggleLabel(isChineseUi, isOpen)}
+            </span>
+          </summary>
+
+          <div className="fa-tool-activity-body">
+            {activity.summaryText ? (
+              <div className="fa-tool-activity-summary-block">
+                <div className="fa-tool-activity-summary-label">{toolSummaryLabel(isChineseUi)}</div>
+                <p>{activity.summaryText}</p>
+              </div>
+            ) : null}
+
+            {activity.details.map((detail) => (
+              <div key={detail.id} className="fa-tool-activity-detail">
+                <div className="fa-tool-activity-detail-label">{detail.label}</div>
+                <CodeBlock
+                  code={detail.content}
+                  isChineseUi={isChineseUi}
+                  language={detail.language}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
+      </div>
+    </div>
+  );
+}
+
 function AgentRunBubble({
   reasoningText,
   toolCalls,
@@ -539,6 +876,7 @@ function AgentRunBubble({
 export function MessageList({
   isReadOnly = false,
   messages,
+  assistantMessage,
   streamVisibleText,
   streamReasoningText,
   streamToolCalls,
@@ -547,19 +885,28 @@ export function MessageList({
   isChineseUi = false,
   onEditMessage,
 }: MessageListProps) {
+  const transcriptItems = useMemo(
+    () => buildTranscriptItems(messages, assistantMessage),
+    [assistantMessage, messages],
+  );
+
   return (
     <div className="fa-message-list">
-      {messages.map((message, index) => {
-        const content = String(message.content ?? "");
-        const messageId = String(message.id ?? `message-${index}`);
-        const isHuman = String(message.type || "").toLowerCase() === "human";
+      {transcriptItems.map((item) => {
+        if (item.kind === "tool-activity") {
+          return <ToolActivityCard key={item.id} activity={item} isChineseUi={isChineseUi} />;
+        }
+
+        const content = item.content;
+        const messageId = item.id;
+        const isHuman = normalizeMessageType(item.type) === "human";
         return (
-          <div key={messageId} className={messageLayoutClass(message.type)}>
+          <div key={messageId} className={messageLayoutClass(item.type)}>
             <div className="fa-message-stack">
               <div className="fa-message-head">
-                <div className={roleClass(message.type)}>{roleLabel(message.type, isChineseUi)}</div>
+                <div className={roleClass(item.type)}>{roleLabel(item.type, isChineseUi)}</div>
               </div>
-              <div className={bubbleClass(message.type)}>
+              <div className={bubbleClass(item.type)}>
                 <div className="fa-message-content">
                   <MessageMarkdown isChineseUi={isChineseUi} text={content} />
                 </div>

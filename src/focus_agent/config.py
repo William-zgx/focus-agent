@@ -175,6 +175,30 @@ class WriteTextArtifactToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactListToolConfig:
+    enabled: bool = True
+    label: str = "Artifact List"
+    description: str = "List text artifacts saved in the configured artifact directory."
+    default_max_results: int = 50
+    max_results_cap: int = 200
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactReadToolConfig:
+    enabled: bool = True
+    label: str = "Artifact Read"
+    description: str = "Read a saved text artifact by filename or artifact id."
+    max_chars: int = 50000
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactUpdateToolConfig:
+    enabled: bool = True
+    label: str = "Artifact Update"
+    description: str = "Replace, append to, or prepend content in an existing text artifact."
+
+
+@dataclass(frozen=True, slots=True)
 class ListFilesToolConfig:
     enabled: bool = True
     label: str = "List Files"
@@ -238,6 +262,47 @@ class GitLogToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class WebFetchToolConfig:
+    enabled: bool = True
+    label: str = "Web Fetch"
+    description: str = "Fetch and extract readable text from a user-provided HTTP or HTTPS URL."
+    default_max_chars: int = 12000
+    max_chars_cap: int = 50000
+
+
+@dataclass(frozen=True, slots=True)
+class MemorySaveToolConfig:
+    enabled: bool = True
+    label: str = "Memory Save"
+    description: str = "Save an explicit durable memory such as a user preference or project fact."
+
+
+@dataclass(frozen=True, slots=True)
+class MemorySearchToolConfig:
+    enabled: bool = True
+    label: str = "Memory Search"
+    description: str = "Search durable memories by query across the default memory namespaces."
+    default_limit: int = 5
+    max_limit: int = 20
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryForgetToolConfig:
+    enabled: bool = True
+    label: str = "Memory Forget"
+    description: str = "Delete a saved memory by id from an explicit or default memory namespace."
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationSummaryToolConfig:
+    enabled: bool = True
+    label: str = "Conversation Summary"
+    description: str = "Return the latest saved rolling summary and recent messages for a thread."
+    default_recent_messages: int = 8
+    max_recent_messages: int = 30
+
+
+@dataclass(frozen=True, slots=True)
 class SkillsListToolConfig:
     enabled: bool = True
     label: str = "Skills List"
@@ -264,6 +329,9 @@ class ModelCatalogConfig:
 class ToolCatalogConfig:
     current_utc_time: CurrentUtcTimeToolConfig = field(default_factory=CurrentUtcTimeToolConfig)
     write_text_artifact: WriteTextArtifactToolConfig = field(default_factory=WriteTextArtifactToolConfig)
+    artifact_list: ArtifactListToolConfig = field(default_factory=ArtifactListToolConfig)
+    artifact_read: ArtifactReadToolConfig = field(default_factory=ArtifactReadToolConfig)
+    artifact_update: ArtifactUpdateToolConfig = field(default_factory=ArtifactUpdateToolConfig)
     list_files: ListFilesToolConfig = field(default_factory=ListFilesToolConfig)
     read_file: ReadFileToolConfig = field(default_factory=ReadFileToolConfig)
     search_code: SearchCodeToolConfig = field(default_factory=SearchCodeToolConfig)
@@ -271,6 +339,11 @@ class ToolCatalogConfig:
     git_status: GitStatusToolConfig = field(default_factory=GitStatusToolConfig)
     git_diff: GitDiffToolConfig = field(default_factory=GitDiffToolConfig)
     git_log: GitLogToolConfig = field(default_factory=GitLogToolConfig)
+    web_fetch: WebFetchToolConfig = field(default_factory=WebFetchToolConfig)
+    memory_save: MemorySaveToolConfig = field(default_factory=MemorySaveToolConfig)
+    memory_search: MemorySearchToolConfig = field(default_factory=MemorySearchToolConfig)
+    memory_forget: MemoryForgetToolConfig = field(default_factory=MemoryForgetToolConfig)
+    conversation_summary: ConversationSummaryToolConfig = field(default_factory=ConversationSummaryToolConfig)
     skills_list: SkillsListToolConfig = field(default_factory=SkillsListToolConfig)
     skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
@@ -302,6 +375,15 @@ class ToolCatalogSectionSpec:
 _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
     "current_utc_time": ToolCatalogSectionSpec(CurrentUtcTimeToolConfig),
     "write_text_artifact": ToolCatalogSectionSpec(WriteTextArtifactToolConfig),
+    "artifact_list": ToolCatalogSectionSpec(
+        ArtifactListToolConfig,
+        int_fields=("default_max_results", "max_results_cap"),
+    ),
+    "artifact_read": ToolCatalogSectionSpec(
+        ArtifactReadToolConfig,
+        int_fields=("max_chars",),
+    ),
+    "artifact_update": ToolCatalogSectionSpec(ArtifactUpdateToolConfig),
     "list_files": ToolCatalogSectionSpec(
         ListFilesToolConfig,
         int_fields=("default_max_results", "max_results_cap"),
@@ -326,6 +408,20 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
     "git_log": ToolCatalogSectionSpec(
         GitLogToolConfig,
         int_fields=("default_limit", "max_limit"),
+    ),
+    "web_fetch": ToolCatalogSectionSpec(
+        WebFetchToolConfig,
+        int_fields=("default_max_chars", "max_chars_cap"),
+    ),
+    "memory_save": ToolCatalogSectionSpec(MemorySaveToolConfig),
+    "memory_search": ToolCatalogSectionSpec(
+        MemorySearchToolConfig,
+        int_fields=("default_limit", "max_limit"),
+    ),
+    "memory_forget": ToolCatalogSectionSpec(MemoryForgetToolConfig),
+    "conversation_summary": ToolCatalogSectionSpec(
+        ConversationSummaryToolConfig,
+        int_fields=("default_recent_messages", "max_recent_messages"),
     ),
     "skills_list": ToolCatalogSectionSpec(SkillsListToolConfig),
     "skill_view": ToolCatalogSectionSpec(SkillViewToolConfig),

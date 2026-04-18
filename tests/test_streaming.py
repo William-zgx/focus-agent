@@ -42,6 +42,11 @@ def test_extract_visible_text_delta_ignores_tool_messages():
     assert extract_visible_text_delta(chunk) == ''
 
 
+def test_extract_visible_text_delta_ignores_human_messages():
+    chunk = DummyChunk(content='hello from the user', message_type='human')
+    assert extract_visible_text_delta(chunk) == ''
+
+
 def test_extract_visible_text_delta_ignores_textual_tool_call_string_payload():
     chunk = DummyChunk(content='<｜DSML｜function_calls><｜DSML｜invoke name="read_file"></｜DSML｜invoke>')
     assert extract_visible_text_delta(chunk) == ''
@@ -56,6 +61,17 @@ def test_extract_visible_text_delta_ignores_textual_tool_call_text_blocks():
         ]
     )
     assert extract_visible_text_delta(chunk) == 'OK'
+
+
+def test_extract_visible_text_delta_ignores_input_text_blocks():
+    chunk = DummyChunk(
+        content=[
+            {'type': 'input_text', 'text': 'prompt text'},
+            {'type': 'input_text_delta', 'text': ' more prompt text'},
+            {'type': 'output_text_delta', 'text': 'final answer'},
+        ]
+    )
+    assert extract_visible_text_delta(chunk) == 'final answer'
 
 
 def test_extract_reasoning_delta_from_content_blocks():

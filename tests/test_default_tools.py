@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+from langchain.messages import AIMessage, HumanMessage
+from langgraph.graph import END, START, StateGraph
 import pytest
 
 from focus_agent.capabilities.default_tools import get_default_tools
@@ -16,14 +18,31 @@ from focus_agent.config import (
     ToolCatalogConfig,
     WebSearchConfig,
 )
+from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
+
+
+class _FakeHeaders(dict):
+    def get_content_charset(self):
+        content_type = self.get("content-type", "")
+        marker = "charset="
+        if marker not in content_type:
+            return None
+        return content_type.split(marker, 1)[1].split(";", 1)[0].strip()
 
 
 class _FakeHttpResponse:
-    def __init__(self, body: str):
+    def __init__(self, body: str, *, url: str = "https://example.com/", content_type: str = "application/json"):
         self._body = body.encode("utf-8")
+        self._url = url
+        self.headers = _FakeHeaders({"content-type": content_type})
 
-    def read(self) -> bytes:
-        return self._body
+    def read(self, size: int = -1) -> bytes:
+        if size is None or size < 0:
+            return self._body
+        return self._body[:size]
+
+    def geturl(self) -> str:
+        return self._url
 
     def __enter__(self):
         return self
@@ -280,6 +299,184 @@ def test_write_text_artifact_defaults_to_local_focus_agent_directory(tmp_path):
     expected_path = project / ".focus_agent" / "artifacts" / "ai-notes.md"
     assert result == f"artifact_saved:{expected_path}"
     assert expected_path.read_text(encoding="utf-8") == "# AI Notes\n\nLocal only\n"
+
+
+def test_artifact_tools_list_read_and_update_saved_artifacts(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    artifact_dir = project / ".focus_agent" / "artifacts"
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            artifact_dir=str(artifact_dir),
+        )
+    )
+
+    tools["write_text_artifact"].invoke({"title": "Launch Plan", "body": "First draft"})
+    list_payload = json.loads(tools["artifact_list"].invoke({}))
+    read_payload = json.loads(tools["artifact_read"].invoke({"artifact_id": "launch-plan.md"}))
+    update_payload = json.loads(
+        tools["artifact_update"].invoke(
+            {
+                "artifact_id": "launch-plan.md",
+                "body": "Second section",
+                "mode": "append",
+            }
+        )
+    )
+    updated_read_payload = json.loads(tools["artifact_read"].invoke({"artifact_id": "launch-plan.md"}))
+
+    assert list_payload["artifacts"][0]["artifact_id"] == "launch-plan.md"
+    assert "First draft" in read_payload["content"]
+    assert update_payload["mode"] == "append"
+    assert "Second section" in updated_read_payload["content"]
+
+    with pytest.raises(ValueError, match="artifact directory"):
+        tools["artifact_read"].invoke({"artifact_id": "../outside.md"})
+
+
+def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):
+    def fake_urlopen(request, timeout=0):
+        assert request.full_url == "https://example.com/article"
+        assert timeout == 30
+        return _FakeHttpResponse(
+            "<html><head><title>Example Title</title><script>ignore()</script></head>"
+            "<body><h1>Hello</h1><p>Useful article text.</p></body></html>",
+            url="https://example.com/article",
+            content_type="text/html; charset=utf-8",
+        )
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+
+    tools = _tool_map(Settings())
+    payload = json.loads(tools["web_fetch"].invoke({"url": "https://example.com/article", "max_chars": 200}))
+
+    assert payload["title"] == "Example Title"
+    assert "Useful article text." in payload["content"]
+    assert "ignore" not in payload["content"]
+
+    with pytest.raises(ValueError, match="localhost"):
+        tools["web_fetch"].invoke({"url": "http://localhost:8000/healthz"})
+
+
+def test_memory_tools_save_search_and_forget(tmp_path):
+    store = PersistentInMemoryStore(tmp_path / "store.pkl")
+    tools = {
+        tool.name: tool
+        for tool in get_default_tools(
+            Settings(),
+            store=store,
+        )
+    }
+
+    saved = json.loads(
+        tools["memory_save"].invoke(
+            {
+                "content": "User prefers concise answers.",
+                "kind": "user_preference",
+                "scope": "user",
+                "user_id": "researcher-1",
+                "tags": ["style"],
+            }
+        )
+    )
+    searched = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "concise",
+                "user_id": "researcher-1",
+            }
+        )
+    )
+    forgotten = json.loads(
+        tools["memory_forget"].invoke(
+            {
+                "memory_id": saved["memory_id"],
+                "user_id": "researcher-1",
+            }
+        )
+    )
+    searched_again = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "concise",
+                "user_id": "researcher-1",
+            }
+        )
+    )
+
+    assert saved["saved"] is True
+    assert searched["results"][0]["content"] == "User prefers concise answers."
+    assert forgotten["deleted"] is True
+    assert searched_again["results"] == []
+
+
+def test_memory_save_accepts_conversation_scope_alias(tmp_path):
+    store = PersistentInMemoryStore(tmp_path / "store.pkl")
+    tools = {
+        tool.name: tool
+        for tool in get_default_tools(
+            Settings(),
+            store=store,
+        )
+    }
+
+    saved = json.loads(
+        tools["memory_save"].invoke(
+            {
+                "content": "This thread is designing product tools.",
+                "kind": "project_fact",
+                "scope": "conversation",
+                "root_thread_id": "thread-1",
+            }
+        )
+    )
+    searched = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "product tools",
+                "root_thread_id": "thread-1",
+            }
+        )
+    )
+
+    assert saved["scope"] == "root_thread"
+    assert saved["namespace"] == ["conversation", "thread-1", "episodic"]
+    assert searched["results"][0]["memory_id"] == saved["memory_id"]
+
+
+def test_conversation_summary_reads_latest_checkpoint(tmp_path):
+    checkpointer = PersistentInMemorySaver(tmp_path / "checkpoints.pkl")
+    builder = StateGraph(dict)
+    builder.add_node(
+        "write_state",
+        lambda _state: {
+            "rolling_summary": "User asked for tool design.",
+            "task_brief": "Design tools",
+            "active_skill_ids": ["research"],
+            "messages": [
+                HumanMessage(content="Summarize this"),
+                AIMessage(content="Here is the summary."),
+            ],
+        },
+    )
+    builder.add_edge(START, "write_state")
+    builder.add_edge("write_state", END)
+    graph = builder.compile(checkpointer=checkpointer)
+    graph.invoke({"messages": []}, config={"configurable": {"thread_id": "thread-1"}})
+    tools = {
+        tool.name: tool
+        for tool in get_default_tools(
+            Settings(),
+            checkpointer=checkpointer,
+        )
+    }
+
+    payload = json.loads(tools["conversation_summary"].invoke({"thread_id": "thread-1"}))
+
+    assert payload["thread_id"] == "thread-1"
+    assert payload["rolling_summary"] == "User asked for tool design."
+    assert payload["recent_messages"][-1]["content"] == "Here is the summary."
 
 
 def test_read_file_and_search_code_stay_within_workspace(tmp_path):

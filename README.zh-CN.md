@@ -166,6 +166,7 @@ make ui-smoke
 
 - 前端 SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
 - 路线图: [`docs/current-roadmap.md`](docs/current-roadmap.md)
+- Tool / Skill 边界设计: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
 - 本地环境变量示例: [`docs/local.env.example`](docs/local.env.example)
 - 模型目录示例: [`docs/models.example.toml`](docs/models.example.toml)
 - 工具目录示例: [`docs/tools.example.toml`](docs/tools.example.toml)

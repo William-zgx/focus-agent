@@ -4,11 +4,14 @@ import json
 from typing import Any
 
 
-TEXT_BLOCK_TYPES = {
+VISIBLE_TEXT_BLOCK_TYPES = {
     'text',
     'text_delta',
     'output_text',
     'output_text_delta',
+}
+
+INPUT_TEXT_BLOCK_TYPES = {
     'input_text',
     'input_text_delta',
 }
@@ -68,8 +71,19 @@ def _looks_like_textual_tool_artifact(text: str) -> bool:
     return any(marker in lowered for marker in TEXTUAL_TOOL_ARTIFACT_MARKERS)
 
 
+def _message_type(message_chunk: Any) -> str:
+    return str(getattr(message_chunk, 'type', '') or '').strip().lower()
+
+
+def _should_hide_visible_text(message_chunk: Any) -> bool:
+    message_type = _message_type(message_chunk)
+    if not message_type:
+        return False
+    return any(token in message_type for token in ('human', 'user', 'system', 'tool'))
+
+
 def extract_visible_text_delta(message_chunk: Any) -> str:
-    if str(getattr(message_chunk, 'type', '') or '') == 'tool':
+    if _should_hide_visible_text(message_chunk):
         return ''
 
     content = getattr(message_chunk, 'content', None)
@@ -93,7 +107,9 @@ def extract_visible_text_delta(message_chunk: Any) -> str:
         block_type = str(block.get('type') or '')
         if block_type in REASONING_BLOCK_TYPES or block_type in TOOL_BLOCK_TYPES:
             continue
-        if block_type in TEXT_BLOCK_TYPES or ('text' in block and block_type not in TOOL_BLOCK_TYPES):
+        if block_type in INPUT_TEXT_BLOCK_TYPES:
+            continue
+        if block_type in VISIBLE_TEXT_BLOCK_TYPES or ('text' in block and block_type not in TOOL_BLOCK_TYPES):
             text = _stringify(block.get('text') or block.get('content') or block.get('value'))
             if text and not _looks_like_textual_tool_artifact(text):
                 parts.append(text)
