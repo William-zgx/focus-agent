@@ -18,11 +18,23 @@ export default defineConfig({
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom"],
-          "router": ["@tanstack/react-router"],
-          "query": ["@tanstack/react-query", "@tanstack/react-query-devtools"],
-          "state": ["zustand"],
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+            return "react-vendor";
+          }
+          if (id.includes("@tanstack/react-router")) {
+            return "router";
+          }
+          if (
+            id.includes("@tanstack/react-query") ||
+            id.includes("@tanstack/react-query-devtools")
+          ) {
+            return "query";
+          }
+          if (id.includes("zustand")) {
+            return "state";
+          }
+          return undefined;
         },
       },
     },
