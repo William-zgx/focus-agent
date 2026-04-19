@@ -13,6 +13,6 @@ _SRC_DIR = Path(__file__).resolve().parents[2] / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from .schema import EvalCase, EvalResult, TrajectoryStep
+from .schema import EvalCase, EvalResult, TrajectoryStep  # noqa: E402
 
 __all__ = ["EvalCase", "EvalResult", "TrajectoryStep"]
