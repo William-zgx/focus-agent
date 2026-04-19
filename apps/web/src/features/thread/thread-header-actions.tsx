@@ -40,12 +40,67 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
   });
   const [isWorking, setIsWorking] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
-  const { createBranch, isCreatingBranch, setShellStatus, isChineseUi } = useShellUi();
+  const {
+    createBranch,
+    isCreatingBranch,
+    setShellStatus,
+    isChineseUi,
+    markMergeProposalPreparing,
+    markMergeProposalReady,
+    markMergeProposalFailed,
+    isMergeProposalPreparing,
+    getMergeProposalError,
+  } = useShellUi();
   const isMergedBranch = branchMeta?.branch_status === "merged";
+  const isGeneratingConclusion =
+    Boolean(threadId) &&
+    (branchMeta?.branch_status === "preparing_merge_review" ||
+      isMergeProposalPreparing(threadId));
+  const hasPreparedConclusion =
+    Boolean(data?.merge_proposal) || branchMeta?.branch_status === "awaiting_merge_review";
+  const conclusionGenerationError = threadId ? getMergeProposalError(threadId) : null;
   const defaultNewBranchTooltip = isChineseUi ? "从当前线程创建分支" : "Create a branch from this thread";
   const newBranchTooltip = isMergedBranch
     ? mergedBranchForkDisabledLabel(isChineseUi)
     : defaultNewBranchTooltip;
+  const reviewActionText = isReviewRoute
+    ? isChineseUi
+      ? "回到线程"
+      : "Back to thread"
+    : isGeneratingConclusion
+      ? isChineseUi
+        ? "生成结论中"
+        : "Generating conclusion"
+      : hasPreparedConclusion
+        ? isChineseUi
+          ? "合并结论"
+          : "Merge conclusion"
+        : conclusionGenerationError
+          ? isChineseUi
+            ? "重新生成结论"
+            : "Regenerate conclusion"
+        : isChineseUi
+          ? "生成结论"
+          : "Generate conclusion";
+  const reviewActionTooltip = isReviewRoute
+    ? isChineseUi
+      ? "回到当前线程"
+      : "Back to thread"
+    : isGeneratingConclusion
+      ? isChineseUi
+        ? "分支结论正在生成"
+        : "Conclusion is being generated"
+      : hasPreparedConclusion
+        ? isChineseUi
+          ? "打开合并结论弹窗"
+          : "Open merge conclusion dialog"
+        : conclusionGenerationError
+          ? isChineseUi
+            ? "上次生成失败，重新生成分支结论"
+            : "The last generation failed. Regenerate the branch conclusion."
+        : isChineseUi
+          ? "异步生成分支结论"
+          : "Generate conclusion asynchronously";
 
   const currentLabel = branchMeta?.branch_name || (threadId ? (isChineseUi ? "主线" : "Main") : isChineseUi ? "未选择" : "No thread");
 
@@ -218,6 +273,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
   async function handleReviewAction() {
     if (!branchMeta?.branch_id || !threadId) return;
     setIsWorking(true);
+    let didStartGeneration = false;
     try {
       if (isReviewRoute) {
         await openThread(threadId);
@@ -230,24 +286,40 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
         );
         return;
       }
-      if (!data?.merge_proposal || statusNeedsProposal(branchMeta.branch_status)) {
+      if (hasPreparedConclusion) {
+        await openReviewRoute(threadId);
+        return;
+      }
+      if (statusNeedsProposal(branchMeta.branch_status)) {
+        didStartGeneration = true;
+        markMergeProposalPreparing(threadId);
         setShellStatus(
           {
             tone: "warn",
-            text: isChineseUi ? "生成分支结论中" : "Generating conclusion",
+            text: isChineseUi ? "生成结论中" : "Generating conclusion",
           },
-          { autoClearMs: 2400 },
         );
         await prepareMergeProposal(threadId);
+        markMergeProposalReady(threadId);
+        setShellStatus(
+          {
+            tone: "success",
+            text: isChineseUi ? "结论已生成，可点击合并结论" : "Conclusion ready. Click Merge conclusion.",
+          },
+          { autoClearMs: 2600 },
+        );
       }
-      await openReviewRoute(threadId);
-      setShellStatus(
-        {
-          tone: "success",
-          text: isChineseUi ? "结论已准备好" : "conclusion ready",
-        },
-        { autoClearMs: 2200 },
-      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : isChineseUi
+            ? "生成结论失败，请重新生成"
+            : "Failed to generate conclusion. Please regenerate.";
+      if (didStartGeneration) {
+        markMergeProposalFailed(threadId, message);
+      }
+      setShellStatus({ tone: "danger", text: message });
     } finally {
       setIsWorking(false);
     }
@@ -316,45 +388,14 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
           <button
             className="fa-chat-toolbar-button fa-review-button"
             data-compact-button="true"
-            data-full-label={
-              isReviewRoute
-                ? isChineseUi
-                  ? "回到线程"
-                  : "Back to thread"
-                : isChineseUi
-                  ? "生成结论"
-                  : "Generate conclusion"
-            }
-            {...tooltipProps(
-              isReviewRoute
-                ? isChineseUi
-                  ? "回到当前线程"
-                  : "Back to thread"
-                : isChineseUi
-                  ? "生成分支结论"
-                  : "Generate conclusion",
-              {
-                defaultTooltip: isReviewRoute
-                  ? isChineseUi
-                    ? "回到当前线程"
-                    : "Back to thread"
-                  : isChineseUi
-                    ? "生成分支结论"
-                    : "Generate conclusion",
-              },
-            )}
-            disabled={isWorking}
+            data-full-label={reviewActionText}
+            {...tooltipProps(reviewActionTooltip, {
+              defaultTooltip: reviewActionTooltip,
+            })}
+            disabled={isWorking || (!isReviewRoute && isGeneratingConclusion)}
             onClick={() => void handleReviewAction()}
             type="button"
-            aria-label={
-              isReviewRoute
-                ? isChineseUi
-                  ? "回到线程"
-                  : "Back to thread"
-                : isChineseUi
-                  ? "生成结论"
-                  : "Generate conclusion"
-            }
+            aria-label={reviewActionText}
           >
             <span className="fa-toolbar-icon" aria-hidden="true">
               <svg viewBox="0 0 20 20">
@@ -369,13 +410,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
               </svg>
             </span>
             <span className="fa-toolbar-text">
-              {isReviewRoute
-                ? isChineseUi
-                  ? "回到线程"
-                  : "Back to thread"
-                : isChineseUi
-                  ? "生成分支结论"
-                  : "Generate conclusion"}
+              {reviewActionText}
             </span>
           </button>
         ) : null}

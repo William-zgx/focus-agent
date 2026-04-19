@@ -90,7 +90,13 @@ export function MergeReviewCard({
     rootThreadId,
     threadId,
   });
-  const { isChineseUi } = useShellUi();
+  const {
+    isChineseUi,
+    markMergeProposalPreparing,
+    markMergeProposalReady,
+    markMergeProposalFailed,
+    isMergeProposalPreparing,
+  } = useShellUi();
   const navigate = useNavigate();
   const [isPreparing, setIsPreparing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,6 +117,7 @@ export function MergeReviewCard({
   const proposalSignature = proposal ? JSON.stringify(proposal) : "no-proposal";
   const shouldShowSelectedArtifacts =
     decision === "approve" && mode === "selected_artifacts";
+  const isPreparingConclusion = isPreparing || isMergeProposalPreparing(threadId);
 
   const modeOptions = useMemo(
     () =>
@@ -148,9 +155,11 @@ export function MergeReviewCard({
 
   async function handlePrepareProposal() {
     setIsPreparing(true);
+    markMergeProposalPreparing(threadId);
     setErrorMessage(null);
     try {
       const nextProposal = await prepareMergeProposal(threadId);
+      markMergeProposalReady(threadId);
       setSummary(nextProposal?.summary ?? "");
       setFindings((nextProposal?.key_findings ?? []).join("\n"));
       setOpenQuestions((nextProposal?.open_questions ?? []).join("\n"));
@@ -158,13 +167,14 @@ export function MergeReviewCard({
       setArtifacts((nextProposal?.artifacts ?? []).join("\n"));
       setMode(nextProposal?.recommended_import_mode ?? "summary_only");
     } catch (error) {
-      setErrorMessage(
+      const message =
         error instanceof Error
           ? error.message
           : isChineseUi
             ? "生成合并提案失败。"
-            : "Failed to prepare proposal.",
-      );
+            : "Failed to prepare proposal.";
+      setErrorMessage(message);
+      markMergeProposalFailed(threadId, message);
     } finally {
       setIsPreparing(false);
     }
@@ -225,8 +235,8 @@ export function MergeReviewCard({
               : "This can take a moment while the branch summary is prepared."}
           </p>
           <div className="fa-focus-modal-actions">
-            <button disabled={isPreparing} onClick={() => void handlePrepareProposal()} type="button">
-              {isPreparing
+            <button disabled={isPreparingConclusion} onClick={() => void handlePrepareProposal()} type="button">
+              {isPreparingConclusion
                 ? isChineseUi
                   ? "生成中..."
                   : "Preparing..."
@@ -386,19 +396,10 @@ export function MergeReviewCard({
 
           <div className="fa-focus-modal-actions">
             {onClose ? (
-              <button disabled={isPreparing || isSubmitting} onClick={() => void onClose()} type="button">
+              <button disabled={isPreparingConclusion || isSubmitting} onClick={() => void onClose()} type="button">
                 {isChineseUi ? "关闭" : "Close"}
               </button>
             ) : null}
-            <button disabled={isPreparing} onClick={() => void handlePrepareProposal()} type="button">
-              {isPreparing
-                ? isChineseUi
-                  ? "重新生成中..."
-                  : "Regenerating..."
-                : isChineseUi
-                  ? "重新生成结论"
-                  : "Regenerate conclusion"}
-            </button>
             <button disabled={isSubmitting} onClick={() => void handleSubmit()} type="button">
               {isSubmitting
                 ? isChineseUi

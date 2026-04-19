@@ -247,7 +247,17 @@ export function BranchTreePanel() {
   const detailAnchorRef = useRef<HTMLElement | null>(null);
   const detailOverlayRef = useRef<HTMLDivElement | null>(null);
   const detailHideTimerRef = useRef<number | null>(null);
-  const { createBranch, isCreatingBranch, isChineseUi } = useShellUi();
+  const {
+    createBranch,
+    isCreatingBranch,
+    isChineseUi,
+    setShellStatus,
+    markMergeProposalPreparing,
+    markMergeProposalReady,
+    markMergeProposalFailed,
+    isMergeProposalPreparing,
+    getMergeProposalError,
+  } = useShellUi();
 
   useEffect(() => {
     if (params.threadId) {
@@ -288,6 +298,47 @@ export function BranchTreePanel() {
       : "Create a branch from the selected node";
   const detailNode = findNode(data?.root, detailThreadId) ?? null;
   const detailNodeStatusTone = detailNode ? statusAccentTone(detailNode.branch_status) : "";
+  const detailConclusionPreparing = detailNode
+    ? detailNode.branch_status === "preparing_merge_review" ||
+      isMergeProposalPreparing(detailNode.thread_id)
+    : false;
+  const detailHasPreparedConclusion = detailNode?.branch_status === "awaiting_merge_review";
+  const detailCanReviewConclusion = Boolean(
+    detailNode?.branch_id &&
+      !detailNode.is_archived &&
+      !["merged", "discarded", "closed"].includes(detailNode.branch_status),
+  );
+  const detailConclusionError = detailNode ? getMergeProposalError(detailNode.thread_id) : null;
+  const detailConclusionActionLabel = detailConclusionPreparing
+    ? isChineseUi
+      ? "生成结论中"
+      : "Generating"
+    : detailHasPreparedConclusion
+      ? isChineseUi
+        ? "合并结论"
+        : "Merge conclusion"
+      : detailConclusionError
+        ? isChineseUi
+          ? "重新生成结论"
+          : "Regenerate conclusion"
+      : isChineseUi
+        ? "生成结论"
+        : "Generate conclusion";
+  const detailConclusionActionTooltip = detailConclusionPreparing
+    ? isChineseUi
+      ? "分支结论正在生成"
+      : "Conclusion is being generated"
+    : detailHasPreparedConclusion
+      ? isChineseUi
+        ? "打开合并结论弹窗"
+        : "Open merge conclusion dialog"
+      : detailConclusionError
+        ? isChineseUi
+          ? "上次生成失败，重新生成分支结论"
+          : "The last generation failed. Regenerate the branch conclusion."
+      : isChineseUi
+        ? "异步生成分支结论"
+        : "Generate conclusion asynchronously";
   const detailOverlay =
     detailNode && typeof document !== "undefined"
       ? createPortal(
@@ -373,18 +424,34 @@ export function BranchTreePanel() {
                     {isChineseUi ? "重命名" : "Rename"}
                   </button>
                 ) : null}
-                {detailNode.branch_id &&
-                !["merged", "discarded", "closed"].includes(detailNode.branch_status) ? (
+                {detailCanReviewConclusion ? (
+                  <button
+                    className={`fa-branch-inline-action ${
+                      detailHasPreparedConclusion ? "is-primary" : ""
+                    }`.trim()}
+                    {...tooltipProps(detailConclusionActionTooltip)}
+                    disabled={isWorking || detailConclusionPreparing}
+                    onClick={() =>
+                      void (detailHasPreparedConclusion
+                        ? handleOpenMergeReview(detailNode)
+                        : handlePrepareProposal(detailNode))
+                    }
+                    type="button"
+                  >
+                    {detailConclusionActionLabel}
+                  </button>
+                ) : null}
+                {detailCanReviewConclusion && detailHasPreparedConclusion ? (
                   <button
                     className="fa-branch-inline-action"
                     {...tooltipProps(
-                      isChineseUi ? "为这个分支生成带回结论" : "Generate conclusion for this branch",
+                      isChineseUi ? "重新生成这个分支的结论" : "Regenerate conclusion for this branch",
                     )}
-                    disabled={isWorking}
+                    disabled={isWorking || detailConclusionPreparing}
                     onClick={() => void handlePrepareProposal(detailNode)}
                     type="button"
                   >
-                    {isChineseUi ? "生成结论" : "Generate conclusion"}
+                    {isChineseUi ? "重新生成结论" : "Regenerate conclusion"}
                   </button>
                 ) : null}
                 {detailNode.branch_id ? (
@@ -411,6 +478,9 @@ export function BranchTreePanel() {
                         ? "归档"
                         : "Archive"}
                   </button>
+                ) : null}
+                {detailConclusionError ? (
+                  <div className="fa-branch-node-error">{detailConclusionError}</div>
                 ) : null}
               </div>
             </div>
@@ -561,18 +631,46 @@ export function BranchTreePanel() {
     }
   }
 
+  async function handleOpenMergeReview(node: BranchTreeNode) {
+    if (!node.branch_id) return;
+    await navigate({
+      to: "/c/$conversationId/t/$threadId/review",
+      params: {
+        conversationId: node.root_thread_id,
+        threadId: node.thread_id,
+      },
+    });
+  }
+
   async function handlePrepareProposal(node: BranchTreeNode) {
-    if (!node.branch_id || node.is_archived) return;
+    if (!node.branch_id || node.is_archived || isMergeProposalPreparing(node.thread_id)) return;
     setIsWorking(true);
+    markMergeProposalPreparing(node.thread_id);
     try {
-      await prepareMergeProposal(node.thread_id);
-      await navigate({
-        to: "/c/$conversationId/t/$threadId/review",
-        params: {
-          conversationId: node.root_thread_id,
-          threadId: node.thread_id,
+      setShellStatus(
+        {
+          tone: "warn",
+          text: isChineseUi ? "生成结论中" : "Generating conclusion",
         },
-      });
+      );
+      await prepareMergeProposal(node.thread_id);
+      markMergeProposalReady(node.thread_id);
+      setShellStatus(
+        {
+          tone: "success",
+          text: isChineseUi ? "结论已生成，可点击合并结论" : "Conclusion ready. Click Merge conclusion.",
+        },
+        { autoClearMs: 2600 },
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : isChineseUi
+            ? "生成结论失败，请重新生成"
+            : "Failed to generate conclusion. Please regenerate.";
+      markMergeProposalFailed(node.thread_id, message);
+      setShellStatus({ tone: "danger", text: message });
     } finally {
       setIsWorking(false);
     }

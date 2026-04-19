@@ -199,6 +199,9 @@ export function AppShell({ children }: PropsWithChildren) {
     DEFAULT_COLOR_PREFERENCE,
   );
   const [branchCreateBusy, setBranchCreateBusy] = useState(false);
+  const [mergeProposalGeneration, setMergeProposalGeneration] = useState<
+    Record<string, { status: "preparing" | "failed"; error?: string }>
+  >({});
   const [shellStatus, setShellStatus] = useTransientShellStatus();
   const [tooltipState, setTooltipState] = useState<{
     text: string;
@@ -591,6 +594,40 @@ export function AppShell({ children }: PropsWithChildren) {
     }
   }
 
+  function markMergeProposalPreparing(targetThreadId: string) {
+    if (!targetThreadId) return;
+    setMergeProposalGeneration((current) => ({
+      ...current,
+      [targetThreadId]: { status: "preparing" },
+    }));
+  }
+
+  function markMergeProposalReady(targetThreadId: string) {
+    if (!targetThreadId) return;
+    setMergeProposalGeneration((current) => {
+      if (!current[targetThreadId]) return current;
+      const next = { ...current };
+      delete next[targetThreadId];
+      return next;
+    });
+  }
+
+  function markMergeProposalFailed(targetThreadId: string, error: string) {
+    if (!targetThreadId) return;
+    setMergeProposalGeneration((current) => ({
+      ...current,
+      [targetThreadId]: { status: "failed", error },
+    }));
+  }
+
+  function isMergeProposalPreparing(targetThreadId: string) {
+    return mergeProposalGeneration[targetThreadId]?.status === "preparing";
+  }
+
+  function getMergeProposalError(targetThreadId: string) {
+    return mergeProposalGeneration[targetThreadId]?.error ?? null;
+  }
+
   async function closeMergeReviewModal() {
     if (!conversationId || !threadId) return;
     await navigate({
@@ -622,6 +659,12 @@ export function AppShell({ children }: PropsWithChildren) {
         setShellStatus,
         createBranch,
         isCreatingBranch: branchCreateBusy,
+        mergeProposalGeneration,
+        markMergeProposalPreparing,
+        markMergeProposalReady,
+        markMergeProposalFailed,
+        isMergeProposalPreparing,
+        getMergeProposalError,
       }}
     >
       <div
@@ -823,12 +866,12 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="fa-focus-modal-head">
               <div className="fa-focus-modal-copy">
                 <h3 id="fa-merge-review-title">
-                  {isChineseUi ? "准备合并" : "Prepare merge"}
+                  {isChineseUi ? "合并结论" : "Merge conclusion"}
                 </h3>
                 <p>
                   {isChineseUi
-                    ? "检查分支总结，选择导入方式，并明确批准或拒绝上游导入。"
-                    : "Review the branch summary, choose an import mode, and explicitly approve or reject the upstream import."}
+                    ? "检查已生成的分支结论，选择导入方式，并明确批准或拒绝上游导入。"
+                    : "Review the generated branch conclusion, choose an import mode, and explicitly approve or reject the upstream import."}
                 </p>
               </div>
               <button

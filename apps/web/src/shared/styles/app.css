@@ -2883,10 +2883,29 @@ body.fa-is-resizing {
   transform: none;
 }
 
+.fa-branch-inline-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.fa-branch-inline-action.is-primary {
+  border-color: color-mix(in srgb, var(--fa-branch-role-color) 42%, var(--fa-border) 58%);
+  background: color-mix(in srgb, var(--fa-branch-role-color) 18%, var(--fa-panel-2) 82%);
+  color: color-mix(in srgb, var(--fa-branch-role-color) 72%, var(--fa-text) 28%);
+}
+
 .fa-branch-inline-action.warn {
   background: color-mix(in srgb, var(--fa-panel-2) 82%, var(--fa-warning) 12%);
   border-color: color-mix(in srgb, var(--fa-border) 68%, var(--fa-warning) 16%);
   color: color-mix(in srgb, var(--fa-text) 82%, var(--fa-warning) 38%);
+}
+
+.fa-branch-node-error {
+  flex-basis: 100%;
+  color: var(--fa-status-danger-text);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
 }
 
 .fa-archived-item-head {

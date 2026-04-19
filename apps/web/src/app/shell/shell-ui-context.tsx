@@ -17,6 +17,11 @@ interface ShellStatus {
   text: string;
 }
 
+export interface MergeProposalGenerationState {
+  status: "preparing" | "failed";
+  error?: string;
+}
+
 interface ShellUiContextValue {
   languagePreference: LanguagePreference;
   themePreference: ThemePreference;
@@ -28,6 +33,12 @@ interface ShellUiContextValue {
   setShellStatus: (status: ShellStatus | null, options?: { autoClearMs?: number }) => void;
   createBranch: (options?: { parentThreadId?: string }) => Promise<void>;
   isCreatingBranch: boolean;
+  mergeProposalGeneration: Record<string, MergeProposalGenerationState>;
+  markMergeProposalPreparing: (threadId: string) => void;
+  markMergeProposalReady: (threadId: string) => void;
+  markMergeProposalFailed: (threadId: string, error: string) => void;
+  isMergeProposalPreparing: (threadId: string) => boolean;
+  getMergeProposalError: (threadId: string) => string | null;
   isChineseUi: boolean;
 }
 
