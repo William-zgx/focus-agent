@@ -3,19 +3,35 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
+from focus_agent.engine.runtime import create_runtime
 from focus_agent.security.tokens import AuthError, Principal, decode_access_token
 from focus_agent.services.chat import ChatService
 
 security = HTTPBearer(auto_error=False)
 
 
+def _ensure_app_services(request: Request) -> tuple[AppRuntime, ChatService]:
+    runtime = getattr(request.app.state, "runtime", None)
+    chat_service = getattr(request.app.state, "chat_service", None)
+    if runtime is None:
+        runtime = create_runtime(Settings.from_env())
+        request.app.state.runtime = runtime
+    if chat_service is None:
+        chat_service = ChatService(runtime)
+        request.app.state.chat_service = chat_service
+    return runtime, chat_service
+
+
 def get_app_runtime(request: Request) -> AppRuntime:
-    return request.app.state.runtime
+    runtime, _ = _ensure_app_services(request)
+    return runtime
 
 
 def get_chat_service(request: Request) -> ChatService:
-    return request.app.state.chat_service
+    _, chat_service = _ensure_app_services(request)
+    return chat_service
 
 
 def get_current_principal(
