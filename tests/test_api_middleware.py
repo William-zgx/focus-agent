@@ -14,6 +14,7 @@ def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     (dist_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
     monkeypatch.setenv("WEB_APP_DIST_DIR", str(dist_dir))
     monkeypatch.setenv("WEB_APP_DEV_SERVER_URL", "")
 
