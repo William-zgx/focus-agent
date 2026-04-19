@@ -14,7 +14,7 @@ from focus_agent.security.tokens import Principal, create_access_token
 from focus_agent.config import Settings
 from focus_agent.core.branching import MergeDecision
 from focus_agent.engine.runtime import AppRuntime, create_runtime
-from focus_agent.services.chat import ChatService
+from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.web.frontend_app import (
     build_frontend_dev_server_redirect_url,
     render_frontend_entry_html,
@@ -328,6 +328,8 @@ def create_app() -> FastAPI:
             )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ConcurrentTurnError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return ThreadStateResponse.model_validate(result)
 
     @app.post('/v1/chat/turns/stream')
@@ -359,6 +361,8 @@ def create_app() -> FastAPI:
             result = chat.resume(thread_id=payload.thread_id, user_id=principal.user_id, resume=payload.resume)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ConcurrentTurnError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return ThreadStateResponse.model_validate(result)
 
     @app.post('/v1/chat/resume/stream')

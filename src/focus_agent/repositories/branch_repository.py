@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..core.branching import BranchRecord, BranchStatus, MergeDecision, MergeProposal
+from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
 from ..core.types import ConversationRecord
 
 
@@ -45,6 +45,10 @@ class BranchRepository(ABC):
 
     @abstractmethod
     def update_branch_name(self, branch_id: str, branch_name: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_branch_role(self, branch_id: str, branch_role: BranchRole) -> None:
         raise NotImplementedError
 
     @abstractmethod

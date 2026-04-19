@@ -1182,6 +1182,7 @@ body.fa-is-resizing {
   display: grid;
   gap: 14px;
   padding: 16px;
+  min-width: 0;
 }
 
 .fa-tree-card-head {
@@ -1201,11 +1202,75 @@ body.fa-is-resizing {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .fa-tree-count-summary {
   color: var(--fa-text-soft);
   font-size: 12px;
+}
+
+.fa-tree-viewport-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 84%, var(--fa-accent) 16%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--fa-panel-2) 94%, transparent), var(--fa-panel-1)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--fa-accent) 12%, transparent), transparent 48%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+}
+
+.fa-tree-zoom-button,
+.fa-tree-zoom-level,
+.fa-tree-locate-button {
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent);
+  color: var(--fa-text);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.fa-tree-zoom-button {
+  width: 28px;
+  padding: 0;
+}
+
+.fa-tree-zoom-level {
+  min-width: 50px;
+  padding: 0 10px;
+  color: color-mix(in srgb, var(--fa-accent) 76%, var(--fa-text) 24%);
+}
+
+.fa-tree-locate-button {
+  padding: 0 10px;
+}
+
+.fa-tree-zoom-button:hover:not(:disabled),
+.fa-tree-zoom-level:hover:not(:disabled),
+.fa-tree-locate-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--fa-accent) 32%, var(--fa-border) 68%);
+  background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-3) 86%);
+}
+
+.fa-tree-zoom-button:disabled,
+.fa-tree-zoom-level:disabled,
+.fa-tree-locate-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+  transform: none;
 }
 
 .fa-branch-node {
@@ -1438,6 +1503,7 @@ body.fa-is-resizing {
 .fa-tree-panel-body {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .fa-tree-graph-summary {
@@ -1491,11 +1557,16 @@ body.fa-is-resizing {
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
 }
 
+.fa-tree-canvas-shell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
 .fa-tree-canvas {
   min-height: 220px;
-  display: grid;
-  align-items: center;
-  justify-items: center;
+  display: block;
+  min-width: 0;
   border-radius: 18px;
   border: 1px solid rgba(129, 140, 248, 0.08);
   background:
@@ -1504,6 +1575,20 @@ body.fa-is-resizing {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   padding: 10px;
   overflow: auto;
+}
+
+.fa-tree-canvas-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+}
+
+.fa-tree-canvas-content {
+  display: block;
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
 }
 
 .fa-tree-node {
@@ -2397,6 +2482,10 @@ body.fa-is-resizing {
   --fa-legend-color: #A78BFA;
 }
 
+.fa-tree-legend-item.is-role-execute {
+  --fa-legend-color: #FB7185;
+}
+
 .fa-tree-legend-item.is-role-verify {
   --fa-legend-color: #F59E0B;
 }
@@ -2477,21 +2566,30 @@ body.fa-is-resizing {
 }
 
 .fa-branch-graph-shell {
-  display: grid;
-  min-width: max-content;
-  place-items: center;
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  transition: transform 0.18s ease;
 }
 
 .fa-branch-graph-main {
-  position: relative;
+  position: absolute;
+  inset: 0 auto auto 0;
   min-height: 0;
   min-width: 0;
+  transform-origin: top left;
+  will-change: transform;
 }
 
 .fa-branch-graph-node-shell {
   position: absolute;
-  width: 0;
-  height: 0;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
   transform: translate(-50%, -50%);
   z-index: 1;
   transition: opacity 0.18s ease, filter 0.18s ease;

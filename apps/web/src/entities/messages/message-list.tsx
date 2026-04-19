@@ -65,6 +65,42 @@ function looksLikeInternalToolMarkup(value: unknown) {
   );
 }
 
+function looksLikeToolPlanningPayload(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return false;
+  }
+
+  const lowered = text.toLowerCase();
+  if (
+    (lowered.includes('"steps"') || lowered.includes('"step"')) &&
+    lowered.includes('"expected_tools"')
+  ) {
+    return true;
+  }
+
+  const parsed = parseJsonValue(text);
+  if (!parsed || typeof parsed !== "object") {
+    return false;
+  }
+
+  if (!("steps" in parsed) || !Array.isArray(parsed.steps)) {
+    return false;
+  }
+
+  return parsed.steps.some((step) => {
+    if (!step || typeof step !== "object") {
+      return false;
+    }
+    const record = step as Record<string, unknown>;
+    return Array.isArray(record.expected_tools) || typeof record.goal === "string";
+  });
+}
+
+function shouldHideStreamingInternalContent(value: unknown) {
+  return looksLikeInternalToolMarkup(value) || looksLikeToolPlanningPayload(value);
+}
+
 function roleLabel(type: unknown, isChineseUi = false) {
   const normalized = normalizeMessageType(type);
   if (normalized === "human") return isChineseUi ? "你" : "You";
@@ -387,7 +423,7 @@ function buildTranscriptItems(
 
     flushToolActivity();
 
-    if (!normalizeText(content) || looksLikeInternalToolMarkup(content)) {
+    if (!normalizeText(content) || shouldHideStreamingInternalContent(content)) {
       continue;
     }
 
@@ -402,7 +438,7 @@ function buildTranscriptItems(
   flushToolActivity();
 
   const normalizedAssistantMessage = normalizeText(assistantMessage);
-  const shouldHideAssistantFallback = looksLikeInternalToolMarkup(normalizedAssistantMessage);
+  const shouldHideAssistantFallback = shouldHideStreamingInternalContent(normalizedAssistantMessage);
   const hasVisibleAssistantMessage = items.some(
     (item) =>
       item.kind === "message" &&
@@ -1021,10 +1057,7 @@ function AgentRunBubble({
   visibleText?: string;
   isChineseUi: boolean;
 }) {
-  if (!isStreaming || visibleText?.trim()) {
-    return null;
-  }
-
+  const hasVisibleText = Boolean(visibleText?.trim());
   const tone = toolEventTone(toolEvents ?? []);
   const hasReasoningText = Boolean(reasoningText?.trim());
   const hasToolActivity = Boolean((toolCalls?.length ?? 0) || (toolEvents?.length ?? 0));
@@ -1078,6 +1111,10 @@ function AgentRunBubble({
     }
     return items.slice(-5);
   }, [isChineseUi, reasoningText, toolCalls, toolEvents]);
+
+  if (!isStreaming || hasVisibleText) {
+    return null;
+  }
 
   return (
     <div className="fa-message-row is-assistant assistant">
@@ -1134,6 +1171,11 @@ export function MessageList({
     () => buildTranscriptItems(messages, assistantMessage),
     [assistantMessage, messages],
   );
+  const visibleStreamReply = shouldHideStreamingInternalContent(streamVisibleText)
+    ? ""
+    : normalizeText(streamVisibleText)
+      ? String(streamVisibleText)
+      : "";
 
   return (
     <div className="fa-message-list">
@@ -1177,27 +1219,10 @@ export function MessageList({
         reasoningText={streamReasoningText}
         toolCalls={streamToolCalls}
         toolEvents={streamToolEvents}
-        visibleText={streamVisibleText}
+        visibleText={visibleStreamReply}
       />
 
-      {streamReasoningText ? (
-        <div className="fa-message-row is-assistant assistant">
-          <div className="fa-message-stack">
-            <div className="fa-message-head">
-              <div className="fa-message-role fa-message-meta is-reasoning">
-                {isChineseUi ? "思考" : "Reasoning"}
-              </div>
-            </div>
-            <div className="fa-message-bubble is-reasoning">
-              <div className="fa-message-content">
-                <MessageMarkdown isChineseUi={isChineseUi} text={streamReasoningText} />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {streamVisibleText ? (
+      {visibleStreamReply ? (
         <div className="fa-message-row is-assistant assistant">
           <div className="fa-message-stack">
             <div className="fa-message-head">
@@ -1207,7 +1232,7 @@ export function MessageList({
             </div>
             <div className="fa-message-bubble is-streaming">
               <div className="fa-message-content">
-                <MessageMarkdown isChineseUi={isChineseUi} text={streamVisibleText} />
+                <MessageMarkdown isChineseUi={isChineseUi} text={visibleStreamReply} />
               </div>
             </div>
           </div>

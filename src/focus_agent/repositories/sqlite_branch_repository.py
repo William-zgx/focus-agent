@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ..core.branching import BranchRecord, BranchStatus, MergeDecision, MergeProposal
+from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
 from ..core.types import ConversationRecord
 from .branch_repository import BranchRepository
 
@@ -269,6 +269,14 @@ class SQLiteBranchRepository(BranchRepository):
             conn.execute(
                 'UPDATE branches SET branch_name = ? WHERE branch_id = ?',
                 (branch_name, branch_id),
+            )
+            conn.commit()
+
+    def update_branch_role(self, branch_id: str, branch_role: BranchRole) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                'UPDATE branches SET branch_role = ? WHERE branch_id = ?',
+                (branch_role.value, branch_id),
             )
             conn.commit()
 

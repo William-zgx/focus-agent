@@ -39,6 +39,7 @@ class BranchService:
         BranchRole.MAIN: "Main",
         BranchRole.EXPLORE_ALTERNATIVES: "Alternative Path",
         BranchRole.DEEP_DIVE: "Deep Dive",
+        BranchRole.EXECUTE: "Execution",
         BranchRole.VERIFY: "Verification",
         BranchRole.WRITEUP: "Writeup",
     }
@@ -46,8 +47,87 @@ class BranchService:
         BranchRole.MAIN: "主线",
         BranchRole.EXPLORE_ALTERNATIVES: "备选方案",
         BranchRole.DEEP_DIVE: "深入分析",
+        BranchRole.EXECUTE: "执行",
         BranchRole.VERIFY: "验证",
         BranchRole.WRITEUP: "整理",
+    }
+    _ROLE_CLASSIFICATION_OPTIONS = (
+        BranchRole.EXPLORE_ALTERNATIVES,
+        BranchRole.DEEP_DIVE,
+        BranchRole.EXECUTE,
+        BranchRole.VERIFY,
+        BranchRole.WRITEUP,
+    )
+    _EXECUTE_SKILL_IDS = {
+        "autopilot",
+        "code-documentation",
+        "eco",
+        "ralph",
+        "systematic-debugging",
+        "tdd",
+        "ultrawork",
+    }
+    _ROLE_KEYWORD_HINTS = {
+        BranchRole.WRITEUP: (
+            "documentation",
+            "document",
+            "draft",
+            "summary",
+            "summarize",
+            "writeup",
+            "整理",
+            "总结",
+            "文档",
+            "汇总",
+            "草稿",
+        ),
+        BranchRole.EXECUTE: (
+            "build",
+            "code",
+            "fix",
+            "implement",
+            "integrate",
+            "patch",
+            "refactor",
+            "wire",
+            "开发",
+            "实现",
+            "修复",
+            "接入",
+            "编码",
+            "重构",
+        ),
+        BranchRole.VERIFY: (
+            "check",
+            "compare",
+            "confirm",
+            "reproduce",
+            "test",
+            "validate",
+            "verify",
+            "复现",
+            "对比",
+            "核对",
+            "测试",
+            "确认",
+            "验证",
+        ),
+        BranchRole.DEEP_DIVE: (
+            "analyze",
+            "debug",
+            "deep dive",
+            "inspect",
+            "investigate",
+            "root cause",
+            "trace",
+            "分析",
+            "定位",
+            "排查",
+            "根因",
+            "深挖",
+            "调试",
+            "调用链",
+        ),
     }
     _BRANCH_NAME_STOPWORDS = {
         "a",
@@ -371,6 +451,115 @@ class BranchService:
             sections.append(f"{heading}:\n{summary[:400]}")
         return "\n\n".join(section for section in sections if section.strip())
 
+    @staticmethod
+    def _normalize_branch_role_candidate(value: object) -> BranchRole | None:
+        text = str(value or "").strip().strip("`\"'").lower()
+        if not text:
+            return None
+        normalized = text.replace("-", "_").replace(" ", "_")
+        aliases = {
+            "deepdive": "deep_dive",
+            "explore": "explore_alternatives",
+            "exploration": "explore_alternatives",
+            "execution": "execute",
+            "implement": "execute",
+            "verification": "verify",
+            "writing": "writeup",
+            "write_up": "writeup",
+            "summary": "writeup",
+        }
+        normalized = aliases.get(normalized, normalized)
+        try:
+            role = BranchRole(normalized)
+        except ValueError:
+            return None
+        if role == BranchRole.MAIN:
+            return None
+        return role
+
+    def _collect_branch_role_context(self, *, thread_values: dict) -> str:
+        seed_text = self._collect_branch_name_seed(thread_values=thread_values)
+        language = self._detect_naming_language(seed_text)
+        sections: list[str] = []
+        prompt_mode = getattr(thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode"))
+        if prompt_mode:
+            label = "当前模式" if language == "zh" else "Prompt mode"
+            sections.append(f"{label}: {prompt_mode}")
+        active_skill_ids = [str(item).strip() for item in thread_values.get("active_skill_ids", []) if str(item).strip()]
+        if active_skill_ids:
+            label = "激活技能" if language == "zh" else "Active skills"
+            sections.append(f"{label}: {', '.join(active_skill_ids[:6])}")
+        conversation = self._collect_branch_name_context(
+            thread_values=thread_values,
+            language=language,
+        )
+        if conversation:
+            sections.append(conversation)
+        return "\n\n".join(section for section in sections if section.strip())
+
+    def _fallback_branch_role(self, *, thread_values: dict, current_role: BranchRole) -> BranchRole:
+        prompt_mode = getattr(thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode"))
+        normalized_prompt_mode = str(prompt_mode or "").strip().lower()
+        if normalized_prompt_mode == "execute":
+            return BranchRole.EXECUTE
+        if normalized_prompt_mode == "synthesize":
+            return BranchRole.WRITEUP
+
+        active_skill_ids = {str(item).strip().lower() for item in thread_values.get("active_skill_ids", []) if str(item).strip()}
+        if active_skill_ids & self._EXECUTE_SKILL_IDS:
+            return BranchRole.EXECUTE
+
+        text_parts = [
+            str(thread_values.get("task_brief") or "").strip(),
+            str(thread_values.get("rolling_summary") or "").strip(),
+        ]
+        for message in thread_values.get("messages", [])[-6:]:
+            content = self._message_content_to_text(getattr(message, "content", ""))
+            if content:
+                text_parts.append(content)
+        lowered = "\n".join(part for part in text_parts if part).lower()
+
+        for role in (
+            BranchRole.WRITEUP,
+            BranchRole.EXECUTE,
+            BranchRole.VERIFY,
+            BranchRole.DEEP_DIVE,
+        ):
+            if any(keyword in lowered for keyword in self._ROLE_KEYWORD_HINTS[role]):
+                return role
+        if current_role != BranchRole.MAIN:
+            return current_role
+        return BranchRole.EXPLORE_ALTERNATIVES
+
+    def _classify_branch_role(self, *, thread_values: dict, current_role: BranchRole) -> BranchRole:
+        context = self._collect_branch_role_context(thread_values=thread_values)
+        model = getattr(self, "proposal_model", None)
+        if model and context:
+            try:
+                options = ", ".join(role.value for role in self._ROLE_CLASSIFICATION_OPTIONS)
+                response = model.invoke(
+                    [
+                        SystemMessage(
+                            content=(
+                                "Classify the branch by its dominant work mode after the first completed turn. "
+                                f"Return exactly one role id from: {options}. "
+                                "Use execute for implementation or direct changes, verify for checking or testing, "
+                                "deep_dive for focused investigation, writeup for summarizing or documentation, "
+                                "and explore_alternatives for open-ended branching or option discovery."
+                            )
+                        ),
+                        HumanMessage(content=context),
+                    ]
+                )
+                candidate = self._normalize_branch_role_candidate(
+                    self._message_content_to_text(getattr(response, "content", response))
+                )
+                if candidate is not None:
+                    return candidate
+            except Exception:
+                pass
+        return self._fallback_branch_role(thread_values=thread_values, current_role=current_role)
+
     def _generate_branch_name(self, *, thread_values: dict, branch_role: BranchRole) -> str:
         seed_text = self._collect_branch_name_seed(thread_values=thread_values)
         language = self._detect_naming_language(seed_text)
@@ -611,6 +800,7 @@ class BranchService:
         )
         branch_meta_payload = branch_meta.model_dump(mode='json')
         branch_meta_payload['branch_name_pending_ai'] = branch_name is None
+        branch_meta_payload['branch_role_pending_ai'] = branch_role == BranchRole.EXPLORE_ALTERNATIVES
 
         self.graph.update_state(
             {'configurable': {'thread_id': child_thread_id}},
@@ -644,6 +834,38 @@ class BranchService:
         )
         self.repo.create(record)
         return record
+
+    def refresh_branch_role(
+        self,
+        *,
+        child_thread_id: str,
+        user_id: str,
+        force: bool = False,
+    ) -> BranchRecord | None:
+        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
+        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
+        child_config = {'configurable': {'thread_id': child_thread_id}}
+        child_snapshot = self.graph.get_state(child_config)
+        child_values = deepcopy(child_snapshot.values)
+        existing_meta = dict(child_values.get('branch_meta') or {})
+        if not force and not existing_meta.get('branch_role_pending_ai'):
+            return branch_record
+
+        next_role = self._classify_branch_role(
+            thread_values=child_values,
+            current_role=branch_record.branch_role,
+        )
+        if next_role == branch_record.branch_role:
+            return branch_record
+
+        self.repo.update_branch_role(branch_record.branch_id, next_role)
+        updated_record = branch_record.model_copy(update={'branch_role': next_role})
+        self.graph.update_state(
+            child_config,
+            {'branch_meta': self._branch_meta_payload_from_record(updated_record, existing_meta)},
+            as_node='bootstrap_turn',
+        )
+        return updated_record
 
     def refresh_branch_name(
         self,
@@ -687,26 +909,52 @@ class BranchService:
         child_thread_id: str,
         user_id: str,
     ) -> BranchRecord | None:
+        return self.refresh_branch_metadata_after_first_turn(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+        )
+
+    def refresh_branch_metadata_after_first_turn(
+        self,
+        *,
+        child_thread_id: str,
+        user_id: str,
+    ) -> BranchRecord | None:
         try:
             self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
             child_config = {'configurable': {'thread_id': child_thread_id}}
             child_snapshot = self.graph.get_state(child_config)
             child_values = deepcopy(child_snapshot.values)
             existing_meta = dict(child_values.get('branch_meta') or {})
-            if not existing_meta.get('branch_name_pending_ai'):
+            pending_name = bool(existing_meta.get('branch_name_pending_ai'))
+            pending_role = bool(existing_meta.get('branch_role_pending_ai'))
+            if not pending_name and not pending_role:
                 return None
 
-            updated_record = self.refresh_branch_name(
-                child_thread_id=child_thread_id,
-                user_id=user_id,
-                name_source=None,
-                force=True,
-            )
+            updated_record = self.repo.get_by_child_thread_id(child_thread_id)
+            if pending_role:
+                refreshed_role_record = self.refresh_branch_role(
+                    child_thread_id=child_thread_id,
+                    user_id=user_id,
+                    force=True,
+                )
+                if refreshed_role_record is not None:
+                    updated_record = refreshed_role_record
+            if pending_name:
+                refreshed_name_record = self.refresh_branch_name(
+                    child_thread_id=child_thread_id,
+                    user_id=user_id,
+                    name_source=None,
+                    force=True,
+                )
+                if refreshed_name_record is not None:
+                    updated_record = refreshed_name_record
 
             refreshed_snapshot = self.graph.get_state(child_config)
             refreshed_values = deepcopy(refreshed_snapshot.values)
             refreshed_meta = dict(refreshed_values.get('branch_meta') or {})
             refreshed_meta['branch_name_pending_ai'] = False
+            refreshed_meta['branch_role_pending_ai'] = False
             self.graph.update_state(
                 child_config,
                 {'branch_meta': refreshed_meta},

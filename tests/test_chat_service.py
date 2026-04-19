@@ -1,11 +1,12 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+import threading
 
 import pytest
 from langchain.messages import AIMessage, HumanMessage
 
-from focus_agent.services.chat import ChatService
+from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.config import Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
@@ -185,6 +186,121 @@ def test_stream_message_emits_heartbeat_during_long_running_turn(tmp_path: Path)
 
     assert any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
     assert any("event: turn.completed" in frame for frame in frames)
+
+
+def test_send_message_rejects_concurrent_turn_on_same_thread(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class BlockingInvokeGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="done")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+            self.entered = threading.Event()
+            self.release = threading.Event()
+
+        def invoke(self, payload, *, config, context, version):
+            del payload, config, context, version
+            self.entered.set()
+            assert self.release.wait(timeout=2.0)
+            return {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    graph = BlockingInvokeGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+    completed = threading.Event()
+
+    def run_first_turn():
+        try:
+            chat.send_message(thread_id="root-1", user_id="owner-1", message="first")
+        finally:
+            completed.set()
+
+    worker = threading.Thread(target=run_first_turn, daemon=True)
+    worker.start()
+    assert graph.entered.wait(timeout=2.0)
+
+    with pytest.raises(ConcurrentTurnError, match="still processing the previous turn"):
+        chat.send_message(thread_id="root-1", user_id="owner-1", message="second")
+
+    graph.release.set()
+    assert completed.wait(timeout=2.0)
+    worker.join(timeout=2.0)
+
+
+def test_stream_message_reports_busy_thread_failure(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class BlockingStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="Final answer after wait.")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+            self.entered: asyncio.Event | None = None
+            self.release: asyncio.Event | None = None
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            assert self.entered is not None
+            assert self.release is not None
+            self.entered.set()
+            await self.release.wait()
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    graph = BlockingStreamingGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(sse_heartbeat_seconds=0.01),
+        graph=graph,
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames(stream):
+        return [frame async for frame in stream]
+
+    async def run_test():
+        graph.entered = asyncio.Event()
+        graph.release = asyncio.Event()
+
+        first_task = asyncio.create_task(
+            collect_frames(chat.stream_message(thread_id="root-1", user_id="owner-1", message="first"))
+        )
+        await asyncio.wait_for(graph.entered.wait(), timeout=1.0)
+
+        second_frames = [
+            frame
+            async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="second")
+        ]
+
+        assert any("event: turn.failed" in frame for frame in second_frames)
+        assert any("previous turn" in frame for frame in second_frames)
+
+        graph.release.set()
+        first_frames = await asyncio.wait_for(first_task, timeout=1.0)
+        assert any("event: turn.completed" in frame for frame in first_frames)
+
+    asyncio.run(run_test())
 
 
 def test_get_thread_state_falls_back_to_repo_when_branch_meta_is_incomplete(tmp_path: Path):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 import json
+import threading
 from typing import Any, AsyncIterator
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
@@ -31,6 +32,21 @@ from ..transport.stream_events import (
 class ChatService:
     def __init__(self, runtime: AppRuntime):
         self.runtime = runtime
+        self._active_turns: set[str] = set()
+        self._active_turns_lock = threading.Lock()
+
+    def _acquire_thread_turn(self, *, thread_id: str) -> None:
+        with self._active_turns_lock:
+            if thread_id in self._active_turns:
+                raise ConcurrentTurnError(
+                    "This thread is still processing the previous turn. "
+                    "Please wait for it to finish before sending another message."
+                )
+            self._active_turns.add(thread_id)
+
+    def _release_thread_turn(self, *, thread_id: str) -> None:
+        with self._active_turns_lock:
+            self._active_turns.discard(thread_id)
 
     @staticmethod
     def _message_content_to_text(content: Any) -> str:
@@ -287,6 +303,7 @@ class ChatService:
         payload: Any,
         run_name: str,
         context_skill_hints: tuple[str, ...] | None = None,
+        kind: str = 'chat.turn',
     ) -> dict[str, Any]:
         context, branch_meta, _ = self._preflight_thread_access(
             thread_id=thread_id,
@@ -294,28 +311,40 @@ class ChatService:
             explicit_skill_hints=context_skill_hints,
             require_writable=True,
         )
-        config = build_invoke_config(
-            settings=self.runtime.settings,
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=context.root_thread_id,
-            branch_meta=branch_meta,
-            run_name=run_name,
-        )
-        result = self.runtime.graph.invoke(
-            payload,
-            config=config,
-            context=context,
-            version='v2',
-        )
-        _, interrupts = self._normalize_result(result)
-        return self._response_payload(
-            thread_id=thread_id,
-            user_id=user_id,
-            context=context,
-            branch_meta=branch_meta,
-            interrupts=interrupts,
-        )
+        self._acquire_thread_turn(thread_id=thread_id)
+        try:
+            config = build_invoke_config(
+                settings=self.runtime.settings,
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=context.root_thread_id,
+                branch_meta=branch_meta,
+                run_name=run_name,
+            )
+            result = self.runtime.graph.invoke(
+                payload,
+                config=config,
+                context=context,
+                version='v2',
+            )
+            _, interrupts = self._normalize_result(result)
+            latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            response = self._response_payload(
+                thread_id=thread_id,
+                user_id=user_id,
+                context=latest_context,
+                branch_meta=latest_branch_meta,
+                interrupts=interrupts,
+            )
+            self._schedule_branch_name_refresh_after_first_turn(
+                thread_id=thread_id,
+                user_id=user_id,
+                branch_meta=latest_branch_meta,
+                kind=kind,
+            )
+            return response
+        finally:
+            self._release_thread_turn(thread_id=thread_id)
 
     def send_message(
         self,
@@ -350,6 +379,7 @@ class ChatService:
             payload=payload,
             run_name='focus_agent_turn',
             context_skill_hints=selection.skill_ids,
+            kind='chat.turn',
         )
 
     def resume(self, *, thread_id: str, user_id: str, resume: Any) -> dict[str, Any]:
@@ -358,6 +388,7 @@ class ChatService:
             user_id=user_id,
             payload=Command(resume=resume),
             run_name='focus_agent_resume',
+            kind='chat.resume',
         )
 
     def get_thread_state(self, *, thread_id: str, user_id: str) -> dict[str, Any]:
@@ -426,23 +457,39 @@ class ChatService:
         branch_meta: BranchMeta | None,
         kind: str,
     ) -> None:
+        branch_service = getattr(self.runtime, 'branch_service', None)
+        if branch_service is None:
+            return
         if kind != 'chat.turn':
             return
+
+        def dispatch_background(func, **kwargs) -> None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                threading.Thread(target=func, kwargs=kwargs, daemon=True).start()
+                return
+            loop.create_task(asyncio.to_thread(func, **kwargs))
+
         if branch_meta is None:
-            asyncio.create_task(
-                asyncio.to_thread(
-                    self.runtime.branch_service.refresh_conversation_title_after_first_turn,
-                    root_thread_id=thread_id,
-                    user_id=user_id,
-                )
-            )
-            return
-        asyncio.create_task(
-            asyncio.to_thread(
-                self.runtime.branch_service.refresh_branch_name_after_first_turn,
-                child_thread_id=thread_id,
+            refresh_title = getattr(branch_service, 'refresh_conversation_title_after_first_turn', None)
+            if refresh_title is None:
+                return
+            dispatch_background(
+                refresh_title,
+                root_thread_id=thread_id,
                 user_id=user_id,
             )
+            return
+        refresh_branch = getattr(branch_service, 'refresh_branch_metadata_after_first_turn', None)
+        if refresh_branch is None:
+            refresh_branch = getattr(branch_service, 'refresh_branch_name_after_first_turn', None)
+        if refresh_branch is None:
+            return
+        dispatch_background(
+            refresh_branch,
+            child_thread_id=thread_id,
+            user_id=user_id,
         )
 
     async def _stream_graph_chunks(
@@ -498,27 +545,28 @@ class ChatService:
         kind: str,
         context_skill_hints: tuple[str, ...] | None = None,
     ) -> AsyncIterator[str]:
-        context, branch_meta, _ = self._preflight_thread_access(
-            thread_id=thread_id,
-            user_id=user_id,
-            explicit_skill_hints=context_skill_hints,
-        )
-        config = build_invoke_config(
-            settings=self.runtime.settings,
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=context.root_thread_id,
-            branch_meta=branch_meta,
-            run_name=run_name,
-        )
-
-        yield self._sse_frame(
-            event='turn.status',
-            data={'phase': 'accepted', 'thread_id': thread_id, 'kind': kind},
-        )
         visible_text_buffer = ''
         reasoning_buffer = ''
         try:
+            context, branch_meta, _ = self._preflight_thread_access(
+                thread_id=thread_id,
+                user_id=user_id,
+                explicit_skill_hints=context_skill_hints,
+            )
+            self._acquire_thread_turn(thread_id=thread_id)
+            config = build_invoke_config(
+                settings=self.runtime.settings,
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=context.root_thread_id,
+                branch_meta=branch_meta,
+                run_name=run_name,
+            )
+
+            yield self._sse_frame(
+                event='turn.status',
+                data={'phase': 'accepted', 'thread_id': thread_id, 'kind': kind},
+            )
             yield self._sse_frame(
                 event='turn.status',
                 data={'phase': 'invoke_started', 'thread_id': thread_id},
@@ -681,6 +729,7 @@ class ChatService:
                 },
             )
         finally:
+            self._release_thread_turn(thread_id=thread_id)
             yield self._sse_frame(event='turn.closed', data={'status': 'ok', 'thread_id': thread_id})
 
     def stream_message(
@@ -738,3 +787,7 @@ class ChatService:
             run_name='focus_agent_resume',
             kind='chat.resume',
         )
+
+
+class ConcurrentTurnError(RuntimeError):
+    """Raised when a thread already has an in-flight turn."""

@@ -24,15 +24,29 @@ const NODE_X_START = 42;
 const NODE_X_GAP = 108;
 const NODE_Y_START = 48;
 const NODE_Y_GAP = 76;
+const GRAPH_NODE_SIZE = 24;
+const GRAPH_NODE_RADIUS = GRAPH_NODE_SIZE / 2;
+const GRAPH_EDGE_NODE_CLEARANCE = GRAPH_NODE_RADIUS + 1;
 const GRAPH_FOCUS_TARGET_Y = 184;
 const GRAPH_TOP_PADDING = 34;
 const BRANCH_DETAIL_WIDTH = 228;
+const BRANCH_DETAIL_HEIGHT_ESTIMATE = 260;
 const BRANCH_DETAIL_HIDE_DELAY_MS = 120;
+const BRANCH_ZOOM_MIN = 0.5;
+const BRANCH_ZOOM_MAX = 1.8;
+const BRANCH_ZOOM_STEP = 0.1;
+const BRANCH_ZOOM_WHEEL_SENSITIVITY = 0.0015;
+
+type WebKitGestureEvent = Event & {
+  scale?: number;
+};
 
 function roleLabel(role: BranchTreeNode["branch_role"], isChineseUi = false) {
   switch (role) {
     case "deep_dive":
       return isChineseUi ? "深挖" : "Deep dive";
+    case "execute":
+      return isChineseUi ? "执行" : "Execute";
     case "explore_alternatives":
       return isChineseUi ? "探索" : "Explore";
     case "verify":
@@ -52,6 +66,8 @@ function roleColor(role: BranchTreeNode["branch_role"]) {
       return "#5EC2FF";
     case "deep_dive":
       return "#A78BFA";
+    case "execute":
+      return "#FB7185";
     case "verify":
       return "#F59E0B";
     case "writeup":
@@ -148,6 +164,14 @@ function depthMetaLabel(isChineseUi: boolean) {
   return isChineseUi ? "层级" : "Depth";
 }
 
+function clampBranchZoom(value: number) {
+  return Math.min(BRANCH_ZOOM_MAX, Math.max(BRANCH_ZOOM_MIN, Number(value.toFixed(2))));
+}
+
+function branchZoomLabel(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
 function buildGraph(root?: BranchTreeNode | null, focusThreadId?: string): {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -217,9 +241,9 @@ function buildGraph(root?: BranchTreeNode | null, focusThreadId?: string): {
 
 function edgePath(from: GraphNode, to: GraphNode) {
   const startX = from.x;
-  const startY = from.y + 13;
+  const startY = from.y + GRAPH_EDGE_NODE_CLEARANCE;
   const endX = to.x;
-  const endY = to.y - 13;
+  const endY = to.y - GRAPH_EDGE_NODE_CLEARANCE;
   const offsetY = Math.max(24, Math.min(48, (endY - startY) * 0.35));
   const offsetX = Math.max(28, Math.abs(endX - startX) * 0.4);
   return `M ${startX} ${startY} C ${startX + offsetX} ${startY + offsetY}, ${endX - offsetX} ${endY - offsetY}, ${endX} ${endY}`;
@@ -244,9 +268,20 @@ export function BranchTreePanel() {
   const [detailThreadId, setDetailThreadId] = useState<string>("");
   const [detailDepth, setDetailDepth] = useState(0);
   const [detailStyle, setDetailStyle] = useState<CSSProperties>({});
+  const [branchZoom, setBranchZoom] = useState(1);
+  const [viewportNudge, setViewportNudge] = useState({
+    x: 0,
+    y: 0,
+  });
   const detailAnchorRef = useRef<HTMLElement | null>(null);
   const detailOverlayRef = useRef<HTMLDivElement | null>(null);
   const detailHideTimerRef = useRef<number | null>(null);
+  const treeCanvasRef = useRef<HTMLDivElement | null>(null);
+  const graphShellRef = useRef<HTMLDivElement | null>(null);
+  const branchZoomRef = useRef(1);
+  const gestureStartZoomRef = useRef(1);
+  const pendingZoomCenterBehaviorRef = useRef<ScrollBehavior | null>(null);
+  const canvasAutoCenteringRef = useRef(false);
   const {
     createBranch,
     isCreatingBranch,
@@ -259,6 +294,8 @@ export function BranchTreePanel() {
     getMergeProposalError,
   } = useShellUi();
 
+  branchZoomRef.current = branchZoom;
+
   useEffect(() => {
     if (params.threadId) {
       setFocusedThreadId(params.threadId);
@@ -269,13 +306,13 @@ export function BranchTreePanel() {
     }
   }, [params.threadId, data?.root?.thread_id]);
 
-  const contextThreadId = detailThreadId || focusedThreadId || params.threadId || "";
+  const selectedContextThreadId = focusedThreadId || params.threadId || "";
   const selectedNode =
-    findNode(data?.root, contextThreadId) ??
+    findNode(data?.root, selectedContextThreadId) ??
     data?.root ??
     data?.archived_branches?.[0] ??
     null;
-  const selectedThreadId = contextThreadId || selectedNode?.thread_id || "";
+  const selectedThreadId = selectedContextThreadId || selectedNode?.thread_id || "";
   const graph = useMemo(() => buildGraph(data?.root, selectedThreadId), [data?.root, selectedThreadId]);
   const nodeIndex = useMemo(() => {
     const index = new Map<string, GraphNode>();
@@ -297,6 +334,8 @@ export function BranchTreePanel() {
       ? "从当前选中节点创建新分支"
       : "Create a branch from the selected node";
   const detailNode = findNode(data?.root, detailThreadId) ?? null;
+  const previewThreadId = detailThreadId || selectedThreadId;
+  const previewNode = detailNode ?? selectedNode;
   const detailNodeStatusTone = detailNode ? statusAccentTone(detailNode.branch_status) : "";
   const detailConclusionPreparing = detailNode
     ? detailNode.branch_status === "preparing_merge_review" ||
@@ -514,15 +553,15 @@ export function BranchTreePanel() {
     }, BRANCH_DETAIL_HIDE_DELAY_MS);
   }
 
-  function updateBranchDetailPosition() {
-    const anchor = detailAnchorRef.current;
-    if (!anchor) return;
+  function getBranchDetailStyle(anchor: HTMLElement): CSSProperties {
     const rect = anchor.getBoundingClientRect();
     const scrollFrame =
       anchor.closest<HTMLElement>(".fa-sidebar-scroll") ??
       anchor.closest<HTMLElement>(".fa-sidebar-panel");
     const overlayWidth = Math.min(BRANCH_DETAIL_WIDTH, window.innerWidth - 32);
-    const overlayHeight = 240;
+    const overlayHeight =
+      detailOverlayRef.current?.getBoundingClientRect().height ||
+      BRANCH_DETAIL_HEIGHT_ESTIMATE;
     const margin = 16;
     const gap = 16;
     const scrollbarGutter = scrollFrame ? 18 : 0;
@@ -544,24 +583,90 @@ export function BranchTreePanel() {
     }
 
     left = Math.min(Math.max(horizontalMin, left), Math.max(horizontalMin, horizontalMax - overlayWidth));
+    const placedBesideAnchor =
+      (left >= preferredRight - 1 && left <= preferredRight + 1) ||
+      (left >= preferredLeft - 1 && left <= preferredLeft + 1);
     const centeredTop = rect.top + rect.height / 2 - overlayHeight / 2;
-    const top = Math.min(
-      Math.max(margin, centeredTop),
-      Math.max(margin, window.innerHeight - overlayHeight - margin),
-    );
+    const belowTop = rect.bottom + gap;
+    const aboveTop = rect.top - gap - overlayHeight;
+    let top = placedBesideAnchor
+      ? centeredTop
+      : belowTop + overlayHeight <= window.innerHeight - margin || aboveTop < margin
+        ? belowTop
+        : aboveTop;
 
-    setDetailStyle({
+    top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - overlayHeight - margin));
+
+    return {
       left: `${left}px`,
       top: `${top}px`,
+    };
+  }
+
+  function updateBranchDetailPosition() {
+    const anchor = detailAnchorRef.current;
+    if (!anchor) return;
+    setDetailStyle(getBranchDetailStyle(anchor));
+  }
+
+  function centerSelectedNode(zoom = branchZoomRef.current, behavior: ScrollBehavior = "smooth") {
+    const canvas = treeCanvasRef.current;
+    const node = nodeIndex.get(selectedThreadId);
+    if (!canvas || !node) return;
+
+    const canvasInsets = readCanvasInsets();
+    const nodeCenterX = canvasInsets.x + node.x * zoom;
+    const nodeCenterY = canvasInsets.y + node.y * zoom;
+    const maxScrollLeft = Math.max(0, canvas.scrollWidth - canvas.clientWidth);
+    const maxScrollTop = Math.max(0, canvas.scrollHeight - canvas.clientHeight);
+    const desiredLeft = nodeCenterX - canvas.clientWidth / 2;
+    const desiredTop = nodeCenterY - canvas.clientHeight / 2;
+    const left = Math.min(Math.max(0, desiredLeft), maxScrollLeft);
+    const top = Math.min(Math.max(0, desiredTop), maxScrollTop);
+
+    canvasAutoCenteringRef.current = true;
+    setViewportNudge({
+      x: Math.round(left - desiredLeft),
+      y: Math.round(top - desiredTop),
     });
+    canvas.scrollTo({ left, top, behavior });
+    window.requestAnimationFrame(() => {
+      canvasAutoCenteringRef.current = false;
+    });
+  }
+
+  function readCanvasInsets() {
+    const canvas = treeCanvasRef.current;
+    if (!canvas || typeof window === "undefined") return { x: 0, y: 0 };
+    const styles = window.getComputedStyle(canvas);
+    return {
+      x: Number.parseFloat(styles.paddingLeft) || 0,
+      y: Number.parseFloat(styles.paddingTop) || 0,
+    };
+  }
+
+  function updateBranchZoom(nextZoom: number, behavior: ScrollBehavior = "auto") {
+    const zoom = clampBranchZoom(nextZoom);
+    branchZoomRef.current = zoom;
+    pendingZoomCenterBehaviorRef.current = behavior;
+    setBranchZoom((current) => (Math.abs(current - zoom) < 0.001 ? current : zoom));
   }
 
   function showBranchDetail(node: BranchTreeNode, anchorElement: HTMLElement) {
     clearBranchDetailHideTimer();
+    const nextStyle = getBranchDetailStyle(anchorElement);
+    const isSameAnchor = detailAnchorRef.current === anchorElement;
     detailAnchorRef.current = anchorElement;
-    setDetailThreadId(node.thread_id);
-    setDetailDepth(Number(node.branch_depth || 0));
-    window.requestAnimationFrame(() => updateBranchDetailPosition());
+    setDetailStyle(nextStyle);
+    if (detailThreadId !== node.thread_id) {
+      setDetailThreadId(node.thread_id);
+    } else if (!isSameAnchor) {
+      updateBranchDetailPosition();
+    }
+    const nextDepth = Number(node.branch_depth || 0);
+    if (detailDepth !== nextDepth) {
+      setDetailDepth(nextDepth);
+    }
   }
 
   useEffect(() => {
@@ -578,6 +683,67 @@ export function BranchTreePanel() {
       window.removeEventListener("resize", handleViewportChange);
     };
   }, [detailThreadId]);
+
+  useEffect(() => {
+    const canvas = treeCanvasRef.current;
+    if (!canvas) return;
+
+    function handleScroll() {
+      if (canvasAutoCenteringRef.current) return;
+      setViewportNudge((current) => (current.x === 0 && current.y === 0 ? current : { x: 0, y: 0 }));
+    }
+
+    canvas.addEventListener("scroll", handleScroll, { passive: true });
+    return () => canvas.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    setViewportNudge({ x: 0, y: 0 });
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    const behavior = pendingZoomCenterBehaviorRef.current;
+    if (!behavior) return;
+    pendingZoomCenterBehaviorRef.current = null;
+    const frame = window.requestAnimationFrame(() => {
+      centerSelectedNode(branchZoom, behavior);
+      updateBranchDetailPosition();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [branchZoom]);
+
+  useEffect(() => {
+    const canvas = treeCanvasRef.current;
+    if (!canvas) return;
+
+    function handleWheel(event: WheelEvent) {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const nextZoom = branchZoomRef.current * Math.exp(-event.deltaY * BRANCH_ZOOM_WHEEL_SENSITIVITY);
+      updateBranchZoom(nextZoom, "auto");
+    }
+
+    const handleGestureStart: EventListener = (event) => {
+      event.preventDefault();
+      gestureStartZoomRef.current = branchZoomRef.current;
+    };
+
+    const handleGestureChange: EventListener = (event) => {
+      event.preventDefault();
+      const scale = (event as WebKitGestureEvent).scale ?? 1;
+      updateBranchZoom(gestureStartZoomRef.current * scale, "auto");
+    };
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    canvas.addEventListener("gesturestart", handleGestureStart, { passive: false } as AddEventListenerOptions);
+    canvas.addEventListener("gesturechange", handleGestureChange, { passive: false } as AddEventListenerOptions);
+
+    return () => {
+      canvas.removeEventListener("wheel", handleWheel);
+      canvas.removeEventListener("gesturestart", handleGestureStart);
+      canvas.removeEventListener("gesturechange", handleGestureChange);
+    };
+  }, [selectedThreadId, graph]);
 
   useEffect(() => {
     if (detailThreadId && !detailNode) {
@@ -726,11 +892,57 @@ export function BranchTreePanel() {
             <span className="fa-tree-legend-item is-role-main">{isChineseUi ? "主线时间轴" : "Main timeline"}</span>
             <span className="fa-tree-legend-item is-role-explore">{isChineseUi ? "探索" : "Explore"}</span>
             <span className="fa-tree-legend-item is-role-deep-dive">{isChineseUi ? "深挖" : "Deep dive"}</span>
+            <span className="fa-tree-legend-item is-role-execute">{isChineseUi ? "执行" : "Execute"}</span>
             <span className="fa-tree-legend-item is-role-verify">{isChineseUi ? "验证" : "Verify"}</span>
             <span className="fa-tree-legend-item is-role-writeup">{isChineseUi ? "写作" : "Writeup"}</span>
           </div>
 
-          <div className="fa-tree-canvas">
+          <div className="fa-tree-canvas-shell">
+            <div
+              className="fa-tree-canvas-tools"
+              role="group"
+              aria-label={isChineseUi ? "分支树缩放控制" : "Branch tree zoom controls"}
+            >
+              <div className="fa-tree-viewport-tools">
+                <button
+                  className="fa-tree-zoom-button"
+                  {...tooltipProps(isChineseUi ? "缩小分支树" : "Zoom out branch tree")}
+                  disabled={branchZoom <= BRANCH_ZOOM_MIN}
+                  onClick={() => updateBranchZoom(branchZoom - BRANCH_ZOOM_STEP, "smooth")}
+                  type="button"
+                >
+                  -
+                </button>
+                <button
+                  className="fa-tree-zoom-level"
+                  {...tooltipProps(isChineseUi ? "重置缩放到 100%" : "Reset zoom to 100%")}
+                  disabled={Math.abs(branchZoom - 1) < 0.001}
+                  onClick={() => updateBranchZoom(1, "smooth")}
+                  type="button"
+                >
+                  {branchZoomLabel(branchZoom)}
+                </button>
+                <button
+                  className="fa-tree-zoom-button"
+                  {...tooltipProps(isChineseUi ? "放大分支树" : "Zoom in branch tree")}
+                  disabled={branchZoom >= BRANCH_ZOOM_MAX}
+                  onClick={() => updateBranchZoom(branchZoom + BRANCH_ZOOM_STEP, "smooth")}
+                  type="button"
+                >
+                  +
+                </button>
+                <button
+                  className="fa-tree-locate-button"
+                  {...tooltipProps(isChineseUi ? "定位到当前选中节点" : "Center the selected node")}
+                  disabled={!selectedThreadId}
+                  onClick={() => centerSelectedNode(branchZoomRef.current, "smooth")}
+                  type="button"
+                >
+                  {isChineseUi ? "定位" : "Locate"}
+                </button>
+              </div>
+            </div>
+            <div ref={treeCanvasRef} className="fa-tree-canvas">
             {isLoading ? (
               <div className="fa-inline-notice">{isChineseUi ? "正在加载分支树..." : "Loading branch tree..."}</div>
             ) : null}
@@ -741,94 +953,86 @@ export function BranchTreePanel() {
             ) : null}
 
             {data?.root ? (
-              <div className="fa-branch-graph-shell">
+              <div className="fa-tree-canvas-content">
                 <div
-                  className={`fa-branch-graph-main ${
-                    selectedThreadId ? "has-active-selection" : ""
-                  }`}
-                  style={{ width: `${graph.width}px`, height: `${graph.height}px` }}
+                  ref={graphShellRef}
+                  className="fa-branch-graph-shell"
+                  style={{
+                    width: `${graph.width * branchZoom}px`,
+                    height: `${graph.height * branchZoom}px`,
+                    transform: `translate(${viewportNudge.x}px, ${viewportNudge.y}px)`,
+                  }}
                 >
                   <div
-                    className="fa-branch-graph-root-label"
-                    style={
-                      {
-                        "--fa-branch-role-color": roleColor(data.root.branch_role),
-                      } as CSSProperties
-                    }
+                    className={`fa-branch-graph-main ${
+                      selectedThreadId ? "has-active-selection" : ""
+                    }`}
+                    style={{
+                      width: `${graph.width}px`,
+                      height: `${graph.height}px`,
+                      transform: `scale(${branchZoom})`,
+                    }}
                   >
-                    {isChineseUi ? "主线时间轴" : "Main timeline"}
-                  </div>
-                  <svg
-                    className="fa-branch-graph-lines"
-                    width={graph.width}
-                    height={graph.height}
-                    viewBox={`0 0 ${graph.width} ${graph.height}`}
-                    aria-hidden="true"
-                  >
-                    {graph.edges.map((edge) => {
-                      const from = nodeIndex.get(edge.from);
-                      const to = nodeIndex.get(edge.to);
-                      if (!from || !to) return null;
-                      const isContext =
-                        edge.from === selectedThreadId ||
-                        edge.to === selectedThreadId ||
-                        selectedNode?.parent_thread_id === edge.from;
-                      const isFocused =
-                        edge.from === selectedThreadId || edge.to === selectedThreadId;
-                      return (
-                        <path
-                          key={`${edge.from}-${edge.to}`}
-                          className={`fa-branch-graph-edge ${isContext ? "is-context" : ""} ${
-                            isFocused ? "is-focused" : ""
-                          }`}
-                          d={edgePath(from, to)}
-                          stroke={edge.color}
-                        />
-                      );
-                    })}
-                  </svg>
+                    <div
+                      className="fa-branch-graph-root-label"
+                      style={
+                        {
+                          "--fa-branch-role-color": roleColor(data.root.branch_role),
+                        } as CSSProperties
+                      }
+                    >
+                      {isChineseUi ? "主线时间轴" : "Main timeline"}
+                    </div>
+                    <svg
+                      className="fa-branch-graph-lines"
+                      width={graph.width}
+                      height={graph.height}
+                      viewBox={`0 0 ${graph.width} ${graph.height}`}
+                      aria-hidden="true"
+                    >
+                      {graph.edges.map((edge) => {
+                        const from = nodeIndex.get(edge.from);
+                        const to = nodeIndex.get(edge.to);
+                        if (!from || !to) return null;
+                        const isContext =
+                          edge.from === previewThreadId ||
+                          edge.to === previewThreadId ||
+                          previewNode?.parent_thread_id === edge.from;
+                        const isFocused =
+                          edge.from === selectedThreadId || edge.to === selectedThreadId;
+                        return (
+                          <path
+                            key={`${edge.from}-${edge.to}`}
+                            className={`fa-branch-graph-edge ${isContext ? "is-context" : ""} ${
+                              isFocused ? "is-focused" : ""
+                            }`}
+                            d={edgePath(from, to)}
+                            stroke={edge.color}
+                          />
+                        );
+                      })}
+                    </svg>
 
-                  {graph.nodes.map((item) => {
-                    const node = item.node;
-                    const active = node.thread_id === params.threadId;
-                    const focused = node.thread_id === selectedThreadId;
-                    const isContext =
-                      node.thread_id === selectedThreadId ||
-                      node.parent_thread_id === selectedThreadId ||
-                      selectedNode?.parent_thread_id === node.thread_id;
-                    const tone = statusTone(node.branch_status);
-                    return (
-                      <div
-                        key={node.thread_id}
-                        className={`fa-branch-graph-node-shell ${
-                          active || detailThreadId === node.thread_id ? "active-card" : ""
-                        }`}
-                        style={{ left: `${item.x}px`, top: `${item.y}px` }}
-                        onMouseEnter={(event) =>
-                          showBranchDetail(node, event.currentTarget.querySelector("button") as HTMLElement)
-                        }
-                        onMouseLeave={(event) => {
-                          if (
-                            event.relatedTarget instanceof Node &&
-                            detailOverlayRef.current?.contains(event.relatedTarget)
-                          ) {
-                            return;
+                    {graph.nodes.map((item) => {
+                      const node = item.node;
+                      const active = node.thread_id === params.threadId;
+                      const focused = node.thread_id === selectedThreadId;
+                      const isContext =
+                        node.thread_id === previewThreadId ||
+                        node.parent_thread_id === previewThreadId ||
+                        previewNode?.parent_thread_id === node.thread_id;
+                      const tone = statusTone(node.branch_status);
+                      return (
+                        <div
+                          key={node.thread_id}
+                          className={`fa-branch-graph-node-shell ${
+                            active || detailThreadId === node.thread_id ? "active-card" : ""
+                          }`}
+                          style={{ left: `${item.x}px`, top: `${item.y}px` }}
+                          onMouseEnter={(event) =>
+                            showBranchDetail(node, event.currentTarget.querySelector("button") as HTMLElement)
                           }
-                          scheduleHideBranchDetail();
-                        }}
-                      >
-                        <button
-                          className={`fa-branch-graph-node ${active ? "is-active" : ""} ${
-                            focused ? "is-focused" : ""
-                          } ${isContext ? "is-context" : ""} ${tone}`}
-                          style={
-                            {
-                              "--fa-branch-role-color": roleColor(node.branch_role),
-                            } as CSSProperties
-                          }
-                          onClick={() => void openThread(node.thread_id)}
-                          onFocus={(event) => showBranchDetail(node, event.currentTarget)}
-                          onBlur={(event) => {
+                          onMouseLeave={(event) => {
                             if (
                               event.relatedTarget instanceof Node &&
                               detailOverlayRef.current?.contains(event.relatedTarget)
@@ -837,20 +1041,43 @@ export function BranchTreePanel() {
                             }
                             scheduleHideBranchDetail();
                           }}
-                          type="button"
                         >
-                          <span className="sr-only">
-                            {node.branch_name} · {roleLabel(node.branch_role)} ·{" "}
-                            {branchStatusLabel(node.branch_status, isChineseUi)}
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })}
+                          <button
+                            className={`fa-branch-graph-node ${active ? "is-active" : ""} ${
+                              focused ? "is-focused" : ""
+                            } ${isContext ? "is-context" : ""} ${tone}`}
+                            style={
+                              {
+                                "--fa-branch-role-color": roleColor(node.branch_role),
+                              } as CSSProperties
+                            }
+                            onClick={() => void openThread(node.thread_id)}
+                            onFocus={(event) => showBranchDetail(node, event.currentTarget)}
+                            onBlur={(event) => {
+                              if (
+                                event.relatedTarget instanceof Node &&
+                                detailOverlayRef.current?.contains(event.relatedTarget)
+                              ) {
+                                return;
+                              }
+                              scheduleHideBranchDetail();
+                            }}
+                            type="button"
+                          >
+                            <span className="sr-only">
+                              {node.branch_name} · {roleLabel(node.branch_role, isChineseUi)} ·{" "}
+                              {branchStatusLabel(node.branch_status, isChineseUi)}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
 
+                  </div>
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
         </div>
       </section>

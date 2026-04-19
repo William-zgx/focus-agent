@@ -246,7 +246,7 @@ export interface FocusAgentUpdateConversationRequest {
   title: string;
 }
 
-export type BranchRole = "main" | "explore_alternatives" | "deep_dive" | "verify" | "writeup";
+export type BranchRole = "main" | "explore_alternatives" | "deep_dive" | "execute" | "verify" | "writeup";
 export type BranchStatus =
   | "active"
   | "paused"

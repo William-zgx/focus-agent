@@ -44,6 +44,10 @@ def test_sqlite_branch_repository_roundtrip(tmp_path: Path):
     assert restored.is_archived is False
     assert restored.archived_at is None
 
+    repo.update_branch_role("b1", BranchRole.EXECUTE)
+    retyped = repo.get("b1")
+    assert retyped.branch_role == BranchRole.EXECUTE
+
 def test_sqlite_branch_repository_loads_old_rows_without_policy_column(tmp_path: Path):
     db_path = tmp_path / "branches.sqlite3"
     repo = SQLiteBranchRepository(str(db_path))

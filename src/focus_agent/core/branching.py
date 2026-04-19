@@ -10,6 +10,7 @@ class BranchRole(str, Enum):
     MAIN = "main"
     EXPLORE_ALTERNATIVES = "explore_alternatives"
     DEEP_DIVE = "deep_dive"
+    EXECUTE = "execute"
     VERIFY = "verify"
     WRITEUP = "writeup"
 

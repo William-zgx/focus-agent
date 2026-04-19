@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 from typing import Any, Iterable
+import unicodedata
 from urllib import parse as urllib_parse
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -79,9 +80,11 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
 
 
 def _slugify(value: str) -> str:
-    value = value.strip().lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    return value.strip("-") or "artifact"
+    normalized = unicodedata.normalize("NFKC", value).strip().lower()
+    normalized = normalized.replace("_", "-")
+    normalized = re.sub(r"[^\w\s-]+", "", normalized, flags=re.UNICODE)
+    normalized = re.sub(r"[-\s]+", "-", normalized, flags=re.UNICODE)
+    return normalized.strip("-") or "artifact"
 
 
 def _emit_tool_event(*, tool_name: str, stage: str, **payload: Any) -> None:
@@ -617,9 +620,15 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
         try:
             filename = f"{_slugify(title)}.md"
             path = artifact_dir / filename
-            _emit_tool_event(tool_name=tool_name, stage='delta', message='Writing artifact to disk', path=str(path))
+            display_path = _coerce_relative_posix(path, workspace_root)
+            _emit_tool_event(
+                tool_name=tool_name,
+                stage='delta',
+                message='Writing artifact to disk',
+                path=display_path,
+            )
             path.write_text(f"# {title}\n\n{body}\n", encoding='utf-8')
-            result = f"artifact_saved:{path}"
+            result = f"artifact_saved:{display_path}"
             _emit_tool_event(tool_name=tool_name, stage='end', output=result)
             return result
         except Exception as exc:  # noqa: BLE001

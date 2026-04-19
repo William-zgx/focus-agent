@@ -85,3 +85,51 @@ def test_ai_branch_name_is_generated_from_child_branch_conversation():
 
 def test_fallback_branch_name_uses_chinese_role_name_for_chinese_session():
     assert BranchService._fallback_branch_name("", BranchRole.VERIFY, language="zh") == "验证"
+
+
+def test_fallback_branch_role_prefers_execute_prompt_mode():
+    service = object.__new__(BranchService)
+
+    role = service._fallback_branch_role(
+        thread_values={
+            "prompt_mode": "execute",
+            "active_skill_ids": [],
+            "messages": [],
+            "rolling_summary": "",
+        },
+        current_role=BranchRole.EXPLORE_ALTERNATIVES,
+    )
+
+    assert role == BranchRole.EXECUTE
+
+
+def test_ai_branch_role_is_classified_from_first_turn_context():
+    service = object.__new__(BranchService)
+
+    class FakeModel:
+        def __init__(self):
+            self.seen_messages = None
+
+        def invoke(self, messages):
+            self.seen_messages = messages
+            return "execute"
+
+    fake_model = FakeModel()
+    service.proposal_model = fake_model
+
+    role = service._classify_branch_role(
+        thread_values={
+            "messages": [
+                HumanMessage(content="帮我修复分支树里节点类型一直显示成探索的问题。"),
+                AIMessage(content="我先定位创建分支和节点元数据刷新逻辑，然后直接改代码。"),
+            ],
+            "rolling_summary": "这个分支正在实现节点类型自动分类。",
+            "active_skill_ids": ["autopilot"],
+            "prompt_mode": "execute",
+        },
+        current_role=BranchRole.EXPLORE_ALTERNATIVES,
+    )
+
+    assert role == BranchRole.EXECUTE
+    assert fake_model.seen_messages is not None
+    assert "return exactly one role id" in fake_model.seen_messages[0].content.lower()
