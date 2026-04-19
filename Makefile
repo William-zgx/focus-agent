@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check sdk-install sdk-check sdk-build web-install web-dev web-check web-build ui-smoke clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -6,10 +6,12 @@ PIP ?= .venv/bin/pip
 PYTEST ?= .venv/bin/pytest
 RUFF ?= .venv/bin/ruff
 FOCUS_AGENT_API ?= .venv/bin/focus-agent-api
+CI_LOCAL_ENV_FILE ?= /tmp/focus-agent-ci-missing.env
 NPM ?= npm
 SDK_DIR ?= frontend-sdk
 PNPM ?= pnpm
 WEB_DIR ?= apps/web
+DOCKER_COMPOSE ?= docker compose
 
 help:
 	@printf '%s\n' \
@@ -27,6 +29,8 @@ help:
 		'  make test              Run pytest' \
 		'  make lint              Run ruff check .' \
 		'  make check             Run lint + test + sdk-check' \
+		'  make ci                Run local CI parity checks' \
+		'  make ci-test           Run pytest without repo-local env bootstrap' \
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
 		'  make sdk-build         Build frontend SDK' \
@@ -34,6 +38,10 @@ help:
 		'  make web-dev           Start the React frontend app' \
 		'  make web-check         Run frontend app type-check' \
 		'  make web-build         Build the React frontend app' \
+		'  make docker-up         Start the Compose service' \
+		'  make docker-rebuild    Rebuild image and recreate the Compose service' \
+		'  make docker-restart    Restart the running Compose service' \
+		'  make docker-logs       Follow Compose service logs' \
 		'  make ui-smoke          Run the real-browser UI smoke test' \
 		'  make clean             Remove Python/pytest caches'
 
@@ -81,6 +89,11 @@ lint: .venv/bin/python
 
 check: lint test sdk-check
 
+ci: lint ci-test sdk-check sdk-build
+
+ci-test: .venv/bin/python
+	FOCUS_AGENT_LOCAL_ENV_FILE=$(CI_LOCAL_ENV_FILE) $(PYTEST)
+
 $(SDK_DIR)/node_modules:
 	cd $(SDK_DIR) && $(NPM) install
 
@@ -105,6 +118,18 @@ web-check: node_modules
 
 web-build: node_modules
 	$(PNPM) web:build
+
+docker-up:
+	$(DOCKER_COMPOSE) up -d focus-agent
+
+docker-rebuild:
+	$(DOCKER_COMPOSE) up -d --build focus-agent
+
+docker-restart:
+	$(DOCKER_COMPOSE) restart focus-agent
+
+docker-logs:
+	$(DOCKER_COMPOSE) logs -f focus-agent
 
 ui-smoke: .venv/bin/python
 	$(PYTHON) scripts/ui_smoke_test.py

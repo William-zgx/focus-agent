@@ -117,6 +117,8 @@ The roadmap's containerization baseline is now included in the repository. The i
 ```bash
 export OPENAI_API_KEY=replace-me
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+make docker-rebuild
+# Or use the native Compose command directly:
 docker compose up --build
 ```
 
@@ -127,6 +129,7 @@ Then open:
 
 Notes:
 
+- `make docker-rebuild` runs `docker compose up -d --build focus-agent`, which rebuilds the image and recreates the service so frontend source changes are included. Use `make docker-restart` only when you want to restart the already-built container.
 - `compose.yaml` mounts `./.focus_agent` into `/data` by default, so Docker follows the same local model catalog, credentials file, SQLite branch DB, and LangGraph checkpoint/store files as your non-container runs.
 - Set `FOCUS_AGENT_DATA_MOUNT=focus_agent_data` if you want an isolated Docker-managed volume instead of reusing the repo-local `.focus_agent` directory.
 - Set `FOCUS_AGENT_MODEL` if you want Compose to override the default model from `/data/models.toml` without editing that file.
@@ -178,12 +181,18 @@ make dev
 make test
 make lint
 make check
+make ci-test
+make ci
 make web-dev
 make web-build
+make docker-rebuild
+make docker-restart
 make ui-smoke
 ```
 
 `make serve` is an alias for `make serve-dev`. `make serve-dev` starts the frontend Vite dev server and the backend API together with hot reload enabled. `make serve-prod` builds the static frontend bundle and starts only the backend without reload so `/app` is served from FastAPI. `make web-dev` starts only the React frontend dev server. `make web-build` produces the static frontend bundle that FastAPI serves at `/app`.
+
+`make ci-test` runs pytest with `FOCUS_AGENT_LOCAL_ENV_FILE` pointed at a missing file. This mirrors GitHub Actions more closely by preventing repo-local `.focus_agent/local.env` secrets from masking missing test setup. `make ci` runs Ruff, `make ci-test`, and the frontend SDK type-check/build steps.
 
 `make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, creates a conversation when needed, sends one chat turn, forks a branch, enters merge review, and fails if the visible response still contains DSML or tool-call markup.
 

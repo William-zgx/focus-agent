@@ -117,6 +117,8 @@ focus-agent-api
 ```bash
 export OPENAI_API_KEY=replace-me
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+make docker-rebuild
+# 也可以直接使用原生 Compose 命令：
 docker compose up --build
 ```
 
@@ -127,6 +129,7 @@ docker compose up --build
 
 说明：
 
+- `make docker-rebuild` 会执行 `docker compose up -d --build focus-agent`，用于重新构建镜像并重建服务，确保前端源码改动被打进容器。`make docker-restart` 只适合重启已经构建好的容器。
 - `compose.yaml` 默认把仓库里的 `./.focus_agent` 挂载到 `/data`，这样 Docker 会沿用你本地运行时的模型目录、凭证文件、SQLite branch DB，以及 LangGraph checkpoint/store。
 - 如果你想改成 Docker 独立管理的数据卷，可以设置 `FOCUS_AGENT_DATA_MOUNT=focus_agent_data`。
 - 如果你想直接从 Compose 覆盖默认模型，可以设置 `FOCUS_AGENT_MODEL`，不必手改 `/data/models.toml`。
@@ -178,12 +181,18 @@ make dev
 make test
 make lint
 make check
+make ci-test
+make ci
 make web-dev
 make web-build
+make docker-rebuild
+make docker-restart
 make ui-smoke
 ```
 
 `make serve` 是 `make serve-dev` 的兼容别名。`make serve-dev` 会同时启动前端 Vite dev server 和带热重载的后端 API。`make serve-prod` 会先构建静态前端，再以非 reload 模式只启动后端，由 FastAPI 直接托管 `/app`。`make web-dev` 用来单独启动 React Web App 的开发服务器，`make web-build` 用来生成由 FastAPI 在 `/app` 下托管的静态前端产物。
+
+`make ci-test` 会把 `FOCUS_AGENT_LOCAL_ENV_FILE` 指向一个不存在的文件再运行 pytest，这样更接近 GitHub Actions，避免本机 `.focus_agent/local.env` 里的密钥或模型配置掩盖测试环境缺口。`make ci` 会依次运行 Ruff、`make ci-test`、前端 SDK 类型检查和 SDK 构建。
 
 `make ui-smoke` 会启动一个带临时 profile 的独立 Chrome 窗口，打开本地应用，必要时创建会话，发送一轮聊天，再 fork 一个分支并进入合并评审；如果最终可见回复仍然包含 DSML 或工具调用标记，就会直接失败。
 

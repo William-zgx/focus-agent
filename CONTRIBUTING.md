@@ -64,22 +64,26 @@ Useful local entry points:
 Run the test suite before opening a pull request:
 
 ```bash
-pytest
+make ci-test
 ```
 
-You can also run Ruff locally if you are touching Python code:
+`make ci-test` intentionally points `FOCUS_AGENT_LOCAL_ENV_FILE` at a missing file so local secrets in `.focus_agent/local.env` do not hide CI setup gaps. You can also run Ruff locally if you are touching Python code:
 
 ```bash
-ruff check .
+make lint
 ```
 
 If your change affects the frontend SDK, validate it as well:
 
 ```bash
-cd frontend-sdk
-npm install
-npm run check
-npm run build
+make sdk-check
+make sdk-build
+```
+
+To mirror the current GitHub Actions job locally, run:
+
+```bash
+make ci
 ```
 
 ## Contribution Guidelines
