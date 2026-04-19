@@ -19,3 +19,4 @@ apps/web/dist/
 src/*.egg-info/
 src/**/__pycache__/
 src/focus_agent.egg-info/
+.omc/

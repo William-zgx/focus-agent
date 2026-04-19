@@ -53,6 +53,7 @@ export function ThreadPage() {
   }, [data?.messages, pendingUserMessage]);
   const hasTranscriptContent = Boolean(
     transcriptMessages.length ||
+      isStreaming ||
       streamState?.visibleText ||
       streamState?.reasoningText ||
       streamState?.toolCalls?.length ||
@@ -111,6 +112,7 @@ export function ThreadPage() {
   }, [
     threadId,
     hasTranscriptContent,
+    isStreaming,
     transcriptMessages.length,
     lastTranscriptMessage?.id,
     lastTranscriptMessage?.content,
@@ -158,6 +160,7 @@ export function ThreadPage() {
                 <MessageList
                   assistantMessage={data?.assistant_message}
                   isReadOnly={isMergedReadOnlyThread}
+                  isStreaming={isStreaming}
                   messages={transcriptMessages}
                   isChineseUi={isChineseUi}
                   onEditMessage={setEditDraft}
