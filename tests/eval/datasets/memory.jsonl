@@ -1,0 +1,2 @@
+{"id": "mem_user_profile_go", "tags": ["memory", "user_profile"], "setup": [{"user": "我是 Go 后端工程师，不熟 React。"}], "input": {"user_message": "介绍一下前端状态管理的基础概念。"}, "expected": {"answer_contains_any": ["Go", "后端", "类比"]}, "judge": {"rule": true, "llm": {"enabled": false}}}
+{"id": "mem_user_tone_no_emoji", "tags": ["memory", "tone"], "setup": [{"user": "回答里不要使用 emoji。"}], "input": {"user_message": "列出三个学习 LangGraph 的小步骤。"}, "expected": {"answer_must_not_contain_regex": "[\\U0001F300-\\U0001FAFF]"}, "judge": {"rule": true, "llm": {"enabled": false}}}

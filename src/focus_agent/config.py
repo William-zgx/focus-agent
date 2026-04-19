@@ -574,6 +574,10 @@ class Settings:
     branch_max_depth: int = 5
     skill_directories: tuple[str, ...] = (".focus_agent/skills",)
     workspace_root: str = "."
+    plan_act_reflect_enabled: bool = True
+    plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
+    plan_task_brief_min_chars: int = 120
+    plan_max_replans: int = 1
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -648,6 +652,21 @@ class Settings:
                 else defaults.skill_directories
             ),
             workspace_root=env.get("WORKSPACE_ROOT", defaults.workspace_root),
+            plan_act_reflect_enabled=env.get(
+                "PLAN_ACT_REFLECT_ENABLED",
+                "true" if defaults.plan_act_reflect_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            plan_scenes=(
+                _split_csv(env.get("PLAN_SCENES"))
+                if env.get("PLAN_SCENES") is not None
+                else defaults.plan_scenes
+            ),
+            plan_task_brief_min_chars=int(
+                env.get("PLAN_TASK_BRIEF_MIN_CHARS", str(defaults.plan_task_brief_min_chars))
+            ),
+            plan_max_replans=int(
+                env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))
+            ),
         )
         Path(instance.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         Path(instance.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)

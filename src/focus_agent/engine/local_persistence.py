@@ -19,6 +19,9 @@ _FOCUS_AGENT_ALLOWED_MSGPACK_TYPES: tuple[tuple[str, str], ...] = (
     ("focus_agent.core.types", "ArtifactRef"),
     ("focus_agent.core.types", "CitationRef"),
     ("focus_agent.core.types", "ContextBudget"),
+    ("focus_agent.core.types", "Plan"),
+    ("focus_agent.core.types", "PlanStep"),
+    ("focus_agent.core.types", "ReflectionVerdict"),
 )
 
 

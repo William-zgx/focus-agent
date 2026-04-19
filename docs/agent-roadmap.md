@@ -24,20 +24,112 @@
 
 ## 二、优化方案（按 agent 能力分层）
 
-### A. 推理架构：Plan–Act–Reflect
+### A. 推理架构：Plan–Act–Reflect ✅ 已落地
 
-**问题**：[graph_builder.py:397-401](../src/focus_agent/engine/graph_builder.py#L397-L401) 的 `should_continue` 只看 `tool_calls`；多工具轮被 `_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS=2` 硬截断。
+> 状态：2026-04-19 落地。默认开启，通过 `Settings.plan_act_reflect_enabled` 关闭。
 
-**方案**：三节点循环
+#### 图形态
+
 ```
-plan → act(tools) → reflect → (replan | act | finalize | ask_user)
+bootstrap → retrieve_memory → assemble_context → plan → agent_loop
+                                                          │
+                                   ┌──────────────────────┤
+                                   ↓                      ↓
+                              tool_executor         (无 tool_calls)
+                                   │                      │
+                                   └─→ agent_loop     reflect
+                                                     ╱      ╲
+                                                 done       replan
+                                                  ↓          ↓
+                                            summarize_turn  plan (最多 1 次)
+                                                  ↓
+                                       maybe_interrupt_for_merge → END
 ```
-- `plan`：首次进入 / `task_brief` 变化时触发；输出 `plan: list[Step]`，低温、只读上下文、小模型。
-- `act`：即现有 `agent_loop`，但消费 `plan[current_step]` 作为子目标。
-- `reflect`：每 N 轮或 `finish_reason=stop` 后触发；输出 `{status ∈ done|continue|replan|ask_user, gaps, next}`。
-- `ask_user` 复用现有 `interrupt` 通道。
 
-**落地**：`engine/graph_builder.py` 加 `plan / reflect` 节点；`AgentState` 加 `plan / current_step / reflection`。保留 `_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS` 作为兜底。
+代码入口：[graph_builder.py:build_graph](../src/focus_agent/engine/graph_builder.py)。
+
+#### 触发策略（条件触发，不每轮 plan）
+
+纯函数 [`_should_plan`](../src/focus_agent/engine/graph_builder.py)：
+- **场景白名单**仅作为*许可*，不单独触发：`Settings.plan_scenes`（默认 `("long_dialog_research", "technical_deep_dive")`）。
+- **触发条件**（满足其一即进入 plan 节点）：
+  1. `task_brief` 长度 ≥ `plan_task_brief_min_chars`（默认 120）。
+  2. scene 在白名单且 `task_brief` 含多步关键词（`然后 / 接着 / 之后 / 并且 / 对比 / 分析 / then / and then / compare / analyze / step by step`）。
+  3. 已存在 plan 且 `plan_meta.replan_requested=True`（reflect 触发的重规划）。
+- **未触发**时 plan 节点 passthrough，整图退化为原 ReAct 行为——这是保证既有单轮对话零额外成本的关键。
+
+#### Plan 节点
+
+- 模型：复用 `selected_model`（不做模型路由，等 §H 统一处理），`thinking_mode=""`，走 `model_for(...)`（不绑工具）。
+- 输入：`task_brief + 工具名白名单（仅 names，不含 schema） + 上一次 reflection.missing`（重规划时）。
+- System prompt 要求返回 JSON：
+  ```json
+  {"steps":[{"id":"s1","goal":"...","expected_tools":["search_code"]}],
+   "success_criteria":"客观可判断的验收标准"}
+  ```
+- 解析失败或 `steps=[]`：记 `plan_meta.plan_skipped=True`，退化为无 plan 路径；不抛错。
+- 写入 state：`plan / current_step_id=steps[0].id / reflection=None / plan_meta.plan_calls+=1`。
+
+#### Plan 表示
+
+见 [core/types.py](../src/focus_agent/core/types.py)：
+
+```python
+class PlanStep(StateModel):
+    id: str                          # "s1", "s2" ...
+    goal: str
+    expected_tools: list[str] = []   # 建议，非强约束
+    done: bool = False
+    note: str = ""
+
+class Plan(StateModel):
+    steps: list[PlanStep]
+    success_criteria: str = ""
+    created_at_call: int = 0         # plan 生成时的 llm_calls，陈旧检测用
+    replan_count: int = 0            # 硬上限 Settings.plan_max_replans（默认 1）
+```
+
+#### Act 节点
+
+保持 `agent_loop` 不变。只在构造 prompt 时，把 `_format_plan_block(plan, current_step_id)` 追加到 system message：
+
+```
+## 当前计划
+目标验收: ...
+- ✓ [s1] 已完成步骤
+- ➤ [s2] 当前步骤  (建议工具: search_code)
+- • [s3] 待执行
+完成当前步骤后，如仍需工具请继续调用；若已可给出最终答复，直接用自然语言回答。
+```
+
+保留 `_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS=2` 作为工具轮兜底。
+
+#### Reflect 节点
+
+- 触发：`should_continue_after_act` 路由——last message 无 `tool_calls` 且 `plan` 存在时，走 `reflect` 而非 `summarize_turn`。
+- 模型：同 `selected_model`；system prompt 要求返回 `{"status":"done"|"replan","reasoning":"...","missing":[]}`。
+- 决策：
+  - `status == "done"` 或 `plan.replan_count >= plan_max_replans` → 去 `summarize_turn`。
+  - `status == "replan"` 且预算未耗尽 → `plan_meta.replan_requested=True`，回 `plan` 节点；plan 节点再次运行时 `replan_count+=1`。
+- 解析失败：默认 `status=done`，绝不陷循环。
+
+#### 上限与退化
+
+- **最多 1 次 replan**：`Settings.plan_max_replans=1`。第二次 reflect 即使 replan 也会被强制改判为 done。
+- **全链路 best-effort**：任何解析/调用失败都能退化到无 plan 的 ReAct，主路径不会被阻塞。
+- **全局开关**：`Settings.plan_act_reflect_enabled=False` 时，plan/reflect 节点空穿、路由直通 `summarize_turn`。
+- **环境变量**：`PLAN_ACT_REFLECT_ENABLED / PLAN_SCENES / PLAN_TASK_BRIEF_MIN_CHARS / PLAN_MAX_REPLANS`。
+
+#### 观测
+
+- `llm_calls` 自动包含 plan/reflect 的调用计数。
+- `state.plan_meta`：`{plan_calls, reflect_calls, replan_requested, replanned, plan_skipped, reflect_forced_done}`。
+- 评估框架已接入：`EvalCase.expected` 可加 `expected_plan_steps_min / expected_replan`（预留扩展）。
+
+#### 验证
+
+- 单元：`tests/eval/test_plan_act_reflect.py`（14 个用例）覆盖 `_should_plan` 分支、JSON 解析容错、happy path、replan-once、开关关闭。
+- 回归：`tests/test_graph_builder.py` 既有用例保持 green——短对话自动退化为 ReAct。
 
 ### B. 工具层：并行、缓存、自描述
 

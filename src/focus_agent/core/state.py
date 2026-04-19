@@ -13,7 +13,9 @@ from .types import (
     ContextBudget,
     FindingItem,
     PinnedFact,
+    Plan,
     PromptMode,
+    ReflectionVerdict,
 )
 
 
@@ -108,6 +110,13 @@ class AgentState(TypedDict, total=False):
     # and never merge-imported because it is a transient write queue.
     memory_write_requests: list[dict[str, Any]]
 
+    # Plan-Act-Reflect: written by `plan` node, read by `agent_loop` context and
+    # `reflect` node. Not merge-imported: a plan belongs to the active turn.
+    plan: Plan | None
+    current_step_id: str
+    reflection: ReflectionVerdict | None
+    plan_meta: dict[str, Any]
+
 
 def initial_agent_state() -> AgentState:
     return {
@@ -140,6 +149,10 @@ def initial_agent_state() -> AgentState:
         "selected_model": "",
         "selected_thinking_mode": "",
         "memory_write_requests": [],
+        "plan": None,
+        "current_step_id": "",
+        "reflection": None,
+        "plan_meta": {},
     }
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,6 +60,27 @@ class ContextBudget(StateModel):
     findings_limit: int = Field(default=8, ge=0)
     artifact_limit: int = Field(default=6, ge=0)
     citation_limit: int = Field(default=10, ge=0)
+
+
+class PlanStep(StateModel):
+    id: str
+    goal: str
+    expected_tools: list[str] = Field(default_factory=list)
+    done: bool = False
+    note: str = ""
+
+
+class Plan(StateModel):
+    steps: list[PlanStep]
+    success_criteria: str = ""
+    created_at_call: int = 0
+    replan_count: int = 0
+
+
+class ReflectionVerdict(StateModel):
+    status: Literal["done", "replan"]
+    reasoning: str = ""
+    missing: list[str] = Field(default_factory=list)
 
 
 class ConversationRecord(StateModel):

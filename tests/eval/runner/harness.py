@@ -8,6 +8,7 @@ can plug in fakes (the unit tests do).
 from __future__ import annotations
 
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -25,6 +26,12 @@ from focus_agent.skills import SkillRegistry
 
 from ..judges import LLMJudge, RuleJudge, TrajectoryJudge
 from ..schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
+
+
+# The graph builder caches model instances internally; when we monkey-patch
+# `create_chat_model` we must serialize graph construction across threads so
+# different fake models don't stomp each other.
+_BUILD_LOCK = threading.Lock()
 
 
 @dataclass(slots=True)
@@ -86,38 +93,40 @@ def load_dataset(path: str | Path) -> list[EvalCase]:
 
 
 def run_case(case: EvalCase, *, runtime: EvalRuntime, timeout_s: float = 120.0) -> EvalResult:
+    del timeout_s  # reserved for a future process-level watchdog
     started = time.perf_counter()
     try:
-        graph = _build_isolated_graph(runtime)
-        context = RequestContext(
-            user_id=f"eval-{case.id}",
-            root_thread_id=f"eval-thread-{case.id}",
-            scene=case.scene,
-            skill_hints=tuple(case.skill_hints),
-        )
-        if case.setup:
-            for turn in case.setup:
-                graph.invoke(
-                    {
-                        "messages": [HumanMessage(content=turn.get("user", ""))],
-                        "task_brief": (turn.get("user") or "")[:200],
-                        "selected_model": runtime.settings.model,
-                    },
-                    context=context,
-                    version="v2",
-                )
+        with _model_factory_patch(runtime.model_factory):
+            graph = _build_isolated_graph(runtime)
+            context = RequestContext(
+                user_id=f"eval-{case.id}",
+                root_thread_id=f"eval-thread-{case.id}",
+                scene=case.scene,
+                skill_hints=tuple(case.skill_hints),
+            )
+            if case.setup:
+                for turn in case.setup:
+                    graph.invoke(
+                        {
+                            "messages": [HumanMessage(content=turn.get("user", ""))],
+                            "task_brief": (turn.get("user") or "")[:200],
+                            "selected_model": runtime.settings.model,
+                        },
+                        context=context,
+                        version="v2",
+                    )
 
-        user_message = (case.input.get("user_message") or "").strip()
-        payload: dict[str, Any] = {
-            "messages": [HumanMessage(content=user_message)],
-            "task_brief": user_message[:200],
-            "selected_model": runtime.settings.model,
-        }
-        initial_state = case.input.get("initial_state") or {}
-        if isinstance(initial_state, dict):
-            payload.update(initial_state)
+            user_message = (case.input.get("user_message") or "").strip()
+            payload: dict[str, Any] = {
+                "messages": [HumanMessage(content=user_message)],
+                "task_brief": user_message[:200],
+                "selected_model": runtime.settings.model,
+            }
+            initial_state = case.input.get("initial_state") or {}
+            if isinstance(initial_state, dict):
+                payload.update(initial_state)
 
-        result = graph.invoke(payload, context=context, version="v2")
+            result = graph.invoke(payload, context=context, version="v2")
         state = _state_from_result(result)
         answer = _last_ai_text(state.get("messages", []))
         trajectory = _extract_trajectory(state.get("messages", []))
@@ -205,22 +214,44 @@ def run_suite(
 
 def _build_isolated_graph(runtime: EvalRuntime) -> Any:
     """Build a fresh graph per case so checkpointer state is isolated."""
-    if runtime.model_factory is not None:
-        from unittest.mock import patch
-
-        # Inject the fake model factory into graph_builder's create_chat_model.
-        patcher = patch(
-            "focus_agent.engine.graph_builder.create_chat_model",
-            runtime.model_factory,
-        )
-        patcher.start()
-        # Note: the patch lives for the lifetime of the test process, which is
-        # acceptable for eval runs (test fixtures handle teardown).
-
     return build_graph(
         settings=runtime.settings,
         tool_registry=runtime.tool_registry,
     )
+
+
+class _model_factory_patch:  # noqa: N801 — context-manager style, lowercase on purpose
+    """Temporarily swap `graph_builder.create_chat_model` for a fake factory.
+
+    Must wrap the entire graph.invoke() call: model instantiation happens
+    lazily inside graph nodes, not at build time. Serialized across threads
+    by `_BUILD_LOCK` because the module attribute is process-global.
+    """
+
+    def __init__(self, factory: Callable[..., Any] | None):
+        self.factory = factory
+        self._original: Any = None
+        self._locked = False
+
+    def __enter__(self):
+        if self.factory is None:
+            return self
+        _BUILD_LOCK.acquire()
+        self._locked = True
+        from focus_agent.engine import graph_builder as _gb
+
+        self._original = _gb.create_chat_model
+        _gb.create_chat_model = self.factory
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._locked:
+            from focus_agent.engine import graph_builder as _gb
+
+            _gb.create_chat_model = self._original
+            _BUILD_LOCK.release()
+            self._locked = False
+        return False
 
 
 def _state_from_result(result: Any) -> dict[str, Any]:
