@@ -1,0 +1,15 @@
+.env
+.focus_agent
+.git
+.github
+.idea
+.pnpm-store
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+artifacts
+apps/web/dist
+frontend-sdk/dist
+node_modules
+tests

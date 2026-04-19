@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -143,6 +144,47 @@ def test_sse_frame_serializes_message_objects():
 
     assert 'event: agent.update' in frame
     assert '"content": "hello"' in frame
+
+
+def test_stream_message_emits_heartbeat_during_long_running_turn(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class SlowStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="Final answer after heartbeat.")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            await asyncio.sleep(0.03)
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(sse_heartbeat_seconds=0.01),
+        graph=SlowStreamingGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
+    assert any("event: turn.completed" in frame for frame in frames)
 
 
 def test_get_thread_state_falls_back_to_repo_when_branch_meta_is_incomplete(tmp_path: Path):

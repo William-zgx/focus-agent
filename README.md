@@ -110,6 +110,31 @@ For local frontend development, run `make web-dev` in a second shell and set `WE
 
 If you want one command that starts both sides with hot reload, use `make serve-dev` or its compatibility alias `make serve`. It runs the Vite dev server for the frontend and starts the API with reload enabled for local development. For a production-style local run, use `make serve-prod`, which builds the static frontend bundle first and then starts only the backend without reload.
 
+## Container Deployment
+
+The roadmap's containerization baseline is now included in the repository. The image builds the React frontend into the container, serves `/app` from FastAPI, and keeps runtime state under `/data`.
+
+```bash
+export OPENAI_API_KEY=replace-me
+export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+docker compose up --build
+```
+
+Then open:
+
+- `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/healthz`
+
+Notes:
+
+- `compose.yaml` mounts `./.focus_agent` into `/data` by default, so Docker follows the same local model catalog, credentials file, SQLite branch DB, and LangGraph checkpoint/store files as your non-container runs.
+- Set `FOCUS_AGENT_DATA_MOUNT=focus_agent_data` if you want an isolated Docker-managed volume instead of reusing the repo-local `.focus_agent` directory.
+- Set `FOCUS_AGENT_MODEL` if you want Compose to override the default model from `/data/models.toml` without editing that file.
+- Provider credentials and base URLs come from `/data/local.env` by default, so Compose does not blank them out unless you explicitly export override env vars before `docker compose up`.
+- `compose.yaml` keeps auth enabled and enables demo token bootstrap by default so the bundled web app can create and load conversations immediately in local Docker runs.
+- `FOCUS_AGENT_DATABASE_URI` is optional. When unset, the container uses the current single-node persistence baseline: `branches.sqlite3` plus LangGraph checkpoint/store files under `/data`.
+- Setting `FOCUS_AGENT_DATABASE_URI` moves LangGraph checkpoint/store to Postgres, but branch metadata still remains in SQLite for now. The roadmap item for a Postgres branch repository is still future work.
+
 Merged branches are read-only after a merge is applied. If you want to continue exploration, fork a new branch from the parent or main thread instead of sending more turns into the merged branch.
 
 For local auth, create a demo token:
@@ -126,7 +151,7 @@ Focus Agent ships with development-friendly defaults. Treat the quick start and 
 
 - `/v1/auth/demo-token` is intended for local development and demos only
 - do not use `make serve`, `make serve-dev`, Vite HMR, or `API_RELOAD=1` as a production deployment mode
-- set `AUTH_DEMO_TOKENS_ENABLED=false` before any shared, hosted, or public deployment
+- set `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false` (or `AUTH_DEMO_TOKENS_ENABLED=false`) before any shared, hosted, or public deployment
 - replace `AUTH_JWT_SECRET` with a strong secret in any non-local environment
 - review [`SECURITY.md`](SECURITY.md) and [`docs/release-checklist.md`](docs/release-checklist.md) before publishing or deploying the project
 

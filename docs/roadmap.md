@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-04-18
+更新时间：2026-04-19
 
 这份文档是当前唯一保留的总路线图，用来统一近期实施节奏和中长期方向。它整合了此前分散的 `docs/current-roadmap.md`、`IMPLEMENTATION_ROADMAP.md` 与 `OPTIMIZATION_SUMMARY.md`，避免同一时间存在多份互相覆盖的规划说明。
 
@@ -13,6 +13,7 @@
 - `frontend-sdk` 已补齐 conversation、branch tree、branch action、merge review 等 typed client 能力
 - merged branch 在前后端两侧都被视为只读，不能继续追加新 turn 或继续 fork
 - 工程化加固已完成第一轮交付：CORS、限流、请求 ID、统一错误信封、前端 bundle 分割与对应测试
+- 已补齐基础 Docker / Compose 容器化部署路径，默认以单容器 + volume 持久化作为当前部署基线
 
 这意味着后续规划不应再把前端接管、基础 branch UI 或安全中间件当成“待启动工作”，而应围绕现有基线继续收口和增强。
 

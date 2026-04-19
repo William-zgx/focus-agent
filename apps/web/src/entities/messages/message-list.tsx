@@ -7,6 +7,7 @@ import { createElement, Fragment, type ReactNode, useMemo, useState } from "reac
 
 interface MessageListProps {
   isReadOnly?: boolean;
+  isStreaming?: boolean;
   messages: Array<Record<string, unknown>>;
   assistantMessage?: string | null;
   streamVisibleText?: string;
@@ -48,6 +49,20 @@ function normalizeMessageType(type: unknown) {
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function looksLikeInternalToolMarkup(value: unknown) {
+  const text = normalizeText(value).toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return (
+    text.includes("function_calls") ||
+    text.includes("invoke name=") ||
+    text.includes("<｜dsml｜") ||
+    text.includes("<tool_call") ||
+    text.includes('"tool_name"')
+  );
 }
 
 function roleLabel(type: unknown, isChineseUi = false) {
@@ -289,6 +304,17 @@ function toolLabel(isChineseUi: boolean) {
   return isChineseUi ? "工具" : "Tool";
 }
 
+function processingStepsSummaryLabel(count: number, isChineseUi: boolean) {
+  if (isChineseUi) {
+    return `处理步骤（${count}）`;
+  }
+  return `Processing details (${count})`;
+}
+
+function processingStepsToggleHint(isChineseUi: boolean) {
+  return isChineseUi ? "展开查看" : "Expand";
+}
+
 function buildTranscriptItems(
   messages: Array<Record<string, unknown>>,
   assistantMessage?: string | null,
@@ -361,7 +387,7 @@ function buildTranscriptItems(
 
     flushToolActivity();
 
-    if (!normalizeText(content)) {
+    if (!normalizeText(content) || looksLikeInternalToolMarkup(content)) {
       continue;
     }
 
@@ -376,6 +402,7 @@ function buildTranscriptItems(
   flushToolActivity();
 
   const normalizedAssistantMessage = normalizeText(assistantMessage);
+  const shouldHideAssistantFallback = looksLikeInternalToolMarkup(normalizedAssistantMessage);
   const hasVisibleAssistantMessage = items.some(
     (item) =>
       item.kind === "message" &&
@@ -383,7 +410,7 @@ function buildTranscriptItems(
       normalizeText(item.content) === normalizedAssistantMessage,
   );
 
-  if (normalizedAssistantMessage && !hasVisibleAssistantMessage) {
+  if (normalizedAssistantMessage && !hasVisibleAssistantMessage && !shouldHideAssistantFallback) {
     items.push({
       kind: "message",
       id: "assistant-message-fallback",
@@ -407,55 +434,179 @@ function buildTranscriptItems(
 }
 
 function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
+  function pushTextNode(nodes: ReactNode[], value: string, key: string) {
+    if (!value) {
+      return;
+    }
+    nodes.push(<Fragment key={key}>{value}</Fragment>);
+  }
+
+  function findClosingToken(value: string, token: string, startIndex: number) {
+    let searchIndex = startIndex;
+    while (searchIndex < value.length) {
+      const matchIndex = value.indexOf(token, searchIndex);
+      if (matchIndex === -1) {
+        return -1;
+      }
+      if (matchIndex > startIndex) {
+        return matchIndex;
+      }
+      searchIndex = matchIndex + token.length;
+    }
+    return -1;
+  }
+
   const nodes: ReactNode[] = [];
-  const pattern = /(`[^`]+`)|(\[[^\]]+\]\([^)]+\))/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null = pattern.exec(text);
+  let buffer = "";
+  let index = 0;
   let nodeIndex = 0;
 
-  while (match) {
-    if (match.index > lastIndex) {
-      nodes.push(
-        <Fragment key={`${keyPrefix}-text-${nodeIndex}`}>
-          {text.slice(lastIndex, match.index)}
-        </Fragment>,
-      );
-      nodeIndex += 1;
-    }
-
-    const token = match[0];
-    if (token.startsWith("`")) {
-      nodes.push(
-        <code key={`${keyPrefix}-code-${nodeIndex}`} className="fa-message-inline-code">
-          {token.slice(1, -1)}
-        </code>,
-      );
-    } else {
-      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-      if (linkMatch) {
+  while (index < text.length) {
+    if (text.startsWith("`", index)) {
+      const closeIndex = text.indexOf("`", index + 1);
+      if (closeIndex !== -1) {
+        pushTextNode(nodes, buffer, `${keyPrefix}-text-${nodeIndex}`);
+        buffer = "";
         nodes.push(
-          <a
-            key={`${keyPrefix}-link-${nodeIndex}`}
-            href={linkMatch[2]}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {linkMatch[1]}
-          </a>,
+          <code key={`${keyPrefix}-code-${nodeIndex}`} className="fa-message-inline-code">
+            {text.slice(index + 1, closeIndex)}
+          </code>,
         );
+        nodeIndex += 1;
+        index = closeIndex + 1;
+        continue;
       }
     }
 
-    nodeIndex += 1;
-    lastIndex = match.index + token.length;
-    match = pattern.exec(text);
+    if (text.startsWith("[", index)) {
+      const labelEnd = text.indexOf("]", index + 1);
+      const urlStart = labelEnd === -1 ? -1 : text.indexOf("(", labelEnd);
+      const urlEnd = urlStart === -1 ? -1 : text.indexOf(")", urlStart + 1);
+      if (labelEnd !== -1 && urlStart === labelEnd + 1 && urlEnd !== -1) {
+        pushTextNode(nodes, buffer, `${keyPrefix}-text-${nodeIndex}`);
+        buffer = "";
+        const label = text.slice(index + 1, labelEnd);
+        const href = text.slice(urlStart + 1, urlEnd);
+        nodes.push(
+          <a
+            key={`${keyPrefix}-link-${nodeIndex}`}
+            href={href}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {inlineNodes(label, `${keyPrefix}-link-label-${nodeIndex}`)}
+          </a>,
+        );
+        nodeIndex += 1;
+        index = urlEnd + 1;
+        continue;
+      }
+    }
+
+    const strongToken = text.startsWith("**", index)
+      ? "**"
+      : text.startsWith("__", index)
+        ? "__"
+        : "";
+    if (strongToken) {
+      const closeIndex = findClosingToken(text, strongToken, index + strongToken.length);
+      if (closeIndex !== -1) {
+        pushTextNode(nodes, buffer, `${keyPrefix}-text-${nodeIndex}`);
+        buffer = "";
+        const content = text.slice(index + strongToken.length, closeIndex);
+        nodes.push(
+          <strong key={`${keyPrefix}-strong-${nodeIndex}`}>
+            {inlineNodes(content, `${keyPrefix}-strong-content-${nodeIndex}`)}
+          </strong>,
+        );
+        nodeIndex += 1;
+        index = closeIndex + strongToken.length;
+        continue;
+      }
+    }
+
+    const emphasisToken = text[index] === "*" || text[index] === "_" ? text[index] : "";
+    if (emphasisToken) {
+      const doubleToken = emphasisToken.repeat(2);
+      if (!text.startsWith(doubleToken, index)) {
+        const closeIndex = findClosingToken(text, emphasisToken, index + 1);
+        if (closeIndex !== -1) {
+          pushTextNode(nodes, buffer, `${keyPrefix}-text-${nodeIndex}`);
+          buffer = "";
+          const content = text.slice(index + 1, closeIndex);
+          nodes.push(
+            <em key={`${keyPrefix}-em-${nodeIndex}`}>
+              {inlineNodes(content, `${keyPrefix}-em-content-${nodeIndex}`)}
+            </em>,
+          );
+          nodeIndex += 1;
+          index = closeIndex + 1;
+          continue;
+        }
+      }
+    }
+
+    buffer += text[index];
+    index += 1;
   }
 
-  if (lastIndex < text.length) {
-    nodes.push(<Fragment key={`${keyPrefix}-tail-${nodeIndex}`}>{text.slice(lastIndex)}</Fragment>);
+  if (buffer) {
+    pushTextNode(nodes, buffer, `${keyPrefix}-tail-${nodeIndex}`);
   }
 
   return nodes;
+}
+
+type MarkdownTableAlignment = "left" | "center" | "right" | null;
+
+function parseMarkdownTableRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) {
+    return null;
+  }
+
+  const normalized = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  const cells = normalized.split("|").map((cell) => cell.trim());
+  if (cells.length < 2 || cells.every((cell) => !cell)) {
+    return null;
+  }
+  return cells;
+}
+
+function isMarkdownTableDelimiter(line: string) {
+  const cells = parseMarkdownTableRow(line);
+  return !!cells && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function parseMarkdownTableAlignments(line: string, columnCount: number): MarkdownTableAlignment[] {
+  const cells = parseMarkdownTableRow(line) ?? [];
+  return Array.from({ length: columnCount }, (_, index) => {
+    const cell = cells[index] ?? "";
+    if (cell.startsWith(":") && cell.endsWith(":")) {
+      return "center";
+    }
+    if (cell.endsWith(":")) {
+      return "right";
+    }
+    if (cell.startsWith(":")) {
+      return "left";
+    }
+    return null;
+  });
+}
+
+function normalizeMarkdownTableRow(row: string[], columnCount: number) {
+  return Array.from({ length: columnCount }, (_, index) => row[index] ?? "");
+}
+
+function tableCellAlignmentClass(alignment: MarkdownTableAlignment) {
+  if (alignment === "center") {
+    return "is-align-center";
+  }
+  if (alignment === "right") {
+    return "is-align-right";
+  }
+  return "";
 }
 
 function paragraphNode(text: string, key: string) {
@@ -511,6 +662,64 @@ function renderMarkdownBlocks(text: string, isChineseUi: boolean) {
     if (/^---+$/.test(trimmed)) {
       blocks.push(<hr key={`hr-${blocks.length}`} />);
       index += 1;
+      continue;
+    }
+
+    const nextLine = lines[index + 1] ?? "";
+    const tableHeader = parseMarkdownTableRow(line);
+    if (tableHeader && isMarkdownTableDelimiter(nextLine)) {
+      const columnCount = tableHeader.length;
+      const alignments = parseMarkdownTableAlignments(nextLine, columnCount);
+      const bodyRows: string[][] = [];
+      index += 2;
+      while (index < lines.length) {
+        const rowLine = lines[index] ?? "";
+        const rowTrimmed = rowLine.trim();
+        const row = parseMarkdownTableRow(rowLine);
+        if (!rowTrimmed || !row || isMarkdownTableDelimiter(rowTrimmed)) {
+          break;
+        }
+        bodyRows.push(normalizeMarkdownTableRow(row, columnCount));
+        index += 1;
+      }
+      blocks.push(
+        <div key={`table-${blocks.length}`} className="fa-message-table-wrap">
+          <table className="fa-message-table">
+            <thead>
+              <tr>
+                {tableHeader.map((cell, cellIndex) => (
+                  <th
+                    key={`table-head-${blocks.length}-${cellIndex}`}
+                    className={tableCellAlignmentClass(alignments[cellIndex] ?? null)}
+                    scope="col"
+                  >
+                    {inlineNodes(cell, `table-head-${blocks.length}-${cellIndex}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            {bodyRows.length > 0 ? (
+              <tbody>
+                {bodyRows.map((row, rowIndex) => (
+                  <tr key={`table-row-${blocks.length}-${rowIndex}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td
+                        key={`table-cell-${blocks.length}-${rowIndex}-${cellIndex}`}
+                        className={tableCellAlignmentClass(alignments[cellIndex] ?? null)}
+                      >
+                        {inlineNodes(
+                          cell,
+                          `table-cell-${blocks.length}-${rowIndex}-${cellIndex}`,
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            ) : null}
+          </table>
+        </div>,
+      );
       continue;
     }
 
@@ -798,17 +1007,49 @@ function ToolActivityCard({
 }
 
 function AgentRunBubble({
+  isStreaming,
   reasoningText,
   toolCalls,
   toolEvents,
+  visibleText,
   isChineseUi,
 }: {
+  isStreaming: boolean;
   reasoningText?: string;
   toolCalls?: FocusAgentToolCallEvent[];
   toolEvents?: FocusAgentToolEvent[];
+  visibleText?: string;
   isChineseUi: boolean;
 }) {
+  if (!isStreaming || visibleText?.trim()) {
+    return null;
+  }
+
   const tone = toolEventTone(toolEvents ?? []);
+  const hasReasoningText = Boolean(reasoningText?.trim());
+  const hasToolActivity = Boolean((toolCalls?.length ?? 0) || (toolEvents?.length ?? 0));
+  const stageTitle = hasToolActivity
+    ? isChineseUi
+      ? "正在处理请求"
+      : "Processing the request"
+    : hasReasoningText
+      ? isChineseUi
+        ? "正在思考"
+        : "Thinking"
+      : isChineseUi
+        ? "已收到，正在思考"
+        : "Message received, thinking";
+  const stageDetail = hasToolActivity
+    ? isChineseUi
+      ? "工具步骤已经开始，默认折叠显示；展开后可以查看处理明细。"
+      : "Tool steps are underway. They stay folded by default so the main reply remains calm."
+    : hasReasoningText
+      ? isChineseUi
+        ? "Agent 正在整理上下文和回答结构，准备进入下一阶段。"
+        : "The agent is organizing context and shaping the reply before moving on."
+      : isChineseUi
+        ? "消息已经发送成功，系统正在建立本轮响应。"
+        : "Your message has been sent. The system is preparing this turn now.";
   const steps = useMemo(() => {
     const items: Array<{ label: string; tone: "warn" | "success" | "danger" }> = [];
     if (reasoningText?.trim()) {
@@ -838,10 +1079,6 @@ function AgentRunBubble({
     return items.slice(-5);
   }, [isChineseUi, reasoningText, toolCalls, toolEvents]);
 
-  if (steps.length === 0) {
-    return null;
-  }
-
   return (
     <div className="fa-message-row is-assistant assistant">
       <div className="fa-message-stack">
@@ -849,24 +1086,31 @@ function AgentRunBubble({
           <div className="fa-agent-run-head">
             <div className={`fa-agent-run-pulse is-${tone}`} />
             <div className="fa-agent-run-copy">
-              <div className="fa-agent-run-title">
-                {isChineseUi ? "Agent 正在运行" : "Agent is working"}
-              </div>
-              <div className="fa-agent-run-detail">
-                {isChineseUi
-                  ? "思考、规划和工具调用会先显示在这里，正式回复生成后会自动切换。"
-                  : "Thinking, planning, and tool activity appear here first, then switch to the final answer automatically."}
-              </div>
+              <div className="fa-agent-run-title">{stageTitle}</div>
+              <div className="fa-agent-run-detail">{stageDetail}</div>
             </div>
           </div>
-          <div className="fa-agent-run-steps">
-            {steps.map((step, index) => (
-              <div key={`${step.label}-${index}`} className={`fa-agent-run-step is-${step.tone}`}>
-                <span className="fa-agent-run-step-dot" />
-                <span>{step.label}</span>
+          {steps.length > 0 ? (
+            <details className="fa-agent-run-steps-shell">
+              <summary className="fa-agent-run-steps-summary">
+                <span>{processingStepsSummaryLabel(steps.length, isChineseUi)}</span>
+                <span className="fa-agent-run-steps-hint">
+                  {processingStepsToggleHint(isChineseUi)}
+                </span>
+              </summary>
+              <div className="fa-agent-run-steps">
+                {steps.map((step, index) => (
+                  <div
+                    key={`${step.label}-${index}`}
+                    className={`fa-agent-run-step is-${step.tone}`}
+                  >
+                    <span className="fa-agent-run-step-dot" />
+                    <span>{step.label}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </details>
+          ) : null}
         </div>
       </div>
     </div>
@@ -875,6 +1119,7 @@ function AgentRunBubble({
 
 export function MessageList({
   isReadOnly = false,
+  isStreaming = false,
   messages,
   assistantMessage,
   streamVisibleText,
@@ -927,10 +1172,12 @@ export function MessageList({
       })}
 
       <AgentRunBubble
+        isStreaming={isStreaming}
         isChineseUi={isChineseUi}
         reasoningText={streamReasoningText}
         toolCalls={streamToolCalls}
         toolEvents={streamToolEvents}
+        visibleText={streamVisibleText}
       />
 
       {streamReasoningText ? (

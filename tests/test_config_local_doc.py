@@ -155,6 +155,27 @@ def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
     assert settings.temperature == 0.4
 
 
+def test_settings_from_env_prefers_explicit_model_env_over_catalog_default(tmp_path, monkeypatch):
+    config_doc = tmp_path / "models.toml"
+    config_doc.write_text(
+        "\n".join(
+            [
+                'default_model = "ollama:qwen2.5:7b"',
+                'helper_model = "moonshot:kimi-k2.5"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("FOCUS_AGENT_MODEL_CATALOG_DOC", str(config_doc))
+    monkeypatch.setenv("MODEL", "openai:gpt-4.1-mini")
+    monkeypatch.setenv("HELPER_MODEL", "anthropic:claude-3-5-sonnet-latest")
+
+    settings = Settings.from_env()
+
+    assert settings.model == "openai:gpt-4.1-mini"
+    assert settings.helper_model == "anthropic:claude-3-5-sonnet-latest"
+
+
 def test_settings_from_env_reads_local_env_file_override(tmp_path, monkeypatch):
     local_env = tmp_path / "focus-agent.local.env"
     local_env.write_text(

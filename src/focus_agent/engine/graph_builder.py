@@ -34,6 +34,15 @@ _TOOL_CALL_MARKUP_REPAIR_NOTE = (
     "Do not emit tool-call markup, XML, JSON function-call payloads, or DSML tags. "
     "Write only the final user-facing answer in natural language."
 )
+_TOOL_CALL_LAST_RESORT_NOTE = (
+    "The previous draft still contained internal tool-call markup. "
+    "Do not call more tools. Using only the information already gathered in this conversation, "
+    "write a concise final answer for the user in natural language."
+)
+_TOOL_CALL_REPAIR_FALLBACK_TEXT = (
+    "I gathered the tool results for this turn, but formatting the final answer failed. "
+    "Please retry this message or switch to a more stable model."
+)
 
 
 def _has_tool_calls(message: Any) -> bool:
@@ -146,6 +155,45 @@ def _repair_textual_tool_call_response(
             AIMessage(content=_message_text(repaired)),
         ]
     )
+
+
+def _repair_tool_free_answer_response(
+    *,
+    response: Any,
+    prompt_messages: list[Any],
+    selected_model: str,
+    selected_thinking_mode: str,
+    model_for,
+) -> Any:
+    if not _looks_like_textual_tool_call_artifact(response):
+        return response
+
+    repaired = model_for(selected_model, selected_thinking_mode).invoke(
+        [
+            prompt_messages[0],
+            SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
+            SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
+            *prompt_messages[1:],
+            AIMessage(content=_message_text(response)),
+        ]
+    )
+    if not _looks_like_textual_tool_call_artifact(repaired):
+        return repaired
+
+    final_attempt = model_for(selected_model, selected_thinking_mode).invoke(
+        [
+            prompt_messages[0],
+            SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
+            SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
+            SystemMessage(content=_TOOL_CALL_LAST_RESORT_NOTE),
+            *prompt_messages[1:],
+            AIMessage(content=_message_text(repaired)),
+        ]
+    )
+    if not _looks_like_textual_tool_call_artifact(final_attempt):
+        return final_attempt
+
+    return AIMessage(content=_TOOL_CALL_REPAIR_FALLBACK_TEXT)
 
 
 _PLAN_TRIGGER_KEYWORDS = (
@@ -614,16 +662,13 @@ def build_graph(
                     *prompt_messages[1:],
                 ]
             )
-            if _looks_like_textual_tool_call_artifact(response):
-                response = model_for(selected_model, selected_thinking_mode).invoke(
-                    [
-                        prompt_messages[0],
-                        SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
-                        SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
-                        *prompt_messages[1:],
-                        AIMessage(content=_message_text(response)),
-                    ]
-                )
+            response = _repair_tool_free_answer_response(
+                response=response,
+                prompt_messages=prompt_messages,
+                selected_model=selected_model,
+                selected_thinking_mode=selected_thinking_mode,
+                model_for=model_for,
+            )
         else:
             response = model_with_tools_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
             response = _repair_textual_tool_call_response(

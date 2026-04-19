@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import json
 from typing import Any, AsyncIterator
 
@@ -444,6 +445,49 @@ class ChatService:
             )
         )
 
+    async def _stream_graph_chunks(
+        self,
+        *,
+        payload: Any,
+        config: dict[str, Any],
+        context: RequestContext,
+    ) -> AsyncIterator[dict[str, Any] | None]:
+        stream = self.runtime.graph.astream(
+            payload,
+            config=config,
+            context=context,
+            stream_mode=['messages', 'custom', 'updates', 'tasks'],
+            version='v2',
+        )
+        stream_iter = stream.__aiter__()
+        heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
+        pending_next: asyncio.Task[Any] | None = None
+
+        try:
+            pending_next = asyncio.create_task(anext(stream_iter))
+            while pending_next is not None:
+                if heartbeat_interval > 0:
+                    done, _ = await asyncio.wait({pending_next}, timeout=heartbeat_interval)
+                    if not done:
+                        yield None
+                        continue
+                try:
+                    chunk = await pending_next
+                except StopAsyncIteration:
+                    pending_next = None
+                    break
+                pending_next = asyncio.create_task(anext(stream_iter))
+                yield chunk
+        finally:
+            if pending_next is not None and not pending_next.done():
+                pending_next.cancel()
+                with suppress(asyncio.CancelledError):
+                    await pending_next
+            aclose = getattr(stream_iter, 'aclose', None)
+            if callable(aclose):
+                with suppress(Exception):  # noqa: BLE001
+                    await aclose()
+
     async def _astream_result(
         self,
         *,
@@ -479,13 +523,17 @@ class ChatService:
                 event='turn.status',
                 data={'phase': 'invoke_started', 'thread_id': thread_id},
             )
-            async for chunk in self.runtime.graph.astream(
-                payload,
+            async for chunk in self._stream_graph_chunks(
+                payload=payload,
                 config=config,
                 context=context,
-                stream_mode=['messages', 'custom', 'updates', 'tasks'],
-                version='v2',
             ):
+                if chunk is None:
+                    yield self._sse_frame(
+                        event='status',
+                        data={'stage': 'heartbeat', 'thread_id': thread_id, 'channel': 'system'},
+                    )
+                    continue
                 chunk_type = chunk.get('type')
                 data = chunk.get('data')
                 namespace = list(chunk.get('ns') or ())

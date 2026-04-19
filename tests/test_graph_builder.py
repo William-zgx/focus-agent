@@ -168,6 +168,87 @@ def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
     )
 
 
+def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
+    class FakeRunnable:
+        def __init__(self, owner, *, allow_tools: bool):
+            self.owner = owner
+            self.allow_tools = allow_tools
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(
+                {
+                    "allow_tools": self.allow_tools,
+                    "messages": list(prompt_messages),
+                }
+            )
+            if self.allow_tools:
+                tool_call_count = sum(1 for item in self.owner.invocations if item["allow_tools"])
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": f"call-{tool_call_count}",
+                            "name": "web_search",
+                            "args": {"query": f"search-{tool_call_count}"},
+                        }
+                    ],
+                )
+            tool_free_count = sum(1 for item in self.owner.invocations if not item["allow_tools"])
+            if tool_free_count < 3:
+                return AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
+            return AIMessage(content="根据已有搜索结果，上海更暖和，北京更晴朗。")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self, allow_tools=True)
+
+        def with_config(self, _config):
+            return FakeRunnable(self, allow_tools=False)
+
+    fake_model = FakeModel()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the web."""
+        return f'{{"query":"{query}","summary":"sunny"}}'
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(web_search,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="今天北京和上海天气如何？")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    final_messages = result.value["messages"]
+    assert isinstance(final_messages[-1], AIMessage)
+    assert final_messages[-1].content == "根据已有搜索结果，上海更暖和，北京更晴朗。"
+
+    tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
+    assert len(tool_free_calls) == 3
+    assert any(
+        isinstance(message, SystemMessage) and "still contained internal tool-call markup" in message.content
+        for message in tool_free_calls[2]["messages"]
+    )
+
+
 def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypatch):
     class FakeRunnable:
         def __init__(self, owner, *, allow_tools: bool):

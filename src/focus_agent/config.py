@@ -599,8 +599,8 @@ class Settings:
         database_uri = env.get("DATABASE_URI") or None
         langgraph_api_url = env.get("LANGGRAPH_API_URL") or None
         instance = cls(
-            model=model_catalog.default_model or defaults.model,
-            helper_model=model_catalog.helper_model or None,
+            model=env.get("MODEL") or model_catalog.default_model or defaults.model,
+            helper_model=env.get("HELPER_MODEL") or model_catalog.helper_model or None,
             model_choices=model_catalog.model_choices or defaults.model_choices,
             model_catalog=model_catalog,
             tool_catalog=tool_catalog,

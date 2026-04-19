@@ -105,13 +105,13 @@ RATE_LIMIT_CHAT_PER_MINUTE=20
 | 单元测试扩充 | 中 | 补充关键业务逻辑的测试（目前 27 个测试文件） |
 | 集成测试 | 低 | API 端到端测试（需 test database） |
 
-### 第三阶段（⏳ 待做）- 运维就绪
+### 第三阶段（⏳ 进行中）- 运维就绪
 
-| 任务 | 优先级 | 依赖 |
-|------|--------|------|
-| OpenTelemetry 集成 | 中 | 生产环境决策 |
-| Docker 容器化 | 低 | 部署平台确认 |
-| CI/CD 增强 | 低 | 已有基础 `.github/workflows/ci.yml` |
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| OpenTelemetry 集成 | ⏳ 待做 | 生产环境决策 |
+| Docker 容器化（基础版） | ✅ 已完成 | 提供多阶段 `Dockerfile`、`compose.yaml`、`/data` volume 持久化 |
+| CI/CD 增强 | ⏳ 待做 | 已有基础 `.github/workflows/ci.yml` |
 
 ---
 
@@ -221,6 +221,30 @@ RATE_LIMIT_CHAT_PER_MINUTE=20
 DATABASE_URI=postgresql://user:pass@localhost/focus_agent
 ```
 
+### Docker / Compose 部署
+
+当前仓库已提供基础容器化部署路径：
+
+- `Dockerfile` 通过多阶段构建生成 `apps/web/dist`，最终镜像直接运行 `focus-agent-api`
+- `compose.yaml` 默认将仓库内 `./.focus_agent` 挂到容器 `/data`，让本地 Docker 与非容器运行共享模型目录、凭证文件和持久化状态；如需隔离，可改用 named volume
+- 容器默认以 `API_HOST=0.0.0.0`、`API_RELOAD=0` 启动，并开启 demo token 自举以匹配内置 Web 应用的本地体验；若用于共享环境，需显式设置 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
+
+```bash
+export OPENAI_API_KEY=replace-me
+export FOCUS_AGENT_AUTH_JWT_SECRET=<strong-random-secret>
+docker compose up --build
+```
+
+可选配置：
+
+- `FOCUS_AGENT_MODEL=openai:gpt-4.1-mini`
+- `FOCUS_AGENT_DATABASE_URI=postgresql://user:pass@host:5432/db?sslmode=disable`
+
+说明：
+
+- 不设置 `FOCUS_AGENT_DATABASE_URI` 时，当前容器仍走本地持久化基线：branch 元数据保存在 `/data/branches.sqlite3`，LangGraph checkpoint/store 保存在 `/data/langgraph-*.pkl`
+- 设置 `FOCUS_AGENT_DATABASE_URI` 后，当前只会把 LangGraph checkpoint/store 切到 Postgres；branch repository 仍然使用 SQLite。这与路线图中的 `Postgres 仓储` 后续项保持一致
+
 ---
 
 ## 六、监控与告警指标
@@ -247,9 +271,9 @@ DATABASE_URI=postgresql://user:pass@localhost/focus_agent
    - 改进：可替换为 Redis 后端（保持同样的 `RateLimiter` 接口）
 
 2. **持久化层**
-   - 分支元数据用 SQLite（`.focus_agent/branches.sqlite3`）
-   - 对话历史依赖 LangGraph checkpoint
-   - 改进：分离成专用的数据层，支持多种后端
+   - 分支元数据用 SQLite（本地默认 `.focus_agent/branches.sqlite3`，容器默认 `/data/branches.sqlite3`）
+   - 对话历史依赖 LangGraph checkpoint；即使设置 `DATABASE_URI`，当前也只切换 checkpoint/store，不切换 branch repository
+   - 改进：分离成专用的数据层，支持多种后端，并补齐 Postgres branch repository
 
 3. **错误恢复**
    - 流式响应中断没有重试机制
