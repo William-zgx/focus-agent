@@ -32,6 +32,11 @@ class _FakeGraph:
                         ],
                     ),
                     ToolMessage(content="Focus Agent is a compact Python starter project.", tool_call_id="tool-1"),
+                    ToolMessage(
+                        content="cached read",
+                        tool_call_id="tool-unused",
+                        artifact={"runtime": {"cache_hit": True}},
+                    ),
                     AIMessage(content="Focus Agent is a compact Python starter project."),
                 ],
                 "llm_calls": 1,
@@ -67,6 +72,59 @@ def test_run_case_extracts_trajectory_and_passes_rule_judge(monkeypatch):
     assert result.metrics["tool_calls"] == 1
 
 
+def test_run_case_extracts_runtime_metadata_into_trajectory_and_metrics(monkeypatch):
+    class _RuntimeGraph:
+        def invoke(self, payload, context=None, version=None):  # noqa: ARG002
+            user_message = payload["messages"][-1].content
+            return {
+                "messages": [
+                    HumanMessage(content=user_message),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "tool-1",
+                                "name": "web_search",
+                                "args": {"query": "focus agent"},
+                            }
+                        ],
+                    ),
+                    ToolMessage(
+                        content='{"provider":"duckduckgo"}',
+                        tool_call_id="tool-1",
+                        artifact={
+                            "runtime": {
+                                "cache_hit": True,
+                                "fallback_used": True,
+                                "fallback_group": "web_search",
+                                "parallel_batch_size": 2,
+                            }
+                        },
+                    ),
+                    AIMessage(content="done"),
+                ],
+                "llm_calls": 1,
+            }
+
+    monkeypatch.setattr("tests.eval.runner.harness._build_isolated_graph", lambda runtime: _RuntimeGraph())
+    runtime = EvalRuntime(settings=Settings(), tool_registry=None)  # type: ignore[arg-type]
+    case = EvalCase(
+        id="runtime-metrics",
+        input={"user_message": "search focus agent"},
+        expected={"must_call_tools_any_order": ["web_search"], "max_tool_calls": 1},
+    )
+
+    result = run_case(case, runtime=runtime)
+
+    assert result.trajectory[0].cache_hit is True
+    assert result.trajectory[0].fallback_used is True
+    assert result.trajectory[0].fallback_group == "web_search"
+    assert result.trajectory[0].parallel_batch_size == 2
+    assert result.metrics["cache_hits"] == 1
+    assert result.metrics["fallback_uses"] == 1
+    assert result.metrics["parallel_tool_calls"] == 1
+
+
 def test_aggregate_metrics_and_baseline_comparison_flag_regressions():
     baseline_results = [
         EvalResult(
@@ -74,7 +132,7 @@ def test_aggregate_metrics_and_baseline_comparison_flag_regressions():
             passed=True,
             answer="ok",
             verdicts=[JudgeVerdict(kind="rule", passed=True)],
-            metrics={"tool_calls": 1, "llm_calls": 1, "latency_ms": 100, "cost_usd": 0.01},
+            metrics={"tool_calls": 1, "llm_calls": 1, "cache_hits": 1, "latency_ms": 100, "cost_usd": 0.01},
             tags=["smoke"],
         )
     ]
@@ -90,7 +148,7 @@ def test_aggregate_metrics_and_baseline_comparison_flag_regressions():
                     details={"failures": ["called forbidden tools ['write_text_artifact']"]},
                 )
             ],
-            metrics={"tool_calls": 4, "llm_calls": 2, "latency_ms": 180, "cost_usd": 0.03},
+            metrics={"tool_calls": 4, "llm_calls": 2, "fallback_uses": 1, "latency_ms": 180, "cost_usd": 0.03},
             tags=["smoke"],
         )
     ]
@@ -129,9 +187,9 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
         answer="PING",
         verdicts=[JudgeVerdict(kind="rule", passed=True, reasoning="all good")],
         trajectory=[
-            TrajectoryStep(tool="read_file", args={"path": "README.md"}, observation="ok")
+            TrajectoryStep(tool="read_file", args={"path": "README.md"}, observation="ok", cache_hit=True)
         ],
-        metrics={"tool_calls": 1, "llm_calls": 1, "latency_ms": 12.3, "cost_usd": 0.0},
+        metrics={"tool_calls": 1, "llm_calls": 1, "cache_hits": 1, "latency_ms": 12.3, "cost_usd": 0.0},
         tags=["smoke"],
     )
 

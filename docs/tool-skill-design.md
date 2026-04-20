@@ -156,6 +156,24 @@ Focus Agent already has these default tools:
 
 The newer product primitives make the agent useful beyond repository work: explicit memory control, URL reading, artifact iteration, and conversation summarization.
 
+## Tool Runtime Policy
+
+Tool execution is mediated by runtime metadata rather than ad hoc logic in each graph node.
+
+- `parallel_safe` read-only tools can run in the same tool round concurrently.
+- `cacheable` tools may reuse deterministic observations within their declared scope.
+- `side_effect` tools keep a serial boundary and invalidate the current turn/thread/branch namespaces after a successful write.
+- `fallback_group` and `fallback_handler` keep provider fallback behind the stable public tool name.
+- Runtime observations are trimmed by per-tool limits before being returned to the model.
+
+Cache scopes are intentionally conservative:
+
+- `turn` is for values that should only survive within one user turn. The namespace includes the root thread and turn id, so parallel conversations do not clear each other.
+- `thread` is the default for workspace read tools such as `list_files`, `read_file`, `search_code`, and `codebase_stats`. Focus Agent conversation branches do not imply separate filesystem or git worktrees, so these reads should not become branch-local by default.
+- `branch` is reserved for future tools that read or write branch-local product state.
+
+Execution control fields that require cancellation or hard deadlines should not be exposed until the runtime can enforce them. In particular, timeout/cancel behavior should be treated as a separate runtime feature, not as passive metadata.
+
 ## Product Tool Taxonomy
 
 ### Retrieval Tools

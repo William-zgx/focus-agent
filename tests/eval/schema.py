@@ -13,6 +13,10 @@ class TrajectoryStep:
     observation: str
     duration_ms: float = 0.0
     error: str | None = None
+    cache_hit: bool = False
+    fallback_used: bool = False
+    fallback_group: str | None = None
+    parallel_batch_size: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -21,6 +25,10 @@ class TrajectoryStep:
             "observation": self.observation[:2000],
             "duration_ms": self.duration_ms,
             "error": self.error,
+            "cache_hit": self.cache_hit,
+            "fallback_used": self.fallback_used,
+            "fallback_group": self.fallback_group,
+            "parallel_batch_size": self.parallel_batch_size,
         }
 
 

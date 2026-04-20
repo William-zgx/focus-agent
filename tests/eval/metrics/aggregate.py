@@ -35,6 +35,9 @@ class MetricSummary:
     task_success: float = 0.0
     avg_tool_calls: float = 0.0
     avg_llm_calls: float = 0.0
+    avg_cache_hits: float = 0.0
+    avg_fallback_uses: float = 0.0
+    avg_parallel_tool_calls: float = 0.0
     avg_input_tokens: float = 0.0
     avg_output_tokens: float = 0.0
     p50_latency_ms: float = 0.0
@@ -53,6 +56,9 @@ class MetricSummary:
             "task_success": round(self.task_success, 4),
             "avg_tool_calls": round(self.avg_tool_calls, 3),
             "avg_llm_calls": round(self.avg_llm_calls, 3),
+            "avg_cache_hits": round(self.avg_cache_hits, 3),
+            "avg_fallback_uses": round(self.avg_fallback_uses, 3),
+            "avg_parallel_tool_calls": round(self.avg_parallel_tool_calls, 3),
             "avg_input_tokens": round(self.avg_input_tokens, 1),
             "avg_output_tokens": round(self.avg_output_tokens, 1),
             "p50_latency_ms": round(self.p50_latency_ms, 1),
@@ -78,6 +84,9 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
 
     summary.avg_tool_calls = mean(r.metrics.get("tool_calls", 0) for r in results)
     summary.avg_llm_calls = mean(r.metrics.get("llm_calls", 0) for r in results)
+    summary.avg_cache_hits = mean(r.metrics.get("cache_hits", 0) for r in results)
+    summary.avg_fallback_uses = mean(r.metrics.get("fallback_uses", 0) for r in results)
+    summary.avg_parallel_tool_calls = mean(r.metrics.get("parallel_tool_calls", 0) for r in results)
     summary.avg_input_tokens = mean(r.metrics.get("input_tokens", 0) for r in results)
     summary.avg_output_tokens = mean(r.metrics.get("output_tokens", 0) for r in results)
     summary.avg_cost_usd = mean(float(r.metrics.get("cost_usd", 0.0)) for r in results)

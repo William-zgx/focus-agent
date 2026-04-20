@@ -9,6 +9,8 @@ from langgraph.graph import END, START, StateGraph
 import pytest
 
 from focus_agent.capabilities.default_tools import get_default_tools
+from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
+from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.config import (
     GitLogToolConfig,
     ListFilesToolConfig,
@@ -18,6 +20,7 @@ from focus_agent.config import (
     ToolCatalogConfig,
     WebSearchConfig,
 )
+from focus_agent.core.types import ContextBudget
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 
 
@@ -82,6 +85,25 @@ def _install_fake_ddgs(monkeypatch):
 
 def _tool_map(settings: Settings) -> dict[str, object]:
     return {tool.name: tool for tool in get_default_tools(settings)}
+
+
+def _runtime_invoke(tool_obj, args: dict[str, object]) -> tuple[str, str]:
+    result = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="tool-call-1",
+                tool_name=tool_obj.name,
+                args=dict(args),
+                tool=tool_obj,
+                runtime=ToolRuntimeMeta.from_tool(tool_obj),
+            )
+        ],
+        context_budget=ContextBudget(),
+        cache_store={},
+        cache_scope_keys={0: "thread:test"},
+    )[0]
+    return result.message.status, str(result.message.content)
 
 
 def _init_git_repo(path: Path) -> None:
@@ -171,6 +193,18 @@ def test_tool_metadata_uses_configured_label_and_description(monkeypatch):
     assert tools["web_search"].metadata["display_name"] == "Live Search"
 
 
+def test_tool_runtime_metadata_marks_parallel_cacheable_and_fallback_capabilities(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    _install_fake_ddgs(monkeypatch)
+    tools = _tool_map(Settings())
+
+    assert tools["search_code"].metadata["parallel_safe"] is True
+    assert tools["search_code"].metadata["cacheable"] is True
+    assert tools["search_code"].metadata["cache_scope"] == "thread"
+    assert tools["web_search"].metadata["fallback_group"] == "web_search"
+    assert tools["write_text_artifact"].metadata["side_effect"] is True
+
+
 def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
@@ -180,8 +214,10 @@ def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch
     _FakeDDGS.raised = None
     tools = _tool_map(Settings())
 
-    payload = json.loads(tools["web_search"].invoke({"query": "hello", "max_results": 4}))
+    status, content = _runtime_invoke(tools["web_search"], {"query": "hello", "max_results": 4})
+    payload = json.loads(content)
 
+    assert status == "success"
     assert payload["provider"] == "duckduckgo"
     assert payload["answer"] is None
     assert payload["results"][0]["url"] == "https://example.com/ddg"
@@ -203,8 +239,10 @@ def test_web_search_falls_back_to_duckduckgo_when_tavily_fails(monkeypatch):
     monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", failing_urlopen)
     tools = _tool_map(Settings())
 
-    payload = json.loads(tools["web_search"].invoke({"query": "hello"}))
+    status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
+    payload = json.loads(content)
 
+    assert status == "success"
     assert payload["provider"] == "duckduckgo"
     assert payload["results"][0]["title"] == "Fallback"
 
@@ -216,8 +254,10 @@ def test_web_search_raises_when_both_providers_fail(monkeypatch):
     _FakeDDGS.raised = RuntimeError("ddg down")
     tools = _tool_map(Settings())
 
-    with pytest.raises(RuntimeError, match="DuckDuckGo error"):
-        tools["web_search"].invoke({"query": "hello"})
+    status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
+
+    assert status == "error"
+    assert "ddg down" in content
 
 
 def test_default_tools_expose_only_one_web_search_tool(monkeypatch):

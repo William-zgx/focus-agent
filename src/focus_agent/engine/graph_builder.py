@@ -10,11 +10,17 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ..capabilities import ToolRegistry, build_tool_registry
+from ..capabilities.tool_runtime import (
+    ToolExecutionInput,
+    ToolResultCacheStore,
+    build_cache_scope_key,
+    build_tool_error_message,
+    execute_tool_calls,
+)
 from ..config import Settings
 from ..core.context_policy import (
     apply_prompt_budget_guard,
     assemble_context as build_context_slice,
-    trim_tool_observation,
 )
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
@@ -29,7 +35,6 @@ from ..memory import (
 )
 from ..model_registry import create_chat_model
 from ..skills import SkillRegistry
-from ..storage.namespaces import conversation_namespace_for_context
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
 _TOOL_EXHAUSTION_NOTE = (
@@ -714,6 +719,7 @@ def build_graph(
     )
     tools = list(effective_tool_registry.tools)
     tools_by_name = effective_tool_registry.by_name
+    tool_runtime_by_name = effective_tool_registry.runtime_by_name
     effective_memory_policy = memory_policy or getattr(memory_retriever, "policy", None) or MemoryPolicy()
     effective_memory_retriever = memory_retriever or MemoryRetriever(store=store, policy=effective_memory_policy)
     effective_memory_writer = memory_writer or MemoryWriter(store=store, policy=effective_memory_policy)
@@ -721,6 +727,7 @@ def build_graph(
     base_model_cache: dict[str, Any] = {}
     model_cache: dict[str, Any] = {}
     model_with_tools_cache: dict[str, Any] = {}
+    tool_result_cache = ToolResultCacheStore()
 
     def base_model_for(model_id: str, thinking_mode: str):
         cache_key = f"{model_id}|{thinking_mode or ''}"
@@ -1031,19 +1038,76 @@ def build_graph(
             "llm_calls": state.get("llm_calls", 0) + 1,
         }
 
-    def tool_executor(state: AgentState) -> dict[str, Any]:
-        result_messages: list[ToolMessage] = []
+    def tool_executor(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
         last_message = state["messages"][-1]
         context_budget = _context_budget_from_state(state)
-        for tool_call in getattr(last_message, "tool_calls", []) or []:
-            tool = tools_by_name[tool_call["name"]]
-            observation = tool.invoke(tool_call["args"])
-            trimmed_observation = trim_tool_observation(
-                observation,
-                tool_name=str(tool_call["name"]),
-                budget=context_budget,
+        branch_meta = state.get("branch_meta") or {}
+        branch_id = None
+        if isinstance(branch_meta, dict):
+            raw_branch_id = branch_meta.get("branch_id") or branch_meta.get("id")
+            branch_id = str(raw_branch_id) if raw_branch_id else None
+        root_thread_id = runtime.context.root_thread_id
+        if runtime.context.branch_id and not branch_id:
+            branch_id = runtime.context.branch_id
+        turn_index = sum(1 for message in state.get("messages", []) if isinstance(message, HumanMessage))
+        turn_scope_key = build_cache_scope_key(
+            scope="turn",
+            root_thread_id=root_thread_id,
+            branch_id=branch_id,
+            turn_id=str(turn_index or 1),
+        )
+        execution_inputs: list[ToolExecutionInput] = []
+        cache_scope_keys: dict[int, str] = {}
+        invalidation_scope_keys = [
+            turn_scope_key,
+            build_cache_scope_key(scope="thread", root_thread_id=root_thread_id, branch_id=branch_id),
+            build_cache_scope_key(scope="branch", root_thread_id=root_thread_id, branch_id=branch_id),
+        ]
+        messages_by_index: dict[int, ToolMessage] = {}
+        for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
+            tool_name = str(tool_call["name"])
+            tool = tools_by_name.get(tool_name)
+            if tool is None:
+                messages_by_index[index] = (
+                    build_tool_error_message(
+                        tool_call_id=str(tool_call["id"]),
+                        tool_name=tool_name,
+                        args=dict(tool_call.get("args") or {}),
+                        error=f"Unknown tool: {tool_name}",
+                    )
+                )
+                continue
+            runtime_meta = tool_runtime_by_name.get(tool_name)
+            if runtime_meta is None:
+                continue
+            execution_inputs.append(
+                ToolExecutionInput(
+                    index=index,
+                    tool_call_id=str(tool_call["id"]),
+                    tool_name=tool_name,
+                    args=dict(tool_call.get("args") or {}),
+                    tool=tool,
+                    runtime=runtime_meta,
+                )
             )
-            result_messages.append(ToolMessage(content=trimmed_observation, tool_call_id=tool_call["id"]))
+            cache_scope_keys[index] = build_cache_scope_key(
+                scope=runtime_meta.cache_scope,
+                root_thread_id=root_thread_id,
+                branch_id=branch_id,
+                turn_id=str(turn_index or 1),
+            )
+        for result in execute_tool_calls(
+            execution_inputs,
+            context_budget=context_budget,
+            cache_store=tool_result_cache,
+            cache_scope_keys=cache_scope_keys,
+            invalidation_scope_keys=invalidation_scope_keys,
+        ):
+            messages_by_index[result.index] = result.message
+        result_messages = [messages_by_index[index] for index in sorted(messages_by_index)]
         return {"messages": result_messages}
 
     def summarize_turn(state: AgentState) -> dict[str, Any]:

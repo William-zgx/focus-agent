@@ -286,11 +286,28 @@ def _extract_trajectory(messages: list[Any]) -> list[TrajectoryStep]:
         elif isinstance(msg, ToolMessage):
             call = pending_calls.pop(str(msg.tool_call_id), None)
             if call is not None:
+                artifact = getattr(msg, "artifact", None)
+                runtime_info = {}
+                if isinstance(artifact, dict) and isinstance(artifact.get("runtime"), dict):
+                    runtime_info = dict(artifact.get("runtime") or {})
                 steps.append(
                     TrajectoryStep(
                         tool=call["name"],
                         args=call["args"],
                         observation=str(msg.content)[:4000],
+                        error=(str(msg.content)[:4000] if getattr(msg, "status", "success") == "error" else None),
+                        cache_hit=bool(runtime_info.get("cache_hit", False)),
+                        fallback_used=bool(runtime_info.get("fallback_used", False)),
+                        fallback_group=(
+                            str(runtime_info.get("fallback_group"))
+                            if runtime_info.get("fallback_group")
+                            else None
+                        ),
+                        parallel_batch_size=(
+                            int(runtime_info["parallel_batch_size"])
+                            if runtime_info.get("parallel_batch_size") is not None
+                            else None
+                        ),
                     )
                 )
     return steps
@@ -312,7 +329,7 @@ def _run_judges(
         verdicts.append(
             runtime.llm_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
-    if case.expected.get("optimal_tool_sequence") or case.expected.get("max_tool_calls") is not None:
+    if _has_trajectory_expectations(case.expected):
         verdicts.append(
             runtime.trajectory_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
@@ -341,6 +358,9 @@ def _build_metrics(
         input_tokens / 1000.0 * runtime.cost_per_1k_input
         + output_tokens / 1000.0 * runtime.cost_per_1k_output
     )
+    cache_hits = sum(1 for step in trajectory if step.cache_hit)
+    fallback_uses = sum(1 for step in trajectory if step.fallback_used)
+    parallel_tool_calls = sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1)
     return {
         "latency_ms": latency_ms,
         "tool_calls": tool_calls,
@@ -348,4 +368,24 @@ def _build_metrics(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cost_usd": cost_usd,
+        "cache_hits": cache_hits,
+        "fallback_uses": fallback_uses,
+        "parallel_tool_calls": parallel_tool_calls,
     }
+
+
+def _has_trajectory_expectations(expected: dict[str, Any]) -> bool:
+    keys = {
+        "optimal_tool_sequence",
+        "max_tool_calls",
+        "min_cache_hits",
+        "max_cache_hits",
+        "min_fallback_uses",
+        "max_fallback_uses",
+        "min_parallel_tool_calls",
+        "max_parallel_tool_calls",
+        "must_hit_cache_tools_any_order",
+        "must_use_fallback_tools_any_order",
+        "must_parallelize_tools_any_order",
+    }
+    return any(expected.get(key) is not None for key in keys)

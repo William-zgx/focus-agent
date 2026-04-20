@@ -1,3 +1,5 @@
+import time
+
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain.tools import tool
 
@@ -674,3 +676,338 @@ def test_empty_tool_free_repair_falls_back_to_tool_results():
     )
 
     assert "context_policy.py:42" in repaired.content
+
+
+class _SingleRoundToolModel:
+    def __init__(self, *, tool_calls, final_answer: str = "done", on_final_invoke=None):
+        self.tool_calls = tool_calls
+        self.final_answer = final_answer
+        self.on_final_invoke = on_final_invoke
+
+    def bind_tools(self, _tools):
+        return self
+
+    def with_config(self, _config):
+        return self
+
+    def invoke(self, prompt_messages):
+        if not any(isinstance(message, ToolMessage) for message in prompt_messages):
+            return AIMessage(content="", tool_calls=self.tool_calls)
+        if self.on_final_invoke is not None:
+            self.on_final_invoke(prompt_messages)
+        return AIMessage(content=self.final_answer)
+
+
+def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypatch):
+    @tool
+    def broken_lookup(query: str) -> str:
+        """Broken read-only lookup."""
+        raise RuntimeError(f"boom:{query}")
+
+    broken_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+    }
+
+    def _assert_error_prompt(prompt_messages):
+        tool_messages = [message for message in prompt_messages if isinstance(message, ToolMessage)]
+        assert tool_messages
+        assert tool_messages[-1].status == "error"
+        assert "boom:oops" in tool_messages[-1].content
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "broken-1",
+                "name": "broken_lookup",
+                "args": {"query": "oops"},
+            }
+        ],
+        final_answer="handled",
+        on_final_invoke=_assert_error_prompt,
+    )
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(broken_lookup,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="please inspect the broken thing")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    messages = result.value["messages"]
+    tool_messages = [message for message in messages if isinstance(message, ToolMessage)]
+
+    assert tool_messages[-1].status == "error"
+    assert isinstance(messages[-1], AIMessage)
+    assert messages[-1].content == "handled"
+
+
+def test_graph_tool_executor_parallelizes_read_only_tools(monkeypatch):
+    @tool
+    def slow_lookup(name: str) -> str:
+        """Slow read-only lookup."""
+        time.sleep(0.2)
+        return name
+
+    slow_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+    }
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "call-a", "name": "slow_lookup", "args": {"name": "alpha"}},
+            {"id": "call-b", "name": "slow_lookup", "args": {"name": "beta"}},
+        ],
+        final_answer="parallel done",
+    )
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(slow_lookup,)),
+    )
+
+    started = time.perf_counter()
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="run two lookups")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+    elapsed = time.perf_counter() - started
+
+    messages = result.value["messages"]
+    tool_messages = [message for message in messages if isinstance(message, ToolMessage)]
+
+    assert elapsed < 0.33
+    assert [message.tool_call_id for message in tool_messages] == ["call-a", "call-b"]
+    assert tool_messages[0].content == "alpha"
+    assert tool_messages[1].content == "beta"
+
+
+def test_graph_tool_executor_reuses_thread_cache_for_cacheable_tools(monkeypatch):
+    call_count = 0
+
+    @tool
+    def cached_lookup(name: str) -> str:
+        """Cacheable read-only lookup."""
+        nonlocal call_count
+        call_count += 1
+        return f"seen:{name}"
+
+    cached_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+    }
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: _SingleRoundToolModel(
+            tool_calls=[
+                {"id": "cache-1", "name": "cached_lookup", "args": {"name": "focus"}},
+            ],
+            final_answer="cache done",
+        ),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(cached_lookup,)),
+    )
+
+    payload = {
+        "messages": [HumanMessage(content="lookup focus")],
+        "selected_model": "openai:deepseek-reasoner",
+    }
+    context = RequestContext(user_id="user-1", root_thread_id="thread-cache")
+
+    graph.invoke(payload, context=context, version="v2")
+    graph.invoke(payload, context=context, version="v2")
+
+    assert call_count == 1
+
+
+def test_graph_tool_executor_does_not_reuse_turn_cache_across_turns(monkeypatch):
+    call_count = 0
+
+    @tool
+    def turn_scoped_lookup(name: str) -> str:
+        """Turn-scoped cacheable lookup."""
+        nonlocal call_count
+        call_count += 1
+        return f"turn:{name}"
+
+    turn_scoped_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "turn",
+    }
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: _SingleRoundToolModel(
+            tool_calls=[
+                {"id": "turn-1", "name": "turn_scoped_lookup", "args": {"name": "focus"}},
+            ],
+            final_answer="turn done",
+        ),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(turn_scoped_lookup,)),
+    )
+
+    context = RequestContext(user_id="user-1", root_thread_id="thread-turn-cache")
+    graph.invoke(
+        {
+            "messages": [HumanMessage(content="lookup focus once")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=context,
+        version="v2",
+    )
+    graph.invoke(
+        {
+            "messages": [
+                HumanMessage(content="lookup focus once"),
+                AIMessage(content="turn done"),
+                HumanMessage(content="lookup focus again"),
+            ],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=context,
+        version="v2",
+    )
+
+    assert call_count == 2
+
+
+def test_graph_turn_cache_isolated_between_threads(monkeypatch):
+    call_count = 0
+
+    @tool
+    def turn_scoped_lookup(name: str) -> str:
+        """Turn-scoped cacheable lookup."""
+        nonlocal call_count
+        call_count += 1
+        return f"turn:{name}"
+
+    turn_scoped_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "turn",
+    }
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: _SingleRoundToolModel(
+            tool_calls=[
+                {"id": "turn-1", "name": "turn_scoped_lookup", "args": {"name": "focus"}},
+            ],
+            final_answer="turn done",
+        ),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(turn_scoped_lookup,)),
+    )
+    payload = {
+        "messages": [HumanMessage(content="lookup focus")],
+        "selected_model": "openai:deepseek-reasoner",
+    }
+
+    graph.invoke(
+        payload,
+        context=RequestContext(user_id="user-1", root_thread_id="thread-a"),
+        version="v2",
+    )
+    graph.invoke(
+        payload,
+        context=RequestContext(user_id="user-1", root_thread_id="thread-b"),
+        version="v2",
+    )
+    graph.invoke(
+        payload,
+        context=RequestContext(user_id="user-1", root_thread_id="thread-a"),
+        version="v2",
+    )
+
+    assert call_count == 2
+
+
+def test_graph_tool_executor_reports_validator_failures_without_crashing(monkeypatch):
+    @tool
+    def validated_lookup(query: str) -> str:
+        """Lookup with runtime validation."""
+        return f"validated:{query}"
+
+    def _validator(args):
+        if not str(args.get("query") or "").strip():
+            raise ValueError("query must not be empty.")
+
+    validated_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+        "validator": _validator,
+    }
+
+    def _assert_validator_error(prompt_messages):
+        tool_messages = [message for message in prompt_messages if isinstance(message, ToolMessage)]
+        assert tool_messages[-1].status == "error"
+        assert "query must not be empty" in tool_messages[-1].content
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "validator-1", "name": "validated_lookup", "args": {"query": "  "}},
+        ],
+        final_answer="validator handled",
+        on_final_invoke=_assert_validator_error,
+    )
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(validated_lookup,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="lookup with bad args")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    messages = result.value["messages"]
+    tool_messages = [message for message in messages if isinstance(message, ToolMessage)]
+
+    assert tool_messages[-1].status == "error"
+    assert isinstance(messages[-1], AIMessage)
+    assert messages[-1].content == "validator handled"
