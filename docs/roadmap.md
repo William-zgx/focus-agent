@@ -64,7 +64,7 @@ H (评估框架) -> C (记忆闭环) -> D (Context 工程) -> A (Plan-Act-Reflec
 | 模块 | 重点 | 优先级 |
 |------|------|--------|
 | H | 评估框架、golden case、回归守护 | 极高 |
-| C | 记忆抽取、去重、写入闭环 | 极高 |
+| C | 基于现有 MemoryExtractor/Writer/Policy 的记忆闭环、命名空间隔离、去重/冲突、Eval 门禁 | 极高 |
 | D | token 预算硬约束、工具观察裁剪已落地一期；语义压缩后续推进 | 高 |
 | A | Plan-Act-Reflect 推理循环 | 高 |
 | B | 工具并行、缓存、降级、参数校验 | 中高 |
@@ -79,7 +79,7 @@ H (评估框架) -> C (记忆闭环) -> D (Context 工程) -> A (Plan-Act-Reflec
 ### 第 1 周：建立评估与基线
 
 - 评估框架骨架（`tests/eval/`）
-- 记忆闭环第一版
+- 记忆闭环第一版：在 LangGraph turn 末端接入提取/写入节点，先复用现有 memory 模块，不引入外部 provider
 - Context budget 一期：确定性 prompt 预算、工具观察裁剪、相关回归样本
 - 目标：先有衡量 agent 能力的尺子，再继续做行为优化
 
@@ -116,7 +116,7 @@ H (评估框架) -> C (记忆闭环) -> D (Context 工程) -> A (Plan-Act-Reflec
 - 有可运行的 golden case 评测集，并能在 CI 中守护回归
 - task success 率相较 baseline 提升至少 5%
 - token / 调用成本下降至少 30%
-- 记忆命中率达到 60% 以上
+- 记忆闭环通过 memory eval 子集：用户偏好、项目事实、branch 隔离、merge promotion 与 prompt 注入样本均可复现
 - agent 能主动建议分支，而不仅是被动接收分支操作
 
 ## 5. 文档分工

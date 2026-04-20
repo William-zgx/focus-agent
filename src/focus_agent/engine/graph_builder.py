@@ -19,7 +19,14 @@ from ..core.context_policy import (
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
 from ..core.types import ContextBudget, Plan, PlanStep, PromptMode, ReflectionVerdict
-from ..memory import MemoryRetriever, render_memory_block
+from ..memory import (
+    MemoryExtractor,
+    MemoryPolicy,
+    MemoryRetriever,
+    MemoryWriteRequest,
+    MemoryWriter,
+    render_memory_block,
+)
 from ..model_registry import create_chat_model
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
@@ -692,6 +699,9 @@ def build_graph(
     checkpointer=None,
     store=None,
     memory_retriever: MemoryRetriever | None = None,
+    memory_policy: MemoryPolicy | None = None,
+    memory_writer: MemoryWriter | None = None,
+    memory_extractor: MemoryExtractor | None = None,
     skill_registry: SkillRegistry | None = None,
     tool_registry: ToolRegistry | None = None,
 ):
@@ -704,6 +714,10 @@ def build_graph(
     )
     tools = list(effective_tool_registry.tools)
     tools_by_name = effective_tool_registry.by_name
+    effective_memory_policy = memory_policy or getattr(memory_retriever, "policy", None) or MemoryPolicy()
+    effective_memory_retriever = memory_retriever or MemoryRetriever(store=store, policy=effective_memory_policy)
+    effective_memory_writer = memory_writer or MemoryWriter(store=store, policy=effective_memory_policy)
+    effective_memory_extractor = memory_extractor or MemoryExtractor()
     base_model_cache: dict[str, Any] = {}
     model_cache: dict[str, Any] = {}
     model_with_tools_cache: dict[str, Any] = {}
@@ -753,55 +767,22 @@ def build_graph(
     ) -> dict[str, Any]:
         latest_user = _latest_human_message_text(state.get("messages", []))
         prompt_mode = _resolve_prompt_mode(state)
-        if memory_retriever is not None:
-            bundle = memory_retriever.retrieve_for_turn(
-                context=runtime.context,
-                state=dict(state),
-                query=latest_user,
-                prompt_mode=prompt_mode,
-            )
-            return {
-                "retrieved_memories": [
-                    {
-                        **hit.record.model_dump(mode="json"),
-                        "score": hit.score,
-                        "matched_terms": hit.matched_terms,
-                    }
-                    for hit in bundle.hits
-                ],
-                "memory_prompt_block": render_memory_block(bundle),
-                "prompt_mode": prompt_mode,
-            }
-
-        memories = (
-            runtime.store.search(
-                conversation_namespace_for_context(runtime.context),
-                query=latest_user,
-                limit=4,
-            )
-            if runtime.store
-            else []
+        bundle = effective_memory_retriever.retrieve_for_turn(
+            context=runtime.context,
+            state=dict(state),
+            query=latest_user,
+            prompt_mode=prompt_mode,
         )
-        memory_texts = [
-            str(item.value.get("summary") or item.value.get("text") or item.value)
-            for item in memories
-        ]
         return {
             "retrieved_memories": [
-                {"summary": text, "namespace": list(conversation_namespace_for_context(runtime.context))}
-                for text in memory_texts
+                {
+                    **hit.record.model_dump(mode="json"),
+                    "score": hit.score,
+                    "matched_terms": hit.matched_terms,
+                }
+                for hit in bundle.hits
             ],
-            "memory_prompt_block": render_memory_block(
-                type(
-                    "_Bundle",
-                    (),
-                    {
-                        "hits": [],
-                    },
-                )()
-            )
-            if not memory_texts
-            else "## Retrieved long-term memories\n" + "\n".join(f"- {text}" for text in memory_texts),
+            "memory_prompt_block": render_memory_block(bundle),
             "prompt_mode": prompt_mode,
         }
 
@@ -1079,6 +1060,49 @@ def build_graph(
             joined = joined[-4000:]
         return {"rolling_summary": joined}
 
+    def extract_memories(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        if not _should_extract_memories(state):
+            return {
+                "memory_write_requests": [],
+                "memory_write_result": {"prepared": 0, "written": [], "merged": [], "skipped": [], "failed": []},
+            }
+        extraction = effective_memory_extractor.extract_from_turn(context=runtime.context, state=dict(state))
+        return {
+            "memory_write_requests": [record.model_dump(mode="json") for record in extraction.records],
+            "memory_write_result": {
+                "prepared": len(extraction.records),
+                "written": [],
+                "merged": [],
+                "skipped": list(extraction.skipped_reasons),
+                "failed": [],
+                "summary": extraction.summary,
+            },
+        }
+
+    def write_memories(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        raw_requests = list(state.get("memory_write_requests", []) or [])
+        if not raw_requests:
+            return {
+                "memory_write_requests": [],
+                "memory_write_result": state.get("memory_write_result", {}),
+            }
+        records = [MemoryWriteRequest.model_validate(item) for item in raw_requests]
+        outcome = effective_memory_writer.persist_records(
+            records,
+            context=runtime.context,
+            state=dict(state),
+        )
+        return {
+            "memory_write_requests": [],
+            "memory_write_result": outcome,
+        }
+
     def maybe_interrupt_for_merge(state: AgentState) -> dict[str, Any]:
         if state.get("merge_proposal") and not state.get("merge_decision"):
             decision = interrupt(
@@ -1118,6 +1142,8 @@ def build_graph(
     builder.add_node("tool_executor", tool_executor)
     builder.add_node("reflect", reflect_node)
     builder.add_node("summarize_turn", summarize_turn)
+    builder.add_node("extract_memories", extract_memories)
+    builder.add_node("write_memories", write_memories)
     builder.add_node("maybe_interrupt_for_merge", maybe_interrupt_for_merge)
 
     builder.add_edge(START, "bootstrap_turn")
@@ -1136,7 +1162,25 @@ def build_graph(
         should_continue_after_reflect,
         ["plan", "summarize_turn"],
     )
-    builder.add_edge("summarize_turn", "maybe_interrupt_for_merge")
+    builder.add_edge("summarize_turn", "extract_memories")
+    builder.add_edge("extract_memories", "write_memories")
+    builder.add_edge("write_memories", "maybe_interrupt_for_merge")
     builder.add_edge("maybe_interrupt_for_merge", END)
 
     return builder.compile(checkpointer=checkpointer, store=store)
+
+
+def _should_extract_memories(state: AgentState) -> bool:
+    reflection = state.get("reflection")
+    reflection_status = getattr(reflection, "status", None) or (
+        reflection.get("status") if isinstance(reflection, dict) else None
+    )
+    if reflection_status == "replan":
+        return False
+    messages = list(state.get("messages", []) or [])
+    if not messages:
+        return False
+    last_message = messages[-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
+        return False
+    return bool(_latest_final_ai_text(messages))

@@ -52,10 +52,9 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     recent_messages = _conversation_safe_messages(messages, limit=budget.recent_message_limit)
 
     memory_lines = [str(item) for item in state.get("_memory_lines", [])][-budget.citation_limit :]
-    memory_block = normalized.get("memory_prompt_block") or _render_lines(
-        "Retrieved long-term memories",
-        memory_lines,
-    )
+    memory_block = str(normalized.get("memory_prompt_block") or "").strip()
+    if not memory_block:
+        memory_block = _render_lines("Retrieved long-term memories", memory_lines)
     active_skills_block = str(
         state.get("_active_skills_block")
         or normalized.get("active_skills_block")
@@ -105,7 +104,6 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
             ),
             f"## Scene\n- {scene}",
             _branch_scope_block(branch_meta=branch_meta, is_branch=is_branch),
-            _render_lines("Retrieved long-term memories", memory_lines),
         ]
     )
 

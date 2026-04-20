@@ -39,6 +39,10 @@ class MemoryExtractor:
         context: RequestContext,
     ) -> list[MemoryWriteRequest]:
         records: list[MemoryWriteRequest] = []
+        latest_user = _latest_message_text(state.get("messages", []), HumanMessage)
+        inferred = self._extract_explicit_user_memory(latest_user=latest_user, context=context)
+        if inferred is not None:
+            records.append(inferred)
         for item in state.get("pinned_facts", []):
             fact = getattr(item, "fact", None) or (item.get("fact") if isinstance(item, dict) else None)
             if not fact:
@@ -50,14 +54,16 @@ class MemoryExtractor:
                     visibility=MemoryVisibility.SHARED,
                     namespace=user_profile_namespace(context.user_id),
                     content=str(fact),
-                    summary=str(fact),
+                    summary=str(fact)[:240],
                     user_id=context.user_id,
+                    importance=0.8,
                 )
             )
         return records
 
     def _extract_project_facts(self, *, context: RequestContext, state: dict[str, Any]) -> list[MemoryWriteRequest]:
-        if not context.project_id or not state.get("active_goal"):
+        active_goal = str(state.get("active_goal") or "").strip()
+        if not context.project_id or not active_goal or not _looks_like_project_fact(active_goal):
             return []
         return [
             MemoryWriteRequest(
@@ -65,10 +71,11 @@ class MemoryExtractor:
                 scope=MemoryScope.PROJECT,
                 visibility=MemoryVisibility.SHARED,
                 namespace=project_memory_namespace(context.project_id),
-                content=str(state["active_goal"]),
-                summary=str(state["active_goal"]),
+                content=active_goal,
+                summary=active_goal[:240],
                 root_thread_id=context.root_thread_id,
                 user_id=context.user_id,
+                importance=0.65,
             )
         ]
 
@@ -96,6 +103,7 @@ class MemoryExtractor:
                     root_thread_id=context.root_thread_id,
                     user_id=context.user_id,
                     confidence=item.confidence,
+                    importance=max(0.65, float(item.confidence or 0.0)),
                 )
             )
         return records
@@ -122,7 +130,41 @@ class MemoryExtractor:
             source_thread_id=context.branch_id or context.root_thread_id,
             root_thread_id=context.root_thread_id,
             user_id=context.user_id,
+            importance=0.55,
         )
+
+    def _extract_explicit_user_memory(
+        self,
+        *,
+        latest_user: str,
+        context: RequestContext,
+    ) -> MemoryWriteRequest | None:
+        text = latest_user.strip()
+        if not text or len(text) > 240:
+            return None
+        if _looks_like_user_profile(text):
+            return MemoryWriteRequest(
+                kind=MemoryKind.USER_PROFILE,
+                scope=MemoryScope.USER,
+                visibility=MemoryVisibility.SHARED,
+                namespace=user_profile_namespace(context.user_id),
+                content=text,
+                summary=text[:240],
+                user_id=context.user_id,
+                importance=0.75,
+            )
+        if _looks_like_user_preference(text):
+            return MemoryWriteRequest(
+                kind=MemoryKind.USER_PREFERENCE,
+                scope=MemoryScope.USER,
+                visibility=MemoryVisibility.SHARED,
+                namespace=user_profile_namespace(context.user_id),
+                content=text,
+                summary=text[:240],
+                user_id=context.user_id,
+                importance=0.8,
+            )
+        return None
 
 
 def _latest_message_text(messages: list[Any], message_type: type) -> str:
@@ -131,3 +173,61 @@ def _latest_message_text(messages: list[Any], message_type: type) -> str:
             content = getattr(message, "content", "")
             return str(content).strip()
     return ""
+
+
+def _looks_like_user_profile(text: str) -> bool:
+    lowered = text.casefold()
+    if any(token in lowered for token in ("帮我", "请帮", "能不能", "可以帮", "写一", "列出", "解释")):
+        return False
+    return any(
+        phrase in text
+        for phrase in (
+            "我是",
+            "我在做",
+            "我用",
+            "我主要",
+            "我不熟",
+            "我更偏好",
+            "我习惯",
+        )
+    )
+
+
+def _looks_like_user_preference(text: str) -> bool:
+    lowered = text.casefold()
+    if "帮我" in lowered or "请帮" in lowered:
+        return False
+    return any(
+        phrase in text
+        for phrase in (
+            "回答里不要",
+            "请不要",
+            "不要使用",
+            "别用",
+            "不用",
+            "请用中文",
+            "请用英文",
+            "请叫我",
+            "以后都",
+            "尽量简洁",
+            "尽量详细",
+        )
+    )
+
+
+def _looks_like_project_fact(text: str) -> bool:
+    return any(
+        phrase in text
+        for phrase in (
+            "默认",
+            "统一",
+            "约定",
+            "规范",
+            "架构",
+            "配置",
+            "只读",
+            "必须",
+            "不要",
+            "禁止",
+        )
+    )

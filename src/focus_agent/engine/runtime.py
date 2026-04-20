@@ -78,6 +78,9 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         checkpointer=checkpointer,
         store=store,
         memory_retriever=memory_retriever,
+        memory_policy=memory_policy,
+        memory_writer=memory_writer,
+        memory_extractor=memory_extractor,
         skill_registry=skill_registry,
         tool_registry=tool_registry,
     )
