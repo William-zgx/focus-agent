@@ -8,6 +8,7 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
         root / "Dockerfile",
         root / ".dockerignore",
         root / "compose.yaml",
+        root / "compose.prod.yaml",
         root / "docker" / "entrypoint.sh",
     ]
 
@@ -35,15 +36,25 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert 'exec "$@"' in entrypoint_text
 
     compose_text = (root / "compose.yaml").read_text(encoding="utf-8")
-    assert '${FOCUS_AGENT_DATA_MOUNT:-./.focus_agent}:/data' in compose_text
+    assert "postgres:" in compose_text
+    assert "depends_on:" in compose_text
+    assert '${FOCUS_AGENT_DATA_MOUNT:-focus_agent_data}:/data' in compose_text
+    assert '${FOCUS_AGENT_PGDATA_MOUNT:-focus_agent_pgdata}:/var/lib/postgresql/data' in compose_text
     assert 'AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-true}' in compose_text
     assert 'MODEL: ${FOCUS_AGENT_MODEL:-}' in compose_text
     assert 'OPENAI_API_KEY:' not in compose_text
     assert 'ANTHROPIC_API_KEY:' not in compose_text
     assert 'TAVILY_API_KEY:' not in compose_text
     assert "FOCUS_AGENT_DATABASE_URI" in compose_text
+    assert "pg_isready" in compose_text
     assert "FOCUS_AGENT_PIP_INDEX_URL" in compose_text
     assert "/healthz" in compose_text
+
+    compose_prod_text = (root / "compose.prod.yaml").read_text(encoding="utf-8")
+    assert "FOCUS_AGENT_IMAGE" in compose_prod_text
+    assert "FOCUS_AGENT_DATABASE_URI" in compose_prod_text
+    assert "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}" in compose_prod_text
+    assert "postgres:" not in compose_prod_text
 
 
 def test_containerization_docs_explain_current_boundary():
@@ -53,11 +64,16 @@ def test_containerization_docs_explain_current_boundary():
     readme_zh_text = (root / "README.zh-CN.md").read_text(encoding="utf-8")
     architecture_text = (root / "docs" / "architecture.md").read_text(encoding="utf-8")
     roadmap_text = (root / "docs" / "roadmap.md").read_text(encoding="utf-8")
+    deployment_text = (root / "docs" / "docker-deployment.md").read_text(encoding="utf-8")
 
     assert "docker compose up --build" in readme_text
     assert "FOCUS_AGENT_DATABASE_URI" in readme_text
+    assert "compose.prod.yaml" in readme_text
     assert "docker compose up --build" in readme_zh_text
     assert "Postgres" in readme_zh_text
+    assert "compose.prod.yaml" in readme_zh_text
     assert "Docker / Compose 部署" in architecture_text
-    assert "/data/branches.sqlite3" in architecture_text
+    assert "compose.prod.yaml" in architecture_text
     assert "基础 Docker / Compose 容器化部署路径" in roadmap_text
+    assert "本地 Docker 联调" in deployment_text
+    assert "生产/预发部署" in deployment_text

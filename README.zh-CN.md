@@ -110,9 +110,17 @@ focus-agent-api
 
 如果你希望一条命令同时拉起前后端并开启热加载，可以使用 `make serve-dev`，或者继续使用兼容别名 `make serve`。它会启动前端 Vite dev server，并以 reload 模式启动后端 API，适合本地开发调试。如果你想在本地按接近生产的方式运行，可以使用 `make serve-prod`：它会先构建静态前端产物，再以非 reload 模式只启动后端，由 FastAPI 直接托管 `/app`。
 
+如果启动前没有设置 `DATABASE_URI`，本地启动命令（`make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod`）现在会自动管理一个 repo 内本地 PostgreSQL，并把生成的 `DATABASE_URI` 自动注入到 API 进程里。这个托管数据库会随着服务一起停止并清理临时运行态，但会保留 Postgres 数据目录，方便下次本地启动继续复用。如果你在启动前已经显式设置了 `DATABASE_URI`，启动命令会保留该值，不再覆盖，也不会再做托管本地 Postgres 的注入。
+
 ## 容器化部署
 
-仓库里现在已经补齐了 roadmap 对应的基础容器化能力。镜像会在构建阶段产出 React 前端静态资源，运行阶段由 FastAPI 托管 `/app`，并把运行时状态统一放到 `/data`。
+仓库里现在提供了一套推荐版 Docker 部署分层：
+
+- `compose.yaml`：本地 Docker 联调，启动 `focus-agent + postgres`
+- `compose.prod.yaml`：生产/预发模板，只启动 `focus-agent` 并连接外部 PostgreSQL
+- [`docs/docker-deployment.md`](docs/docker-deployment.md)：部署说明、环境变量和迁移流程
+
+镜像会在构建阶段产出 React 前端静态资源，运行阶段由 FastAPI 托管 `/app`，并把运行时状态统一放到 `/data`。
 
 ```bash
 export OPENAI_API_KEY=replace-me
@@ -129,13 +137,13 @@ docker compose up --build
 
 说明：
 
-- `make docker-rebuild` 会执行 `docker compose up -d --build focus-agent`，用于重新构建镜像并重建服务，确保前端源码改动被打进容器。`make docker-restart` 只适合重启已经构建好的容器。
-- `compose.yaml` 默认把仓库里的 `./.focus_agent` 挂载到 `/data`，这样 Docker 会沿用你本地运行时的模型目录、凭证文件、SQLite branch DB，以及 LangGraph checkpoint/store。
-- 如果你想改成 Docker 独立管理的数据卷，可以设置 `FOCUS_AGENT_DATA_MOUNT=focus_agent_data`。
+- `compose.yaml` 现在是推荐的本地 Docker 路径：它会同时启动 `focus-agent` 和专用 `postgres` service，默认使用 named volume，并在未显式覆盖时把 `DATABASE_URI` 指向 Compose 管理的 Postgres。
+- `compose.prod.yaml` 是生产/预发参考模板：只启动 `focus-agent`，要求显式提供外部 `FOCUS_AGENT_DATABASE_URI`。
+- `make docker-rebuild` 仍然会执行 `docker compose up -d --build focus-agent`；由于 `focus-agent` 现在依赖 Postgres health，Compose 会在需要时自动把本地 `postgres` service 一并拉起来。
 - 如果你想直接从 Compose 覆盖默认模型，可以设置 `FOCUS_AGENT_MODEL`，不必手改 `/data/models.toml`。
 - Provider 的密钥和 Base URL 默认直接来自 `/data/local.env`，所以 Compose 不会再用空环境变量把它们覆盖掉；只有你显式导出覆盖变量时，才会替换本地配置。
 - `compose.yaml` 默认保持鉴权开启，同时开启 demo token 自举，确保内置 Web 应用在本地 Docker 启动后就能直接加载和新建会话。
-- `FOCUS_AGENT_DATABASE_URI` 是可选项。不设置时，容器会使用当前单机基线持久化方案：`branches.sqlite3` 以及 `/data` 下的 LangGraph checkpoint/store 文件。
+- 在 `compose.yaml` 里，`FOCUS_AGENT_DATABASE_URI` 是可选项，因为文件已经默认把应用连到内置 `postgres` service。
 - 如果设置 `FOCUS_AGENT_DATABASE_URI`，会切到 PostgreSQL 主持久化路径：branch / conversation 元数据、LangGraph checkpoint/store、trajectory 表，以及 artifact 元数据都会进 Postgres；artifact 正文文件仍然保留在 `/data/artifacts`。
 - 如需保留 Postgres checkpoint/store 但关闭 trajectory 记录，可设置 `TRAJECTORY_ENABLED=false`。
 - 如果要把现有 repo 下的 `.focus_agent` 数据迁入 Postgres，可执行 `focus-agent-migrate-local-state --source-dir ./.focus_agent --database-uri <postgres-uri> --checkpoint-mode latest-stable --artifact-scan --report-path /tmp/focus-agent-migration.json`。
@@ -192,7 +200,7 @@ make docker-restart
 make ui-smoke
 ```
 
-`make serve` 是 `make serve-dev` 的兼容别名。`make serve-dev` 会同时启动前端 Vite dev server 和带热重载的后端 API。`make serve-prod` 会先构建静态前端，再以非 reload 模式只启动后端，由 FastAPI 直接托管 `/app`。`make web-dev` 用来单独启动 React Web App 的开发服务器，`make web-build` 用来生成由 FastAPI 在 `/app` 下托管的静态前端产物。
+`make serve` 是 `make serve-dev` 的兼容别名。`make serve-dev` 会同时启动前端 Vite dev server 和带热重载的后端 API。`make serve-prod` 会先构建静态前端，再以非 reload 模式只启动后端，由 FastAPI 直接托管 `/app`。`make api` 和 `make dev` 走的是同一条后端启动链路，只是不额外启动前端开发服务器。`make web-dev` 用来单独启动 React Web App 的开发服务器，`make web-build` 用来生成由 FastAPI 在 `/app` 下托管的静态前端产物。当 `DATABASE_URI` 未设置时，这条本地启动链路会自动托管一个 repo 内本地 PostgreSQL、注入生成的 `DATABASE_URI`，并在服务停止时一并关闭数据库，同时保留数据目录供下次复用；如果 `DATABASE_URI` 已显式设置，则会原样保留，不做覆盖。
 
 `make ci-test` 会把 `FOCUS_AGENT_LOCAL_ENV_FILE` 指向一个不存在的文件再运行 pytest，这样更接近 GitHub Actions，避免本机 `.focus_agent/local.env` 里的密钥或模型配置掩盖测试环境缺口。`make ci` 会依次运行 Ruff、`make ci-test`、前端 SDK 类型检查和 SDK 构建。
 

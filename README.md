@@ -110,9 +110,17 @@ For local frontend development, run `make web-dev` in a second shell and set `WE
 
 If you want one command that starts both sides with hot reload, use `make serve-dev` or its compatibility alias `make serve`. It runs the Vite dev server for the frontend and starts the API with reload enabled for local development. For a production-style local run, use `make serve-prod`, which builds the static frontend bundle first and then starts only the backend without reload.
 
+If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) now manage a repo-local PostgreSQL for you and inject `DATABASE_URI` into the API process automatically. They stop the managed database together with the service, clean up the temporary runtime bits, and keep the Postgres data directory for reuse on the next local run. If you explicitly export `DATABASE_URI` before starting the service, the startup command preserves that value and skips managed local-Postgres injection.
+
 ## Container Deployment
 
-The roadmap's containerization baseline is now included in the repository. The image builds the React frontend into the container, serves `/app` from FastAPI, and keeps runtime state under `/data`.
+The repository now ships a recommended Docker deployment split:
+
+- `compose.yaml`: local Docker verification with `focus-agent + postgres`
+- `compose.prod.yaml`: production/staging template with `focus-agent + external PostgreSQL`
+- [`docs/docker-deployment.md`](docs/docker-deployment.md): deployment guidance, environment variables, and migration flow
+
+The image builds the React frontend into the container, serves `/app` from FastAPI, and keeps runtime state under `/data`.
 
 ```bash
 export OPENAI_API_KEY=replace-me
@@ -129,14 +137,14 @@ Then open:
 
 Notes:
 
-- `make docker-rebuild` runs `docker compose up -d --build focus-agent`, which rebuilds the image and recreates the service so frontend source changes are included. Use `make docker-restart` only when you want to restart the already-built container.
-- `compose.yaml` mounts `./.focus_agent` into `/data` by default, so Docker follows the same local model catalog, credentials file, SQLite branch DB, and LangGraph checkpoint/store files as your non-container runs.
-- Set `FOCUS_AGENT_DATA_MOUNT=focus_agent_data` if you want an isolated Docker-managed volume instead of reusing the repo-local `.focus_agent` directory.
+- `compose.yaml` is now the recommended local Docker path: it starts `focus-agent` together with a dedicated `postgres` service, uses named volumes by default, and wires `DATABASE_URI` to the Compose-managed Postgres unless you explicitly override it.
+- `compose.prod.yaml` is the production/staging reference: it runs only `focus-agent` and requires an explicit external `FOCUS_AGENT_DATABASE_URI`.
+- `make docker-rebuild` still runs `docker compose up -d --build focus-agent`; because `focus-agent` now depends on Postgres health, Compose will start the local `postgres` service automatically when needed.
 - Set `FOCUS_AGENT_MODEL` if you want Compose to override the default model from `/data/models.toml` without editing that file.
 - Provider credentials and base URLs come from `/data/local.env` by default, so Compose does not blank them out unless you explicitly export override env vars before `docker compose up`.
 - `compose.yaml` keeps auth enabled and enables demo token bootstrap by default so the bundled web app can create and load conversations immediately in local Docker runs.
-- `FOCUS_AGENT_DATABASE_URI` is optional. When unset, the container uses the current single-node persistence baseline: `branches.sqlite3` plus LangGraph checkpoint/store files under `/data`.
-- Setting `FOCUS_AGENT_DATABASE_URI` switches the app to the PostgreSQL primary persistence path: branch/conversation metadata, LangGraph checkpoint/store, Postgres trajectory tables, and artifact metadata all move to Postgres while artifact file contents stay on disk under `/data/artifacts`.
+- In `compose.yaml`, `FOCUS_AGENT_DATABASE_URI` is optional because the file provides a default connection string to the bundled `postgres` service.
+- Setting `FOCUS_AGENT_DATABASE_URI` still switches the app to the PostgreSQL primary persistence path: branch/conversation metadata, LangGraph checkpoint/store, Postgres trajectory tables, and artifact metadata all move to Postgres while artifact file contents stay on disk under `/data/artifacts`.
 - Set `TRAJECTORY_ENABLED=false` to disable Postgres trajectory recording while keeping the Postgres checkpoint/store backend.
 - To migrate an existing repo-local `.focus_agent` directory into Postgres, run `focus-agent-migrate-local-state --source-dir ./.focus_agent --database-uri <postgres-uri> --checkpoint-mode latest-stable --artifact-scan --report-path /tmp/focus-agent-migration.json`.
 
@@ -192,7 +200,7 @@ make docker-restart
 make ui-smoke
 ```
 
-`make serve` is an alias for `make serve-dev`. `make serve-dev` starts the frontend Vite dev server and the backend API together with hot reload enabled. `make serve-prod` builds the static frontend bundle and starts only the backend without reload so `/app` is served from FastAPI. `make web-dev` starts only the React frontend dev server. `make web-build` produces the static frontend bundle that FastAPI serves at `/app`.
+`make serve` is an alias for `make serve-dev`. `make serve-dev` starts the frontend Vite dev server and the backend API together with hot reload enabled. `make serve-prod` builds the static frontend bundle and starts only the backend without reload so `/app` is served from FastAPI. `make api` and `make dev` use the same backend startup path without the frontend companion process. `make web-dev` starts only the React frontend dev server. `make web-build` produces the static frontend bundle that FastAPI serves at `/app`. When `DATABASE_URI` is unset, the local startup path auto-manages a repo-local PostgreSQL, injects the resulting `DATABASE_URI`, and shuts that managed database down again when the service stops while keeping its data directory for reuse. When `DATABASE_URI` is already set explicitly, the startup path leaves it untouched.
 
 `make ci-test` runs pytest with `FOCUS_AGENT_LOCAL_ENV_FILE` pointed at a missing file. This mirrors GitHub Actions more closely by preventing repo-local `.focus_agent/local.env` secrets from masking missing test setup. `make ci` runs Ruff, `make ci-test`, and the frontend SDK type-check/build steps.
 

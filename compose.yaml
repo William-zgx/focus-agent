@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: ${FOCUS_AGENT_PG_DB:-focus_agent}
+      POSTGRES_USER: ${FOCUS_AGENT_PG_USER:-focus_agent}
+      POSTGRES_PASSWORD: ${FOCUS_AGENT_PG_PASSWORD:-focus_agent}
+    volumes:
+      - ${FOCUS_AGENT_PGDATA_MOUNT:-focus_agent_pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${FOCUS_AGENT_PG_USER:-focus_agent} -d ${FOCUS_AGENT_PG_DB:-focus_agent}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   focus-agent:
     build:
       context: .
@@ -11,8 +29,11 @@ services:
         PIP_TRUSTED_HOST: ${FOCUS_AGENT_PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
         PIP_EXTRA_INDEX_URL: ${FOCUS_AGENT_PIP_EXTRA_INDEX_URL:-}
     image: focus-agent:local
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${FOCUS_AGENT_PUBLISHED_PORT:-8000}:8000"
     environment:
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
@@ -23,18 +44,16 @@ services:
       AUTH_ENABLED: "true"
       AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-true}
       AUTH_JWT_SECRET: ${FOCUS_AGENT_AUTH_JWT_SECRET:-change-me-before-sharing}
-      CORS_ALLOWED_ORIGINS: ${FOCUS_AGENT_CORS_ALLOWED_ORIGINS:-http://localhost:8000}
+      CORS_ALLOWED_ORIGINS: ${FOCUS_AGENT_CORS_ALLOWED_ORIGINS:-http://localhost:${FOCUS_AGENT_PUBLISHED_PORT:-8000}}
       RATE_LIMIT_ENABLED: "true"
       RATE_LIMIT_PER_MINUTE: "60"
       RATE_LIMIT_CHAT_PER_MINUTE: "20"
       LANGSMITH_TRACING: ${FOCUS_AGENT_LANGSMITH_TRACING:-false}
       LANGSMITH_API_KEY: ${FOCUS_AGENT_LANGSMITH_API_KEY:-}
       LANGSMITH_PROJECT: ${FOCUS_AGENT_LANGSMITH_PROJECT:-focus-agent}
-      DATABASE_URI: ${FOCUS_AGENT_DATABASE_URI:-}
+      DATABASE_URI: ${FOCUS_AGENT_DATABASE_URI:-postgresql://${FOCUS_AGENT_PG_USER:-focus_agent}:${FOCUS_AGENT_PG_PASSWORD:-focus_agent}@postgres:5432/${FOCUS_AGENT_PG_DB:-focus_agent}}
     volumes:
-      # Defaults to repo-local state so Docker follows the same model catalog and local env files.
-      # Set FOCUS_AGENT_DATA_MOUNT=focus_agent_data if you want an isolated named volume instead.
-      - ${FOCUS_AGENT_DATA_MOUNT:-./.focus_agent}:/data
+      - ${FOCUS_AGENT_DATA_MOUNT:-focus_agent_data}:/data
     healthcheck:
       test:
         - CMD
@@ -44,8 +63,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 20s
     restart: unless-stopped
 
 volumes:
   focus_agent_data:
+  focus_agent_pgdata:

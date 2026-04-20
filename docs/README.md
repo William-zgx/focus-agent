@@ -18,6 +18,7 @@
 
 ## 运维与发布
 
+- [docker-deployment.md](docker-deployment.md)：推荐版 Docker / Compose 部署方案（本地 Docker 联调、生产模板、迁移方式）
 - [release-checklist.md](release-checklist.md)：发布前检查项
 - [license-guide.md](license-guide.md)：许可证说明
 - [local.env.example](local.env.example)：本地环境变量示例
