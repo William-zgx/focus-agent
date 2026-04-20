@@ -21,6 +21,8 @@ require_command pnpm
 assert_api_binary
 assert_workspace_node_modules
 ensure_local_setup
+load_local_env_exports
+ensure_managed_database_uri
 
 assert_port_free "$API_PORT" "API"
 assert_port_free "$WEB_PORT" "Web"

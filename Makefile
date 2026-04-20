@@ -76,10 +76,10 @@ serve-prod:
 	./scripts/serve-prod.sh
 
 api: .venv/bin/python
-	$(FOCUS_AGENT_API)
+	SERVE_SCRIPT_NAME=api ./scripts/run-api.sh
 
 dev: .venv/bin/python
-	API_RELOAD=1 $(FOCUS_AGENT_API)
+	SERVE_SCRIPT_NAME=dev API_RELOAD=1 ./scripts/run-api.sh
 
 test: .venv/bin/python
 	$(PYTEST)
