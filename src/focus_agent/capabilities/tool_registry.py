@@ -78,6 +78,7 @@ def build_tool_registry(
     skill_registry: SkillRegistry,
     store=None,
     checkpointer=None,
+    artifact_metadata_repository=None,
 ) -> ToolRegistry:
     default_tools = {
         tool_.name: tool_
@@ -85,6 +86,7 @@ def build_tool_registry(
             settings,
             store=store,
             checkpointer=checkpointer,
+            artifact_metadata_repository=artifact_metadata_repository,
         )
     }
     skill_tools = {tool_.name: tool_ for tool_ in _build_skill_tools(settings=settings, skill_registry=skill_registry)}

@@ -136,7 +136,9 @@ docker compose up --build
 - Provider 的密钥和 Base URL 默认直接来自 `/data/local.env`，所以 Compose 不会再用空环境变量把它们覆盖掉；只有你显式导出覆盖变量时，才会替换本地配置。
 - `compose.yaml` 默认保持鉴权开启，同时开启 demo token 自举，确保内置 Web 应用在本地 Docker 启动后就能直接加载和新建会话。
 - `FOCUS_AGENT_DATABASE_URI` 是可选项。不设置时，容器会使用当前单机基线持久化方案：`branches.sqlite3` 以及 `/data` 下的 LangGraph checkpoint/store 文件。
-- 如果设置 `FOCUS_AGENT_DATABASE_URI`，当前只会把 LangGraph checkpoint/store 切到 Postgres；branch 元数据仍然保留在 SQLite。这部分和 roadmap 里的 `Postgres 仓储` 一样，仍是后续演进项。
+- 如果设置 `FOCUS_AGENT_DATABASE_URI`，会切到 PostgreSQL 主持久化路径：branch / conversation 元数据、LangGraph checkpoint/store、trajectory 表，以及 artifact 元数据都会进 Postgres；artifact 正文文件仍然保留在 `/data/artifacts`。
+- 如需保留 Postgres checkpoint/store 但关闭 trajectory 记录，可设置 `TRAJECTORY_ENABLED=false`。
+- 如果要把现有 repo 下的 `.focus_agent` 数据迁入 Postgres，可执行 `focus-agent-migrate-local-state --source-dir ./.focus_agent --database-uri <postgres-uri> --checkpoint-mode latest-stable --artifact-scan --report-path /tmp/focus-agent-migration.json`。
 
 分支一旦完成 merge，就会进入只读状态。后续如果还想继续探索，请从父分支或主线程重新 fork 新分支，而不是继续往已合并分支里发送新一轮对话。
 

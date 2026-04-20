@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain.messages import AIMessage, HumanMessage
@@ -83,8 +84,58 @@ def _install_fake_ddgs(monkeypatch):
     monkeypatch.setitem(sys.modules, "ddgs", fake_module)
 
 
-def _tool_map(settings: Settings) -> dict[str, object]:
-    return {tool.name: tool for tool in get_default_tools(settings)}
+class _FakeArtifactMetadataRepository:
+    def __init__(self):
+        self.upsert_calls: list[dict[str, object]] = []
+        self.records_by_id: dict[str, types.SimpleNamespace] = {}
+
+    def upsert_from_file(self, *, thread_id: str, artifact_id: str, path: str | Path, title: str):
+        file_path = Path(path)
+        stat = file_path.stat()
+        previous = self.records_by_id.get(artifact_id)
+        record = types.SimpleNamespace(
+            artifact_id=artifact_id,
+            thread_id=thread_id,
+            path=str(path),
+            title=title,
+            size_bytes=stat.st_size,
+            created_at=previous.created_at if previous is not None else datetime.now(timezone.utc),
+            updated_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+        )
+        self.records_by_id[artifact_id] = record
+        self.upsert_calls.append(
+            {
+                "thread_id": thread_id,
+                "artifact_id": artifact_id,
+                "path": str(path),
+                "title": title,
+            }
+        )
+        return record
+
+    def list_by_thread(self, thread_id: str, *, limit: int | None = None):
+        records = [
+            record
+            for record in self.records_by_id.values()
+            if record.thread_id == thread_id
+        ]
+        records.sort(key=lambda record: (-record.updated_at.timestamp(), record.artifact_id))
+        if limit is not None:
+            return records[:limit]
+        return records
+
+    def get_by_artifact_id(self, artifact_id: str):
+        return self.records_by_id.get(artifact_id)
+
+
+def _tool_map(settings: Settings, *, artifact_metadata_repository=None) -> dict[str, object]:
+    return {
+        tool.name: tool
+        for tool in get_default_tools(
+            settings,
+            artifact_metadata_repository=artifact_metadata_repository,
+        )
+    }
 
 
 def _runtime_invoke(tool_obj, args: dict[str, object]) -> tuple[str, str]:
@@ -397,6 +448,51 @@ def test_artifact_tools_list_read_and_update_saved_artifacts(tmp_path):
 
     with pytest.raises(ValueError, match="artifact directory"):
         tools["artifact_read"].invoke({"artifact_id": "../outside.md"})
+
+
+def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listing(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    artifact_dir = project / ".focus_agent" / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    metadata_repo = _FakeArtifactMetadataRepository()
+    monkeypatch.setattr("focus_agent.capabilities.default_tools._get_current_thread_id", lambda: "thread-1")
+    tools = _tool_map(
+        Settings(
+            database_uri="postgresql://example.test/focus_agent",
+            workspace_root=str(project),
+            artifact_dir=str(artifact_dir),
+        ),
+        artifact_metadata_repository=metadata_repo,
+    )
+
+    tools["write_text_artifact"].invoke({"title": "Launch Plan", "body": "First draft"})
+    (artifact_dir / "orphan.md").write_text("orphan\n", encoding="utf-8")
+    (artifact_dir / "other-thread.md").write_text("other thread\n", encoding="utf-8")
+    metadata_repo.upsert_from_file(
+        thread_id="thread-2",
+        artifact_id="other-thread.md",
+        path=artifact_dir / "other-thread.md",
+        title="Other Thread",
+    )
+
+    list_payload = json.loads(tools["artifact_list"].invoke({}))
+    read_payload = json.loads(tools["artifact_read"].invoke({"artifact_id": "launch-plan.md"}))
+    update_payload = json.loads(
+        tools["artifact_update"].invoke(
+            {
+                "artifact_id": "launch-plan.md",
+                "body": "Second section",
+                "mode": "append",
+            }
+        )
+    )
+
+    assert [item["artifact_id"] for item in list_payload["artifacts"]] == ["launch-plan.md"]
+    assert "First draft" in read_payload["content"]
+    assert update_payload["artifact_id"] == "launch-plan.md"
+    assert metadata_repo.upsert_calls[0]["thread_id"] == "thread-1"
+    assert metadata_repo.upsert_calls[-1]["artifact_id"] == "launch-plan.md"
 
 
 def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):

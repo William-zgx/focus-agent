@@ -343,6 +343,11 @@ def _resolve_artifact_path(*, artifact_dir: Path, artifact_id: str) -> Path:
     return resolved
 
 
+def _artifact_title_from_id(artifact_id: str) -> str:
+    artifact_path = Path(artifact_id)
+    return artifact_path.stem.replace("-", " ").strip().title() or artifact_path.name
+
+
 def _is_blocked_fetch_host(host: str | None) -> bool:
     if not host:
         return True
@@ -394,7 +399,13 @@ def _message_content(message: Any) -> str:
     return str(content)
 
 
-def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
+def get_default_tools(
+    settings: Settings,
+    *,
+    store=None,
+    checkpointer=None,
+    artifact_metadata_repository=None,
+):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     workspace_root = Path(settings.workspace_root).expanduser().resolve()
@@ -448,6 +459,72 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
 
     def _validate_memory_forget_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "memory_id")
+
+    artifact_metadata_repo = artifact_metadata_repository
+
+    def _get_artifact_metadata_repo():
+        nonlocal artifact_metadata_repo
+        if artifact_metadata_repo is not None:
+            return artifact_metadata_repo
+        if not settings.database_uri:
+            return None
+        from ..repositories.artifact_metadata_repository import ArtifactMetadataRepository
+
+        artifact_metadata_repo = ArtifactMetadataRepository(settings.database_uri)
+        artifact_metadata_repo.setup()
+        return artifact_metadata_repo
+
+    def _upsert_artifact_metadata(*, thread_id: str | None, artifact_id: str, path: Path, title: str) -> None:
+        if not thread_id:
+            return
+        repo = _get_artifact_metadata_repo()
+        if repo is None:
+            return
+        repo.upsert_from_file(
+            thread_id=thread_id,
+            artifact_id=artifact_id,
+            path=path,
+            title=title,
+        )
+
+    def _artifact_payload_from_metadata(record: Any) -> dict[str, Any]:
+        updated_at = getattr(record, "updated_at", None)
+        return {
+            "artifact_id": str(getattr(record, "artifact_id")),
+            "path": str(getattr(record, "path")),
+            "title": str(getattr(record, "title")),
+            "size_bytes": int(getattr(record, "size_bytes")),
+            "updated_at": (
+                updated_at.isoformat()
+                if isinstance(updated_at, datetime)
+                else str(updated_at or "")
+            ),
+        }
+
+    def _list_artifacts_from_filesystem(*, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        artifacts: list[dict[str, Any]] = []
+        truncated = False
+        for candidate in sorted(artifact_dir.rglob("*")):
+            if not candidate.is_file():
+                continue
+            try:
+                relative = candidate.relative_to(artifact_dir).as_posix()
+            except ValueError:
+                continue
+            stat = candidate.stat()
+            artifacts.append(
+                {
+                    "artifact_id": relative,
+                    "path": str(candidate),
+                    "title": _artifact_title_from_id(relative),
+                    "size_bytes": stat.st_size,
+                    "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                }
+            )
+            if len(artifacts) >= limit:
+                truncated = True
+                break
+        return artifacts, truncated
 
     def _apply_tool_metadata(
         tool_obj: Any,
@@ -659,6 +736,7 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
         try:
             filename = f"{_slugify(title)}.md"
             path = artifact_dir / filename
+            thread_id = _get_current_thread_id()
             display_path = _coerce_relative_posix(path, workspace_root)
             _emit_tool_event(
                 tool_name=tool_name,
@@ -667,6 +745,12 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
                 path=display_path,
             )
             path.write_text(f"# {title}\n\n{body}\n", encoding='utf-8')
+            _upsert_artifact_metadata(
+                thread_id=thread_id,
+                artifact_id=filename,
+                path=path,
+                title=_artifact_title_from_id(filename),
+            )
             result = f"artifact_saved:{display_path}"
             _emit_tool_event(tool_name=tool_name, stage='end', output=result)
             return result
@@ -686,28 +770,26 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
                 else int(max_results)
             )
             capped_results = max(1, min(requested_results, tool_catalog.artifact_list.max_results_cap))
-            artifacts: list[dict[str, Any]] = []
-            truncated = False
-            for candidate in sorted(artifact_dir.rglob("*")):
-                if not candidate.is_file():
-                    continue
+            repo = _get_artifact_metadata_repo()
+            thread_id = _get_current_thread_id()
+            if repo is not None and thread_id:
                 try:
-                    relative = candidate.relative_to(artifact_dir).as_posix()
-                except ValueError:
-                    continue
-                stat = candidate.stat()
-                artifacts.append(
-                    {
-                        "artifact_id": relative,
-                        "path": str(candidate),
-                        "title": candidate.stem.replace("-", " ").strip().title() or candidate.name,
-                        "size_bytes": stat.st_size,
-                        "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-                    }
-                )
-                if len(artifacts) >= capped_results:
-                    truncated = True
-                    break
+                    metadata_rows = repo.list_by_thread(thread_id, limit=capped_results + 1)
+                    truncated = len(metadata_rows) > capped_results
+                    artifacts = [
+                        _artifact_payload_from_metadata(record)
+                        for record in metadata_rows[:capped_results]
+                    ]
+                except Exception as exc:  # noqa: BLE001
+                    _emit_tool_event(
+                        tool_name=tool_name,
+                        stage='delta',
+                        message='Artifact metadata lookup failed; falling back to filesystem.',
+                        error=str(exc),
+                    )
+                    artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
+            else:
+                artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
             result = json.dumps(
                 {
                     "artifact_dir": str(artifact_dir),
@@ -729,6 +811,28 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
         _emit_tool_event(tool_name=tool_name, stage='start', artifact_id=artifact_id)
         try:
             path = _resolve_artifact_path(artifact_dir=artifact_dir, artifact_id=artifact_id)
+            repo = _get_artifact_metadata_repo()
+            if repo is not None:
+                try:
+                    metadata_record = repo.get_by_artifact_id(artifact_id)
+                except Exception as exc:  # noqa: BLE001
+                    _emit_tool_event(
+                        tool_name=tool_name,
+                        stage='delta',
+                        message='Artifact metadata lookup failed; reading from filesystem path.',
+                        error=str(exc),
+                    )
+                else:
+                    if metadata_record is not None:
+                        metadata_path = Path(str(getattr(metadata_record, "path"))).expanduser()
+                        if not metadata_path.is_absolute():
+                            metadata_path = metadata_path.resolve()
+                        try:
+                            metadata_path.relative_to(artifact_dir.resolve())
+                        except ValueError:
+                            pass
+                        else:
+                            path = metadata_path
             if not path.exists():
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
@@ -772,8 +876,15 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             else:
                 raise ValueError("mode must be one of: replace, append, prepend.")
             path.write_text(updated, encoding="utf-8")
+            relative_artifact_id = path.relative_to(artifact_dir.resolve()).as_posix()
+            _upsert_artifact_metadata(
+                thread_id=_get_current_thread_id(),
+                artifact_id=relative_artifact_id,
+                path=artifact_dir / relative_artifact_id,
+                title=_artifact_title_from_id(relative_artifact_id),
+            )
             payload = {
-                "artifact_id": path.relative_to(artifact_dir.resolve()).as_posix(),
+                "artifact_id": relative_artifact_id,
                 "path": str(path),
                 "mode": normalized_mode,
                 "size_bytes": path.stat().st_size,

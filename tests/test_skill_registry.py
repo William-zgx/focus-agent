@@ -129,6 +129,39 @@ def test_tool_registry_exposes_skill_tools(tmp_path):
     assert viewed["recommended_tools"] == ["list_files", "read_file"]
 
 
+def test_tool_registry_passes_artifact_metadata_repository_to_default_tools(tmp_path, monkeypatch):
+    registry = SkillRegistry([tmp_path])
+    captured: dict[str, object] = {}
+
+    def fake_get_default_tools(
+        settings,
+        *,
+        store=None,
+        checkpointer=None,
+        artifact_metadata_repository=None,
+    ):
+        captured["settings"] = settings
+        captured["store"] = store
+        captured["checkpointer"] = checkpointer
+        captured["artifact_metadata_repository"] = artifact_metadata_repository
+        return []
+
+    monkeypatch.setattr("focus_agent.capabilities.tool_registry.get_default_tools", fake_get_default_tools)
+    sentinel_repo = object()
+
+    build_tool_registry(
+        settings=Settings(),
+        skill_registry=registry,
+        store="store-sentinel",
+        checkpointer="checkpointer-sentinel",
+        artifact_metadata_repository=sentinel_repo,
+    )
+
+    assert captured["store"] == "store-sentinel"
+    assert captured["checkpointer"] == "checkpointer-sentinel"
+    assert captured["artifact_metadata_repository"] is sentinel_repo
+
+
 def test_tool_registry_respects_skill_tool_configuration(tmp_path):
     _write_skill(
         tmp_path,

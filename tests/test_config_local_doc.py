@@ -234,3 +234,26 @@ def test_settings_from_env_reads_workspace_root(monkeypatch):
     settings = Settings.from_env()
 
     assert settings.workspace_root == "/tmp/focus-agent-workspace"
+
+
+def test_settings_from_env_enables_trajectory_when_database_uri_exists(monkeypatch):
+    monkeypatch.setenv("DATABASE_URI", "postgresql://user:pass@localhost/focus_agent")
+
+    settings = Settings.from_env()
+
+    assert settings.trajectory_enabled is True
+
+
+def test_settings_from_env_allows_disabling_trajectory_with_postgres(monkeypatch):
+    monkeypatch.setenv("DATABASE_URI", "postgresql://user:pass@localhost/focus_agent")
+    monkeypatch.setenv("TRAJECTORY_ENABLED", "false")
+    monkeypatch.setenv("TRAJECTORY_OBSERVATION_MAX_CHARS", "123")
+    monkeypatch.setenv("TRAJECTORY_ANSWER_MAX_CHARS", "456")
+    monkeypatch.setenv("TRAJECTORY_HASH_USER_ID", "false")
+
+    settings = Settings.from_env()
+
+    assert settings.trajectory_enabled is False
+    assert settings.trajectory_observation_max_chars == 123
+    assert settings.trajectory_answer_max_chars == 456
+    assert settings.trajectory_hash_user_id is False

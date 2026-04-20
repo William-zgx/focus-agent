@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import threading
 
 import pytest
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.config import Settings
@@ -472,6 +472,172 @@ def test_send_message_activates_skills_from_prefix(tmp_path: Path):
     assert payload["active_skill_ids"] == ["plan"]
     assert payload["selected_model"] == "moonshot:kimi-k2.5"
     assert payload["selected_thinking_mode"] == "disabled"
+
+
+def test_send_message_records_postgres_trajectory_payload(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class ToolGraph:
+        def __init__(self):
+            self.values = {}
+
+        def invoke(self, payload, *, config, context, version):
+            del config, context, version
+            human = payload["messages"][-1]
+            self.values = {
+                "messages": [
+                    human,
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "tool-1",
+                                "name": "read_file",
+                                "args": {"path": "README.md"},
+                            }
+                        ],
+                    ),
+                    ToolMessage(
+                        content="Focus Agent",
+                        tool_call_id="tool-1",
+                        artifact={
+                            "runtime": {
+                                "cache_hit": True,
+                                "fallback_used": False,
+                                "parallel_batch_size": 2,
+                            }
+                        },
+                    ),
+                    AIMessage(content="done"),
+                ],
+                "llm_calls": 2,
+                "task_brief": payload["task_brief"],
+                "selected_model": payload["selected_model"],
+                "selected_thinking_mode": payload["selected_thinking_mode"],
+            }
+            return {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    class RecordingTrajectoryRecorder:
+        def __init__(self):
+            self.records = []
+
+        def record_turn(self, record):
+            self.records.append(record)
+
+    recorder = RecordingTrajectoryRecorder()
+    runtime = SimpleNamespace(
+        settings=Settings(
+            trajectory_observation_max_chars=20,
+            trajectory_answer_max_chars=20,
+        ),
+        graph=ToolGraph(),
+        repo=repo,
+        trajectory_recorder=recorder,
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(thread_id="root-1", user_id="owner-1", message="read README")
+
+    assert len(recorder.records) == 1
+    record = recorder.records[0]
+    assert record.kind == "chat.turn"
+    assert record.status == "succeeded"
+    assert record.thread_id == "root-1"
+    assert record.user_id_hash != "owner-1"
+    assert record.user_message == "read README"
+    assert record.answer == "done"
+    assert [step.tool for step in record.trajectory] == ["read_file"]
+    assert record.trajectory[0].cache_hit is True
+    assert record.trajectory[0].parallel_batch_size == 2
+    assert record.metrics["tool_calls"] == 1
+    assert record.metrics["llm_calls"] == 2
+
+
+def test_stream_message_records_trajectory_after_completion(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class StreamingGraph:
+        def __init__(self):
+            self.values = {"messages": [AIMessage(content="previous")], "llm_calls": 1}
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del config, context, stream_mode, version
+            human = payload["messages"][-1]
+            self.values = {
+                "messages": [
+                    AIMessage(content="previous"),
+                    human,
+                    AIMessage(content="streamed answer"),
+                ],
+                "llm_calls": 2,
+                "task_brief": payload["task_brief"],
+                "selected_model": payload["selected_model"],
+                "selected_thinking_mode": payload["selected_thinking_mode"],
+            }
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    class RecordingTrajectoryRecorder:
+        def __init__(self):
+            self.records = []
+
+        def record_turn(self, record):
+            self.records.append(record)
+
+    recorder = RecordingTrajectoryRecorder()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=StreamingGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+        trajectory_recorder=recorder,
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="new")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert any("event: turn.completed" in frame for frame in frames)
+    assert len(recorder.records) == 1
+    assert recorder.records[0].answer == "streamed answer"
+    assert recorder.records[0].user_message == "new"
+    assert recorder.records[0].metrics["llm_calls"] == 1
+
+
+def test_trajectory_recorder_failure_does_not_fail_turn(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    graph = RecordingGraph()
+
+    class BrokenTrajectoryRecorder:
+        def record_turn(self, record):
+            del record
+            raise RuntimeError("postgres unavailable")
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        trajectory_recorder=BrokenTrajectoryRecorder(),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(thread_id="root-1", user_id="owner-1", message="hello")
+
+    assert payload["assistant_message"] == "planned"
 
 
 def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):

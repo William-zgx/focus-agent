@@ -18,7 +18,7 @@
 | **分支/合并** | `merge_proposal` + `interrupt` HITL | 分支开/合靠人控；agent 不会主动建议 |
 | **技能** | 注册表 + active/available block | 激活来自外部 `skill_hints`，agent 不自选 |
 | **模型** | `create_chat_model` 多 provider | 不区分 planner/executor/critic；不做成本路由 |
-| **评估** | `tests/eval/` smoke 套件、JSON/JSONL/HTML 报告、Eval CI 门禁与回归样本已落地 | trajectory metrics / replay 数据集 / 线上失败样本采样仍待补齐 |
+| **评估** | `tests/eval/` smoke 套件、JSON/JSONL/HTML 报告、Eval CI 门禁与回归样本已落地；生产 trajectory schema 已与 eval 提取逻辑对齐 | Postgres trajectory 查询/导出、replay 数据集、线上失败样本采样仍待补齐 |
 
 ---
 
@@ -189,8 +189,8 @@ bootstrap_turn
 
 ### G. 可观测性（agent 视角）
 
-1. **Trajectory JSONL**：每 turn 落 `{thread_id, plan, steps:[{tool,args,obs,dur_ms}], reflection, tokens}` 到 `artifacts/trajectories/`。
-2. **指标**：`tool_call_per_turn` / `replan_rate` / `memory_hit_rate` / `reflection_ask_user_rate` / `budget_overflow_events`。
+1. **Trajectory Postgres**：每 turn 落 `{thread_id, root_thread_id, branch_id, plan, steps:[{tool,args,obs,dur_ms}], reflection, metrics}` 到应用自有 Postgres 表；不复用 LangGraph 内部 checkpoint/store 表。
+2. **指标**：`tool_call_per_turn` / `replan_rate` / `cache_hit_rate` / `fallback_rate` / `parallel_tool_calls` / `budget_overflow_events`。
 3. **OpenTelemetry span**：图节点一个 span，tool call 一个 child span；可接 Langfuse / Arize。
 
 ### H. 评估框架（详见第四节）
@@ -1220,116 +1220,72 @@ def test_total_cost_breakdown():
 
 ---
 
-### G. 可观测性：Trajectory JSONL + 指标 + OpenTelemetry（2 天工期）
+### G. 可观测性：Postgres Trajectory + 指标 + OpenTelemetry（2 天工期）
 
 #### G.1 Trajectory 记录
 
-**新增 `src/focus_agent/observability/trajectory.py`**：
-```python
-@dataclass
-class ToolStep:
-    tool_name: str
-    args: dict
-    observation: str
-    duration_ms: float
-    error: str | None = None
-    cache_hit: bool = False
+**已采用 Postgres 方案**：生产侧 `src/focus_agent/observability/trajectory.py` 定义 `TrajectoryStep` / `TurnTrajectoryRecord`，并把 eval 原有 “`AIMessage.tool_calls` + `ToolMessage` 配对”抽取逻辑迁到生产模块，避免 eval 与线上记录漂移。
 
-@dataclass
-class TurnTrajectory:
-    """单个 turn 的完整轨迹"""
-    thread_id: str
-    turn_number: int
-    user_message: str
-    plan: list[dict] | None
-    steps: list[ToolStep]
-    reflection: dict | None
-    final_answer: str
-    
-    input_tokens: int
-    output_tokens: int
-    total_cost_usd: float
-    duration_ms: float
-    
-    timestamp: str
-    model_name: str
-    temperature: float
+**新增应用自有表，不混用 LangGraph 内部表**：
+```sql
+CREATE TABLE IF NOT EXISTS focus_trajectory_turns (
+  id UUID PRIMARY KEY,
+  schema_version INT NOT NULL DEFAULT 1,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  root_thread_id TEXT NOT NULL,
+  parent_thread_id TEXT,
+  branch_id TEXT,
+  branch_role TEXT,
+  user_id_hash TEXT NOT NULL,
+  scene TEXT NOT NULL,
+  turn_index INT,
+  task_brief TEXT,
+  user_message TEXT,
+  answer TEXT,
+  selected_model TEXT,
+  selected_thinking_mode TEXT,
+  plan JSONB,
+  reflection JSONB,
+  plan_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+  metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error TEXT,
+  started_at TIMESTAMPTZ NOT NULL,
+  finished_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-async def record_turn_trajectory(
-    state: AgentState,
-    runtime: AppRuntime,
-    start_time: float
-) -> None:
-    """记录本 turn 的完整轨迹"""
-    duration_ms = (time.time() - start_time) * 1000
-    
-    trajectory = TurnTrajectory(
-        thread_id=state.thread_id,
-        turn_number=len(state.messages) // 2,  # 粗估
-        user_message=state.messages[-1].content if state.messages else "",
-        plan=[asdict(s) for s in (state.plan or [])],
-        steps=[extract_tool_steps(m) for m in state.messages if isinstance(m, ToolMessage)],
-        reflection=asdict(state.reflection) if state.reflection else None,
-        final_answer=state.messages[-1].content if state.messages else "",
-        input_tokens=state.tokens_breakdown.get("executor", {}).get("input", 0),
-        output_tokens=state.tokens_breakdown.get("executor", {}).get("output", 0),
-        total_cost_usd=sum(state.cost_breakdown.values()),
-        duration_ms=duration_ms,
-        timestamp=datetime.now().isoformat(),
-        model_name=state.selected_model,
-        temperature=state.temperature,
-    )
-    
-    # 保存为 JSONL
-    trajectory_dir = Path(runtime.settings.artifact_dir) / "trajectories"
-    trajectory_dir.mkdir(parents=True, exist_ok=True)
-    
-    trajectory_file = trajectory_dir / f"{date.today().isoformat()}.jsonl"
-    with open(trajectory_file, "a") as f:
-        f.write(json.dumps(asdict(trajectory)) + "\n")
+CREATE TABLE IF NOT EXISTS focus_trajectory_steps (
+  id BIGSERIAL PRIMARY KEY,
+  turn_id UUID NOT NULL REFERENCES focus_trajectory_turns(id) ON DELETE CASCADE,
+  step_index INT NOT NULL,
+  tool TEXT NOT NULL,
+  args JSONB NOT NULL DEFAULT '{}'::jsonb,
+  observation TEXT NOT NULL DEFAULT '',
+  observation_truncated BOOLEAN NOT NULL DEFAULT false,
+  duration_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+  error TEXT,
+  cache_hit BOOLEAN NOT NULL DEFAULT false,
+  fallback_used BOOLEAN NOT NULL DEFAULT false,
+  fallback_group TEXT,
+  parallel_batch_size INT,
+  runtime JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (turn_id, step_index)
+);
 ```
+
+接入原则：
+
+- `DATABASE_URI` 存在时初始化 `PostgresTrajectoryRepository`；不存在时 recorder 为 no-op，不提供 JSONL fallback。
+- `_run_invoke` 与 `_astream_result` 只在 turn 收口处写完整记录，不按流式 chunk 写。
+- 写入失败只记录 warning，不影响用户可见回答。
+- `user_id` 默认 hash 后入库；不存完整 system prompt、assembled context 或未截断 observation。
 
 #### G.2 指标计算
 
-**新增 `src/focus_agent/observability/metrics.py`**：
-```python
-class TrajectoryMetrics:
-    """从 trajectory JSONL 计算指标"""
-    
-    @staticmethod
-    def compute_for_trajectory(traj: TurnTrajectory) -> dict:
-        """计算单条 trajectory 的指标"""
-        return {
-            "tool_calls": len(traj.steps),
-            "tool_errors": sum(1 for s in traj.steps if s.error),
-            "cache_hits": sum(1 for s in traj.steps if s.cache_hit),
-            "avg_tool_latency_ms": mean([s.duration_ms for s in traj.steps]) if traj.steps else 0,
-            "total_duration_ms": traj.duration_ms,
-            "total_cost_usd": traj.total_cost_usd,
-            "tokens_input": traj.input_tokens,
-            "tokens_output": traj.output_tokens,
-            "replan_count": 1 if traj.reflection and traj.reflection.get("replan_triggered_by") else 0,
-        }
-    
-    @staticmethod
-    def aggregate_metrics(trajectories: list[TurnTrajectory]) -> dict:
-        """聚合多条 trajectory 的指标"""
-        metrics_list = [
-            TrajectoryMetrics.compute_for_trajectory(t)
-            for t in trajectories
-        ]
-        
-        return {
-            "avg_tool_calls": mean([m["tool_calls"] for m in metrics_list]),
-            "avg_tool_errors": mean([m["tool_errors"] for m in metrics_list]),
-            "cache_hit_rate": sum(m["cache_hits"] for m in metrics_list) / sum(m["tool_calls"] for m in metrics_list),
-            "avg_duration_ms": mean([m["total_duration_ms"] for m in metrics_list]),
-            "avg_cost_usd": mean([m["total_cost_usd"] for m in metrics_list]),
-            "avg_input_tokens": mean([m["tokens_input"] for m in metrics_list]),
-            "avg_output_tokens": mean([m["tokens_output"] for m in metrics_list]),
-            "replan_rate": mean([m["replan_count"] for m in metrics_list]),
-        }
-```
+首版每条 turn 写入 `metrics JSONB`：`latency_ms`、`tool_calls`、`llm_calls`、`input_tokens`、`output_tokens`、`cache_hits`、`fallback_uses`、`parallel_tool_calls`。后续再加 Postgres 查询/导出 CLI，把失败 turn 转成 eval replay 样本。
 
 #### G.3 OpenTelemetry 集成
 
@@ -1366,7 +1322,7 @@ async def agent_loop(state, runtime):
 
 ```python
 def test_trajectory_records_all_fields():
-    """验证 trajectory 记录完整"""
+    """验证 Postgres trajectory 记录完整"""
     # ...
 
 def test_metrics_computed_correctly():

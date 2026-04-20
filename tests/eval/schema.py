@@ -5,31 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-
-@dataclass(slots=True)
-class TrajectoryStep:
-    tool: str
-    args: dict[str, Any]
-    observation: str
-    duration_ms: float = 0.0
-    error: str | None = None
-    cache_hit: bool = False
-    fallback_used: bool = False
-    fallback_group: str | None = None
-    parallel_batch_size: int | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "tool": self.tool,
-            "args": self.args,
-            "observation": self.observation[:2000],
-            "duration_ms": self.duration_ms,
-            "error": self.error,
-            "cache_hit": self.cache_hit,
-            "fallback_used": self.fallback_used,
-            "fallback_group": self.fallback_group,
-            "parallel_batch_size": self.parallel_batch_size,
-        }
+from focus_agent.observability.trajectory import TrajectoryStep
 
 
 @dataclass(slots=True)

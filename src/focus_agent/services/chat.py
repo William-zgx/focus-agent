@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 import json
+import logging
 import threading
 from typing import Any, AsyncIterator
 
@@ -17,6 +18,7 @@ from ..core.state import normalize_agent_state
 from ..engine.runtime import AppRuntime
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 from ..observability.tracing import build_invoke_config
+from ..observability.trajectory import build_turn_trajectory_record, utc_now
 from ..skills.models import SkillSelection
 from ..transport.stream_events import (
     extract_reasoning_delta,
@@ -27,6 +29,8 @@ from ..transport.stream_events import (
     map_custom_payload_to_event,
     sanitize_stream_metadata,
 )
+
+logger = logging.getLogger("focus_agent.chat")
 
 
 class ChatService:
@@ -307,12 +311,15 @@ class ChatService:
         context_skill_hints: tuple[str, ...] | None = None,
         kind: str = 'chat.turn',
     ) -> dict[str, Any]:
-        context, branch_meta, _ = self._preflight_thread_access(
+        context, branch_meta, initial_values = self._preflight_thread_access(
             thread_id=thread_id,
             user_id=user_id,
             explicit_skill_hints=context_skill_hints,
             require_writable=True,
         )
+        initial_message_count = len(list(initial_values.get('messages', []) or []))
+        initial_llm_calls = int(initial_values.get('llm_calls') or 0)
+        started_at = utc_now()
         self._acquire_thread_turn(thread_id=thread_id)
         try:
             config = build_invoke_config(
@@ -330,13 +337,28 @@ class ChatService:
                 version='v2',
             )
             _, interrupts = self._normalize_result(result)
-            latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            latest_context, latest_branch_meta, final_values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
             response = self._response_payload(
                 thread_id=thread_id,
                 user_id=user_id,
                 context=latest_context,
                 branch_meta=latest_branch_meta,
                 interrupts=interrupts,
+            )
+            self._record_turn_trajectory_best_effort(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=latest_context.root_thread_id,
+                kind=kind,
+                status='succeeded',
+                final_values=final_values,
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=utc_now(),
+                branch_meta=latest_branch_meta,
+                input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
+                answer=response.get('assistant_message'),
             )
             self._schedule_branch_name_refresh_after_first_turn(
                 thread_id=thread_id,
@@ -345,6 +367,23 @@ class ChatService:
                 kind=kind,
             )
             return response
+        except Exception as exc:
+            self._record_turn_trajectory_best_effort(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=context.root_thread_id,
+                kind=kind,
+                status='failed',
+                final_values=self._safe_get_values(thread_id),
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=utc_now(),
+                branch_meta=branch_meta,
+                input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
+                error=str(exc),
+            )
+            raise
         finally:
             self._release_thread_turn(thread_id=thread_id)
 
@@ -494,6 +533,54 @@ class ChatService:
             user_id=user_id,
         )
 
+    def _record_turn_trajectory_best_effort(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        root_thread_id: str,
+        kind: str,
+        status: str,
+        final_values: dict[str, Any],
+        initial_message_count: int,
+        initial_llm_calls: int,
+        started_at,
+        finished_at,
+        branch_meta: BranchMeta | None,
+        input_messages: list[Any] | None = None,
+        answer: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        recorder = getattr(self.runtime, 'trajectory_recorder', None)
+        if recorder is None:
+            return
+        record_turn = getattr(recorder, 'record_turn', None)
+        if not callable(record_turn):
+            return
+        try:
+            record = build_turn_trajectory_record(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+                kind=kind,
+                status=status,
+                final_values=final_values,
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=finished_at,
+                branch_meta=branch_meta,
+                input_messages=input_messages,
+                answer=answer,
+                error=error,
+                observation_max_chars=self.runtime.settings.trajectory_observation_max_chars,
+                answer_max_chars=self.runtime.settings.trajectory_answer_max_chars,
+                hash_user_id=self.runtime.settings.trajectory_hash_user_id,
+            )
+            record_turn(record)
+        except Exception:  # noqa: BLE001
+            logger.warning("failed to persist turn trajectory", exc_info=True)
+
     async def _stream_graph_chunks(
         self,
         *,
@@ -549,6 +636,13 @@ class ChatService:
     ) -> AsyncIterator[str]:
         visible_text_buffer = ''
         reasoning_buffer = ''
+        turn_acquired = False
+        context: RequestContext | None = None
+        branch_meta: BranchMeta | None = None
+        initial_message_count = 0
+        initial_llm_calls = 0
+        input_messages = list(payload.get('messages', []) if isinstance(payload, dict) else [])
+        started_at = utc_now()
         try:
             context, branch_meta, initial_values = self._preflight_thread_access(
                 thread_id=thread_id,
@@ -557,7 +651,9 @@ class ChatService:
             )
             initial_messages = list(initial_values.get('messages', []) or [])
             initial_message_count = len(initial_messages)
+            initial_llm_calls = int(initial_values.get('llm_calls') or 0)
             self._acquire_thread_turn(thread_id=thread_id)
+            turn_acquired = True
             config = build_invoke_config(
                 settings=self.runtime.settings,
                 thread_id=thread_id,
@@ -714,8 +810,23 @@ class ChatService:
                     data={
                         'content': reasoning_buffer,
                         'thread_id': thread_id,
-                    },
-                )
+                        },
+                    )
+            self._record_turn_trajectory_best_effort(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=latest_context.root_thread_id,
+                kind=kind,
+                status='succeeded',
+                final_values=final_values,
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=utc_now(),
+                branch_meta=latest_branch_meta,
+                input_messages=input_messages,
+                answer=final_visible_text,
+            )
             if final_state.get('interrupts'):
                 for interrupt_payload in final_state['interrupts']:
                     yield self._sse_frame(
@@ -733,6 +844,23 @@ class ChatService:
                 data={'thread_state': final_state},
             )
         except Exception as exc:  # noqa: BLE001
+            if turn_acquired and context is not None:
+                self._record_turn_trajectory_best_effort(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    root_thread_id=context.root_thread_id,
+                    kind=kind,
+                    status='failed',
+                    final_values=self._safe_get_values(thread_id),
+                    initial_message_count=initial_message_count,
+                    initial_llm_calls=initial_llm_calls,
+                    started_at=started_at,
+                    finished_at=utc_now(),
+                    branch_meta=branch_meta,
+                    input_messages=input_messages,
+                    answer=visible_text_buffer or None,
+                    error=str(exc),
+                )
             yield self._sse_frame(
                 event='turn.failed',
                 data={

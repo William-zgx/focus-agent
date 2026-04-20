@@ -136,7 +136,9 @@ Notes:
 - Provider credentials and base URLs come from `/data/local.env` by default, so Compose does not blank them out unless you explicitly export override env vars before `docker compose up`.
 - `compose.yaml` keeps auth enabled and enables demo token bootstrap by default so the bundled web app can create and load conversations immediately in local Docker runs.
 - `FOCUS_AGENT_DATABASE_URI` is optional. When unset, the container uses the current single-node persistence baseline: `branches.sqlite3` plus LangGraph checkpoint/store files under `/data`.
-- Setting `FOCUS_AGENT_DATABASE_URI` moves LangGraph checkpoint/store to Postgres, but branch metadata still remains in SQLite for now. The roadmap item for a Postgres branch repository is still future work.
+- Setting `FOCUS_AGENT_DATABASE_URI` switches the app to the PostgreSQL primary persistence path: branch/conversation metadata, LangGraph checkpoint/store, Postgres trajectory tables, and artifact metadata all move to Postgres while artifact file contents stay on disk under `/data/artifacts`.
+- Set `TRAJECTORY_ENABLED=false` to disable Postgres trajectory recording while keeping the Postgres checkpoint/store backend.
+- To migrate an existing repo-local `.focus_agent` directory into Postgres, run `focus-agent-migrate-local-state --source-dir ./.focus_agent --database-uri <postgres-uri> --checkpoint-mode latest-stable --artifact-scan --report-path /tmp/focus-agent-migration.json`.
 
 Merged branches are read-only after a merge is applied. If you want to continue exploration, fork a new branch from the parent or main thread instead of sending more turns into the merged branch.
 

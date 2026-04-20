@@ -15,13 +15,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain.messages import AIMessage, HumanMessage
 
 from focus_agent.capabilities import build_tool_registry
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.graph_builder import build_graph
+from focus_agent.observability.trajectory import extract_trajectory_steps
 from focus_agent.skills import SkillRegistry
 
 from ..judges import LLMJudge, RuleJudge, TrajectoryJudge
@@ -273,44 +274,7 @@ def _last_ai_text(messages: list[Any]) -> str:
 
 
 def _extract_trajectory(messages: list[Any]) -> list[TrajectoryStep]:
-    """Pair AIMessage(tool_calls=...) with the matching ToolMessage observations."""
-    pending_calls: dict[str, dict[str, Any]] = {}
-    steps: list[TrajectoryStep] = []
-    for msg in messages or []:
-        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-            for call in msg.tool_calls:
-                pending_calls[str(call["id"])] = {
-                    "name": call["name"],
-                    "args": call.get("args") or {},
-                }
-        elif isinstance(msg, ToolMessage):
-            call = pending_calls.pop(str(msg.tool_call_id), None)
-            if call is not None:
-                artifact = getattr(msg, "artifact", None)
-                runtime_info = {}
-                if isinstance(artifact, dict) and isinstance(artifact.get("runtime"), dict):
-                    runtime_info = dict(artifact.get("runtime") or {})
-                steps.append(
-                    TrajectoryStep(
-                        tool=call["name"],
-                        args=call["args"],
-                        observation=str(msg.content)[:4000],
-                        error=(str(msg.content)[:4000] if getattr(msg, "status", "success") == "error" else None),
-                        cache_hit=bool(runtime_info.get("cache_hit", False)),
-                        fallback_used=bool(runtime_info.get("fallback_used", False)),
-                        fallback_group=(
-                            str(runtime_info.get("fallback_group"))
-                            if runtime_info.get("fallback_group")
-                            else None
-                        ),
-                        parallel_batch_size=(
-                            int(runtime_info["parallel_batch_size"])
-                            if runtime_info.get("parallel_batch_size") is not None
-                            else None
-                        ),
-                    )
-                )
-    return steps
+    return extract_trajectory_steps(messages, observation_max_chars=4000)
 
 
 def _run_judges(
