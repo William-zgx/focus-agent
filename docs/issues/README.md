@@ -12,4 +12,8 @@ Each issue should live in its own markdown file with:
 
 Current issues:
 
+- None.
+
+Resolved issues:
+
 - [2026-04-19-wrong-turn-context-bug.md](./2026-04-19-wrong-turn-context-bug.md)
