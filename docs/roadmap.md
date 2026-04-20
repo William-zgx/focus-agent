@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-04-19
+更新时间：2026-04-20
 
 这份文档是当前唯一保留的总路线图，用来统一近期实施节奏和中长期方向。它整合了此前分散的 `docs/current-roadmap.md`、`IMPLEMENTATION_ROADMAP.md` 与 `OPTIMIZATION_SUMMARY.md`，避免同一时间存在多份互相覆盖的规划说明。
 
@@ -65,7 +65,7 @@ H (评估框架) -> C (记忆闭环) -> D (Context 工程) -> A (Plan-Act-Reflec
 |------|------|--------|
 | H | 评估框架、golden case、回归守护 | 极高 |
 | C | 记忆抽取、去重、写入闭环 | 极高 |
-| D | token 预算、语义压缩、工具观察裁剪 | 高 |
+| D | token 预算硬约束、工具观察裁剪已落地一期；语义压缩后续推进 | 高 |
 | A | Plan-Act-Reflect 推理循环 | 高 |
 | B | 工具并行、缓存、降级、参数校验 | 中高 |
 | F | planner / executor / critic 模型路由 | 中高 |
@@ -80,7 +80,7 @@ H (评估框架) -> C (记忆闭环) -> D (Context 工程) -> A (Plan-Act-Reflec
 
 - 评估框架骨架（`tests/eval/`）
 - 记忆闭环第一版
-- Context budget 与 observe 节点
+- Context budget 一期：确定性 prompt 预算、工具观察裁剪、相关回归样本
 - 目标：先有衡量 agent 能力的尺子，再继续做行为优化
 
 ### 第 2 周：改造推理循环

@@ -11,10 +11,14 @@ from langgraph.types import interrupt
 
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings
-from ..core.context_policy import assemble_context as build_context_slice
+from ..core.context_policy import (
+    apply_prompt_budget_guard,
+    assemble_context as build_context_slice,
+    trim_tool_observation,
+)
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
-from ..core.types import Plan, PlanStep, PromptMode, ReflectionVerdict
+from ..core.types import ContextBudget, Plan, PlanStep, PromptMode, ReflectionVerdict
 from ..memory import MemoryRetriever, render_memory_block
 from ..model_registry import create_chat_model
 from ..skills import SkillRegistry
@@ -30,7 +34,9 @@ _DIRECT_ANSWER_NOTE = (
     "or create artifacts unless the user explicitly changes that request."
 )
 _WORKSPACE_TOOL_NOTE = (
-    "This turn may use only local workspace inspection tools. Do not use web tools or artifact-writing tools."
+    "This turn may use only local workspace inspection tools. Do not use web tools or artifact-writing tools. "
+    "For symbol, function, tool, definition, usage, or location lookups, prefer search_code first with the "
+    "most specific query. Use list_files first only when the user asks to browse or enumerate files."
 )
 _LIVE_WEB_TOOL_NOTE = (
     "This turn may use live web/time tools when needed. Do not inspect local project files unless the user asks."
@@ -144,6 +150,34 @@ _WORKSPACE_INTENT_MARKERS = (
     "where is",
     "find usage",
     "search code",
+)
+_CODE_SEARCH_TOOL_INTENT_MARKERS = (
+    "定义",
+    "调用",
+    "引用",
+    "位置",
+    "使用",
+    "工具",
+    "函数",
+    "类",
+    "symbol",
+    "function",
+    "class",
+    "definition",
+    "usage",
+    "reference",
+    "where is",
+    "find usage",
+)
+_FILE_BROWSE_INTENT_MARKERS = (
+    "列出文件",
+    "有哪些文件",
+    "文件列表",
+    "目录",
+    "list files",
+    "browse files",
+    "file list",
+    "directory",
 )
 _LIVE_WEB_INTENT_MARKERS = (
     "联网",
@@ -323,14 +357,30 @@ def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
     return "direct_answer"
 
 
-def _tools_for_policy(policy: _ToolPolicy, tools: list[Any]) -> list[Any]:
+def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = "") -> list[Any]:
     if policy == "direct_answer":
         return []
     if policy == "workspace_lookup":
-        return [tool for tool in tools if getattr(tool, "name", "") in _WORKSPACE_TOOL_NAMES]
+        allowed_names = _WORKSPACE_TOOL_NAMES
+        normalized = " ".join(latest_user.strip().split())
+        if (
+            _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS)
+            and not _contains_any(normalized, _FILE_BROWSE_INTENT_MARKERS)
+        ):
+            allowed_names = frozenset({"search_code", "read_file"})
+        return [tool for tool in tools if getattr(tool, "name", "") in allowed_names]
     if policy == "live_web_research":
         return [tool for tool in tools if getattr(tool, "name", "") in _LIVE_WEB_TOOL_NAMES]
     return list(tools)
+
+
+def _context_budget_from_state(state: AgentState) -> ContextBudget:
+    value = state.get("context_budget")
+    if isinstance(value, ContextBudget):
+        return value
+    if isinstance(value, dict):
+        return ContextBudget.model_validate(value)
+    return ContextBudget()
 
 
 def _tool_policy_note(policy: _ToolPolicy) -> str:
@@ -395,6 +445,7 @@ def _repair_textual_tool_call_response(
     *,
     response: Any,
     prompt_messages: list[Any],
+    context_budget: ContextBudget,
     selected_model: str,
     selected_thinking_mode: str,
     available_tools: list[Any],
@@ -404,51 +455,65 @@ def _repair_textual_tool_call_response(
     if not _looks_like_textual_tool_call_artifact(response):
         return response
 
-    repaired = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
+    repaired_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_PROTOCOL_REPAIR_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(response)),
-        ]
+        ],
+        budget=context_budget,
+    )
+    repaired = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
+        repaired_prompt
     )
     if not _looks_like_textual_tool_call_artifact(repaired):
         return repaired
 
-    return model_for(selected_model, selected_thinking_mode).invoke(
+    fallback_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(repaired)),
-        ]
+        ],
+        budget=context_budget,
     )
+    return model_for(selected_model, selected_thinking_mode).invoke(fallback_prompt)
 
 
 def _repair_tool_free_answer_response(
     *,
     response: Any,
     prompt_messages: list[Any],
+    context_budget: ContextBudget,
     selected_model: str,
     selected_thinking_mode: str,
     model_for,
 ) -> Any:
+    if not _message_text(response).strip() and any(
+        isinstance(message, ToolMessage) for message in prompt_messages
+    ):
+        return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
+
     if not _looks_like_textual_tool_call_artifact(response):
         return response
 
-    repaired = model_for(selected_model, selected_thinking_mode).invoke(
+    repaired_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
             SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(response)),
-        ]
+        ],
+        budget=context_budget,
     )
+    repaired = model_for(selected_model, selected_thinking_mode).invoke(repaired_prompt)
     if not _looks_like_textual_tool_call_artifact(repaired):
         return repaired
 
-    final_attempt = model_for(selected_model, selected_thinking_mode).invoke(
+    final_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
@@ -456,8 +521,10 @@ def _repair_tool_free_answer_response(
             SystemMessage(content=_TOOL_CALL_LAST_RESORT_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(repaired)),
-        ]
+        ],
+        budget=context_budget,
     )
+    final_attempt = model_for(selected_model, selected_thinking_mode).invoke(final_prompt)
     if not _looks_like_textual_tool_call_artifact(final_attempt):
         return final_attempt
 
@@ -923,8 +990,9 @@ def build_graph(
         latest_user = _latest_human_message_text(list(state.get("messages", []) or []))
         if not latest_user:
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
+        context_budget = _context_budget_from_state(state)
         tool_policy = _classify_turn_tool_policy(latest_user)
-        available_tools = _tools_for_policy(tool_policy, tools)
+        available_tools = _tools_for_policy(tool_policy, tools, latest_user)
         policy_note = _tool_policy_note(tool_policy)
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
@@ -934,17 +1002,21 @@ def build_graph(
         prompt_messages = [SystemMessage(content=assembled), *messages]
         if policy_note:
             prompt_messages = [prompt_messages[0], SystemMessage(content=policy_note), *prompt_messages[1:]]
+        prompt_messages = apply_prompt_budget_guard(prompt_messages, budget=context_budget)
         if _should_force_tool_free_answer(list(state.get("messages", []) or [])):
-            response = model_for(selected_model, selected_thinking_mode).invoke(
+            forced_prompt = apply_prompt_budget_guard(
                 [
                     prompt_messages[0],
                     SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
                     *prompt_messages[1:],
-                ]
+                ],
+                budget=context_budget,
             )
+            response = model_for(selected_model, selected_thinking_mode).invoke(forced_prompt)
             response = _repair_tool_free_answer_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
@@ -954,6 +1026,7 @@ def build_graph(
             response = _repair_tool_free_answer_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
@@ -965,6 +1038,7 @@ def build_graph(
             response = _repair_textual_tool_call_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 available_tools=available_tools,
@@ -979,10 +1053,16 @@ def build_graph(
     def tool_executor(state: AgentState) -> dict[str, Any]:
         result_messages: list[ToolMessage] = []
         last_message = state["messages"][-1]
+        context_budget = _context_budget_from_state(state)
         for tool_call in getattr(last_message, "tool_calls", []) or []:
             tool = tools_by_name[tool_call["name"]]
             observation = tool.invoke(tool_call["args"])
-            result_messages.append(ToolMessage(content=str(observation), tool_call_id=tool_call["id"]))
+            trimmed_observation = trim_tool_observation(
+                observation,
+                tool_name=str(tool_call["name"]),
+                budget=context_budget,
+            )
+            result_messages.append(ToolMessage(content=trimmed_observation, tool_call_id=tool_call["id"]))
         return {"messages": result_messages}
 
     def summarize_turn(state: AgentState) -> dict[str, Any]:

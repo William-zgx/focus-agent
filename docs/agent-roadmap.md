@@ -12,13 +12,13 @@
 | 能力 | 当前实现 | 主要缺口 |
 |---|---|---|
 | **推理循环** | ReAct 单环：`agent_loop ↔ tool_executor`，最多 2 轮连续工具后强制收尾 | 无显式规划、无 reflection、无 replan |
-| **上下文** | `assemble_context` 拼 summary/pinned/constraints/findings/skills + rolling_summary | 消息靠尾部截断；`ContextBudget` 未硬约束；无语义压缩；工具观察整包回写 |
+| **上下文** | `assemble_context` 拼 summary/pinned/constraints/findings/skills + rolling_summary；`ContextBudget` 已有 prompt / tool observation 预算；模型调用前有确定性裁剪 | 语义压缩尚未落地；预算仍使用字符近似 token，而非 tokenizer 精算 |
 | **记忆** | 三层命名空间（user/project/root_thread）+ retriever + scorer + dedupe + policy | 写入链路未闭环：`summarize_turn` 只更新 `rolling_summary`；`memory_write_requests` 字段留空；无冲突消解与衰减 |
-| **工具** | 18 个内置工具；stream event；workspace 沙箱；SSRF 过滤 | 串行执行、无结果缓存、无前置参数校验、失败无统一降级、上下文塞满 18 个 schema |
+| **工具** | 18 个内置工具；stream event；workspace 沙箱；SSRF 过滤；按 turn intent 收窄工具集 | 串行执行、无结果缓存、无前置参数校验、失败降级仍是基础兜底 |
 | **分支/合并** | `merge_proposal` + `interrupt` HITL | 分支开/合靠人控；agent 不会主动建议 |
 | **技能** | 注册表 + active/available block | 激活来自外部 `skill_hints`，agent 不自选 |
 | **模型** | `create_chat_model` 多 provider | 不区分 planner/executor/critic；不做成本路由 |
-| **评估** | 仅 unit / integration 测试，无 agent 行为评测 | 无回放集、无 trajectory metrics、无 regression gate |
+| **评估** | `tests/eval/` smoke 套件、JSON/JSONL/HTML 报告、Eval CI 门禁与回归样本已落地 | trajectory metrics / replay 数据集 / 线上失败样本采样仍待补齐 |
 
 ---
 
@@ -719,9 +719,41 @@ def test_memory_soft_delete_removes_stale_low_importance():
 
 ---
 
-### D. 上下文工程：Token 预算硬约束 + 语义压缩（2 天工期）
+### D. 上下文工程：Token 预算硬约束 + 语义压缩 ✅ 一期已落地
 
-#### D.1 Token 计费与预算约束
+> 状态：2026-04-20 落地一期。当前已实现确定性 prompt 预算硬约束、工具观察裁剪、workspace 工具选择收窄与回归样本；语义压缩仍保留为后续增强。
+
+#### D.0 本轮落地策略与原则
+
+本轮不引入 LLM 语义压缩，也不重写整体 prompt 架构；优先把已经可确定的问题做成稳定、可测、可回归的运行时策略。
+
+**改动原则**
+
+1. **确定性优先**：预算控制使用字符近似 token，不依赖额外模型总结，避免在压力场景里引入新的随机性。
+2. **当前 turn 优先**：当前用户输入、显式约束、工具链尾部结果优先保留；旧 summary、retrieved memory、available skills 等低优先级块先被裁掉。
+3. **硬预算要真的硬**：正常情况下保留当前输入与约束；极端小预算下允许对当前输入做头尾裁剪，也不能继续把超长 prompt 送进模型。
+4. **工具观察先结构化裁剪**：`search_code` / `read_file` / web fetch / diff 等 JSON 结果优先保留 `path`、`line_number`、`start_line`、`end_line`、top snippets，再丢弃大段噪声字段。
+5. **工具策略靠运行时收窄，而不只靠提示词**：直答 turn 绑定 0 个工具；workspace turn 禁用 web/write 工具；符号、函数、定义、调用、引用、位置类查询进一步收窄到 `search_code` / `read_file`，避免模型反复先 `list_files`。
+6. **失败要可读兜底**：工具轮数耗尽后如果模型返回空内容或工具调用标记残留，优先用已有工具结果生成可读 fallback，而不是把空答案交给用户。
+
+**关键实现节点**
+
+- `ContextBudget` 增加 `prompt_token_limit`、`chars_per_token`、`tool_observation_token_limit`。
+- `apply_prompt_budget_guard(...)` 在每次主模型调用、repair 调用、tool-free fallback 调用前统一执行。
+- `trim_tool_observation(...)` 在 `tool_executor` 写入 `ToolMessage` 前执行，确保大观察不会整包回灌。
+- `_tools_for_policy(...)` 从 turn intent 推导可绑定工具集，必要时把 workspace 工具进一步限定到代码搜索路径。
+- `tests/eval/test_context_budget.py` 用确定性 fake model / fake tool 覆盖长历史直答与长工具输出污染问题。
+- `tests/eval/datasets/smoke.jsonl` 增加长历史直答回归样本，并继续用 smoke eval 守住 no-tools / workspace-only / forbidden-web 行为。
+
+**验证口径**
+
+- `make ci-test`：221 passed
+- `make lint`：passed
+- `uv run python -m tests.eval --suite smoke --concurrency 1 --fail-if-regression`：7/7 passed，`forbidden_tool_violation_rate=0`
+
+> 后续 D.1-D.4 保留原深化设计：其中“硬预算 + 工具观察裁剪”的确定性一期已按 D.0 落地；tokenizer 精算、LLM 语义压缩、独立 observe 节点和 artifact 化长观察仍是下一阶段候选。
+
+#### D.1 后续深化：Token 精算与预算约束
 
 **修改 `src/focus_agent/core/context_policy.py`**：
 ```python
@@ -785,7 +817,7 @@ async def assemble_context(state: AgentState, runtime: AppRuntime) -> dict:
     return context
 ```
 
-#### D.2 消息中段语义压缩
+#### D.2 后续深化：消息中段语义压缩
 
 **新增 `src/focus_agent/core/message_compressor.py`**：
 ```python
@@ -842,7 +874,7 @@ async def compress_message_history(
     return result
 ```
 
-#### D.3 工具结果裁剪
+#### D.3 后续深化：工具结果裁剪与 artifact 化
 
 **新增 observe 节点**：
 ```python

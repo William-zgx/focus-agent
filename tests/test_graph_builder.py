@@ -4,12 +4,14 @@ from langchain.tools import tool
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
+from focus_agent.core.types import ContextBudget
 from focus_agent.engine.graph_builder import (
     _classify_turn_tool_policy,
     _count_tool_call_rounds_since_latest_human,
     _fallback_answer_from_tool_results,
     _looks_like_textual_tool_call_artifact,
     _messages_for_model,
+    _repair_tool_free_answer_response,
     _should_force_tool_free_answer,
     _tools_for_policy,
     build_graph,
@@ -384,6 +386,11 @@ def test_fallback_answer_from_tool_results_preserves_workspace_findings():
 
 def test_tools_for_policy_filters_web_and_write_tools():
     @tool
+    def list_files(path: str = ".") -> str:
+        """List files."""
+        return path
+
+    @tool
     def search_code(query: str) -> str:
         """Search code."""
         return query
@@ -403,12 +410,21 @@ def test_tools_for_policy_filters_web_and_write_tools():
         """Write artifact."""
         return title + body
 
-    tools = [search_code, read_file, web_search, write_text_artifact]
+    tools = [list_files, search_code, read_file, web_search, write_text_artifact]
 
     assert [item.name for item in _tools_for_policy("direct_answer", tools)] == []
-    assert [item.name for item in _tools_for_policy("workspace_lookup", tools)] == ["search_code", "read_file"]
+    assert [item.name for item in _tools_for_policy("workspace_lookup", tools)] == [
+        "list_files",
+        "search_code",
+        "read_file",
+    ]
+    assert [
+        item.name
+        for item in _tools_for_policy("workspace_lookup", tools, "找到仓库里 web_search 工具的定义位置")
+    ] == ["search_code", "read_file"]
     assert [item.name for item in _tools_for_policy("live_web_research", tools)] == ["web_search"]
     assert [item.name for item in _tools_for_policy("execution", tools)] == [
+        "list_files",
         "search_code",
         "read_file",
         "web_search",
@@ -559,3 +575,102 @@ def test_graph_binds_only_workspace_tools_for_workspace_turn(monkeypatch):
         isinstance(message, SystemMessage) and "local workspace inspection tools" in message.content
         for message in fake_model.invocations[0]["messages"]
     )
+
+
+def test_graph_applies_prompt_budget_guard_before_direct_model_invoke(monkeypatch):
+    class FakeRunnable:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(list(prompt_messages))
+            return AIMessage(content="杨絮能传播种子，也能为城市春天提供一种自然观察材料。")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+            self.bound_tool_batches = []
+
+        def bind_tools(self, bound_tools):
+            self.bound_tool_batches.append([item.name for item in bound_tools])
+            return FakeRunnable(self)
+
+        def with_config(self, _config):
+            return FakeRunnable(self)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return query
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(web_search,)),
+    )
+
+    current_turn = "帮我写一段关于杨絮好处的短文，直接发给我。"
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content=current_turn)],
+            "selected_model": "openai:deepseek-reasoner",
+            "rolling_summary": "obsolete summary " * 500,
+            "user_constraints": [{"constraint": "Keep the current writing request authoritative."}],
+            "context_budget": ContextBudget(prompt_token_limit=320, chars_per_token=1),
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    prompt_messages = fake_model.invocations[0]
+    rendered = "\n".join(str(message.content) for message in prompt_messages)
+
+    assert result.value["messages"][-1].content.startswith("杨絮")
+    assert fake_model.bound_tool_batches == []
+    assert sum(len(str(message.content)) for message in prompt_messages) <= 320
+    assert current_turn in rendered
+    assert "Keep the current writing request authoritative." in rendered
+    assert "obsolete summary" not in rendered
+
+
+def test_empty_tool_free_repair_falls_back_to_tool_results():
+    prompt_messages = [
+        SystemMessage(content="system"),
+        HumanMessage(content="找到 assemble_context"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "name": "search_code",
+                    "args": {"query": "assemble_context"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=(
+                '{"results":[{"path":"src/focus_agent/core/context_policy.py",'
+                '"line_number":42,"line":"def assemble_context(state, mode):"}]}'
+            ),
+            tool_call_id="call-1",
+        ),
+    ]
+
+    repaired = _repair_tool_free_answer_response(
+        response=AIMessage(content=""),
+        prompt_messages=prompt_messages,
+        context_budget=ContextBudget(),
+        selected_model="openai:fake",
+        selected_thinking_mode="",
+        model_for=lambda *_args: None,
+    )
+
+    assert "context_policy.py:42" in repaired.content

@@ -193,6 +193,10 @@ def test_smoke_dataset_guards_tool_policy_regressions():
     assert direct_no_artifact.expected["max_tool_calls"] == 0
     assert "write_text_artifact" in direct_no_artifact.expected["must_not_call_tools"]
 
+    long_history_direct = cases["gt_long_history_direct_writing_no_tools"]
+    assert long_history_direct.expected["max_tool_calls"] == 0
+    assert long_history_direct.input["initial_state"]["context_budget"]["prompt_token_limit"] == 360
+
     workspace_lookup = cases["gt_workspace_lookup_no_web_for_tool_name"]
     assert workspace_lookup.expected["must_call_tools_any_order"] == ["search_code"]
     assert "web_search" in workspace_lookup.expected["must_not_call_tools"]
