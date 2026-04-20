@@ -36,6 +36,11 @@ def _run_suite_command(argv: Sequence[str]) -> int:
     parser.add_argument("--model", help="Override Settings.model for this run")
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--baseline", help="Path to a prior JSON report for regression comparison")
+    parser.add_argument(
+        "--fail-if-regression",
+        action="store_true",
+        help="Exit with code 2 when the baseline comparison flags regressions.",
+    )
     parser.add_argument("--report-json", help="Write a structured JSON report")
     parser.add_argument("--report-jsonl", help="Write per-case results as JSONL")
     parser.add_argument("--report-html", help="Write an HTML report")
@@ -106,7 +111,7 @@ def _run_suite_command(argv: Sequence[str]) -> int:
         )
         print(f"[eval] wrote HTML report to {args.report_html}")
 
-    if comparison.get("regressions"):
+    if comparison.get("regressions") and (args.fail_if_regression or args.baseline):
         return 2
     return 0 if summary.failed == 0 else 1
 

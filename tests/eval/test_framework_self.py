@@ -120,7 +120,7 @@ def test_run_case_with_tool_call(eval_runtime_factory):
     case = EvalCase.from_dict(
         {
             "id": "e2e_tool",
-            "input": {"user_message": "找 assemble_context"},
+            "input": {"user_message": "在仓库里找 assemble_context"},
             "expected": {
                 "must_call_tools_any_order": ["search_code"],
                 "answer_contains_any": ["graph_builder"],

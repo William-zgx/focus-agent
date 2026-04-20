@@ -18,6 +18,7 @@ uv run python -m tests.eval --suite all \
 # Compare against a stored baseline and fail CI on regression.
 uv run python -m tests.eval --suite smoke \
   --baseline eval-baselines/main.json \
+  --fail-if-regression \
   --report-json reports/current.json
 # (exit code 2 signals regressions; 1 signals case failures.)
 
@@ -79,6 +80,10 @@ else has sane defaults (`judge.rule = true`, `judge.llm.enabled = false`).
 3. If it should pass but doesn't, fix the agent (or the rubric) and re-run.
 4. Commit the dataset together with the code change that makes it pass.
 
+Smoke cases should include regression coverage for tool selection policy:
+direct writing/no-tools requests, explicit no-web requests, and workspace
+lookup requests that must not expose web tools.
+
 ## Judges
 
 | Judge             | When it runs                                        | Cost   |
@@ -115,9 +120,11 @@ Token + cost accounting only works when the underlying chat model exposes
 - any efficiency metric (tool_calls / llm_calls / tokens / latency / cost)
   growing > 20% vs baseline
 
-Use `--fail-if-regression` in CI. Store baselines as JSON (produced by
-`--report-json`) under `eval-baselines/` and bump them intentionally when
-you accept a trade-off.
+Use `--fail-if-regression` in CI when comparing against a baseline. Store
+baselines as JSON (produced by `--report-json`) under `eval-baselines/` and
+bump them intentionally when you accept a trade-off. Without a baseline, the
+CLI still fails when any case fails; the regression comparison simply has no
+prior metrics to diff against.
 
 ## Extending
 

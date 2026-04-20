@@ -10,7 +10,7 @@ from focus_agent.config import Settings
 from tests.eval.cli import main as eval_cli_main
 from tests.eval.metrics import aggregate_metrics, compare_baselines
 from tests.eval.reporting import load_result_records
-from tests.eval.runner.harness import EvalRuntime, run_case
+from tests.eval.runner.harness import EvalRuntime, load_dataset, run_case
 from tests.eval.schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
 
 
@@ -155,6 +155,7 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
         [
             "--dataset",
             str(dataset_path),
+            "--fail-if-regression",
             "--report-json",
             str(report_json),
             "--report-jsonl",
@@ -175,3 +176,23 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
 
     assert replay_code == 0
     assert "case_id=case-1" in captured.out
+
+
+def test_smoke_dataset_guards_tool_policy_regressions():
+    cases = {
+        case.id: case
+        for case in load_dataset(Path("tests/eval/datasets/smoke.jsonl"))
+    }
+
+    direct_writing = cases["gt_direct_writing_no_tools"]
+    assert direct_writing.expected["max_tool_calls"] == 0
+    assert "web_search" in direct_writing.expected["must_not_call_tools"]
+    assert "write_text_artifact" in direct_writing.expected["must_not_call_tools"]
+
+    direct_no_artifact = cases["gt_direct_writing_no_artifact"]
+    assert direct_no_artifact.expected["max_tool_calls"] == 0
+    assert "write_text_artifact" in direct_no_artifact.expected["must_not_call_tools"]
+
+    workspace_lookup = cases["gt_workspace_lookup_no_web_for_tool_name"]
+    assert workspace_lookup.expected["must_call_tools_any_order"] == ["search_code"]
+    assert "web_search" in workspace_lookup.expected["must_not_call_tools"]
