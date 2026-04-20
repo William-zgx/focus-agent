@@ -1222,6 +1222,25 @@ def test_total_cost_breakdown():
 
 ### G. 可观测性：Postgres Trajectory + 指标 + OpenTelemetry（2 天工期）
 
+#### G.0 当前 PostgreSQL 持久化迭代进度（2026-04-21）
+
+**已完成**
+
+- **Postgres primary persistence 已接主路径**：`create_runtime` 在 `DATABASE_URI` 存在时切到 `postgres-primary`，统一初始化 LangGraph `PostgresSaver` / `PostgresStore`、`PostgresBranchRepository`、`ArtifactMetadataRepository`，以及可选的 `PostgresTrajectoryRepository`；未配置数据库时仍保留本地 fallback，运行时切换已收口在同一入口。
+- **branch repo / schema 已落表**：`ensure_app_postgres_schema` 已管理 `focus_schema_migrations`，并创建 `focus_conversations`、`focus_thread_access`、`focus_branches`、`focus_artifacts` 及常用索引；`PostgresBranchRepository` 已覆盖分支、会话、thread access、归档/命名/merge proposal/merge decision 等核心读写。
+- **artifact metadata 已入库**：artifact 元数据通过 `ArtifactMetadataRepository` 写入 `focus_artifacts`，支持 upsert / list / get；当前策略保持“元数据进 Postgres、正文留文件系统”，避免把大文件正文直接塞进数据库。
+- **迁移 CLI 已可用**：`focus-agent-migrate-local-state` 已支持 `--dry-run`、`--report-path`、`--checkpoint-mode latest-stable`、`--artifact-scan`，可迁移 SQLite app state、LangGraph store/checkpoints，并显式初始化 Postgres trajectory schema；迁移报告和重复执行语义已有测试覆盖。
+- **测试/守护已补齐到可回归水平**：当前已具备 runtime backend selection、Postgres schema / branch repo、artifact metadata、migration CLI、trajectory repository 的单测覆盖；本地本轮验证通过 `tests/test_runtime_backend_selection.py`、`tests/test_postgres_branch_repository.py`、`tests/test_migrate_local_state.py`、`tests/test_trajectory_observability.py`、`tests/test_repository.py`，共 13 个相关用例；`tests/test_ui_smoke_script.py` 也已通过。smoke eval 数据集、JSON/HTML 报告和 CI 门禁已在，但仍主要承担行为回归守护，不等同于 Postgres 迁移验收。
+- **已补一轮真实 PostgreSQL 主路径 smoke**：使用干净验证库执行 `focus-agent-migrate-local-state` 导入本地 `.focus_agent`，随后以 `DATABASE_URI` 启动真实 API，完成 demo-token、会话列表、创建会话、`/v1/chat/turns`、`/v1/branches/fork`、`/v1/branches/tree` 一整条请求链；数据库侧确认 `focus_conversations` / `focus_thread_access` / `focus_branches` / `focus_trajectory_turns` 增长，本地 fallback 的 `branches.sqlite3` 与 `langgraph-*.pkl` mtime 未变化。
+
+**未完成 / 后续项**
+
+- **trajectory 查询/导出链路仍未补完**：当前已能写入 Postgres trajectory 表，但查询、导出、失败 turn 转 replay dataset 的 CLI 还没接上。
+- **迁移 CLI 暂不回灌历史 trajectory**：该工具目前只建 trajectory schema，不生成历史 turn 记录；历史观测数据迁移仍是后续项。
+- **OpenTelemetry 仍停留在方案位**：表结构和指标落库先行，图节点/span 级 tracing 还没有按本节方案完整接入。
+- **Postgres 验证仍缺浏览器与导出链路**：本轮已补过真实数据库 + 模型配置的 API 级 smoke，但浏览器侧链路、trajectory 查询/导出、以及更长时运行场景仍需要继续在主线环境里覆盖。
+- **持久化运维项待补**：retention、备份恢复、清理策略，以及更细粒度的 artifact 归属字段仍放在后续迭代。
+
 #### G.1 Trajectory 记录
 
 **已采用 Postgres 方案**：生产侧 `src/focus_agent/observability/trajectory.py` 定义 `TrajectoryStep` / `TurnTrajectoryRecord`，并把 eval 原有 “`AIMessage.tool_calls` + `ToolMessage` 配对”抽取逻辑迁到生产模块，避免 eval 与线上记录漂移。
@@ -1346,7 +1365,7 @@ def test_otel_spans_nested_correctly():
 | 4 | A. plan / reflect 节点 | 高 | 3d | 建议 H 先行 |
 | 5 | B. 工具并行 + 缓存 | 中高 | 2d | — |
 | 6 | F. 模型角色路由 | 中高 | 1d | A |
-| 7 | G. trajectory + 指标 | 中 | 2d | — |
+| 7 | G. trajectory 查询/导出 + OTel 收尾 | 中 | 2d | Postgres 主持久化已接入 |
 | 8 | E. 技能自选 + 分支自主 | 中 | 3d | A |
 
 **推荐顺序**：H → C → D → A → F → B → G → E。原因：先建尺子（H），再做最便宜的大提升（C），随后结构改造（A/D），最后收尾优化（B/F/G/E）。
