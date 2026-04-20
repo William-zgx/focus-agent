@@ -74,6 +74,8 @@ def test_containerization_docs_explain_current_boundary():
     assert "compose.prod.yaml" in readme_zh_text
     assert "Docker / Compose 部署" in architecture_text
     assert "compose.prod.yaml" in architecture_text
-    assert "基础 Docker / Compose 容器化部署路径" in roadmap_text
+    assert "compose.yaml" in roadmap_text
+    assert "compose.prod.yaml" in roadmap_text
+    assert "Docker 部署已分层" in roadmap_text
     assert "本地 Docker 联调" in deployment_text
     assert "生产/预发部署" in deployment_text

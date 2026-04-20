@@ -55,27 +55,51 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     setIsStreaming(true);
 
     try {
-      const stream = await client.streamTurn(
-        {
-          thread_id: requestThreadId,
-          message,
-          model: overrides?.model || options.selectedModel || undefined,
-          thinking_mode:
-            overrides?.thinkingMode || options.selectedThinkingMode || undefined,
-        },
-        { signal: controller.signal },
-      );
+      const requestPayload = {
+        thread_id: requestThreadId,
+        message,
+        model: overrides?.model || options.selectedModel || undefined,
+        thinking_mode:
+          overrides?.thinkingMode || options.selectedThinkingMode || undefined,
+      };
 
-      let nextState = createInitialStreamState();
-      for await (const event of stream) {
-        if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
-          break;
+      try {
+        const stream = await client.streamTurn(
+          requestPayload,
+          { signal: controller.signal },
+        );
+
+        let nextState = createInitialStreamState();
+        for await (const event of stream) {
+          if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
+            break;
+          }
+          nextState = reduceStreamEvent(nextState, event);
+          if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
+            break;
+          }
+          setStreamState(nextState);
         }
-        nextState = reduceStreamEvent(nextState, event);
-        if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
-          break;
+
+        if (nextState.failed && !controller.signal.aborted) {
+          throw new Error(nextState.failed.message || nextState.failed.error || "Stream turn failed.");
         }
-        setStreamState(nextState);
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          throw error;
+        }
+        const fallback = await client.sendTurn(requestPayload);
+        if (activeRequestIdRef.current === requestId && !controller.signal.aborted) {
+          setStreamState({
+            ...createInitialStreamState(),
+            visibleText: fallback.assistant_message || "",
+            latestTurnState: fallback as unknown as Record<string, unknown>,
+            isClosed: true,
+          });
+        }
       }
     } finally {
       const isLatestRequest = activeRequestIdRef.current === requestId;
