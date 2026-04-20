@@ -188,6 +188,46 @@ def test_stream_message_emits_heartbeat_during_long_running_turn(tmp_path: Path)
     assert any("event: turn.completed" in frame for frame in frames)
 
 
+def test_stream_message_does_not_complete_with_previous_assistant_reply(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class NoopStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="Previous answer that belongs to an older turn.")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=NoopStreamingGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="new turn")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert not any(
+        "event: visible_text.completed" in frame
+        and "Previous answer that belongs to an older turn." in frame
+        for frame in frames
+    )
+    assert any("event: turn.completed" in frame for frame in frames)
+
+
 def test_send_message_rejects_concurrent_turn_on_same_thread(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")

@@ -68,7 +68,13 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 
       let nextState = createInitialStreamState();
       for await (const event of stream) {
+        if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
+          break;
+        }
         nextState = reduceStreamEvent(nextState, event);
+        if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
+          break;
+        }
         setStreamState(nextState);
       }
     } finally {

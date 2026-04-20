@@ -80,6 +80,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"
     ).read_text()
     assert "setStreamState(null)" in stream_hook_text
+    assert 'activeRequestIdRef.current !== requestId || controller.signal.aborted' in stream_hook_text
 
 
 def test_react_web_app_restores_merged_branch_read_only_mode():

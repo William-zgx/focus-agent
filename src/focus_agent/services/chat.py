@@ -54,6 +54,12 @@ class ChatService:
             return json.dumps(content, ensure_ascii=False)
         return str(content)
 
+    def _latest_final_ai_text(self, messages: list[Any]) -> str | None:
+        for message in reversed(messages):
+            if isinstance(message, AIMessage) and not getattr(message, 'tool_calls', None):
+                return self._message_content_to_text(message.content)
+        return None
+
     def _serialize_message(self, message: Any) -> dict[str, Any]:
         return {
             'type': getattr(message, 'type', message.__class__.__name__.replace('Message', '').lower()),
@@ -258,11 +264,7 @@ class ChatService:
             model_id=selected_model,
             thinking_mode=values.get('selected_thinking_mode'),
         )
-        assistant_message: str | None = None
-        for message in reversed(messages):
-            if isinstance(message, AIMessage) and not getattr(message, 'tool_calls', None):
-                assistant_message = self._message_content_to_text(message.content)
-                break
+        assistant_message = self._latest_final_ai_text(list(messages))
         return {
             'thread_id': thread_id,
             'root_thread_id': context.root_thread_id,
@@ -548,11 +550,13 @@ class ChatService:
         visible_text_buffer = ''
         reasoning_buffer = ''
         try:
-            context, branch_meta, _ = self._preflight_thread_access(
+            context, branch_meta, initial_values = self._preflight_thread_access(
                 thread_id=thread_id,
                 user_id=user_id,
                 explicit_skill_hints=context_skill_hints,
             )
+            initial_messages = list(initial_values.get('messages', []) or [])
+            initial_message_count = len(initial_messages)
             self._acquire_thread_turn(thread_id=thread_id)
             config = build_invoke_config(
                 settings=self.runtime.settings,
@@ -671,7 +675,10 @@ class ChatService:
                     data={'type': chunk_type, 'namespace': namespace, 'data': data},
                 )
 
-            latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            latest_context, latest_branch_meta, final_values = self._context_for_thread(
+                thread_id=thread_id,
+                user_id=user_id,
+            )
             final_state = self._response_payload(
                 thread_id=thread_id,
                 user_id=user_id,
@@ -679,7 +686,13 @@ class ChatService:
                 branch_meta=latest_branch_meta,
                 interrupts=self._safe_get_interrupts(thread_id),
             )
-            final_visible_text = final_state.get('assistant_message') or visible_text_buffer
+            final_messages = list(final_values.get('messages', []) or [])
+            appended_messages = (
+                final_messages[initial_message_count:]
+                if len(final_messages) >= initial_message_count
+                else final_messages
+            )
+            final_visible_text = visible_text_buffer or self._latest_final_ai_text(appended_messages)
             if final_visible_text:
                 yield self._sse_frame(
                     event='visible_text.completed',

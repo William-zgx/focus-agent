@@ -25,6 +25,16 @@ _TOOL_EXHAUSTION_NOTE = (
     "You have enough tool results for this turn. Do not call more tools. "
     "Answer the user directly using the information already gathered, and state any uncertainty plainly."
 )
+_DIRECT_ANSWER_NOTE = (
+    "This turn should be answered directly. Do not call tools, browse the web, inspect files, "
+    "or create artifacts unless the user explicitly changes that request."
+)
+_WORKSPACE_TOOL_NOTE = (
+    "This turn may use only local workspace inspection tools. Do not use web tools or artifact-writing tools."
+)
+_LIVE_WEB_TOOL_NOTE = (
+    "This turn may use live web/time tools when needed. Do not inspect local project files unless the user asks."
+)
 _TOOL_CALL_PROTOCOL_REPAIR_NOTE = (
     "If you need a tool, emit a real tool call through the tool-calling interface. "
     "Do not write DSML tags, XML, or function-call payloads into the assistant text. "
@@ -42,6 +52,154 @@ _TOOL_CALL_LAST_RESORT_NOTE = (
 _TOOL_CALL_REPAIR_FALLBACK_TEXT = (
     "I gathered the tool results for this turn, but formatting the final answer failed. "
     "Please retry this message or switch to a more stable model."
+)
+_ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
+
+_WORKSPACE_TOOL_NAMES = frozenset(
+    {
+        "list_files",
+        "read_file",
+        "search_code",
+        "codebase_stats",
+        "git_status",
+        "git_diff",
+        "git_log",
+        "skills_list",
+        "skill_view",
+        "artifact_list",
+        "artifact_read",
+        "conversation_summary",
+    }
+)
+_LIVE_WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch", "current_utc_time"})
+
+_NO_TOOL_INTENT_MARKERS = (
+    "不要联网",
+    "不用联网",
+    "别联网",
+    "无需联网",
+    "不要搜索",
+    "不用搜索",
+    "别搜索",
+    "不要查",
+    "不用查",
+    "不用工具",
+    "不要用工具",
+    "不使用工具",
+    "直接回答",
+    "直接发给我",
+    "只回答",
+    "一句话说明",
+    "一句话解释",
+    "single word",
+    "no tools",
+    "without tools",
+    "do not browse",
+    "don't browse",
+    "do not search",
+    "don't search",
+)
+_CREATIVE_DIRECT_MARKERS = (
+    "写一篇",
+    "写一封",
+    "帮我写",
+    "作文",
+    "文案",
+    "润色",
+    "翻译",
+    "改写",
+    "总结下面",
+    "解释一下",
+    "说明什么是",
+    "是什么",
+    "讲一下",
+    "draft",
+    "rewrite",
+    "translate",
+    "summarize",
+    "explain",
+)
+_WORKSPACE_INTENT_MARKERS = (
+    "仓库",
+    "项目",
+    "代码",
+    "文件",
+    "路径",
+    "实现",
+    "定义",
+    "调用",
+    "引用",
+    "位置",
+    "测试用例",
+    "readme",
+    "repo",
+    "repository",
+    "codebase",
+    "source",
+    "file",
+    "function",
+    "class",
+    "definition",
+    "implementation",
+    "where is",
+    "find usage",
+    "search code",
+)
+_LIVE_WEB_INTENT_MARKERS = (
+    "联网",
+    "上网",
+    "搜索",
+    "查一下",
+    "查下",
+    "搜一下",
+    "最新",
+    "今天",
+    "现在",
+    "当前",
+    "实时",
+    "新闻",
+    "天气",
+    "价格",
+    "汇率",
+    "股价",
+    "browse",
+    "web",
+    "search",
+    "latest",
+    "today",
+    "current",
+    "now",
+    "weather",
+    "news",
+    "price",
+)
+_EXECUTION_INTENT_MARKERS = (
+    "开始修复",
+    "修复",
+    "实现",
+    "改一下",
+    "修改",
+    "复现",
+    "测试",
+    "跑一下",
+    "运行",
+    "启动",
+    "构建",
+    "提交",
+    "推送",
+    "部署",
+    "fix",
+    "implement",
+    "change",
+    "modify",
+    "reproduce",
+    "test",
+    "run",
+    "start",
+    "build",
+    "commit",
+    "push",
+    "deploy",
 )
 
 
@@ -64,13 +222,29 @@ def _find_trailing_tool_span_start(messages: list[Any]) -> int | None:
     return None
 
 
+def _collapse_unanswered_trailing_humans(messages: list[Any]) -> list[Any]:
+    if len(messages) < 2:
+        return messages
+
+    tail_start = len(messages)
+    index = len(messages) - 1
+    while index >= 0 and isinstance(messages[index], HumanMessage):
+        tail_start = index
+        index -= 1
+
+    trailing_human_count = len(messages) - tail_start
+    if trailing_human_count <= 1:
+        return messages
+    return [*messages[:tail_start], messages[-1]]
+
+
 def _messages_for_model(state: AgentState) -> list[Any]:
     recent_messages = list(state.get("recent_messages") or [])
     messages = list(state.get("messages", []) or [])
     trailing_tool_span_start = _find_trailing_tool_span_start(messages)
     if trailing_tool_span_start is None:
-        return recent_messages or messages
-    return [*recent_messages, *messages[trailing_tool_span_start:]]
+        return _collapse_unanswered_trailing_humans(recent_messages or messages)
+    return _collapse_unanswered_trailing_humans([*recent_messages, *messages[trailing_tool_span_start:]])
 
 
 def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
@@ -124,19 +298,113 @@ def _latest_final_ai_text(messages: list[Any]) -> str:
     return ""
 
 
+def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in markers)
+
+
+def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
+    normalized = " ".join(text.strip().split())
+    if not normalized:
+        return "direct_answer"
+
+    has_no_tool_intent = _contains_any(normalized, _NO_TOOL_INTENT_MARKERS)
+    if has_no_tool_intent:
+        return "direct_answer"
+
+    if _contains_any(normalized, _EXECUTION_INTENT_MARKERS):
+        return "execution"
+    if _contains_any(normalized, _WORKSPACE_INTENT_MARKERS):
+        return "workspace_lookup"
+    if _contains_any(normalized, _LIVE_WEB_INTENT_MARKERS):
+        return "live_web_research"
+    if _contains_any(normalized, _CREATIVE_DIRECT_MARKERS):
+        return "direct_answer"
+    return "direct_answer"
+
+
+def _tools_for_policy(policy: _ToolPolicy, tools: list[Any]) -> list[Any]:
+    if policy == "direct_answer":
+        return []
+    if policy == "workspace_lookup":
+        return [tool for tool in tools if getattr(tool, "name", "") in _WORKSPACE_TOOL_NAMES]
+    if policy == "live_web_research":
+        return [tool for tool in tools if getattr(tool, "name", "") in _LIVE_WEB_TOOL_NAMES]
+    return list(tools)
+
+
+def _tool_policy_note(policy: _ToolPolicy) -> str:
+    if policy == "direct_answer":
+        return _DIRECT_ANSWER_NOTE
+    if policy == "workspace_lookup":
+        return _WORKSPACE_TOOL_NOTE
+    if policy == "live_web_research":
+        return _LIVE_WEB_TOOL_NOTE
+    return ""
+
+
+def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
+    text = " ".join(str(value).split())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
+
+def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
+    snippets: list[str] = []
+    for message in prompt_messages:
+        if not isinstance(message, ToolMessage):
+            continue
+        raw = _message_text(message)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+
+        if isinstance(payload, dict):
+            results = payload.get("results")
+            if isinstance(results, list):
+                for result in results[:8]:
+                    if not isinstance(result, dict):
+                        continue
+                    path = result.get("path")
+                    line_number = result.get("line_number")
+                    line = result.get("line")
+                    if path and line_number:
+                        snippets.append(f"- {path}:{line_number} {_truncate_inline(line)}")
+                    elif path:
+                        snippets.append(f"- {path} {_truncate_inline(line or result)}")
+            path = payload.get("path")
+            if path and not any(str(path) in snippet for snippet in snippets):
+                line_hint = ""
+                start_line = payload.get("start_line")
+                end_line = payload.get("end_line")
+                if start_line and end_line:
+                    line_hint = f":{start_line}-{end_line}"
+                snippets.append(f"- {path}{line_hint}")
+        elif raw:
+            snippets.append(f"- {_truncate_inline(raw)}")
+
+    if not snippets:
+        return _TOOL_CALL_REPAIR_FALLBACK_TEXT
+    unique_snippets = list(dict.fromkeys(snippets))
+    return "模型最终回答格式化失败，我先把已拿到的工具结果整理如下：\n" + "\n".join(unique_snippets[:10])
+
+
 def _repair_textual_tool_call_response(
     *,
     response: Any,
     prompt_messages: list[Any],
     selected_model: str,
     selected_thinking_mode: str,
+    available_tools: list[Any],
     model_for,
     model_with_tools_for,
 ) -> Any:
     if not _looks_like_textual_tool_call_artifact(response):
         return response
 
-    repaired = model_with_tools_for(selected_model, selected_thinking_mode).invoke(
+    repaired = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_PROTOCOL_REPAIR_NOTE),
@@ -193,7 +461,7 @@ def _repair_tool_free_answer_response(
     if not _looks_like_textual_tool_call_artifact(final_attempt):
         return final_attempt
 
-    return AIMessage(content=_TOOL_CALL_REPAIR_FALLBACK_TEXT)
+    return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
 
 
 _PLAN_TRIGGER_KEYWORDS = (
@@ -396,12 +664,16 @@ def build_graph(
         model_cache[cache_key] = model
         return model
 
-    def model_with_tools_for(model_id: str, thinking_mode: str):
-        cache_key = f"{model_id}|{thinking_mode or ''}"
+    def model_with_tools_for(model_id: str, thinking_mode: str, available_tools: list[Any] | None = None):
+        selected_tools = list(tools if available_tools is None else available_tools)
+        tool_key = ",".join(sorted(str(getattr(tool, "name", "")) for tool in selected_tools))
+        cache_key = f"{model_id}|{thinking_mode or ''}|{tool_key}"
         cached = model_with_tools_cache.get(cache_key)
         if cached is not None:
             return cached
-        bound = base_model_for(model_id, thinking_mode).bind_tools(tools).with_config({"run_name": "focus_agent_model"})
+        bound = base_model_for(model_id, thinking_mode).bind_tools(selected_tools).with_config(
+            {"run_name": "focus_agent_model"}
+        )
         model_with_tools_cache[cache_key] = bound
         return bound
 
@@ -648,12 +920,20 @@ def build_graph(
         selected_model = str(state.get("selected_model") or settings.model)
         selected_thinking_mode = str(state.get("selected_thinking_mode") or "")
         assembled = state.get("assembled_context", "")
+        latest_user = _latest_human_message_text(list(state.get("messages", []) or []))
+        if not latest_user:
+            latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
+        tool_policy = _classify_turn_tool_policy(latest_user)
+        available_tools = _tools_for_policy(tool_policy, tools)
+        policy_note = _tool_policy_note(tool_policy)
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
             plan_block = _format_plan_block(plan, state.get("current_step_id", ""))
             if plan_block and plan_block not in assembled:
                 assembled = f"{assembled}\n\n{plan_block}".strip()
         prompt_messages = [SystemMessage(content=assembled), *messages]
+        if policy_note:
+            prompt_messages = [prompt_messages[0], SystemMessage(content=policy_note), *prompt_messages[1:]]
         if _should_force_tool_free_answer(list(state.get("messages", []) or [])):
             response = model_for(selected_model, selected_thinking_mode).invoke(
                 [
@@ -669,13 +949,25 @@ def build_graph(
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
             )
+        elif not available_tools:
+            response = model_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+            response = _repair_tool_free_answer_response(
+                response=response,
+                prompt_messages=prompt_messages,
+                selected_model=selected_model,
+                selected_thinking_mode=selected_thinking_mode,
+                model_for=model_for,
+            )
         else:
-            response = model_with_tools_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+            response = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
+                prompt_messages
+            )
             response = _repair_textual_tool_call_response(
                 response=response,
                 prompt_messages=prompt_messages,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
+                available_tools=available_tools,
                 model_for=model_for,
                 model_with_tools_for=model_with_tools_for,
             )
