@@ -210,8 +210,9 @@ make ui-smoke
 
 - 文档索引: [`docs/README.md`](docs/README.md)
 - 架构与部署: [`docs/architecture.md`](docs/architecture.md)
+- Docker 部署说明: [`docs/docker-deployment.md`](docs/docker-deployment.md)
 - 路线图: [`docs/roadmap.md`](docs/roadmap.md)
-- Agent 能力设计: [`docs/agent-roadmap.md`](docs/agent-roadmap.md)
+- Agent 能力路线图: [`docs/agent-roadmap.md`](docs/agent-roadmap.md)
 - 前端 SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
 - Tool / Skill 边界设计: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
 - 本地环境变量示例: [`docs/local.env.example`](docs/local.env.example)
