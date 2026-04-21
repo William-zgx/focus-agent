@@ -1,407 +1,207 @@
-# Focus Agent 技术架构现状与优化路线
+# Focus Agent 架构现状
 
-## 一、项目概览
+更新时间：2026-04-22
 
-**Focus Agent** 是一个 Python AI 应用框架，核心特点是支持分支对话、实时流响应、访问控制和轻量级 Web UI。项目采用**单体应用 + 前后端分离**架构，Python 后端（FastAPI + LangGraph）+ React 前端 + TypeScript SDK。
+本文描述当前已经落地的工程架构、部署边界和运维观测能力。路线图和后续优先级请看 [roadmap.md](roadmap.md)。
 
-### 项目规模
-- **Python 代码**：70+ 个文件（包含新增中间件层）
-- **后端框架**：FastAPI + LangGraph + LangChain
-- **前端框架**：React 19 + Vite + Tailwind CSS 4
-- **包管理**：pnpm（前端）+ Python 3.11+（后端）
-- **测试**：pytest（后端）+ 单元测试 27+ 个文件
+## 1. 项目概览
 
----
+**Focus Agent** 是一个 Python AI 应用框架，核心能力是分支式对话、流式响应、受控 merge-back、访问控制、React Web App 和 TypeScript SDK。
 
-## 二、当前架构评价
+当前整体形态是 **FastAPI + LangGraph 后端、React + Vite 前端、Postgres primary persistence、本地 fallback persistence**：
 
-### 2.1 核心优势
+- Python 后端：FastAPI、LangGraph、LangChain、Pydantic
+- Web App：React 19、Vite、TanStack Router、TanStack Query、Zustand
+- SDK：`frontend-sdk` 提供 typed browser / Node client
+- 持久化：Postgres primary path；未配置 `DATABASE_URI` 时，本机启动脚本会托管 repo-local PostgreSQL，裸跑二进制时仍可使用本地 fallback
+- 测试：pytest 后端/API/运行时测试，前端 SDK 类型检查与构建检查
 
-| 方面 | 评价 | 说明 |
-|------|------|------|
-| **设计理念** | ⭐⭐⭐⭐⭐ | 独特的分支对话设计，解决长对话中的上下文混乱问题 |
-| **代码组织** | ⭐⭐⭐⭐ | 模块化清晰，关注点分离好（api/services/core/engine/skills/security） |
-| **开发体验** | ⭐⭐⭐⭐ | 完整的本地开发支持（热重载、demo token、多模型适配） |
-| **前后端解耦** | ⭐⭐⭐⭐ | TypeScript SDK + REST API 设计良好，前端已集成 Zustand + React Query |
-| **文档质量** | ⭐⭐⭐⭐ | README 清晰，快速开始文档完善 |
-| **可扩展性** | ⭐⭐⭐⭐ | 技能插件系统、工具注册表设计合理 |
-| **安全机制** | ⭐⭐⭐ | JWT 认证实现稳定，但缺少网络层防护 |
+## 2. 当前架构
 
-### 2.2 原有问题与改进现状
-
-#### A. 安全性（✅ 已改进）
-
-**原问题**：缺少 CORS、速率限制、请求追踪
-
-**实现方案**：
-- ✅ **CORS 中间件** - 可配置的跨域资源共享（`CORS_ALLOWED_ORIGINS`）
-- ✅ **滑动窗口限流** - 无外部依赖的内存限流器，聊天路由限速更严格
-- ✅ **请求 ID 追踪** - 每个请求自动生成或保留客户端传入的 `X-Request-ID`
-- ✅ **统一错误响应** - 标准信封格式 `{code, message, data, request_id}`
-
-**新增配置**（在 `.env.example` 中）：
-```env
-CORS_ALLOWED_ORIGINS=http://localhost:5173,https://app.example.com
-CORS_ALLOW_CREDENTIALS=true
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_PER_MINUTE=60
-RATE_LIMIT_CHAT_PER_MINUTE=20
+```text
+FastAPI
+├── middleware
+│   ├── request id
+│   ├── CORS
+│   └── sliding-window rate limit
+├── API routes
+│   ├── /healthz
+│   ├── /v1/auth/*
+│   ├── /v1/conversations/*
+│   ├── /v1/chat/*
+│   ├── /v1/branches/*
+│   └── /v1/observability/trajectory*
+├── services
+│   ├── ChatService
+│   └── BranchService
+├── engine
+│   ├── LangGraph runtime
+│   ├── Plan-Act-Reflect path
+│   ├── memory read/write pipeline
+│   └── tool runtime metadata
+├── repositories
+│   ├── Postgres conversation / branch / artifact metadata
+│   ├── LangGraph Postgres checkpoint/store
+│   └── Postgres trajectory repository
+└── web
+    ├── React build serving
+    └── Vite dev-server redirect in local mode
 ```
 
-**关键文件**：
-- `src/focus_agent/security/rate_limit.py` - 限流核心（线程安全）
-- `src/focus_agent/api/middleware.py` - CORS + 请求 ID + 限流中间件
-- `src/focus_agent/api/errors.py` - 统一异常处理和响应格式
-
-#### B. 可观测性（部分改进）
-
-**原问题**：缺少结构化日志、请求追踪、指标收集
-
-**实现方案**：
-- ✅ **请求级别日志** - 每个请求记录 `request_id`, `path`, `status`, `duration_ms`
-- ⏳ **分布式追踪** - 中间件预留了 `request.state.request_id`，可集成 OpenTelemetry/Jaeger
-- ⏳ **性能指标** - 中间件已记录响应时间，可集成 Prometheus
-
-#### C. 前端性能（✅ 已改进）
-
-**原问题**：无代码分割策略，首屏加载缓慢
-
-**实现方案**：
-- ✅ **Bundle 分割** - 在 `vite.config.ts` 中配置手动 chunks：
-  - `react-vendor.js` - React + ReactDOM
-  - `router.js` - TanStack Router
-  - `query.js` - TanStack Query + DevTools
-  - `state.js` - Zustand
-  - `app.js` - 应用代码
-
-**预期收益**：首屏 -40%，路由加载 -60%
-
-#### D. 架构层面（未改进，需产品决策）
-
-1. **数据持久化分层** - LangGraph checkpoint 与应用数据混在一起
-2. **API 标准化** - 缺少分页、过滤、排序规范（可在需要时增量添加）
-3. **前端状态管理文档** - Zustand + React Query 已集成，缺少使用指南
-
----
-
-## 三、实施完成清单
-
-### 第一阶段（✅ 已完成）- 安全加固
-
-| 任务 | 状态 | 文件 |
-|------|------|------|
-| 添加 CORS 中间件 | ✅ | `src/focus_agent/api/middleware.py` |
-| 实现滑动窗口限流 | ✅ | `src/focus_agent/security/rate_limit.py` |
-| 请求 ID 追踪 | ✅ | `src/focus_agent/api/middleware.py` |
-| 统一错误响应格式 | ✅ | `src/focus_agent/api/errors.py` |
-| 更新 Settings 配置 | ✅ | `src/focus_agent/config.py` |
-| 中间件测试覆盖 | ✅ | `tests/test_api_middleware.py` |
-
-### 第二阶段（⏳ 待做）- 质量提升
-
-| 任务 | 优先级 | 说明 |
-|------|--------|------|
-| 前端状态管理文档 | 中 | 补充 Zustand + React Query 最佳实践指南 |
-| 单元测试扩充 | 中 | 补充关键业务逻辑的测试（目前 27 个测试文件） |
-| 集成测试 | 低 | API 端到端测试（需 test database） |
-
-### 第三阶段（⏳ 进行中）- 运维就绪
-
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| OpenTelemetry 集成 | ⏳ 待做 | 生产环境决策 |
-| Docker 容器化（基础版） | ✅ 已完成 | 提供多阶段 `Dockerfile`、`compose.yaml`、`/data` volume 持久化 |
-| CI/CD 增强 | ⏳ 待做 | 已有基础 `.github/workflows/ci.yml` |
-
----
-
-## 四、架构分层详解
-
-### 后端架构
-
-```
-FastAPI App
-├── 中间件层（新增）
-│   ├── RequestIdMiddleware     - 请求追踪
-│   ├── RateLimitMiddleware    - 流量控制
-│   └── CORSMiddleware         - 跨域资源
-├── 异常处理器（新增）
-│   ├── HTTPException          - 业务错误
-│   ├── ValidationError        - 参数验证
-│   └── UnhandledException     - 500 错误
-├── API 层（routes）
-│   ├── /healthz               - 健康检查
-│   ├── /v1/auth/*             - 认证相关
-│   ├── /v1/conversations/*    - 对话管理
-│   ├── /v1/chat/*             - 聊天服务
-│   └── /v1/branches/*         - 分支管理
-├── 服务层（services）
-│   ├── ChatService            - 聊天逻辑
-│   ├── BranchService          - 分支操作
-│   └── ...
-├── 核心层（core）
-│   ├── branching.py           - 分支模型
-│   ├── context_policy.py      - 上下文管理
-│   └── types.py               - 共享类型
-├── 引擎层（engine）
-│   └── runtime.py             - LangGraph 运行时
-└── 安全层（security）
-    ├── tokens.py              - JWT 认证
-    └── rate_limit.py          - 流量限流（新增）
+```text
+apps/web
+├── app/                      shell, routing, providers
+├── pages/
+│   ├── thread/               chat, branch tree, merge review route
+│   └── observability/        trajectory review console
+├── features/
+│   ├── branch-tree
+│   ├── conversations
+│   ├── merge-review
+│   ├── thread-stream
+│   └── trajectory-observability
+└── shared/                   SDK provider, UI primitives, query keys, styles
 ```
 
-### 前端架构
+## 3. 已落地能力
 
-```
-Vite App
-├── src/
-│   ├── app/                   - 全局组件
-│   ├── pages/                 - 页面级组件
-│   ├── features/              - 功能模块
-│   ├── entities/              - 业务实体
-│   ├── shared/                - 共享工具
-│   └── main.tsx               - 入口
-├── vite.config.ts             - 构建配置（新增 chunk 分割）
-└── tsconfig.json              - TypeScript 配置
+### 3.1 分支会话与 merge-back
 
-Bundle 分割（生成在 dist/assets/）
-├── react-vendor-xxx.js        - React 生态
-├── router-xxx.js              - 路由框架
-├── query-xxx.js               - 数据获取
-├── state-xxx.js               - 状态管理
-└── app-xxx.js                 - 应用代码
-```
+- branch tree、fork、archive、rename、merge review 已接入 Web App 和 SDK
+- merged branch 在前后端都按只读处理，不能继续追加 turn 或继续 fork
+- branch role 会在第一轮分支交互后刷新，用于区分 execute / verify / deep dive / alternatives 等语义
+- imported conclusion 会写回父线程可见状态，并可进入 memory pipeline
 
----
+### 3.2 Web App 与 SDK
 
-## 五、部署与运维指南
+- `/app` 由 React Web App 接管；开发模式可重定向到 Vite dev server
+- Web App 覆盖会话列表、聊天、流式响应、分支树、merge review、模型状态、trajectory review console
+- `frontend-sdk` 覆盖 conversation、thread state、branch action、merge review、trajectory observability 等 typed client 能力
+- Vite bundle 分割已配置，React / router / query / state / app 代码分块构建
 
-### 本地开发启动
+### 3.3 安全与 API 契约
+
+- CORS、请求 ID、限流和统一错误信封已落地
+- 认证默认走 Bearer token，demo token bootstrap 仅适合本地与演示
+- 线程和会话操作走 owner / access 检查
+- API contract 通过 Pydantic schema、SDK 类型和 API shape 测试保持对齐
+
+### 3.4 持久化
+
+配置 `DATABASE_URI` 后，主运行态数据走 Postgres primary persistence：
+
+- conversation / branch / thread access
+- LangGraph checkpoint/store
+- artifact metadata
+- trajectory turn / step observability tables
+
+artifact 正文仍保留在文件系统，避免把大文件直接塞进数据库。
+
+本机启动命令（`make api`、`make dev`、`make serve-dev`、`make serve-prod`）会在未显式设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL，并把运行态写入 `.focus_agent/postgres/runtime.env`。直接运行 `.venv/bin/focus-agent-api` 时需要自行设置 `DATABASE_URI`，否则会使用本地 fallback 路径。
+
+历史 `.focus_agent` 状态可通过 `focus-agent-migrate-local-state` 显式迁入 Postgres；服务启动时不会自动迁移历史数据。
+
+### 3.5 Agent 主路径
+
+- Plan-Act-Reflect 已接入主链，并保留退化到 ReAct 的路径
+- memory retrieve / extract / write 已接图
+- context budget 与长工具观察裁剪已落地
+- tool runtime 支持并行安全分组、缓存、fallback metadata 和观察裁剪
+- eval framework 支持 rule / LLM / trajectory judge、报告聚合、trajectory replay / promote
+
+### 3.6 Observability
+
+当前可观测性分两层：
+
+- 请求层：request id、结构化请求日志、响应耗时、统一错误信封
+- agent trajectory 层：Postgres trajectory turn / step 记录、`focus-agent-trajectory` CLI、API list/detail/stats、Web review console、单条 replay / promote 动作预览
+
+Web 入口：
+
+- `/app/observability/trajectory`
+
+API 入口：
+
+- `GET /v1/observability/trajectory`
+- `GET /v1/observability/trajectory/stats`
+- `GET /v1/observability/trajectory/{turn_id}`
+- `POST /v1/observability/trajectory/{turn_id}/replay`
+- `POST /v1/observability/trajectory/{turn_id}/promote`
+
+仍未完成的是 OpenTelemetry / span 级 tracing、真实生产运营视图和更长时浏览器链路验证。
+
+## 4. Docker / Compose 部署与本机启动边界
+
+### 本机开发
+
+- 推荐 `make api`、`make serve`、`make serve-dev`、`make serve-prod`
+- 未设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL
+- 前端开发可用 `make web-dev`，并通过 `WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app` 让 `/app` 跳转到 Vite
+
+Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 [compose.prod.yaml](../compose.prod.yaml)。部署、环境变量、demo token 和外部 PostgreSQL 边界集中维护在 [docker-deployment.md](docker-deployment.md)。
+
+## 5. 当前限制
+
+- 限流仍是进程内滑动窗口，不适合多副本共享额度；多副本部署应改用 Redis 等外部限流存储
+- OpenTelemetry / span tracing 尚未完成
+- trajectory review console 已有基础能力，但还需要真实浏览器链路、对比/批量治理和生产运营视图
+- context budget 仍以确定性裁剪和近似预算为主，tokenizer 精算与语义压缩仍在路线图中
+- Model Routing 尚未接入 planner / executor / reflect 分工
+
+## 6. 推荐验证
+
+日常改动优先使用：
 
 ```bash
-# 1. 创建虚拟环境并安装依赖
-python -m venv .venv
-.venv/Scripts/pip install -e '.[openai,dev]'
-
-# 2. 安装前端依赖
-pnpm install
-
-# 3. 启动（前后端热重载）
-make serve          # 或 ./scripts/serve-dev.sh
+make ci-test
+make web-check
+make sdk-check
 ```
 
-访问：
-- **API**：http://127.0.0.1:8000
-- **Web 应用**：http://127.0.0.1:5173/app
-- **API 文档**：http://127.0.0.1:8000/docs
-
-### 生产部署
+影响前端或 SDK 时补：
 
 ```bash
-# 1. 构建前端
-pnpm web:build
-
-# 2. 启动 API（前端静态文件由 FastAPI 服务）
-API_RELOAD=0 focus-agent-api
+make web-build
+make sdk-build
 ```
 
-**重要配置**（`.env`）：
-```env
-# 安全设置
-AUTH_DEMO_TOKENS_ENABLED=false
-AUTH_JWT_SECRET=<strong-random-secret>
-CORS_ALLOWED_ORIGINS=https://app.example.com
-
-# 限流（共享环境必需）
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_PER_MINUTE=60
-RATE_LIMIT_CHAT_PER_MINUTE=20
-
-# 可选：数据库后端
-DATABASE_URI=postgresql://user:pass@localhost/focus_agent
-```
-
-### Docker / Compose 部署
-
-当前仓库已提供推荐版容器化部署路径：
-
-- `Dockerfile` 通过多阶段构建生成 `apps/web/dist`，最终镜像直接运行 `focus-agent-api`
-- `compose.yaml` 用于本地 Docker 联调，显式启动 `focus-agent + postgres`，并默认使用 named volume 保存 `/data` 与 PostgreSQL 数据目录
-- `compose.prod.yaml` 用于生产/预发模板，只启动 `focus-agent` 并要求外部 PostgreSQL
-- 容器默认以 `API_HOST=0.0.0.0`、`API_RELOAD=0` 启动，并开启 demo token 自举以匹配内置 Web 应用的本地体验；若用于共享环境，需显式设置 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
-- 详细部署规范见 `docs/docker-deployment.md`
+影响部署、持久化或 observability 时至少关注：
 
 ```bash
-export FOCUS_AGENT_AUTH_JWT_SECRET=<strong-random-secret>
-docker compose up --build
+uv run pytest \
+  tests/test_containerization_scaffold.py \
+  tests/test_local_startup_docs.py \
+  tests/test_runtime_backend_selection.py \
+  tests/test_api_trajectory_observability.py \
+  tests/test_api_trajectory_actions.py \
+  tests/test_trajectory_cli.py
 ```
 
-可选配置：
+影响主 agent 路径时补：
 
-- `FOCUS_AGENT_MODEL=openai:gpt-4.1-mini`
-- `FOCUS_AGENT_DATABASE_URI=postgresql://user:pass@host:5432/db?sslmode=disable`
-
-说明：
-
-- 不设置 `FOCUS_AGENT_DATABASE_URI` 时，`compose.yaml` 会默认连接其内置 `postgres` service；只有在显式关闭或改用其他部署方式时，容器才可能继续落回 `/data/branches.sqlite3` 与 `/data/langgraph-*.pkl`
-- 设置 `FOCUS_AGENT_DATABASE_URI` 后，会切到 PostgreSQL 主持久化路径：`focus_conversations` / `focus_thread_access` / `focus_branches` / `focus_artifacts` 等应用表、LangGraph checkpoint/store，以及 trajectory 观测表都会进入 Postgres；artifact 正文仍保留在文件系统
-- provider 密钥和 Base URL 默认读 `/data/local.env`；如果想从宿主 shell 临时覆盖，则导出 Compose 透传的变量，例如 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
-- 历史 repo-local 状态可通过 `focus-agent-migrate-local-state` 显式迁入 Postgres；迁移默认不在服务启动时自动执行
-
----
-
-## 六、监控与告警指标
-
-建议在生产环境监控以下关键指标：
-
-| 指标 | 目标 | 工具 |
-|------|------|------|
-| API 响应时间 | P95 < 200ms | 从日志中提取 `duration_ms` |
-| 错误率 | < 0.1% | 计数 `status_code >= 500` |
-| 限流触发率 | < 5% | 计数 `status_code == 429` |
-| 认证失败率 | < 1% | 计数 `status_code == 401` |
-| 前端首屏时间 | < 2s | 浏览器性能 API |
-| 聊天流完成率 | > 99% | 监控 `/v1/chat/turns/stream` 完成 |
-
----
-
-## 七、已知限制与未来优化
-
-### 当前限制
-
-1. **限流实现**
-   - 基于内存，不支持分布式部署
-   - 改进：可替换为 Redis 后端（保持同样的 `RateLimiter` 接口）
-
-2. **持久化层**
-   - 当前已支持双后端：本地 fallback 使用 SQLite + `langgraph-*.pkl`，Postgres primary 使用应用自有表 + LangGraph Postgres backend
-   - artifact 元数据进入 Postgres，但 artifact 正文仍留在文件系统，避免把大文件直接塞进数据库
-   - 改进：后续可继续补 retention、备份策略、以及更细粒度的 artifact 归属字段
-
-3. **错误恢复**
-   - 流式响应中断没有重试机制
-   - 改进：实现分块编码，支持断点续传
-
-### 下一步优化方向
-
-**优先级排序**（按产品价值）：
-
-1. **🔴 高优先级**
-   - 前端状态管理文档与示例
-   - 生产环境部署指南（含 Docker）
-   - 负载测试与性能基准
-
-2. **🟡 中优先级**
-   - 数据库迁移脚本与备份策略
-   - OpenTelemetry 集成（分布式追踪）
-   - WebSocket 长连接优化（替代 SSE）
-
-3. **🟢 低优先级**
-   - GraphQL API 层（可选）
-   - 缓存层（Redis）
-   - 消息队列（用于异步任务）
-
----
-
-## 八、开发者指南
-
-### 添加新的 API 端点
-
-1. 在 `src/focus_agent/api/contracts.py` 定义请求/响应模型
-2. 在 `src/focus_agent/api/main.py` 的 `create_app()` 中添加路由
-3. 利用 `Depends(get_current_principal)` 进行认证检查
-4. 错误通过 `HTTPException` 抛出，会自动被格式化
-
-### 使用新的请求 ID 追踪
-
-```python
-# 在任何地方可以获取当前请求的 ID
-@app.get("/v1/example")
-def example(request: Request):
-    request_id = request.state.request_id  # 自动生成或从客户端读取
-    # 用于日志关联、问题追踪等
-    return {"request_id": request_id}
+```bash
+uv run pytest \
+  tests/eval/test_plan_act_reflect.py \
+  tests/eval/test_context_budget.py \
+  tests/test_memory_pipeline.py \
+  tests/test_tool_runtime.py
 ```
 
-### 前端集成示例
+## 7. 文件导航
 
-```typescript
-// 使用 React Query 获取数据
-const { data, isLoading } = useQuery({
-  queryKey: ['conversations'],
-  queryFn: () => api.get('/v1/conversations'),
-  staleTime: 30000,
-});
+- 后端 API：`src/focus_agent/api/main.py`
+- 配置：`src/focus_agent/config.py`
+- 运行时：`src/focus_agent/engine/runtime.py`
+- 图构建：`src/focus_agent/engine/graph_builder.py`
+- 分支服务：`src/focus_agent/services/branches.py`
+- 聊天服务：`src/focus_agent/services/chat.py`
+- Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
+- Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
+- Web App：`apps/web/src/`
+- SDK：`frontend-sdk/src/`
 
-// 自动附加 Authorization header 和 request ID
-const api = axiosInstance.create({
-  baseURL: '/v1',
-  headers: {
-    'X-Request-ID': generateId(), // 可选：关联客户端生成的 ID
-  },
-});
-```
+## 8. 文档关系
 
----
-
-## 九、文件导航
-
-**架构相关文件**：
-- 本文件：`docs/architecture.md` - 最新架构说明
-- 快速开始：`README.md`
-- 安全策略：`SECURITY.md`
-- 贡献指南：`CONTRIBUTING.md`
-
-**核心代码**：
-- 后端入口：`src/focus_agent/api/main.py`
-- 配置管理：`src/focus_agent/config.py`
-- 中间件层：`src/focus_agent/api/middleware.py`
-- 安全模块：`src/focus_agent/security/`
-
-**测试**：
-- API 中间件测试：`tests/test_api_middleware.py`
-- 全部测试：`tests/`
-
-**部署**：
-- GitHub Actions：`.github/workflows/ci.yml`
-- 启动脚本：`scripts/serve-dev.sh`, `scripts/serve-prod.sh`
-
----
-
-## 十、版本更新记录
-
-### v1.1.0 (2026-04-18) - 安全加固版
-
-✅ **新增功能**：
-- CORS 中间件与可配置源列表
-- 滑动窗口限流器（线程安全，无外部依赖）
-- 请求 ID 自动追踪与日志关联
-- 统一错误响应信封格式
-- Vite bundle 分割优化
-
-✅ **测试覆盖**：
-- 新增 `tests/test_api_middleware.py` 覆盖所有中间件功能
-
-⚙️ **配置变更**：
-- `.env.example` 新增 `CORS_*` 和 `RATE_LIMIT_*` 选项
-- 默认行为不变（CORS 空、限流关闭），确保向后兼容
-
----
-
-## 常见问题 (FAQ)
-
-**Q: 限流会影响正常用户吗？**
-A: 默认禁用。开启时，普通 API 每分钟 60 次，聊天 API 每分钟 20 次，足以覆盖典型用户场景。
-
-**Q: CORS 配置如何在本地和生产间切换？**
-A: 在 `.focus_agent/local.env`（本地）或 `.env`（生产）中设置不同的 `CORS_ALLOWED_ORIGINS`。
-
-**Q: 如何自定义错误响应格式？**
-A: 修改 `src/focus_agent/api/errors.py` 中的 `_build_envelope()` 函数。
-
-**Q: 前端如何获取和使用 request ID？**
-A: 从响应头 `X-Request-ID` 读取，用于前端日志关联和问题追踪。
-
----
-
-**最后更新**：2026-04-18 | **维护者**：Focus Agent 团队
+- 本文：当前架构事实
+- [docker-deployment.md](docker-deployment.md)：Docker、本机启动和生产模板边界
+- [roadmap.md](roadmap.md)：统一路线图和下一阶段优先级

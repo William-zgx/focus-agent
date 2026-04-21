@@ -23,6 +23,7 @@ This SDK packages those concerns into a small, typed client layer.
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
+- Trajectory observability helpers for list/detail/stats/replay/promote flows
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
 - Reducer helpers for accumulating stream state
@@ -52,7 +53,7 @@ npm run build
 
 Requirements:
 
-- Node.js 18+
+- Node.js 20+
 - A Focus Agent server to connect to
 
 ## Quick Start
@@ -105,6 +106,8 @@ console.log(finalState.visibleText);
 - `getBranchTree()` - fetch the branch tree rooted at a conversation
 - `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
 - `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows
+- `listTrajectoryTurns()`, `getTrajectoryTurn()`, and `getTrajectoryStats()` - inspect Postgres-backed trajectory observability data
+- `replayTrajectoryTurn()` and `promoteTrajectoryTurn()` - preview replay and dataset promotion payloads for a trajectory turn
 - `streamTurn()` - stream a new chat turn
 - `streamResume()` - continue from an interrupt or resume payload
 - `collectStream()` - iterate a stream and accumulate a final derived state
@@ -233,5 +236,5 @@ make sdk-build
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch, conversation, merge proposal, and imported-conclusion types are exported from `src/types.ts` for frontend consumers.
+- Branch, conversation, merge proposal, imported-conclusion, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.

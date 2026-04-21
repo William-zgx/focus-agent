@@ -72,6 +72,7 @@ If Git is a familiar analogy, that mapping is intentional. The main thread plays
 - API endpoints for normal responses and live streaming
 - A conversation engine that emits structured live events
 - Built-in React web app at `/app`
+- Trajectory observability console at `/app/observability/trajectory`
 - Access control with per-conversation ownership checks
 - Lower-noise context management through focused working context and selective merge-back from branches
 - Built-in tools for searching the repo, reading files, checking git state, and searching the web
@@ -83,7 +84,7 @@ Requirements:
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
-- Node.js 18+ if you want to build the web frontend and SDK
+- Node.js 20+ if you want to build the web frontend and SDK
 - PostgreSQL CLI/server tools (`initdb`, `pg_ctl`, `createdb`, and `psql`) if you want the local startup scripts to auto-manage a repo-local database; otherwise set `DATABASE_URI` yourself
 
 ```bash
@@ -91,10 +92,7 @@ uv venv
 source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
 cp .env.example .env
-mkdir -p .focus_agent
-cp docs/local.env.example .focus_agent/local.env
-cp docs/models.example.toml .focus_agent/models.toml
-cp docs/tools.example.toml .focus_agent/tools.toml
+make setup-local
 pnpm install --registry=https://registry.npmjs.org
 pnpm web:build
 make api
@@ -105,6 +103,7 @@ By default, runtime persistence and AI-generated artifacts stay under `.focus_ag
 Then open:
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
 
 For local frontend development, run `make web-dev` in a second shell and set `WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app` in `.focus_agent/local.env` when you want `/app` to redirect to the Vite dev server. In that mode the frontend lives at `http://127.0.0.1:5173/app/` while FastAPI continues serving the API on port `8000`.
@@ -124,40 +123,28 @@ psql "$DATABASE_URI"
 
 ## Container Deployment
 
-The repository now ships a recommended Docker deployment split:
+The repository ships a recommended Docker deployment split:
 
 - `compose.yaml`: local Docker verification with `focus-agent + postgres`
 - `compose.prod.yaml`: production/staging template with `focus-agent + external PostgreSQL`
 - [`docs/docker-deployment.md`](docs/docker-deployment.md): deployment guidance, environment variables, and migration flow
 
-The image builds the React frontend into the container, serves `/app` from FastAPI, and keeps runtime state under `/data`.
+The image builds the React frontend into the container, serves `/app` from FastAPI, and keeps runtime state under `/data`. Use the docs page above for the full environment-variable and migration reference.
+For production or staging, use `compose.prod.yaml` with an external Postgres connection in `FOCUS_AGENT_DATABASE_URI`.
 
 ```bash
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
 export OPENAI_API_KEY=replace-me
-# Or set MOONSHOT_API_KEY / ANTHROPIC_API_KEY and an appropriate model override instead.
-make docker-rebuild
-# Or use the native Compose command directly:
 docker compose up --build
 ```
 
 Then open:
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
 
-Notes:
-
-- `compose.yaml` is now the recommended local Docker path: it starts `focus-agent` together with a dedicated `postgres` service, uses named volumes by default, and wires `DATABASE_URI` to the Compose-managed Postgres unless you explicitly override it.
-- `compose.prod.yaml` is the production/staging reference: it runs only `focus-agent` and requires an explicit external `FOCUS_AGENT_DATABASE_URI`.
-- `make docker-rebuild` still runs `docker compose up -d --build focus-agent`; because `focus-agent` now depends on Postgres health, Compose will start the local `postgres` service automatically when needed.
-- Set `FOCUS_AGENT_MODEL` if you want Compose to override the default model from `/data/models.toml` without editing that file.
-- Provider credentials and base URLs come from `/data/local.env` by default, but the seeded file still contains placeholder values like `OPENAI_API_KEY=replace-me-locally` and `MOONSHOT_API_KEY=replace-me-locally`. Before your first real request, either edit `/data/local.env` (or the persisted volume contents) or export one-off passthrough vars such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MOONSHOT_API_KEY`, `MOONSHOT_BASE_URL`, `OLLAMA_API_KEY`, `OLLAMA_BASE_URL`, or `TAVILY_API_KEY` before `docker compose up`.
-- `compose.yaml` keeps auth enabled and enables demo token bootstrap by default so the bundled web app can create and load conversations immediately in local Docker runs.
-- In `compose.yaml`, `FOCUS_AGENT_DATABASE_URI` is optional because the file provides a default connection string to the bundled `postgres` service.
-- Setting `FOCUS_AGENT_DATABASE_URI` still switches the app to the PostgreSQL primary persistence path: branch/conversation metadata, LangGraph checkpoint/store, Postgres trajectory tables, and artifact metadata all move to Postgres while artifact file contents stay on disk under `/data/artifacts`.
-- Set `TRAJECTORY_ENABLED=false` to disable Postgres trajectory recording while keeping the Postgres checkpoint/store backend.
-- To migrate an existing repo-local `.focus_agent` directory into Postgres, run `focus-agent-migrate-local-state --source-dir ./.focus_agent --database-uri <postgres-uri> --checkpoint-mode latest-stable --artifact-scan --report-path /tmp/focus-agent-migration.json`.
+Use `make docker-rebuild`, `make docker-restart`, and `make docker-logs` for the common Compose wrapper commands.
 
 Merged branches are read-only after a merge is applied. If you want to continue exploration, fork a new branch from the parent or main thread instead of sending more turns into the merged branch.
 
@@ -188,6 +175,7 @@ Focus Agent ships with development-friendly defaults. Treat the quick start and 
 - App layer: powers chat, branch workflows, memory, and built-in tools
 - Client layer: includes the web app and the TypeScript frontend SDK
 - Quality layer: tests cover API behavior, access control, branching, streaming, config, and SDK integrity
+- Observability layer: Postgres trajectory records, CLI/API inspection, replay/promote flows, and the Web review console
 
 ## Development
 
@@ -217,20 +205,20 @@ make ui-smoke
 
 `make ui-smoke` launches a dedicated Chrome window with a temporary profile, opens the local app, creates a conversation when needed, sends one chat turn, forks a branch, enters merge review, and fails if the visible response still contains DSML or tool-call markup.
 
+Trajectory observability is available when Postgres trajectory recording is enabled. Use `focus-agent-trajectory` for CLI inspection or open `/app/observability/trajectory` in the bundled Web App to filter turns, inspect tool steps, and preview replay / promote actions.
+
 ## More Docs
 
 - Documentation index: [`docs/README.md`](docs/README.md)
 - **Architecture & Deployment**: [`docs/architecture.md`](docs/architecture.md) — current system design and production guidelines
 - Docker deployment guide: [`docs/docker-deployment.md`](docs/docker-deployment.md)
 - Roadmap: [`docs/roadmap.md`](docs/roadmap.md)
-- Agent capability roadmap: [`docs/agent-roadmap.md`](docs/agent-roadmap.md)
 - Frontend SDK: [`frontend-sdk/README.md`](frontend-sdk/README.md)
-- Tool and skill boundary design: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
+- Tool and skill system design: [`docs/tool-skill-design.md`](docs/tool-skill-design.md)
 - Local env example: [`docs/local.env.example`](docs/local.env.example)
 - Model catalog example: [`docs/models.example.toml`](docs/models.example.toml)
 - Tool catalog example: [`docs/tools.example.toml`](docs/tools.example.toml)
 - Release checklist: [`docs/release-checklist.md`](docs/release-checklist.md)
-- License notes: [`docs/license-guide.md`](docs/license-guide.md)
 
 ## License
 

@@ -7,7 +7,7 @@ judges, then aggregates suite-level metrics for CI gating.
 ## Quickstart
 
 ```bash
-# Run the smoke suite (3 cases, no external API keys required if using a fake model).
+# Run the smoke suite (7 cases, no external API keys required if using a fake model).
 uv run python -m tests.eval --suite smoke
 
 # Full run with HTML + JSON reports.
@@ -24,6 +24,19 @@ uv run python -m tests.eval --suite smoke \
 
 # Replay an earlier run's JSONL or JSON report.
 uv run python -m tests.eval replay --from reports/current.jsonl --failed-only
+
+# Convert a trajectory export into replayable eval cases.
+uv run python -m tests.eval replay \
+  --from /tmp/focus-agent-trajectory.jsonl \
+  --trajectory-input \
+  --write-dataset tests/eval/datasets/trajectory-replay.jsonl
+
+# Promote failed trajectory turns into a dataset skeleton.
+uv run python -m tests.eval promote \
+  --from /tmp/focus-agent-trajectory.jsonl \
+  --failed-only \
+  --copy-tool-trajectory \
+  --out tests/eval/datasets/promoted-trajectory.jsonl
 ```
 
 ## Pytest integration
@@ -125,6 +138,17 @@ baselines as JSON (produced by `--report-json`) under `eval-baselines/` and
 bump them intentionally when you accept a trade-off. Without a baseline, the
 CLI still fails when any case fails; the regression comparison simply has no
 prior metrics to diff against.
+
+## Trajectory replay and promotion
+
+Production trajectory exports can be inspected through `focus-agent-trajectory`
+or the Web console at `/app/observability/trajectory`, then converted into eval
+cases with `python -m tests.eval replay --trajectory-input` or
+`python -m tests.eval promote`.
+
+Use `--copy-tool-trajectory` when you want the generated case to preserve the
+observed tool path as an expectation. Use `--copy-answer-substring` only when
+the source answer is stable enough to become a useful assertion.
 
 ## Extending
 

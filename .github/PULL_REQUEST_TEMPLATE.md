@@ -14,9 +14,10 @@ Explain the problem, motivation, or context for the change.
 
 List the checks you ran, for example:
 
-- `pytest`
-- `ruff check .`
-- `cd frontend-sdk && npm run check && npm run build`
+- `make ci`
+- `make sdk-check && make sdk-build`
+- `make web-check && make web-build`
+- `make ui-smoke`
 
 If you did not run validation, explain why.
 
@@ -30,6 +31,7 @@ Call out any changes to:
 - branch lifecycle behavior
 - auth or ownership behavior
 - frontend SDK types
+- trajectory observability, replay, or promotion behavior
 
 If none, say so.
 

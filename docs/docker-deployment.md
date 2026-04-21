@@ -1,6 +1,6 @@
 # Docker 部署方案
 
-更新时间：2026-04-21
+更新时间：2026-04-22
 
 这份文档定义当前仓库推荐的 Docker 部署方式。目标是把 **本机开发启动链**、**本地容器联调**、以及 **生产部署** 明确分层，避免把开发便利逻辑和正式部署逻辑混在一起。
 
@@ -8,7 +8,7 @@
 
 ### 1. 本机开发
 
-- 使用 `make api` / `make dev` / `make serve-dev` / `make serve-prod`
+- 使用 `make api` / `make dev` / `make serve` / `make serve-dev` / `make serve-prod`
 - 启动脚本会自动管理 repo 内本地 PostgreSQL，并注入 `DATABASE_URI`
 - 适合快速开发、调试和热更新
 
@@ -52,6 +52,15 @@
 docker compose up --build
 ```
 
+Makefile 包装命令：
+
+```bash
+make docker-up
+make docker-rebuild
+make docker-restart
+make docker-logs
+```
+
 后台运行：
 
 ```bash
@@ -67,6 +76,7 @@ docker compose logs -f focus-agent postgres
 访问：
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
 
 ### 本地 Docker 关键环境变量
@@ -105,7 +115,7 @@ docker compose logs -f focus-agent postgres
 示例：
 
 ```bash
-export FOCUS_AGENT_IMAGE=registry.example.com/focus-agent:2026-04-21
+export FOCUS_AGENT_IMAGE=registry.example.com/focus-agent:2026-04-22
 export FOCUS_AGENT_DATABASE_URI=postgresql://focus_agent:secret@postgres.internal:5432/focus_agent
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
 export FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false
@@ -159,6 +169,7 @@ focus-agent-migrate-local-state \
   - 会话创建
   - `/v1/chat/turns`
   - trajectory 入库
+  - `/app/observability/trajectory` 能读取 trajectory list / detail / stats
 
 ## 不推荐的做法
 

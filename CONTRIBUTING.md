@@ -36,27 +36,25 @@ uv pip install -e '.[anthropic,dev]'
 ### Local configuration
 
 ```bash
-cp .env.example .env
-mkdir -p .focus_agent
-cp docs/local.env.example .focus_agent/local.env
-cp docs/models.example.toml .focus_agent/models.toml
-cp docs/tools.example.toml .focus_agent/tools.toml
+make setup-local
 ```
 
 Keep provider credentials in `.focus_agent/local.env` or other untracked local configuration. Do not commit secrets, tokens, or private endpoints.
 
 ## Running the Project
 
-Start the API locally:
+Start the API locally through the repo startup path:
 
 ```bash
-focus-agent-api
+make api
 ```
+
+When `DATABASE_URI` is unset, `make api` manages a repo-local PostgreSQL instance and injects the runtime connection string automatically. If you launch `.venv/bin/focus-agent-api` directly, export `DATABASE_URI` yourself first.
 
 Useful local entry points:
 
 - Web UI: `http://127.0.0.1:8000/app`
-- Chinese Web UI: `http://127.0.0.1:8000/app/zh`
+- Trajectory console: `http://127.0.0.1:8000/app/observability/trajectory`
 - Demo CLI: `focus-agent-demo`
 
 ## Running Tests
@@ -80,10 +78,31 @@ make sdk-check
 make sdk-build
 ```
 
+If your change affects the Web App, validate it as well:
+
+```bash
+make web-check
+make web-build
+```
+
+If your change affects trajectory observability, also run the API and CLI tests around that surface:
+
+```bash
+uv run pytest tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
+```
+
 To mirror the current GitHub Actions job locally, run:
 
 ```bash
 make ci
+```
+
+For broad changes, prefer `make ci` as the baseline before PR review.
+
+If your change affects browser-level chat, branch tree, or merge-review workflows, run:
+
+```bash
+make ui-smoke
 ```
 
 ## Contribution Guidelines
@@ -115,6 +134,7 @@ Good pull requests usually include:
 - documentation updates when user-facing behavior changed
 
 If your PR changes streaming events, auth behavior, repository shape, or public SDK types, please call that out explicitly in the description.
+If it changes trajectory records, replay/promotion behavior, or the observability console, call that out as API/SDK impact too.
 
 ## Commit Scope
 

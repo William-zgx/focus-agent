@@ -14,8 +14,7 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 
 ## Licensing and Governance
 
-- Confirm the final open-source license decision
-- Add the official `LICENSE` file
+- Confirm MIT license references still match the root `LICENSE` file
 - Ensure README and other docs reference the final license correctly
 - Decide whether a `NOTICE`, CLA, or DCO process is required
 
@@ -26,6 +25,7 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 - Confirm branch lifecycle behavior is still reflected correctly in docs
 - Confirm auth behavior and ownership rules are documented accurately
 - Confirm the frontend SDK examples still match the live contract
+- Confirm trajectory observability docs match the live API, CLI, and `/app/observability/trajectory` console
 
 ## Configuration Review
 
@@ -33,20 +33,14 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 - Review local config instructions under `.focus_agent/`
 - Decide which settings are development-only versus production-ready
 - Confirm default secrets or demo credentials are not appropriate for public deployment
-- Review persistence-related settings such as `DATABASE_URI`, `BRANCH_DB_PATH`, and artifact paths
+- Review persistence-related settings such as `DATABASE_URI`, managed local Postgres runtime files, trajectory settings, and artifact paths
 
 ## Quality Checks
 
-- Run `pytest`
-- Run `ruff check .`
-- If frontend SDK changed, run:
-
-```bash
-cd frontend-sdk
-npm install
-npm run check
-npm run build
-```
+- Run `make ci`
+- If Web App changed, run `make web-check` and `make web-build`
+- If browser workflows changed, run `make ui-smoke`
+- If deployment or persistence changed, run the targeted Postgres / containerization tests referenced in `docs/architecture.md`
 
 - Review recent changes for accidental breaking API or SDK changes
 - Ensure docs were updated for any behavior changes

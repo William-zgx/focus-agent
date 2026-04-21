@@ -1,6 +1,6 @@
-# Tool and Skill Boundary Design
+# Tool and Skill System Design
 
-This document defines how Focus Agent should separate low-level tools from higher-level skills, then derives the first product-oriented tool batch for a more general-purpose conversational agent experience.
+This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
 ## Goals
 
@@ -91,6 +91,77 @@ Examples:
 - `personal-assistant`: decide whether information belongs in memory, notes, tasks, or an artifact
 - `writing-plans`: create and update implementation plans as artifacts
 - `release-readiness`: apply the repository's release checklist and produce a readiness report
+
+## Skill Runtime
+
+Focus Agent's skill runtime is prompt-first and local-first. It supports discovery, activation, prompt injection, and basic inspection tools without introducing a remote skills marketplace or hidden multi-agent orchestration.
+
+### Directory layout
+
+- Python runtime: `src/focus_agent/skills/`
+- Bundled skills: `src/focus_agent/skills/builtin/<skill>/SKILL.md`
+- Optional local overlays: `FOCUS_AGENT_SKILLS_DIRS` or the default `.focus_agent/skills`
+
+Bundled skills are versioned with the repo so the agent has a stable baseline even when no local skills exist. Local overlays are intended for per-user or per-maintainer workflows and are typically kept out of git.
+
+### Skill document format
+
+Each skill is a directory containing `SKILL.md` with simple YAML-like frontmatter:
+
+```md
+---
+name: plan
+description: Planning-only mode for decomposition and sequencing
+triggers: plan:
+when_to_use: The user wants a plan first, The work has multiple phases
+prompt_mode: explore
+---
+```
+
+Supported metadata in this iteration:
+
+- `name`
+- `description`
+- `triggers`
+- `when_to_use`
+- `prompt_mode`
+
+The parser is intentionally minimal and optimized for bundled skills plus straightforward local overrides.
+
+### Runtime flow
+
+1. `SkillRegistry` scans configured roots plus bundled skills and builds an in-memory index.
+2. Skills activate through API `skill_hints` or prefix triggers such as `plan:` and `review:`.
+3. `ChatService` resolves active skills, writes skill hints into `RequestContext`, persists `active_skill_ids`, and uses the cleaned task as `task_brief`.
+4. `graph_builder` asks the registry for available-skill and active-skill prompt blocks.
+5. `context_policy` renders those blocks into the final system prompt alongside scene, branch scope, memory, and findings.
+
+### Built-in skills
+
+Current bundled skills:
+
+- `autopilot`
+- `codebase-inspection`
+- `code-documentation`
+- `eco`
+- `plan`
+- `research`
+- `ralph`
+- `review`
+- `security-review`
+- `systematic-debugging`
+- `tdd`
+- `ultrawork`
+- `writing-plans`
+
+These skills intentionally steer behavior that the current runtime can already support. For example, `ultrawork` encourages workstream decomposition, but it does not claim hidden sub-agent execution.
+
+### Current limitations
+
+- The frontmatter parser is deliberately simple and not a full YAML implementation.
+- Skill prompts are injected as plain text blocks; there is no scoring/ranking stage yet.
+- The system does not yet persist skill metadata snapshots or support linked reference files.
+- Skill selection is prefix/hint based; semantic auto-matching is future work.
 
 ## Connector Boundary
 
@@ -217,136 +288,38 @@ Utility tools provide deterministic helper capabilities.
 - `structured_compute`
 - `template_apply`
 
-## First Implementation Batch
+## Implemented Product Primitives
 
-The first batch should prioritize product value while reusing as much existing infrastructure as possible.
+The first general-agent batch is now part of the baseline:
 
-### Batch 1A: Minimal general-agent primitives
+- Artifact iteration: `write_text_artifact`, `artifact_list`, `artifact_read`, `artifact_update`
+- Web retrieval: `web_search`, `web_fetch`
+- Explicit memory control: `memory_save`, `memory_search`, `memory_forget`
+- Conversation recovery: `conversation_summary`
+- Skill inspection: `skills_list`, `skill_view`
 
-These are implemented first because they are the smallest broadly useful capabilities for a general conversational agent.
+These capabilities are still primitives. For example, `research` decides how to gather and synthesize evidence, while `web_search`, `web_fetch`, and artifact tools perform the concrete operations.
 
-1. `artifact_list`
+Current bundled skills already consume these primitives:
 
-List saved artifacts under the configured artifact directory with title, path, updated time, and size.
+- `research` uses `web_search`, `web_fetch`, and artifacts for evidence-backed answers.
+- `writing-plans` uses artifact list/read/update for iterative plans.
+- `autopilot` may save durable deliverables as artifacts and use memory for explicit durable facts.
 
-Why first:
+## Backlog
 
-- `write_text_artifact` already exists.
-- Listing is a natural complement to writing.
-- It makes generated plans and reports reusable across turns.
+The next product-tool expansion should focus on stores that are currently only conceptual:
 
-2. `artifact_read`
+- Notes: `notes_create`, `notes_search`, `notes_update`
+- Tasks: `tasks_create`, `tasks_list`, `tasks_update`
 
-Read one saved artifact by artifact id or filename.
+Notes and tasks should be first-class product data with explicit storage, API, tests, and UI affordances. They should not be simulated with hidden prompt conventions or arbitrary markdown files.
 
-Why first:
+Potential future skills after those stores exist:
 
-- It turns artifacts into a real workspace for long conversations.
-- Skills such as `writing-plans`, `research`, and `release-readiness` can build on it.
-
-3. `artifact_update`
-
-Replace or append to an existing artifact with an explicit update mode.
-
-Why first:
-
-- It enables iterative writing instead of creating many disconnected markdown files.
-- It keeps the operation narrower and safer than arbitrary filesystem writes.
-
-4. `web_fetch`
-
-Fetch a user-provided URL and return title, final URL, text excerpt, and basic metadata.
-
-Why first:
-
-- `web_search` can find sources, but the agent also needs to read a specific source.
-- This unlocks article summaries, doc review, and evidence gathering.
-- Provider details stay behind the tool boundary.
-
-5. `conversation_summary`
-
-Return the latest saved rolling summary, task brief, branch metadata, active skills, and recent messages for the current or specified thread.
-
-Why first:
-
-- It directly reinforces Focus Agent's branch-aware product model.
-- It helps users recover context in long-running conversations.
-- It can feed artifacts, memory, or notes later.
-
-6. `memory_save`
-
-Save an explicit user-approved memory such as a preference, durable fact, or project context item.
-
-7. `memory_search`
-
-Search durable memories by query and optional namespace.
-
-8. `memory_forget`
-
-Remove or deactivate a memory item by id.
-
-Why memory is in Batch 1A:
-
-- The project already has memory models and namespace helpers.
-- Explicit memory control is part of the minimum general-agent experience.
-- These tools should still prefer explicit user intent such as "remember this" or skill-guided consent.
-
-### Batch 1B: Notes and tasks
-
-These should come after the artifact and memory primitives because they likely need new product storage models.
-
-1. `notes_create`
-
-Create a structured note with type, title, body, tags, and source thread.
-
-2. `notes_search`
-
-Search notes by query, tags, type, and date range.
-
-3. `notes_update`
-
-Update an existing note by id.
-
-4. `tasks_create`
-
-Create an actionable task with title, status, optional due date, and source thread.
-
-5. `tasks_list`
-
-List tasks by status, date range, or source thread.
-
-6. `tasks_update`
-
-Update task status, title, due date, or notes.
-
-Why Batch 1B:
-
-- Notes and tasks make the agent feel like a general assistant.
-- They should be first-class product data, not hidden markdown conventions.
-- They need explicit API, storage, and UI considerations.
-
-## Skill Implications
-
-After Batch 1A, builtin skills can become more product-oriented without adding workflow-specific tools.
-
-Recommended builtin skill updates:
-
-- `research`: use `web_search`, `web_fetch`, and artifacts for evidence-backed answers.
-- `writing-plans`: use artifact list/read/update for iterative plans.
-- `autopilot`: save durable deliverables as artifacts when appropriate.
-
-Recommended new builtin skills after Batch 1C:
-
-- `personal-assistant`: route user requests to memory, notes, tasks, or artifacts.
+- `personal-assistant`: route requests to memory, notes, tasks, or artifacts.
 - `meeting-notes`: turn notes into action items using notes and tasks tools.
 - `project-catchup`: summarize a conversation and save follow-up tasks or notes.
-
-Recommended user-local skills:
-
-- team-specific weekly report templates
-- personal task triage conventions
-- company-specific research source preferences
-- connector-backed workflows such as calendar or email routines
 
 ## Permission and Safety Rules
 
@@ -369,9 +342,3 @@ Before adding a tool, answer:
 - How is truncation handled?
 - How is the tool disabled or configured?
 - What tests prove the boundary?
-
-## Recommended Next Step
-
-Batch 1A is now the baseline. The next product-oriented step is Batch 1B: add first-class notes and tasks tools with explicit storage, API, tests, and UI affordances.
-
-This keeps the expansion product-visible while preserving the rule that tools provide primitives and skills provide workflows.
