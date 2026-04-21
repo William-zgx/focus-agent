@@ -14,7 +14,7 @@ interface MessageComposerProps {
       model?: string;
       thinkingMode?: string;
     },
-  ) => Promise<void>;
+  ) => Promise<{ ok: boolean }>;
   onStopStreaming: () => void;
   selectedModel?: string;
   selectedThinkingMode?: string;
@@ -274,13 +274,15 @@ export function MessageComposer({
   async function submitMessage() {
     const trimmed = message.trim();
     if (!trimmed || isStreaming || isReadOnly) return;
-    setMessage("");
-    editSignatureRef.current = "";
-    onClearEditDraft?.();
-    await onSendMessage(trimmed, {
+    const result = await onSendMessage(trimmed, {
       model: modelId || undefined,
       thinkingMode: thinkingMode || undefined,
     });
+    if (result.ok) {
+      setMessage("");
+      editSignatureRef.current = "";
+      onClearEditDraft?.();
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

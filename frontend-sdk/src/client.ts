@@ -258,18 +258,6 @@ export class FocusAgentClient {
     );
   }
 
-  async sendTurn(request: FocusAgentTurnRequest): Promise<ThreadStateResponse> {
-    return this.requestJson<ThreadStateResponse>(
-      "/v1/chat/turns",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-      },
-      true,
-    );
-  }
-
   async streamTurn(
     request: FocusAgentTurnRequest,
     options: { signal?: AbortSignal } = {},

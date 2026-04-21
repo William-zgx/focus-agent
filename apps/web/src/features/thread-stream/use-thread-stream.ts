@@ -27,6 +27,10 @@ interface PendingUserMessage {
   threadId: string;
 }
 
+interface SendMessageResult {
+  ok: boolean;
+}
+
 export function useThreadStream(options: UseThreadStreamOptions) {
   const { client } = useFocusAgent();
   const queryClient = useQueryClient();
@@ -37,7 +41,10 @@ export function useThreadStream(options: UseThreadStreamOptions) {
   const [pendingUserMessage, setPendingUserMessage] = useState<PendingUserMessage | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  async function sendMessage(message: string, overrides?: SendMessageOverrides) {
+  async function sendMessage(
+    message: string,
+    overrides?: SendMessageOverrides,
+  ): Promise<SendMessageResult> {
     abortRef.current?.abort();
     const requestId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const requestThreadId = options.threadId;
@@ -54,6 +61,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     setStreamState(createInitialStreamState());
     setIsStreaming(true);
 
+    let sendSucceeded = false;
     try {
       const requestPayload = {
         thread_id: requestThreadId,
@@ -63,43 +71,43 @@ export function useThreadStream(options: UseThreadStreamOptions) {
           overrides?.thinkingMode || options.selectedThinkingMode || undefined,
       };
 
-      try {
-        const stream = await client.streamTurn(
-          requestPayload,
-          { signal: controller.signal },
-        );
+      const stream = await client.streamTurn(
+        requestPayload,
+        { signal: controller.signal },
+      );
 
-        let nextState = createInitialStreamState();
-        for await (const event of stream) {
-          if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
-            break;
-          }
-          nextState = reduceStreamEvent(nextState, event);
-          if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
-            break;
-          }
-          setStreamState(nextState);
+      let nextState = createInitialStreamState();
+      for await (const event of stream) {
+        if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
+          break;
         }
-
-        if (nextState.failed && !controller.signal.aborted) {
-          throw new Error(nextState.failed.message || nextState.failed.error || "Stream turn failed.");
+        nextState = reduceStreamEvent(nextState, event);
+        if (activeRequestIdRef.current !== requestId || controller.signal.aborted) {
+          break;
         }
-      } catch (error) {
-        if (
-          controller.signal.aborted ||
-          (error instanceof Error && error.name === "AbortError")
-        ) {
-          throw error;
-        }
-        const fallback = await client.sendTurn(requestPayload);
-        if (activeRequestIdRef.current === requestId && !controller.signal.aborted) {
-          setStreamState({
-            ...createInitialStreamState(),
-            visibleText: fallback.assistant_message || "",
-            latestTurnState: fallback as unknown as Record<string, unknown>,
-            isClosed: true,
-          });
-        }
+        setStreamState(nextState);
+      }
+      sendSucceeded = !nextState.failed && !controller.signal.aborted;
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        throw error;
+      }
+      if (activeRequestIdRef.current === requestId && !controller.signal.aborted) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to send message.";
+        setStreamState({
+          ...createInitialStreamState(),
+          failed: {
+            error: "request_failed",
+            message,
+          },
+          isClosed: true,
+        });
       }
     } finally {
       const isLatestRequest = activeRequestIdRef.current === requestId;
@@ -107,14 +115,20 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         setIsStreaming(false);
         abortRef.current = null;
         activeRequestIdRef.current = null;
-        setActiveThreadId(null);
-        setPendingUserMessage(null);
-        setStreamState(null);
+        if (sendSucceeded) {
+          setActiveThreadId(null);
+          setPendingUserMessage(null);
+          setStreamState(null);
+        } else if (controller.signal.aborted) {
+          setActiveThreadId(null);
+        }
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.thread(requestThreadId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(requestRootThreadId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
     }
+
+    return { ok: sendSucceeded };
   }
 
   function stopStreaming() {

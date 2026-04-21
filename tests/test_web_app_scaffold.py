@@ -79,7 +79,11 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     stream_hook_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"
     ).read_text()
-    assert "setStreamState(null)" in stream_hook_text
+    assert "let sendSucceeded = false;" in stream_hook_text
+    assert "sendSucceeded = !nextState.failed && !controller.signal.aborted;" in stream_hook_text
+    assert "failed: {" in stream_hook_text
+    assert "setPendingUserMessage(null);" in stream_hook_text
+    assert "client.sendTurn(" not in stream_hook_text
     assert 'activeRequestIdRef.current !== requestId || controller.signal.aborted' in stream_hook_text
 
 
@@ -96,6 +100,8 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert 'branch_meta?.branch_status === "merged"' in thread_page_text
     assert "isReadOnly={isMergedReadOnlyThread}" in thread_page_text
     assert "if (!trimmed || isStreaming || isReadOnly) return;" in composer_text
+    assert "const result = await onSendMessage(trimmed" in composer_text
+    assert "if (result.ok) {" in composer_text
     assert "readOnly={isReadOnly}" in composer_text
     assert "disabled={isStreaming || isReadOnly || !message.trim()}" in composer_text
     assert "disabled={isReadOnly}" in message_list_text
