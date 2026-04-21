@@ -13,7 +13,7 @@
 | Context Engineering | 一期已落地 | `src/focus_agent/core/context_policy.py` | tokenizer 精算、语义压缩、长观察外置 |
 | Tool Runtime | 并行/缓存/降级基础已落地 | `src/focus_agent/capabilities/tool_runtime.py` | 更强参数校验、取消/超时策略 |
 | Eval | 基线已落地 | `tests/eval/` | 扩数据集、补 CI 门禁、接更多能力专项 |
-| Observability | trajectory 入 Postgres 已落地 | `src/focus_agent/observability/trajectory.py` | 查询/导出 CLI、浏览器链路验证、OTel |
+| Observability | trajectory 入库、查询/导出 CLI、replay/promotion 闭环已落地；主线程/分支状态读取走 Postgres primary persistence | `src/focus_agent/observability/trajectory.py` | 浏览器链路验证、OTel、线上复盘面板 |
 | Model Routing | 未落地 | 方案位 | planner / executor / reflect 分工 |
 | Autonomy | 未落地 | 方案位 | 技能自选、分支建议、风险感知工作流 |
 
@@ -51,7 +51,10 @@
 
 - `tests/eval/` 已具备 smoke、judge、metrics、报告聚合能力
 - 生产路径已使用统一 trajectory schema，避免 eval 与线上记录漂移
+- `DATABASE_URI` 存在时，conversation / branch / checkpoint / store 主路径已走 Postgres primary persistence
 - `DATABASE_URI` 存在时会初始化 Postgres trajectory 记录器并落库
+- 已新增 `focus-agent-trajectory` CLI，支持 trajectory 的 list / show / export / stats
+- `python -m tests.eval replay --trajectory-input ...` 与 `python -m tests.eval promote ...` 已可把 trajectory export 直接转成 replay run 和 dataset skeleton
 
 ## 3. 仍需继续收口的点
 
@@ -74,11 +77,15 @@
 
 ### 3.3 Observability
 
-trajectory 已经“能写”，但还不够“能用”：
+当前需要区分两层能力：
 
-- 补 Postgres trajectory 查询/导出 CLI
-- 把失败 turn 转 replay dataset 的链路接起来
+- conversation / branch / checkpoint / store 的主运行态数据已经能从 Postgres 读取
+- trajectory 观测数据已经能写入、查询、导出，并接到 replay / promotion 闭环
+
+后续重点是继续补观测深度和生产化呈现，而不是重新建设主存储：
+
 - 浏览器侧和更长时运行链路补验证
+- 面向真实故障复盘的筛选面板 / 运营视图
 - OpenTelemetry / span 级 tracing 仍未完成
 
 ### 3.4 Tool Runtime
@@ -95,7 +102,7 @@ trajectory 已经“能写”，但还不够“能用”：
 建议按下面顺序推进：
 
 1. **Observability 收口**
-   - 先补 trajectory 查询/导出和 replay 闭环
+   - 补浏览器链路验证、复盘视图和 OTel tracing
 2. **Model Routing**
    - 把 planner / executor / reflect 的模型分工接进现有图
 3. **Memory 质量**
@@ -114,6 +121,8 @@ trajectory 已经“能写”，但还不够“能用”：
 - `tests/test_memory_pipeline.py`
 - `tests/test_tool_runtime.py`
 - `tests/test_trajectory_observability.py`
+- `tests/test_trajectory_cli.py`
+- `tests/test_eval_framework.py`
 - `tests/test_runtime_backend_selection.py`
 
 如果改动影响运行主链，再补一轮：

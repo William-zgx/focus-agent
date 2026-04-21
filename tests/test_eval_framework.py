@@ -12,6 +12,7 @@ from tests.eval.metrics import aggregate_metrics, compare_baselines
 from tests.eval.reporting import load_result_records
 from tests.eval.runner.harness import EvalRuntime, load_dataset, run_case
 from tests.eval.schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
+from tests.eval.trajectory_replay import build_replay_comparison, convert_trajectory_records
 
 
 class _FakeGraph:
@@ -234,6 +235,182 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
 
     assert replay_code == 0
     assert "case_id=case-1" in captured.out
+
+
+def test_convert_trajectory_records_builds_replayable_eval_cases():
+    converted = convert_trajectory_records(
+        [
+            {
+                "id": "turn-1",
+                "status": "failed",
+                "thread_id": "thread-1",
+                "root_thread_id": "root-1",
+                "scene": "long_dialog_research",
+                "user_message": "Read README",
+                "answer": "README says Focus Agent is compact.",
+                "branch_role": "research",
+                "metrics": {"latency_ms": 42.0, "fallback_uses": 1},
+                "trajectory": [
+                    {"tool": "read_file", "args": {"path": "README.md"}},
+                    {"tool": "web_search", "args": {"query": "focus agent"}},
+                ],
+            }
+        ],
+        case_id_prefix="obs",
+        copy_tool_trajectory=True,
+        copy_answer_substring=True,
+        answer_substring_chars=12,
+    )
+
+    assert len(converted) == 1
+    case = converted[0].case
+    assert case.id == "obs-turn-1"
+    assert case.input == {"user_message": "Read README"}
+    assert case.expected["optimal_tool_sequence"] == ["read_file", "web_search"]
+    assert case.expected["max_tool_calls"] == 2
+    assert case.expected["answer_contains_any"] == ["README says"]
+    assert case.origin["trajectory_id"] == "turn-1"
+    assert case.origin["source_tools"] == ["read_file", "web_search"]
+    assert "branch_role:research" in case.tags
+
+
+def test_build_replay_comparison_reports_tool_path_and_runtime_diff():
+    source_record = {
+        "id": "turn-1",
+        "status": "failed",
+        "answer": "old answer",
+        "metrics": {"latency_ms": 100, "fallback_uses": 1, "cache_hits": 0},
+        "trajectory": [{"tool": "read_file"}, {"tool": "web_search"}],
+    }
+    replay_result = EvalResult(
+        case_id="obs-turn-1",
+        passed=True,
+        answer="new answer",
+        trajectory=[TrajectoryStep(tool="read_file", args={}, observation="ok")],
+        metrics={"latency_ms": 55, "fallback_uses": 0, "cache_hits": 1},
+    )
+
+    comparison = build_replay_comparison(source_record, replay_result)
+
+    assert comparison["source_failed"] is True
+    assert comparison["tool_path_changed"] is True
+    assert comparison["source_tools"] == ["read_file", "web_search"]
+    assert comparison["replay_tools"] == ["read_file"]
+    assert comparison["replay_cache_hits"] == 1
+
+
+def test_eval_cli_replays_trajectory_exports_and_writes_dataset(monkeypatch, capsys):
+    workspace_tmp = Path(".focus_agent/test_eval_framework_trajectory")
+    if workspace_tmp.exists():
+        shutil.rmtree(workspace_tmp)
+    workspace_tmp.mkdir(parents=True, exist_ok=True)
+
+    trajectory_path = workspace_tmp / "trajectory.jsonl"
+    trajectory_path.write_text(
+        json.dumps(
+            {
+                "id": "turn-1",
+                "status": "failed",
+                "thread_id": "thread-1",
+                "root_thread_id": "root-1",
+                "scene": "long_dialog_research",
+                "user_message": "Read README",
+                "answer": "old answer",
+                "metrics": {"latency_ms": 33.0},
+                "trajectory": [{"tool": "read_file", "args": {"path": "README.md"}}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    replay_dataset = workspace_tmp / "replay_cases.jsonl"
+
+    replay_result = EvalResult(
+        case_id="traj-turn-1",
+        passed=True,
+        answer="new answer",
+        verdicts=[JudgeVerdict(kind="rule", passed=True, reasoning="all good")],
+        trajectory=[TrajectoryStep(tool="read_file", args={"path": "README.md"}, observation="ok")],
+        metrics={"tool_calls": 1, "llm_calls": 1, "cache_hits": 0, "latency_ms": 12.3, "cost_usd": 0.0},
+    )
+
+    monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda settings=None: object())
+    monkeypatch.setattr(
+        "tests.eval.cli.run_suite",
+        lambda cases, runtime, concurrency, progress=None: [replay_result],
+    )
+
+    exit_code = eval_cli_main(
+        [
+            "replay",
+            "--from",
+            str(trajectory_path),
+            "--trajectory-input",
+            "--write-dataset",
+            str(replay_dataset),
+            "--run",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert replay_dataset.exists()
+    dataset_record = json.loads(replay_dataset.read_text(encoding="utf-8").strip())
+    assert dataset_record["id"] == "traj-turn-1"
+    assert dataset_record["input"]["user_message"] == "Read README"
+    assert "trajectory_id=turn-1" in captured.out
+    assert "tools_before=read_file" in captured.out
+
+
+def test_eval_cli_promote_trajectory_exports_to_dataset(capsys):
+    workspace_tmp = Path(".focus_agent/test_eval_framework_promote")
+    if workspace_tmp.exists():
+        shutil.rmtree(workspace_tmp)
+    workspace_tmp.mkdir(parents=True, exist_ok=True)
+
+    trajectory_path = workspace_tmp / "trajectory.json"
+    trajectory_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "id": "turn-2",
+                        "status": "failed",
+                        "thread_id": "thread-2",
+                        "root_thread_id": "root-2",
+                        "scene": "long_dialog_research",
+                        "user_message": "Search docs",
+                        "answer": "Focus Agent docs",
+                        "trajectory": [{"tool": "web_search", "args": {"query": "focus agent docs"}}],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    promoted_path = workspace_tmp / "promoted.jsonl"
+
+    exit_code = eval_cli_main(
+        [
+            "promote",
+            "--from",
+            str(trajectory_path),
+            "--out",
+            str(promoted_path),
+            "--copy-tool-trajectory",
+            "--copy-answer-substring",
+            "--answer-substring-chars",
+            "10",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    payload = json.loads(promoted_path.read_text(encoding="utf-8").strip())
+    assert payload["id"] == "traj-turn-2"
+    assert payload["expected"]["optimal_tool_sequence"] == ["web_search"]
+    assert payload["expected"]["answer_contains_any"] == ["Focus Agen"]
+    assert "wrote promoted dataset" in captured.out
 
 
 def test_smoke_dataset_guards_tool_policy_regressions():
