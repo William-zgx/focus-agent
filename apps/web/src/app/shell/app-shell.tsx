@@ -174,7 +174,7 @@ function cycleOptionValue<T extends string>(
 export function AppShell({ children }: PropsWithChildren) {
   const { principal } = useFocusAgent();
   const navigate = useNavigate();
-  const { conversationId, threadId, isReviewRoute } = useRouterState({
+  const { conversationId, threadId, isReviewRoute, isTrajectoryRoute } = useRouterState({
     select: (state) => {
       const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
         Record<"conversationId" | "threadId", string>
@@ -183,6 +183,7 @@ export function AppShell({ children }: PropsWithChildren) {
         conversationId: String(routeParams.conversationId ?? ""),
         threadId: String(routeParams.threadId ?? ""),
         isReviewRoute: state.location.pathname.endsWith("/review"),
+        isTrajectoryRoute: state.location.pathname.endsWith("/observability/trajectory"),
       };
     },
   });
@@ -223,6 +224,8 @@ export function AppShell({ children }: PropsWithChildren) {
     threadId,
   });
   const isChineseUi = languagePreference === "zh";
+  const isDiagnosticsRoute = isTrajectoryRoute;
+  const shellSidebarCollapsed = sidebarCollapsed || isDiagnosticsRoute;
 
   useEffect(() => {
     const urlLanguage = new URLSearchParams(window.location.search).get("lang");
@@ -671,10 +674,10 @@ export function AppShell({ children }: PropsWithChildren) {
       }}
     >
       <div
-        className={`fa-app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
+        className={`fa-app-shell ${shellSidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
         style={shellStyle}
       >
-        <aside className="fa-sidebar-panel">
+        {!isDiagnosticsRoute ? <aside className="fa-sidebar-panel">
           <div className="fa-sidebar-copy">
             <div className="fa-sidebar-brand">
               <div className="fa-sidebar-brand-row">
@@ -781,9 +784,9 @@ export function AppShell({ children }: PropsWithChildren) {
           <div className="fa-sidebar-scroll">
             <BranchTreePanel />
           </div>
-        </aside>
+        </aside> : null}
 
-        <div
+        {!isDiagnosticsRoute ? <div
           className="fa-panel-resizer"
           {...tooltipProps(isChineseUi ? "拖动调整左右栏宽度" : "Drag to resize panels")}
           onBlur={handleTooltipHide}
@@ -796,10 +799,10 @@ export function AppShell({ children }: PropsWithChildren) {
           aria-label={isChineseUi ? "调整面板宽度" : "Resize panels"}
           aria-orientation="vertical"
           tabIndex={0}
-        />
+        /> : null}
 
         <main className="fa-chat-panel">
-          <section className="fa-header-card">
+          {!isDiagnosticsRoute ? <section className="fa-header-card">
             <div className="fa-chat-header-top">
               <div className="fa-chat-header-copy">
                 <button
@@ -838,13 +841,15 @@ export function AppShell({ children }: PropsWithChildren) {
             {shellStatus && shellStatus.display !== "chat-floating" ? (
               <div className={`fa-shell-status-line is-${shellStatus.tone}`}>{shellStatus.text}</div>
             ) : null}
-          </section>
+          </section> : null}
 
           {shellStatus?.display === "chat-floating" ? (
             <div className={`fa-shell-status-float is-${shellStatus.tone}`}>{shellStatus.text}</div>
           ) : null}
 
-          <div className="fa-chat-main-body">{children}</div>
+          <div className={`fa-chat-main-body ${isDiagnosticsRoute ? "is-diagnostics-route" : ""}`}>
+            {children}
+          </div>
         </main>
       </div>
 

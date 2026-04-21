@@ -4,4 +4,7 @@ export const queryKeys = {
   conversations: ["conversations"] as const,
   thread: (threadId: string) => ["thread", threadId] as const,
   branchTree: (rootThreadId: string) => ["branch-tree", rootThreadId] as const,
+  trajectoryList: (filtersKey: string) => ["trajectory-list", filtersKey] as const,
+  trajectoryDetail: (turnId: string) => ["trajectory-detail", turnId] as const,
+  trajectoryStats: (filtersKey: string) => ["trajectory-stats", filtersKey] as const,
 };

@@ -19,6 +19,15 @@ import type {
   FocusAgentTokenResponse,
   FocusAgentTurnRequest,
   FocusAgentResumeRequest,
+  FocusAgentTrajectoryDetailResponse,
+  FocusAgentTrajectoryListRequest,
+  FocusAgentTrajectoryListResponse,
+  FocusAgentTrajectoryPromotionRequest,
+  FocusAgentTrajectoryPromotionResponse,
+  FocusAgentTrajectoryReplayRequest,
+  FocusAgentTrajectoryReplayResponse,
+  FocusAgentTrajectoryStatsRequest,
+  FocusAgentTrajectoryStatsResponse,
   BranchTreeResponse,
   ThreadStateResponse,
   FocusAgentToolEvent,
@@ -41,6 +50,58 @@ export class FocusAgentRequestError extends Error {
     this.status = status;
     this.statusText = statusText;
   }
+}
+
+function appendQueryValue(params: URLSearchParams, key: string, value: unknown): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendQueryValue(params, key, item);
+    }
+    return;
+  }
+  if (typeof value === "boolean") {
+    if (value) {
+      params.append(key, "true");
+    }
+    return;
+  }
+  params.append(key, String(value));
+}
+
+function buildTrajectoryQueryString(request: FocusAgentTrajectoryListRequest | FocusAgentTrajectoryStatsRequest): string {
+  const params = new URLSearchParams();
+  appendQueryValue(params, "turn_id", request.turn_id);
+  appendQueryValue(params, "turn_ids", request.turn_ids);
+  appendQueryValue(params, "thread_id", request.thread_id);
+  appendQueryValue(params, "root_thread_id", request.root_thread_id);
+  appendQueryValue(params, "parent_thread_id", request.parent_thread_id);
+  appendQueryValue(params, "branch_id", request.branch_id);
+  appendQueryValue(params, "branch_role", request.branch_role);
+  appendQueryValue(params, "status", request.status);
+  appendQueryValue(params, "scene", request.scene);
+  appendQueryValue(params, "kind", request.kind);
+  appendQueryValue(params, "tool", request.tool);
+  appendQueryValue(params, "model", request.selected_model ?? request.model);
+  appendQueryValue(params, "started_after", request.started_after ?? request.since);
+  appendQueryValue(params, "started_before", request.started_before ?? request.until);
+  appendQueryValue(params, "fallback_used", request.fallback_used);
+  appendQueryValue(params, "cache_hit", request.cache_hit);
+  appendQueryValue(params, "has_error", request.has_error);
+  appendQueryValue(params, "min_latency_ms", request.min_latency_ms);
+  appendQueryValue(params, "max_latency_ms", request.max_latency_ms);
+  appendQueryValue(params, "min_tool_calls", request.min_tool_calls);
+  appendQueryValue(params, "max_tool_calls", request.max_tool_calls);
+  if ("limit" in request) {
+    appendQueryValue(params, "limit", request.limit);
+  }
+  if ("offset" in request) {
+    appendQueryValue(params, "offset", request.offset);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 function canonicalizeAliasEvent(event: FocusAgentEvent): FocusAgentEvent {
@@ -199,6 +260,73 @@ export class FocusAgentClient {
       method: "GET",
       headers: {},
     }, true);
+  }
+
+  async listTrajectoryTurns(
+    request: FocusAgentTrajectoryListRequest = {},
+  ): Promise<FocusAgentTrajectoryListResponse> {
+    return this.requestJson<FocusAgentTrajectoryListResponse>(
+      `/v1/observability/trajectory${buildTrajectoryQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getTrajectoryTurn(turnId: string): Promise<FocusAgentTrajectoryDetailResponse> {
+    return this.requestJson<FocusAgentTrajectoryDetailResponse>(
+      `/v1/observability/trajectory/${encodeURIComponent(turnId)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getTrajectoryStats(
+    request: FocusAgentTrajectoryStatsRequest = {},
+  ): Promise<FocusAgentTrajectoryStatsResponse> {
+    return this.requestJson<FocusAgentTrajectoryStatsResponse>(
+      `/v1/observability/trajectory/stats${buildTrajectoryQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async replayTrajectoryTurn(
+    turnId: string,
+    request: FocusAgentTrajectoryReplayRequest = {},
+  ): Promise<FocusAgentTrajectoryReplayResponse> {
+    return this.requestJson<FocusAgentTrajectoryReplayResponse>(
+      `/v1/observability/trajectory/${encodeURIComponent(turnId)}/replay`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async promoteTrajectoryTurn(
+    turnId: string,
+    request: FocusAgentTrajectoryPromotionRequest = {},
+  ): Promise<FocusAgentTrajectoryPromotionResponse> {
+    return this.requestJson<FocusAgentTrajectoryPromotionResponse>(
+      `/v1/observability/trajectory/${encodeURIComponent(turnId)}/promote`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
   }
 
   async forkBranch(request: FocusAgentForkBranchRequest): Promise<FocusAgentBranchRecord> {

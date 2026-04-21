@@ -10,10 +10,7 @@ from focus_agent.observability.trajectory import (
     extract_trajectory_steps,
     utc_now,
 )
-from focus_agent.repositories.postgres_trajectory_repository import (
-    PostgresTrajectoryRepository,
-    TrajectoryTurnQuery,
-)
+from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 
 def test_extract_trajectory_steps_preserves_runtime_metadata():
