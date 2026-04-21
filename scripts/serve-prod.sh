@@ -19,13 +19,19 @@ require_command pnpm
 assert_api_binary
 assert_workspace_node_modules
 ensure_local_setup
+load_local_env_exports
+ensure_managed_database_uri
 
 assert_port_free "$API_PORT" "API"
+
+trap_managed_processes
 
 log "Building static frontend bundle for production serving"
 pnpm web:build
 
 log "Starting API on http://${API_HOST}:${API_PORT} (reload=0, static frontend)"
 log "Frontend will be served by FastAPI at /app"
+.venv/bin/focus-agent-api &
+register_managed_pid "$!"
 
-exec .venv/bin/focus-agent-api
+monitor_managed_processes

@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain.messages import AIMessage, HumanMessage
@@ -9,6 +10,8 @@ from langgraph.graph import END, START, StateGraph
 import pytest
 
 from focus_agent.capabilities.default_tools import get_default_tools
+from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
+from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.config import (
     GitLogToolConfig,
     ListFilesToolConfig,
@@ -18,6 +21,7 @@ from focus_agent.config import (
     ToolCatalogConfig,
     WebSearchConfig,
 )
+from focus_agent.core.types import ContextBudget
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 
 
@@ -80,8 +84,77 @@ def _install_fake_ddgs(monkeypatch):
     monkeypatch.setitem(sys.modules, "ddgs", fake_module)
 
 
-def _tool_map(settings: Settings) -> dict[str, object]:
-    return {tool.name: tool for tool in get_default_tools(settings)}
+class _FakeArtifactMetadataRepository:
+    def __init__(self):
+        self.upsert_calls: list[dict[str, object]] = []
+        self.records_by_id: dict[str, types.SimpleNamespace] = {}
+
+    def upsert_from_file(self, *, thread_id: str, artifact_id: str, path: str | Path, title: str):
+        file_path = Path(path)
+        stat = file_path.stat()
+        previous = self.records_by_id.get(artifact_id)
+        record = types.SimpleNamespace(
+            artifact_id=artifact_id,
+            thread_id=thread_id,
+            path=str(path),
+            title=title,
+            size_bytes=stat.st_size,
+            created_at=previous.created_at if previous is not None else datetime.now(timezone.utc),
+            updated_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+        )
+        self.records_by_id[artifact_id] = record
+        self.upsert_calls.append(
+            {
+                "thread_id": thread_id,
+                "artifact_id": artifact_id,
+                "path": str(path),
+                "title": title,
+            }
+        )
+        return record
+
+    def list_by_thread(self, thread_id: str, *, limit: int | None = None):
+        records = [
+            record
+            for record in self.records_by_id.values()
+            if record.thread_id == thread_id
+        ]
+        records.sort(key=lambda record: (-record.updated_at.timestamp(), record.artifact_id))
+        if limit is not None:
+            return records[:limit]
+        return records
+
+    def get_by_artifact_id(self, artifact_id: str):
+        return self.records_by_id.get(artifact_id)
+
+
+def _tool_map(settings: Settings, *, artifact_metadata_repository=None) -> dict[str, object]:
+    return {
+        tool.name: tool
+        for tool in get_default_tools(
+            settings,
+            artifact_metadata_repository=artifact_metadata_repository,
+        )
+    }
+
+
+def _runtime_invoke(tool_obj, args: dict[str, object]) -> tuple[str, str]:
+    result = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="tool-call-1",
+                tool_name=tool_obj.name,
+                args=dict(args),
+                tool=tool_obj,
+                runtime=ToolRuntimeMeta.from_tool(tool_obj),
+            )
+        ],
+        context_budget=ContextBudget(),
+        cache_store={},
+        cache_scope_keys={0: "thread:test"},
+    )[0]
+    return result.message.status, str(result.message.content)
 
 
 def _init_git_repo(path: Path) -> None:
@@ -171,6 +244,18 @@ def test_tool_metadata_uses_configured_label_and_description(monkeypatch):
     assert tools["web_search"].metadata["display_name"] == "Live Search"
 
 
+def test_tool_runtime_metadata_marks_parallel_cacheable_and_fallback_capabilities(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    _install_fake_ddgs(monkeypatch)
+    tools = _tool_map(Settings())
+
+    assert tools["search_code"].metadata["parallel_safe"] is True
+    assert tools["search_code"].metadata["cacheable"] is True
+    assert tools["search_code"].metadata["cache_scope"] == "thread"
+    assert tools["web_search"].metadata["fallback_group"] == "web_search"
+    assert tools["write_text_artifact"].metadata["side_effect"] is True
+
+
 def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
@@ -180,8 +265,10 @@ def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch
     _FakeDDGS.raised = None
     tools = _tool_map(Settings())
 
-    payload = json.loads(tools["web_search"].invoke({"query": "hello", "max_results": 4}))
+    status, content = _runtime_invoke(tools["web_search"], {"query": "hello", "max_results": 4})
+    payload = json.loads(content)
 
+    assert status == "success"
     assert payload["provider"] == "duckduckgo"
     assert payload["answer"] is None
     assert payload["results"][0]["url"] == "https://example.com/ddg"
@@ -203,8 +290,10 @@ def test_web_search_falls_back_to_duckduckgo_when_tavily_fails(monkeypatch):
     monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", failing_urlopen)
     tools = _tool_map(Settings())
 
-    payload = json.loads(tools["web_search"].invoke({"query": "hello"}))
+    status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
+    payload = json.loads(content)
 
+    assert status == "success"
     assert payload["provider"] == "duckduckgo"
     assert payload["results"][0]["title"] == "Fallback"
 
@@ -216,8 +305,10 @@ def test_web_search_raises_when_both_providers_fail(monkeypatch):
     _FakeDDGS.raised = RuntimeError("ddg down")
     tools = _tool_map(Settings())
 
-    with pytest.raises(RuntimeError, match="DuckDuckGo error"):
-        tools["web_search"].invoke({"query": "hello"})
+    status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
+
+    assert status == "error"
+    assert "ddg down" in content
 
 
 def test_default_tools_expose_only_one_web_search_tool(monkeypatch):
@@ -357,6 +448,51 @@ def test_artifact_tools_list_read_and_update_saved_artifacts(tmp_path):
 
     with pytest.raises(ValueError, match="artifact directory"):
         tools["artifact_read"].invoke({"artifact_id": "../outside.md"})
+
+
+def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listing(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    artifact_dir = project / ".focus_agent" / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    metadata_repo = _FakeArtifactMetadataRepository()
+    monkeypatch.setattr("focus_agent.capabilities.default_tools._get_current_thread_id", lambda: "thread-1")
+    tools = _tool_map(
+        Settings(
+            database_uri="postgresql://example.test/focus_agent",
+            workspace_root=str(project),
+            artifact_dir=str(artifact_dir),
+        ),
+        artifact_metadata_repository=metadata_repo,
+    )
+
+    tools["write_text_artifact"].invoke({"title": "Launch Plan", "body": "First draft"})
+    (artifact_dir / "orphan.md").write_text("orphan\n", encoding="utf-8")
+    (artifact_dir / "other-thread.md").write_text("other thread\n", encoding="utf-8")
+    metadata_repo.upsert_from_file(
+        thread_id="thread-2",
+        artifact_id="other-thread.md",
+        path=artifact_dir / "other-thread.md",
+        title="Other Thread",
+    )
+
+    list_payload = json.loads(tools["artifact_list"].invoke({}))
+    read_payload = json.loads(tools["artifact_read"].invoke({"artifact_id": "launch-plan.md"}))
+    update_payload = json.loads(
+        tools["artifact_update"].invoke(
+            {
+                "artifact_id": "launch-plan.md",
+                "body": "Second section",
+                "mode": "append",
+            }
+        )
+    )
+
+    assert [item["artifact_id"] for item in list_payload["artifacts"]] == ["launch-plan.md"]
+    assert "First draft" in read_payload["content"]
+    assert update_payload["artifact_id"] == "launch-plan.md"
+    assert metadata_repo.upsert_calls[0]["thread_id"] == "thread-1"
+    assert metadata_repo.upsert_calls[-1]["artifact_id"] == "launch-plan.md"
 
 
 def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):

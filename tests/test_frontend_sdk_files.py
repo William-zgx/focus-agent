@@ -33,6 +33,14 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'preparing_merge_review' in types_text
     assert 'FocusAgentCreateConversationRequest' in types_text
     assert 'FocusAgentUpdateConversationRequest' in types_text
+    assert 'FocusAgentTrajectoryFilters' in types_text
+    assert 'FocusAgentTrajectoryListRequest' in types_text
+    assert 'FocusAgentTrajectoryTurnSummary' in types_text
+    assert 'FocusAgentTrajectoryTurnDetail' in types_text
+    assert 'FocusAgentTrajectoryStatsResponse' in types_text
+    assert 'FocusAgentTrajectoryReplayRequest' in types_text
+    assert 'FocusAgentTrajectoryReplayResponse' in types_text
+    assert 'FocusAgentTrajectoryPromotionResponse' in types_text
 
     client_text = (root / 'src' / 'client.ts').read_text()
     assert 'class FocusAgentClient' in client_text
@@ -52,4 +60,10 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'activateBranch' in client_text
     assert 'prepareMergeProposal' in client_text
     assert 'applyMergeDecision' in client_text
+    assert 'listTrajectoryTurns' in client_text
+    assert 'getTrajectoryTurn' in client_text
+    assert 'getTrajectoryStats' in client_text
+    assert 'replayTrajectoryTurn' in client_text
+    assert 'promoteTrajectoryTurn' in client_text
+    assert 'buildTrajectoryQueryString' in client_text
     assert 'new FocusAgentRequestError(response.status, response.statusText)' in client_text

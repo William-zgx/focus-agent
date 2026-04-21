@@ -7,6 +7,12 @@ from focus_agent.api.schemas import (
     CreateConversationRequest,
     ForkBranchRequest,
     ModelCatalogResponse,
+    TrajectoryPromotionResponse,
+    TrajectoryPromotionRequest,
+    TrajectoryReplayResponse,
+    TrajectoryReplayRequest,
+    TrajectoryTurnListResponse,
+    TrajectoryTurnStatsEnvelopeResponse,
     UpdateBranchNameRequest,
     UpdateConversationRequest,
 )
@@ -69,14 +75,14 @@ def test_fork_branch_request_allows_auto_generated_names():
 
 def test_model_catalog_response_shape():
     payload = ModelCatalogResponse(
-        default_model="moonshot:kimi-k2.5",
+        default_model="moonshot:kimi-k2.6",
         models=[
             {
-                "id": "moonshot:kimi-k2.5",
+                "id": "moonshot:kimi-k2.6",
                 "provider": "moonshot",
                 "provider_label": "Moonshot AI",
-                "name": "kimi-k2.5",
-                "label": "Kimi K2.5 · Moonshot AI",
+                "name": "kimi-k2.6",
+                "label": "Kimi K2.6 · Moonshot AI",
                 "is_default": True,
                 "supports_thinking": True,
                 "default_thinking_enabled": True,
@@ -86,9 +92,9 @@ def test_model_catalog_response_shape():
 
     dumped = payload.model_dump(mode="json")
 
-    assert dumped["default_model"] == "moonshot:kimi-k2.5"
+    assert dumped["default_model"] == "moonshot:kimi-k2.6"
     assert dumped["models"][0]["provider"] == "moonshot"
-    assert dumped["models"][0]["name"] == "kimi-k2.5"
+    assert dumped["models"][0]["name"] == "kimi-k2.6"
     assert dumped["models"][0]["supports_thinking"] is True
     assert dumped["models"][0]["default_thinking_enabled"] is True
 
@@ -134,6 +140,46 @@ def test_apply_merge_decision_request_allows_proposal_overrides():
     assert dumped["proposal_overrides"]["key_findings"] == ["Finding A"]
 
 
+def test_trajectory_contract_shapes():
+    listing = TrajectoryTurnListResponse(limit=20, offset=0, count=1, filters={"status": ["failed"]})
+    stats = TrajectoryTurnStatsEnvelopeResponse(filters={"fallback_used": True})
+    replay = TrajectoryReplayRequest(copy_tool_trajectory=True)
+    promote = TrajectoryPromotionRequest(copy_answer_substring=True)
+    replay_response = TrajectoryReplayResponse(
+        source_turn_id="turn-1",
+        model_used="openai:gpt-4.1-mini",
+        replay_case={
+            "id": "traj-turn-1",
+            "scene": "long_dialog_research",
+            "input": {"user_message": "Read README"},
+            "expected": {},
+        },
+        replay_case_jsonl='{"id":"traj-turn-1"}',
+        replay_result={"case_id": "traj-turn-1", "passed": True, "answer": "ok"},
+        comparison={"case_id": "traj-turn-1", "replay_passed": True},
+    )
+    promote_response = TrajectoryPromotionResponse(
+        source_turn_id="turn-1",
+        case_id="traj-turn-1",
+        dataset_record={
+            "id": "traj-turn-1",
+            "scene": "long_dialog_research",
+            "input": {"user_message": "Read README"},
+            "expected": {},
+        },
+        jsonl='{"id":"traj-turn-1"}',
+    )
+
+    assert listing.model_dump(mode="json")["count"] == 1
+    assert listing.model_dump(mode="json")["filters"]["status"] == ["failed"]
+    assert stats.model_dump(mode="json")["filters"]["fallback_used"] is True
+    assert replay.copy_tool_trajectory is True
+    assert promote.copy_answer_substring is True
+    assert replay_response.model_dump(mode="json")["replay_case"]["input"]["user_message"] == "Read README"
+    assert replay_response.model_dump(mode="json")["comparison"]["replay_passed"] is True
+    assert promote_response.model_dump(mode="json")["dataset_record"]["id"] == "traj-turn-1"
+
+
 def test_public_api_no_longer_exposes_skill_catalog_routes():
     app = create_app()
 
@@ -143,6 +189,11 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/conversations/{root_thread_id}" in route_paths
     assert "/v1/conversations/{root_thread_id}/archive" in route_paths
     assert "/v1/conversations/{root_thread_id}/activate" in route_paths
+    assert "/v1/observability/trajectory" in route_paths
+    assert "/v1/observability/trajectory/stats" in route_paths
+    assert "/v1/observability/trajectory/{turn_id}" in route_paths
+    assert "/v1/observability/trajectory/{turn_id}/replay" in route_paths
+    assert "/v1/observability/trajectory/{turn_id}/promote" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
     assert "/v1/skills" not in route_paths
     assert "/v1/skills/{skill_id}" not in route_paths

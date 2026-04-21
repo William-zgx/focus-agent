@@ -223,14 +223,15 @@ DATABASE_URI=postgresql://user:pass@localhost/focus_agent
 
 ### Docker / Compose 部署
 
-当前仓库已提供基础容器化部署路径：
+当前仓库已提供推荐版容器化部署路径：
 
 - `Dockerfile` 通过多阶段构建生成 `apps/web/dist`，最终镜像直接运行 `focus-agent-api`
-- `compose.yaml` 默认将仓库内 `./.focus_agent` 挂到容器 `/data`，让本地 Docker 与非容器运行共享模型目录、凭证文件和持久化状态；如需隔离，可改用 named volume
+- `compose.yaml` 用于本地 Docker 联调，显式启动 `focus-agent + postgres`，并默认使用 named volume 保存 `/data` 与 PostgreSQL 数据目录
+- `compose.prod.yaml` 用于生产/预发模板，只启动 `focus-agent` 并要求外部 PostgreSQL
 - 容器默认以 `API_HOST=0.0.0.0`、`API_RELOAD=0` 启动，并开启 demo token 自举以匹配内置 Web 应用的本地体验；若用于共享环境，需显式设置 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
+- 详细部署规范见 `docs/docker-deployment.md`
 
 ```bash
-export OPENAI_API_KEY=replace-me
 export FOCUS_AGENT_AUTH_JWT_SECRET=<strong-random-secret>
 docker compose up --build
 ```
@@ -242,8 +243,10 @@ docker compose up --build
 
 说明：
 
-- 不设置 `FOCUS_AGENT_DATABASE_URI` 时，当前容器仍走本地持久化基线：branch 元数据保存在 `/data/branches.sqlite3`，LangGraph checkpoint/store 保存在 `/data/langgraph-*.pkl`
-- 设置 `FOCUS_AGENT_DATABASE_URI` 后，当前只会把 LangGraph checkpoint/store 切到 Postgres；branch repository 仍然使用 SQLite。这与路线图中的 `Postgres 仓储` 后续项保持一致
+- 不设置 `FOCUS_AGENT_DATABASE_URI` 时，`compose.yaml` 会默认连接其内置 `postgres` service；只有在显式关闭或改用其他部署方式时，容器才可能继续落回 `/data/branches.sqlite3` 与 `/data/langgraph-*.pkl`
+- 设置 `FOCUS_AGENT_DATABASE_URI` 后，会切到 PostgreSQL 主持久化路径：`focus_conversations` / `focus_thread_access` / `focus_branches` / `focus_artifacts` 等应用表、LangGraph checkpoint/store，以及 trajectory 观测表都会进入 Postgres；artifact 正文仍保留在文件系统
+- provider 密钥和 Base URL 默认读 `/data/local.env`；如果想从宿主 shell 临时覆盖，则导出 Compose 透传的变量，例如 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
+- 历史 repo-local 状态可通过 `focus-agent-migrate-local-state` 显式迁入 Postgres；迁移默认不在服务启动时自动执行
 
 ---
 
@@ -271,9 +274,9 @@ docker compose up --build
    - 改进：可替换为 Redis 后端（保持同样的 `RateLimiter` 接口）
 
 2. **持久化层**
-   - 分支元数据用 SQLite（本地默认 `.focus_agent/branches.sqlite3`，容器默认 `/data/branches.sqlite3`）
-   - 对话历史依赖 LangGraph checkpoint；即使设置 `DATABASE_URI`，当前也只切换 checkpoint/store，不切换 branch repository
-   - 改进：分离成专用的数据层，支持多种后端，并补齐 Postgres branch repository
+   - 当前已支持双后端：本地 fallback 使用 SQLite + `langgraph-*.pkl`，Postgres primary 使用应用自有表 + LangGraph Postgres backend
+   - artifact 元数据进入 Postgres，但 artifact 正文仍留在文件系统，避免把大文件直接塞进数据库
+   - 改进：后续可继续补 retention、备份策略、以及更细粒度的 artifact 归属字段
 
 3. **错误恢复**
    - 流式响应中断没有重试机制

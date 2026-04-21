@@ -1,0 +1,72 @@
+name: Eval
+
+on:
+  pull_request:
+    paths:
+      - "src/focus_agent/engine/**"
+      - "src/focus_agent/capabilities/**"
+      - "src/focus_agent/memory/**"
+      - "src/focus_agent/core/**"
+      - "src/focus_agent/prompts.py"
+      - "tests/eval/**"
+      - "tests/test_eval_framework.py"
+      - ".github/workflows/eval.yml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "src/focus_agent/engine/**"
+      - "src/focus_agent/capabilities/**"
+      - "src/focus_agent/memory/**"
+      - "src/focus_agent/core/**"
+      - "src/focus_agent/prompts.py"
+      - "tests/eval/**"
+      - "tests/test_eval_framework.py"
+      - ".github/workflows/eval.yml"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python dependencies
+        run: uv pip install --system -e '.[openai,dev]'
+
+      - name: Run deterministic eval framework tests
+        run: uv run pytest tests/test_eval_framework.py tests/eval/test_framework_self.py tests/eval/test_plan_act_reflect.py
+
+      - name: Run provider-backed smoke eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is not configured; skipping provider-backed smoke eval."
+            exit 0
+          fi
+          mkdir -p reports
+          uv run python -m tests.eval \
+            --suite smoke \
+            --concurrency 1 \
+            --report-json reports/eval-smoke.json \
+            --report-jsonl reports/eval-smoke.jsonl \
+            --report-html reports/eval-smoke.html
+
+      - name: Upload eval reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: reports/
+          if-no-files-found: ignore

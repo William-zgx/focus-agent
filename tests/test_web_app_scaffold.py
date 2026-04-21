@@ -42,6 +42,8 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "ThreadPage" in router_text
     assert "AppShell" in router_text
     assert 'basepath: "/app"' in router_text
+    assert "Bearer Token Required" in router_text
+    assert "Continue With Token" in router_text
 
     vite_text = (web_root / "vite.config.ts").read_text()
     assert 'base: "/app/"' in vite_text
@@ -56,7 +58,10 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "getPrincipal" in provider_text
     assert "FocusAgentRequestError" in provider_text
     assert "clearStoredToken()" in provider_text
+    assert "authHint" in provider_text
     assert "error.status === 401" in provider_text
+    assert "authenticateWithToken" in provider_text
+    assert "Demo token bootstrap is disabled" in provider_text
     assert "window.localStorage.removeItem" in provider_text
 
     merge_review_text = (web_root / "src" / "features" / "merge-review" / "merge-review-card.tsx").read_text()
@@ -76,10 +81,19 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
     assert 'window.localStorage.getItem(LANGUAGE_KEY)' in app_shell_text
 
+    styles_text = (web_root / "src" / "shared" / "styles" / "app.css").read_text()
+    assert ".fa-auth-bootstrap-card" in styles_text
+    assert ".fa-auth-bootstrap-input" in styles_text
+
     stream_hook_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"
     ).read_text()
-    assert "setStreamState(null)" in stream_hook_text
+    assert "let sendSucceeded = false;" in stream_hook_text
+    assert "sendSucceeded = !nextState.failed && !controller.signal.aborted;" in stream_hook_text
+    assert "failed: {" in stream_hook_text
+    assert "setPendingUserMessage(null);" in stream_hook_text
+    assert "client.sendTurn(" not in stream_hook_text
+    assert 'activeRequestIdRef.current !== requestId || controller.signal.aborted' in stream_hook_text
 
 
 def test_react_web_app_restores_merged_branch_read_only_mode():
@@ -95,6 +109,11 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert 'branch_meta?.branch_status === "merged"' in thread_page_text
     assert "isReadOnly={isMergedReadOnlyThread}" in thread_page_text
     assert "if (!trimmed || isStreaming || isReadOnly) return;" in composer_text
+    assert "const wasEditing = Boolean(editDraft);" in composer_text
+    assert "if (wasEditing) {" in composer_text
+    assert "const result = await onSendMessage(trimmed" in composer_text
+    assert "if (result.ok) {" in composer_text
+    assert "onClearEditDraft?.();" in composer_text
     assert "readOnly={isReadOnly}" in composer_text
     assert "disabled={isStreaming || isReadOnly || !message.trim()}" in composer_text
     assert "disabled={isReadOnly}" in message_list_text
@@ -137,3 +156,14 @@ def test_react_web_app_marks_merged_branch_status_in_danger_tone():
     assert 'case "merged":\n      return "is-merged";' in branch_tree_text
     assert ".fa-branch-node-badge.is-danger" in styles_text
     assert ".fa-archived-item-status.is-danger" in styles_text
+
+
+def test_new_conversation_skips_prompt_but_rename_still_uses_it():
+    root = Path(__file__).resolve().parents[1]
+    conversation_toolbar_text = (
+        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
+    ).read_text()
+
+    assert 'const conversation = await createConversation();' in conversation_toolbar_text
+    assert 'const title = window.prompt(\n      isChineseUi ? "对话标题（可选）" : "Conversation title (optional)",\n    );' not in conversation_toolbar_text
+    assert 'const title = window.prompt(\n      isChineseUi ? "重命名对话" : "Rename conversation",\n      conversation.title,\n    );' in conversation_toolbar_text

@@ -126,8 +126,8 @@ def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
         "\n".join(
             [
                 'default_model = "openai:deepseek-reasoner"',
-                'helper_model = "moonshot:kimi-k2.5"',
-                'model_choices = ["openai:deepseek-reasoner", "moonshot:kimi-k2.5"]',
+                'helper_model = "moonshot:kimi-k2.6"',
+                'model_choices = ["openai:deepseek-reasoner", "moonshot:kimi-k2.6"]',
             ]
         ),
         encoding="utf-8",
@@ -149,8 +149,8 @@ def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
     settings = Settings.from_env()
 
     assert settings.model == "openai:deepseek-reasoner"
-    assert settings.helper_model == "moonshot:kimi-k2.5"
-    assert settings.model_choices == ("openai:deepseek-reasoner", "moonshot:kimi-k2.5")
+    assert settings.helper_model == "moonshot:kimi-k2.6"
+    assert settings.model_choices == ("openai:deepseek-reasoner", "moonshot:kimi-k2.6")
     assert settings.web_search.provider == "duckduckgo"
     assert settings.temperature == 0.4
 
@@ -161,7 +161,7 @@ def test_settings_from_env_prefers_explicit_model_env_over_catalog_default(tmp_p
         "\n".join(
             [
                 'default_model = "ollama:qwen2.5:7b"',
-                'helper_model = "moonshot:kimi-k2.5"',
+                'helper_model = "moonshot:kimi-k2.6"',
             ]
         ),
         encoding="utf-8",
@@ -234,3 +234,26 @@ def test_settings_from_env_reads_workspace_root(monkeypatch):
     settings = Settings.from_env()
 
     assert settings.workspace_root == "/tmp/focus-agent-workspace"
+
+
+def test_settings_from_env_enables_trajectory_when_database_uri_exists(monkeypatch):
+    monkeypatch.setenv("DATABASE_URI", "postgresql://user:pass@localhost/focus_agent")
+
+    settings = Settings.from_env()
+
+    assert settings.trajectory_enabled is True
+
+
+def test_settings_from_env_allows_disabling_trajectory_with_postgres(monkeypatch):
+    monkeypatch.setenv("DATABASE_URI", "postgresql://user:pass@localhost/focus_agent")
+    monkeypatch.setenv("TRAJECTORY_ENABLED", "false")
+    monkeypatch.setenv("TRAJECTORY_OBSERVATION_MAX_CHARS", "123")
+    monkeypatch.setenv("TRAJECTORY_ANSWER_MAX_CHARS", "456")
+    monkeypatch.setenv("TRAJECTORY_HASH_USER_ID", "false")
+
+    settings = Settings.from_env()
+
+    assert settings.trajectory_enabled is False
+    assert settings.trajectory_observation_max_chars == 123
+    assert settings.trajectory_answer_max_chars == 456
+    assert settings.trajectory_hash_user_id is False

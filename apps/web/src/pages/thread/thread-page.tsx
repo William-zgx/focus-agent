@@ -129,13 +129,13 @@ export function ThreadPage() {
       model?: string;
       thinkingMode?: string;
     },
-  ) {
+  ): Promise<{ ok: boolean }> {
     if (isMergedReadOnlyThread) {
-      return;
+      return { ok: false };
     }
     shouldAutoFollowRef.current = true;
     scrollToBottom();
-    await sendMessage(message, overrides);
+    return sendMessage(message, overrides);
   }
 
   return (

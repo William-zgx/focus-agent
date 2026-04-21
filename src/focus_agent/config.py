@@ -578,6 +578,10 @@ class Settings:
     plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
     plan_task_brief_min_chars: int = 120
     plan_max_replans: int = 1
+    trajectory_enabled: bool | None = None
+    trajectory_observation_max_chars: int = 4000
+    trajectory_answer_max_chars: int = 4000
+    trajectory_hash_user_id: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -598,6 +602,7 @@ class Settings:
         defaults = cls()
         database_uri = env.get("DATABASE_URI") or None
         langgraph_api_url = env.get("LANGGRAPH_API_URL") or None
+        trajectory_enabled = _coerce_bool(env.get("TRAJECTORY_ENABLED"))
         instance = cls(
             model=env.get("MODEL") or model_catalog.default_model or defaults.model,
             helper_model=env.get("HELPER_MODEL") or model_catalog.helper_model or None,
@@ -667,6 +672,25 @@ class Settings:
             plan_max_replans=int(
                 env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))
             ),
+            trajectory_enabled=(
+                bool(database_uri) if trajectory_enabled is None else trajectory_enabled
+            ),
+            trajectory_observation_max_chars=int(
+                env.get(
+                    "TRAJECTORY_OBSERVATION_MAX_CHARS",
+                    str(defaults.trajectory_observation_max_chars),
+                )
+            ),
+            trajectory_answer_max_chars=int(
+                env.get(
+                    "TRAJECTORY_ANSWER_MAX_CHARS",
+                    str(defaults.trajectory_answer_max_chars),
+                )
+            ),
+            trajectory_hash_user_id=env.get(
+                "TRAJECTORY_HASH_USER_ID",
+                "true" if defaults.trajectory_hash_user_id else "false",
+            ).lower() in {"1", "true", "yes", "on"},
         )
         Path(instance.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         Path(instance.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)

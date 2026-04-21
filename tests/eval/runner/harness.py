@@ -15,13 +15,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain.messages import AIMessage, HumanMessage
 
 from focus_agent.capabilities import build_tool_registry
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.graph_builder import build_graph
+from focus_agent.observability.trajectory import extract_trajectory_steps
 from focus_agent.skills import SkillRegistry
 
 from ..judges import LLMJudge, RuleJudge, TrajectoryJudge
@@ -273,27 +274,7 @@ def _last_ai_text(messages: list[Any]) -> str:
 
 
 def _extract_trajectory(messages: list[Any]) -> list[TrajectoryStep]:
-    """Pair AIMessage(tool_calls=...) with the matching ToolMessage observations."""
-    pending_calls: dict[str, dict[str, Any]] = {}
-    steps: list[TrajectoryStep] = []
-    for msg in messages or []:
-        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-            for call in msg.tool_calls:
-                pending_calls[str(call["id"])] = {
-                    "name": call["name"],
-                    "args": call.get("args") or {},
-                }
-        elif isinstance(msg, ToolMessage):
-            call = pending_calls.pop(str(msg.tool_call_id), None)
-            if call is not None:
-                steps.append(
-                    TrajectoryStep(
-                        tool=call["name"],
-                        args=call["args"],
-                        observation=str(msg.content)[:4000],
-                    )
-                )
-    return steps
+    return extract_trajectory_steps(messages, observation_max_chars=4000)
 
 
 def _run_judges(
@@ -312,7 +293,7 @@ def _run_judges(
         verdicts.append(
             runtime.llm_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
-    if case.expected.get("optimal_tool_sequence") or case.expected.get("max_tool_calls") is not None:
+    if _has_trajectory_expectations(case.expected):
         verdicts.append(
             runtime.trajectory_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
@@ -341,6 +322,9 @@ def _build_metrics(
         input_tokens / 1000.0 * runtime.cost_per_1k_input
         + output_tokens / 1000.0 * runtime.cost_per_1k_output
     )
+    cache_hits = sum(1 for step in trajectory if step.cache_hit)
+    fallback_uses = sum(1 for step in trajectory if step.fallback_used)
+    parallel_tool_calls = sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1)
     return {
         "latency_ms": latency_ms,
         "tool_calls": tool_calls,
@@ -348,4 +332,24 @@ def _build_metrics(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cost_usd": cost_usd,
+        "cache_hits": cache_hits,
+        "fallback_uses": fallback_uses,
+        "parallel_tool_calls": parallel_tool_calls,
     }
+
+
+def _has_trajectory_expectations(expected: dict[str, Any]) -> bool:
+    keys = {
+        "optimal_tool_sequence",
+        "max_tool_calls",
+        "min_cache_hits",
+        "max_cache_hits",
+        "min_fallback_uses",
+        "max_fallback_uses",
+        "min_parallel_tool_calls",
+        "max_parallel_tool_calls",
+        "must_hit_cache_tools_any_order",
+        "must_use_fallback_tools_any_order",
+        "must_parallelize_tools_any_order",
+    }
+    return any(expected.get(key) is not None for key in keys)

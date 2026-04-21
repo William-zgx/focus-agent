@@ -55,9 +55,6 @@ export function ConversationToolbar() {
   }
 
   async function handleCreateConversation() {
-    const title = window.prompt(
-      isChineseUi ? "对话标题（可选）" : "Conversation title (optional)",
-    );
     setIsWorking(true);
     try {
       setShellStatus(
@@ -67,7 +64,7 @@ export function ConversationToolbar() {
         },
         { autoClearMs: 2200 },
       );
-      const conversation = await createConversation(title?.trim() || undefined);
+      const conversation = await createConversation();
       await openConversation(conversation.root_thread_id);
       setShellStatus(
         {

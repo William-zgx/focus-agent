@@ -7,11 +7,12 @@ import {
   createRouter,
   useNavigate,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { useConversations } from "@/features/conversations/use-conversations";
+import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
@@ -82,6 +83,95 @@ function HomePage() {
   );
 }
 
+function AuthBootstrapPage() {
+  const { isChineseUi } = useShellUi();
+  const { authError, authHint, authenticateWithToken, clearStoredToken } = useFocusAgent();
+  const [token, setToken] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const showsDisabledDemoTokenHint = authHint === "demo_token_disabled";
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await authenticateWithToken(token);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fa-route-state">
+      <div className="fa-route-state-card fa-auth-bootstrap-card">
+        <p className="fa-route-state-title">
+          {isChineseUi ? "需要提供访问令牌" : "Bearer Token Required"}
+        </p>
+        <p className="fa-auth-bootstrap-copy">
+          {showsDisabledDemoTokenHint
+            ? isChineseUi
+              ? "当前部署未开启 demo token 自举。请输入已有的 Bearer Token 以继续访问内置 Web App。"
+              : "This deployment does not allow demo-token bootstrap. Provide an existing bearer token to continue using the bundled Web App."
+            : isChineseUi
+              ? "当前会话暂时无法自动完成认证。你可以粘贴已有的 Bearer Token 继续，或稍后重试。"
+              : "Automatic authentication is currently unavailable. Paste an existing bearer token to continue, or retry in a moment."}
+        </p>
+        {authError ? (
+          <div className="fa-inline-notice is-danger">
+            {isChineseUi ? `认证失败：${authError}` : `Authentication failed: ${authError}`}
+          </div>
+        ) : null}
+        <form className="fa-auth-bootstrap-form" onSubmit={handleSubmit}>
+          <label className="fa-auth-bootstrap-label" htmlFor="fa-auth-token">
+            {isChineseUi ? "Bearer Token" : "Bearer Token"}
+          </label>
+          <textarea
+            id="fa-auth-token"
+            className="fa-auth-bootstrap-input"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            placeholder={
+              isChineseUi
+                ? "粘贴已有 access token"
+                : "Paste an existing access token"
+            }
+            rows={4}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+          <div className="fa-auth-bootstrap-actions">
+            <button
+              className="fa-auth-bootstrap-button is-primary"
+              disabled={submitting || !token.trim()}
+              type="submit"
+            >
+              {submitting
+                ? isChineseUi
+                  ? "验证中..."
+                  : "Verifying..."
+                : isChineseUi
+                  ? "使用此令牌继续"
+                  : "Continue With Token"}
+            </button>
+            <button
+              className="fa-auth-bootstrap-button"
+              disabled={submitting}
+              onClick={() => {
+                setToken("");
+                clearStoredToken();
+              }}
+              type="button"
+            >
+              {isChineseUi ? "清除本地令牌" : "Clear Saved Token"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 const rootRoute = createRootRoute({
   component: RootLayout,
   notFoundComponent: NotFoundPage,
@@ -105,7 +195,13 @@ const reviewRoute = createRoute({
   component: ThreadPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, threadRoute, reviewRoute]);
+const trajectoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/observability/trajectory",
+  component: TrajectoryPage,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, threadRoute, reviewRoute, trajectoryRoute]);
 
 const router = createRouter({
   routeTree,
@@ -123,7 +219,7 @@ declare module "@tanstack/react-router" {
 }
 
 export function AppRouter() {
-  const { ready } = useFocusAgent();
+  const { ready, principal } = useFocusAgent();
   const isChineseBrowser =
     typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
 
@@ -135,6 +231,10 @@ export function AppRouter() {
         </div>
       </div>
     );
+  }
+
+  if (!principal) {
+    return <AuthBootstrapPage />;
   }
 
   return <RouterProvider router={router} context={{ isAuthenticated: true }} />;

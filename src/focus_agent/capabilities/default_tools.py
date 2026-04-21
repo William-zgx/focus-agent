@@ -343,6 +343,11 @@ def _resolve_artifact_path(*, artifact_dir: Path, artifact_id: str) -> Path:
     return resolved
 
 
+def _artifact_title_from_id(artifact_id: str) -> str:
+    artifact_path = Path(artifact_id)
+    return artifact_path.stem.replace("-", " ").strip().title() or artifact_path.name
+
+
 def _is_blocked_fetch_host(host: str | None) -> bool:
     if not host:
         return True
@@ -394,7 +399,13 @@ def _message_content(message: Any) -> str:
     return str(content)
 
 
-def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
+def get_default_tools(
+    settings: Settings,
+    *,
+    store=None,
+    checkpointer=None,
+    artifact_metadata_repository=None,
+):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     workspace_root = Path(settings.workspace_root).expanduser().resolve()
@@ -415,12 +426,119 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             payload.setdefault("display_name", display_name)
         _base_emit_tool_event(tool_name=tool_name, stage=stage, **payload)
 
-    def _apply_tool_metadata(tool_obj: Any, *, label: str, description: str) -> Any:
+    def _require_non_empty_text_arg(args: dict[str, Any], key: str) -> str:
+        value = args.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{key} must not be empty.")
+        return value.strip()
+
+    def _validate_read_file_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "path")
+        start_line = int(args.get("start_line", 1))
+        if start_line < 1:
+            raise ValueError("start_line must be at least 1.")
+        end_line = args.get("end_line")
+        if end_line is not None and int(end_line) < start_line:
+            raise ValueError("end_line must be greater than or equal to start_line.")
+
+    def _validate_search_code_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "query")
+
+    def _validate_web_fetch_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "url")
+
+    def _validate_web_search_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "query")
+
+    def _validate_write_artifact_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "title")
+        _require_non_empty_text_arg(args, "body")
+
+    def _validate_memory_save_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "content")
+
+    def _validate_memory_forget_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "memory_id")
+
+    artifact_metadata_repo = artifact_metadata_repository
+
+    def _get_artifact_metadata_repo():
+        nonlocal artifact_metadata_repo
+        if artifact_metadata_repo is not None:
+            return artifact_metadata_repo
+        if not settings.database_uri:
+            return None
+        from ..repositories.artifact_metadata_repository import ArtifactMetadataRepository
+
+        artifact_metadata_repo = ArtifactMetadataRepository(settings.database_uri)
+        artifact_metadata_repo.setup()
+        return artifact_metadata_repo
+
+    def _upsert_artifact_metadata(*, thread_id: str | None, artifact_id: str, path: Path, title: str) -> None:
+        if not thread_id:
+            return
+        repo = _get_artifact_metadata_repo()
+        if repo is None:
+            return
+        repo.upsert_from_file(
+            thread_id=thread_id,
+            artifact_id=artifact_id,
+            path=path,
+            title=title,
+        )
+
+    def _artifact_payload_from_metadata(record: Any) -> dict[str, Any]:
+        updated_at = getattr(record, "updated_at", None)
+        return {
+            "artifact_id": str(getattr(record, "artifact_id")),
+            "path": str(getattr(record, "path")),
+            "title": str(getattr(record, "title")),
+            "size_bytes": int(getattr(record, "size_bytes")),
+            "updated_at": (
+                updated_at.isoformat()
+                if isinstance(updated_at, datetime)
+                else str(updated_at or "")
+            ),
+        }
+
+    def _list_artifacts_from_filesystem(*, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        artifacts: list[dict[str, Any]] = []
+        truncated = False
+        for candidate in sorted(artifact_dir.rglob("*")):
+            if not candidate.is_file():
+                continue
+            try:
+                relative = candidate.relative_to(artifact_dir).as_posix()
+            except ValueError:
+                continue
+            stat = candidate.stat()
+            artifacts.append(
+                {
+                    "artifact_id": relative,
+                    "path": str(candidate),
+                    "title": _artifact_title_from_id(relative),
+                    "size_bytes": stat.st_size,
+                    "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                }
+            )
+            if len(artifacts) >= limit:
+                truncated = True
+                break
+        return artifacts, truncated
+
+    def _apply_tool_metadata(
+        tool_obj: Any,
+        *,
+        label: str,
+        description: str,
+        runtime: dict[str, Any] | None = None,
+    ) -> Any:
         tool_obj.description = description
+        merged_runtime = dict(runtime or {})
         if hasattr(tool_obj, "metadata") and isinstance(getattr(tool_obj, "metadata"), dict):
-            tool_obj.metadata = {**tool_obj.metadata, "display_name": label}
+            tool_obj.metadata = {**tool_obj.metadata, "display_name": label, **merged_runtime}
         else:
-            tool_obj.metadata = {"display_name": label}
+            tool_obj.metadata = {"display_name": label, **merged_runtime}
         return tool_obj
     preferred_web_search_provider = str(web_search_config.provider or "auto").strip().lower() or "auto"
     fallback_web_search_provider = (
@@ -524,7 +642,7 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             ],
         }
 
-    def _run_web_search(*, query: str, max_results: int, tool_name: str) -> str:
+    def _run_web_search_primary(*, query: str, max_results: int, tool_name: str) -> str:
         normalized_query = query.strip()
         capped_results = max(1, min(int(max_results), 10))
         _emit_tool_event(
@@ -543,48 +661,8 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             raise RuntimeError(message)
 
         should_try_tavily = preferred_web_search_provider in {"auto", "tavily"}
-        should_try_duckduckgo = (
-            preferred_web_search_provider == "duckduckgo"
-            or fallback_web_search_provider == "duckduckgo"
-        )
-
-        tavily_error: str | None = None
         if should_try_tavily and tavily_api_key:
-            try:
-                payload = _run_tavily_search(query=normalized_query, max_results=capped_results)
-                result = json.dumps(payload, ensure_ascii=False)
-                _emit_tool_event(
-                    tool_name=tool_name,
-                    stage='end',
-                    provider=payload["provider"],
-                    result_count=len(payload["results"]),
-                    output=result[:800],
-                )
-                return result
-            except RuntimeError as exc:
-                tavily_error = str(exc)
-                _emit_tool_event(
-                    tool_name=tool_name,
-                    stage='delta',
-                    provider='tavily',
-                    message='Primary Tavily search failed; falling back to DuckDuckGo.',
-                    error=tavily_error,
-                )
-        elif should_try_tavily and not tavily_api_key:
-            tavily_error = "Tavily search is configured but the API key is missing."
-
-        if should_try_duckduckgo:
-            try:
-                payload = _run_duckduckgo_search(query=normalized_query, max_results=capped_results)
-            except RuntimeError as exc:
-                message = (
-                    f"Web search failed. Tavily error: {tavily_error}. DuckDuckGo error: {exc}"
-                    if tavily_error
-                    else f"Web search failed. DuckDuckGo error: {exc}"
-                )
-                _emit_tool_event(tool_name=tool_name, stage='error', error=message)
-                raise RuntimeError(message) from exc
-
+            payload = _run_tavily_search(query=normalized_query, max_results=capped_results)
             result = json.dumps(payload, ensure_ascii=False)
             _emit_tool_event(
                 tool_name=tool_name,
@@ -595,9 +673,47 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             )
             return result
 
-        message = tavily_error or "No web search provider is configured."
+        if should_try_tavily and not tavily_api_key:
+            message = "Tavily search is configured but the API key is missing."
+            _emit_tool_event(tool_name=tool_name, stage='error', error=message, provider='tavily')
+            raise RuntimeError(message)
+
+        if preferred_web_search_provider == "duckduckgo":
+            payload = _run_duckduckgo_search(query=normalized_query, max_results=capped_results)
+            result = json.dumps(payload, ensure_ascii=False)
+            _emit_tool_event(
+                tool_name=tool_name,
+                stage='end',
+                provider=payload["provider"],
+                result_count=len(payload["results"]),
+                output=result[:800],
+            )
+            return result
+
+        message = "No primary web search provider is configured."
         _emit_tool_event(tool_name=tool_name, stage='error', error=message)
         raise RuntimeError(message)
+
+    def _fallback_web_search(_error: Exception, args: dict[str, Any]) -> str:
+        normalized_query = str(args.get("query") or "").strip()
+        requested_results = int(args.get("max_results") or 5)
+        capped_results = max(1, min(requested_results, 10))
+        should_try_duckduckgo = (
+            preferred_web_search_provider == "duckduckgo"
+            or fallback_web_search_provider == "duckduckgo"
+        )
+        if not should_try_duckduckgo:
+            raise RuntimeError("No fallback web search provider is configured.")
+        payload = _run_duckduckgo_search(query=normalized_query, max_results=capped_results)
+        result = json.dumps(payload, ensure_ascii=False)
+        _emit_tool_event(
+            tool_name="web_search",
+            stage='delta',
+            provider='duckduckgo',
+            message='Primary web search failed; using DuckDuckGo fallback.',
+            output=result[:800],
+        )
+        return result
 
     @tool
     def current_utc_time() -> str:
@@ -620,6 +736,7 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
         try:
             filename = f"{_slugify(title)}.md"
             path = artifact_dir / filename
+            thread_id = _get_current_thread_id()
             display_path = _coerce_relative_posix(path, workspace_root)
             _emit_tool_event(
                 tool_name=tool_name,
@@ -628,6 +745,12 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
                 path=display_path,
             )
             path.write_text(f"# {title}\n\n{body}\n", encoding='utf-8')
+            _upsert_artifact_metadata(
+                thread_id=thread_id,
+                artifact_id=filename,
+                path=path,
+                title=_artifact_title_from_id(filename),
+            )
             result = f"artifact_saved:{display_path}"
             _emit_tool_event(tool_name=tool_name, stage='end', output=result)
             return result
@@ -647,28 +770,26 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
                 else int(max_results)
             )
             capped_results = max(1, min(requested_results, tool_catalog.artifact_list.max_results_cap))
-            artifacts: list[dict[str, Any]] = []
-            truncated = False
-            for candidate in sorted(artifact_dir.rglob("*")):
-                if not candidate.is_file():
-                    continue
+            repo = _get_artifact_metadata_repo()
+            thread_id = _get_current_thread_id()
+            if repo is not None and thread_id:
                 try:
-                    relative = candidate.relative_to(artifact_dir).as_posix()
-                except ValueError:
-                    continue
-                stat = candidate.stat()
-                artifacts.append(
-                    {
-                        "artifact_id": relative,
-                        "path": str(candidate),
-                        "title": candidate.stem.replace("-", " ").strip().title() or candidate.name,
-                        "size_bytes": stat.st_size,
-                        "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-                    }
-                )
-                if len(artifacts) >= capped_results:
-                    truncated = True
-                    break
+                    metadata_rows = repo.list_by_thread(thread_id, limit=capped_results + 1)
+                    truncated = len(metadata_rows) > capped_results
+                    artifacts = [
+                        _artifact_payload_from_metadata(record)
+                        for record in metadata_rows[:capped_results]
+                    ]
+                except Exception as exc:  # noqa: BLE001
+                    _emit_tool_event(
+                        tool_name=tool_name,
+                        stage='delta',
+                        message='Artifact metadata lookup failed; falling back to filesystem.',
+                        error=str(exc),
+                    )
+                    artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
+            else:
+                artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
             result = json.dumps(
                 {
                     "artifact_dir": str(artifact_dir),
@@ -690,6 +811,28 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
         _emit_tool_event(tool_name=tool_name, stage='start', artifact_id=artifact_id)
         try:
             path = _resolve_artifact_path(artifact_dir=artifact_dir, artifact_id=artifact_id)
+            repo = _get_artifact_metadata_repo()
+            if repo is not None:
+                try:
+                    metadata_record = repo.get_by_artifact_id(artifact_id)
+                except Exception as exc:  # noqa: BLE001
+                    _emit_tool_event(
+                        tool_name=tool_name,
+                        stage='delta',
+                        message='Artifact metadata lookup failed; reading from filesystem path.',
+                        error=str(exc),
+                    )
+                else:
+                    if metadata_record is not None:
+                        metadata_path = Path(str(getattr(metadata_record, "path"))).expanduser()
+                        if not metadata_path.is_absolute():
+                            metadata_path = metadata_path.resolve()
+                        try:
+                            metadata_path.relative_to(artifact_dir.resolve())
+                        except ValueError:
+                            pass
+                        else:
+                            path = metadata_path
             if not path.exists():
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
@@ -733,8 +876,15 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             else:
                 raise ValueError("mode must be one of: replace, append, prepend.")
             path.write_text(updated, encoding="utf-8")
+            relative_artifact_id = path.relative_to(artifact_dir.resolve()).as_posix()
+            _upsert_artifact_metadata(
+                thread_id=_get_current_thread_id(),
+                artifact_id=relative_artifact_id,
+                path=artifact_dir / relative_artifact_id,
+                title=_artifact_title_from_id(relative_artifact_id),
+            )
             payload = {
-                "artifact_id": path.relative_to(artifact_dir.resolve()).as_posix(),
+                "artifact_id": relative_artifact_id,
                 "path": str(path),
                 "mode": normalized_mode,
                 "size_bytes": path.stat().st_size,
@@ -1328,7 +1478,7 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
     def web_search(query: str, max_results: int | None = None) -> str:
         """Search the live web with Tavily first and DuckDuckGo as a fallback."""
         requested_results = 5 if max_results is None else int(max_results)
-        return _run_web_search(query=query, max_results=requested_results, tool_name='web_search')
+        return _run_web_search_primary(query=query, max_results=requested_results, tool_name='web_search')
 
     registered_tools = {
         "current_utc_time": current_utc_time,
@@ -1350,6 +1500,99 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
         "conversation_summary": conversation_summary,
         "web_search": web_search,
     }
+    tool_runtime_metadata: dict[str, dict[str, Any]] = {
+        "current_utc_time": {
+            "parallel_safe": True,
+            "max_observation_chars": 256,
+        },
+        "write_text_artifact": {
+            "side_effect": True,
+            "validator": _validate_write_artifact_args,
+            "max_observation_chars": 512,
+        },
+        "artifact_list": {
+            "parallel_safe": True,
+            "max_observation_chars": 6000,
+        },
+        "artifact_read": {
+            "parallel_safe": True,
+            "max_observation_chars": 8000,
+        },
+        "artifact_update": {
+            "side_effect": True,
+            "max_observation_chars": 512,
+        },
+        "list_files": {
+            "parallel_safe": True,
+            "cacheable": True,
+            "cache_scope": "thread",
+            "max_observation_chars": 6000,
+        },
+        "read_file": {
+            "parallel_safe": True,
+            "cacheable": True,
+            "cache_scope": "thread",
+            "validator": _validate_read_file_args,
+            "max_observation_chars": 8000,
+        },
+        "search_code": {
+            "parallel_safe": True,
+            "cacheable": True,
+            "cache_scope": "thread",
+            "validator": _validate_search_code_args,
+            "max_observation_chars": 7000,
+        },
+        "codebase_stats": {
+            "parallel_safe": True,
+            "cacheable": True,
+            "cache_scope": "thread",
+            "max_observation_chars": 5000,
+        },
+        "git_status": {
+            "parallel_safe": True,
+            "max_observation_chars": 3000,
+        },
+        "git_diff": {
+            "parallel_safe": True,
+            "max_observation_chars": 6000,
+        },
+        "git_log": {
+            "parallel_safe": True,
+            "max_observation_chars": 5000,
+        },
+        "web_fetch": {
+            "parallel_safe": True,
+            "validator": _validate_web_fetch_args,
+            "max_observation_chars": 7000,
+        },
+        "memory_save": {
+            "side_effect": True,
+            "validator": _validate_memory_save_args,
+            "max_observation_chars": 800,
+        },
+        "memory_search": {
+            "parallel_safe": True,
+            "max_observation_chars": 6000,
+        },
+        "memory_forget": {
+            "side_effect": True,
+            "validator": _validate_memory_forget_args,
+            "max_observation_chars": 800,
+        },
+        "conversation_summary": {
+            "parallel_safe": True,
+            "cacheable": True,
+            "cache_scope": "thread",
+            "max_observation_chars": 4000,
+        },
+        "web_search": {
+            "parallel_safe": True,
+            "validator": _validate_web_search_args,
+            "fallback_group": "web_search",
+            "fallback_handler": _fallback_web_search,
+            "max_observation_chars": 7000,
+        },
+    }
 
     tools: list[Any] = []
     for tool_name in tool_catalog.section_names:
@@ -1361,6 +1604,7 @@ def get_default_tools(settings: Settings, *, store=None, checkpointer=None):
             tool_obj,
             label=config.label,
             description=config.description,
+            runtime=tool_runtime_metadata.get(tool_name),
         )
         if config.enabled:
             tools.append(tool_obj)

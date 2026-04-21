@@ -19,6 +19,8 @@ INPUT_TEXT_BLOCK_TYPES = {
 REASONING_BLOCK_TYPES = {
     'reasoning',
     'reasoning_delta',
+    'reasoning_content',
+    'reasoningcontent',
     'thinking',
     'thinking_delta',
 }
@@ -49,7 +51,7 @@ def _stringify(value: Any) -> str:
     if isinstance(value, list):
         return ''.join(_stringify(item) for item in value)
     if isinstance(value, dict):
-        for key in ('text', 'content', 'value', 'chunk', 'reasoning', 'summary'):
+        for key in ('text', 'content', 'value', 'chunk', 'reasoning', 'reasoning_content', 'reasoningcontent', 'summary'):
             if key in value and value[key] is not None:
                 return _stringify(value[key])
         return json.dumps(value, ensure_ascii=False)
@@ -118,6 +120,11 @@ def extract_visible_text_delta(message_chunk: Any) -> str:
 
 def extract_reasoning_delta(message_chunk: Any) -> str:
     parts: list[str] = []
+    additional_reasoning = _stringify(
+        getattr(message_chunk, 'additional_kwargs', {}).get('reasoning_content')
+    )
+    if additional_reasoning:
+        parts.append(additional_reasoning)
     for block in _iter_blocks(message_chunk):
         if not isinstance(block, dict):
             continue
@@ -126,6 +133,8 @@ def extract_reasoning_delta(message_chunk: Any) -> str:
             continue
         text = _stringify(
             block.get('reasoning')
+            or block.get('reasoning_content')
+            or block.get('reasoningcontent')
             or block.get('summary')
             or block.get('text')
             or block.get('content')

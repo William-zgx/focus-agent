@@ -71,8 +71,8 @@ _BUILTIN_MODEL_CATALOG = ModelCatalogConfig(
             label="GPT-4.1 Mini",
         ),
         ConfiguredModel(
-            id="moonshot:kimi-k2.5",
-            label="Kimi K2.5",
+            id="moonshot:kimi-k2.6",
+            label="Kimi K2.6",
             supports_thinking=True,
             default_thinking_enabled=True,
             no_temperature=True,
@@ -308,6 +308,13 @@ def create_chat_model(
     effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
+    if resolved.provider == "moonshot":
+        from .providers.moonshot_openai import MoonshotChatOpenAI
+
+        return MoonshotChatOpenAI(
+            model=resolved.model_name,
+            **init_kwargs,
+        )
     return init_chat_model(
         f"{resolved.backend_provider}:{resolved.model_name}",
         **init_kwargs,

@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 import json
+import logging
 import threading
 from typing import Any, AsyncIterator
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
 from pydantic import BaseModel
 from pydantic import ValidationError
@@ -17,6 +19,7 @@ from ..core.state import normalize_agent_state
 from ..engine.runtime import AppRuntime
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 from ..observability.tracing import build_invoke_config
+from ..observability.trajectory import build_turn_trajectory_record, utc_now
 from ..skills.models import SkillSelection
 from ..transport.stream_events import (
     extract_reasoning_delta,
@@ -27,6 +30,11 @@ from ..transport.stream_events import (
     map_custom_payload_to_event,
     sanitize_stream_metadata,
 )
+
+logger = logging.getLogger("focus_agent.chat")
+
+
+_STREAM_END = object()
 
 
 class ChatService:
@@ -53,6 +61,12 @@ class ChatService:
         if isinstance(content, list):
             return json.dumps(content, ensure_ascii=False)
         return str(content)
+
+    def _latest_final_ai_text(self, messages: list[Any]) -> str | None:
+        for message in reversed(messages):
+            if isinstance(message, AIMessage) and not getattr(message, 'tool_calls', None):
+                return self._message_content_to_text(message.content)
+        return None
 
     def _serialize_message(self, message: Any) -> dict[str, Any]:
         return {
@@ -258,11 +272,7 @@ class ChatService:
             model_id=selected_model,
             thinking_mode=values.get('selected_thinking_mode'),
         )
-        assistant_message: str | None = None
-        for message in reversed(messages):
-            if isinstance(message, AIMessage) and not getattr(message, 'tool_calls', None):
-                assistant_message = self._message_content_to_text(message.content)
-                break
+        assistant_message = self._latest_final_ai_text(list(messages))
         return {
             'thread_id': thread_id,
             'root_thread_id': context.root_thread_id,
@@ -288,11 +298,11 @@ class ChatService:
 
     @staticmethod
     def _effective_thinking_mode(*, model_id: str, thinking_mode: Any) -> str:
+        if not supports_thinking_mode(model_id):
+            return ''
         normalized = str(thinking_mode or '').strip().lower()
         if normalized in {'enabled', 'disabled'}:
             return normalized
-        if not supports_thinking_mode(model_id):
-            return ''
         return 'enabled' if default_thinking_enabled(model_id) else 'disabled'
 
     def _run_invoke(
@@ -305,12 +315,15 @@ class ChatService:
         context_skill_hints: tuple[str, ...] | None = None,
         kind: str = 'chat.turn',
     ) -> dict[str, Any]:
-        context, branch_meta, _ = self._preflight_thread_access(
+        context, branch_meta, initial_values = self._preflight_thread_access(
             thread_id=thread_id,
             user_id=user_id,
             explicit_skill_hints=context_skill_hints,
             require_writable=True,
         )
+        initial_message_count = len(list(initial_values.get('messages', []) or []))
+        initial_llm_calls = int(initial_values.get('llm_calls') or 0)
+        started_at = utc_now()
         self._acquire_thread_turn(thread_id=thread_id)
         try:
             config = build_invoke_config(
@@ -328,13 +341,28 @@ class ChatService:
                 version='v2',
             )
             _, interrupts = self._normalize_result(result)
-            latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            latest_context, latest_branch_meta, final_values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
             response = self._response_payload(
                 thread_id=thread_id,
                 user_id=user_id,
                 context=latest_context,
                 branch_meta=latest_branch_meta,
                 interrupts=interrupts,
+            )
+            self._record_turn_trajectory_best_effort(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=latest_context.root_thread_id,
+                kind=kind,
+                status='succeeded',
+                final_values=final_values,
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=utc_now(),
+                branch_meta=latest_branch_meta,
+                input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
+                answer=response.get('assistant_message'),
             )
             self._schedule_branch_name_refresh_after_first_turn(
                 thread_id=thread_id,
@@ -343,6 +371,23 @@ class ChatService:
                 kind=kind,
             )
             return response
+        except Exception as exc:
+            self._record_turn_trajectory_best_effort(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=context.root_thread_id,
+                kind=kind,
+                status='failed',
+                final_values=self._safe_get_values(thread_id),
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=utc_now(),
+                branch_meta=branch_meta,
+                input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
+                error=str(exc),
+            )
+            raise
         finally:
             self._release_thread_turn(thread_id=thread_id)
 
@@ -492,6 +537,54 @@ class ChatService:
             user_id=user_id,
         )
 
+    def _record_turn_trajectory_best_effort(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        root_thread_id: str,
+        kind: str,
+        status: str,
+        final_values: dict[str, Any],
+        initial_message_count: int,
+        initial_llm_calls: int,
+        started_at,
+        finished_at,
+        branch_meta: BranchMeta | None,
+        input_messages: list[Any] | None = None,
+        answer: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        recorder = getattr(self.runtime, 'trajectory_recorder', None)
+        if recorder is None:
+            return
+        record_turn = getattr(recorder, 'record_turn', None)
+        if not callable(record_turn):
+            return
+        try:
+            record = build_turn_trajectory_record(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+                kind=kind,
+                status=status,
+                final_values=final_values,
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=finished_at,
+                branch_meta=branch_meta,
+                input_messages=input_messages,
+                answer=answer,
+                error=error,
+                observation_max_chars=self.runtime.settings.trajectory_observation_max_chars,
+                answer_max_chars=self.runtime.settings.trajectory_answer_max_chars,
+                hash_user_id=self.runtime.settings.trajectory_hash_user_id,
+            )
+            record_turn(record)
+        except Exception:  # noqa: BLE001
+            logger.warning("failed to persist turn trajectory", exc_info=True)
+
     async def _stream_graph_chunks(
         self,
         *,
@@ -499,6 +592,15 @@ class ChatService:
         config: dict[str, Any],
         context: RequestContext,
     ) -> AsyncIterator[dict[str, Any] | None]:
+        if self._checkpointer_lacks_async_support():
+            async for chunk in self._stream_graph_chunks_via_sync_stream(
+                payload=payload,
+                config=config,
+                context=context,
+            ):
+                yield chunk
+            return
+
         stream = self.runtime.graph.astream(
             payload,
             config=config,
@@ -535,6 +637,54 @@ class ChatService:
                 with suppress(Exception):  # noqa: BLE001
                     await aclose()
 
+    def _checkpointer_lacks_async_support(self) -> bool:
+        checkpointer = getattr(self.runtime, 'checkpointer', None)
+        if checkpointer is None:
+            return False
+        return type(checkpointer).aget_tuple is BaseCheckpointSaver.aget_tuple
+
+    async def _stream_graph_chunks_via_sync_stream(
+        self,
+        *,
+        payload: Any,
+        config: dict[str, Any],
+        context: RequestContext,
+    ) -> AsyncIterator[dict[str, Any] | None]:
+        stream = self.runtime.graph.stream(
+            payload,
+            config=config,
+            context=context,
+            stream_mode=['messages', 'custom', 'updates', 'tasks'],
+            version='v2',
+        )
+        stream_iter = iter(stream)
+        heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
+        pending_next: asyncio.Task[Any] | None = None
+
+        try:
+            pending_next = asyncio.create_task(asyncio.to_thread(next, stream_iter, _STREAM_END))
+            while pending_next is not None:
+                if heartbeat_interval > 0:
+                    done, _ = await asyncio.wait({pending_next}, timeout=heartbeat_interval)
+                    if not done:
+                        yield None
+                        continue
+                chunk = await pending_next
+                if chunk is _STREAM_END:
+                    pending_next = None
+                    break
+                pending_next = asyncio.create_task(asyncio.to_thread(next, stream_iter, _STREAM_END))
+                yield chunk
+        finally:
+            if pending_next is not None and not pending_next.done():
+                pending_next.cancel()
+                with suppress(asyncio.CancelledError):
+                    await pending_next
+            close = getattr(stream_iter, 'close', None)
+            if callable(close):
+                with suppress(Exception):  # noqa: BLE001
+                    close()
+
     async def _astream_result(
         self,
         *,
@@ -547,13 +697,24 @@ class ChatService:
     ) -> AsyncIterator[str]:
         visible_text_buffer = ''
         reasoning_buffer = ''
+        turn_acquired = False
+        context: RequestContext | None = None
+        branch_meta: BranchMeta | None = None
+        initial_message_count = 0
+        initial_llm_calls = 0
+        input_messages = list(payload.get('messages', []) if isinstance(payload, dict) else [])
+        started_at = utc_now()
         try:
-            context, branch_meta, _ = self._preflight_thread_access(
+            context, branch_meta, initial_values = self._preflight_thread_access(
                 thread_id=thread_id,
                 user_id=user_id,
                 explicit_skill_hints=context_skill_hints,
             )
+            initial_messages = list(initial_values.get('messages', []) or [])
+            initial_message_count = len(initial_messages)
+            initial_llm_calls = int(initial_values.get('llm_calls') or 0)
             self._acquire_thread_turn(thread_id=thread_id)
+            turn_acquired = True
             config = build_invoke_config(
                 settings=self.runtime.settings,
                 thread_id=thread_id,
@@ -671,7 +832,10 @@ class ChatService:
                     data={'type': chunk_type, 'namespace': namespace, 'data': data},
                 )
 
-            latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            latest_context, latest_branch_meta, final_values = self._context_for_thread(
+                thread_id=thread_id,
+                user_id=user_id,
+            )
             final_state = self._response_payload(
                 thread_id=thread_id,
                 user_id=user_id,
@@ -679,7 +843,13 @@ class ChatService:
                 branch_meta=latest_branch_meta,
                 interrupts=self._safe_get_interrupts(thread_id),
             )
-            final_visible_text = final_state.get('assistant_message') or visible_text_buffer
+            final_messages = list(final_values.get('messages', []) or [])
+            appended_messages = (
+                final_messages[initial_message_count:]
+                if len(final_messages) >= initial_message_count
+                else final_messages
+            )
+            final_visible_text = visible_text_buffer or self._latest_final_ai_text(appended_messages)
             if final_visible_text:
                 yield self._sse_frame(
                     event='visible_text.completed',
@@ -701,8 +871,23 @@ class ChatService:
                     data={
                         'content': reasoning_buffer,
                         'thread_id': thread_id,
-                    },
-                )
+                        },
+                    )
+            self._record_turn_trajectory_best_effort(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=latest_context.root_thread_id,
+                kind=kind,
+                status='succeeded',
+                final_values=final_values,
+                initial_message_count=initial_message_count,
+                initial_llm_calls=initial_llm_calls,
+                started_at=started_at,
+                finished_at=utc_now(),
+                branch_meta=latest_branch_meta,
+                input_messages=input_messages,
+                answer=final_visible_text,
+            )
             if final_state.get('interrupts'):
                 for interrupt_payload in final_state['interrupts']:
                     yield self._sse_frame(
@@ -720,6 +905,23 @@ class ChatService:
                 data={'thread_state': final_state},
             )
         except Exception as exc:  # noqa: BLE001
+            if turn_acquired and context is not None:
+                self._record_turn_trajectory_best_effort(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    root_thread_id=context.root_thread_id,
+                    kind=kind,
+                    status='failed',
+                    final_values=self._safe_get_values(thread_id),
+                    initial_message_count=initial_message_count,
+                    initial_llm_calls=initial_llm_calls,
+                    started_at=started_at,
+                    finished_at=utc_now(),
+                    branch_meta=branch_meta,
+                    input_messages=input_messages,
+                    answer=visible_text_buffer or None,
+                    error=str(exc),
+                )
             yield self._sse_frame(
                 event='turn.failed',
                 data={

@@ -1,18 +1,19 @@
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, ProviderConfig, Settings
 from focus_agent import model_registry
 from focus_agent.model_registry import build_model_catalog, create_chat_model, resolve_model_config
+from focus_agent.providers.moonshot_openai import MoonshotChatOpenAI
 
 
 def test_build_model_catalog_keeps_default_first():
     settings = Settings(
-        model="moonshot:kimi-k2.5",
-        model_choices=("openai:deepseek-reasoner", "moonshot:kimi-k2.5"),
+        model="moonshot:kimi-k2.6",
+        model_choices=("openai:deepseek-reasoner", "moonshot:kimi-k2.6"),
     )
 
     catalog = build_model_catalog(settings)
 
     assert [item.id for item in catalog] == [
-        "moonshot:kimi-k2.5",
+        "moonshot:kimi-k2.6",
         "openai:deepseek-reasoner",
     ]
     assert catalog[0].provider == "moonshot"
@@ -25,7 +26,7 @@ def test_build_model_catalog_keeps_default_first():
 
 def test_resolve_model_config_maps_moonshot_to_openai_backend():
     resolved = resolve_model_config(
-        "moonshot:kimi-k2.5",
+        "moonshot:kimi-k2.6",
         environ={
             "MOONSHOT_BASE_URL": "https://api.moonshot.cn/v1",
             "MOONSHOT_API_KEY": "secret",
@@ -40,11 +41,11 @@ def test_resolve_model_config_maps_moonshot_to_openai_backend():
 
 def test_resolve_model_config_disables_kimi_thinking_via_extra_body():
     resolved = resolve_model_config(
-        "moonshot:kimi-k2.5",
+        "moonshot:kimi-k2.6",
         thinking_mode="disabled",
     )
 
-    assert resolved.model_name == "kimi-k2.5"
+    assert resolved.model_name == "kimi-k2.6"
     assert resolved.request_kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
@@ -150,20 +151,13 @@ def test_resolve_model_config_uses_structured_provider_configuration():
     assert resolved.client_kwargs["api_key"] == "secret"
 
 
-def test_create_chat_model_omits_temperature_for_kimi_k2_5(monkeypatch):
-    captured: dict[str, object] = {}
+def test_create_chat_model_uses_moonshot_specific_adapter(monkeypatch):
+    monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
+    model = create_chat_model("moonshot:kimi-k2.6", temperature=0.0)
 
-    def fake_init_chat_model(model_name: str, **kwargs):
-        captured["model_name"] = model_name
-        captured["kwargs"] = kwargs
-        return object()
-
-    monkeypatch.setattr(model_registry, "init_chat_model", fake_init_chat_model)
-
-    create_chat_model("moonshot:kimi-k2.5", temperature=0.0)
-
-    assert captured["model_name"] == "openai:kimi-k2.5"
-    assert "temperature" not in captured["kwargs"]
+    assert isinstance(model, MoonshotChatOpenAI)
+    assert model.model_name == "kimi-k2.6"
+    assert model.temperature is None
 
 
 def test_create_chat_model_keeps_temperature_for_other_models(monkeypatch):

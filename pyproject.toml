@@ -15,6 +15,7 @@ dependencies = [
   "langgraph-sdk>=0.1.0",
   "langgraph-checkpoint-postgres>=3.0.0,<4.0.0",
   "langsmith>=0.4.43",
+  "psycopg>=3.2.0,<4.0.0",
   "pydantic>=2.8.0",
   "fastapi>=0.115.0,<1.0.0",
   "uvicorn>=0.34.0,<1.0.0",
@@ -29,6 +30,8 @@ dev = ["pytest>=8.2.0", "ruff>=0.8.0", "httpx>=0.28.0"]
 [project.scripts]
 focus-agent-demo = "focus_agent.demo:main"
 focus-agent-api = "focus_agent.api.cli:main"
+focus-agent-migrate-local-state = "focus_agent.migrate_local_state:main"
+focus-agent-trajectory = "focus_agent.trajectory_cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -109,6 +109,7 @@ class AgentState(TypedDict, total=False):
     # Written by extraction nodes after a turn, read by persistence nodes,
     # and never merge-imported because it is a transient write queue.
     memory_write_requests: list[dict[str, Any]]
+    memory_write_result: dict[str, Any]
 
     # Plan-Act-Reflect: written by `plan` node, read by `agent_loop` context and
     # `reflect` node. Not merge-imported: a plan belongs to the active turn.
@@ -149,6 +150,7 @@ def initial_agent_state() -> AgentState:
         "selected_model": "",
         "selected_thinking_mode": "",
         "memory_write_requests": [],
+        "memory_write_result": {},
         "plan": None,
         "current_step_id": "",
         "reflection": None,

@@ -59,7 +59,6 @@ COPY pyproject.toml README.md README.zh-CN.md LICENSE ./
 COPY src ./src
 
 RUN printf 'ddgs==9.14.0\nlxml==6.1.0\n' > /tmp/docker-constraints.txt \
-    && pip install --upgrade pip \
     && pip install --no-cache-dir -c /tmp/docker-constraints.txt ".[openai,anthropic]" \
     && rm -f /tmp/docker-constraints.txt
 

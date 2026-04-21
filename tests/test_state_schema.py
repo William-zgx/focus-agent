@@ -32,6 +32,7 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["available_skills_block"] == ""
     assert state["active_skills_block"] == ""
     assert state["memory_write_requests"] == []
+    assert state["memory_write_result"] == {}
 
 
 def test_initial_agent_state_returns_fresh_mutable_collections():
@@ -68,6 +69,7 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["available_skills_block"] == ""
     assert normalized["active_skills_block"] == ""
     assert normalized["memory_write_requests"] == []
+    assert normalized["memory_write_result"] == {}
 
 
 def test_serialize_agent_state_round_trips_structured_governance_models():
@@ -112,6 +114,7 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
             "available_skills_block": "## Available skills\n- review",
             "active_skills_block": "## Active skills\n- review",
             "memory_write_requests": [{"kind": "turn_summary", "summary": "Carry this forward"}],
+            "memory_write_result": {"prepared": 1, "written": ["mem-1"]},
         }
     )
 
@@ -132,3 +135,4 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["available_skills_block"].startswith("## Available skills")
     assert decoded["active_skills_block"].startswith("## Active skills")
     assert decoded["memory_write_requests"][0]["kind"] == "turn_summary"
+    assert decoded["memory_write_result"]["written"] == ["mem-1"]

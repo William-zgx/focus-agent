@@ -85,6 +85,32 @@ def test_extract_reasoning_delta_from_content_blocks():
     assert extract_reasoning_delta(chunk) == 'Think step 1. Think step 2.'
 
 
+def test_extract_reasoning_delta_from_reasoning_content_blocks():
+    chunk = DummyChunk(
+        content=[
+            {'type': 'reasoning_content', 'reasoning_content': 'Keep tool-call rationale.'},
+            {'type': 'text', 'text': 'final answer'},
+        ]
+    )
+    assert extract_reasoning_delta(chunk) == 'Keep tool-call rationale.'
+
+
+def test_extract_reasoning_delta_from_reasoningcontent_blocks():
+    chunk = DummyChunk(
+        content=[
+            {'type': 'reasoningcontent', 'reasoningcontent': 'Keep normalized reasoning.'},
+            {'type': 'text', 'text': 'final answer'},
+        ]
+    )
+    assert extract_reasoning_delta(chunk) == 'Keep normalized reasoning.'
+
+
+def test_extract_reasoning_delta_from_additional_kwargs():
+    chunk = DummyChunk(content="", content_blocks=None)
+    chunk.additional_kwargs = {"reasoning_content": "Keep provider-specific reasoning."}
+    assert extract_reasoning_delta(chunk) == "Keep provider-specific reasoning."
+
+
 def test_extract_tool_call_chunks():
     chunk = DummyChunk(
         content=[

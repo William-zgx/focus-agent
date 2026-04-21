@@ -193,6 +193,18 @@ def build_smoke_expression(message: str) -> str:
     throw new Error('Timed out waiting for ' + label);
   }};
   const bodyText = () => document.body?.innerText || '';
+  const messageBubbles = (selector) =>
+    Array.from(document.querySelectorAll(selector))
+      .map((item) => item.textContent?.trim() || '')
+      .filter(Boolean);
+  const latestUserBubbleText = () => {{
+    const values = messageBubbles('.fa-message-row.is-user .fa-message-bubble, .fa-message-row.user .fa-message-bubble');
+    return values.at(-1) || '';
+  }};
+  const latestAssistantBubbleText = () => {{
+    const values = messageBubbles('.fa-message-row.is-assistant .fa-message-bubble, .fa-message-row.assistant .fa-message-bubble');
+    return values.at(-1) || '';
+  }};
   const includesAny = (text, labels) => labels.some((label) => text.includes(label));
   const buttonMatches = (item, labels) => {{
     const candidates = [
@@ -205,19 +217,38 @@ def build_smoke_expression(message: str) -> str:
   const findButton = (...labels) => Array.from(document.querySelectorAll('button')).find(
     (item) => buttonMatches(item, labels)
   );
+  const findEnabledButton = (...labels) => Array.from(document.querySelectorAll('button')).find(
+    (item) => buttonMatches(item, labels) && !item.disabled
+  );
   const clickButton = (...labels) => {{
     const button = findButton(...labels);
     if (!button) throw new Error('Missing button: ' + labels.join(' / '));
     button.click();
   }};
+  const clickEnabledButton = (...labels) => {{
+    const button = findEnabledButton(...labels);
+    if (!button) throw new Error('Missing enabled button: ' + labels.join(' / '));
+    button.click();
+  }};
   const openReviewFlow = async () => {{
     const entryLabels = ['Generate conclusion', '生成结论', '生成分支结论'];
-    await waitFor(() => findButton(...entryLabels), 20000, 'review entry action');
-    clickButton(...entryLabels);
-    await waitFor(() => location.pathname.endsWith('/review'), 120000, 'review route');
+    const readyLabels = ['Merge conclusion', '合并结论'];
     const proposalLabels = ['Generate conclusion', '生成带回结论'];
-    if (findButton(...proposalLabels)) {{
-      clickButton(...proposalLabels);
+    await waitFor(() => findEnabledButton(...entryLabels), 20000, 'review entry action');
+    clickEnabledButton(...entryLabels);
+    await waitFor(() => {{
+      if (location.pathname.endsWith('/review')) return 'route-ready';
+      if (findEnabledButton(...readyLabels)) return 'proposal-ready';
+      if (findEnabledButton(...proposalLabels)) return 'proposal-modal';
+      return '';
+    }}, 120000, 'review route or prepared proposal');
+    if (!location.pathname.endsWith('/review')) {{
+      if (findEnabledButton(...proposalLabels)) {{
+        clickEnabledButton(...proposalLabels);
+      }} else {{
+        clickEnabledButton(...readyLabels);
+      }}
+      await waitFor(() => location.pathname.endsWith('/review'), 120000, 'review route');
     }}
   }};
   const setTextareaValue = (value) => {{
@@ -275,11 +306,12 @@ def build_smoke_expression(message: str) -> str:
     return button && !button.disabled ? button : null;
   }}, 5000, 'send button enabled');
   clickButton(...sendLabels);
-  await waitFor(() => bodyText().includes(smokeMessage), 10000, 'user message render');
+  await waitFor(() => latestUserBubbleText().includes(smokeMessage), 10000, 'user message render');
   const finalText = await waitFor(() => {{
-    const text = bodyText();
+    const text = latestAssistantBubbleText();
     const hasAssistantReply =
-      (text.includes('Assistant') || text.includes('Focus Agent')) &&
+      text &&
+      text !== 'Focus Agent' &&
       !text.includes('<｜DSML｜') &&
       !text.includes('function_calls');
     if (hasAssistantReply) {{
@@ -288,7 +320,11 @@ def build_smoke_expression(message: str) -> str:
     return '';
   }}, 90000, 'assistant natural-language response');
   result.lastResponseText = finalText;
-  clickButton(...newBranchLabels);
+  await waitFor(() => {{
+    const button = findEnabledButton(...newBranchLabels);
+    return button || null;
+  }}, 20000, 'new branch button enabled');
+  clickEnabledButton(...newBranchLabels);
   await waitFor(() => hasThreadRoute() && location.pathname !== result.threadPath, 20000, 'branch route');
   result.branchPath = location.pathname;
   await openReviewFlow();

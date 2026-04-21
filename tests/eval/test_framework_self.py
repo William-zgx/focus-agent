@@ -90,6 +90,58 @@ def test_trajectory_judge_enforces_max_tool_calls():
     assert not verdict.passed
 
 
+def test_trajectory_judge_enforces_runtime_count_expectations():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_traj_runtime_counts",
+            "input": {"user_message": "x"},
+            "expected": {
+                "min_cache_hits": 1,
+                "max_fallback_uses": 0,
+                "min_parallel_tool_calls": 1,
+            },
+        }
+    )
+    steps = [
+        TrajectoryStep(
+            tool="search_code",
+            args={},
+            observation="",
+            cache_hit=True,
+            parallel_batch_size=2,
+        )
+    ]
+
+    verdict = TrajectoryJudge().evaluate(case=case, answer="", trajectory=steps)
+
+    assert verdict.passed
+    assert "cache_hits" in verdict.details["checks_run"]
+
+
+def test_trajectory_judge_enforces_runtime_tool_membership_expectations():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_traj_runtime_tools",
+            "input": {"user_message": "x"},
+            "expected": {
+                "must_hit_cache_tools_any_order": ["search_code"],
+                "must_use_fallback_tools_any_order": ["web_search"],
+                "must_parallelize_tools_any_order": ["read_file"],
+            },
+        }
+    )
+    steps = [
+        TrajectoryStep(tool="search_code", args={}, observation="", cache_hit=True),
+        TrajectoryStep(tool="web_search", args={}, observation="", fallback_used=True),
+        TrajectoryStep(tool="read_file", args={}, observation="", parallel_batch_size=2),
+    ]
+
+    verdict = TrajectoryJudge().evaluate(case=case, answer="", trajectory=steps)
+
+    assert verdict.passed
+    assert "must_use_fallback_tools_any_order" in verdict.details["checks_run"]
+
+
 def test_dataset_loader_parses_jsonl():
     cases = load_dataset(Path(__file__).parent / "datasets" / "smoke.jsonl")
     assert cases
@@ -120,7 +172,7 @@ def test_run_case_with_tool_call(eval_runtime_factory):
     case = EvalCase.from_dict(
         {
             "id": "e2e_tool",
-            "input": {"user_message": "找 assemble_context"},
+            "input": {"user_message": "在仓库里找 assemble_context"},
             "expected": {
                 "must_call_tools_any_order": ["search_code"],
                 "answer_contains_any": ["graph_builder"],
@@ -133,6 +185,43 @@ def test_run_case_with_tool_call(eval_runtime_factory):
     result = run_case(case, runtime=runtime)
     assert result.passed, [v.reasoning for v in result.verdicts]
     assert [s.tool for s in result.trajectory] == ["search_code"]
+
+
+def test_run_case_runs_trajectory_judge_for_runtime_only_expectations(eval_runtime_factory):
+    def _runtime_script(messages, allow_tools):
+        if allow_tools and not any(
+            isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in messages
+        ):
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "search_code",
+                        "args": {"query": "assemble_context"},
+                    }
+                ],
+            )
+        return AIMessage(content="done")
+
+    runtime = eval_runtime_factory(script=_runtime_script, tools=[search_code])
+    case = EvalCase.from_dict(
+        {
+            "id": "e2e_runtime_expectation",
+            "input": {"user_message": "在仓库里找 assemble_context"},
+            "expected": {
+                "must_hit_cache_tools_any_order": [],
+                "max_fallback_uses": 0,
+            },
+            "judge": {"rule": True, "llm": {"enabled": False}},
+        }
+    )
+
+    result = run_case(case, runtime=runtime)
+
+    trajectory_verdicts = [verdict for verdict in result.verdicts if verdict.kind == "trajectory"]
+    assert trajectory_verdicts
+    assert trajectory_verdicts[0].passed
 
 
 def test_run_suite_aggregates_metrics(eval_runtime_factory):

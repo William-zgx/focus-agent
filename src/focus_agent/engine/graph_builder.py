@@ -10,20 +10,48 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ..capabilities import ToolRegistry, build_tool_registry
+from ..capabilities.tool_runtime import (
+    ToolExecutionInput,
+    ToolResultCacheStore,
+    build_cache_scope_key,
+    build_tool_error_message,
+    execute_tool_calls,
+)
 from ..config import Settings
-from ..core.context_policy import assemble_context as build_context_slice
+from ..core.context_policy import (
+    apply_prompt_budget_guard,
+    assemble_context as build_context_slice,
+)
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
-from ..core.types import Plan, PlanStep, PromptMode, ReflectionVerdict
-from ..memory import MemoryRetriever, render_memory_block
+from ..core.types import ContextBudget, Plan, PlanStep, PromptMode, ReflectionVerdict
+from ..memory import (
+    MemoryExtractor,
+    MemoryPolicy,
+    MemoryRetriever,
+    MemoryWriteRequest,
+    MemoryWriter,
+    render_memory_block,
+)
 from ..model_registry import create_chat_model
 from ..skills import SkillRegistry
-from ..storage.namespaces import conversation_namespace_for_context
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
 _TOOL_EXHAUSTION_NOTE = (
     "You have enough tool results for this turn. Do not call more tools. "
     "Answer the user directly using the information already gathered, and state any uncertainty plainly."
+)
+_DIRECT_ANSWER_NOTE = (
+    "This turn should be answered directly. Do not call tools, browse the web, inspect files, "
+    "or create artifacts unless the user explicitly changes that request."
+)
+_WORKSPACE_TOOL_NOTE = (
+    "This turn may use only local workspace inspection tools. Do not use web tools or artifact-writing tools. "
+    "For symbol, function, tool, definition, usage, or location lookups, prefer search_code first with the "
+    "most specific query. Use list_files first only when the user asks to browse or enumerate files."
+)
+_LIVE_WEB_TOOL_NOTE = (
+    "This turn may use live web/time tools when needed. Do not inspect local project files unless the user asks."
 )
 _TOOL_CALL_PROTOCOL_REPAIR_NOTE = (
     "If you need a tool, emit a real tool call through the tool-calling interface. "
@@ -42,6 +70,188 @@ _TOOL_CALL_LAST_RESORT_NOTE = (
 _TOOL_CALL_REPAIR_FALLBACK_TEXT = (
     "I gathered the tool results for this turn, but formatting the final answer failed. "
     "Please retry this message or switch to a more stable model."
+)
+_ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
+
+_WORKSPACE_TOOL_NAMES = frozenset(
+    {
+        "list_files",
+        "read_file",
+        "search_code",
+        "codebase_stats",
+        "git_status",
+        "git_diff",
+        "git_log",
+        "skills_list",
+        "skill_view",
+        "artifact_list",
+        "artifact_read",
+        "conversation_summary",
+    }
+)
+_LIVE_WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch", "current_utc_time"})
+_REASONING_MESSAGE_BLOCK_TYPES = frozenset(
+    {"reasoning", "reasoning_delta", "reasoning_content", "reasoningcontent", "thinking", "thinking_delta"}
+)
+_TOOL_MESSAGE_BLOCK_TYPES = frozenset(
+    {"tool_call", "tool_call_chunk", "server_tool_call", "server_tool_call_chunk"}
+)
+
+_NO_TOOL_INTENT_MARKERS = (
+    "不要联网",
+    "不用联网",
+    "别联网",
+    "无需联网",
+    "不要搜索",
+    "不用搜索",
+    "别搜索",
+    "不要查",
+    "不用查",
+    "不用工具",
+    "不要用工具",
+    "不使用工具",
+    "直接回答",
+    "直接发给我",
+    "只回答",
+    "一句话说明",
+    "一句话解释",
+    "single word",
+    "no tools",
+    "without tools",
+    "do not browse",
+    "don't browse",
+    "do not search",
+    "don't search",
+)
+_CREATIVE_DIRECT_MARKERS = (
+    "写一篇",
+    "写一封",
+    "帮我写",
+    "作文",
+    "文案",
+    "润色",
+    "翻译",
+    "改写",
+    "总结下面",
+    "解释一下",
+    "说明什么是",
+    "是什么",
+    "讲一下",
+    "draft",
+    "rewrite",
+    "translate",
+    "summarize",
+    "explain",
+)
+_WORKSPACE_INTENT_MARKERS = (
+    "仓库",
+    "项目",
+    "代码",
+    "文件",
+    "路径",
+    "实现",
+    "定义",
+    "调用",
+    "引用",
+    "位置",
+    "测试用例",
+    "readme",
+    "repo",
+    "repository",
+    "codebase",
+    "source",
+    "file",
+    "function",
+    "class",
+    "definition",
+    "implementation",
+    "where is",
+    "find usage",
+    "search code",
+)
+_CODE_SEARCH_TOOL_INTENT_MARKERS = (
+    "定义",
+    "调用",
+    "引用",
+    "位置",
+    "使用",
+    "工具",
+    "函数",
+    "类",
+    "symbol",
+    "function",
+    "class",
+    "definition",
+    "usage",
+    "reference",
+    "where is",
+    "find usage",
+)
+_FILE_BROWSE_INTENT_MARKERS = (
+    "列出文件",
+    "有哪些文件",
+    "文件列表",
+    "目录",
+    "list files",
+    "browse files",
+    "file list",
+    "directory",
+)
+_LIVE_WEB_INTENT_MARKERS = (
+    "联网",
+    "上网",
+    "搜索",
+    "查一下",
+    "查下",
+    "搜一下",
+    "最新",
+    "今天",
+    "现在",
+    "当前",
+    "实时",
+    "新闻",
+    "天气",
+    "价格",
+    "汇率",
+    "股价",
+    "browse",
+    "web",
+    "search",
+    "latest",
+    "today",
+    "current",
+    "now",
+    "weather",
+    "news",
+    "price",
+)
+_EXECUTION_INTENT_MARKERS = (
+    "开始修复",
+    "修复",
+    "实现",
+    "改一下",
+    "修改",
+    "复现",
+    "测试",
+    "跑一下",
+    "运行",
+    "启动",
+    "构建",
+    "提交",
+    "推送",
+    "部署",
+    "fix",
+    "implement",
+    "change",
+    "modify",
+    "reproduce",
+    "test",
+    "run",
+    "start",
+    "build",
+    "commit",
+    "push",
+    "deploy",
 )
 
 
@@ -64,13 +274,31 @@ def _find_trailing_tool_span_start(messages: list[Any]) -> int | None:
     return None
 
 
+def _collapse_unanswered_trailing_humans(messages: list[Any]) -> list[Any]:
+    if len(messages) < 2:
+        return messages
+
+    tail_start = len(messages)
+    index = len(messages) - 1
+    while index >= 0 and isinstance(messages[index], HumanMessage):
+        tail_start = index
+        index -= 1
+
+    trailing_human_count = len(messages) - tail_start
+    if trailing_human_count <= 1:
+        return messages
+    return [*messages[:tail_start], messages[-1]]
+
+
 def _messages_for_model(state: AgentState) -> list[Any]:
     recent_messages = list(state.get("recent_messages") or [])
     messages = list(state.get("messages", []) or [])
     trailing_tool_span_start = _find_trailing_tool_span_start(messages)
     if trailing_tool_span_start is None:
-        return recent_messages or messages
-    return [*recent_messages, *messages[trailing_tool_span_start:]]
+        selected = _collapse_unanswered_trailing_humans(recent_messages or messages)
+    else:
+        selected = _collapse_unanswered_trailing_humans([*recent_messages, *messages[trailing_tool_span_start:]])
+    return [_sanitize_assistant_tool_call_message(message) for message in selected]
 
 
 def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
@@ -94,6 +322,78 @@ def _message_text(message: Any) -> str:
     if isinstance(content, list):
         return json.dumps(content, ensure_ascii=False)
     return str(content)
+
+
+def _stringify_message_block(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        return "".join(_stringify_message_block(item) for item in value)
+    if isinstance(value, dict):
+        for key in (
+            "text",
+            "content",
+            "value",
+            "reasoning_content",
+            "reasoningcontent",
+            "reasoning",
+            "summary",
+        ):
+            if value.get(key) is not None:
+                return _stringify_message_block(value[key])
+        return ""
+    return str(value)
+
+
+def _sanitize_assistant_tool_call_message(message: Any) -> Any:
+    if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
+        return message
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return message
+
+    visible_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            if block.strip():
+                visible_parts.append(block)
+            continue
+        if not isinstance(block, dict):
+            text = _stringify_message_block(block).strip()
+            if text:
+                visible_parts.append(text)
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        if block_type in _REASONING_MESSAGE_BLOCK_TYPES:
+            text = _stringify_message_block(block).strip()
+            if text:
+                reasoning_parts.append(text)
+            continue
+        if block_type in _TOOL_MESSAGE_BLOCK_TYPES:
+            continue
+        text = _stringify_message_block(block).strip()
+        if text:
+            visible_parts.append(text)
+
+    additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
+    if reasoning_parts and not additional_kwargs.get("reasoning_content"):
+        additional_kwargs["reasoning_content"] = "".join(reasoning_parts)
+
+    return AIMessage(
+        content="".join(visible_parts).strip(),
+        additional_kwargs=additional_kwargs,
+        response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
+        name=getattr(message, "name", None),
+        id=getattr(message, "id", None),
+        tool_calls=list(getattr(message, "tool_calls", []) or []),
+        invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
+        usage_metadata=getattr(message, "usage_metadata", None),
+    )
 
 
 def _looks_like_textual_tool_call_artifact(message: Any) -> bool:
@@ -124,63 +424,188 @@ def _latest_final_ai_text(messages: list[Any]) -> str:
     return ""
 
 
+def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in markers)
+
+
+def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
+    normalized = " ".join(text.strip().split())
+    if not normalized:
+        return "direct_answer"
+
+    has_no_tool_intent = _contains_any(normalized, _NO_TOOL_INTENT_MARKERS)
+    if has_no_tool_intent:
+        return "direct_answer"
+
+    if _contains_any(normalized, _EXECUTION_INTENT_MARKERS):
+        return "execution"
+    if _contains_any(normalized, _WORKSPACE_INTENT_MARKERS):
+        return "workspace_lookup"
+    if _contains_any(normalized, _LIVE_WEB_INTENT_MARKERS):
+        return "live_web_research"
+    if _contains_any(normalized, _CREATIVE_DIRECT_MARKERS):
+        return "direct_answer"
+    return "direct_answer"
+
+
+def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = "") -> list[Any]:
+    if policy == "direct_answer":
+        return []
+    if policy == "workspace_lookup":
+        allowed_names = _WORKSPACE_TOOL_NAMES
+        normalized = " ".join(latest_user.strip().split())
+        if (
+            _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS)
+            and not _contains_any(normalized, _FILE_BROWSE_INTENT_MARKERS)
+        ):
+            allowed_names = frozenset({"search_code", "read_file"})
+        return [tool for tool in tools if getattr(tool, "name", "") in allowed_names]
+    if policy == "live_web_research":
+        return [tool for tool in tools if getattr(tool, "name", "") in _LIVE_WEB_TOOL_NAMES]
+    return list(tools)
+
+
+def _context_budget_from_state(state: AgentState) -> ContextBudget:
+    value = state.get("context_budget")
+    if isinstance(value, ContextBudget):
+        return value
+    if isinstance(value, dict):
+        return ContextBudget.model_validate(value)
+    return ContextBudget()
+
+
+def _tool_policy_note(policy: _ToolPolicy) -> str:
+    if policy == "direct_answer":
+        return _DIRECT_ANSWER_NOTE
+    if policy == "workspace_lookup":
+        return _WORKSPACE_TOOL_NOTE
+    if policy == "live_web_research":
+        return _LIVE_WEB_TOOL_NOTE
+    return ""
+
+
+def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
+    text = " ".join(str(value).split())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
+
+def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
+    snippets: list[str] = []
+    for message in prompt_messages:
+        if not isinstance(message, ToolMessage):
+            continue
+        raw = _message_text(message)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+
+        if isinstance(payload, dict):
+            results = payload.get("results")
+            if isinstance(results, list):
+                for result in results[:8]:
+                    if not isinstance(result, dict):
+                        continue
+                    path = result.get("path")
+                    line_number = result.get("line_number")
+                    line = result.get("line")
+                    if path and line_number:
+                        snippets.append(f"- {path}:{line_number} {_truncate_inline(line)}")
+                    elif path:
+                        snippets.append(f"- {path} {_truncate_inline(line or result)}")
+            path = payload.get("path")
+            if path and not any(str(path) in snippet for snippet in snippets):
+                line_hint = ""
+                start_line = payload.get("start_line")
+                end_line = payload.get("end_line")
+                if start_line and end_line:
+                    line_hint = f":{start_line}-{end_line}"
+                snippets.append(f"- {path}{line_hint}")
+        elif raw:
+            snippets.append(f"- {_truncate_inline(raw)}")
+
+    if not snippets:
+        return _TOOL_CALL_REPAIR_FALLBACK_TEXT
+    unique_snippets = list(dict.fromkeys(snippets))
+    return "模型最终回答格式化失败，我先把已拿到的工具结果整理如下：\n" + "\n".join(unique_snippets[:10])
+
+
 def _repair_textual_tool_call_response(
     *,
     response: Any,
     prompt_messages: list[Any],
+    context_budget: ContextBudget,
     selected_model: str,
     selected_thinking_mode: str,
+    available_tools: list[Any],
     model_for,
     model_with_tools_for,
 ) -> Any:
     if not _looks_like_textual_tool_call_artifact(response):
         return response
 
-    repaired = model_with_tools_for(selected_model, selected_thinking_mode).invoke(
+    repaired_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_PROTOCOL_REPAIR_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(response)),
-        ]
+        ],
+        budget=context_budget,
+    )
+    repaired = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
+        repaired_prompt
     )
     if not _looks_like_textual_tool_call_artifact(repaired):
         return repaired
 
-    return model_for(selected_model, selected_thinking_mode).invoke(
+    fallback_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(repaired)),
-        ]
+        ],
+        budget=context_budget,
     )
+    return model_for(selected_model, selected_thinking_mode).invoke(fallback_prompt)
 
 
 def _repair_tool_free_answer_response(
     *,
     response: Any,
     prompt_messages: list[Any],
+    context_budget: ContextBudget,
     selected_model: str,
     selected_thinking_mode: str,
     model_for,
 ) -> Any:
+    if not _message_text(response).strip() and any(
+        isinstance(message, ToolMessage) for message in prompt_messages
+    ):
+        return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
+
     if not _looks_like_textual_tool_call_artifact(response):
         return response
 
-    repaired = model_for(selected_model, selected_thinking_mode).invoke(
+    repaired_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
             SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(response)),
-        ]
+        ],
+        budget=context_budget,
     )
+    repaired = model_for(selected_model, selected_thinking_mode).invoke(repaired_prompt)
     if not _looks_like_textual_tool_call_artifact(repaired):
         return repaired
 
-    final_attempt = model_for(selected_model, selected_thinking_mode).invoke(
+    final_prompt = apply_prompt_budget_guard(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
@@ -188,12 +613,14 @@ def _repair_tool_free_answer_response(
             SystemMessage(content=_TOOL_CALL_LAST_RESORT_NOTE),
             *prompt_messages[1:],
             AIMessage(content=_message_text(repaired)),
-        ]
+        ],
+        budget=context_budget,
     )
+    final_attempt = model_for(selected_model, selected_thinking_mode).invoke(final_prompt)
     if not _looks_like_textual_tool_call_artifact(final_attempt):
         return final_attempt
 
-    return AIMessage(content=_TOOL_CALL_REPAIR_FALLBACK_TEXT)
+    return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
 
 
 _PLAN_TRIGGER_KEYWORDS = (
@@ -357,6 +784,9 @@ def build_graph(
     checkpointer=None,
     store=None,
     memory_retriever: MemoryRetriever | None = None,
+    memory_policy: MemoryPolicy | None = None,
+    memory_writer: MemoryWriter | None = None,
+    memory_extractor: MemoryExtractor | None = None,
     skill_registry: SkillRegistry | None = None,
     tool_registry: ToolRegistry | None = None,
 ):
@@ -369,9 +799,15 @@ def build_graph(
     )
     tools = list(effective_tool_registry.tools)
     tools_by_name = effective_tool_registry.by_name
+    tool_runtime_by_name = effective_tool_registry.runtime_by_name
+    effective_memory_policy = memory_policy or getattr(memory_retriever, "policy", None) or MemoryPolicy()
+    effective_memory_retriever = memory_retriever or MemoryRetriever(store=store, policy=effective_memory_policy)
+    effective_memory_writer = memory_writer or MemoryWriter(store=store, policy=effective_memory_policy)
+    effective_memory_extractor = memory_extractor or MemoryExtractor()
     base_model_cache: dict[str, Any] = {}
     model_cache: dict[str, Any] = {}
     model_with_tools_cache: dict[str, Any] = {}
+    tool_result_cache = ToolResultCacheStore()
 
     def base_model_for(model_id: str, thinking_mode: str):
         cache_key = f"{model_id}|{thinking_mode or ''}"
@@ -396,12 +832,16 @@ def build_graph(
         model_cache[cache_key] = model
         return model
 
-    def model_with_tools_for(model_id: str, thinking_mode: str):
-        cache_key = f"{model_id}|{thinking_mode or ''}"
+    def model_with_tools_for(model_id: str, thinking_mode: str, available_tools: list[Any] | None = None):
+        selected_tools = list(tools if available_tools is None else available_tools)
+        tool_key = ",".join(sorted(str(getattr(tool, "name", "")) for tool in selected_tools))
+        cache_key = f"{model_id}|{thinking_mode or ''}|{tool_key}"
         cached = model_with_tools_cache.get(cache_key)
         if cached is not None:
             return cached
-        bound = base_model_for(model_id, thinking_mode).bind_tools(tools).with_config({"run_name": "focus_agent_model"})
+        bound = base_model_for(model_id, thinking_mode).bind_tools(selected_tools).with_config(
+            {"run_name": "focus_agent_model"}
+        )
         model_with_tools_cache[cache_key] = bound
         return bound
 
@@ -414,55 +854,22 @@ def build_graph(
     ) -> dict[str, Any]:
         latest_user = _latest_human_message_text(state.get("messages", []))
         prompt_mode = _resolve_prompt_mode(state)
-        if memory_retriever is not None:
-            bundle = memory_retriever.retrieve_for_turn(
-                context=runtime.context,
-                state=dict(state),
-                query=latest_user,
-                prompt_mode=prompt_mode,
-            )
-            return {
-                "retrieved_memories": [
-                    {
-                        **hit.record.model_dump(mode="json"),
-                        "score": hit.score,
-                        "matched_terms": hit.matched_terms,
-                    }
-                    for hit in bundle.hits
-                ],
-                "memory_prompt_block": render_memory_block(bundle),
-                "prompt_mode": prompt_mode,
-            }
-
-        memories = (
-            runtime.store.search(
-                conversation_namespace_for_context(runtime.context),
-                query=latest_user,
-                limit=4,
-            )
-            if runtime.store
-            else []
+        bundle = effective_memory_retriever.retrieve_for_turn(
+            context=runtime.context,
+            state=dict(state),
+            query=latest_user,
+            prompt_mode=prompt_mode,
         )
-        memory_texts = [
-            str(item.value.get("summary") or item.value.get("text") or item.value)
-            for item in memories
-        ]
         return {
             "retrieved_memories": [
-                {"summary": text, "namespace": list(conversation_namespace_for_context(runtime.context))}
-                for text in memory_texts
+                {
+                    **hit.record.model_dump(mode="json"),
+                    "score": hit.score,
+                    "matched_terms": hit.matched_terms,
+                }
+                for hit in bundle.hits
             ],
-            "memory_prompt_block": render_memory_block(
-                type(
-                    "_Bundle",
-                    (),
-                    {
-                        "hits": [],
-                    },
-                )()
-            )
-            if not memory_texts
-            else "## Retrieved long-term memories\n" + "\n".join(f"- {text}" for text in memory_texts),
+            "memory_prompt_block": render_memory_block(bundle),
             "prompt_mode": prompt_mode,
         }
 
@@ -648,34 +1055,61 @@ def build_graph(
         selected_model = str(state.get("selected_model") or settings.model)
         selected_thinking_mode = str(state.get("selected_thinking_mode") or "")
         assembled = state.get("assembled_context", "")
+        latest_user = _latest_human_message_text(list(state.get("messages", []) or []))
+        if not latest_user:
+            latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
+        context_budget = _context_budget_from_state(state)
+        tool_policy = _classify_turn_tool_policy(latest_user)
+        available_tools = _tools_for_policy(tool_policy, tools, latest_user)
+        policy_note = _tool_policy_note(tool_policy)
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
             plan_block = _format_plan_block(plan, state.get("current_step_id", ""))
             if plan_block and plan_block not in assembled:
                 assembled = f"{assembled}\n\n{plan_block}".strip()
         prompt_messages = [SystemMessage(content=assembled), *messages]
+        if policy_note:
+            prompt_messages = [prompt_messages[0], SystemMessage(content=policy_note), *prompt_messages[1:]]
+        prompt_messages = apply_prompt_budget_guard(prompt_messages, budget=context_budget)
         if _should_force_tool_free_answer(list(state.get("messages", []) or [])):
-            response = model_for(selected_model, selected_thinking_mode).invoke(
+            forced_prompt = apply_prompt_budget_guard(
                 [
                     prompt_messages[0],
                     SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
                     *prompt_messages[1:],
-                ]
+                ],
+                budget=context_budget,
             )
+            response = model_for(selected_model, selected_thinking_mode).invoke(forced_prompt)
             response = _repair_tool_free_answer_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                context_budget=context_budget,
+                selected_model=selected_model,
+                selected_thinking_mode=selected_thinking_mode,
+                model_for=model_for,
+            )
+        elif not available_tools:
+            response = model_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+            response = _repair_tool_free_answer_response(
+                response=response,
+                prompt_messages=prompt_messages,
+                context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
             )
         else:
-            response = model_with_tools_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+            response = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
+                prompt_messages
+            )
             response = _repair_textual_tool_call_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
+                available_tools=available_tools,
                 model_for=model_for,
                 model_with_tools_for=model_with_tools_for,
             )
@@ -684,13 +1118,76 @@ def build_graph(
             "llm_calls": state.get("llm_calls", 0) + 1,
         }
 
-    def tool_executor(state: AgentState) -> dict[str, Any]:
-        result_messages: list[ToolMessage] = []
+    def tool_executor(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
         last_message = state["messages"][-1]
-        for tool_call in getattr(last_message, "tool_calls", []) or []:
-            tool = tools_by_name[tool_call["name"]]
-            observation = tool.invoke(tool_call["args"])
-            result_messages.append(ToolMessage(content=str(observation), tool_call_id=tool_call["id"]))
+        context_budget = _context_budget_from_state(state)
+        branch_meta = state.get("branch_meta") or {}
+        branch_id = None
+        if isinstance(branch_meta, dict):
+            raw_branch_id = branch_meta.get("branch_id") or branch_meta.get("id")
+            branch_id = str(raw_branch_id) if raw_branch_id else None
+        root_thread_id = runtime.context.root_thread_id
+        if runtime.context.branch_id and not branch_id:
+            branch_id = runtime.context.branch_id
+        turn_index = sum(1 for message in state.get("messages", []) if isinstance(message, HumanMessage))
+        turn_scope_key = build_cache_scope_key(
+            scope="turn",
+            root_thread_id=root_thread_id,
+            branch_id=branch_id,
+            turn_id=str(turn_index or 1),
+        )
+        execution_inputs: list[ToolExecutionInput] = []
+        cache_scope_keys: dict[int, str] = {}
+        invalidation_scope_keys = [
+            turn_scope_key,
+            build_cache_scope_key(scope="thread", root_thread_id=root_thread_id, branch_id=branch_id),
+            build_cache_scope_key(scope="branch", root_thread_id=root_thread_id, branch_id=branch_id),
+        ]
+        messages_by_index: dict[int, ToolMessage] = {}
+        for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
+            tool_name = str(tool_call["name"])
+            tool = tools_by_name.get(tool_name)
+            if tool is None:
+                messages_by_index[index] = (
+                    build_tool_error_message(
+                        tool_call_id=str(tool_call["id"]),
+                        tool_name=tool_name,
+                        args=dict(tool_call.get("args") or {}),
+                        error=f"Unknown tool: {tool_name}",
+                    )
+                )
+                continue
+            runtime_meta = tool_runtime_by_name.get(tool_name)
+            if runtime_meta is None:
+                continue
+            execution_inputs.append(
+                ToolExecutionInput(
+                    index=index,
+                    tool_call_id=str(tool_call["id"]),
+                    tool_name=tool_name,
+                    args=dict(tool_call.get("args") or {}),
+                    tool=tool,
+                    runtime=runtime_meta,
+                )
+            )
+            cache_scope_keys[index] = build_cache_scope_key(
+                scope=runtime_meta.cache_scope,
+                root_thread_id=root_thread_id,
+                branch_id=branch_id,
+                turn_id=str(turn_index or 1),
+            )
+        for result in execute_tool_calls(
+            execution_inputs,
+            context_budget=context_budget,
+            cache_store=tool_result_cache,
+            cache_scope_keys=cache_scope_keys,
+            invalidation_scope_keys=invalidation_scope_keys,
+        ):
+            messages_by_index[result.index] = result.message
+        result_messages = [messages_by_index[index] for index in sorted(messages_by_index)]
         return {"messages": result_messages}
 
     def summarize_turn(state: AgentState) -> dict[str, Any]:
@@ -706,6 +1203,49 @@ def build_graph(
         if len(joined) > 4000:
             joined = joined[-4000:]
         return {"rolling_summary": joined}
+
+    def extract_memories(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        if not _should_extract_memories(state):
+            return {
+                "memory_write_requests": [],
+                "memory_write_result": {"prepared": 0, "written": [], "merged": [], "skipped": [], "failed": []},
+            }
+        extraction = effective_memory_extractor.extract_from_turn(context=runtime.context, state=dict(state))
+        return {
+            "memory_write_requests": [record.model_dump(mode="json") for record in extraction.records],
+            "memory_write_result": {
+                "prepared": len(extraction.records),
+                "written": [],
+                "merged": [],
+                "skipped": list(extraction.skipped_reasons),
+                "failed": [],
+                "summary": extraction.summary,
+            },
+        }
+
+    def write_memories(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        raw_requests = list(state.get("memory_write_requests", []) or [])
+        if not raw_requests:
+            return {
+                "memory_write_requests": [],
+                "memory_write_result": state.get("memory_write_result", {}),
+            }
+        records = [MemoryWriteRequest.model_validate(item) for item in raw_requests]
+        outcome = effective_memory_writer.persist_records(
+            records,
+            context=runtime.context,
+            state=dict(state),
+        )
+        return {
+            "memory_write_requests": [],
+            "memory_write_result": outcome,
+        }
 
     def maybe_interrupt_for_merge(state: AgentState) -> dict[str, Any]:
         if state.get("merge_proposal") and not state.get("merge_decision"):
@@ -746,6 +1286,8 @@ def build_graph(
     builder.add_node("tool_executor", tool_executor)
     builder.add_node("reflect", reflect_node)
     builder.add_node("summarize_turn", summarize_turn)
+    builder.add_node("extract_memories", extract_memories)
+    builder.add_node("write_memories", write_memories)
     builder.add_node("maybe_interrupt_for_merge", maybe_interrupt_for_merge)
 
     builder.add_edge(START, "bootstrap_turn")
@@ -764,7 +1306,25 @@ def build_graph(
         should_continue_after_reflect,
         ["plan", "summarize_turn"],
     )
-    builder.add_edge("summarize_turn", "maybe_interrupt_for_merge")
+    builder.add_edge("summarize_turn", "extract_memories")
+    builder.add_edge("extract_memories", "write_memories")
+    builder.add_edge("write_memories", "maybe_interrupt_for_merge")
     builder.add_edge("maybe_interrupt_for_merge", END)
 
     return builder.compile(checkpointer=checkpointer, store=store)
+
+
+def _should_extract_memories(state: AgentState) -> bool:
+    reflection = state.get("reflection")
+    reflection_status = getattr(reflection, "status", None) or (
+        reflection.get("status") if isinstance(reflection, dict) else None
+    )
+    if reflection_status == "replan":
+        return False
+    messages = list(state.get("messages", []) or [])
+    if not messages:
+        return False
+    last_message = messages[-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
+        return False
+    return bool(_latest_final_ai_text(messages))

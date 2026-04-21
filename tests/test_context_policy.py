@@ -1,6 +1,13 @@
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
+import json
 
-from focus_agent.core.context_policy import assemble_context
+from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+from focus_agent.core.context_policy import (
+    apply_prompt_budget_guard,
+    approximate_token_count,
+    assemble_context,
+    trim_tool_observation,
+)
 from focus_agent.core.types import ArtifactRef, ContextBudget, FindingItem, PromptMode
 
 
@@ -155,3 +162,101 @@ def test_assemble_context_renders_skill_blocks():
     assert "## Active skills" in rendered
     assert "## Available skills" in rendered
     assert "## Skill system" in context_slice.system_instructions
+
+
+def test_prompt_budget_guard_preserves_current_user_and_active_constraints():
+    system_text = "\n\n".join(
+        [
+            "You are Focus Agent.",
+            "## Retrieved long-term memories\n" + ("low priority memory " * 100),
+            "## Constraints and goals\n- Active goal: draft the final answer\n- Preserve this exact constraint.",
+            "## Rolling summary\n" + ("old summary " * 100),
+        ]
+    )
+    current_turn = "Current user turn must stay exact."
+    budget = ContextBudget(prompt_token_limit=150, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content=system_text),
+            HumanMessage(content="older history can be removed"),
+            HumanMessage(content=current_turn),
+        ],
+        budget=budget,
+    )
+
+    rendered = "\n".join(str(message.content) for message in guarded)
+    assert sum(len(str(message.content)) for message in guarded) <= 150
+    assert current_turn in [message.content for message in guarded if isinstance(message, HumanMessage)]
+    assert "Preserve this exact constraint." in rendered
+    assert "low priority memory" not in rendered
+    assert "older history can be removed" not in rendered
+
+
+def test_prompt_budget_guard_hard_limits_oversized_current_turn():
+    current_turn = "Current user turn " * 20
+    budget = ContextBudget(prompt_token_limit=80, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content="system " * 20),
+            HumanMessage(content=current_turn),
+        ],
+        budget=budget,
+    )
+
+    rendered = "\n".join(str(message.content) for message in guarded)
+    assert sum(len(str(message.content)) for message in guarded) <= 80
+    assert "Current user" in rendered
+    assert "[trimmed]" in rendered
+
+
+def test_approximate_token_count_uses_deterministic_char_budget():
+    assert approximate_token_count("abcd", chars_per_token=4) == 1
+    assert approximate_token_count("abcde", chars_per_token=4) == 2
+
+
+def test_trim_tool_observation_preserves_search_snippets_without_noise():
+    payload = {
+        "query": "assemble_context",
+        "results": [
+            {
+                "path": "src/focus_agent/core/context_policy.py",
+                "line_number": 42,
+                "line": "def assemble_context(state, mode):",
+            }
+        ],
+        "noise": "POLLUTION" * 1000,
+    }
+
+    trimmed = trim_tool_observation(
+        json.dumps(payload, ensure_ascii=False),
+        tool_name="search_code",
+        max_chars=260,
+    )
+
+    assert len(trimmed) <= 260
+    assert "context_policy.py" in trimmed
+    assert "line_number" in trimmed
+    assert "POLLUTION" not in trimmed
+
+
+def test_trim_tool_observation_preserves_read_file_line_numbers():
+    payload = {
+        "path": "src/focus_agent/engine/graph_builder.py",
+        "start_line": 10,
+        "end_line": 200,
+        "total_lines": 500,
+        "content": "\n".join(f"{line:03d} | important line {line}" for line in range(10, 120)),
+    }
+
+    trimmed = trim_tool_observation(
+        json.dumps(payload, ensure_ascii=False),
+        tool_name="read_file",
+        max_chars=420,
+    )
+
+    assert len(trimmed) <= 420
+    assert "graph_builder.py" in trimmed
+    assert "010 | important line 10" in trimmed
+    assert "truncated_by_context_policy" in trimmed
