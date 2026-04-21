@@ -112,6 +112,13 @@ If you want one command that starts both sides with hot reload, use `make serve-
 
 If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) now manage a repo-local PostgreSQL for you and inject `DATABASE_URI` into the API process automatically. They stop the managed database together with the service, clean up the temporary runtime bits, and keep the Postgres data directory for reuse on the next local run. If you explicitly export `DATABASE_URI` before starting the service, the startup command preserves that value and skips managed local-Postgres injection.
 
+The startup scripts also persist the managed database runtime settings to `.focus_agent/postgres/runtime.env`, including the exact `DATABASE_URI`, host, port, user, and database name. This is useful when you open a second shell for debugging: source that file first if you want ad-hoc commands to inspect the same Postgres instance as the running app.
+
+```bash
+source .focus_agent/postgres/runtime.env
+psql "$DATABASE_URI"
+```
+
 ## Container Deployment
 
 The repository now ships a recommended Docker deployment split:

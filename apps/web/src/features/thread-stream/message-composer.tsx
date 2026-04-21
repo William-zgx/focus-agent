@@ -81,19 +81,15 @@ function effectiveThinkingModeForModel(
 }
 
 function thinkingEnabledLabel(isChineseUi: boolean) {
-  return isChineseUi ? "开启" : "On";
+  return isChineseUi ? "开始思考" : "Start thinking";
 }
 
 function thinkingDisabledLabel(isChineseUi: boolean) {
-  return isChineseUi ? "关闭" : "Off";
+  return isChineseUi ? "关闭思考" : "Stop thinking";
 }
 
 function thinkingAvailableLabel(isChineseUi: boolean) {
-  return isChineseUi ? "支持思考" : "Thinking available";
-}
-
-function thinkingDefaultOnLabel(isChineseUi: boolean) {
-  return isChineseUi ? "支持思考，默认开启" : "Thinking available, default on";
+  return isChineseUi ? "支持思考，可手动切换" : "Thinking available, toggle manually";
 }
 
 function thinkingUnavailableLabel(isChineseUi: boolean) {
@@ -112,13 +108,29 @@ function thinkingStatusText(mode: string, isChineseUi: boolean) {
   return mode === "enabled" ? thinkingOnStatusLabel(isChineseUi) : thinkingOffStatusLabel(isChineseUi);
 }
 
-function thinkingOptionMetaLabel(model: FocusAgentModelOption, isChineseUi: boolean) {
+function thinkingToggleActionLabel(mode: string, isChineseUi: boolean) {
+  return mode === "enabled" ? thinkingDisabledLabel(isChineseUi) : thinkingEnabledLabel(isChineseUi);
+}
+
+function thinkingToggleTitle(mode: string, isChineseUi: boolean) {
+  return mode === "enabled"
+    ? isChineseUi
+      ? "思考已开启，点击关闭思考"
+      : "Thinking is on. Click to stop thinking"
+    : isChineseUi
+      ? "思考已关闭，点击开始思考"
+      : "Thinking is off. Click to start thinking";
+}
+
+function thinkingOptionMetaLabel(
+  model: FocusAgentModelOption,
+  thinkingMode: string,
+  isChineseUi: boolean,
+) {
   if (!model.supports_thinking) {
     return thinkingUnavailableLabel(isChineseUi);
   }
-  return model.default_thinking_enabled
-    ? thinkingDefaultOnLabel(isChineseUi)
-    : thinkingAvailableLabel(isChineseUi);
+  return thinkingMode ? thinkingStatusText(thinkingMode, isChineseUi) : thinkingAvailableLabel(isChineseUi);
 }
 
 function handleModelOptionKeyDown(
@@ -274,14 +286,17 @@ export function MessageComposer({
   async function submitMessage() {
     const trimmed = message.trim();
     if (!trimmed || isStreaming || isReadOnly) return;
+    const wasEditing = Boolean(editDraft);
+    if (wasEditing) {
+      editSignatureRef.current = "";
+      onClearEditDraft?.();
+    }
     const result = await onSendMessage(trimmed, {
       model: modelId || undefined,
-      thinkingMode: thinkingMode || undefined,
+      thinkingMode: activeModel?.supports_thinking ? activeThinkingMode : undefined,
     });
     if (result.ok) {
       setMessage("");
-      editSignatureRef.current = "";
-      onClearEditDraft?.();
     }
   }
 
@@ -301,13 +316,17 @@ export function MessageComposer({
   function selectModel(nextModelId: string) {
     const nextModel = allModels.find((item: FocusAgentModelOption) => item.id === nextModelId);
     setModelId(nextModelId);
-    setThinkingMode((current) => effectiveThinkingModeForModel(nextModel, current));
+    setThinkingMode((current) =>
+      nextModelId === modelId
+        ? effectiveThinkingModeForModel(nextModel, current)
+        : effectiveThinkingModeForModel(nextModel, ""),
+    );
     setModelPanelOpen(false);
   }
 
-  function selectModelThinkingMode(nextModelId: string, nextThinkingMode: "enabled" | "disabled") {
+  function toggleModelThinkingMode(nextModelId: string, currentThinkingMode: string) {
     setModelId(nextModelId);
-    setThinkingMode(nextThinkingMode);
+    setThinkingMode(currentThinkingMode === "enabled" ? "disabled" : "enabled");
     setModelPanelOpen(false);
   }
 
@@ -445,6 +464,7 @@ export function MessageComposer({
                                       <div className="fa-composer-model-option-meta">
                                         {`${providerOptionLabel(model.provider, isChineseUi)} · ${thinkingOptionMetaLabel(
                                           model,
+                                          optionThinkingMode,
                                           isChineseUi,
                                         )}`}
                                       </div>
@@ -452,40 +472,22 @@ export function MessageComposer({
                                   </div>
                                   <div className="fa-composer-model-option-trailing">
                                     {model.supports_thinking ? (
-                                      <span
-                                        className="fa-composer-model-thinking-toggle"
-                                        role="group"
-                                        aria-label={`${modelDisplayName(model)} ${
-                                          isChineseUi ? "思考模式" : "Thinking mode"
-                                        }`}
-                                      >
+                                      <span className="fa-composer-model-thinking-toggle">
                                         <button
                                           className={`fa-thinking-toggle ${
                                             optionThinkingMode === "enabled" ? "is-active" : ""
                                           }`}
                                           aria-pressed={optionThinkingMode === "enabled"}
+                                          aria-label={thinkingToggleTitle(optionThinkingMode, isChineseUi)}
                                           onClick={(event) => {
                                             event.preventDefault();
                                             event.stopPropagation();
-                                            selectModelThinkingMode(model.id, "enabled");
+                                            toggleModelThinkingMode(model.id, optionThinkingMode);
                                           }}
+                                          title={thinkingToggleTitle(optionThinkingMode, isChineseUi)}
                                           type="button"
                                         >
-                                          {thinkingEnabledLabel(isChineseUi)}
-                                        </button>
-                                        <button
-                                          className={`fa-thinking-toggle ${
-                                            optionThinkingMode === "disabled" ? "is-active" : ""
-                                          }`}
-                                          aria-pressed={optionThinkingMode === "disabled"}
-                                          onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            selectModelThinkingMode(model.id, "disabled");
-                                          }}
-                                          type="button"
-                                        >
-                                          {thinkingDisabledLabel(isChineseUi)}
+                                          {thinkingToggleActionLabel(optionThinkingMode, isChineseUi)}
                                         </button>
                                       </span>
                                     ) : null}

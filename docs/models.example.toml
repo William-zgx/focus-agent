@@ -3,7 +3,7 @@ helper_model = "openai:gpt-4.1-mini"
 model_choices = [
   "ollama:qwen2.5:7b",
   "openai:gpt-4.1-mini",
-  "moonshot:kimi-k2.5",
+  "moonshot:kimi-k2.6",
 ]
 
 [[providers]]
@@ -36,8 +36,8 @@ id = "openai:gpt-4.1-mini"
 label = "GPT-4.1 Mini"
 
 [[models]]
-id = "moonshot:kimi-k2.5"
-label = "Kimi K2.5"
+id = "moonshot:kimi-k2.6"
+label = "Kimi K2.6"
 supports_thinking = true
 default_thinking_enabled = true
 no_temperature = true

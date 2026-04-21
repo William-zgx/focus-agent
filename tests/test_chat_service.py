@@ -4,10 +4,11 @@ from types import SimpleNamespace
 import threading
 
 import pytest
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
-from focus_agent.config import Settings
+from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.skills.registry import SkillRegistry
@@ -225,6 +226,53 @@ def test_stream_message_does_not_complete_with_previous_assistant_reply(tmp_path
         and "Previous answer that belongs to an older turn." in frame
         for frame in frames
     )
+    assert any("event: turn.completed" in frame for frame in frames)
+
+
+def test_stream_message_falls_back_to_sync_stream_when_checkpointer_lacks_async_support(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class SyncOnlyCheckpointer:
+        aget_tuple = BaseCheckpointSaver.aget_tuple
+
+    class SyncOnlyStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="Hi from sync stream.")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        def stream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (AIMessageChunk(content="Hi"), {"langgraph_node": "agent_loop"}),
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=SyncOnlyStreamingGraph(),
+        repo=repo,
+        checkpointer=SyncOnlyCheckpointer(),
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert any("event: visible_text.delta" in frame and '"delta": "Hi"' in frame for frame in frames)
     assert any("event: turn.completed" in frame for frame in frames)
 
 
@@ -460,18 +508,54 @@ def test_send_message_activates_skills_from_prefix(tmp_path: Path):
         thread_id="root-1",
         user_id="owner-1",
         message="plan: map the rollout",
-        model="moonshot:kimi-k2.5",
+        model="moonshot:kimi-k2.6",
         thinking_mode="disabled",
     )
 
     assert graph.last_context.skill_hints == ("plan",)
     assert graph.last_payload["task_brief"] == "map the rollout"
     assert graph.last_payload["active_skill_ids"] == ["plan"]
-    assert graph.last_payload["selected_model"] == "moonshot:kimi-k2.5"
+    assert graph.last_payload["selected_model"] == "moonshot:kimi-k2.6"
     assert graph.last_payload["selected_thinking_mode"] == "disabled"
     assert payload["active_skill_ids"] == ["plan"]
-    assert payload["selected_model"] == "moonshot:kimi-k2.5"
+    assert payload["selected_model"] == "moonshot:kimi-k2.6"
     assert payload["selected_thinking_mode"] == "disabled"
+
+
+def test_send_message_ignores_thinking_mode_for_models_without_thinking_support(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    graph = RecordingGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(
+            model="ollama:gemma4-hauhau:q8",
+            model_catalog=ModelCatalogConfig(
+                models=(
+                    ConfiguredModel(
+                        id="ollama:gemma4-hauhau:q8",
+                        label="gemma4-hauhau:q8",
+                    ),
+                ),
+            ),
+        ),
+        graph=graph,
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="hello",
+        model="ollama:gemma4-hauhau:q8",
+        thinking_mode="enabled",
+    )
+
+    assert graph.last_payload["selected_model"] == "ollama:gemma4-hauhau:q8"
+    assert graph.last_payload["selected_thinking_mode"] == ""
+    assert payload["selected_model"] == "ollama:gemma4-hauhau:q8"
+    assert payload["selected_thinking_mode"] == ""
 
 
 def test_send_message_records_postgres_trajectory_payload(tmp_path: Path):

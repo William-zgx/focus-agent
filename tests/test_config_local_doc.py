@@ -126,8 +126,8 @@ def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
         "\n".join(
             [
                 'default_model = "openai:deepseek-reasoner"',
-                'helper_model = "moonshot:kimi-k2.5"',
-                'model_choices = ["openai:deepseek-reasoner", "moonshot:kimi-k2.5"]',
+                'helper_model = "moonshot:kimi-k2.6"',
+                'model_choices = ["openai:deepseek-reasoner", "moonshot:kimi-k2.6"]',
             ]
         ),
         encoding="utf-8",
@@ -149,8 +149,8 @@ def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
     settings = Settings.from_env()
 
     assert settings.model == "openai:deepseek-reasoner"
-    assert settings.helper_model == "moonshot:kimi-k2.5"
-    assert settings.model_choices == ("openai:deepseek-reasoner", "moonshot:kimi-k2.5")
+    assert settings.helper_model == "moonshot:kimi-k2.6"
+    assert settings.model_choices == ("openai:deepseek-reasoner", "moonshot:kimi-k2.6")
     assert settings.web_search.provider == "duckduckgo"
     assert settings.temperature == 0.4
 
@@ -161,7 +161,7 @@ def test_settings_from_env_prefers_explicit_model_env_over_catalog_default(tmp_p
         "\n".join(
             [
                 'default_model = "ollama:qwen2.5:7b"',
-                'helper_model = "moonshot:kimi-k2.5"',
+                'helper_model = "moonshot:kimi-k2.6"',
             ]
         ),
         encoding="utf-8",

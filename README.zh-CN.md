@@ -112,6 +112,13 @@ focus-agent-api
 
 如果启动前没有设置 `DATABASE_URI`，本地启动命令（`make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod`）现在会自动管理一个 repo 内本地 PostgreSQL，并把生成的 `DATABASE_URI` 自动注入到 API 进程里。这个托管数据库会随着服务一起停止并清理临时运行态，但会保留 Postgres 数据目录，方便下次本地启动继续复用。如果你在启动前已经显式设置了 `DATABASE_URI`，启动命令会保留该值，不再覆盖，也不会再做托管本地 Postgres 的注入。
 
+启动脚本还会把托管数据库的运行态写入 `.focus_agent/postgres/runtime.env`，里面包含当前实际使用的 `DATABASE_URI`、host、port、user 和 database 名称。如果你另开一个 shell 做调试，建议先 `source` 这个文件，确保手工命令连到的是和正在运行的应用同一套 Postgres。
+
+```bash
+source .focus_agent/postgres/runtime.env
+psql "$DATABASE_URI"
+```
+
 ## 容器化部署
 
 仓库里现在提供了一套推荐版 Docker 部署分层：

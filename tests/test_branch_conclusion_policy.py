@@ -196,13 +196,13 @@ def test_branch_service_falls_back_to_main_model_when_helper_model_is_unset(monk
     monkeypatch.setattr("focus_agent.services.branches.create_chat_model", fake_create_chat_model)
 
     service = BranchService(
-        settings=Settings(model="moonshot:kimi-k2.5", helper_model=None),
+        settings=Settings(model="moonshot:kimi-k2.6", helper_model=None),
         graph=object(),
         repo=FakeRepo(),
     )
 
     assert service.proposal_model is not None
-    assert captured["model_id"] == "moonshot:kimi-k2.5"
+    assert captured["model_id"] == "moonshot:kimi-k2.6"
     assert captured["temperature"] == 0
     assert captured["thinking_mode"] is None
     assert captured["settings"] is not None

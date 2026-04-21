@@ -280,6 +280,9 @@ ensure_managed_database_uri() {
       # shellcheck disable=SC1090
       source "$state_file"
     fi
+    host="${FOCUS_AGENT_MANAGED_PG_HOST:-$host}"
+    user="${FOCUS_AGENT_MANAGED_PG_USER:-$user}"
+    database="${FOCUS_AGENT_MANAGED_PG_DB:-$database}"
     port="${FOCUS_AGENT_MANAGED_PG_PORT:-${FOCUS_AGENT_LOCAL_PG_PORT:-54329}}"
     log "Reusing running local PostgreSQL from ${data_dir}"
   else
@@ -294,8 +297,15 @@ ensure_managed_database_uri() {
   export DATABASE_URI="postgresql://${user}@${host}:${port}/${database}"
   export FOCUS_AGENT_MANAGED_PG_DATA_DIR="$data_dir"
   export FOCUS_AGENT_MANAGED_PG_RUN_DIR="$run_dir"
+  export FOCUS_AGENT_MANAGED_PG_HOST="$host"
+  export FOCUS_AGENT_MANAGED_PG_USER="$user"
+  export FOCUS_AGENT_MANAGED_PG_DB="$database"
   export FOCUS_AGENT_MANAGED_PG_PORT="$port"
   cat > "$state_file" <<EOF
+DATABASE_URI=${DATABASE_URI}
+FOCUS_AGENT_MANAGED_PG_HOST=${host}
+FOCUS_AGENT_MANAGED_PG_USER=${user}
+FOCUS_AGENT_MANAGED_PG_DB=${database}
 FOCUS_AGENT_MANAGED_PG_PORT=${port}
 FOCUS_AGENT_MANAGED_PG_DATA_DIR=${data_dir}
 FOCUS_AGENT_MANAGED_PG_RUN_DIR=${run_dir}

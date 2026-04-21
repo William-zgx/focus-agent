@@ -8,6 +8,7 @@ import threading
 from typing import Any, AsyncIterator
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
 from pydantic import BaseModel
 from pydantic import ValidationError
@@ -31,6 +32,9 @@ from ..transport.stream_events import (
 )
 
 logger = logging.getLogger("focus_agent.chat")
+
+
+_STREAM_END = object()
 
 
 class ChatService:
@@ -294,11 +298,11 @@ class ChatService:
 
     @staticmethod
     def _effective_thinking_mode(*, model_id: str, thinking_mode: Any) -> str:
+        if not supports_thinking_mode(model_id):
+            return ''
         normalized = str(thinking_mode or '').strip().lower()
         if normalized in {'enabled', 'disabled'}:
             return normalized
-        if not supports_thinking_mode(model_id):
-            return ''
         return 'enabled' if default_thinking_enabled(model_id) else 'disabled'
 
     def _run_invoke(
@@ -588,6 +592,15 @@ class ChatService:
         config: dict[str, Any],
         context: RequestContext,
     ) -> AsyncIterator[dict[str, Any] | None]:
+        if self._checkpointer_lacks_async_support():
+            async for chunk in self._stream_graph_chunks_via_sync_stream(
+                payload=payload,
+                config=config,
+                context=context,
+            ):
+                yield chunk
+            return
+
         stream = self.runtime.graph.astream(
             payload,
             config=config,
@@ -623,6 +636,54 @@ class ChatService:
             if callable(aclose):
                 with suppress(Exception):  # noqa: BLE001
                     await aclose()
+
+    def _checkpointer_lacks_async_support(self) -> bool:
+        checkpointer = getattr(self.runtime, 'checkpointer', None)
+        if checkpointer is None:
+            return False
+        return type(checkpointer).aget_tuple is BaseCheckpointSaver.aget_tuple
+
+    async def _stream_graph_chunks_via_sync_stream(
+        self,
+        *,
+        payload: Any,
+        config: dict[str, Any],
+        context: RequestContext,
+    ) -> AsyncIterator[dict[str, Any] | None]:
+        stream = self.runtime.graph.stream(
+            payload,
+            config=config,
+            context=context,
+            stream_mode=['messages', 'custom', 'updates', 'tasks'],
+            version='v2',
+        )
+        stream_iter = iter(stream)
+        heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
+        pending_next: asyncio.Task[Any] | None = None
+
+        try:
+            pending_next = asyncio.create_task(asyncio.to_thread(next, stream_iter, _STREAM_END))
+            while pending_next is not None:
+                if heartbeat_interval > 0:
+                    done, _ = await asyncio.wait({pending_next}, timeout=heartbeat_interval)
+                    if not done:
+                        yield None
+                        continue
+                chunk = await pending_next
+                if chunk is _STREAM_END:
+                    pending_next = None
+                    break
+                pending_next = asyncio.create_task(asyncio.to_thread(next, stream_iter, _STREAM_END))
+                yield chunk
+        finally:
+            if pending_next is not None and not pending_next.done():
+                pending_next.cancel()
+                with suppress(asyncio.CancelledError):
+                    await pending_next
+            close = getattr(stream_iter, 'close', None)
+            if callable(close):
+                with suppress(Exception):  # noqa: BLE001
+                    close()
 
     async def _astream_result(
         self,

@@ -100,8 +100,11 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert 'branch_meta?.branch_status === "merged"' in thread_page_text
     assert "isReadOnly={isMergedReadOnlyThread}" in thread_page_text
     assert "if (!trimmed || isStreaming || isReadOnly) return;" in composer_text
+    assert "const wasEditing = Boolean(editDraft);" in composer_text
+    assert "if (wasEditing) {" in composer_text
     assert "const result = await onSendMessage(trimmed" in composer_text
     assert "if (result.ok) {" in composer_text
+    assert "onClearEditDraft?.();" in composer_text
     assert "readOnly={isReadOnly}" in composer_text
     assert "disabled={isStreaming || isReadOnly || !message.trim()}" in composer_text
     assert "disabled={isReadOnly}" in message_list_text

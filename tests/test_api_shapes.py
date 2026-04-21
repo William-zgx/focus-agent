@@ -69,14 +69,14 @@ def test_fork_branch_request_allows_auto_generated_names():
 
 def test_model_catalog_response_shape():
     payload = ModelCatalogResponse(
-        default_model="moonshot:kimi-k2.5",
+        default_model="moonshot:kimi-k2.6",
         models=[
             {
-                "id": "moonshot:kimi-k2.5",
+                "id": "moonshot:kimi-k2.6",
                 "provider": "moonshot",
                 "provider_label": "Moonshot AI",
-                "name": "kimi-k2.5",
-                "label": "Kimi K2.5 · Moonshot AI",
+                "name": "kimi-k2.6",
+                "label": "Kimi K2.6 · Moonshot AI",
                 "is_default": True,
                 "supports_thinking": True,
                 "default_thinking_enabled": True,
@@ -86,9 +86,9 @@ def test_model_catalog_response_shape():
 
     dumped = payload.model_dump(mode="json")
 
-    assert dumped["default_model"] == "moonshot:kimi-k2.5"
+    assert dumped["default_model"] == "moonshot:kimi-k2.6"
     assert dumped["models"][0]["provider"] == "moonshot"
-    assert dumped["models"][0]["name"] == "kimi-k2.5"
+    assert dumped["models"][0]["name"] == "kimi-k2.6"
     assert dumped["models"][0]["supports_thinking"] is True
     assert dumped["models"][0]["default_thinking_enabled"] is True
 

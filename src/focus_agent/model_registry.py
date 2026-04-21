@@ -71,8 +71,8 @@ _BUILTIN_MODEL_CATALOG = ModelCatalogConfig(
             label="GPT-4.1 Mini",
         ),
         ConfiguredModel(
-            id="moonshot:kimi-k2.5",
-            label="Kimi K2.5",
+            id="moonshot:kimi-k2.6",
+            label="Kimi K2.6",
             supports_thinking=True,
             default_thinking_enabled=True,
             no_temperature=True,

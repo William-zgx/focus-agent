@@ -4819,26 +4819,31 @@ body.fa-is-resizing {
 
 .fa-thinking-toggle {
   min-height: 26px;
-  padding: 0 9px;
+  padding: 0 11px;
   border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--fa-text-muted);
-  box-shadow: none;
-  font-size: 10px;
-  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 74%, transparent);
+  background: color-mix(in srgb, var(--fa-panel-3) 86%, transparent);
+  color: color-mix(in srgb, var(--fa-text) 84%, var(--fa-text-muted) 16%);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .fa-thinking-toggle:hover {
   transform: none;
-  background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent);
+  border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
+  background: color-mix(in srgb, var(--fa-panel-3) 76%, var(--fa-accent) 8%);
 }
 
 .fa-thinking-toggle.is-active {
-  border-color: color-mix(in srgb, var(--fa-accent) 32%, transparent);
+  border-color: color-mix(in srgb, var(--fa-accent) 48%, transparent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--fa-accent) 22%, white 4%), color-mix(in srgb, var(--fa-accent) 16%, var(--fa-panel-3) 84%));
-  color: var(--fa-text);
+    linear-gradient(180deg, color-mix(in srgb, var(--fa-accent) 72%, white 8%), color-mix(in srgb, var(--fa-accent) 58%, var(--fa-panel-3) 42%));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 32%, transparent),
+    0 8px 18px color-mix(in srgb, var(--fa-accent-primary-glow) 36%, transparent);
+  color: #fff;
 }
 
 .fa-composer-icon-button.is-send {
@@ -5199,10 +5204,10 @@ body.fa-is-resizing {
 
 .fa-thinking-toggle {
   min-height: 34px;
-  padding: 0 10px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  padding: 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 @media (max-width: 1220px) {
@@ -5281,8 +5286,8 @@ body.fa-is-resizing {
 }
 
 .fa-thinking-toggle {
-  min-width: 58px;
-  padding: 0 8px;
+  min-width: 92px;
+  padding: 0 12px;
   white-space: nowrap;
 }
 
@@ -5302,9 +5307,9 @@ body.fa-is-resizing {
   }
 
   .fa-thinking-toggle {
-    min-width: 52px;
-    font-size: 9px;
-    padding: 0 7px;
+    min-width: 84px;
+    font-size: 10px;
+    padding: 0 10px;
   }
 }
 
