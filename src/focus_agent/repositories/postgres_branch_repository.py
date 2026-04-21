@@ -261,21 +261,19 @@ class PostgresBranchRepository(BranchRepository):
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
+                    """
+                    INSERT INTO focus_thread_access (thread_id, root_thread_id, owner_user_id)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (thread_id) DO NOTHING
+                    """,
+                    (thread_id, root_thread_id, owner_user_id),
+                )
+                cur.execute(
                     "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
                     (thread_id,),
                 )
                 existing = cur.fetchone()
-                if existing is None:
-                    cur.execute(
-                        """
-                        INSERT INTO focus_thread_access (thread_id, root_thread_id, owner_user_id)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (thread_id) DO NOTHING
-                        """,
-                        (thread_id, root_thread_id, owner_user_id),
-                    )
-                    return
-                if str(existing["owner_user_id"]) != owner_user_id:
+                if existing is None or str(existing["owner_user_id"]) != owner_user_id:
                     raise PermissionError(f"User {owner_user_id} cannot access thread {thread_id}.")
 
     def assert_thread_owner(self, *, thread_id: str, owner_user_id: str) -> None:

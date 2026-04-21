@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.types import ConversationRecord
 from focus_agent.repositories.postgres_branch_repository import PostgresBranchRepository
@@ -50,6 +52,7 @@ def test_postgres_schema_setup_creates_app_tables(monkeypatch):
 def test_postgres_branch_repository_setup_and_write_queries(monkeypatch):
     executed: list[tuple[str, object]] = []
     conversations: dict[str, dict[str, object]] = {}
+    thread_access: dict[str, dict[str, object]] = {}
 
     class FakeCursor:
         def __enter__(self):
@@ -72,6 +75,15 @@ def test_postgres_branch_repository_setup_and_write_queries(monkeypatch):
                     "created_at": "2026-04-20T00:00:00+00:00",
                     "updated_at": "2026-04-20T00:00:00+00:00",
                 }
+            if normalized.startswith("INSERT INTO focus_thread_access"):
+                thread_access[str(params[0])] = {
+                    "thread_id": params[0],
+                    "root_thread_id": params[1],
+                    "owner_user_id": params[2],
+                }
+            if normalized.startswith("SELECT owner_user_id FROM focus_thread_access"):
+                self._fetchone = thread_access.get(str(params[0]))
+                return
             if normalized.startswith("SELECT * FROM focus_conversations"):
                 self._fetchone = conversations.get(str(params[0]))
             else:
@@ -169,3 +181,52 @@ def test_postgres_branch_repository_row_conversion_round_trips_payloads():
     assert record.merge_proposal == {"summary": "done"}
     assert conversation.title_pending_ai is True
     assert conversation.title == "Main"
+
+
+def test_ensure_thread_owner_rechecks_final_owner_after_insert_conflict(monkeypatch):
+    thread_access: dict[str, str] = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            normalized = " ".join(sql.split())
+            if normalized.startswith("INSERT INTO focus_thread_access"):
+                thread_id = str(params[0])
+                thread_access.setdefault(thread_id, "owner-2")
+                self._fetchone = None
+                return
+            if normalized.startswith("SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s"):
+                owner = thread_access.get(str(params[0]))
+                self._fetchone = None if owner is None else {"owner_user_id": owner}
+                return
+            self._fetchone = None
+
+        def fetchone(self):
+            return self._fetchone
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_branch_repository.psycopg.connect",
+        lambda uri, row_factory=None: FakeConnection(),
+    )
+
+    repo = PostgresBranchRepository("postgresql://example")
+
+    with pytest.raises(PermissionError, match="owner-1"):
+        repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    assert thread_access["root-1"] == "owner-2"

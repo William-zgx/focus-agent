@@ -1,6 +1,7 @@
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, ProviderConfig, Settings
 from focus_agent import model_registry
 from focus_agent.model_registry import build_model_catalog, create_chat_model, resolve_model_config
+from focus_agent.providers.moonshot_openai import MoonshotChatOpenAI
 
 
 def test_build_model_catalog_keeps_default_first():
@@ -150,20 +151,13 @@ def test_resolve_model_config_uses_structured_provider_configuration():
     assert resolved.client_kwargs["api_key"] == "secret"
 
 
-def test_create_chat_model_omits_temperature_for_kimi_k2_6(monkeypatch):
-    captured: dict[str, object] = {}
+def test_create_chat_model_uses_moonshot_specific_adapter(monkeypatch):
+    monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
+    model = create_chat_model("moonshot:kimi-k2.6", temperature=0.0)
 
-    def fake_init_chat_model(model_name: str, **kwargs):
-        captured["model_name"] = model_name
-        captured["kwargs"] = kwargs
-        return object()
-
-    monkeypatch.setattr(model_registry, "init_chat_model", fake_init_chat_model)
-
-    create_chat_model("moonshot:kimi-k2.6", temperature=0.0)
-
-    assert captured["model_name"] == "openai:kimi-k2.6"
-    assert "temperature" not in captured["kwargs"]
+    assert isinstance(model, MoonshotChatOpenAI)
+    assert model.model_name == "kimi-k2.6"
+    assert model.temperature is None
 
 
 def test_create_chat_model_keeps_temperature_for_other_models(monkeypatch):

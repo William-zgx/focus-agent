@@ -513,6 +513,7 @@ body.fa-is-resizing {
 .fa-chat-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  position: relative;
   border-radius: 30px;
   padding: 18px;
   gap: 16px;
@@ -3078,32 +3079,51 @@ body.fa-is-resizing {
   gap: 10px;
 }
 
-.fa-shell-status-line {
-  margin-top: 12px;
+.fa-shell-status-line,
+.fa-shell-status-float {
   width: fit-content;
-  max-width: 100%;
+  max-width: min(100%, calc(100% - 32px));
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(15, 23, 42, 0.45);
   color: var(--fa-text-muted);
   font-size: 12px;
+  font-weight: 600;
   line-height: 1.4;
+  backdrop-filter: blur(16px);
 }
 
-.fa-shell-status-line.is-success {
+.fa-shell-status-line {
+  margin-top: 12px;
+}
+
+.fa-shell-status-float {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 24;
+  pointer-events: none;
+  box-shadow: 0 14px 28px rgba(3, 8, 20, 0.24);
+}
+
+.fa-shell-status-line.is-success,
+.fa-shell-status-float.is-success {
   border-color: color-mix(in srgb, var(--fa-success) 24%, var(--fa-border) 76%);
   color: var(--fa-status-success-text);
   background: color-mix(in srgb, var(--fa-success) 12%, var(--fa-panel-2) 88%);
 }
 
-.fa-shell-status-line.is-warn {
+.fa-shell-status-line.is-warn,
+.fa-shell-status-float.is-warn {
   border-color: color-mix(in srgb, var(--fa-warning) 24%, var(--fa-border) 76%);
   color: var(--fa-status-warning-text);
   background: color-mix(in srgb, var(--fa-warning) 12%, var(--fa-panel-2) 88%);
 }
 
-.fa-shell-status-line.is-danger {
+.fa-shell-status-line.is-danger,
+.fa-shell-status-float.is-danger {
   border-color: color-mix(in srgb, var(--fa-danger) 24%, var(--fa-border) 76%);
   color: var(--fa-status-danger-text);
   background: color-mix(in srgb, var(--fa-danger) 12%, var(--fa-panel-2) 88%);
@@ -3272,6 +3292,90 @@ body.fa-is-resizing {
 
 .fa-route-state-link:hover {
   color: var(--fa-accent-text-strong);
+}
+
+.fa-auth-bootstrap-card {
+  width: min(560px, 100%);
+}
+
+.fa-auth-bootstrap-copy {
+  margin: 12px 0 0;
+  color: var(--fa-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.fa-auth-bootstrap-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.fa-auth-bootstrap-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fa-text-muted);
+}
+
+.fa-auth-bootstrap-input {
+  width: 100%;
+  min-height: 104px;
+  resize: vertical;
+  border-radius: 16px;
+  border: 1px solid var(--fa-border);
+  background: color-mix(in srgb, var(--fa-panel-2) 84%, transparent);
+  padding: 12px 14px;
+  color: var(--fa-text);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.fa-auth-bootstrap-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-auth-bootstrap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fa-auth-bootstrap-button {
+  appearance: none;
+  border: 1px solid var(--fa-border);
+  background: color-mix(in srgb, var(--fa-panel-3) 84%, transparent);
+  color: var(--fa-text);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.fa-auth-bootstrap-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fa-panel-3) 60%, var(--fa-accent) 10%);
+}
+
+.fa-auth-bootstrap-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.fa-auth-bootstrap-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.fa-auth-bootstrap-button.is-primary {
+  border-color: color-mix(in srgb, var(--fa-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--fa-accent) 18%, var(--fa-panel-3) 82%);
 }
 
 .fa-chat-transcript {

@@ -88,6 +88,7 @@ docker compose logs -f focus-agent postgres
 
 - 未显式设置 `FOCUS_AGENT_DATABASE_URI` 时，Compose 默认连接本文件内的 `postgres` service
 - 如果显式设置 `FOCUS_AGENT_DATABASE_URI`，应用会优先使用该值
+- provider 密钥和 Base URL 默认来自 `/data/local.env`；如果想临时覆盖，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
 - 本地 Docker 路径下建议继续保留 demo token，方便 Web App 直接调试
 
 ## 生产/预发部署
@@ -112,9 +113,11 @@ export FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false
 docker compose -f compose.prod.yaml up -d
 ```
 
+如果你保留 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`，内置 `/app` 首次打开时不会再自动申请 demo token，而是会显示 Bearer Token 登录卡片。此时需要提供一个已有的访问令牌，或在你的部署层接入自定义登录 / JWT 分发能力。
+
 生产规范：
 
-- `AUTH_DEMO_TOKENS_ENABLED=false`
+- `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
 - `API_RELOAD=0`
 - `DATABASE_URI` 必须指向外部 PostgreSQL
 - provider secrets 不写入镜像

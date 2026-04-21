@@ -84,6 +84,7 @@ Requirements:
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - Node.js 18+ if you want to build the web frontend and SDK
+- PostgreSQL CLI/server tools (`initdb`, `pg_ctl`, `createdb`, and `psql`) if you want the local startup scripts to auto-manage a repo-local database; otherwise set `DATABASE_URI` yourself
 
 ```bash
 uv venv
@@ -96,7 +97,7 @@ cp docs/models.example.toml .focus_agent/models.toml
 cp docs/tools.example.toml .focus_agent/tools.toml
 pnpm install --registry=https://registry.npmjs.org
 pnpm web:build
-focus-agent-api
+make api
 ```
 
 By default, runtime persistence and AI-generated artifacts stay under `.focus_agent/`, including `.focus_agent/artifacts/`, so local outputs do not pollute the repository. Move generated files into tracked paths like `docs/` only when you explicitly want to keep them in git.
@@ -111,6 +112,8 @@ For local frontend development, run `make web-dev` in a second shell and set `WE
 If you want one command that starts both sides with hot reload, use `make serve-dev` or its compatibility alias `make serve`. It runs the Vite dev server for the frontend and starts the API with reload enabled for local development. For a production-style local run, use `make serve-prod`, which builds the static frontend bundle first and then starts only the backend without reload.
 
 If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) now manage a repo-local PostgreSQL for you and inject `DATABASE_URI` into the API process automatically. They stop the managed database together with the service, clean up the temporary runtime bits, and keep the Postgres data directory for reuse on the next local run. If you explicitly export `DATABASE_URI` before starting the service, the startup command preserves that value and skips managed local-Postgres injection.
+
+If you prefer to launch `.venv/bin/focus-agent-api` directly, set `DATABASE_URI` yourself first. The raw binary does not start the managed local PostgreSQL helper for you.
 
 The startup scripts also persist the managed database runtime settings to `.focus_agent/postgres/runtime.env`, including the exact `DATABASE_URI`, host, port, user, and database name. This is useful when you open a second shell for debugging: source that file first if you want ad-hoc commands to inspect the same Postgres instance as the running app.
 
@@ -130,8 +133,9 @@ The repository now ships a recommended Docker deployment split:
 The image builds the React frontend into the container, serves `/app` from FastAPI, and keeps runtime state under `/data`.
 
 ```bash
-export OPENAI_API_KEY=replace-me
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+export OPENAI_API_KEY=replace-me
+# Or set MOONSHOT_API_KEY / ANTHROPIC_API_KEY and an appropriate model override instead.
 make docker-rebuild
 # Or use the native Compose command directly:
 docker compose up --build
@@ -148,7 +152,7 @@ Notes:
 - `compose.prod.yaml` is the production/staging reference: it runs only `focus-agent` and requires an explicit external `FOCUS_AGENT_DATABASE_URI`.
 - `make docker-rebuild` still runs `docker compose up -d --build focus-agent`; because `focus-agent` now depends on Postgres health, Compose will start the local `postgres` service automatically when needed.
 - Set `FOCUS_AGENT_MODEL` if you want Compose to override the default model from `/data/models.toml` without editing that file.
-- Provider credentials and base URLs come from `/data/local.env` by default, so Compose does not blank them out unless you explicitly export override env vars before `docker compose up`.
+- Provider credentials and base URLs come from `/data/local.env` by default, but the seeded file still contains placeholder values like `OPENAI_API_KEY=replace-me-locally` and `MOONSHOT_API_KEY=replace-me-locally`. Before your first real request, either edit `/data/local.env` (or the persisted volume contents) or export one-off passthrough vars such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MOONSHOT_API_KEY`, `MOONSHOT_BASE_URL`, `OLLAMA_API_KEY`, `OLLAMA_BASE_URL`, or `TAVILY_API_KEY` before `docker compose up`.
 - `compose.yaml` keeps auth enabled and enables demo token bootstrap by default so the bundled web app can create and load conversations immediately in local Docker runs.
 - In `compose.yaml`, `FOCUS_AGENT_DATABASE_URI` is optional because the file provides a default connection string to the bundled `postgres` service.
 - Setting `FOCUS_AGENT_DATABASE_URI` still switches the app to the PostgreSQL primary persistence path: branch/conversation metadata, LangGraph checkpoint/store, Postgres trajectory tables, and artifact metadata all move to Postgres while artifact file contents stay on disk under `/data/artifacts`.

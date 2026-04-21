@@ -12,9 +12,12 @@ export type LanguagePreference = "en" | "zh";
 export type ThemePreference = "system" | "light" | "dark";
 export type ColorPreference = "white" | "blue" | "mint" | "sunset" | "graphite";
 
+export type ShellStatusDisplay = "inline" | "chat-floating";
+
 interface ShellStatus {
   tone: "info" | "success" | "warn" | "danger";
   text: string;
+  display?: ShellStatusDisplay;
 }
 
 export interface MergeProposalGenerationState {

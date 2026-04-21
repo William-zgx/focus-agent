@@ -556,6 +556,7 @@ export function AppShell({ children }: PropsWithChildren) {
         {
           tone: "warn",
           text: languagePreference === "zh" ? "创建分支中" : "Creating branch",
+          display: "chat-floating",
         },
         { autoClearMs: 2400 },
       );
@@ -574,6 +575,7 @@ export function AppShell({ children }: PropsWithChildren) {
         {
           tone: "success",
           text: languagePreference === "zh" ? "分支已创建" : "Branch created",
+          display: "chat-floating",
         },
         { autoClearMs: 2400 },
       );
@@ -587,6 +589,7 @@ export function AppShell({ children }: PropsWithChildren) {
               : languagePreference === "zh"
                 ? "创建分支失败"
                 : "Create branch failed",
+          display: "chat-floating",
         },
       );
     } finally {
@@ -832,10 +835,14 @@ export function AppShell({ children }: PropsWithChildren) {
               </div>
               <ThreadHeaderActions onRequestOpenSidebar={() => setSidebarCollapsed(false)} />
             </div>
-            {shellStatus ? (
+            {shellStatus && shellStatus.display !== "chat-floating" ? (
               <div className={`fa-shell-status-line is-${shellStatus.tone}`}>{shellStatus.text}</div>
             ) : null}
           </section>
+
+          {shellStatus?.display === "chat-floating" ? (
+            <div className={`fa-shell-status-float is-${shellStatus.tone}`}>{shellStatus.text}</div>
+          ) : null}
 
           <div className="fa-chat-main-body">{children}</div>
         </main>

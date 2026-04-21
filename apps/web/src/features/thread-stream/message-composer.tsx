@@ -70,14 +70,39 @@ function normalizeThinkingMode(value: string | undefined) {
   return normalized === "enabled" || normalized === "disabled" ? normalized : "";
 }
 
-function effectiveThinkingModeForModel(
+export function effectiveThinkingModeForModel(
   model: FocusAgentModelOption | undefined,
   preferredMode: string | undefined = "",
 ) {
   if (!model?.supports_thinking) {
     return "";
   }
-  return normalizeThinkingMode(preferredMode) || "disabled";
+  return normalizeThinkingMode(preferredMode);
+}
+
+export function nextThinkingModeForModelSelection(
+  nextModel: FocusAgentModelOption | undefined,
+  nextModelId: string,
+  currentModelId: string,
+  currentMode: string | undefined,
+) {
+  if (!nextModel?.supports_thinking) {
+    return "";
+  }
+  if (nextModelId === currentModelId) {
+    return normalizeThinkingMode(currentMode);
+  }
+  return "";
+}
+
+export function thinkingModeRequestValueForModel(
+  model: FocusAgentModelOption | undefined,
+  preferredMode: string | undefined,
+) {
+  if (!model?.supports_thinking) {
+    return undefined;
+  }
+  return effectiveThinkingModeForModel(model, preferredMode);
 }
 
 function thinkingEnabledLabel(isChineseUi: boolean) {
@@ -210,7 +235,7 @@ export function MessageComposer({
   const activeModelProvider = activeModel
     ? `${activeProviderLabel} · ${
         activeModel.supports_thinking
-          ? thinkingStatusText(activeThinkingMode, isChineseUi)
+          ? thinkingOptionMetaLabel(activeModel, activeThinkingMode, isChineseUi)
           : thinkingUnavailableLabel(isChineseUi)
       }`
     : chooseModelLabel(isChineseUi);
@@ -293,7 +318,11 @@ export function MessageComposer({
     }
     const result = await onSendMessage(trimmed, {
       model: modelId || undefined,
-      thinkingMode: activeModel?.supports_thinking ? activeThinkingMode : undefined,
+      ...(activeModel?.supports_thinking
+        ? {
+            thinkingMode: thinkingModeRequestValueForModel(activeModel, activeThinkingMode),
+          }
+        : {}),
     });
     if (result.ok) {
       setMessage("");
@@ -317,9 +346,7 @@ export function MessageComposer({
     const nextModel = allModels.find((item: FocusAgentModelOption) => item.id === nextModelId);
     setModelId(nextModelId);
     setThinkingMode((current) =>
-      nextModelId === modelId
-        ? effectiveThinkingModeForModel(nextModel, current)
-        : effectiveThinkingModeForModel(nextModel, ""),
+      nextThinkingModeForModelSelection(nextModel, nextModelId, modelId, current),
     );
     setModelPanelOpen(false);
   }

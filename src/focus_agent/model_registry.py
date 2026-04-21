@@ -308,6 +308,13 @@ def create_chat_model(
     effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
+    if resolved.provider == "moonshot":
+        from .providers.moonshot_openai import MoonshotChatOpenAI
+
+        return MoonshotChatOpenAI(
+            model=resolved.model_name,
+            **init_kwargs,
+        )
     return init_chat_model(
         f"{resolved.backend_provider}:{resolved.model_name}",
         **init_kwargs,

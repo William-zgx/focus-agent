@@ -31,6 +31,47 @@ interface SendMessageResult {
   ok: boolean;
 }
 
+interface StreamRequestCleanup {
+  clearActiveThread: boolean;
+  clearPendingUserMessage: boolean;
+  clearStreamState: boolean;
+}
+
+export function resolveStreamRequestCleanup(
+  sendSucceeded: boolean,
+  aborted: boolean,
+): StreamRequestCleanup {
+  if (sendSucceeded) {
+    return {
+      clearActiveThread: true,
+      clearPendingUserMessage: true,
+      clearStreamState: true,
+    };
+  }
+  if (aborted) {
+    return {
+      clearActiveThread: true,
+      clearPendingUserMessage: true,
+      clearStreamState: false,
+    };
+  }
+  return {
+    clearActiveThread: false,
+    clearPendingUserMessage: true,
+    clearStreamState: false,
+  };
+}
+
+export function resolveThinkingModeForRequest(
+  overrides: SendMessageOverrides | undefined,
+  selectedThinkingMode: string | undefined,
+) {
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, "thinkingMode")) {
+    return overrides.thinkingMode;
+  }
+  return selectedThinkingMode || undefined;
+}
+
 export function useThreadStream(options: UseThreadStreamOptions) {
   const { client } = useFocusAgent();
   const queryClient = useQueryClient();
@@ -67,8 +108,10 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         thread_id: requestThreadId,
         message,
         model: overrides?.model || options.selectedModel || undefined,
-        thinking_mode:
-          overrides?.thinkingMode || options.selectedThinkingMode || undefined,
+        thinking_mode: resolveThinkingModeForRequest(
+          overrides,
+          options.selectedThinkingMode,
+        ),
       };
 
       const stream = await client.streamTurn(
@@ -112,15 +155,18 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     } finally {
       const isLatestRequest = activeRequestIdRef.current === requestId;
       if (isLatestRequest) {
+        const cleanup = resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted);
         setIsStreaming(false);
         abortRef.current = null;
         activeRequestIdRef.current = null;
-        if (sendSucceeded) {
+        if (cleanup.clearActiveThread) {
           setActiveThreadId(null);
+        }
+        if (cleanup.clearPendingUserMessage) {
           setPendingUserMessage(null);
+        }
+        if (cleanup.clearStreamState) {
           setStreamState(null);
-        } else if (controller.signal.aborted) {
-          setActiveThreadId(null);
         }
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.thread(requestThreadId) });

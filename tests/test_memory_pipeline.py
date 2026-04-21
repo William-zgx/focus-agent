@@ -9,7 +9,11 @@ from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemoryStore
 from focus_agent.memory import MemoryRecord, MemorySearchHit, MemoryWriter, RetrievedMemoryBundle, render_memory_block
 from focus_agent.memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
-from focus_agent.storage.namespaces import user_profile_namespace
+from focus_agent.storage.namespaces import (
+    branch_local_memory_namespace,
+    root_thread_episodic_namespace,
+    user_profile_namespace,
+)
 
 
 def test_render_memory_block_fences_and_sanitizes_injected_content():
@@ -113,3 +117,103 @@ def test_graph_extracts_and_writes_user_memory(monkeypatch, tmp_path):
     payload = hits[0].value
     assert payload["kind"] == "user_preference"
     assert "emoji" in payload["content"]
+
+
+class _FakeSearchResult:
+    def __init__(self, *, key: str, value: dict[str, object]):
+        self.key = key
+        self.value = value
+
+
+class _SearchAllStore:
+    def __init__(self):
+        self.data: dict[tuple[str, ...], dict[str, dict[str, object]]] = {}
+
+    def put(self, namespace, key, payload):
+        namespace_key = tuple(namespace)
+        self.data.setdefault(namespace_key, {})[key] = payload
+
+    def search(self, namespace, *, query, limit):  # noqa: ARG002
+        namespace_key = tuple(namespace)
+        return [
+            _FakeSearchResult(key=key, value=value)
+            for key, value in self.data.get(namespace_key, {}).items()
+        ][:limit]
+
+
+def test_memory_writer_keeps_distinct_turn_summaries_separate():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    state = {"messages": [AIMessage(content="本轮结束。")]}
+    namespace = root_thread_episodic_namespace("thread-1")
+
+    first = MemoryWriteRequest(
+        kind=MemoryKind.TURN_SUMMARY,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.PRIVATE,
+        namespace=namespace,
+        content="先确认数据库 schema 已经存在。",
+        summary="确认数据库 schema",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        source_thread_id="thread-1",
+    )
+    second = MemoryWriteRequest(
+        kind=MemoryKind.TURN_SUMMARY,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.PRIVATE,
+        namespace=namespace,
+        content="随后修复首次访问的 owner 竞态。",
+        summary="修复 owner 竞态",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        source_thread_id="thread-1",
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert len(outcome["written"]) == 1
+    assert outcome["merged"] == []
+    assert len(store.data[namespace]) == 2
+
+
+def test_memory_writer_keeps_distinct_branch_findings_separate():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1", branch_id="branch-1")
+    state = {"messages": [AIMessage(content="分支结论已整理。")]}
+    namespace = branch_local_memory_namespace("thread-1", "branch-1")
+
+    first = MemoryWriteRequest(
+        kind=MemoryKind.BRANCH_FINDING,
+        scope=MemoryScope.BRANCH,
+        visibility=MemoryVisibility.PROMOTABLE,
+        namespace=namespace,
+        content="发现父线程返回体缺少 owner 字段。",
+        summary="返回体缺少 owner 字段",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        source_thread_id="branch-1",
+        source_branch_id="branch-1",
+    )
+    second = MemoryWriteRequest(
+        kind=MemoryKind.BRANCH_FINDING,
+        scope=MemoryScope.BRANCH,
+        visibility=MemoryVisibility.PROMOTABLE,
+        namespace=namespace,
+        content="发现 dedupe 会把不同 finding 合并掉。",
+        summary="dedupe 误合并 finding",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        source_thread_id="branch-1",
+        source_branch_id="branch-1",
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert len(outcome["written"]) == 1
+    assert outcome["merged"] == []
+    assert len(store.data[namespace]) == 2

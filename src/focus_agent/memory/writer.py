@@ -242,7 +242,12 @@ class MemoryWriter:
                 and normalized_existing == normalized_incoming
             ):
                 return key or current.memory_id, current
-            if best_match is None and current.kind == record.kind and current.scope == record.scope:
+            if (
+                best_match is None
+                and record.scope in {MemoryScope.USER, MemoryScope.PROJECT}
+                and current.kind == record.kind
+                and current.scope == record.scope
+            ):
                 best_match = (key or current.memory_id, current)
         return best_match
 

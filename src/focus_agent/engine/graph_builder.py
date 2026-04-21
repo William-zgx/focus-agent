@@ -90,6 +90,12 @@ _WORKSPACE_TOOL_NAMES = frozenset(
     }
 )
 _LIVE_WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch", "current_utc_time"})
+_REASONING_MESSAGE_BLOCK_TYPES = frozenset(
+    {"reasoning", "reasoning_delta", "reasoning_content", "reasoningcontent", "thinking", "thinking_delta"}
+)
+_TOOL_MESSAGE_BLOCK_TYPES = frozenset(
+    {"tool_call", "tool_call_chunk", "server_tool_call", "server_tool_call_chunk"}
+)
 
 _NO_TOOL_INTENT_MARKERS = (
     "不要联网",
@@ -289,8 +295,10 @@ def _messages_for_model(state: AgentState) -> list[Any]:
     messages = list(state.get("messages", []) or [])
     trailing_tool_span_start = _find_trailing_tool_span_start(messages)
     if trailing_tool_span_start is None:
-        return _collapse_unanswered_trailing_humans(recent_messages or messages)
-    return _collapse_unanswered_trailing_humans([*recent_messages, *messages[trailing_tool_span_start:]])
+        selected = _collapse_unanswered_trailing_humans(recent_messages or messages)
+    else:
+        selected = _collapse_unanswered_trailing_humans([*recent_messages, *messages[trailing_tool_span_start:]])
+    return [_sanitize_assistant_tool_call_message(message) for message in selected]
 
 
 def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
@@ -314,6 +322,78 @@ def _message_text(message: Any) -> str:
     if isinstance(content, list):
         return json.dumps(content, ensure_ascii=False)
     return str(content)
+
+
+def _stringify_message_block(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        return "".join(_stringify_message_block(item) for item in value)
+    if isinstance(value, dict):
+        for key in (
+            "text",
+            "content",
+            "value",
+            "reasoning_content",
+            "reasoningcontent",
+            "reasoning",
+            "summary",
+        ):
+            if value.get(key) is not None:
+                return _stringify_message_block(value[key])
+        return ""
+    return str(value)
+
+
+def _sanitize_assistant_tool_call_message(message: Any) -> Any:
+    if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
+        return message
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return message
+
+    visible_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            if block.strip():
+                visible_parts.append(block)
+            continue
+        if not isinstance(block, dict):
+            text = _stringify_message_block(block).strip()
+            if text:
+                visible_parts.append(text)
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        if block_type in _REASONING_MESSAGE_BLOCK_TYPES:
+            text = _stringify_message_block(block).strip()
+            if text:
+                reasoning_parts.append(text)
+            continue
+        if block_type in _TOOL_MESSAGE_BLOCK_TYPES:
+            continue
+        text = _stringify_message_block(block).strip()
+        if text:
+            visible_parts.append(text)
+
+    additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
+    if reasoning_parts and not additional_kwargs.get("reasoning_content"):
+        additional_kwargs["reasoning_content"] = "".join(reasoning_parts)
+
+    return AIMessage(
+        content="".join(visible_parts).strip(),
+        additional_kwargs=additional_kwargs,
+        response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
+        name=getattr(message, "name", None),
+        id=getattr(message, "id", None),
+        tool_calls=list(getattr(message, "tool_calls", []) or []),
+        invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
+        usage_metadata=getattr(message, "usage_metadata", None),
+    )
 
 
 def _looks_like_textual_tool_call_artifact(message: Any) -> bool:

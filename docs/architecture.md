@@ -232,7 +232,6 @@ DATABASE_URI=postgresql://user:pass@localhost/focus_agent
 - 详细部署规范见 `docs/docker-deployment.md`
 
 ```bash
-export OPENAI_API_KEY=replace-me
 export FOCUS_AGENT_AUTH_JWT_SECRET=<strong-random-secret>
 docker compose up --build
 ```
@@ -246,6 +245,7 @@ docker compose up --build
 
 - 不设置 `FOCUS_AGENT_DATABASE_URI` 时，`compose.yaml` 会默认连接其内置 `postgres` service；只有在显式关闭或改用其他部署方式时，容器才可能继续落回 `/data/branches.sqlite3` 与 `/data/langgraph-*.pkl`
 - 设置 `FOCUS_AGENT_DATABASE_URI` 后，会切到 PostgreSQL 主持久化路径：`focus_conversations` / `focus_thread_access` / `focus_branches` / `focus_artifacts` 等应用表、LangGraph checkpoint/store，以及 trajectory 观测表都会进入 Postgres；artifact 正文仍保留在文件系统
+- provider 密钥和 Base URL 默认读 `/data/local.env`；如果想从宿主 shell 临时覆盖，则导出 Compose 透传的变量，例如 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
 - 历史 repo-local 状态可通过 `focus-agent-migrate-local-state` 显式迁入 Postgres；迁移默认不在服务启动时自动执行
 
 ---

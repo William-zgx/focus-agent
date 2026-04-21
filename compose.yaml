@@ -52,6 +52,14 @@ services:
       LANGSMITH_API_KEY: ${FOCUS_AGENT_LANGSMITH_API_KEY:-}
       LANGSMITH_PROJECT: ${FOCUS_AGENT_LANGSMITH_PROJECT:-focus-agent}
       DATABASE_URI: ${FOCUS_AGENT_DATABASE_URI:-postgresql://${FOCUS_AGENT_PG_USER:-focus_agent}:${FOCUS_AGENT_PG_PASSWORD:-focus_agent}@postgres:5432/${FOCUS_AGENT_PG_DB:-focus_agent}}
+      ANTHROPIC_API_KEY:
+      OPENAI_BASE_URL:
+      OPENAI_API_KEY:
+      MOONSHOT_BASE_URL:
+      MOONSHOT_API_KEY:
+      OLLAMA_BASE_URL:
+      OLLAMA_API_KEY:
+      TAVILY_API_KEY:
     volumes:
       - ${FOCUS_AGENT_DATA_MOUNT:-focus_agent_data}:/data
     healthcheck:

@@ -41,10 +41,15 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert '${FOCUS_AGENT_DATA_MOUNT:-focus_agent_data}:/data' in compose_text
     assert '${FOCUS_AGENT_PGDATA_MOUNT:-focus_agent_pgdata}:/var/lib/postgresql/data' in compose_text
     assert 'AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-true}' in compose_text
+    assert "ANTHROPIC_API_KEY:" in compose_text
     assert 'MODEL: ${FOCUS_AGENT_MODEL:-}' in compose_text
-    assert 'OPENAI_API_KEY:' not in compose_text
-    assert 'ANTHROPIC_API_KEY:' not in compose_text
-    assert 'TAVILY_API_KEY:' not in compose_text
+    assert "OPENAI_API_KEY:" in compose_text
+    assert "OPENAI_BASE_URL:" in compose_text
+    assert "MOONSHOT_API_KEY:" in compose_text
+    assert "MOONSHOT_BASE_URL:" in compose_text
+    assert "OLLAMA_API_KEY:" in compose_text
+    assert "OLLAMA_BASE_URL:" in compose_text
+    assert "TAVILY_API_KEY:" in compose_text
     assert "FOCUS_AGENT_DATABASE_URI" in compose_text
     assert "pg_isready" in compose_text
     assert "FOCUS_AGENT_PIP_INDEX_URL" in compose_text
@@ -54,6 +59,9 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert "FOCUS_AGENT_IMAGE" in compose_prod_text
     assert "FOCUS_AGENT_DATABASE_URI" in compose_prod_text
     assert "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}" in compose_prod_text
+    assert "ANTHROPIC_API_KEY:" in compose_prod_text
+    assert "OPENAI_API_KEY:" in compose_prod_text
+    assert "TAVILY_API_KEY:" in compose_prod_text
     assert "postgres:" not in compose_prod_text
 
 

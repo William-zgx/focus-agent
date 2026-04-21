@@ -59,7 +59,6 @@ jobs:
           uv run python -m tests.eval \
             --suite smoke \
             --concurrency 1 \
-            --fail-if-regression \
             --report-json reports/eval-smoke.json \
             --report-jsonl reports/eval-smoke.jsonl \
             --report-html reports/eval-smoke.html

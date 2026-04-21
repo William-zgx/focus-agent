@@ -49,6 +49,38 @@ def test_messages_for_model_keeps_current_tool_exchange():
     assert isinstance(messages[2], ToolMessage)
 
 
+def test_messages_for_model_sanitizes_assistant_tool_call_content_blocks():
+    state = {
+        "recent_messages": [],
+        "messages": [
+            HumanMessage(content="查一下北京和汉河的天气"),
+            AIMessage(
+                content=[
+                    "",
+                    {"type": "reasoningcontent", "reasoningcontent": "先比较两个城市天气。"},
+                    "北京更暖和。",
+                ],
+                tool_calls=[
+                    {
+                        "id": "tool-call-1",
+                        "name": "web_search",
+                        "args": {"query": "北京 汉河 天气"},
+                    }
+                ],
+            ),
+            ToolMessage(content='{"forecast":"sunny"}', tool_call_id="tool-call-1"),
+        ],
+    }
+
+    messages = _messages_for_model(state)
+
+    assert len(messages) == 2
+    assistant = messages[0]
+    assert isinstance(assistant, AIMessage)
+    assert assistant.content == "北京更暖和。"
+    assert assistant.additional_kwargs["reasoning_content"] == "先比较两个城市天气。"
+
+
 def test_messages_for_model_uses_recent_messages_when_no_tool_exchange_is_active():
     state = {
         "recent_messages": [
