@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -42,7 +42,8 @@ help:
 		'  make docker-rebuild    Rebuild image and recreate the Compose service' \
 		'  make docker-restart    Restart the running Compose service' \
 		'  make docker-logs       Follow Compose service logs' \
-		'  make ui-smoke          Run the real-browser UI smoke test' \
+		'  make ui-smoke          Run the real-browser chat and branch UI smoke test' \
+		'  make ui-smoke-observability Run the real-browser observability UI smoke test' \
 		'  make clean             Remove Python/pytest caches'
 
 .venv/bin/python:
@@ -133,6 +134,9 @@ docker-logs:
 
 ui-smoke: .venv/bin/python
 	$(PYTHON) scripts/ui_smoke_test.py
+
+ui-smoke-observability: .venv/bin/python
+	$(PYTHON) scripts/observability_ui_smoke.py
 
 clean:
 	rm -rf .pytest_cache

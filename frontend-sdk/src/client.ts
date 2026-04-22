@@ -11,6 +11,8 @@ import type {
   FocusAgentEvent,
   FocusAgentForkBranchRequest,
   FocusAgentModelsResponse,
+  FocusAgentObservabilityOverviewRequest,
+  FocusAgentObservabilityOverviewResponse,
   FocusAgentPrincipalResponse,
   FocusAgentRenameBranchRequest,
   FocusAgentUpdateConversationRequest,
@@ -71,10 +73,14 @@ function appendQueryValue(params: URLSearchParams, key: string, value: unknown):
   params.append(key, String(value));
 }
 
-function buildTrajectoryQueryString(request: FocusAgentTrajectoryListRequest | FocusAgentTrajectoryStatsRequest): string {
+function buildTrajectoryQueryString(
+  request: FocusAgentTrajectoryListRequest | FocusAgentTrajectoryStatsRequest | FocusAgentObservabilityOverviewRequest,
+): string {
   const params = new URLSearchParams();
   appendQueryValue(params, "turn_id", request.turn_id);
   appendQueryValue(params, "turn_ids", request.turn_ids);
+  appendQueryValue(params, "request_id", request.request_id);
+  appendQueryValue(params, "trace_id", request.trace_id);
   appendQueryValue(params, "thread_id", request.thread_id);
   appendQueryValue(params, "root_thread_id", request.root_thread_id);
   appendQueryValue(params, "parent_thread_id", request.parent_thread_id);
@@ -94,6 +100,7 @@ function buildTrajectoryQueryString(request: FocusAgentTrajectoryListRequest | F
   appendQueryValue(params, "max_latency_ms", request.max_latency_ms);
   appendQueryValue(params, "min_tool_calls", request.min_tool_calls);
   appendQueryValue(params, "max_tool_calls", request.max_tool_calls);
+  appendQueryValue(params, "newest_first", request.newest_first);
   if ("limit" in request) {
     appendQueryValue(params, "limit", request.limit);
   }
@@ -291,6 +298,19 @@ export class FocusAgentClient {
   ): Promise<FocusAgentTrajectoryStatsResponse> {
     return this.requestJson<FocusAgentTrajectoryStatsResponse>(
       `/v1/observability/trajectory/stats${buildTrajectoryQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getObservabilityOverview(
+    request: FocusAgentObservabilityOverviewRequest = {},
+  ): Promise<FocusAgentObservabilityOverviewResponse> {
+    return this.requestJson<FocusAgentObservabilityOverviewResponse>(
+      `/v1/observability/overview${buildTrajectoryQueryString(request)}`,
       {
         method: "GET",
         headers: {},

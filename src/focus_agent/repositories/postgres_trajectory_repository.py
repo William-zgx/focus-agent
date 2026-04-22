@@ -14,6 +14,8 @@ from ..observability.trajectory import TrajectoryStep, TurnTrajectoryRecord
 @dataclass(slots=True)
 class TrajectoryTurnQuery:
     turn_ids: Sequence[str] | None = None
+    request_id: str | None = None
+    trace_id: str | None = None
     thread_id: str | None = None
     root_thread_id: str | None = None
     parent_thread_id: str | None = None
@@ -57,6 +59,12 @@ class PostgresTrajectoryRepository:
                         status TEXT NOT NULL,
                         thread_id TEXT NOT NULL,
                         root_thread_id TEXT NOT NULL,
+                        request_id TEXT,
+                        trace_id TEXT,
+                        root_span_id TEXT,
+                        environment TEXT,
+                        deployment TEXT,
+                        app_version TEXT,
                         parent_thread_id TEXT,
                         branch_id TEXT,
                         branch_role TEXT,
@@ -79,6 +87,20 @@ class PostgresTrajectoryRepository:
                     )
                     """
                 )
+                for column_name, column_type in (
+                    ("request_id", "TEXT"),
+                    ("trace_id", "TEXT"),
+                    ("root_span_id", "TEXT"),
+                    ("environment", "TEXT"),
+                    ("deployment", "TEXT"),
+                    ("app_version", "TEXT"),
+                ):
+                    cur.execute(
+                        f"""
+                        ALTER TABLE focus_trajectory_turns
+                        ADD COLUMN IF NOT EXISTS {column_name} {column_type}
+                        """
+                    )
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS focus_trajectory_steps (
@@ -115,6 +137,18 @@ class PostgresTrajectoryRepository:
                 )
                 cur.execute(
                     """
+                    CREATE INDEX IF NOT EXISTS idx_focus_traj_turns_request_id
+                    ON focus_trajectory_turns(request_id)
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_focus_traj_turns_trace_id
+                    ON focus_trajectory_turns(trace_id)
+                    """
+                )
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_focus_traj_steps_turn
                     ON focus_trajectory_steps(turn_id, step_index)
                     """
@@ -132,6 +166,12 @@ class PostgresTrajectoryRepository:
                         status,
                         thread_id,
                         root_thread_id,
+                        request_id,
+                        trace_id,
+                        root_span_id,
+                        environment,
+                        deployment,
+                        app_version,
                         parent_thread_id,
                         branch_id,
                         branch_role,
@@ -158,6 +198,12 @@ class PostgresTrajectoryRepository:
                         %(status)s,
                         %(thread_id)s,
                         %(root_thread_id)s,
+                        %(request_id)s,
+                        %(trace_id)s,
+                        %(root_span_id)s,
+                        %(environment)s,
+                        %(deployment)s,
+                        %(app_version)s,
                         %(parent_thread_id)s,
                         %(branch_id)s,
                         %(branch_role)s,
@@ -358,6 +404,28 @@ class PostgresTrajectoryRepository:
             GROUP BY COALESCE(t.branch_role, 'unassigned')
             ORDER BY turn_count DESC, key ASC
         """
+        by_model_sql = f"""
+            SELECT
+                COALESCE(t.selected_model, 'unassigned') AS key,
+                COUNT(*)::INT AS turn_count,
+                COALESCE(AVG(COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0)), 0)::DOUBLE PRECISION AS avg_latency_ms
+            FROM focus_trajectory_turns t
+            {where_sql}
+            GROUP BY COALESCE(t.selected_model, 'unassigned')
+            ORDER BY turn_count DESC, key ASC
+        """
+        by_day_sql = f"""
+            SELECT
+                TO_CHAR(DATE_TRUNC('day', t.created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS key,
+                COUNT(*)::INT AS turn_count,
+                COALESCE(SUM(CASE WHEN t.status = 'succeeded' THEN 1 ELSE 0 END), 0)::INT AS succeeded_count,
+                COALESCE(SUM(CASE WHEN t.status <> 'succeeded' THEN 1 ELSE 0 END), 0)::INT AS non_succeeded_count,
+                COALESCE(AVG(COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0)), 0)::DOUBLE PRECISION AS avg_latency_ms
+            FROM focus_trajectory_turns t
+            {where_sql}
+            GROUP BY DATE_TRUNC('day', t.created_at AT TIME ZONE 'UTC')
+            ORDER BY key ASC
+        """
         by_tool_where_sql = where_sql
         by_tool_params = dict(params)
         if step_conditions:
@@ -392,6 +460,10 @@ class PostgresTrajectoryRepository:
                 by_scene_rows = cur.fetchall()
                 cur.execute(by_branch_role_sql, params)
                 by_branch_role_rows = cur.fetchall()
+                cur.execute(by_model_sql, params)
+                by_model_rows = cur.fetchall()
+                cur.execute(by_day_sql, params)
+                by_day_rows = cur.fetchall()
                 cur.execute(by_tool_sql, by_tool_params)
                 by_tool_rows = cur.fetchall()
 
@@ -400,6 +472,8 @@ class PostgresTrajectoryRepository:
             "by_status": [self._row_to_stats_row(row) for row in by_status_rows],
             "by_scene": [self._row_to_stats_row(row) for row in by_scene_rows],
             "by_branch_role": [self._row_to_stats_row(row) for row in by_branch_role_rows],
+            "by_model": [self._row_to_stats_row(row) for row in by_model_rows],
+            "by_day": [self._row_to_stats_row(row) for row in by_day_rows],
             "by_tool": [self._row_to_stats_row(row) for row in by_tool_rows],
         }
 
@@ -415,6 +489,12 @@ class PostgresTrajectoryRepository:
             "status": record.status,
             "thread_id": record.thread_id,
             "root_thread_id": record.root_thread_id,
+            "request_id": record.request_id,
+            "trace_id": record.trace_id,
+            "root_span_id": record.root_span_id,
+            "environment": record.environment,
+            "deployment": record.deployment,
+            "app_version": record.app_version,
             "parent_thread_id": record.parent_thread_id,
             "branch_id": record.branch_id,
             "branch_role": record.branch_role,
@@ -488,6 +568,8 @@ class PostgresTrajectoryRepository:
         step_params: dict[str, Any] = {}
 
         self._add_scalar_filter(turn_conditions, params, "turn_ids", "t.id", query.turn_ids)
+        self._add_scalar_filter(turn_conditions, params, "request_id", "t.request_id", query.request_id)
+        self._add_scalar_filter(turn_conditions, params, "trace_id", "t.trace_id", query.trace_id)
         self._add_scalar_filter(turn_conditions, params, "thread_id", "t.thread_id", query.thread_id)
         self._add_scalar_filter(turn_conditions, params, "root_thread_id", "t.root_thread_id", query.root_thread_id)
         self._add_scalar_filter(turn_conditions, params, "parent_thread_id", "t.parent_thread_id", query.parent_thread_id)
@@ -604,6 +686,12 @@ class PostgresTrajectoryRepository:
             "status": str(row["status"]),
             "thread_id": str(row["thread_id"]),
             "root_thread_id": str(row["root_thread_id"]),
+            "request_id": _optional_text(row.get("request_id")),
+            "trace_id": _optional_text(row.get("trace_id")),
+            "root_span_id": _optional_text(row.get("root_span_id")),
+            "environment": _optional_text(row.get("environment")),
+            "deployment": _optional_text(row.get("deployment")),
+            "app_version": _optional_text(row.get("app_version")),
             "parent_thread_id": _optional_text(row.get("parent_thread_id")),
             "branch_id": _optional_text(row.get("branch_id")),
             "branch_role": _optional_text(row.get("branch_role")),
@@ -639,6 +727,12 @@ class PostgresTrajectoryRepository:
             status=str(row["status"]),
             thread_id=str(row["thread_id"]),
             root_thread_id=str(row["root_thread_id"]),
+            request_id=_optional_text(row.get("request_id")),
+            trace_id=_optional_text(row.get("trace_id")),
+            root_span_id=_optional_text(row.get("root_span_id")),
+            environment=_optional_text(row.get("environment")),
+            deployment=_optional_text(row.get("deployment")),
+            app_version=_optional_text(row.get("app_version")),
             parent_thread_id=_optional_text(row.get("parent_thread_id")),
             branch_id=_optional_text(row.get("branch_id")),
             branch_role=_optional_text(row.get("branch_role")),
@@ -708,6 +802,8 @@ class PostgresTrajectoryRepository:
             parsed["turn_ids"] = list(filters["turn_ids"])
         for key in (
             "thread_id",
+            "request_id",
+            "trace_id",
             "root_thread_id",
             "parent_thread_id",
             "branch_id",

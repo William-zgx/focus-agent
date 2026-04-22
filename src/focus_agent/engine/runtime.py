@@ -11,6 +11,7 @@ from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
+from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
 from ..repositories.branch_repository import BranchRepository
 from ..repositories.sqlite_branch_repository import SQLiteBranchRepository
 from ..services.branches import BranchService
@@ -39,6 +40,7 @@ class AppRuntime:
     tool_registry: ToolRegistry
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
+    otel_runtime: OTelRuntime
     _exit_stack: ExitStack
 
     def close(self) -> None:
@@ -51,6 +53,8 @@ class AppRuntime:
 def create_runtime(settings: Settings | None = None) -> AppRuntime:
     settings = settings or Settings.from_env()
     exit_stack = ExitStack()
+    otel_runtime = initialize_otel_runtime(settings)
+    exit_stack.callback(otel_runtime.shutdown)
 
     if settings.database_uri:
         logger.info("Runtime persistence backend selected: postgres-primary")
@@ -113,6 +117,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         tool_registry=tool_registry,
         trajectory_recorder=trajectory_recorder,
         artifact_metadata_repository=artifact_metadata_repository,
+        otel_runtime=otel_runtime,
         _exit_stack=exit_stack,
     )
 

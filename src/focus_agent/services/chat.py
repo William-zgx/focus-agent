@@ -18,7 +18,12 @@ from ..core.request_context import RequestContext
 from ..core.state import normalize_agent_state
 from ..engine.runtime import AppRuntime
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
-from ..observability.tracing import build_invoke_config
+from ..observability.tracing import (
+    TraceCorrelation,
+    build_invoke_config,
+    build_trace_correlation,
+    start_trace_span,
+)
 from ..observability.trajectory import build_turn_trajectory_record, utc_now
 from ..skills.models import SkillSelection
 from ..transport.stream_events import (
@@ -264,6 +269,7 @@ class ChatService:
         context: RequestContext,
         branch_meta: BranchMeta | None,
         interrupts: list[Any],
+        trace_correlation: TraceCorrelation | None = None,
     ) -> dict[str, Any]:
         values = self._safe_get_values(thread_id)
         messages = values.get('messages', [])
@@ -293,6 +299,7 @@ class ChatService:
                 user_id=user_id,
                 root_thread_id=context.root_thread_id,
                 branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
             ),
         }
 
@@ -305,6 +312,32 @@ class ChatService:
             return normalized
         return 'enabled' if default_thinking_enabled(model_id) else 'disabled'
 
+    def _turn_span_attributes(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        root_thread_id: str,
+        kind: str,
+        branch_meta: BranchMeta | None,
+    ) -> dict[str, Any]:
+        attributes: dict[str, Any] = {
+            "focus_agent.turn.kind": kind,
+            "focus_agent.thread_id": thread_id,
+            "focus_agent.root_thread_id": root_thread_id,
+            "focus_agent.user_id": user_id,
+            "service.name": getattr(self.runtime.settings, "tracing_service_name", "focus-agent"),
+        }
+        if branch_meta is not None:
+            attributes.update(
+                {
+                    "focus_agent.branch_id": branch_meta.branch_id,
+                    "focus_agent.branch_role": branch_meta.branch_role.value,
+                    "focus_agent.branch_status": branch_meta.branch_status.value,
+                }
+            )
+        return attributes
+
     def _run_invoke(
         self,
         *,
@@ -312,6 +345,7 @@ class ChatService:
         user_id: str,
         payload: Any,
         run_name: str,
+        request_id: str | None = None,
         context_skill_hints: tuple[str, ...] | None = None,
         kind: str = 'chat.turn',
     ) -> dict[str, Any]:
@@ -324,22 +358,41 @@ class ChatService:
         initial_message_count = len(list(initial_values.get('messages', []) or []))
         initial_llm_calls = int(initial_values.get('llm_calls') or 0)
         started_at = utc_now()
+        trace_correlation: TraceCorrelation | None = None
         self._acquire_thread_turn(thread_id=thread_id)
         try:
-            config = build_invoke_config(
+            trace_correlation = build_trace_correlation(
                 settings=self.runtime.settings,
-                thread_id=thread_id,
-                user_id=user_id,
-                root_thread_id=context.root_thread_id,
-                branch_meta=branch_meta,
-                run_name=run_name,
+                request_id=request_id,
             )
-            result = self.runtime.graph.invoke(
-                payload,
-                config=config,
-                context=context,
-                version='v2',
-            )
+            with start_trace_span(
+                name=run_name,
+                settings=self.runtime.settings,
+                trace_correlation=trace_correlation,
+                span_id=trace_correlation.root_span_id,
+                attributes=self._turn_span_attributes(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    root_thread_id=context.root_thread_id,
+                    kind=kind,
+                    branch_meta=branch_meta,
+                ),
+            ):
+                config = build_invoke_config(
+                    settings=self.runtime.settings,
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    root_thread_id=context.root_thread_id,
+                    branch_meta=branch_meta,
+                    trace_correlation=trace_correlation,
+                    run_name=run_name,
+                )
+                result = self.runtime.graph.invoke(
+                    payload,
+                    config=config,
+                    context=context,
+                    version='v2',
+                )
             _, interrupts = self._normalize_result(result)
             latest_context, latest_branch_meta, final_values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
             response = self._response_payload(
@@ -348,6 +401,7 @@ class ChatService:
                 context=latest_context,
                 branch_meta=latest_branch_meta,
                 interrupts=interrupts,
+                trace_correlation=trace_correlation,
             )
             self._record_turn_trajectory_best_effort(
                 thread_id=thread_id,
@@ -361,6 +415,7 @@ class ChatService:
                 started_at=started_at,
                 finished_at=utc_now(),
                 branch_meta=latest_branch_meta,
+                trace_correlation=trace_correlation,
                 input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
                 answer=response.get('assistant_message'),
             )
@@ -384,6 +439,7 @@ class ChatService:
                 started_at=started_at,
                 finished_at=utc_now(),
                 branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
                 input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
                 error=str(exc),
             )
@@ -399,6 +455,7 @@ class ChatService:
         message: str,
         model: str | None = None,
         thinking_mode: str | None = None,
+        request_id: str | None = None,
         skill_hints: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         selection = self._select_skills_for_message(
@@ -423,28 +480,35 @@ class ChatService:
             user_id=user_id,
             payload=payload,
             run_name='focus_agent_turn',
+            request_id=request_id,
             context_skill_hints=selection.skill_ids,
             kind='chat.turn',
         )
 
-    def resume(self, *, thread_id: str, user_id: str, resume: Any) -> dict[str, Any]:
+    def resume(self, *, thread_id: str, user_id: str, resume: Any, request_id: str | None = None) -> dict[str, Any]:
         return self._run_invoke(
             thread_id=thread_id,
             user_id=user_id,
             payload=Command(resume=resume),
             run_name='focus_agent_resume',
+            request_id=request_id,
             kind='chat.resume',
         )
 
-    def get_thread_state(self, *, thread_id: str, user_id: str) -> dict[str, Any]:
+    def get_thread_state(self, *, thread_id: str, user_id: str, request_id: str | None = None) -> dict[str, Any]:
         context, branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
         self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        trace_correlation = build_trace_correlation(
+            settings=self.runtime.settings,
+            request_id=request_id,
+        )
         return self._response_payload(
             thread_id=thread_id,
             user_id=user_id,
             context=context,
             branch_meta=branch_meta,
             interrupts=self._safe_get_interrupts(thread_id),
+            trace_correlation=trace_correlation,
         )
 
     def _select_skills_for_message(
@@ -551,6 +615,7 @@ class ChatService:
         started_at,
         finished_at,
         branch_meta: BranchMeta | None,
+        trace_correlation: TraceCorrelation | None = None,
         input_messages: list[Any] | None = None,
         answer: str | None = None,
         error: str | None = None,
@@ -574,6 +639,7 @@ class ChatService:
                 started_at=started_at,
                 finished_at=finished_at,
                 branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
                 input_messages=input_messages,
                 answer=answer,
                 error=error,
@@ -591,51 +657,70 @@ class ChatService:
         payload: Any,
         config: dict[str, Any],
         context: RequestContext,
+        thread_id: str,
+        user_id: str,
+        kind: str,
+        run_name: str,
+        branch_meta: BranchMeta | None,
+        trace_correlation: TraceCorrelation | None,
     ) -> AsyncIterator[dict[str, Any] | None]:
-        if self._checkpointer_lacks_async_support():
-            async for chunk in self._stream_graph_chunks_via_sync_stream(
-                payload=payload,
+        with start_trace_span(
+            name=run_name,
+            settings=self.runtime.settings,
+            trace_correlation=trace_correlation,
+            span_id=trace_correlation.root_span_id if trace_correlation is not None else None,
+            attributes=self._turn_span_attributes(
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=context.root_thread_id,
+                kind=kind,
+                branch_meta=branch_meta,
+            ),
+        ):
+            if self._checkpointer_lacks_async_support():
+                async for chunk in self._stream_graph_chunks_via_sync_stream(
+                    payload=payload,
+                    config=config,
+                    context=context,
+                ):
+                    yield chunk
+                return
+
+            stream = self.runtime.graph.astream(
+                payload,
                 config=config,
                 context=context,
-            ):
-                yield chunk
-            return
+                stream_mode=['messages', 'custom', 'updates', 'tasks'],
+                version='v2',
+            )
+            stream_iter = stream.__aiter__()
+            heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
+            pending_next: asyncio.Task[Any] | None = None
 
-        stream = self.runtime.graph.astream(
-            payload,
-            config=config,
-            context=context,
-            stream_mode=['messages', 'custom', 'updates', 'tasks'],
-            version='v2',
-        )
-        stream_iter = stream.__aiter__()
-        heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
-        pending_next: asyncio.Task[Any] | None = None
-
-        try:
-            pending_next = asyncio.create_task(anext(stream_iter))
-            while pending_next is not None:
-                if heartbeat_interval > 0:
-                    done, _ = await asyncio.wait({pending_next}, timeout=heartbeat_interval)
-                    if not done:
-                        yield None
-                        continue
-                try:
-                    chunk = await pending_next
-                except StopAsyncIteration:
-                    pending_next = None
-                    break
+            try:
                 pending_next = asyncio.create_task(anext(stream_iter))
-                yield chunk
-        finally:
-            if pending_next is not None and not pending_next.done():
-                pending_next.cancel()
-                with suppress(asyncio.CancelledError):
-                    await pending_next
-            aclose = getattr(stream_iter, 'aclose', None)
-            if callable(aclose):
-                with suppress(Exception):  # noqa: BLE001
-                    await aclose()
+                while pending_next is not None:
+                    if heartbeat_interval > 0:
+                        done, _ = await asyncio.wait({pending_next}, timeout=heartbeat_interval)
+                        if not done:
+                            yield None
+                            continue
+                    try:
+                        chunk = await pending_next
+                    except StopAsyncIteration:
+                        pending_next = None
+                        break
+                    pending_next = asyncio.create_task(anext(stream_iter))
+                    yield chunk
+            finally:
+                if pending_next is not None and not pending_next.done():
+                    pending_next.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await pending_next
+                aclose = getattr(stream_iter, 'aclose', None)
+                if callable(aclose):
+                    with suppress(Exception):  # noqa: BLE001
+                        await aclose()
 
     def _checkpointer_lacks_async_support(self) -> bool:
         checkpointer = getattr(self.runtime, 'checkpointer', None)
@@ -693,6 +778,7 @@ class ChatService:
         payload: Any,
         run_name: str,
         kind: str,
+        request_id: str | None = None,
         context_skill_hints: tuple[str, ...] | None = None,
     ) -> AsyncIterator[str]:
         visible_text_buffer = ''
@@ -700,6 +786,7 @@ class ChatService:
         turn_acquired = False
         context: RequestContext | None = None
         branch_meta: BranchMeta | None = None
+        trace_correlation: TraceCorrelation | None = None
         initial_message_count = 0
         initial_llm_calls = 0
         input_messages = list(payload.get('messages', []) if isinstance(payload, dict) else [])
@@ -715,12 +802,17 @@ class ChatService:
             initial_llm_calls = int(initial_values.get('llm_calls') or 0)
             self._acquire_thread_turn(thread_id=thread_id)
             turn_acquired = True
+            trace_correlation = build_trace_correlation(
+                settings=self.runtime.settings,
+                request_id=request_id,
+            )
             config = build_invoke_config(
                 settings=self.runtime.settings,
                 thread_id=thread_id,
                 user_id=user_id,
                 root_thread_id=context.root_thread_id,
                 branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
                 run_name=run_name,
             )
 
@@ -736,6 +828,12 @@ class ChatService:
                 payload=payload,
                 config=config,
                 context=context,
+                thread_id=thread_id,
+                user_id=user_id,
+                kind=kind,
+                run_name=run_name,
+                branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
             ):
                 if chunk is None:
                     yield self._sse_frame(
@@ -842,6 +940,7 @@ class ChatService:
                 context=latest_context,
                 branch_meta=latest_branch_meta,
                 interrupts=self._safe_get_interrupts(thread_id),
+                trace_correlation=trace_correlation,
             )
             final_messages = list(final_values.get('messages', []) or [])
             appended_messages = (
@@ -885,6 +984,7 @@ class ChatService:
                 started_at=started_at,
                 finished_at=utc_now(),
                 branch_meta=latest_branch_meta,
+                trace_correlation=trace_correlation,
                 input_messages=input_messages,
                 answer=final_visible_text,
             )
@@ -918,6 +1018,7 @@ class ChatService:
                     started_at=started_at,
                     finished_at=utc_now(),
                     branch_meta=branch_meta,
+                    trace_correlation=trace_correlation,
                     input_messages=input_messages,
                     answer=visible_text_buffer or None,
                     error=str(exc),
@@ -942,6 +1043,7 @@ class ChatService:
         message: str,
         model: str | None = None,
         thinking_mode: str | None = None,
+        request_id: str | None = None,
         skill_hints: tuple[str, ...] = (),
     ) -> AsyncIterator[str]:
         selection = self._select_skills_for_message(
@@ -973,10 +1075,18 @@ class ChatService:
             payload=payload,
             run_name='focus_agent_turn',
             kind='chat.turn',
+            request_id=request_id,
             context_skill_hints=selection.skill_ids,
         )
 
-    def stream_resume(self, *, thread_id: str, user_id: str, resume: Any) -> AsyncIterator[str]:
+    def stream_resume(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        resume: Any,
+        request_id: str | None = None,
+    ) -> AsyncIterator[str]:
         self._preflight_thread_access(
             thread_id=thread_id,
             user_id=user_id,
@@ -988,6 +1098,7 @@ class ChatService:
             payload=Command(resume=resume),
             run_name='focus_agent_resume',
             kind='chat.resume',
+            request_id=request_id,
         )
 
 

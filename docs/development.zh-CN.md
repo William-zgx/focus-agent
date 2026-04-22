@@ -20,6 +20,7 @@ make sdk-build
 make ci-test
 make ci
 make ui-smoke
+make ui-smoke-observability
 ```
 
 ## 常见开发流
@@ -69,10 +70,27 @@ make web-build
 make ui-smoke
 ```
 
-5. 如果改动影响 trajectory observability：
+5. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
 ```bash
-uv run pytest tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
+make ui-smoke-observability
+```
+
+6. 如果改动影响 trajectory observability contract：
+
+```bash
+uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
+```
+
+如果本机 `.venv` 里的 `psycopg` 因缺少 `libpq` 在测试收集阶段失败，可先用当前 focused observability workaround：
+
+```bash
+PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
+  tests/test_api_middleware.py \
+  tests/test_metadata.py \
+  tests/test_trajectory_observability.py \
+  tests/test_api_trajectory_observability.py \
+  tests/test_chat_service.py
 ```
 
 `make ci-test` 会把 `FOCUS_AGENT_LOCAL_ENV_FILE` 指向一个不存在的文件再跑 pytest，更接近 GitHub Actions，也避免本机 `.focus_agent/local.env` 里的配置掩盖测试环境缺口。

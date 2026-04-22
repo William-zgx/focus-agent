@@ -9,6 +9,8 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
+from .tracing import TraceCorrelation
+
 
 SCHEMA_VERSION = 1
 
@@ -53,6 +55,12 @@ class TurnTrajectoryRecord:
     scene: str
     started_at: datetime
     finished_at: datetime
+    request_id: str | None = None
+    trace_id: str | None = None
+    root_span_id: str | None = None
+    environment: str | None = None
+    deployment: str | None = None
+    app_version: str | None = None
     parent_thread_id: str | None = None
     branch_id: str | None = None
     branch_role: str | None = None
@@ -82,6 +90,12 @@ class TurnTrajectoryRecord:
             "branch_role": self.branch_role,
             "user_id_hash": self.user_id_hash,
             "scene": self.scene,
+            "request_id": self.request_id,
+            "trace_id": self.trace_id,
+            "root_span_id": self.root_span_id,
+            "environment": self.environment,
+            "deployment": self.deployment,
+            "app_version": self.app_version,
             "turn_index": self.turn_index,
             "task_brief": self.task_brief,
             "user_message": self.user_message,
@@ -184,6 +198,7 @@ def build_turn_trajectory_record(
     started_at: datetime,
     finished_at: datetime,
     branch_meta: Any = None,
+    trace_correlation: TraceCorrelation | None = None,
     input_messages: list[Any] | None = None,
     answer: str | None = None,
     error: str | None = None,
@@ -218,6 +233,7 @@ def build_turn_trajectory_record(
     branch_role = getattr(getattr(branch_meta, "branch_role", None), "value", None)
     if branch_role is None:
         branch_role = getattr(branch_meta, "branch_role", None)
+    correlation = trace_correlation
 
     return TurnTrajectoryRecord(
         id=str(uuid.uuid4()),
@@ -231,6 +247,12 @@ def build_turn_trajectory_record(
         branch_role=str(branch_role) if branch_role else None,
         user_id_hash=_user_id_value(user_id, hash_user_id=hash_user_id),
         scene=scene,
+        request_id=correlation.request_id if correlation else None,
+        trace_id=correlation.trace_id if correlation else None,
+        root_span_id=correlation.root_span_id if correlation else None,
+        environment=correlation.environment if correlation else None,
+        deployment=correlation.deployment if correlation else None,
+        app_version=correlation.app_version if correlation else None,
         turn_index=_count_human_messages(final_messages),
         task_brief=_truncate_optional(final_values.get("task_brief"), 2000),
         user_message=_last_human_text(appended_messages) or _last_human_text(fallback_messages),

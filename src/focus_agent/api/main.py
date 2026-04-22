@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Sequence
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from focus_agent.core.request_context import RequestContext
@@ -44,8 +44,11 @@ from .contracts import (
     DemoTokenRequest,
     ForkBranchRequest,
     ModelCatalogResponse,
+    ObservabilityOverviewResponse,
     PrepareMergeProposalRequest,
     PrincipalResponse,
+    RuntimeComponentStatusResponse,
+    RuntimeReadinessResponse,
     TrajectoryPromotionRequest,
     TrajectoryPromotionResponse,
     TrajectoryReplayComparisonResponse,
@@ -119,6 +122,8 @@ def _as_scalar_or_sequence(values: Sequence[str] | None) -> str | list[str] | No
 
 def _trajectory_query_from_request(
     *,
+    request_id: str | None = None,
+    trace_id: str | None = None,
     thread_id: str | None = None,
     root_thread_id: str | None = None,
     parent_thread_id: str | None = None,
@@ -143,6 +148,8 @@ def _trajectory_query_from_request(
     newest_first: bool = True,
 ) -> TrajectoryTurnQuery:
     return TrajectoryTurnQuery(
+        request_id=request_id,
+        trace_id=trace_id,
         thread_id=thread_id,
         root_thread_id=root_thread_id,
         parent_thread_id=parent_thread_id,
@@ -202,6 +209,12 @@ def _build_trajectory_detail_response(
         "status": str(record.status),
         "thread_id": str(record.thread_id),
         "root_thread_id": str(record.root_thread_id),
+        "request_id": getattr(record, "request_id", None),
+        "trace_id": getattr(record, "trace_id", None),
+        "root_span_id": getattr(record, "root_span_id", None),
+        "environment": getattr(record, "environment", None),
+        "deployment": getattr(record, "deployment", None),
+        "app_version": getattr(record, "app_version", None),
         "parent_thread_id": record.parent_thread_id,
         "branch_id": record.branch_id,
         "branch_role": record.branch_role,
@@ -246,6 +259,14 @@ def _build_trajectory_stats_response(stats: dict[str, Any]) -> TrajectoryTurnSta
             TrajectoryStatsBucketResponse.model_validate(item)
             for item in (stats.get("by_branch_role") or [])
         ],
+        by_model=[
+            TrajectoryStatsBucketResponse.model_validate(item)
+            for item in (stats.get("by_model") or [])
+        ],
+        by_day=[
+            TrajectoryStatsBucketResponse.model_validate(item)
+            for item in (stats.get("by_day") or [])
+        ],
         by_tool=[
             TrajectoryStatsBucketResponse.model_validate(item)
             for item in (stats.get("by_tool") or [])
@@ -255,6 +276,8 @@ def _build_trajectory_stats_response(stats: dict[str, Any]) -> TrajectoryTurnSta
 
 def _trajectory_filters_payload(
     *,
+    request_id: str | None = None,
+    trace_id: str | None = None,
     thread_id: str | None = None,
     root_thread_id: str | None = None,
     parent_thread_id: str | None = None,
@@ -276,6 +299,10 @@ def _trajectory_filters_payload(
     max_tool_calls: int | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
+    if request_id:
+        payload["request_id"] = request_id
+    if trace_id:
+        payload["trace_id"] = trace_id
     if thread_id:
         payload["thread_id"] = thread_id
     if root_thread_id:
@@ -315,6 +342,255 @@ def _trajectory_filters_payload(
     if max_tool_calls is not None:
         payload["max_tool_calls"] = max_tool_calls
     return payload
+
+
+def _trajectory_expected(settings: Settings | Any) -> bool:
+    enabled = getattr(settings, "trajectory_enabled", None)
+    database_uri = getattr(settings, "database_uri", None)
+    if enabled is None:
+        return bool(database_uri)
+    return bool(enabled and database_uri)
+
+
+def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
+    settings = getattr(runtime, "settings", None)
+    otel_runtime = getattr(runtime, "otel_runtime", None)
+    checks = [
+        RuntimeComponentStatusResponse(
+            name="graph",
+            ready=getattr(runtime, "graph", None) is not None,
+            detail="langgraph pipeline initialized" if getattr(runtime, "graph", None) is not None else "graph missing",
+        ),
+        RuntimeComponentStatusResponse(
+            name="branch_repository",
+            ready=getattr(runtime, "repo", None) is not None,
+            detail="branch persistence ready" if getattr(runtime, "repo", None) is not None else "branch repository missing",
+        ),
+        RuntimeComponentStatusResponse(
+            name="branch_service",
+            ready=getattr(runtime, "branch_service", None) is not None,
+            detail="branch service initialized" if getattr(runtime, "branch_service", None) is not None else "branch service missing",
+        ),
+        RuntimeComponentStatusResponse(
+            name="tool_registry",
+            ready=getattr(runtime, "tool_registry", None) is not None,
+            detail="tool registry loaded" if getattr(runtime, "tool_registry", None) is not None else "tool registry missing",
+        ),
+        RuntimeComponentStatusResponse(
+            name="skill_registry",
+            ready=getattr(runtime, "skill_registry", None) is not None,
+            detail="skill registry loaded" if getattr(runtime, "skill_registry", None) is not None else "skill registry missing",
+        ),
+    ]
+    if getattr(settings, "database_uri", None):
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="persistence_backend",
+                ready=True,
+                detail="postgres-primary",
+            )
+        )
+    else:
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="persistence_backend",
+                ready=True,
+                detail="local-fallback",
+            )
+        )
+
+    tracing_enabled = bool(getattr(settings, "tracing_enabled", False))
+    tracing_exporters = tuple(getattr(settings, "otel_traces_exporters", ()) or ())
+    if tracing_enabled:
+        if otel_runtime is not None:
+            checks.append(
+                RuntimeComponentStatusResponse(
+                    name="tracing_exporter",
+                    ready=bool(getattr(otel_runtime, "ready", False)),
+                    detail=str(getattr(otel_runtime, "detail", "tracing exporter state unavailable")),
+                )
+            )
+        elif tracing_exporters:
+            checks.append(
+                RuntimeComponentStatusResponse(
+                    name="tracing_exporter",
+                    ready=False,
+                    detail="tracing exporters requested but runtime exporter state is missing",
+                )
+            )
+        else:
+            checks.append(
+                RuntimeComponentStatusResponse(
+                    name="tracing_exporter",
+                    ready=True,
+                    detail="tracing enabled without exporter",
+                )
+            )
+    else:
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="tracing_exporter",
+                ready=True,
+                detail="tracing disabled",
+            )
+        )
+
+    trajectory_expected = _trajectory_expected(settings)
+    trajectory_recorder = getattr(runtime, "trajectory_recorder", None)
+    if trajectory_expected:
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="trajectory_recorder",
+                ready=trajectory_recorder is not None,
+                detail=(
+                    "trajectory recorder ready"
+                    if trajectory_recorder is not None
+                    else "trajectory recorder missing while trajectory persistence is configured"
+                ),
+            )
+        )
+    else:
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="trajectory_recorder",
+                ready=True,
+                detail="trajectory persistence disabled",
+            )
+        )
+
+    ready = all(check.ready for check in checks)
+    return RuntimeReadinessResponse(
+        status="ok" if ready else "degraded",
+        ready=ready,
+        app_version=getattr(settings, "app_version", None),
+        environment=getattr(settings, "app_environment", None),
+        deployment=getattr(settings, "deployment_name", None),
+        checks=checks,
+    )
+
+
+def _maybe_get_trajectory_repository(runtime: AppRuntime | Any) -> PostgresTrajectoryRepository | Any | None:
+    candidate = getattr(runtime, "trajectory_recorder", None)
+    required_methods = ("list_turns", "get_turn", "list_steps_by_turn_ids", "get_turn_stats")
+    if candidate is not None and all(callable(getattr(candidate, name, None)) for name in required_methods):
+        return candidate
+    database_uri = getattr(getattr(runtime, "settings", None), "database_uri", None)
+    if database_uri:
+        return PostgresTrajectoryRepository(database_uri)
+    return None
+
+
+def _escape_prometheus_label_value(value: Any) -> str:
+    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def _prometheus_metric_line(name: str, value: int | float, labels: dict[str, Any] | None = None) -> str:
+    if labels:
+        rendered = ",".join(
+            f'{key}="{_escape_prometheus_label_value(label_value)}"'
+            for key, label_value in labels.items()
+            if label_value is not None
+        )
+        return f"{name}{{{rendered}}} {value}"
+    return f"{name} {value}"
+
+
+def _build_prometheus_metrics_payload(
+    *,
+    runtime_status: RuntimeReadinessResponse,
+    trajectory_stats: dict[str, Any] | None,
+    trajectory_available: bool,
+) -> str:
+    lines = [
+        "# HELP focus_agent_runtime_ready Whether the application runtime is ready to serve traffic.",
+        "# TYPE focus_agent_runtime_ready gauge",
+        _prometheus_metric_line("focus_agent_runtime_ready", 1 if runtime_status.ready else 0),
+    ]
+    lines.extend(
+        [
+            "# HELP focus_agent_runtime_build_info Build metadata for the running service.",
+            "# TYPE focus_agent_runtime_build_info gauge",
+            _prometheus_metric_line(
+                "focus_agent_runtime_build_info",
+                1,
+                labels={
+                    "version": runtime_status.app_version or "unknown",
+                    "environment": runtime_status.environment or "unknown",
+                    "deployment": runtime_status.deployment or "unknown",
+                },
+            ),
+            "# HELP focus_agent_runtime_component_ready Per-component readiness for the running service.",
+            "# TYPE focus_agent_runtime_component_ready gauge",
+        ]
+    )
+    for check in runtime_status.checks:
+        lines.append(
+            _prometheus_metric_line(
+                "focus_agent_runtime_component_ready",
+                1 if check.ready else 0,
+                labels={"component": check.name, "detail": check.detail or ""},
+            )
+        )
+
+    lines.extend(
+        [
+            "# HELP focus_agent_trajectory_metrics_available Whether trajectory metrics were available for this scrape.",
+            "# TYPE focus_agent_trajectory_metrics_available gauge",
+            _prometheus_metric_line("focus_agent_trajectory_metrics_available", 1 if trajectory_available else 0),
+        ]
+    )
+    if not trajectory_available or not trajectory_stats:
+        return "\n".join(lines) + "\n"
+
+    overview = trajectory_stats.get("overview") or {}
+    lines.extend(
+        [
+            "# HELP focus_agent_trajectory_turn_count Total recorded trajectory turns in the selected scope.",
+            "# TYPE focus_agent_trajectory_turn_count gauge",
+            _prometheus_metric_line("focus_agent_trajectory_turn_count", int(overview.get("turn_count") or 0)),
+            "# HELP focus_agent_trajectory_non_succeeded_count Total non-succeeded trajectory turns in the selected scope.",
+            "# TYPE focus_agent_trajectory_non_succeeded_count gauge",
+            _prometheus_metric_line(
+                "focus_agent_trajectory_non_succeeded_count",
+                int(overview.get("non_succeeded_count") or 0),
+            ),
+            "# HELP focus_agent_trajectory_avg_latency_ms Average end-to-end turn latency in milliseconds.",
+            "# TYPE focus_agent_trajectory_avg_latency_ms gauge",
+            _prometheus_metric_line(
+                "focus_agent_trajectory_avg_latency_ms",
+                float(overview.get("avg_latency_ms") or 0.0),
+            ),
+            "# HELP focus_agent_trajectory_max_latency_ms Maximum end-to-end turn latency in milliseconds.",
+            "# TYPE focus_agent_trajectory_max_latency_ms gauge",
+            _prometheus_metric_line(
+                "focus_agent_trajectory_max_latency_ms",
+                float(overview.get("max_latency_ms") or 0.0),
+            ),
+            "# HELP focus_agent_trajectory_total_tool_calls Total tool invocations across recorded turns.",
+            "# TYPE focus_agent_trajectory_total_tool_calls gauge",
+            _prometheus_metric_line(
+                "focus_agent_trajectory_total_tool_calls",
+                int(overview.get("total_tool_calls") or 0),
+            ),
+            "# HELP focus_agent_trajectory_total_fallback_uses Total fallback tool executions across recorded turns.",
+            "# TYPE focus_agent_trajectory_total_fallback_uses gauge",
+            _prometheus_metric_line(
+                "focus_agent_trajectory_total_fallback_uses",
+                int(overview.get("total_fallback_uses") or 0),
+            ),
+            "# HELP focus_agent_trajectory_turns_by_status Turn counts grouped by trajectory status.",
+            "# TYPE focus_agent_trajectory_turns_by_status gauge",
+        ]
+    )
+    for row in trajectory_stats.get("by_status") or []:
+        lines.append(
+            _prometheus_metric_line(
+                "focus_agent_trajectory_turns_by_status",
+                int(row.get("turn_count") or 0),
+                labels={"status": row.get("key") or "unknown"},
+            )
+        )
+    return "\n".join(lines) + "\n"
 
 
 @asynccontextmanager
@@ -387,6 +663,36 @@ def create_app() -> FastAPI:
     def health_check() -> dict[str, str]:
         return {'status': 'ok'}
 
+    @app.get('/readyz', response_model=RuntimeReadinessResponse)
+    def readiness_check(
+        response: Response,
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> RuntimeReadinessResponse:
+        readiness = _build_runtime_readiness(runtime)
+        if not readiness.ready:
+            response.status_code = 503
+        return readiness
+
+    @app.get('/metrics', response_class=PlainTextResponse)
+    def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextResponse:
+        runtime_status = _build_runtime_readiness(runtime)
+        trajectory_stats: dict[str, Any] | None = None
+        trajectory_available = False
+        repo = _maybe_get_trajectory_repository(runtime)
+        if repo is not None:
+            try:
+                trajectory_stats = repo.get_turn_stats(TrajectoryTurnQuery(limit=None, newest_first=True))
+            except Exception:  # noqa: BLE001
+                trajectory_stats = None
+            else:
+                trajectory_available = True
+        payload = _build_prometheus_metrics_payload(
+            runtime_status=runtime_status,
+            trajectory_stats=trajectory_stats,
+            trajectory_available=trajectory_available,
+        )
+        return PlainTextResponse(payload, media_type="text/plain; version=0.0.4; charset=utf-8")
+
     @app.get('/app', response_class=HTMLResponse)
     def render_chat_app_page(request: Request):
         redirect = _frontend_dev_redirect(settings=settings, query=request.url.query)
@@ -456,8 +762,107 @@ def create_app() -> FastAPI:
             ],
         )
 
+    @app.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)
+    def get_observability_overview(
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        thread_id: str | None = None,
+        root_thread_id: str | None = None,
+        parent_thread_id: str | None = None,
+        branch_id: str | None = None,
+        branch_role: list[str] | None = Query(default=None),
+        status: list[str] | None = Query(default=None),
+        scene: list[str] | None = Query(default=None),
+        kind: list[str] | None = Query(default=None),
+        tool: list[str] | None = Query(default=None),
+        model: list[str] | None = Query(default=None, alias='model'),
+        fallback_used: bool | None = None,
+        cache_hit: bool | None = None,
+        has_error: bool | None = None,
+        started_after: datetime | None = None,
+        started_before: datetime | None = None,
+        min_latency_ms: float | None = None,
+        max_latency_ms: float | None = None,
+        min_tool_calls: int | None = None,
+        max_tool_calls: int | None = None,
+        newest_first: bool = True,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> ObservabilityOverviewResponse:
+        del principal
+        runtime_status = _build_runtime_readiness(runtime)
+        filters = _trajectory_filters_payload(
+            request_id=request_id,
+            trace_id=trace_id,
+            thread_id=thread_id,
+            root_thread_id=root_thread_id,
+            parent_thread_id=parent_thread_id,
+            branch_id=branch_id,
+            branch_role=branch_role,
+            status=status,
+            scene=scene,
+            kind=kind,
+            tool=tool,
+            model=model,
+            fallback_used=fallback_used,
+            cache_hit=cache_hit,
+            has_error=has_error,
+            started_after=started_after,
+            started_before=started_before,
+            min_latency_ms=min_latency_ms,
+            max_latency_ms=max_latency_ms,
+            min_tool_calls=min_tool_calls,
+            max_tool_calls=max_tool_calls,
+        )
+        query = _trajectory_query_from_request(
+            request_id=request_id,
+            trace_id=trace_id,
+            thread_id=thread_id,
+            root_thread_id=root_thread_id,
+            parent_thread_id=parent_thread_id,
+            branch_id=branch_id,
+            branch_role=branch_role,
+            status=status,
+            scene=scene,
+            kind=kind,
+            tool=tool,
+            model=model,
+            fallback_used=fallback_used,
+            cache_hit=cache_hit,
+            has_error=has_error,
+            started_after=started_after,
+            started_before=started_before,
+            min_latency_ms=min_latency_ms,
+            max_latency_ms=max_latency_ms,
+            min_tool_calls=min_tool_calls,
+            max_tool_calls=max_tool_calls,
+            limit=None,
+            newest_first=newest_first,
+        )
+        repo = _maybe_get_trajectory_repository(runtime)
+        trajectory_available = False
+        trajectory_error: str | None = None
+        stats = TrajectoryTurnStatsResponse()
+        if repo is not None:
+            try:
+                stats = _build_trajectory_stats_response(repo.get_turn_stats(query))
+            except Exception as exc:  # noqa: BLE001
+                trajectory_error = str(exc)
+            else:
+                trajectory_available = True
+        return ObservabilityOverviewResponse(
+            generated_at=datetime.now(timezone.utc),
+            filters=filters,
+            runtime=runtime_status,
+            trajectory_available=trajectory_available,
+            trajectory_error=trajectory_error,
+            stats=stats,
+        )
+
     @app.get('/v1/observability/trajectory', response_model=TrajectoryTurnListResponse)
     def list_trajectory_turns(
+        request_id: str | None = None,
+        trace_id: str | None = None,
         thread_id: str | None = None,
         root_thread_id: str | None = None,
         parent_thread_id: str | None = None,
@@ -486,6 +891,8 @@ def create_app() -> FastAPI:
         del principal
         repo = _get_trajectory_repository(runtime)
         filters = _trajectory_filters_payload(
+            request_id=request_id,
+            trace_id=trace_id,
             thread_id=thread_id,
             root_thread_id=root_thread_id,
             parent_thread_id=parent_thread_id,
@@ -507,6 +914,8 @@ def create_app() -> FastAPI:
             max_tool_calls=max_tool_calls,
         )
         query = _trajectory_query_from_request(
+            request_id=request_id,
+            trace_id=trace_id,
             thread_id=thread_id,
             root_thread_id=root_thread_id,
             parent_thread_id=parent_thread_id,
@@ -541,6 +950,8 @@ def create_app() -> FastAPI:
 
     @app.get('/v1/observability/trajectory/stats', response_model=TrajectoryTurnStatsEnvelopeResponse)
     def get_trajectory_turn_stats(
+        request_id: str | None = None,
+        trace_id: str | None = None,
         thread_id: str | None = None,
         root_thread_id: str | None = None,
         parent_thread_id: str | None = None,
@@ -567,6 +978,8 @@ def create_app() -> FastAPI:
         del principal
         repo = _get_trajectory_repository(runtime)
         filters = _trajectory_filters_payload(
+            request_id=request_id,
+            trace_id=trace_id,
             thread_id=thread_id,
             root_thread_id=root_thread_id,
             parent_thread_id=parent_thread_id,
@@ -588,6 +1001,8 @@ def create_app() -> FastAPI:
             max_tool_calls=max_tool_calls,
         )
         query = _trajectory_query_from_request(
+            request_id=request_id,
+            trace_id=trace_id,
             thread_id=thread_id,
             root_thread_id=root_thread_id,
             parent_thread_id=parent_thread_id,
@@ -800,6 +1215,7 @@ def create_app() -> FastAPI:
     @app.post('/v1/chat/turns', response_model=ThreadStateResponse)
     def post_chat_turn(
         payload: ChatTurnRequest,
+        request: Request,
         chat: ChatService = Depends(get_chat_service),
         principal: Principal = Depends(get_current_principal),
     ) -> ThreadStateResponse:
@@ -810,6 +1226,7 @@ def create_app() -> FastAPI:
                 message=payload.message,
                 model=payload.model,
                 thinking_mode=payload.thinking_mode,
+                request_id=getattr(request.state, "request_id", None),
                 skill_hints=tuple(payload.skill_hints),
             )
         except PermissionError as exc:
@@ -821,6 +1238,7 @@ def create_app() -> FastAPI:
     @app.post('/v1/chat/turns/stream')
     def stream_chat_turn(
         payload: ChatTurnRequest,
+        request: Request,
         chat: ChatService = Depends(get_chat_service),
         principal: Principal = Depends(get_current_principal),
     ) -> StreamingResponse:
@@ -831,6 +1249,7 @@ def create_app() -> FastAPI:
                 message=payload.message,
                 model=payload.model,
                 thinking_mode=payload.thinking_mode,
+                request_id=getattr(request.state, "request_id", None),
                 skill_hints=tuple(payload.skill_hints),
             )
         except PermissionError as exc:
@@ -840,11 +1259,17 @@ def create_app() -> FastAPI:
     @app.post('/v1/chat/resume', response_model=ThreadStateResponse)
     def resume_chat_turn(
         payload: ChatResumeRequest,
+        request: Request,
         chat: ChatService = Depends(get_chat_service),
         principal: Principal = Depends(get_current_principal),
     ) -> ThreadStateResponse:
         try:
-            result = chat.resume(thread_id=payload.thread_id, user_id=principal.user_id, resume=payload.resume)
+            result = chat.resume(
+                thread_id=payload.thread_id,
+                user_id=principal.user_id,
+                resume=payload.resume,
+                request_id=getattr(request.state, "request_id", None),
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ConcurrentTurnError as exc:
@@ -854,11 +1279,17 @@ def create_app() -> FastAPI:
     @app.post('/v1/chat/resume/stream')
     def stream_resumed_chat_turn(
         payload: ChatResumeRequest,
+        request: Request,
         chat: ChatService = Depends(get_chat_service),
         principal: Principal = Depends(get_current_principal),
     ) -> StreamingResponse:
         try:
-            stream = chat.stream_resume(thread_id=payload.thread_id, user_id=principal.user_id, resume=payload.resume)
+            stream = chat.stream_resume(
+                thread_id=payload.thread_id,
+                user_id=principal.user_id,
+                resume=payload.resume,
+                request_id=getattr(request.state, "request_id", None),
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         return _event_stream_response(stream)
@@ -866,11 +1297,16 @@ def create_app() -> FastAPI:
     @app.get('/v1/threads/{thread_id}', response_model=ThreadStateResponse)
     def get_thread_snapshot(
         thread_id: str,
+        request: Request,
         chat: ChatService = Depends(get_chat_service),
         principal: Principal = Depends(get_current_principal),
     ) -> ThreadStateResponse:
         try:
-            result = chat.get_thread_state(thread_id=thread_id, user_id=principal.user_id)
+            result = chat.get_thread_state(
+                thread_id=thread_id,
+                user_id=principal.user_id,
+                request_id=getattr(request.state, "request_id", None),
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         return ThreadStateResponse.model_validate(result)

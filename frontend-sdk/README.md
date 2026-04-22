@@ -23,7 +23,7 @@ This SDK packages those concerns into a small, typed client layer.
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
-- Trajectory observability helpers for list/detail/stats/replay/promote flows
+- Trajectory observability helpers for overview/list/detail/stats/replay/promote flows
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
 - Reducer helpers for accumulating stream state
@@ -106,7 +106,7 @@ console.log(finalState.visibleText);
 - `getBranchTree()` - fetch the branch tree rooted at a conversation
 - `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
 - `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows
-- `listTrajectoryTurns()`, `getTrajectoryTurn()`, and `getTrajectoryStats()` - inspect Postgres-backed trajectory observability data
+- `getObservabilityOverview()`, `listTrajectoryTurns()`, `getTrajectoryTurn()`, and `getTrajectoryStats()` - inspect runtime readiness and Postgres-backed trajectory observability data
 - `replayTrajectoryTurn()` and `promoteTrajectoryTurn()` - preview replay and dataset promotion payloads for a trajectory turn
 - `streamTurn()` - stream a new chat turn
 - `streamResume()` - continue from an interrupt or resume payload

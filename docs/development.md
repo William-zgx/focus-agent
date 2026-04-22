@@ -20,6 +20,7 @@ make sdk-build
 make ci-test
 make ci
 make ui-smoke
+make ui-smoke-observability
 ```
 
 ## Common Flows
@@ -69,10 +70,27 @@ make web-build
 make ui-smoke
 ```
 
-5. If trajectory observability changed:
+5. If observability pages or seeded trajectory browser flows changed:
 
 ```bash
-uv run pytest tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
+make ui-smoke-observability
+```
+
+6. If trajectory observability contracts changed:
+
+```bash
+uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
+```
+
+If local test collection fails because the active `.venv` `psycopg` install cannot load `libpq`, use the focused stub workaround for observability checks:
+
+```bash
+PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
+  tests/test_api_middleware.py \
+  tests/test_metadata.py \
+  tests/test_trajectory_observability.py \
+  tests/test_api_trajectory_observability.py \
+  tests/test_chat_service.py
 ```
 
 `make ci-test` runs pytest with `FOCUS_AGENT_LOCAL_ENV_FILE` pointed at a missing file, which mirrors GitHub Actions more closely and prevents repo-local `.focus_agent/local.env` secrets from masking setup gaps.

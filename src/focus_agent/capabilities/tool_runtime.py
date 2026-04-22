@@ -5,6 +5,7 @@ from contextvars import copy_context
 from dataclasses import dataclass, field
 import hashlib
 import json
+import time
 from typing import Any
 
 from langchain.messages import ToolMessage
@@ -12,6 +13,7 @@ from langgraph.config import get_stream_writer
 
 from ..core.context_policy import trim_tool_observation
 from ..core.types import ContextBudget
+from ..observability.tracing import current_trace_runtime_payload, start_trace_span
 from .tool_registry import ToolRuntimeMeta
 
 
@@ -246,6 +248,41 @@ def _execute_single(
     cache_scope_key: str | None,
     parallel_batch_size: int | None,
 ) -> ToolExecutionResult:
+    started_at = time.perf_counter()
+    with start_trace_span(
+        name="focus_agent.tool",
+        attributes={
+            "focus_agent.tool.name": item.tool_name,
+            "focus_agent.tool.index": item.index,
+            "focus_agent.tool.cache_scope": cache_scope_key or "thread:default",
+            "focus_agent.tool.parallel_batch_size": parallel_batch_size or 1,
+        },
+    ) as span:
+        result = _execute_single_untraced(
+            item,
+            context_budget=context_budget,
+            cache_store=cache_store,
+            cache_scope_key=cache_scope_key,
+            parallel_batch_size=parallel_batch_size,
+        )
+        duration_ms = (time.perf_counter() - started_at) * 1000
+        _annotate_tool_result_runtime(
+            result,
+            {
+                **span.runtime_payload(),
+                "duration_ms": round(duration_ms, 3),
+            },
+        )
+        return result
+
+
+def _execute_single_untraced(
+    item: ToolExecutionInput,
+    context_budget: ContextBudget,
+    cache_store: ToolResultCacheStore | None,
+    cache_scope_key: str | None,
+    parallel_batch_size: int | None,
+) -> ToolExecutionResult:
     try:
         if item.runtime.validator is not None:
             item.runtime.validator(item.args)
@@ -420,6 +457,21 @@ def _copy_result_for_tool_call(
     )
 
 
+def _annotate_tool_result_runtime(result: ToolExecutionResult, runtime_info: dict[str, Any]) -> None:
+    clean_runtime_info = {key: value for key, value in runtime_info.items() if value is not None}
+    if not clean_runtime_info:
+        return
+    artifact = getattr(result.message, "artifact", None)
+    if not isinstance(artifact, dict):
+        artifact = {}
+    existing_runtime = artifact.get("runtime")
+    merged_runtime = dict(existing_runtime or {}) if isinstance(existing_runtime, dict) else {}
+    for key, value in clean_runtime_info.items():
+        merged_runtime.setdefault(key, value)
+    artifact["runtime"] = merged_runtime
+    result.message.artifact = artifact
+
+
 def _cache_key(item: ToolExecutionInput, cache_scope_key: str | None) -> str | None:
     if not item.runtime.cacheable:
         return None
@@ -458,6 +510,7 @@ def _emit_runtime_tool_event(
             "tool_name": item.tool_name,
             "display_name": display_name,
             "stage": stage,
+            **current_trace_runtime_payload(),
             **payload,
         }
     )

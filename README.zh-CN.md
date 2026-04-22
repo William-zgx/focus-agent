@@ -20,7 +20,7 @@ Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式
 
 - 支持分支式会话与受控 merge 回主线
 - 提供流式聊天 API 和内置 React Web 界面 `/app`
-- 内置 trajectory 观测控制台 `/app/observability/trajectory`
+- 内置 observability overview 与 trajectory 观测控制台 `/app/observability/overview`、`/app/observability/trajectory`
 - 带有访问控制、记忆链路和类型完备的前端 SDK
 - 提供仓库、git、网页、artifact 和 memory 工具
 
@@ -46,8 +46,11 @@ make api
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
+- `http://127.0.0.1:8000/readyz`
+- `http://127.0.0.1:8000/metrics`
 
 更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
 
@@ -69,6 +72,7 @@ docker compose up --build
 
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
+- [Observability Runbook](docs/observability-runbook.md)
 - [架构说明](docs/architecture.md)
 - [Docker 部署说明](docs/docker-deployment.md)
 - [路线图](docs/roadmap.md)

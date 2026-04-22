@@ -164,6 +164,12 @@ class TrajectoryTurnSummaryResponse(BaseModel):
     status: str
     thread_id: str
     root_thread_id: str
+    request_id: str | None = None
+    trace_id: str | None = None
+    root_span_id: str | None = None
+    environment: str | None = None
+    deployment: str | None = None
+    app_version: str | None = None
     parent_thread_id: str | None = None
     branch_id: str | None = None
     branch_role: str | None = None
@@ -233,11 +239,37 @@ class TrajectoryTurnStatsResponse(BaseModel):
     by_status: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
     by_scene: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
     by_branch_role: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
+    by_model: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
+    by_day: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
     by_tool: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
 
 
 class TrajectoryTurnStatsEnvelopeResponse(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
+    stats: TrajectoryTurnStatsResponse = Field(default_factory=TrajectoryTurnStatsResponse)
+
+
+class RuntimeComponentStatusResponse(BaseModel):
+    name: str
+    ready: bool = True
+    detail: str | None = None
+
+
+class RuntimeReadinessResponse(BaseModel):
+    status: str = "ok"
+    ready: bool = True
+    app_version: str | None = None
+    environment: str | None = None
+    deployment: str | None = None
+    checks: list[RuntimeComponentStatusResponse] = Field(default_factory=list)
+
+
+class ObservabilityOverviewResponse(BaseModel):
+    generated_at: datetime
+    filters: dict[str, Any] = Field(default_factory=dict)
+    runtime: RuntimeReadinessResponse = Field(default_factory=RuntimeReadinessResponse)
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
     stats: TrajectoryTurnStatsResponse = Field(default_factory=TrajectoryTurnStatsResponse)
 
 
@@ -342,8 +374,11 @@ __all__ = [
     "ForkBranchRequest",
     "ModelCatalogResponse",
     "ModelOptionResponse",
+    "ObservabilityOverviewResponse",
     "PrepareMergeProposalRequest",
     "PrincipalResponse",
+    "RuntimeComponentStatusResponse",
+    "RuntimeReadinessResponse",
     "TrajectoryEvalCaseResponse",
     "TrajectoryJudgeVerdictResponse",
     "TrajectoryStatsBucketResponse",

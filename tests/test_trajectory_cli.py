@@ -28,6 +28,10 @@ def test_list_command_passes_filters_and_prints_json(monkeypatch, capsys):
     exit_code = trajectory_cli.main(
         [
             "list",
+            "--request-id",
+            "req-1",
+            "--trace-id",
+            "trace-1",
             "--thread-id",
             "thread-1",
             "--status",
@@ -46,6 +50,8 @@ def test_list_command_passes_filters_and_prints_json(monkeypatch, capsys):
     assert calls == {
         "database_uri": "postgresql://example/list",
         "filters": {
+            "request_id": "req-1",
+            "trace_id": "trace-1",
             "thread_id": "thread-1",
             "status": ["succeeded"],
             "tool": ["read_file"],

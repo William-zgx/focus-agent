@@ -257,3 +257,19 @@ def test_settings_from_env_allows_disabling_trajectory_with_postgres(monkeypatch
     assert settings.trajectory_observation_max_chars == 123
     assert settings.trajectory_answer_max_chars == 456
     assert settings.trajectory_hash_user_id is False
+
+
+def test_settings_from_env_reads_otel_exporter_config(monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_TRACING_ENABLED", "true")
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "console,otlp")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "authorization=Bearer test")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_TIMEOUT", "2500")
+
+    settings = Settings.from_env()
+
+    assert settings.tracing_enabled is True
+    assert settings.otel_traces_exporters == ("console", "otlp")
+    assert settings.otel_exporter_otlp_endpoint == "http://collector:4318"
+    assert settings.otel_exporter_otlp_headers == "authorization=Bearer test"
+    assert settings.otel_exporter_otlp_timeout_ms == 2500

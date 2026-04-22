@@ -624,13 +624,23 @@ def test_send_message_records_postgres_trajectory_payload(tmp_path: Path):
     )
     chat = ChatService(runtime)
 
-    chat.send_message(thread_id="root-1", user_id="owner-1", message="read README")
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="read README",
+        request_id="req-chat-turn",
+    )
 
     assert len(recorder.records) == 1
     record = recorder.records[0]
+    assert payload["trace"]["metadata"]["request_id"] == "req-chat-turn"
+    assert payload["trace"]["metadata"]["trace_id"] == record.trace_id
     assert record.kind == "chat.turn"
     assert record.status == "succeeded"
     assert record.thread_id == "root-1"
+    assert record.request_id == "req-chat-turn"
+    assert record.trace_id
+    assert record.root_span_id
     assert record.user_id_hash != "owner-1"
     assert record.user_message == "read README"
     assert record.answer == "done"
@@ -690,12 +700,22 @@ def test_stream_message_records_trajectory_after_completion(tmp_path: Path):
     chat = ChatService(runtime)
 
     async def collect_frames():
-        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="new")]
+        return [
+            frame
+            async for frame in chat.stream_message(
+                thread_id="root-1",
+                user_id="owner-1",
+                message="new",
+                request_id="req-stream-turn",
+            )
+        ]
 
     frames = asyncio.run(collect_frames())
 
     assert any("event: turn.completed" in frame for frame in frames)
     assert len(recorder.records) == 1
+    assert recorder.records[0].request_id == "req-stream-turn"
+    assert recorder.records[0].trace_id
     assert recorder.records[0].answer == "streamed answer"
     assert recorder.records[0].user_message == "new"
     assert recorder.records[0].metrics["llm_calls"] == 1
@@ -719,9 +739,15 @@ def test_trajectory_recorder_failure_does_not_fail_turn(tmp_path: Path):
     )
     chat = ChatService(runtime)
 
-    payload = chat.send_message(thread_id="root-1", user_id="owner-1", message="hello")
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="hello",
+        request_id="req-thread-state",
+    )
 
     assert payload["assistant_message"] == "planned"
+    assert payload["trace"]["metadata"]["request_id"] == "req-thread-state"
 
 
 def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
@@ -735,10 +761,15 @@ def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     )
     chat = ChatService(runtime)
 
-    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+    payload = chat.get_thread_state(
+        thread_id="root-1",
+        user_id="owner-1",
+        request_id="req-snapshot",
+    )
 
     system_messages = [message for message in payload["messages"] if message["type"] == "system"]
     assert system_messages
+    assert payload["trace"]["metadata"]["request_id"] == "req-snapshot"
     assert "Imported conclusion from branch 'explore-alternatives':" in system_messages[-1]["content"]
     assert "Recovered conclusion from child branch." in system_messages[-1]["content"]
     assert payload["rolling_summary"].endswith(

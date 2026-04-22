@@ -201,7 +201,19 @@ const trajectoryRoute = createRoute({
   component: TrajectoryPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, threadRoute, reviewRoute, trajectoryRoute]);
+const observabilityOverviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/observability/overview",
+  component: TrajectoryPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  threadRoute,
+  reviewRoute,
+  trajectoryRoute,
+  observabilityOverviewRoute,
+]);
 
 const router = createRouter({
   routeTree,

@@ -7,4 +7,5 @@ export const queryKeys = {
   trajectoryList: (filtersKey: string) => ["trajectory-list", filtersKey] as const,
   trajectoryDetail: (turnId: string) => ["trajectory-detail", turnId] as const,
   trajectoryStats: (filtersKey: string) => ["trajectory-stats", filtersKey] as const,
+  observabilityOverview: (filtersKey: string) => ["observability-overview", filtersKey] as const,
 };

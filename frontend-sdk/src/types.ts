@@ -241,6 +241,8 @@ export interface FocusAgentConversationListResponse {
 export interface FocusAgentTrajectoryFilters {
   turn_id?: string;
   turn_ids?: string[];
+  request_id?: string;
+  trace_id?: string;
   thread_id?: string;
   root_thread_id?: string;
   parent_thread_id?: string;
@@ -263,6 +265,7 @@ export interface FocusAgentTrajectoryFilters {
   max_latency_ms?: number;
   min_tool_calls?: number;
   max_tool_calls?: number;
+  newest_first?: boolean;
 }
 
 export interface FocusAgentTrajectoryListRequest extends FocusAgentTrajectoryFilters {
@@ -305,6 +308,12 @@ export interface FocusAgentTrajectoryTurnSummary {
   status: string;
   thread_id: string;
   root_thread_id: string;
+  request_id?: string | null;
+  trace_id?: string | null;
+  root_span_id?: string | null;
+  environment?: string | null;
+  deployment?: string | null;
+  app_version?: string | null;
   parent_thread_id?: string | null;
   branch_id?: string | null;
   branch_role?: string | null;
@@ -370,11 +379,41 @@ export interface FocusAgentTrajectoryStats {
   by_status: FocusAgentTrajectoryStatsRow[];
   by_scene: FocusAgentTrajectoryStatsRow[];
   by_branch_role: FocusAgentTrajectoryStatsRow[];
+  by_model: FocusAgentTrajectoryStatsRow[];
+  by_day: FocusAgentTrajectoryStatsRow[];
   by_tool: FocusAgentTrajectoryStatsRow[];
 }
 
 export interface FocusAgentTrajectoryStatsResponse {
   filters: FocusAgentTrajectoryFilters;
+  stats: FocusAgentTrajectoryStats;
+}
+
+export interface FocusAgentRuntimeComponentStatus {
+  name: string;
+  ready: boolean;
+  detail?: string | null;
+}
+
+export interface FocusAgentRuntimeReadiness {
+  status: string;
+  ready: boolean;
+  app_version?: string | null;
+  environment?: string | null;
+  deployment?: string | null;
+  checks: FocusAgentRuntimeComponentStatus[];
+}
+
+export interface FocusAgentObservabilityOverviewRequest extends FocusAgentTrajectoryStatsRequest {
+  newest_first?: boolean;
+}
+
+export interface FocusAgentObservabilityOverviewResponse {
+  generated_at: string;
+  filters: FocusAgentTrajectoryFilters;
+  runtime: FocusAgentRuntimeReadiness;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
   stats: FocusAgentTrajectoryStats;
 }
 

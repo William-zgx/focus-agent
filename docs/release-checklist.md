@@ -26,6 +26,7 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 - Confirm auth behavior and ownership rules are documented accurately
 - Confirm the frontend SDK examples still match the live contract
 - Confirm trajectory observability docs match the live API, CLI, and `/app/observability/trajectory` console
+- Confirm OTel exporter env vars and runtime readiness docs still match the live tracing behavior
 
 ## Configuration Review
 
@@ -40,6 +41,7 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 - Run `make ci`
 - If Web App changed, run `make web-check` and `make web-build`
 - If browser workflows changed, run `make ui-smoke`
+- If observability pages changed, run `make ui-smoke-observability`
 - If deployment or persistence changed, run the targeted Postgres / containerization tests referenced in `docs/architecture.md`
 
 - Review recent changes for accidental breaking API or SDK changes

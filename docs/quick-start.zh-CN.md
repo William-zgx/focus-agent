@@ -31,8 +31,13 @@ make api
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
+- `http://127.0.0.1:8000/readyz`
+- `http://127.0.0.1:8000/metrics`
+
+其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness，`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
 
 ## 3. 本地托管 PostgreSQL
 
@@ -92,6 +97,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
 
 ## 7. 下一步文档
 
+- [Observability Runbook](observability-runbook.md)
 - [开发指南](development.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
 - [架构说明](architecture.md)

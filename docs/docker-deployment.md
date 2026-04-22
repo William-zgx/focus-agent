@@ -76,8 +76,11 @@ docker compose logs -f focus-agent postgres
 访问：
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
+- `http://127.0.0.1:8000/readyz`
+- `http://127.0.0.1:8000/metrics`
 
 ### 本地 Docker 关键环境变量
 
@@ -99,6 +102,7 @@ docker compose logs -f focus-agent postgres
 - 未显式设置 `FOCUS_AGENT_DATABASE_URI` 时，Compose 默认连接本文件内的 `postgres` service
 - 如果显式设置 `FOCUS_AGENT_DATABASE_URI`，应用会优先使用该值
 - provider 密钥和 Base URL 默认来自 `/data/local.env`；如果想临时覆盖，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
+- 如果要在 readiness、metrics 和 trajectory correlation 中标记版本或部署批次，可在 Compose environment 中显式传入 `APP_VERSION`、`APP_ENVIRONMENT` 或 `DEPLOYMENT_NAME`
 - 本地 Docker 路径下建议继续保留 demo token，方便 Web App 直接调试
 
 ## 生产/预发部署
@@ -132,6 +136,7 @@ docker compose -f compose.prod.yaml up -d
 - `DATABASE_URI` 必须指向外部 PostgreSQL
 - provider secrets 不写入镜像
 - 应用容器只保留 `/data` 作为本地文件目录（artifact 正文、默认配置拷贝等）
+- 建议显式设置 `APP_VERSION`、`APP_ENVIRONMENT`、`DEPLOYMENT_NAME`，便于 `/readyz`、`/metrics` 和 trajectory 记录定位发布批次
 
 ## 数据与迁移
 
@@ -161,15 +166,39 @@ focus-agent-migrate-local-state \
 
 - 用 CI 构建镜像，不要在部署机现场编译
 - staging/prod 优先使用外部托管 PostgreSQL
+- `/healthz` 只表示进程存活；负载均衡 readiness 建议优先看 `/readyz`
+- `/metrics` 输出 Prometheus 文本，包含 runtime readiness、组件状态、build labels 和 trajectory 聚合指标；当前它仍经过默认 API middleware，若开启高频 scrape 需留意全局 rate limit 设置
+- 如果要把 trace 上报给外部 collector，设置标准 OTel 环境变量：
+  - `OTEL_TRACES_EXPORTER=otlp`
+  - `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`
+  - 或 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces`
+  - 可选：`OTEL_EXPORTER_OTLP_HEADERS`、`OTEL_EXPORTER_OTLP_TIMEOUT`
+  - `/readyz` 与 `/metrics` 会把 `tracing_exporter` 组件状态暴露出来
+- trajectory list/stats/overview 支持用 `request_id` 和 `trace_id` 过滤，Web 复盘台也支持 request/trace 深链排障
 - 部署前至少执行：
   - `make ci`
   - 一轮 API smoke
+  - 一轮 `make ui-smoke-observability`（如果当前环境允许真实浏览器 automation）
 - 发布后检查：
   - `/healthz`
+  - `/readyz`
+  - `/metrics`
   - 会话创建
   - `/v1/chat/turns`
   - trajectory 入库
+  - `/v1/observability/overview` 能返回 runtime 与 trajectory stats
   - `/app/observability/trajectory` 能读取 trajectory list / detail / stats
+
+本机如果因为 `.venv` 中 `psycopg` 缺少 `libpq` 无法直接收集 observability 测试，可临时使用当前 focused test workaround：
+
+```bash
+PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
+  tests/test_api_middleware.py \
+  tests/test_metadata.py \
+  tests/test_trajectory_observability.py \
+  tests/test_api_trajectory_observability.py \
+  tests/test_chat_service.py
+```
 
 ## 不推荐的做法
 

@@ -556,6 +556,17 @@ class Settings:
     api_port: int = 8000
     api_reload: bool = False
     app_version: str = "1.0.0"
+    app_environment: str = "development"
+    deployment_name: str | None = None
+    tracing_enabled: bool = False
+    tracing_service_name: str = "focus-agent"
+    otel_traces_exporters: tuple[str, ...] = ()
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_exporter_otlp_traces_endpoint: str | None = None
+    otel_exporter_otlp_headers: str | None = None
+    otel_exporter_otlp_protocol: str = "http/protobuf"
+    otel_exporter_otlp_timeout_ms: int = 10000
+    otel_tracer_provider: object | None = field(default=None, repr=False)
     web_app_dist_dir: str | None = None
     web_app_dev_server_url: str | None = None
     auth_enabled: bool = True
@@ -603,6 +614,18 @@ class Settings:
         database_uri = env.get("DATABASE_URI") or None
         langgraph_api_url = env.get("LANGGRAPH_API_URL") or None
         trajectory_enabled = _coerce_bool(env.get("TRAJECTORY_ENABLED"))
+        otel_traces_exporters = (
+            _split_csv(env.get("OTEL_TRACES_EXPORTER"))
+            if env.get("OTEL_TRACES_EXPORTER") is not None
+            else (
+                ("otlp",)
+                if (
+                    env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+                    or env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+                )
+                else defaults.otel_traces_exporters
+            )
+        )
         instance = cls(
             model=env.get("MODEL") or model_catalog.default_model or defaults.model,
             helper_model=env.get("HELPER_MODEL") or model_catalog.helper_model or None,
@@ -621,6 +644,44 @@ class Settings:
             api_port=int(env.get("API_PORT", str(defaults.api_port))),
             api_reload=env.get("API_RELOAD", "false").lower() in {"1", "true", "yes", "on"},
             app_version=env.get("APP_VERSION", defaults.app_version),
+            app_environment=(
+                env.get("APP_ENVIRONMENT")
+                or env.get("ENVIRONMENT")
+                or defaults.app_environment
+            ),
+            deployment_name=env.get("DEPLOYMENT_NAME") or defaults.deployment_name,
+            tracing_enabled=(
+                _coerce_bool(env.get("FOCUS_AGENT_TRACING_ENABLED"))
+                if env.get("FOCUS_AGENT_TRACING_ENABLED") is not None
+                else _coerce_bool(env.get("OTEL_TRACING_ENABLED")) or defaults.tracing_enabled
+            ),
+            tracing_service_name=(
+                env.get("OTEL_SERVICE_NAME")
+                or env.get("FOCUS_AGENT_TRACING_SERVICE_NAME")
+                or defaults.tracing_service_name
+            ),
+            otel_traces_exporters=otel_traces_exporters,
+            otel_exporter_otlp_endpoint=env.get("OTEL_EXPORTER_OTLP_ENDPOINT") or None,
+            otel_exporter_otlp_traces_endpoint=env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or None,
+            otel_exporter_otlp_headers=(
+                env.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
+                or env.get("OTEL_EXPORTER_OTLP_HEADERS")
+                or None
+            ),
+            otel_exporter_otlp_protocol=(
+                env.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
+                or env.get("OTEL_EXPORTER_OTLP_PROTOCOL")
+                or defaults.otel_exporter_otlp_protocol
+            ),
+            otel_exporter_otlp_timeout_ms=int(
+                env.get(
+                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
+                    env.get(
+                        "OTEL_EXPORTER_OTLP_TIMEOUT",
+                        str(defaults.otel_exporter_otlp_timeout_ms),
+                    ),
+                )
+            ),
             web_app_dist_dir=env.get("WEB_APP_DIST_DIR") or None,
             web_app_dev_server_url=env.get("WEB_APP_DEV_SERVER_URL") or None,
             auth_enabled=env.get("AUTH_ENABLED", "true").lower() in {"1", "true", "yes", "on"},

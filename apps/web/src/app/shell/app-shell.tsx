@@ -183,7 +183,7 @@ export function AppShell({ children }: PropsWithChildren) {
         conversationId: String(routeParams.conversationId ?? ""),
         threadId: String(routeParams.threadId ?? ""),
         isReviewRoute: state.location.pathname.endsWith("/review"),
-        isTrajectoryRoute: state.location.pathname.endsWith("/observability/trajectory"),
+        isTrajectoryRoute: state.location.pathname.includes("/observability/"),
       };
     },
   });

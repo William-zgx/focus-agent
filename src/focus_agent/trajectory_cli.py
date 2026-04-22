@@ -91,6 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _add_common_filters(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--request-id")
+    parser.add_argument("--trace-id")
     parser.add_argument("--thread-id")
     parser.add_argument("--root-thread-id")
     parser.add_argument(
@@ -234,6 +236,10 @@ def _require_repo_method(repo: TrajectoryReadRepository, name: str) -> Any:
 
 def _build_filters(args: argparse.Namespace) -> dict[str, Any]:
     filters: dict[str, Any] = {}
+    if getattr(args, "request_id", None):
+        filters["request_id"] = args.request_id
+    if getattr(args, "trace_id", None):
+        filters["trace_id"] = args.trace_id
     if getattr(args, "thread_id", None):
         filters["thread_id"] = args.thread_id
     if getattr(args, "root_thread_id", None):

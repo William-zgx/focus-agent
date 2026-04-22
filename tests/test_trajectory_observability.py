@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
@@ -10,6 +11,7 @@ from focus_agent.observability.trajectory import (
     extract_trajectory_steps,
     utc_now,
 )
+from focus_agent.observability.tracing import build_trace_correlation
 from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 
@@ -55,6 +57,14 @@ def test_extract_trajectory_steps_preserves_runtime_metadata():
 def test_build_turn_trajectory_record_uses_only_current_turn_messages():
     started = utc_now()
     finished = started + timedelta(milliseconds=25)
+    trace_correlation = build_trace_correlation(
+        settings=SimpleNamespace(
+            app_version="1.2.3",
+            app_environment="staging",
+            deployment_name="focus-agent-blue",
+        ),
+        request_id="req-123",
+    )
     record = build_turn_trajectory_record(
         thread_id="thread-1",
         user_id="owner-1",
@@ -87,12 +97,19 @@ def test_build_turn_trajectory_record_uses_only_current_turn_messages():
         initial_llm_calls=1,
         started_at=started,
         finished_at=finished,
+        trace_correlation=trace_correlation,
         observation_max_chars=3,
         answer_max_chars=4,
     )
 
     assert record.root_thread_id == "root-1"
     assert record.user_id_hash != "owner-1"
+    assert record.request_id == "req-123"
+    assert record.trace_id
+    assert record.root_span_id
+    assert record.environment == "staging"
+    assert record.deployment == "focus-agent-blue"
+    assert record.app_version == "1.2.3"
     assert record.user_message == "read README"
     assert record.answer == "done"
     assert record.metrics["llm_calls"] == 2
@@ -145,13 +162,25 @@ def test_postgres_trajectory_repository_executes_setup_and_insert(monkeypatch):
         initial_llm_calls=0,
         started_at=utc_now(),
         finished_at=utc_now(),
+        trace_correlation=build_trace_correlation(
+            settings=SimpleNamespace(
+                app_version="1.2.3",
+                app_environment="production",
+                deployment_name="focus-agent-prod",
+            ),
+            request_id="req-setup",
+        ),
     )
     repo.record_turn(record)
 
     statements = [sql for sql, _ in executed]
     assert any("CREATE TABLE IF NOT EXISTS focus_trajectory_turns" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_trajectory_steps" in sql for sql in statements)
+    assert any("ALTER TABLE focus_trajectory_turns" in sql for sql in statements)
     assert any("INSERT INTO focus_trajectory_turns" in sql for sql in statements)
+    insert_params = next(params for sql, params in executed if "INSERT INTO focus_trajectory_turns" in sql)
+    assert insert_params["request_id"] == "req-setup"
+    assert insert_params["trace_id"]
 
 
 def test_postgres_trajectory_repository_accepts_cli_style_filters(monkeypatch):
@@ -167,6 +196,12 @@ def test_postgres_trajectory_repository_accepts_cli_style_filters(monkeypatch):
                     "status": "failed",
                     "thread_id": "thread-1",
                     "root_thread_id": "root-1",
+                    "request_id": "req-1",
+                    "trace_id": "trace-1",
+                    "root_span_id": "span-1",
+                    "environment": "staging",
+                    "deployment": "focus-agent-blue",
+                    "app_version": "1.2.3",
                     "parent_thread_id": None,
                     "branch_id": None,
                     "branch_role": "executor",
@@ -217,6 +252,8 @@ def test_postgres_trajectory_repository_accepts_cli_style_filters(monkeypatch):
     repo = PostgresTrajectoryRepository("postgresql://example")
     rows = repo.list_turns(
         filters={
+            "request_id": "req-1",
+            "trace_id": "trace-1",
             "thread_id": "thread-1",
             "status": ["failed"],
             "tool": ["web_search"],
@@ -228,7 +265,11 @@ def test_postgres_trajectory_repository_accepts_cli_style_filters(monkeypatch):
     )
 
     assert rows[0]["id"] == "turn-1"
+    assert rows[0]["request_id"] == "req-1"
+    assert rows[0]["trace_id"] == "trace-1"
     _, params = executed[-1]
+    assert params["request_id"] == "req-1"
+    assert params["trace_id"] == "trace-1"
     assert params["thread_id"] == "thread-1"
     assert params["status"] == ["failed"]
     assert params["step_tool"] == ["web_search"]
@@ -248,6 +289,12 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
                 "status": "failed",
                 "thread_id": "thread-1",
                 "root_thread_id": "root-1",
+                "request_id": "req-1",
+                "trace_id": "trace-1",
+                "root_span_id": "span-1",
+                "environment": "staging",
+                "deployment": "focus-agent-blue",
+                "app_version": "1.2.3",
                 "parent_thread_id": None,
                 "branch_id": None,
                 "branch_role": None,
@@ -291,6 +338,8 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
         [{"key": "failed", "turn_count": 1, "avg_latency_ms": 250.0}],
         [{"key": "long_dialog_research", "turn_count": 1, "avg_latency_ms": 250.0}],
         [{"key": "unassigned", "turn_count": 1}],
+        [{"key": "openai:gpt-4.1-mini", "turn_count": 1, "avg_latency_ms": 250.0}],
+        [{"key": "2026-04-22", "turn_count": 1, "non_succeeded_count": 1, "avg_latency_ms": 250.0}],
         [{"key": "web_search", "step_count": 1, "turn_count": 1, "cache_hit_steps": 1, "fallback_steps": 1, "avg_duration_ms": 12.5}],
     ]
 
@@ -332,7 +381,11 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
 
     assert record is not None
     assert record.id == "turn-1"
+    assert record.request_id == "req-1"
+    assert record.trace_id == "trace-1"
     assert record.trajectory[0].tool == "web_search"
     assert stats["overview"]["turn_count"] == 1
+    assert stats["by_model"][0]["key"] == "openai:gpt-4.1-mini"
+    assert stats["by_day"][0]["key"] == "2026-04-22"
     assert stats["by_tool"][0]["key"] == "web_search"
     assert any("focus_trajectory_steps" in sql for sql in executed)

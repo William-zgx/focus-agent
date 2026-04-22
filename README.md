@@ -20,7 +20,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 
 - Branch-aware conversations with controlled merge-back
 - Streaming chat APIs and a built-in React web app at `/app`
-- Trajectory observability console at `/app/observability/trajectory`
+- Observability overview and trajectory console at `/app/observability/overview` and `/app/observability/trajectory`
 - Access control, memory pipeline, and typed frontend SDK
 - Built-in repo, git, web, artifact, and memory tools
 
@@ -46,8 +46,11 @@ make api
 Then open:
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
+- `http://127.0.0.1:8000/readyz`
+- `http://127.0.0.1:8000/metrics`
 
 For the full local startup flow, managed repo-local PostgreSQL behavior, Vite dev mode, and local auth examples, see [docs/quick-start.md](docs/quick-start.md).
 
@@ -69,6 +72,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
+- [Observability Runbook](docs/observability-runbook.md)
 - [Architecture](docs/architecture.md)
 - [Docker Deployment](docs/docker-deployment.md)
 - [Roadmap](docs/roadmap.md)

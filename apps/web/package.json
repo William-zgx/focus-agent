@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
+    "smoke:observability": "node ./scripts/observability-smoke.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

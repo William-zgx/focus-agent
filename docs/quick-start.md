@@ -31,8 +31,13 @@ make api
 Open:
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
+- `http://127.0.0.1:8000/readyz`
+- `http://127.0.0.1:8000/metrics`
+
+For observability, `/healthz` is a simple liveness check, `/readyz` reports runtime component readiness, and `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through the trajectory data captured in Postgres.
 
 ## 3. Managed Local PostgreSQL
 
@@ -93,6 +98,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
 
 ## 7. Next Docs
 
+- [Observability Runbook](observability-runbook.md)
 - [Development Guide](development.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)

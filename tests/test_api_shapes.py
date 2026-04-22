@@ -189,6 +189,9 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/conversations/{root_thread_id}" in route_paths
     assert "/v1/conversations/{root_thread_id}/archive" in route_paths
     assert "/v1/conversations/{root_thread_id}/activate" in route_paths
+    assert "/readyz" in route_paths
+    assert "/metrics" in route_paths
+    assert "/v1/observability/overview" in route_paths
     assert "/v1/observability/trajectory" in route_paths
     assert "/v1/observability/trajectory/stats" in route_paths
     assert "/v1/observability/trajectory/{turn_id}" in route_paths

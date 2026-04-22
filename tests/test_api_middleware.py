@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,6 +28,13 @@ def test_request_id_header_is_echoed(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.headers.get(REQUEST_ID_HEADER)
+
+    readyz = client.get("/readyz")
+    metrics = client.get("/metrics")
+    assert readyz.status_code == 200
+    assert readyz.headers.get(REQUEST_ID_HEADER)
+    assert metrics.status_code == 200
+    assert metrics.headers.get(REQUEST_ID_HEADER)
 
 
 def test_request_id_header_is_preserved_from_client(
@@ -123,3 +131,63 @@ def test_rate_limit_middleware_returns_envelope(
     assert body["code"] == 429
     assert body["data"]["retry_after_seconds"] >= 1
     assert responses[-1].headers.get("Retry-After")
+
+
+def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _with_stub_frontend(monkeypatch, tmp_path)
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    app = create_app()
+    app.state.runtime = SimpleNamespace(
+        settings=SimpleNamespace(
+            auth_enabled=False,
+            database_uri="postgresql://example",
+            trajectory_enabled=True,
+            tracing_enabled=True,
+            otel_traces_exporters=("otlp",),
+            app_version="9.9.9",
+            app_environment="staging",
+            deployment_name="focus-agent-blue",
+        ),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        otel_runtime=SimpleNamespace(
+            ready=True,
+            detail="exporting spans via otlp",
+            exporter_names=("otlp",),
+        ),
+        trajectory_recorder=SimpleNamespace(
+            list_turns=lambda query: [],
+            get_turn=lambda turn_id: None,
+            list_steps_by_turn_ids=lambda turn_ids: {},
+            get_turn_stats=lambda query: {
+                "overview": {"turn_count": 2, "avg_latency_ms": 12.5},
+                "by_status": [{"key": "succeeded", "turn_count": 2}],
+            },
+        ),
+    )
+    client = TestClient(app)
+
+    readyz = client.get("/readyz")
+    metrics = client.get("/metrics")
+
+    assert readyz.status_code == 200
+    payload = readyz.json()
+    assert payload["status"] == "ok"
+    assert payload["ready"] is True
+    tracing_check = next(item for item in payload["checks"] if item["name"] == "tracing_exporter")
+    assert tracing_check["ready"] is True
+    trajectory_check = next(item for item in payload["checks"] if item["name"] == "trajectory_recorder")
+    assert trajectory_check["ready"] is True
+    assert payload["app_version"] == "9.9.9"
+    assert payload["environment"] == "staging"
+    assert payload["deployment"] == "focus-agent-blue"
+
+    assert metrics.status_code == 200
+    assert "focus_agent_runtime_build_info" in metrics.text
+    assert 'version="9.9.9"' in metrics.text
+    assert 'environment="staging"' in metrics.text
+    assert 'component="tracing_exporter"' in metrics.text
+    assert "focus_agent_trajectory_turn_count 2" in metrics.text
