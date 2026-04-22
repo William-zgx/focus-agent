@@ -167,3 +167,18 @@ def test_new_conversation_skips_prompt_but_rename_still_uses_it():
     assert 'const conversation = await createConversation();' in conversation_toolbar_text
     assert 'const title = window.prompt(\n      isChineseUi ? "对话标题（可选）" : "Conversation title (optional)",\n    );' not in conversation_toolbar_text
     assert 'const title = window.prompt(\n      isChineseUi ? "重命名对话" : "Rename conversation",\n      conversation.title,\n    );' in conversation_toolbar_text
+
+
+def test_conversation_switcher_only_lists_active_conversations():
+    root = Path(__file__).resolve().parents[1]
+    conversation_toolbar_text = (
+        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
+    ).read_text()
+
+    assert "const archivedConversations" not in conversation_toolbar_text
+    assert "<optgroup" not in conversation_toolbar_text
+    assert "disabled={isLoading || isWorking || activeConversations.length === 0}" in conversation_toolbar_text
+    assert (
+        "activeConversations.find((conversation) => conversation.root_thread_id === conversationId) ??\n"
+        "      activeConversations[0],"
+    ) in conversation_toolbar_text

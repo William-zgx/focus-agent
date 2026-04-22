@@ -193,6 +193,61 @@ def test_prompt_budget_guard_preserves_current_user_and_active_constraints():
     assert "older history can be removed" not in rendered
 
 
+def test_prompt_budget_guard_prioritizes_imported_findings_over_summary_and_available_skills():
+    state = {
+        "messages": [HumanMessage(content="请继续基于已确认结论给出下一步建议。")],
+        "rolling_summary": "old summary " * 80,
+        "imported_findings": [
+            FindingItem(finding="Approved finding: switch to the postgres migration path", evidence_refs=["pr-12"])
+        ],
+        "_available_skills_block": "## Available skills\n- low priority skill one\n- low priority skill two",
+    }
+    context_slice = assemble_context(state, PromptMode.SYNTHESIZE)
+    budget = ContextBudget(prompt_token_limit=180, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content=context_slice.render_prompt()),
+            HumanMessage(content="请继续基于已确认结论给出下一步建议。"),
+        ],
+        budget=budget,
+    )
+
+    rendered = "\n".join(str(message.content) for message in guarded)
+
+    assert "## Imported findings already approved into this thread" in rendered
+    assert "Approved finding:" in rendered or "...[1 omitted]" in rendered
+    assert "old summary old summary" not in rendered
+    assert "low priority skill one" not in rendered
+
+
+def test_prompt_budget_guard_truncates_bulleted_blocks_without_breaking_bullet_lines():
+    budget = ContextBudget(prompt_token_limit=120, chars_per_token=1)
+    system_text = "\n\n".join(
+        [
+            "You are Focus Agent.",
+            "## Imported findings already approved into this thread\n"
+            "- First approved finding with useful detail.\n"
+            "- Second approved finding with more useful detail.\n"
+            "- Third approved finding with extra useful detail.",
+        ]
+    )
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content=system_text),
+            HumanMessage(content="Use the approved findings."),
+        ],
+        budget=budget,
+    )
+
+    rendered = "\n".join(str(message.content) for message in guarded)
+
+    assert "## Imported findings already approved into this thread" in rendered
+    assert "...[" in rendered or "- Second approved finding" in rendered
+    assert "...[trimmed]..." not in rendered
+
+
 def test_prompt_budget_guard_hard_limits_oversized_current_turn():
     current_turn = "Current user turn " * 20
     budget = ContextBudget(prompt_token_limit=80, chars_per_token=1)

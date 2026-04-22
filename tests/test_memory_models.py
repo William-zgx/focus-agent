@@ -9,10 +9,13 @@ from focus_agent.memory import (
     MemoryWriteRequest,
     RetrievedMemoryBundle,
     memory_fingerprint,
+    memory_resolution_key,
+    memory_semantic_key,
     merge_duplicate_records,
     score_memory_hit,
     score_memory_importance,
 )
+from focus_agent.storage.namespaces import branch_local_memory_namespace, conversation_main_namespace
 
 
 def test_memory_models_have_safe_defaults():
@@ -49,6 +52,57 @@ def test_memory_fingerprint_is_stable_for_equivalent_requests():
     second = MemoryWriteRequest.model_validate(first.model_dump())
 
     assert memory_fingerprint(first) == memory_fingerprint(second)
+
+
+def test_memory_semantic_key_is_stable_across_branch_promotion():
+    branch_record = MemoryWriteRequest(
+        kind=MemoryKind.BRANCH_FINDING,
+        scope=MemoryScope.BRANCH,
+        visibility=MemoryVisibility.PROMOTABLE,
+        namespace=branch_local_memory_namespace("root-1", "branch-1"),
+        content="先修复 owner 字段竞态",
+        summary="修复 owner 竞态",
+        root_thread_id="root-1",
+        source_branch_id="branch-1",
+        user_id="user-1",
+    )
+    promoted_record = MemoryWriteRequest(
+        kind=MemoryKind.BRANCH_FINDING,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.SHARED,
+        namespace=conversation_main_namespace("root-1"),
+        content="先修复 owner 字段竞态",
+        summary="修复 owner 竞态",
+        root_thread_id="root-1",
+        source_branch_id="branch-1",
+        user_id="user-1",
+        promoted_to_main=True,
+    )
+
+    assert memory_semantic_key(branch_record) == memory_semantic_key(promoted_record)
+
+
+def test_memory_resolution_key_groups_same_user_preference_topic():
+    first = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=("user", "user-1", "profile"),
+        content="请用中文回答。",
+        summary="请用中文回答。",
+        user_id="user-1",
+    )
+    second = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=("user", "user-1", "profile"),
+        content="请用英文回答。",
+        summary="请用英文回答。",
+        user_id="user-1",
+    )
+
+    assert memory_resolution_key(first) == memory_resolution_key(second)
 
 
 def test_merge_duplicate_records_preserves_history_and_merges_strength():
@@ -89,6 +143,7 @@ def test_merge_duplicate_records_preserves_history_and_merges_strength():
     assert merged.importance == 0.8
     assert merged.promoted_to_main is True
     assert merged.fingerprint
+    assert merged.semantic_key
 
 
 def test_memory_scoring_reflects_mode_and_write_context():

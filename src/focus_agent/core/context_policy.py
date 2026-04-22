@@ -356,8 +356,12 @@ def _trim_system_text_by_blocks(text: str, *, max_chars: int) -> str:
                 used += extra
                 continue
             remaining = max_chars - used - (2 if selected else 0)
-            if priority <= 1 and remaining >= 80:
-                blocks[index] = _truncate_block(block, max_chars=remaining)
+            if priority <= 1 and remaining >= _minimum_truncation_budget(block):
+                blocks[index] = _truncate_context_block(block, max_chars=remaining)
+                selected.add(index)
+                used = max_chars
+            elif priority <= 3 and remaining >= _minimum_truncation_budget(block):
+                blocks[index] = _truncate_context_block(block, max_chars=remaining)
                 selected.add(index)
                 used = max_chars
             else:
@@ -382,23 +386,87 @@ def _split_context_blocks(text: str) -> list[str]:
 
 def _context_block_priority(block: str, *, index: int) -> int:
     lowered = block.lower()
+    if lowered.endswith("(none)"):
+        return 5
     if lowered.startswith("## constraints and goals") or lowered.startswith("## 当前计划"):
         return 0
-    if index == 0 or lowered.startswith("## prompt mode") or lowered.startswith("## branch scope"):
-        return 1
-    if lowered.startswith("## scene") or lowered.startswith("## skill system") or lowered.startswith("## active skills"):
+    if index == 0:
         return 1
     if lowered.startswith("## pinned facts"):
         return 2
-    if lowered.startswith("## rolling summary"):
+    if lowered.startswith("## imported findings already approved into this thread"):
+        return 2
+    if lowered.startswith("## local branch findings pending upstream review"):
         return 3
+    if lowered.startswith("## artifacts in scope"):
+        return 3
+    if lowered.startswith("## prompt mode") or lowered.startswith("## branch scope"):
+        return 3
+    if lowered.startswith("## scene") or lowered.startswith("## skill system") or lowered.startswith("## active skills"):
+        return 3
+    if lowered.startswith("## rolling summary"):
+        return 4
     if lowered.startswith("## retrieved long-term memories"):
         return 4
-    if lowered.startswith("## findings") or lowered.startswith("## artifacts in scope"):
+    if lowered.startswith("## findings"):
         return 4
     if lowered.startswith("## available skills"):
         return 5
     return 5
+
+
+def _truncate_context_block(text: str, *, max_chars: int) -> str:
+    structured = _truncate_bulleted_block(text, max_chars=max_chars)
+    if structured:
+        return structured
+    return _truncate_block(text, max_chars=max_chars)
+
+
+def _minimum_truncation_budget(text: str) -> int:
+    first_line = text.splitlines()[0].strip() if text.splitlines() else ""
+    return max(36, min(96, len(first_line) + 8))
+
+
+def _truncate_bulleted_block(text: str, *, max_chars: int) -> str:
+    lines = [line.rstrip() for line in text.splitlines()]
+    if len(lines) < 2 or not lines[0].startswith("## "):
+        return ""
+
+    header = lines[0].strip()
+    bullets = [line.strip() for line in lines[1:] if line.strip()]
+    if not bullets or not any(line.startswith("- ") for line in bullets):
+        return ""
+
+    kept_lines = [header]
+    used = len(header)
+    omitted_count = 0
+
+    for bullet in bullets:
+        extra = len(bullet) + 1
+        if used + extra > max_chars:
+            omitted_count += 1
+            continue
+        kept_lines.append(bullet)
+        used += extra
+
+    if len(kept_lines) == 1:
+        remaining = max_chars - used - 1
+        if remaining >= 18:
+            kept_lines.append(bullets[0][:remaining].rstrip())
+            return "\n".join(kept_lines)
+        omitted_note = f"- ...[{len(bullets)} omitted]"
+        if len(header) + 1 + len(omitted_note) <= max_chars:
+            return "\n".join([header, omitted_note])
+        if len(header) <= max_chars:
+            return header
+        return _truncate_block(header, max_chars=max_chars)
+
+    rendered = "\n".join(kept_lines)
+    if omitted_count:
+        note = f"\n- ...[{omitted_count} more omitted]"
+        if len(rendered) + len(note) <= max_chars:
+            rendered += note
+    return rendered
 
 
 def _truncate_block(text: str, *, max_chars: int) -> str:
@@ -484,6 +552,8 @@ def _hard_limit_prompt_messages(messages: list[AnyMessage], *, max_chars: int) -
         target = max(0, len(current) - overflow - 16)
         if isinstance(message, ToolMessage):
             content = trim_tool_observation(current, max_chars=target)
+        elif isinstance(message, SystemMessage):
+            content = _truncate_context_block(current, max_chars=target)
         else:
             content = _truncate_block(current, max_chars=target)
         guarded[index] = _copy_message_with_content(message, content)

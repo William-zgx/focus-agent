@@ -96,14 +96,59 @@ class MemoryPolicy:
         *,
         prompt_mode: PromptMode,
     ) -> RetrievedMemoryBundle:
-        hits = bundle.hits
+        hits = list(bundle.hits)
         if prompt_mode == PromptMode.SYNTHESIZE:
             hits = [
                 hit
                 for hit in hits
                 if not hit.record.source_branch_id or hit.record.promoted_to_main
             ]
+        hits = self._rank_hits_for_prompt(hits, prompt_mode=prompt_mode)
+        hits = self._apply_section_budget(hits, prompt_mode=prompt_mode)
         return bundle.model_copy(update={"hits": hits[: self.top_k], "total_hits": len(hits)})
+
+    def _rank_hits_for_prompt(
+        self,
+        hits: list,
+        *,
+        prompt_mode: PromptMode,
+    ) -> list:
+        return sorted(
+            hits,
+            key=lambda hit: (
+                _section_priority(hit.record, prompt_mode=prompt_mode),
+                -hit.score,
+                -hit.record.importance,
+                -(float(hit.record.confidence or 0.0)),
+                -hit.record.updated_at.timestamp(),
+            ),
+        )
+
+    def _apply_section_budget(
+        self,
+        hits: list,
+        *,
+        prompt_mode: PromptMode,
+    ) -> list:
+        limits = _section_limits(prompt_mode=prompt_mode, top_k=self.top_k)
+        selected = []
+        counts: dict[str, int] = {}
+        overflow = []
+        for hit in hits:
+            section = _section_name(hit.record, prompt_mode=prompt_mode)
+            limit = limits.get(section, self.top_k)
+            if counts.get(section, 0) < limit:
+                selected.append(hit)
+                counts[section] = counts.get(section, 0) + 1
+            else:
+                overflow.append(hit)
+        if len(selected) >= self.top_k:
+            return selected[: self.top_k]
+        for hit in overflow:
+            if len(selected) >= self.top_k:
+                break
+            selected.append(hit)
+        return selected[: self.top_k]
 
 
 def _turn_is_stable(state: dict) -> bool:
@@ -118,3 +163,71 @@ def _turn_is_stable(state: dict) -> bool:
     if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
         return False
     return True
+
+
+def _section_name(record: MemoryRecord, *, prompt_mode: PromptMode) -> str:
+    if record.kind.value in {"user_preference", "user_profile"}:
+        return "user"
+    if record.kind.value == "project_fact":
+        return "project"
+    if record.kind.value == "imported_conclusion":
+        return "approved"
+    if record.kind.value == "branch_finding":
+        if record.promoted_to_main or record.scope.value == "root_thread":
+            return "approved"
+        return "branch"
+    if record.kind.value == "turn_summary":
+        return "episodic"
+    return "other"
+
+
+def _section_priority(record: MemoryRecord, *, prompt_mode: PromptMode) -> int:
+    section = _section_name(record, prompt_mode=prompt_mode)
+    if prompt_mode == PromptMode.SYNTHESIZE:
+        ordering = {"user": 0, "project": 1, "approved": 2, "episodic": 3, "branch": 4, "other": 5}
+        return ordering.get(section, 5)
+    if prompt_mode == PromptMode.BRANCH_REVIEW:
+        ordering = {"branch": 0, "approved": 1, "project": 2, "user": 3, "episodic": 4, "other": 5}
+        return ordering.get(section, 5)
+    if prompt_mode == PromptMode.EXECUTE:
+        ordering = {"user": 0, "project": 1, "approved": 2, "branch": 3, "episodic": 4, "other": 5}
+        return ordering.get(section, 5)
+    ordering = {"approved": 0, "branch": 1, "project": 2, "user": 3, "episodic": 4, "other": 5}
+    return ordering.get(section, 5)
+
+
+def _section_limits(*, prompt_mode: PromptMode, top_k: int) -> dict[str, int]:
+    if prompt_mode == PromptMode.SYNTHESIZE:
+        return {
+            "user": min(2, top_k),
+            "project": min(2, top_k),
+            "approved": min(3, top_k),
+            "episodic": 1,
+            "other": 1,
+        }
+    if prompt_mode == PromptMode.BRANCH_REVIEW:
+        return {
+            "branch": min(3, top_k),
+            "approved": min(2, top_k),
+            "project": 1,
+            "user": 1,
+            "episodic": 1,
+            "other": 1,
+        }
+    if prompt_mode == PromptMode.EXECUTE:
+        return {
+            "user": min(2, top_k),
+            "project": min(2, top_k),
+            "approved": min(2, top_k),
+            "branch": 1,
+            "episodic": 1,
+            "other": 1,
+        }
+    return {
+        "approved": min(2, top_k),
+        "branch": min(2, top_k),
+        "project": 1,
+        "user": 1,
+        "episodic": 1,
+        "other": 1,
+    }

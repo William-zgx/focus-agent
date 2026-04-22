@@ -14,7 +14,7 @@ from focus_agent.storage.namespaces import (
     user_profile_namespace,
 )
 from focus_agent.core.types import FindingItem
-from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus, ImportedConclusion, MergeMode
 
 
 class FakeStore:
@@ -93,7 +93,10 @@ def test_promote_branch_findings_to_main_memory_after_merge():
 
     keys = service.promote_branch_findings_to_main_memory(
         branch_record=record,
-        findings=[FindingItem(finding="Approved result", evidence_refs=["proof-1"], confidence=0.9)],
+        findings=[
+            FindingItem(finding="Approved result", evidence_refs=["proof-1"], confidence=0.9),
+            FindingItem(finding="Skip me", merge_importable=False),
+        ],
     )
 
     assert len(keys) == 1
@@ -102,3 +105,70 @@ def test_promote_branch_findings_to_main_memory_after_merge():
     assert payload["type"] == "promoted_branch_finding"
     assert payload["summary"] == "Approved result"
     assert payload["confidence"] == 0.9
+    assert payload["merge_importable"] is True
+    assert payload["promoted_to_main"] is True
+    assert payload["source_branch_id"] == "branch-1"
+    assert payload["source_thread_id"] == "main-1"
+    assert {
+        "audit:branch_merge_promotion",
+        "target:conversation_main",
+        "kind:branch_finding",
+        "branch:branch-1",
+        "role:deep_dive",
+        "filter:merge_importable",
+    }.issubset(set(payload["tags"]))
+
+
+def test_promote_branch_findings_to_main_memory_skips_non_importable_findings():
+    service = object.__new__(BranchService)
+    service.store = FakeStore()
+    record = _make_branch_record()
+
+    keys = service.promote_branch_findings_to_main_memory(
+        branch_record=record,
+        findings=[FindingItem(finding="Stay local", merge_importable=False)],
+    )
+
+    assert keys == []
+    assert service.store.put_calls == []
+
+
+def test_imported_conclusion_main_memory_payload_has_audit_tags():
+    service = object.__new__(BranchService)
+    service.store = FakeStore()
+    record = _make_branch_record()
+
+    key = service._write_imported_conclusion_to_main_memory(
+        branch_record=record,
+        context=RequestContext(
+            user_id="user-1",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            branch_id="branch-1",
+            branch_role="deep_dive",
+        ),
+        imported=ImportedConclusion(
+            branch_id="branch-1",
+            branch_name="deep-dive",
+            mode=MergeMode.SUMMARY_PLUS_EVIDENCE,
+            summary="Approved summary",
+            key_findings=["Finding A"],
+            evidence_refs=["proof-1"],
+            artifacts=["artifact-1"],
+        ),
+    )
+
+    assert key is not None
+    namespace, _, payload = service.store.put_calls[0]
+    assert namespace == ("conversation", "root-1", "main")
+    assert payload["type"] == "imported_conclusion"
+    assert payload["summary"] == "Approved summary"
+    assert payload["promoted_to_main"] is True
+    assert {
+        "audit:branch_merge_promotion",
+        "target:conversation_main",
+        "kind:imported_conclusion",
+        "branch:branch-1",
+        "role:deep_dive",
+        "mode:summary_plus_evidence",
+    }.issubset(set(payload["tags"]))

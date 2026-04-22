@@ -72,6 +72,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
+- [Memory System Design](docs/memory-system.md)
 - [Observability Runbook](docs/observability-runbook.md)
 - [Architecture](docs/architecture.md)
 - [Docker Deployment](docs/docker-deployment.md)

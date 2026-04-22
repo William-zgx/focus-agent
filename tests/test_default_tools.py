@@ -128,6 +128,39 @@ class _FakeArtifactMetadataRepository:
         return self.records_by_id.get(artifact_id)
 
 
+class _MemoryToolStore:
+    def __init__(self, search_results_by_namespace: dict[tuple[str, ...], list[object]] | None = None):
+        self.data: dict[tuple[str, ...], dict[str, dict[str, object]]] = {}
+        self.search_results_by_namespace = {
+            tuple(namespace): list(results)
+            for namespace, results in (search_results_by_namespace or {}).items()
+        }
+
+    def put(self, namespace, key, value):
+        self.data.setdefault(tuple(namespace), {})[key] = dict(value)
+
+    def get(self, namespace, key):
+        return self.data.get(tuple(namespace), {}).get(key)
+
+    def delete(self, namespace, key):
+        self.data.get(tuple(namespace), {}).pop(key, None)
+
+    def search(self, namespace, query, limit):  # noqa: ARG002
+        namespace_key = tuple(namespace)
+        predefined = self.search_results_by_namespace.get(namespace_key)
+        if predefined is not None:
+            return predefined[:limit]
+        return [
+            types.SimpleNamespace(
+                key=memory_id,
+                namespace=namespace_key,
+                score=0.5,
+                value=payload,
+            )
+            for memory_id, payload in self.data.get(namespace_key, {}).items()
+        ][:limit]
+
+
 def _tool_map(settings: Settings, *, artifact_metadata_repository=None) -> dict[str, object]:
     return {
         tool.name: tool
@@ -566,7 +599,9 @@ def test_memory_tools_save_search_and_forget(tmp_path):
     )
 
     assert saved["saved"] is True
+    assert saved["visibility"] == "shared"
     assert searched["results"][0]["content"] == "User prefers concise answers."
+    assert searched["results"][0]["visibility"] == "shared"
     assert forgotten["deleted"] is True
     assert searched_again["results"] == []
 
@@ -584,8 +619,8 @@ def test_memory_save_accepts_conversation_scope_alias(tmp_path):
     saved = json.loads(
         tools["memory_save"].invoke(
             {
-                "content": "This thread is designing product tools.",
-                "kind": "project_fact",
+                "content": "This thread has an approved product-tools conclusion.",
+                "kind": "imported_conclusion",
                 "scope": "conversation",
                 "root_thread_id": "thread-1",
             }
@@ -601,8 +636,115 @@ def test_memory_save_accepts_conversation_scope_alias(tmp_path):
     )
 
     assert saved["scope"] == "root_thread"
-    assert saved["namespace"] == ["conversation", "thread-1", "episodic"]
+    assert saved["visibility"] == "shared"
+    assert saved["namespace"] == ["conversation", "thread-1", "main"]
     assert searched["results"][0]["memory_id"] == saved["memory_id"]
+    assert searched["results"][0]["visibility"] == "shared"
+
+
+def test_memory_save_reuses_writer_dedupe_for_same_user_preference_topic():
+    store = _MemoryToolStore()
+    tools = {
+        tool.name: tool
+        for tool in get_default_tools(
+            Settings(),
+            store=store,
+        )
+    }
+
+    first = json.loads(
+        tools["memory_save"].invoke(
+            {
+                "content": "请用中文回答。",
+                "kind": "user_preference",
+                "scope": "user",
+                "user_id": "user-1",
+            }
+        )
+    )
+    second = json.loads(
+        tools["memory_save"].invoke(
+            {
+                "content": "请用英文回答。",
+                "kind": "user_preference",
+                "scope": "user",
+                "user_id": "user-1",
+            }
+        )
+    )
+    searched = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "请用什么语言回答",
+                "user_id": "user-1",
+            }
+        )
+    )
+
+    assert first["saved"] is True
+    assert second["saved"] is True
+    assert second["action"] == "merged"
+    assert second["memory_id"] == first["memory_id"]
+    assert len(store.data[("user", "user-1", "profile")]) == 1
+    assert searched["results"][0]["content"] == "请用英文回答。"
+
+
+def test_memory_search_reuses_retriever_dedupe_and_rerank_logic():
+    profile_namespace = ("user", "user-1", "profile")
+    store = _MemoryToolStore(
+        {
+            profile_namespace: [
+                types.SimpleNamespace(
+                    key="pref-old",
+                    namespace=profile_namespace,
+                    score=0.69,
+                    value={
+                        "kind": "user_preference",
+                        "scope": "user",
+                        "visibility": "shared",
+                        "content": "请用中文回答。",
+                        "summary": "请用中文回答。",
+                        "user_id": "user-1",
+                        "updated_at": "2026-04-22T08:00:00+00:00",
+                    },
+                ),
+                types.SimpleNamespace(
+                    key="pref-new",
+                    namespace=profile_namespace,
+                    score=0.67,
+                    value={
+                        "kind": "user_preference",
+                        "scope": "user",
+                        "visibility": "shared",
+                        "content": "请用英文回答。",
+                        "summary": "请用英文回答。",
+                        "user_id": "user-1",
+                        "updated_at": "2026-04-22T09:00:00+00:00",
+                    },
+                ),
+            ]
+        }
+    )
+    tools = {
+        tool.name: tool
+        for tool in get_default_tools(
+            Settings(),
+            store=store,
+        )
+    }
+
+    searched = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "请用什么语言回答",
+                "user_id": "user-1",
+            }
+        )
+    )
+
+    assert len(searched["results"]) == 1
+    assert searched["results"][0]["memory_id"] == "pref-new"
+    assert searched["results"][0]["content"] == "请用英文回答。"
 
 
 def test_conversation_summary_reads_latest_checkpoint(tmp_path):

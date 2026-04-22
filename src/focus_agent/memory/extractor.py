@@ -43,22 +43,6 @@ class MemoryExtractor:
         inferred = self._extract_explicit_user_memory(latest_user=latest_user, context=context)
         if inferred is not None:
             records.append(inferred)
-        for item in state.get("pinned_facts", []):
-            fact = getattr(item, "fact", None) or (item.get("fact") if isinstance(item, dict) else None)
-            if not fact:
-                continue
-            records.append(
-                MemoryWriteRequest(
-                    kind=MemoryKind.USER_PREFERENCE,
-                    scope=MemoryScope.USER,
-                    visibility=MemoryVisibility.SHARED,
-                    namespace=user_profile_namespace(context.user_id),
-                    content=str(fact),
-                    summary=str(fact)[:240],
-                    user_id=context.user_id,
-                    importance=0.8,
-                )
-            )
         return records
 
     def _extract_project_facts(self, *, context: RequestContext, state: dict[str, Any]) -> list[MemoryWriteRequest]:
@@ -117,16 +101,21 @@ class MemoryExtractor:
         messages = state.get("messages", [])
         last_user = _latest_message_text(messages, HumanMessage)
         last_ai = _latest_message_text(messages, AIMessage)
-        summary = " ".join(part for part in [last_user, last_ai] if part).strip()
-        if not summary:
+        if _looks_like_low_signal_ack(last_ai):
             return None
+        if not last_ai:
+            return None
+        if last_user:
+            content = f"User: {last_user} Assistant: {last_ai}".strip()
+        else:
+            content = f"Assistant: {last_ai}".strip()
         return MemoryWriteRequest(
             kind=MemoryKind.TURN_SUMMARY,
             scope=MemoryScope.ROOT_THREAD,
             visibility=MemoryVisibility.PRIVATE,
             namespace=root_thread_episodic_namespace(context.root_thread_id),
-            content=summary,
-            summary=summary[:240],
+            content=content,
+            summary=content[:240],
             source_thread_id=context.branch_id or context.root_thread_id,
             root_thread_id=context.root_thread_id,
             user_id=context.user_id,
@@ -176,15 +165,12 @@ def _latest_message_text(messages: list[Any], message_type: type) -> str:
 
 
 def _looks_like_user_profile(text: str) -> bool:
-    lowered = text.casefold()
-    if any(token in lowered for token in ("帮我", "请帮", "能不能", "可以帮", "写一", "列出", "解释")):
+    if _looks_like_task_request(text):
         return False
     return any(
         phrase in text
         for phrase in (
             "我是",
-            "我在做",
-            "我用",
             "我主要",
             "我不熟",
             "我更偏好",
@@ -194,8 +180,7 @@ def _looks_like_user_profile(text: str) -> bool:
 
 
 def _looks_like_user_preference(text: str) -> bool:
-    lowered = text.casefold()
-    if "帮我" in lowered or "请帮" in lowered:
+    if _looks_like_task_request(text):
         return False
     return any(
         phrase in text
@@ -209,6 +194,7 @@ def _looks_like_user_preference(text: str) -> bool:
             "请用英文",
             "请叫我",
             "以后都",
+            "以后请",
             "尽量简洁",
             "尽量详细",
         )
@@ -216,6 +202,8 @@ def _looks_like_user_preference(text: str) -> bool:
 
 
 def _looks_like_project_fact(text: str) -> bool:
+    if _looks_like_task_request(text):
+        return False
     return any(
         phrase in text
         for phrase in (
@@ -227,7 +215,49 @@ def _looks_like_project_fact(text: str) -> bool:
             "配置",
             "只读",
             "必须",
-            "不要",
             "禁止",
         )
     )
+
+
+def _looks_like_task_request(text: str) -> bool:
+    lowered = text.casefold()
+    return (
+        any(
+            token in lowered
+            for token in (
+                "帮我",
+                "请帮",
+                "请继续",
+                "请根据",
+                "请先",
+                "请直接",
+                "能不能",
+                "可以帮",
+                "写一",
+                "列出",
+                "解释",
+                "我在做",
+            )
+        )
+        or "?" in text
+        or "？" in text
+        or lowered.endswith("吗")
+    )
+
+
+def _looks_like_low_signal_ack(text: str) -> bool:
+    normalized = " ".join((text or "").strip().casefold().split())
+    if not normalized:
+        return True
+    return normalized in {
+        "ok",
+        "okay",
+        "好的",
+        "好的。",
+        "收到",
+        "明白",
+        "了解",
+        "done",
+        "已完成",
+    }

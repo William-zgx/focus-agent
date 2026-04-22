@@ -11,8 +11,21 @@ from ..storage.namespaces import (
     conversation_main_namespace,
     root_thread_episodic_namespace,
 )
-from .dedupe import memory_fingerprint, merge_duplicate_records
-from .models import MemoryKind, MemoryRecord, MemoryScope, MemoryVisibility, MemoryWriteRequest
+from .dedupe import (
+    has_textual_overlap,
+    memory_fingerprint,
+    memory_resolution_key,
+    memory_semantic_key,
+    merge_duplicate_records,
+    user_preference_topic,
+)
+from .models import (
+    MemoryKind,
+    MemoryRecord,
+    MemoryScope,
+    MemoryVisibility,
+    MemoryWriteRequest,
+)
 from .policy import MemoryPolicy
 
 
@@ -30,6 +43,7 @@ class MemoryWriter:
             payload = record.model_dump(mode="json")
             payload["memory_id"] = key
             payload["fingerprint"] = memory_fingerprint(record)
+            payload["semantic_key"] = record.semantic_key or memory_semantic_key(record)
             self.store.put(record.namespace, key, payload)
             keys.append(key)
         return keys
@@ -176,6 +190,7 @@ class MemoryWriter:
             payload = record.model_dump(mode="json")
             payload["memory_id"] = key
             payload["fingerprint"] = memory_fingerprint(record)
+            payload["semantic_key"] = record.semantic_key or memory_semantic_key(record)
             self.store.put(record.namespace, key, payload)
             return "written", key
 
@@ -186,6 +201,7 @@ class MemoryWriter:
         merged = merge_duplicate_records(current, record)
         payload = merged.model_dump(mode="json")
         payload["memory_id"] = key
+        payload["semantic_key"] = merged.semantic_key or memory_semantic_key(merged)
         self.store.put(record.namespace, key, payload)
         return "merged", key
 
@@ -195,6 +211,8 @@ class MemoryWriter:
         query = (record.summary or record.content).strip()
         raw_hits = self.store.search(record.namespace, query=query, limit=5) or []
         incoming_fp = memory_fingerprint(record)
+        incoming_semantic_key = record.semantic_key or memory_semantic_key(record)
+        incoming_resolution_key = memory_resolution_key(record)
         normalized_incoming = _normalize_text(record.summary or record.content)
         best_match: tuple[str, MemoryRecord] | None = None
         for raw in raw_hits:
@@ -221,6 +239,7 @@ class MemoryWriter:
                     "importance": payload.get("importance", 0.5),
                     "promoted_to_main": payload.get("promoted_to_main", False),
                     "fingerprint": payload.get("fingerprint"),
+                    "semantic_key": payload.get("semantic_key"),
                     **(
                         {"created_at": payload["created_at"]}
                         if payload.get("created_at") is not None
@@ -234,12 +253,17 @@ class MemoryWriter:
                 }
             )
             existing_fp = current.fingerprint or memory_fingerprint(current)
+            existing_semantic_key = current.semantic_key or memory_semantic_key(current)
             normalized_existing = _normalize_text(current.summary or current.content)
-            if existing_fp == incoming_fp or (
+            if (
+                existing_fp == incoming_fp
+                or existing_semantic_key == incoming_semantic_key
+                or (
                 current.kind == record.kind
                 and current.scope == record.scope
                 and normalized_existing
                 and normalized_existing == normalized_incoming
+                )
             ):
                 return key or current.memory_id, current
             if (
@@ -247,6 +271,11 @@ class MemoryWriter:
                 and record.scope in {MemoryScope.USER, MemoryScope.PROJECT}
                 and current.kind == record.kind
                 and current.scope == record.scope
+                and self._records_can_conflict(
+                    existing=current,
+                    incoming=record,
+                    incoming_resolution_key=incoming_resolution_key,
+                )
             ):
                 best_match = (key or current.memory_id, current)
         return best_match
@@ -263,13 +292,65 @@ class MemoryWriter:
     def _should_replace(self, existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:
         existing_confidence = float(existing.confidence or 0.0)
         incoming_confidence = float(incoming.confidence or 0.0)
+        if (
+            incoming.scope == MemoryScope.USER
+            and incoming.kind == MemoryKind.USER_PREFERENCE
+            and user_preference_topic(existing.summary or existing.content)
+            and user_preference_topic(existing.summary or existing.content)
+            == user_preference_topic(incoming.summary or incoming.content)
+        ):
+            return True
         return (
             incoming.importance > existing.importance
             or incoming_confidence > existing_confidence
-            or "纠正" in incoming.content
-            or "改成" in incoming.content
+            or _has_correction_signal(incoming.summary or incoming.content)
+        )
+
+    def _records_can_conflict(
+        self,
+        *,
+        existing: MemoryRecord,
+        incoming: MemoryWriteRequest,
+        incoming_resolution_key: str,
+    ) -> bool:
+        if incoming.scope == MemoryScope.USER and incoming.kind == MemoryKind.USER_PREFERENCE:
+            return memory_resolution_key(existing) == incoming_resolution_key
+        if incoming.scope != MemoryScope.PROJECT:
+            return False
+        if not _has_correction_signal(incoming.summary or incoming.content):
+            return False
+        return has_textual_overlap(
+            existing.summary or existing.content,
+            incoming.summary or incoming.content,
         )
 
 
 def _normalize_text(text: str) -> str:
     return " ".join((text or "").casefold().split())
+
+
+def _has_correction_signal(text: str) -> bool:
+    lowered = (text or "").casefold()
+    if any(
+        marker in lowered
+        for marker in (
+            "纠正",
+            "更正",
+            "修正",
+            "改成",
+            "改为",
+            "更新为",
+            "以此为准",
+            "以这个为准",
+            "instead",
+            "from now on",
+            "correction",
+            "corrected",
+        )
+    ):
+        return True
+    return (
+        ("不是" in text and "而是" in text)
+        or ("不是" in text and "改为" in text)
+        or ("不再" in text and "改为" in text)
+    )

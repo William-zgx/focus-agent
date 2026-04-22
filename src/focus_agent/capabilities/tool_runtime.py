@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass, field
 import hashlib
 import json
+from threading import Thread
 import time
 from typing import Any
 
@@ -70,6 +72,13 @@ class ToolResultCacheStore:
         return self.thread
 
 
+class ToolInvocationTimeoutError(TimeoutError):
+    def __init__(self, *, tool_name: str, timeout_seconds: float) -> None:
+        self.tool_name = tool_name
+        self.timeout_seconds = timeout_seconds
+        super().__init__(f"Tool '{tool_name}' timed out after {timeout_seconds:g}s.")
+
+
 def execute_tool_calls(
     tool_calls: list[ToolExecutionInput],
     *,
@@ -133,6 +142,7 @@ def build_tool_error_message(
     tool_name: str,
     args: dict[str, Any],
     error: Exception | str,
+    runtime_info: dict[str, Any] | None = None,
 ) -> ToolMessage:
     payload = {
         "status": "error",
@@ -140,11 +150,12 @@ def build_tool_error_message(
         "args": args,
         "error": str(error),
     }
+    merged_runtime_info = {"cache_hit": False, "fallback_used": False, **dict(runtime_info or {})}
     return _build_tool_message(
         content=json.dumps(payload, ensure_ascii=False),
         tool_call_id=tool_call_id,
         status="error",
-        runtime_info={"cache_hit": False, "fallback_used": False},
+        runtime_info=merged_runtime_info,
     )
 
 
@@ -326,7 +337,7 @@ def _execute_single_untraced(
 
     try:
         _emit_runtime_tool_event(item=item, stage="invoke")
-        observation = item.tool.invoke(item.args)
+        observation = _invoke_tool(item)
         text = str(observation)
         if cache_key and cache_store is not None:
             cache_store.set(cache_key, text)
@@ -348,7 +359,7 @@ def _execute_single_untraced(
             ),
         )
     except Exception as exc:  # noqa: BLE001
-        if item.runtime.fallback_handler is not None:
+        if item.runtime.fallback_handler is not None and not _should_bypass_fallback(exc):
             try:
                 _emit_runtime_tool_event(
                     item=item,
@@ -389,7 +400,12 @@ def _execute_single_untraced(
                     error=str(fallback_exc),
                 )
                 exc = fallback_exc
-        _emit_runtime_tool_event(item=item, stage="error", error=str(exc))
+        _emit_runtime_tool_event(
+            item=item,
+            stage=_error_stage_for_exception(exc),
+            error=str(exc),
+            **_error_event_payload(exc),
+        )
         return ToolExecutionResult(
             index=item.index,
             message=build_tool_error_message(
@@ -397,6 +413,7 @@ def _execute_single_untraced(
                 tool_name=item.tool_name,
                 args=item.args,
                 error=exc,
+                runtime_info=_runtime_info_for_error(exc=exc, parallel_batch_size=parallel_batch_size),
             ),
         )
 
@@ -414,6 +431,90 @@ def _trim_success(
         budget=context_budget,
         max_chars=max_chars,
     )
+
+
+def _invoke_tool(item: ToolExecutionInput) -> Any:
+    timeout_seconds = _effective_timeout_seconds(item.runtime)
+    if timeout_seconds is None:
+        return item.tool.invoke(item.args)
+    return _invoke_tool_with_timeout(item=item, timeout_seconds=timeout_seconds)
+
+
+def _invoke_tool_with_timeout(*, item: ToolExecutionInput, timeout_seconds: float) -> Any:
+    outcome: dict[str, Any] = {}
+    error: dict[str, Exception] = {}
+    ctx = copy_context()
+
+    def _runner() -> None:
+        try:
+            outcome["value"] = ctx.run(item.tool.invoke, item.args)
+        except BaseException as exc:  # noqa: BLE001
+            if isinstance(exc, Exception):
+                error["value"] = exc
+            else:
+                error["value"] = RuntimeError(
+                    f"Tool '{item.tool_name}' aborted with {type(exc).__name__}: {exc}"
+                )
+
+    worker = Thread(
+        target=_runner,
+        name=f"focus-agent-tool-timeout-{item.tool_name}",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise ToolInvocationTimeoutError(
+            tool_name=item.tool_name,
+            timeout_seconds=timeout_seconds,
+        )
+    if "value" in error:
+        raise error["value"]
+    return outcome.get("value")
+
+
+def _effective_timeout_seconds(runtime: ToolRuntimeMeta) -> float | None:
+    if runtime.side_effect:
+        return None
+    if runtime.timeout_seconds is None or runtime.timeout_seconds <= 0:
+        return None
+    return runtime.timeout_seconds
+
+
+def _should_bypass_fallback(error: Exception) -> bool:
+    return isinstance(error, (ToolInvocationTimeoutError, FutureCancelledError))
+
+
+def _error_stage_for_exception(error: Exception) -> str:
+    if isinstance(error, ToolInvocationTimeoutError):
+        return "timeout"
+    if isinstance(error, FutureCancelledError):
+        return "cancelled"
+    return "error"
+
+
+def _error_event_payload(error: Exception) -> dict[str, Any]:
+    if isinstance(error, ToolInvocationTimeoutError):
+        return {"timeout_seconds": error.timeout_seconds}
+    return {}
+
+
+def _runtime_info_for_error(
+    *,
+    exc: Exception,
+    parallel_batch_size: int | None,
+) -> dict[str, Any]:
+    runtime_info: dict[str, Any] = {
+        "cache_hit": False,
+        "fallback_used": False,
+        "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+    }
+    if isinstance(exc, ToolInvocationTimeoutError):
+        runtime_info["timed_out"] = True
+        runtime_info["timeout_seconds"] = exc.timeout_seconds
+    if isinstance(exc, FutureCancelledError):
+        runtime_info["cancelled"] = True
+    return runtime_info
 
 
 def _build_tool_message(

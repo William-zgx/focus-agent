@@ -10,11 +10,13 @@
 - [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md)：完整的本地启动、repo-local PostgreSQL 和开发模式说明
 - [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：开发命令矩阵、验证口径和常见工作流
 - [architecture.md](architecture.md)：当前工程架构、部署方式、持久化与 observability 现状
+- [memory-system.md](memory-system.md)：当前记忆系统设计、生命周期、promotion 语义与后续扩展方向
 - [docker-deployment.md](docker-deployment.md)：本机启动、本地 Docker 联调、生产模板的边界和迁移方式
 - [roadmap.md](roadmap.md)：当前总路线图，只保留仍在推进的主线和下一阶段重点
 
 ## 设计文档
 
+- [memory-system.md](memory-system.md)：记忆系统设计、检索/写入/promotion 规则与测试面
 - [tool-skill-design.md](tool-skill-design.md)：Tool 与 Skill 的职责边界、运行时设计和后续 backlog
 
 ## 运维与发布

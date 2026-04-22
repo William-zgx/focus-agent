@@ -1,6 +1,13 @@
 """Structured memory models plus compatibility exports for legacy helpers."""
 
-from .dedupe import memory_fingerprint, merge_duplicate_records
+from .dedupe import (
+    has_textual_overlap,
+    memory_fingerprint,
+    memory_resolution_key,
+    memory_semantic_key,
+    merge_duplicate_records,
+    user_preference_topic,
+)
 from .assembler import build_memory_blocks, render_memory_block
 from .extractor import MemoryExtractor
 from .models import (
@@ -40,11 +47,15 @@ __all__ = [
     "branch_memory_namespace",
     "main_conversation_namespace",
     "build_memory_blocks",
+    "has_textual_overlap",
     "memory_fingerprint",
+    "memory_resolution_key",
+    "memory_semantic_key",
     "merge_duplicate_records",
     "persist_imported_conclusion",
     "render_memory_block",
     "score_memory_hit",
     "score_memory_importance",
+    "user_preference_topic",
     "user_profile_memory_namespace",
 ]

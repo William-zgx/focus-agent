@@ -72,6 +72,7 @@ docker compose up --build
 
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
+- [记忆系统设计](docs/memory-system.md)
 - [Observability Runbook](docs/observability-runbook.md)
 - [架构说明](docs/architecture.md)
 - [Docker 部署说明](docs/docker-deployment.md)

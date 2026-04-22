@@ -28,14 +28,12 @@ export function ConversationToolbar() {
   const conversations = data?.conversations ?? [];
   const { isChineseUi, setShellStatus } = useShellUi();
   const activeConversations = conversations.filter((conversation) => !conversation.is_archived);
-  const archivedConversations = conversations.filter((conversation) => conversation.is_archived);
 
   const activeConversation = useMemo(
     () =>
-      conversations.find((conversation) => conversation.root_thread_id === conversationId) ??
-      conversations.find((conversation) => !conversation.is_archived) ??
-      conversations[0],
-    [conversationId, conversations],
+      activeConversations.find((conversation) => conversation.root_thread_id === conversationId) ??
+      activeConversations[0],
+    [activeConversations, conversationId],
   );
 
   async function openConversation(rootThreadId: string) {
@@ -60,7 +58,8 @@ export function ConversationToolbar() {
       setShellStatus(
         {
           tone: "warn",
-          text: isChineseUi ? "正在新建对话" : "creating conversation",
+          text: isChineseUi ? "正在创建对话" : "Creating conversation",
+          display: "chat-floating",
         },
         { autoClearMs: 2200 },
       );
@@ -69,7 +68,8 @@ export function ConversationToolbar() {
       setShellStatus(
         {
           tone: "success",
-          text: isChineseUi ? "对话已就绪" : "conversation ready",
+          text: isChineseUi ? "对话已创建" : "Conversation created",
+          display: "chat-floating",
         },
         { autoClearMs: 2200 },
       );
@@ -89,7 +89,8 @@ export function ConversationToolbar() {
       setShellStatus(
         {
           tone: "warn",
-          text: isChineseUi ? "正在重命名对话" : "renaming conversation",
+          text: isChineseUi ? "正在重命名对话" : "Renaming conversation",
+          display: "chat-floating",
         },
         { autoClearMs: 2200 },
       );
@@ -97,7 +98,8 @@ export function ConversationToolbar() {
       setShellStatus(
         {
           tone: "success",
-          text: isChineseUi ? "对话已就绪" : "conversation ready",
+          text: isChineseUi ? "对话已重命名" : "Conversation renamed",
+          display: "chat-floating",
         },
         { autoClearMs: 2200 },
       );
@@ -113,7 +115,8 @@ export function ConversationToolbar() {
         setShellStatus(
           {
             tone: "warn",
-            text: isChineseUi ? "正在恢复对话" : "activating conversation",
+            text: isChineseUi ? "正在恢复对话" : "Restoring conversation",
+            display: "chat-floating",
           },
           { autoClearMs: 2200 },
         );
@@ -121,7 +124,8 @@ export function ConversationToolbar() {
         setShellStatus(
           {
             tone: "success",
-            text: isChineseUi ? "对话已就绪" : "conversation ready",
+            text: isChineseUi ? "对话已恢复" : "Conversation restored",
+            display: "chat-floating",
           },
           { autoClearMs: 2200 },
         );
@@ -129,7 +133,8 @@ export function ConversationToolbar() {
         setShellStatus(
           {
             tone: "warn",
-            text: isChineseUi ? "正在归档对话" : "archiving conversation",
+            text: isChineseUi ? "正在归档对话" : "Archiving conversation",
+            display: "chat-floating",
           },
           { autoClearMs: 2200 },
         );
@@ -147,7 +152,8 @@ export function ConversationToolbar() {
         setShellStatus(
           {
             tone: "success",
-            text: isChineseUi ? "对话已归档" : "conversation archived",
+            text: isChineseUi ? "对话已归档" : "Conversation archived",
+            display: "chat-floating",
           },
           { autoClearMs: 2200 },
         );
@@ -167,7 +173,7 @@ export function ConversationToolbar() {
         <select
           aria-label={isChineseUi ? "对话" : "Conversation"}
           className="fa-conversation-select"
-          disabled={isLoading || isWorking || conversations.length === 0}
+          disabled={isLoading || isWorking || activeConversations.length === 0}
           onChange={(event) => void handleSelectChange(event)}
           value={activeConversation?.root_thread_id ?? ""}
         >
@@ -180,15 +186,6 @@ export function ConversationToolbar() {
                 </option>
               ))
             : null}
-          {!isLoading && archivedConversations.length ? (
-            <optgroup label={isChineseUi ? "已归档对话" : "Archived conversations"}>
-              {archivedConversations.map((conversation) => (
-                <option key={conversation.root_thread_id} value={conversation.root_thread_id}>
-                  {conversation.title}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
         </select>
       </label>
 

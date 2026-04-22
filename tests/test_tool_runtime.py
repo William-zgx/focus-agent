@@ -1,4 +1,5 @@
 import json
+import time
 
 from langchain.tools import tool
 
@@ -367,3 +368,96 @@ def test_tool_runtime_side_effect_invalidates_named_cache_namespaces():
     )
 
     assert read_count == 2
+
+
+def test_tool_runtime_times_out_read_only_tool_without_fallback_or_cache():
+    fallback_count = 0
+
+    @tool
+    def slow_lookup(name: str) -> str:
+        """Slow read-only lookup."""
+        time.sleep(0.2)
+        return f"value:{name}"
+
+    def _fallback_handler(_error: Exception, args: dict[str, object]) -> str:
+        nonlocal fallback_count
+        fallback_count += 1
+        return f"fallback:{args['name']}"
+
+    slow_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+        "timeout_seconds": 0.05,
+        "fallback_group": "lookup",
+        "fallback_handler": _fallback_handler,
+    }
+
+    cache_store = ToolResultCacheStore()
+
+    started = time.perf_counter()
+    result = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="call-timeout",
+                tool_name="slow_lookup",
+                args={"name": "alpha"},
+                tool=slow_lookup,
+                runtime=ToolRuntimeMeta.from_tool(slow_lookup),
+            )
+        ],
+        context_budget=ContextBudget(),
+        cache_store=cache_store,
+        cache_scope_keys={0: "thread:test"},
+    )[0]
+    elapsed = time.perf_counter() - started
+
+    payload = json.loads(result.message.content)
+
+    assert elapsed < 0.16
+    assert result.message.status == "error"
+    assert "timed out" in payload["error"]
+    assert fallback_count == 0
+    assert cache_store.thread == {}
+    assert result.message.artifact["runtime"]["timed_out"] is True
+    assert result.message.artifact["runtime"]["timeout_seconds"] == 0.05
+    assert result.message.artifact["runtime"]["fallback_used"] is False
+
+
+def test_tool_runtime_does_not_apply_runtime_timeout_to_side_effect_tools():
+    writes: list[str] = []
+
+    @tool
+    def write_lookup(name: str) -> str:
+        """Side-effect tool that should not be detached on timeout."""
+        time.sleep(0.08)
+        writes.append(name)
+        return f"wrote:{name}"
+
+    write_lookup.metadata = {
+        "side_effect": True,
+        "timeout_seconds": 0.01,
+    }
+
+    started = time.perf_counter()
+    result = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="write-timeout",
+                tool_name="write_lookup",
+                args={"name": "alpha"},
+                tool=write_lookup,
+                runtime=ToolRuntimeMeta.from_tool(write_lookup),
+            )
+        ],
+        context_budget=ContextBudget(),
+        cache_store=ToolResultCacheStore(),
+    )[0]
+    elapsed = time.perf_counter() - started
+
+    assert elapsed >= 0.06
+    assert result.message.status == "success"
+    assert result.message.content == "wrote:alpha"
+    assert writes == ["alpha"]

@@ -20,6 +20,7 @@ class ToolRuntimeMeta:
     parallel_safe: bool = False
     cacheable: bool = False
     cache_scope: str = "thread"
+    timeout_seconds: float | None = None
     fallback_group: str | None = None
     fallback_handler: ToolFallbackHandler | None = None
     max_observation_chars: int | None = None
@@ -35,6 +36,11 @@ class ToolRuntimeMeta:
             parallel_safe=bool(metadata.get("parallel_safe", False)),
             cacheable=bool(metadata.get("cacheable", False)),
             cache_scope=str(metadata.get("cache_scope") or "thread"),
+            timeout_seconds=(
+                float(metadata["timeout_seconds"])
+                if metadata.get("timeout_seconds") is not None
+                else None
+            ),
             fallback_group=(
                 str(metadata["fallback_group"])
                 if metadata.get("fallback_group")

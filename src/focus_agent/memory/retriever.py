@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import re
+
 from ..core.request_context import RequestContext
-from ..core.types import PromptMode
+from ..core.types import Plan, PromptMode
+from ..core.types import FindingItem
+from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
     MemoryRecord,
+    MemoryScope,
     MemorySearchHit,
+    MemoryVisibility,
     RetrievedMemoryBundle,
 )
 from .policy import MemoryPolicy
@@ -25,15 +31,19 @@ class MemoryRetriever:
         query: str,
         prompt_mode: PromptMode,
     ) -> RetrievedMemoryBundle:
-        del state
+        effective_query = _build_retrieval_query(
+            query=query,
+            state=state,
+            prompt_mode=prompt_mode,
+        )
         namespaces = self._candidate_namespaces(context=context)
         hits: list[MemorySearchHit] = []
         for namespace in namespaces:
-            hits.extend(self._search_namespace(namespace, query, limit=self.default_limit))
-        reranked = self._rerank_hits(hits, query=query, prompt_mode=prompt_mode)
+            hits.extend(self._search_namespace(namespace, effective_query, limit=self.default_limit))
+        reranked = self._rerank_hits(hits, query=effective_query, prompt_mode=prompt_mode)
         deduped = self._dedupe_hits(reranked)
         bundle = RetrievedMemoryBundle(
-            query=query,
+            query=effective_query,
             hits=deduped[: self.default_limit],
             namespaces=namespaces,
             total_hits=len(deduped),
@@ -70,6 +80,7 @@ class MemoryRetriever:
                 "importance": value.get("importance", 0.5),
                 "promoted_to_main": value.get("promoted_to_main", False),
                 "fingerprint": value.get("fingerprint"),
+                "semantic_key": value.get("semantic_key"),
             }
             created_at = value.get("created_at")
             updated_at = value.get("updated_at")
@@ -96,17 +107,102 @@ class MemoryRetriever:
         return sorted(reranked, key=lambda item: item.score, reverse=True)
 
     def _dedupe_hits(self, hits: list[MemorySearchHit]) -> list[MemorySearchHit]:
-        deduped: list[MemorySearchHit] = []
-        seen: set[str] = set()
+        deduped_by_key: dict[str, MemorySearchHit] = {}
         for hit in hits:
-            fingerprint = hit.record.fingerprint or f"{hit.record.kind.value}:{hit.record.summary}:{hit.record.content}"
-            if fingerprint in seen:
-                continue
-            seen.add(fingerprint)
-            deduped.append(hit)
-        return deduped
+            resolution_key = memory_resolution_key(
+                hit.record.model_copy(
+                    update={
+                        "semantic_key": hit.record.semantic_key or memory_semantic_key(hit.record),
+                    }
+                )
+            )
+            current = deduped_by_key.get(resolution_key)
+            if current is None or _hit_preference(hit) > _hit_preference(current):
+                deduped_by_key[resolution_key] = hit
+        return sorted(deduped_by_key.values(), key=lambda item: item.score, reverse=True)
 
 
 def _matched_terms(query: str, record: MemoryRecord) -> list[str]:
     haystack = f"{record.summary} {record.content}".casefold()
-    return [term for term in query.split() if term and term.casefold() in haystack]
+    terms = []
+    for term in _query_terms(query):
+        if term.casefold() in haystack and term not in terms:
+            terms.append(term)
+    return terms
+
+
+def _hit_preference(hit: MemorySearchHit) -> tuple[float, ...]:
+    record = hit.record
+    return (
+        1.0 if record.promoted_to_main else 0.0,
+        1.0 if record.visibility == MemoryVisibility.SHARED else 0.0,
+        1.0 if record.scope == MemoryScope.ROOT_THREAD else 0.0,
+        float(record.confidence or 0.0),
+        record.importance,
+        float(len(record.evidence_refs)),
+        record.updated_at.timestamp(),
+        hit.score,
+    )
+
+
+def _build_retrieval_query(*, query: str, state: dict, prompt_mode: PromptMode) -> str:
+    parts: list[str] = []
+    for candidate in (
+        str(query or "").strip(),
+        str(state.get("active_goal") or "").strip(),
+        str(state.get("task_brief") or "").strip(),
+        _current_plan_step_goal(state),
+    ):
+        if not candidate:
+            continue
+        normalized = " ".join(candidate.split())
+        if normalized and normalized not in parts:
+            parts.append(normalized)
+
+    if prompt_mode == PromptMode.SYNTHESIZE:
+        imported_lines = []
+        for item in list(state.get("imported_findings", []) or [])[:2]:
+            if isinstance(item, FindingItem):
+                line = item.finding.strip()
+            elif isinstance(item, dict):
+                line = str(item.get("finding") or item.get("summary") or "").strip()
+            else:
+                line = str(item or "").strip()
+            if line:
+                imported_lines.append(line)
+        for line in imported_lines:
+            if line and line not in parts:
+                parts.append(line)
+
+    combined = " | ".join(parts)
+    return combined[:240]
+
+
+def _current_plan_step_goal(state: dict) -> str:
+    plan = state.get("plan")
+    current_step_id = str(state.get("current_step_id") or "").strip()
+    if not isinstance(plan, Plan) or not current_step_id:
+        return ""
+    for step in plan.steps:
+        if step.id == current_step_id:
+            return str(step.goal or "").strip()
+    return ""
+
+
+def _query_terms(query: str) -> list[str]:
+    lowered = str(query or "").casefold()
+    terms: list[str] = []
+    for token in re.findall(r"[a-z0-9]{2,}", lowered):
+        if token not in terms:
+            terms.append(token)
+    for sequence in re.findall(r"[\u4e00-\u9fff]+", str(query or "")):
+        compact = "".join(sequence.split())
+        if len(compact) <= 2:
+            if compact and compact not in terms:
+                terms.append(compact)
+            continue
+        for index in range(len(compact) - 1):
+            token = compact[index : index + 2]
+            if token not in terms:
+                terms.append(token)
+    return terms

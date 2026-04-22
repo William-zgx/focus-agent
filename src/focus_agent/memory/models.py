@@ -58,6 +58,7 @@ class MemoryRecord(MemoryModel):
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
     promoted_to_main: bool = False
     fingerprint: str | None = None
+    semantic_key: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -93,6 +94,7 @@ class MemoryWriteRequest(MemoryModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
     promoted_to_main: bool = False
+    semantic_key: str | None = None
 
 
 class MemoryExtractionResult(MemoryModel):

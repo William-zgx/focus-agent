@@ -21,6 +21,7 @@ import { useThreadState } from "@/features/thread/use-thread-state";
 import {
   type ColorPreference,
   type LanguagePreference,
+  type MergeProposalGenerationState,
   ShellUiProvider,
   type ThemePreference,
   useTransientShellStatus,
@@ -200,9 +201,7 @@ export function AppShell({ children }: PropsWithChildren) {
     DEFAULT_COLOR_PREFERENCE,
   );
   const [branchCreateBusy, setBranchCreateBusy] = useState(false);
-  const [mergeProposalGeneration, setMergeProposalGeneration] = useState<
-    Record<string, { status: "preparing" | "failed"; error?: string }>
-  >({});
+  const [mergeProposalGeneration, setMergeProposalGeneration] = useState<Record<string, MergeProposalGenerationState>>({});
   const [shellStatus, setShellStatus] = useTransientShellStatus();
   const [tooltipState, setTooltipState] = useState<{
     text: string;
@@ -213,6 +212,7 @@ export function AppShell({ children }: PropsWithChildren) {
     top: number;
   } | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const mergeProposalStatusTimersRef = useRef<Record<string, number>>({});
   const resizeSessionRef = useRef<{
     pointerId: number;
     startX: number;
@@ -226,6 +226,28 @@ export function AppShell({ children }: PropsWithChildren) {
   const isChineseUi = languagePreference === "zh";
   const isDiagnosticsRoute = isTrajectoryRoute;
   const shellSidebarCollapsed = sidebarCollapsed || isDiagnosticsRoute;
+  const currentMergeProposalState = threadId ? mergeProposalGeneration[threadId] : null;
+  const currentPreparingMergeProposal =
+    currentMergeProposalState?.status === "preparing"
+      ? {
+          tone: "warn" as const,
+          text: isChineseUi ? "正在生成结论" : "Generating conclusion",
+        }
+      : null;
+  const currentMergeProposalStatus =
+    currentMergeProposalState?.status === "ready" && currentMergeProposalState.showFloating
+      ? {
+          tone: "success" as const,
+          text: isChineseUi ? "结论已生成" : "Conclusion generated",
+        }
+      : currentMergeProposalState?.status === "failed" && currentMergeProposalState.showFloating
+        ? {
+            tone: "danger" as const,
+            text:
+              currentMergeProposalState.error ||
+              (isChineseUi ? "生成结论失败，请重新生成" : "Failed to generate conclusion. Please regenerate."),
+          }
+        : null;
 
   useEffect(() => {
     const urlLanguage = new URLSearchParams(window.location.search).get("lang");
@@ -263,6 +285,15 @@ export function AppShell({ children }: PropsWithChildren) {
     ) {
       setColorPreference(savedColor);
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(mergeProposalStatusTimersRef.current)) {
+        window.clearTimeout(timer);
+      }
+      mergeProposalStatusTimersRef.current = {};
+    };
   }, []);
 
   useEffect(() => {
@@ -558,10 +589,9 @@ export function AppShell({ children }: PropsWithChildren) {
       setShellStatus(
         {
           tone: "warn",
-          text: languagePreference === "zh" ? "创建分支中" : "Creating branch",
+          text: languagePreference === "zh" ? "正在创建分支" : "Creating branch",
           display: "chat-floating",
         },
-        { autoClearMs: 2400 },
       );
       const record = await forkBranch({
         parentThreadId,
@@ -602,28 +632,64 @@ export function AppShell({ children }: PropsWithChildren) {
 
   function markMergeProposalPreparing(targetThreadId: string) {
     if (!targetThreadId) return;
+    const existingTimer = mergeProposalStatusTimersRef.current[targetThreadId];
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+      delete mergeProposalStatusTimersRef.current[targetThreadId];
+    }
     setMergeProposalGeneration((current) => ({
       ...current,
-      [targetThreadId]: { status: "preparing" },
+      [targetThreadId]: { status: "preparing", showFloating: true },
     }));
   }
 
   function markMergeProposalReady(targetThreadId: string) {
     if (!targetThreadId) return;
-    setMergeProposalGeneration((current) => {
-      if (!current[targetThreadId]) return current;
-      const next = { ...current };
-      delete next[targetThreadId];
-      return next;
-    });
+    const existingTimer = mergeProposalStatusTimersRef.current[targetThreadId];
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+    }
+    setMergeProposalGeneration((current) => ({
+      ...current,
+      [targetThreadId]: { status: "ready", showFloating: true },
+    }));
+    mergeProposalStatusTimersRef.current[targetThreadId] = window.setTimeout(() => {
+      setMergeProposalGeneration((current) => {
+        if (!current[targetThreadId] || current[targetThreadId].status !== "ready") {
+          return current;
+        }
+        const next = { ...current };
+        delete next[targetThreadId];
+        return next;
+      });
+      delete mergeProposalStatusTimersRef.current[targetThreadId];
+    }, 2600);
   }
 
   function markMergeProposalFailed(targetThreadId: string, error: string) {
     if (!targetThreadId) return;
+    const existingTimer = mergeProposalStatusTimersRef.current[targetThreadId];
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+      delete mergeProposalStatusTimersRef.current[targetThreadId];
+    }
     setMergeProposalGeneration((current) => ({
       ...current,
-      [targetThreadId]: { status: "failed", error },
+      [targetThreadId]: { status: "failed", error, showFloating: true },
     }));
+    mergeProposalStatusTimersRef.current[targetThreadId] = window.setTimeout(() => {
+      setMergeProposalGeneration((current) => {
+        const existing = current[targetThreadId];
+        if (!existing || existing.status !== "failed" || !existing.showFloating) {
+          return current;
+        }
+        return {
+          ...current,
+          [targetThreadId]: { ...existing, showFloating: false },
+        };
+      });
+      delete mergeProposalStatusTimersRef.current[targetThreadId];
+    }, 2600);
   }
 
   function isMergeProposalPreparing(targetThreadId: string) {
@@ -843,7 +909,13 @@ export function AppShell({ children }: PropsWithChildren) {
             ) : null}
           </section> : null}
 
-          {shellStatus?.display === "chat-floating" ? (
+          {currentMergeProposalStatus ? (
+            <div className={`fa-shell-status-float is-${currentMergeProposalStatus.tone}`}>
+              {currentMergeProposalStatus.text}
+            </div>
+          ) : null}
+
+          {shellStatus?.display === "chat-floating" && !currentMergeProposalStatus ? (
             <div className={`fa-shell-status-float is-${shellStatus.tone}`}>{shellStatus.text}</div>
           ) : null}
 

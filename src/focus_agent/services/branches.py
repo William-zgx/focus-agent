@@ -24,9 +24,9 @@ from ..core.merge_review import generate_merge_proposal
 from ..core.request_context import RequestContext
 from ..core.types import ConversationRecord, FindingItem
 from ..memory import MemoryWriter
+from ..memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
 from ..model_registry import create_chat_model
 from ..repositories.branch_repository import BranchRepository
-from ..storage.import_memory import persist_imported_conclusion
 from ..storage.namespaces import branch_namespace, conversation_main_namespace
 from ..config import Settings
 
@@ -280,27 +280,141 @@ class BranchService:
             raise ValueError('Merge proposal summary cannot be empty.')
         return merged
 
+    @staticmethod
+    def _filter_merge_importable_findings(findings: list[object]) -> list[FindingItem]:
+        promotable: list[FindingItem] = []
+        for finding in findings:
+            item = BranchService._coerce_finding_item(finding)
+            if item.merge_importable:
+                promotable.append(item)
+        return promotable
+
+    @staticmethod
+    def _main_memory_audit_tags(
+        *,
+        branch_record: BranchRecord,
+        memory_kind: str,
+        extra_tags: list[str] | None = None,
+    ) -> list[str]:
+        tags = [
+            "audit:branch_merge_promotion",
+            "target:conversation_main",
+            f"kind:{memory_kind}",
+            f"branch:{branch_record.branch_id}",
+            f"role:{branch_record.branch_role.value}",
+        ]
+        for tag in extra_tags or []:
+            value = str(tag).strip()
+            if value:
+                tags.append(value)
+        return tags
+
+    def _write_imported_conclusion_to_main_memory(
+        self,
+        *,
+        branch_record: BranchRecord,
+        context: RequestContext,
+        imported: ImportedConclusion,
+    ) -> str | None:
+        if self.store is None:
+            return None
+        namespace = conversation_main_namespace(branch_record.root_thread_id)
+        tags = self._main_memory_audit_tags(
+            branch_record=branch_record,
+            memory_kind=MemoryKind.IMPORTED_CONCLUSION.value,
+            extra_tags=[branch_record.branch_name, f"mode:{imported.mode.value}"],
+        )
+        source_thread_id = context.parent_thread_id or context.root_thread_id
+        memory_writer = getattr(self, "memory_writer", None)
+        if memory_writer is not None:
+            records = [
+                MemoryWriteRequest(
+                    kind=MemoryKind.IMPORTED_CONCLUSION,
+                    scope=MemoryScope.ROOT_THREAD,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=namespace,
+                    content=imported.summary,
+                    summary=imported.summary,
+                    tags=tags,
+                    evidence_refs=imported.evidence_refs,
+                    source_thread_id=source_thread_id,
+                    source_branch_id=imported.branch_id,
+                    root_thread_id=context.root_thread_id,
+                    user_id=context.user_id,
+                    promoted_to_main=True,
+                )
+            ]
+            keys = memory_writer.write_records(records)
+            return keys[0] if keys else None
+
+        key = str(uuid.uuid4())
+        self.store.put(
+            namespace,
+            key,
+            {
+                "type": "imported_conclusion",
+                "branch_id": imported.branch_id,
+                "branch_name": imported.branch_name,
+                "mode": imported.mode.value,
+                "summary": imported.summary,
+                "key_findings": imported.key_findings,
+                "evidence_refs": imported.evidence_refs,
+                "artifacts": imported.artifacts,
+                "tags": tags,
+                "promoted_to_main": True,
+                "source_thread_id": source_thread_id,
+                "source_branch_id": imported.branch_id,
+                "root_thread_id": context.root_thread_id,
+                "user_id": context.user_id,
+            },
+        )
+        return key
+
     def promote_branch_findings_to_main_memory(
         self,
         *,
         branch_record: BranchRecord,
         findings: list[object],
+        memory_context: RequestContext | None = None,
     ) -> list[str]:
         if self.store is None:
             return []
-        context = self._build_branch_request_context(branch_record)
+        promotable_findings = self._filter_merge_importable_findings(findings)
+        if not promotable_findings:
+            return []
+        context = memory_context or self._build_branch_request_context(branch_record)
+        namespace = conversation_main_namespace(branch_record.root_thread_id)
+        tags = self._main_memory_audit_tags(
+            branch_record=branch_record,
+            memory_kind=MemoryKind.BRANCH_FINDING.value,
+            extra_tags=[branch_record.branch_name, "filter:merge_importable"],
+        )
+        source_thread_id = context.parent_thread_id or context.root_thread_id
         memory_writer = getattr(self, "memory_writer", None)
         if memory_writer is not None:
-            return memory_writer.promote_branch_findings(
-                context=context,
-                branch_id=branch_record.branch_id,
-                findings=[self._coerce_finding_item(finding) for finding in findings],
-            )
+            records = [
+                MemoryWriteRequest(
+                    kind=MemoryKind.BRANCH_FINDING,
+                    scope=MemoryScope.ROOT_THREAD,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=namespace,
+                    content=item.finding,
+                    summary=item.finding,
+                    tags=list(tags),
+                    evidence_refs=item.evidence_refs,
+                    source_thread_id=source_thread_id,
+                    source_branch_id=branch_record.branch_id,
+                    root_thread_id=context.root_thread_id,
+                    user_id=context.user_id,
+                    confidence=item.confidence,
+                    promoted_to_main=True,
+                )
+                for item in promotable_findings
+            ]
+            return memory_writer.write_records(records)
 
-        namespace = conversation_main_namespace(branch_record.root_thread_id)
         keys: list[str] = []
-        for finding in findings:
-            item = self._coerce_finding_item(finding)
+        for item in promotable_findings:
             key = str(uuid.uuid4())
             self.store.put(
                 namespace,
@@ -312,6 +426,13 @@ class BranchService:
                     "summary": item.finding,
                     "evidence_refs": item.evidence_refs,
                     "confidence": item.confidence,
+                    "merge_importable": item.merge_importable,
+                    "tags": list(tags),
+                    "promoted_to_main": True,
+                    "source_thread_id": source_thread_id,
+                    "source_branch_id": branch_record.branch_id,
+                    "root_thread_id": context.root_thread_id,
+                    "user_id": context.user_id,
                 },
             )
             keys.append(key)
@@ -1202,14 +1323,15 @@ class BranchService:
                 branch_id=branch_record.branch_id,
                 branch_role=branch_record.branch_role.value,
             )
-            memory_writer = getattr(self, "memory_writer", None)
-            if memory_writer is not None:
-                memory_writer.write_imported_conclusion(context=memory_context, imported=imported)
-            else:
-                persist_imported_conclusion(self.store, memory_context, imported)
+            self._write_imported_conclusion_to_main_memory(
+                branch_record=branch_record,
+                context=memory_context,
+                imported=imported,
+            )
             self.promote_branch_findings_to_main_memory(
                 branch_record=branch_record,
                 findings=list(values.get('branch_local_findings', [])),
+                memory_context=memory_context,
             )
         self.repo.update_status(branch_record.branch_id, BranchStatus.MERGED)
         merged_record = self.repo.get(branch_record.branch_id)

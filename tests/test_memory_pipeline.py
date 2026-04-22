@@ -11,6 +11,7 @@ from focus_agent.memory import MemoryRecord, MemorySearchHit, MemoryWriter, Retr
 from focus_agent.memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
 from focus_agent.storage.namespaces import (
     branch_local_memory_namespace,
+    project_memory_namespace,
     root_thread_episodic_namespace,
     user_profile_namespace,
 )
@@ -47,6 +48,69 @@ def test_render_memory_block_fences_and_sanitizes_injected_content():
     assert "[filtered]" in rendered
 
 
+def test_render_memory_block_groups_sections_by_memory_role():
+    bundle = RetrievedMemoryBundle(
+        query="owner",
+        hits=[
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-user",
+                    kind=MemoryKind.USER_PREFERENCE,
+                    scope=MemoryScope.USER,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=user_profile_namespace("user-1"),
+                    content="请用英文回答。",
+                    summary="请用英文回答。",
+                    user_id="user-1",
+                ),
+                score=0.9,
+                namespace=user_profile_namespace("user-1"),
+            ),
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-branch",
+                    kind=MemoryKind.BRANCH_FINDING,
+                    scope=MemoryScope.BRANCH,
+                    visibility=MemoryVisibility.PROMOTABLE,
+                    namespace=branch_local_memory_namespace("root-1", "branch-1"),
+                    content="发现 owner 字段首次加载会丢失。",
+                    summary="owner 字段首次加载丢失",
+                    root_thread_id="root-1",
+                    source_branch_id="branch-1",
+                ),
+                score=0.88,
+                namespace=branch_local_memory_namespace("root-1", "branch-1"),
+            ),
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-main",
+                    kind=MemoryKind.IMPORTED_CONCLUSION,
+                    scope=MemoryScope.ROOT_THREAD,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=("conversation", "root-1", "main"),
+                    content="owner 丢失问题已经确认可以进入主线。",
+                    summary="owner 丢失问题进入主线",
+                    root_thread_id="root-1",
+                    promoted_to_main=True,
+                ),
+                score=0.87,
+                namespace=("conversation", "root-1", "main"),
+            ),
+        ],
+        namespaces=[],
+        total_hits=3,
+    )
+
+    rendered = render_memory_block(bundle)
+
+    assert "## User preferences and profile" in rendered
+    assert "## Approved findings already safe to rely on" in rendered
+    assert "## Branch-local findings pending upstream approval" in rendered
+    assert "请用英文回答。" in rendered
+    assert "owner 丢失问题进入主线" in rendered
+    assert "owner 字段首次加载丢失" in rendered
+
+
 def test_memory_writer_merges_duplicate_records(tmp_path):
     store = PersistentInMemoryStore(tmp_path / "memory-store.pkl")
     writer = MemoryWriter(store=store)
@@ -70,6 +134,123 @@ def test_memory_writer_merges_duplicate_records(tmp_path):
     assert len(first["written"]) == 1
     assert len(second["merged"]) == 1
     assert len(hits) == 1
+
+
+def test_memory_writer_keeps_distinct_user_preferences_separate():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    state = {"messages": [AIMessage(content="偏好已更新。")]}
+    namespace = user_profile_namespace("user-1")
+
+    first = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="回答里不要使用 emoji。",
+        summary="不要 emoji",
+        user_id="user-1",
+        importance=0.8,
+    )
+    second = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="请用英文回答。",
+        summary="请用英文回答。",
+        user_id="user-1",
+        importance=0.8,
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert len(outcome["written"]) == 1
+    assert outcome["merged"] == []
+    assert outcome["skipped"] == []
+    assert len(store.data[namespace]) == 2
+
+
+def test_memory_writer_replaces_user_preference_with_same_topic():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    state = {"messages": [AIMessage(content="偏好已更新。")]}
+    namespace = user_profile_namespace("user-1")
+
+    first = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="请用中文回答。",
+        summary="请用中文回答。",
+        user_id="user-1",
+        importance=0.8,
+    )
+    second = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="请用英文回答。",
+        summary="请用英文回答。",
+        user_id="user-1",
+        importance=0.8,
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert outcome["written"] == []
+    assert len(outcome["merged"]) == 1
+    assert outcome["skipped"] == []
+    assert len(store.data[namespace]) == 1
+    payload = next(iter(store.data[namespace].values()))
+    assert payload["content"] == "请用英文回答。"
+    assert payload["summary"] == "请用英文回答。"
+
+
+def test_memory_writer_replaces_project_fact_when_incoming_is_correction():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1", project_id="proj-1")
+    state = {"messages": [AIMessage(content="项目约定已更新。")]}
+    namespace = project_memory_namespace("proj-1")
+
+    first = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="默认输出语言是中文。",
+        summary="默认输出语言是中文。",
+        user_id="user-1",
+        root_thread_id="thread-1",
+        importance=0.75,
+    )
+    second = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="更正：默认输出语言改为英文。",
+        summary="默认输出语言改为英文。",
+        user_id="user-1",
+        root_thread_id="thread-1",
+        importance=0.75,
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert outcome["written"] == []
+    assert len(outcome["merged"]) == 1
+    payload = next(iter(store.data[namespace].values()))
+    assert payload["content"] == "更正：默认输出语言改为英文。"
+    assert payload["summary"] == "默认输出语言改为英文。"
 
 
 def test_graph_extracts_and_writes_user_memory(monkeypatch, tmp_path):

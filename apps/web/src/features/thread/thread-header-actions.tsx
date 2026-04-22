@@ -280,7 +280,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
         setShellStatus(
           {
             tone: "success",
-            text: isChineseUi ? "已返回线程" : "thread ready",
+            text: isChineseUi ? "已返回线程" : "Returned to thread",
           },
           { autoClearMs: 2200 },
         );
@@ -293,21 +293,9 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
       if (statusNeedsProposal(branchMeta.branch_status)) {
         didStartGeneration = true;
         markMergeProposalPreparing(threadId);
-        setShellStatus(
-          {
-            tone: "warn",
-            text: isChineseUi ? "生成结论中" : "Generating conclusion",
-          },
-        );
+        setShellStatus(null);
         await prepareMergeProposal(threadId);
         markMergeProposalReady(threadId);
-        setShellStatus(
-          {
-            tone: "success",
-            text: isChineseUi ? "结论已生成，可点击合并结论" : "Conclusion ready. Click Merge conclusion.",
-          },
-          { autoClearMs: 2600 },
-        );
       }
     } catch (error) {
       const message =
@@ -319,7 +307,6 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
       if (didStartGeneration) {
         markMergeProposalFailed(threadId, message);
       }
-      setShellStatus({ tone: "danger", text: message });
     } finally {
       setIsWorking(false);
     }

@@ -18,6 +18,7 @@ from focus_agent.core.branching import (
 )
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import FindingItem
+from focus_agent.memory.models import MemoryKind, MemoryScope, MemoryWriteRequest
 from focus_agent.services.branches import BranchService
 from focus_agent.config import Settings
 
@@ -91,20 +92,26 @@ class FakeGraph:
 class FakeMemoryWriter:
     def __init__(self):
         self.branch_writes: list[tuple[RequestContext, str, list[FindingItem]]] = []
-        self.imported_conclusions: list[tuple[RequestContext, object]] = []
-        self.promoted_findings: list[tuple[RequestContext, str, list[FindingItem]]] = []
+        self.imported_conclusions: list[MemoryWriteRequest] = []
+        self.promoted_findings: list[MemoryWriteRequest] = []
+        self.records: list[MemoryWriteRequest] = []
 
     def write_branch_findings(self, *, context: RequestContext, branch_name: str, findings: list[FindingItem]) -> list[str]:
         self.branch_writes.append((context, branch_name, findings))
         return ["branch-memory-1"]
 
-    def write_imported_conclusion(self, *, context: RequestContext, imported) -> str:
-        self.imported_conclusions.append((context, imported))
-        return "imported-1"
-
-    def promote_branch_findings(self, *, context: RequestContext, branch_id: str, findings: list[FindingItem]) -> list[str]:
-        self.promoted_findings.append((context, branch_id, findings))
-        return ["promoted-1"]
+    def write_records(self, records: list[MemoryWriteRequest]) -> list[str]:
+        start = len(self.records)
+        keys: list[str] = []
+        for index, record in enumerate(records, start=1):
+            stored = record.model_copy(deep=True)
+            self.records.append(stored)
+            if stored.kind == MemoryKind.IMPORTED_CONCLUSION:
+                self.imported_conclusions.append(stored)
+            elif stored.kind == MemoryKind.BRANCH_FINDING and stored.scope == MemoryScope.ROOT_THREAD:
+                self.promoted_findings.append(stored)
+            keys.append(f"memory-{start + index}")
+        return keys
 
 
 def _make_record(
@@ -324,7 +331,14 @@ def test_apply_merge_decision_promotes_only_when_returning_to_root_main():
         {
             record.child_thread_id: {
                 "merge_proposal": proposal.model_dump(mode="json"),
-                "branch_local_findings": [FindingItem(finding="Finding A", evidence_refs=["doc-1"])],
+                "branch_local_findings": [
+                    FindingItem(finding="Finding A", evidence_refs=["doc-1"]),
+                    FindingItem(
+                        finding="Do not promote me",
+                        evidence_refs=["doc-2"],
+                        merge_importable=False,
+                    ),
+                ],
             },
             "root-1": {},
         }
@@ -351,8 +365,27 @@ def test_apply_merge_decision_promotes_only_when_returning_to_root_main():
     assert update_values["merge_queue"][0]["summary"] == "Bring this back"
     assert update_values["imported_findings"][0]["finding"] == "Finding A"
     assert update_values["imported_findings"][0]["evidence_refs"] == ["doc-1"]
-    assert service.memory_writer.imported_conclusions
-    assert service.memory_writer.promoted_findings
+    assert len(service.memory_writer.imported_conclusions) == 1
+    imported_record = service.memory_writer.imported_conclusions[0]
+    assert imported_record.summary == "Bring this back"
+    assert imported_record.promoted_to_main is True
+    assert {
+        "audit:branch_merge_promotion",
+        "target:conversation_main",
+        "kind:imported_conclusion",
+        "mode:summary_plus_evidence",
+    }.issubset(set(imported_record.tags))
+    assert len(service.memory_writer.promoted_findings) == 1
+    promoted_record = service.memory_writer.promoted_findings[0]
+    assert promoted_record.summary == "Finding A"
+    assert promoted_record.evidence_refs == ["doc-1"]
+    assert promoted_record.promoted_to_main is True
+    assert {
+        "audit:branch_merge_promotion",
+        "target:conversation_main",
+        "kind:branch_finding",
+        "filter:merge_importable",
+    }.issubset(set(promoted_record.tags))
 
 
 def test_apply_merge_decision_to_nested_parent_does_not_promote_root_memory():
@@ -488,5 +521,6 @@ def test_apply_merge_decision_can_target_root_main_from_nested_branch():
     assert update_values["merge_queue"][0]["summary"] == "Promote this straight to main"
     assert update_values["imported_findings"][0]["finding"] == "Root finding"
     assert update_values["imported_findings"][0]["evidence_refs"] == ["note-3"]
-    assert service.memory_writer.imported_conclusions
-    assert service.memory_writer.promoted_findings
+    assert len(service.memory_writer.imported_conclusions) == 1
+    assert len(service.memory_writer.promoted_findings) == 1
+    assert service.memory_writer.promoted_findings[0].source_thread_id == "root-1"

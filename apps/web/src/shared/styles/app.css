@@ -2324,6 +2324,41 @@ body.fa-is-resizing {
   text-transform: uppercase;
 }
 
+.fa-tree-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fa-tree-section-title-group {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.fa-tree-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 74%, var(--fa-panel-2) 26%);
+  background: color-mix(in srgb, var(--fa-panel-2) 92%, white 8%);
+  color: var(--fa-text-soft);
+  flex: 0 0 auto;
+}
+
+.fa-tree-section-toggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.18s ease;
+}
+
+.fa-tree-section-toggle.is-collapsed svg {
+  transform: rotate(-90deg);
+}
+
 .fa-chat-empty,
 .fa-inline-notice {
   border-radius: 18px;
@@ -3221,12 +3256,15 @@ body.fa-is-resizing {
 
 .fa-archived-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  max-height: min(36vh, 320px);
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .fa-archived-item {
   --fa-branch-role-color: var(--fa-accent);
-  border-radius: 18px;
+  border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--fa-branch-role-color) 18%, rgba(255, 255, 255, 0.06));
   background:
     linear-gradient(
@@ -3235,7 +3273,7 @@ body.fa-is-resizing {
       rgba(18, 18, 25, 0.88)
     ),
     radial-gradient(circle at top right, color-mix(in srgb, var(--fa-branch-role-color) 14%, transparent), transparent 44%);
-  padding: 10px;
+  padding: 8px 9px;
 }
 
 @media (max-width: 1280px) {
@@ -4435,21 +4473,52 @@ body.fa-is-resizing {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+}
+
+.fa-archived-item-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+}
+
+.fa-archived-item-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  justify-content: flex-end;
 }
 
 .fa-archived-item-name {
   color: color-mix(in srgb, var(--fa-branch-role-color) 72%, var(--fa-text) 28%);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.3;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .fa-archived-item-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 78%, var(--fa-panel-2) 22%);
+  background: color-mix(in srgb, var(--fa-panel-2) 92%, white 8%);
   color: var(--fa-text-muted);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.fa-archived-item-status.is-archived {
+  border-color: color-mix(in srgb, var(--fa-border) 70%, var(--fa-text-soft) 30%);
+  background: color-mix(in srgb, var(--fa-panel-2) 88%, var(--fa-border) 12%);
 }
 
 .fa-archived-item-status.is-success {
@@ -4465,13 +4534,21 @@ body.fa-is-resizing {
 }
 
 .fa-archived-item-id {
-  margin-top: 8px;
-  margin-bottom: 10px;
   color: var(--fa-text-soft);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 10px;
+  line-height: 1.4;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   word-break: break-all;
+}
+
+.fa-tree-node-actions.is-archived-actions {
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.fa-tree-node-actions.is-archived-actions .fa-branch-action-button {
+  padding: 4px 8px;
+  font-size: 10px;
 }
 
 .fa-archived-empty {

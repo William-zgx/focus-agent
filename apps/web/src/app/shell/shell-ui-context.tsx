@@ -21,8 +21,9 @@ interface ShellStatus {
 }
 
 export interface MergeProposalGenerationState {
-  status: "preparing" | "failed";
+  status: "preparing" | "ready" | "failed";
   error?: string;
+  showFloating?: boolean;
 }
 
 interface ShellUiContextValue {

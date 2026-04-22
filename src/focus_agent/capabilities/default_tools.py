@@ -20,8 +20,10 @@ from langchain.tools import tool
 from langgraph.config import get_config, get_stream_writer
 
 from ..config import Settings
-from ..memory import MemoryWriter
+from ..core.types import PromptMode
+from ..memory import MemoryRetriever, MemoryWriter
 from ..memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
+from ..memory.retriever import _build_retrieval_query
 from ..storage.namespaces import (
     conversation_main_namespace,
     project_memory_namespace,
@@ -282,18 +284,20 @@ def _default_memory_namespaces(
 def _resolve_memory_namespace(
     *,
     namespace: str | None,
-    scope: str,
+    kind: MemoryKind,
+    scope: MemoryScope,
     user_id: str | None = None,
     root_thread_id: str | None = None,
 ) -> tuple[str, ...]:
     if namespace and namespace.strip():
         return _parse_namespace(namespace)
-    normalized_scope = scope.strip().lower()
-    if normalized_scope == MemoryScope.PROJECT.value:
+    if scope == MemoryScope.PROJECT:
         return project_memory_namespace("default")
-    if normalized_scope in {MemoryScope.ROOT_THREAD.value, "conversation"}:
+    if scope == MemoryScope.ROOT_THREAD:
         effective_thread_id = (root_thread_id or _get_current_thread_id() or "default").strip() or "default"
-        return root_thread_episodic_namespace(effective_thread_id)
+        if kind == MemoryKind.TURN_SUMMARY:
+            return root_thread_episodic_namespace(effective_thread_id)
+        return conversation_main_namespace(effective_thread_id)
     return user_profile_namespace((user_id or "default").strip() or "default")
 
 
@@ -306,13 +310,33 @@ def _coerce_memory_scope(scope: str, *, namespace: str | None = None) -> MemoryS
     return MemoryScope(normalized_scope)
 
 
+def _default_memory_visibility(*, kind: MemoryKind, scope: MemoryScope) -> MemoryVisibility:
+    if scope == MemoryScope.USER and kind in {MemoryKind.USER_PREFERENCE, MemoryKind.USER_PROFILE}:
+        return MemoryVisibility.SHARED
+    if scope == MemoryScope.PROJECT and kind == MemoryKind.PROJECT_FACT:
+        return MemoryVisibility.SHARED
+    if scope == MemoryScope.BRANCH and kind == MemoryKind.BRANCH_FINDING:
+        return MemoryVisibility.PROMOTABLE
+    if scope == MemoryScope.ROOT_THREAD and kind in {
+        MemoryKind.BRANCH_FINDING,
+        MemoryKind.IMPORTED_CONCLUSION,
+    }:
+        return MemoryVisibility.SHARED
+    return MemoryVisibility.PRIVATE
+
+
 def _json_safe_memory_item(item: Any, *, namespace: tuple[str, ...]) -> dict[str, Any]:
-    value = getattr(item, "value", item)
-    key = getattr(item, "key", None)
-    if not isinstance(value, dict):
-        value = {"content": str(value)}
+    record = getattr(item, "record", None)
+    if record is not None and hasattr(record, "model_dump"):
+        value = record.model_dump(mode="json")
+        key = getattr(record, "memory_id", None)
+    else:
+        value = getattr(item, "value", item)
+        key = getattr(item, "key", None)
+        if not isinstance(value, dict):
+            value = {"content": str(value)}
     memory_id = str(value.get("memory_id") or key or "")
-    return {
+    payload = {
         "memory_id": memory_id,
         "namespace": list(value.get("namespace") or namespace),
         "kind": value.get("kind"),
@@ -326,6 +350,14 @@ def _json_safe_memory_item(item: Any, *, namespace: tuple[str, ...]) -> dict[str
         "created_at": value.get("created_at"),
         "updated_at": value.get("updated_at"),
     }
+    score = getattr(item, "score", None)
+    matched_terms = getattr(item, "matched_terms", None)
+    if score is not None:
+        payload["score"] = float(score)
+    if matched_terms:
+        payload["matched_terms"] = list(matched_terms)
+    return payload
+
 
 
 def _resolve_artifact_path(*, artifact_dir: Path, artifact_id: str) -> Path:
@@ -1307,14 +1339,15 @@ def get_default_tools(
             memory_scope = _coerce_memory_scope(scope, namespace=namespace)
             resolved_namespace = _resolve_memory_namespace(
                 namespace=namespace,
-                scope=memory_scope.value,
+                kind=memory_kind,
+                scope=memory_scope,
                 user_id=user_id,
                 root_thread_id=root_thread_id,
             )
             record = MemoryWriteRequest(
                 kind=memory_kind,
                 scope=memory_scope,
-                visibility=MemoryVisibility.PRIVATE,
+                visibility=_default_memory_visibility(kind=memory_kind, scope=memory_scope),
                 namespace=resolved_namespace,
                 content=content.strip(),
                 summary=(summary or content).strip()[:240],
@@ -1324,13 +1357,15 @@ def get_default_tools(
                 confidence=confidence,
                 importance=importance,
             )
-            keys = MemoryWriter(store=store).write_records([record])
+            action, memory_id = MemoryWriter(store=store)._upsert_record(record)
             payload = {
-                "memory_id": keys[0] if keys else None,
+                "memory_id": memory_id,
                 "namespace": list(resolved_namespace),
                 "kind": memory_kind.value,
                 "scope": memory_scope.value,
-                "saved": bool(keys),
+                "visibility": record.visibility.value,
+                "saved": action in {"written", "merged"},
+                "action": action,
             }
             result = json.dumps(payload, ensure_ascii=False)
             _emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
@@ -1361,24 +1396,45 @@ def get_default_tools(
                 else int(limit)
             )
             capped_limit = max(1, min(requested_limit, tool_catalog.memory_search.max_limit))
+            search_limit = min(
+                tool_catalog.memory_search.max_limit,
+                max(capped_limit, tool_catalog.memory_search.default_limit),
+            )
             namespaces = (
                 [_parse_namespace(namespace)]
                 if namespace and namespace.strip()
                 else _default_memory_namespaces(user_id=user_id, root_thread_id=root_thread_id)
             )
-            results: list[dict[str, Any]] = []
+            effective_query = _build_retrieval_query(
+                query=query.strip(),
+                state={},
+                prompt_mode=PromptMode.EXPLORE,
+            )
+            retriever = MemoryRetriever(store=store, default_limit=search_limit)
+            hits = []
             for candidate_namespace in namespaces:
-                for item in store.search(candidate_namespace, query=query.strip(), limit=capped_limit) or []:
-                    results.append(_json_safe_memory_item(item, namespace=candidate_namespace))
-                    if len(results) >= capped_limit:
-                        break
-                if len(results) >= capped_limit:
-                    break
+                hits.extend(
+                    retriever._search_namespace(
+                        candidate_namespace,
+                        effective_query,
+                        limit=search_limit,
+                    )
+                )
+            reranked_hits = retriever._rerank_hits(
+                hits,
+                query=effective_query,
+                prompt_mode=PromptMode.EXPLORE,
+            )
+            deduped_hits = retriever._dedupe_hits(reranked_hits)
+            results = [
+                _json_safe_memory_item(item, namespace=item.namespace)
+                for item in deduped_hits[:capped_limit]
+            ]
             payload = {
                 "query": query,
                 "namespaces": [list(item) for item in namespaces],
                 "results": results,
-                "truncated": len(results) >= capped_limit,
+                "truncated": len(deduped_hits) > capped_limit,
             }
             result = json.dumps(payload, ensure_ascii=False)
             _emit_tool_event(tool_name=tool_name, stage='end', result_count=len(results), output=result[:800])
