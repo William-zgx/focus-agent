@@ -18,11 +18,18 @@ export function useBranchActions(scope: BranchScope) {
   const queryClient = useQueryClient();
 
   async function invalidate(threadId = scope.threadId) {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(scope.rootThreadId) });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    const tasks = [
+      queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(scope.rootThreadId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
+    ];
     if (threadId) {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) });
+      tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) }));
     }
+    await Promise.all(tasks);
+  }
+
+  function invalidateInBackground(threadId = scope.threadId) {
+    void invalidate(threadId);
   }
 
   async function forkBranch(input: {
@@ -37,8 +44,8 @@ export function useBranchActions(scope: BranchScope) {
       branch_role: input.branchRole,
       language: input.language,
     });
-    await invalidate(input.parentThreadId);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.thread(record.child_thread_id) });
+    invalidateInBackground(input.parentThreadId);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.thread(record.child_thread_id) });
     return record;
   }
 
