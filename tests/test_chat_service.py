@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import threading
 
 import pytest
-from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
@@ -792,3 +792,49 @@ def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     )
     assert graph.updates
     assert graph.updates[0][1] == "bootstrap_turn"
+
+
+def test_get_thread_state_returns_longer_recent_history_window(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    messages = [HumanMessage(content=f"message-{index}") for index in range(60)]
+
+    class LongHistoryGraph:
+        def get_state(self, _config):
+            return SimpleNamespace(values={"messages": messages}, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=LongHistoryGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+
+    assert len(payload["messages"]) == 60
+    assert payload["messages"][0]["content"] == "message-0"
+    assert payload["messages"][-1]["content"] == "message-59"
+
+
+def test_get_thread_state_caps_history_window_for_large_threads(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    messages = [SystemMessage(content=f"message-{index}") for index in range(250)]
+
+    class LargeHistoryGraph:
+        def get_state(self, _config):
+            return SimpleNamespace(values={"messages": messages}, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=LargeHistoryGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+
+    assert len(payload["messages"]) == chat._THREAD_STATE_MESSAGE_LIMIT
+    assert payload["messages"][0]["content"] == "message-50"
+    assert payload["messages"][-1]["content"] == "message-249"

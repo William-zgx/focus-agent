@@ -43,6 +43,8 @@ _STREAM_END = object()
 
 
 class ChatService:
+    _THREAD_STATE_MESSAGE_LIMIT = 200
+
     def __init__(self, runtime: AppRuntime):
         self.runtime = runtime
         self._active_turns: set[str] = set()
@@ -82,6 +84,12 @@ class ChatService:
             'id': getattr(message, 'id', None),
             'usage_metadata': self._json_safe(getattr(message, 'usage_metadata', None)),
         }
+
+    def _thread_state_messages(self, messages: list[Any]) -> list[dict[str, Any]]:
+        if not messages:
+            return []
+        window = messages[-self._THREAD_STATE_MESSAGE_LIMIT :]
+        return [self._serialize_message(message) for message in window]
 
     def _safe_snapshot(self, thread_id: str):
         try:
@@ -292,7 +300,7 @@ class ChatService:
             'merge_decision': values.get('merge_decision'),
             'merge_queue': values.get('merge_queue', []),
             'active_skill_ids': values.get('active_skill_ids', []),
-            'messages': [self._serialize_message(message) for message in messages[-20:]],
+            'messages': self._thread_state_messages(list(messages)),
             'interrupts': [getattr(item, 'value', item) for item in interrupts],
             'trace': build_invoke_config(
                 settings=self.runtime.settings,

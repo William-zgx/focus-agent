@@ -77,9 +77,21 @@ function loadFunctions(relativePath, functionNames) {
 }
 
 test("request cleanup clears the optimistic user message after failed sends", () => {
-  const { resolveStreamRequestCleanup, resolveThinkingModeForRequest } = loadFunctions(
+  const {
+    createThreadStreamEntry,
+    nextThreadEntryMap,
+    patchThreadEntry,
+    resolveStreamRequestCleanup,
+    resolveThinkingModeForRequest,
+  } = loadFunctions(
     "apps/web/src/features/thread-stream/use-thread-stream.ts",
-    ["resolveStreamRequestCleanup", "resolveThinkingModeForRequest"],
+    [
+      "resolveStreamRequestCleanup",
+      "resolveThinkingModeForRequest",
+      "createThreadStreamEntry",
+      "nextThreadEntryMap",
+      "patchThreadEntry",
+    ],
   );
 
   assert.equal(
@@ -94,6 +106,34 @@ test("request cleanup clears the optimistic user message after failed sends", ()
     resolveThinkingModeForRequest({ thinkingMode: "" }, "disabled"),
     "",
   );
+  const threadAEntry = createThreadStreamEntry({
+    isStreaming: true,
+    pendingUserMessage: {
+      id: "pending-a",
+      content: "hello from a",
+      threadId: "thread-a",
+    },
+  });
+  const threadBEntry = createThreadStreamEntry({
+    isStreaming: true,
+    pendingUserMessage: {
+      id: "pending-b",
+      content: "hello from b",
+      threadId: "thread-b",
+    },
+  });
+
+  const withThreadA = nextThreadEntryMap({}, "thread-a", threadAEntry);
+  const withBothThreads = nextThreadEntryMap(withThreadA, "thread-b", threadBEntry);
+  const cleanedThreadA = patchThreadEntry(withBothThreads, "thread-a", {
+    isStreaming: false,
+    pendingUserMessage: null,
+    streamState: null,
+  });
+
+  assert.equal(cleanedThreadA["thread-a"], undefined);
+  assert.equal(cleanedThreadA["thread-b"].pendingUserMessage.content, "hello from b");
+  assert.equal(cleanedThreadA["thread-b"].isStreaming, true);
 });
 
 test("thinking-capable model selection preserves unset backend-default semantics until the user toggles it", () => {
