@@ -266,6 +266,42 @@ def _seed_case_memories(case, store: DeterministicMemoryStore) -> None:
                 "promoted_to_main": True,
             },
         )
+        return
+
+    if case.id == "mem_duplicate_memory_lines_not_stacked":
+        store.put(
+            conversation_main_namespace(root_thread_id),
+            "main-owner-primary",
+            {
+                "kind": "imported_conclusion",
+                "scope": "root_thread",
+                "visibility": "shared",
+                "namespace": conversation_main_namespace(root_thread_id),
+                "content": "owner 主线 finding 已确认，可以直接依赖。",
+                "summary": "owner main finding ready",
+                "root_thread_id": root_thread_id,
+                "user_id": user_id,
+                "importance": 0.82,
+                "promoted_to_main": True,
+            },
+        )
+        store.put(
+            conversation_main_namespace(root_thread_id),
+            "main-owner-duplicate",
+            {
+                "kind": "imported_conclusion",
+                "scope": "root_thread",
+                "visibility": "shared",
+                "namespace": conversation_main_namespace(root_thread_id),
+                "content": "owner 主线 finding 已确认，可以直接依赖。",
+                "summary": "owner main finding ready",
+                "root_thread_id": root_thread_id,
+                "user_id": user_id,
+                "importance": 0.8,
+                "promoted_to_main": True,
+            },
+        )
+        return
 
 
 def _case_handler(case, prompt: str) -> AIMessage:
@@ -296,6 +332,13 @@ def _case_handler(case, prompt: str) -> AIMessage:
         assert "Branch-local findings pending upstream approval" not in prompt
         return AIMessage(content="Approved owner finding is ready for synthesis.")
 
+    if case.id == "mem_imported_duplicate_hides_local_section":
+        assert "Approved owner finding from main thread" in prompt
+        assert prompt.count("Approved owner finding from main thread") == 1
+        assert "## Local branch findings pending upstream review" not in prompt
+        assert "tmp-note" not in prompt
+        return AIMessage(content="Approved owner finding should stay in the imported section.")
+
     if case.id == "mem_promoted_duplicate_prefers_main":
         assert "owner 字段首次加载丢失" in prompt
         assert "Approved findings already safe to rely on" in prompt
@@ -310,6 +353,10 @@ def _case_handler(case, prompt: str) -> AIMessage:
         assert "## Imported findings already approved into this thread" in prompt
         assert "OBSOLETE_SUMMARY OBSOLETE_SUMMARY" not in prompt
         return AIMessage(content="Imported postgres finding is still available.")
+
+    if case.id == "mem_duplicate_memory_lines_not_stacked":
+        assert prompt.count("owner main finding ready") == 1
+        return AIMessage(content="owner main finding is available exactly once.")
 
     raise AssertionError(f"unhandled memory eval case: {case.id}")
 
@@ -352,6 +399,9 @@ def _assert_postconditions(case, store: DeterministicMemoryStore) -> None:
     if case.id == "mem_synthesize_unpromoted_branch_hidden":
         return
 
+    if case.id == "mem_imported_duplicate_hides_local_section":
+        return
+
     if case.id == "mem_promoted_duplicate_prefers_main":
         branch_namespace = branch_local_memory_namespace(root_thread_id, "branch-1")
         assert any(namespace == branch_namespace for namespace, _ in store.queries)
@@ -359,6 +409,10 @@ def _assert_postconditions(case, store: DeterministicMemoryStore) -> None:
 
     if case.id == "mem_chinese_query_hits_memory":
         assert any("鲁迅的文笔有什么特点" in query for _, query in store.queries)
+        return
+
+    if case.id == "mem_duplicate_memory_lines_not_stacked":
+        return
 
 
 @pytest.mark.parametrize("case", MEMORY_CASES, ids=[case.id for case in MEMORY_CASES])

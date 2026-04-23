@@ -2,6 +2,8 @@ import json
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+import focus_agent.core.context_policy as context_policy_module
+
 from focus_agent.core.context_policy import (
     apply_prompt_budget_guard,
     approximate_token_count,
@@ -271,6 +273,16 @@ def test_approximate_token_count_uses_deterministic_char_budget():
     assert approximate_token_count("abcde", chars_per_token=4) == 2
 
 
+def test_approximate_token_count_prefers_tokenizer_when_available(monkeypatch):
+    monkeypatch.setattr(
+        context_policy_module,
+        "_estimate_with_tokenizer",
+        lambda text, tokenizer_id=None: 3 if tokenizer_id == "fake-model" and text else None,
+    )
+
+    assert approximate_token_count("abcdef", chars_per_token=10, tokenizer_id="fake-model") == 3
+
+
 def test_trim_tool_observation_preserves_search_snippets_without_noise():
     payload = {
         "query": "assemble_context",
@@ -294,6 +306,7 @@ def test_trim_tool_observation_preserves_search_snippets_without_noise():
     assert "context_policy.py" in trimmed
     assert "line_number" in trimmed
     assert "POLLUTION" not in trimmed
+    assert "summary" in trimmed
 
 
 def test_trim_tool_observation_preserves_read_file_line_numbers():
@@ -315,3 +328,207 @@ def test_trim_tool_observation_preserves_read_file_line_numbers():
     assert "graph_builder.py" in trimmed
     assert "010 | important line 10" in trimmed
     assert "truncated_by_context_policy" in trimmed
+
+
+def test_trim_tool_observation_artifactizes_prompt_view_with_refs():
+    payload = {
+        "query": "assemble_context",
+        "results": [
+            {
+                "path": "src/focus_agent/core/context_policy.py",
+                "line_number": 42,
+                "line": "def assemble_context(state, mode):",
+            }
+        ],
+        "noise": "POLLUTION" * 1000,
+    }
+
+    trimmed = trim_tool_observation(
+        json.dumps(payload, ensure_ascii=False),
+        tool_name="search_code",
+        tool_call_id="call-1",
+        max_chars=320,
+        artifactize_for_prompt=True,
+    )
+
+    parsed = json.loads(trimmed)
+
+    assert len(trimmed) <= 320
+    assert parsed["artifact_ref"] == "tool-observation://search_code/call-1"
+    assert parsed["refs"] == ["src/focus_agent/core/context_policy.py:42"]
+    assert parsed.get("results", []) == [] or parsed["results"][0]["ref"] == "src/focus_agent/core/context_policy.py:42"
+    assert "POLLUTION" not in trimmed
+
+
+def test_prompt_budget_guard_artifactizes_tool_messages_without_mutating_stored_message():
+    payload = {
+        "query": "assemble_context",
+        "results": [
+            {
+                "path": "src/focus_agent/core/context_policy.py",
+                "line_number": 42,
+                "line": "def assemble_context(state, mode):",
+            }
+        ],
+        "noise": "POLLUTION" * 1000,
+    }
+    original_tool = ToolMessage(
+        content=json.dumps(payload, ensure_ascii=False),
+        tool_call_id="call-1",
+        artifact={"tool_name": "search_code"},
+    )
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content="You are Focus Agent."),
+            HumanMessage(content="Where is assemble_context defined?"),
+            original_tool,
+        ],
+        budget=ContextBudget(prompt_token_limit=600, chars_per_token=1, tool_observation_token_limit=180),
+    )
+
+    guarded_tool = next(message for message in guarded if isinstance(message, ToolMessage))
+    parsed = json.loads(str(guarded_tool.content))
+
+    assert parsed["artifact_ref"] == "tool-observation://search_code/call-1"
+    assert parsed["refs"] == ["src/focus_agent/core/context_policy.py:42"]
+    assert "POLLUTION" not in str(guarded_tool.content)
+    assert "artifact_ref" not in str(original_tool.content)
+    assert "POLLUTION" in str(original_tool.content)
+
+
+def test_render_prompt_reorders_blocks_by_prompt_mode():
+    state = {
+        "messages": [HumanMessage(content="请汇总结论")],
+        "rolling_summary": "summary",
+        "memory_prompt_block": "## Retrieved long-term memories\n- memory",
+        "imported_findings": [FindingItem(finding="Approved finding")],
+        "branch_meta": {
+            "branch_id": "branch-1",
+            "branch_name": "review-branch",
+            "branch_role": "verify",
+        },
+        "branch_local_findings": [FindingItem(finding="Branch finding")],
+        "artifacts": [ArtifactRef(title="Artifact one", kind="note")],
+        "user_constraints": [{"constraint": "Keep the answer concise."}],
+    }
+
+    review = assemble_context(state, PromptMode.BRANCH_REVIEW).render_prompt()
+    synthesize = assemble_context(state, PromptMode.SYNTHESIZE).render_prompt()
+
+    assert review.index("## Findings") < review.index("## Constraints and goals")
+    assert synthesize.index("## Constraints and goals") < synthesize.index("## Retrieved long-term memories")
+
+
+def test_trim_tool_observation_wraps_long_text_with_reference_summary():
+    text = "very important observation " * 80
+
+    trimmed = trim_tool_observation(
+        text,
+        tool_name="web_fetch",
+        budget=ContextBudget(tool_observation_token_limit=120, chars_per_token=1, tool_reference_token_limit=60),
+        artifactize_for_prompt=True,
+    )
+
+    assert len(trimmed) <= 120
+    assert '"summary"' in trimmed
+    assert '"truncated_by_context_policy"' in trimmed
+
+
+def test_prompt_budget_guard_tokenizer_first_uses_token_estimates(monkeypatch):
+    def fake_estimate(message, *, budget):  # noqa: ARG001
+        text = str(getattr(message, "content", ""))
+        if "Current user turn must stay exact." in text:
+            return 20
+        if "Preserve this exact constraint." in text:
+            return 18
+        if "low priority memory" in text:
+            return 40
+        return max(1, len(text) // 10)
+
+    monkeypatch.setattr(context_policy_module, "_message_budget_units", fake_estimate)
+
+    system_text = "\n\n".join(
+        [
+            "You are Focus Agent.",
+            "## Retrieved long-term memories\n" + ("low priority memory " * 20),
+            "## Constraints and goals\n- Preserve this exact constraint.",
+        ]
+    )
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content=system_text),
+            HumanMessage(content="Current user turn must stay exact."),
+        ],
+        budget=ContextBudget(
+            prompt_token_limit=45,
+            chars_per_token=4,
+            token_budget_mode="tokenizer_first",
+            tokenizer_id="fake-model",
+        ),
+    )
+
+    rendered = "\n".join(str(message.content) for message in guarded)
+    assert "Preserve this exact constraint." in rendered
+    assert "low priority memory" not in rendered
+
+
+def test_assemble_context_dedupes_imported_and_local_findings_in_prompt():
+    state = {
+        "branch_meta": {
+            "branch_id": "branch-4",
+            "branch_name": "owner-fix",
+            "branch_role": "verify",
+        },
+        "imported_findings": [
+            FindingItem(
+                finding="Owner drops on first load",
+                confidence=0.82,
+                evidence_refs=["main-doc", "trace-7"],
+            )
+        ],
+        "branch_local_findings": [
+            FindingItem(
+                finding="Owner drops on first load",
+                confidence=0.94,
+                evidence_refs=["tmp-note"],
+                source_branch_id="branch-4",
+            )
+        ],
+    }
+
+    slice_ = assemble_context(state, PromptMode.EXPLORE)
+
+    assert slice_.findings_block.count("Owner drops on first load") == 1
+    assert "## Imported findings already approved into this thread" in slice_.findings_block
+    assert "## Local branch findings pending upstream review" not in slice_.findings_block
+    assert "main-doc" in slice_.findings_block
+    assert "tmp-note" not in slice_.findings_block
+
+
+def test_assemble_context_dedupes_memory_lines_and_artifacts_with_prompt_preferences():
+    state = {
+        "_memory_lines": [
+            "[branch:branch-1] Owner issue confirmed [score 0.61]",
+            "[root_thread/imported_conclusion] Owner issue confirmed [score 0.93]",
+        ],
+        "branch_meta": {
+            "branch_id": "branch-5",
+            "branch_name": "artifacts",
+            "branch_role": "execute",
+        },
+        "artifacts": [
+            ArtifactRef(title="Owner notes", kind="markdown", uri="file:///tmp/owner-notes.md"),
+            ArtifactRef(title="Owner notes", kind="markdown", uri="file:///tmp/owner-notes.md"),
+            ArtifactRef(title="Owner notes", kind="markdown"),
+        ],
+        "context_budget": ContextBudget(citation_limit=4, artifact_limit=4),
+    }
+
+    slice_ = assemble_context(state, PromptMode.EXECUTE)
+
+    assert slice_.memory_block.count("Owner issue confirmed") == 1
+    assert "root_thread/imported_conclusion" in slice_.memory_block
+    assert "branch:branch-1" not in slice_.memory_block
+    assert slice_.artifact_block.count("Owner notes [markdown]") == 1
+    assert "file:///tmp/owner-notes.md" in slice_.artifact_block

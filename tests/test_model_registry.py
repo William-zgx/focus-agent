@@ -158,6 +158,7 @@ def test_create_chat_model_uses_moonshot_specific_adapter(monkeypatch):
     assert isinstance(model, MoonshotChatOpenAI)
     assert model.model_name == "kimi-k2.6"
     assert model.temperature is None
+    assert model.stream_usage is True
 
 
 def test_create_chat_model_keeps_temperature_for_other_models(monkeypatch):

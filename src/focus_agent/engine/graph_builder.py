@@ -469,10 +469,15 @@ def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = 
 def _context_budget_from_state(state: AgentState) -> ContextBudget:
     value = state.get("context_budget")
     if isinstance(value, ContextBudget):
-        return value
-    if isinstance(value, dict):
-        return ContextBudget.model_validate(value)
-    return ContextBudget()
+        budget = value
+    elif isinstance(value, dict):
+        budget = ContextBudget.model_validate(value)
+    else:
+        budget = ContextBudget()
+    selected_model = str(state.get("selected_model") or "").strip()
+    if budget.tokenizer_id or not selected_model:
+        return budget
+    return budget.model_copy(update={"tokenizer_id": selected_model})
 
 
 def _tool_policy_note(policy: _ToolPolicy) -> str:

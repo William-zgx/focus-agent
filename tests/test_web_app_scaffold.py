@@ -182,3 +182,35 @@ def test_conversation_switcher_only_lists_active_conversations():
         "activeConversations.find((conversation) => conversation.root_thread_id === conversationId) ??\n"
         "      activeConversations[0],"
     ) in conversation_toolbar_text
+
+
+def test_archived_sidebar_sections_are_collapsible_and_compact():
+    root = Path(__file__).resolve().parents[1]
+    branch_tree_text = (
+        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx"
+    ).read_text()
+    styles_text = (root / "apps" / "web" / "src" / "shared" / "styles" / "app.css").read_text()
+
+    assert branch_tree_text.index('已归档会话" : "Archived conversations') < branch_tree_text.index(
+        '已归档分支" : "Archived branches'
+    )
+    assert "const [archivedConversationsExpanded, setArchivedConversationsExpanded] = useState(" in branch_tree_text
+    assert "const [archivedBranchesExpanded, setArchivedBranchesExpanded] = useState(" in branch_tree_text
+    assert 'aria-label={isChineseUi ? "展开或收起已归档会话" : "Toggle archived conversations"}' in branch_tree_text
+    assert 'aria-label={isChineseUi ? "展开或收起已归档分支" : "Toggle archived branches"}' in branch_tree_text
+    assert "shouldShowArchivedSecondaryLine(conversation.title, conversation.root_thread_id)" in branch_tree_text
+    assert "shouldShowArchivedSecondaryLine(node.branch_name, node.thread_id)" in branch_tree_text
+
+    archived_conversation_section = branch_tree_text.split(
+        '{isChineseUi ? "已归档会话" : "Archived conversations"}',
+        1,
+    )[1].split('{isChineseUi ? "已归档分支" : "Archived branches"}', 1)[0]
+    assert "fa-archived-item-status" not in archived_conversation_section
+    assert '{isChineseUi ? "打开" : "Open"}' in archived_conversation_section
+    assert '{isChineseUi ? "恢复" : "Restore"}' in archived_conversation_section
+
+    assert ".fa-tree-section-header" in styles_text
+    assert ".fa-tree-section-toggle" in styles_text
+    assert ".fa-tree-section-toggle.is-collapsed svg" in styles_text
+    assert ".fa-archived-item-head" in styles_text
+    assert ".fa-archived-item-toolbar" in styles_text

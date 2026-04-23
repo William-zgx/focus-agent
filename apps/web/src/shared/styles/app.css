@@ -1955,6 +1955,19 @@ body.fa-is-resizing {
   flex-wrap: wrap;
 }
 
+.fa-conversation-toolbar {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.fa-conversation-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .fa-chat-header-copy {
   flex: 1 1 auto;
 }
@@ -2045,11 +2058,40 @@ body.fa-is-resizing {
   font-size: 12px;
 }
 
+.fa-conversation-token-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(37, 37, 48, 0.98), rgba(18, 18, 24, 0.98));
+  color: var(--fa-text-soft);
+  box-shadow: 0 8px 18px rgba(4, 10, 22, 0.08);
+}
+
+.fa-conversation-token-trigger:hover,
+.fa-conversation-token-trigger:focus-visible {
+  color: var(--fa-text);
+  border-color: rgba(129, 140, 248, 0.32);
+  background: linear-gradient(180deg, rgba(44, 44, 58, 0.98), rgba(22, 22, 28, 0.98));
+  box-shadow: 0 12px 24px rgba(4, 10, 22, 0.12);
+  transform: translateY(-1px);
+}
+
+.fa-conversation-token-trigger .fa-toolbar-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
 .fa-conversation-switcher {
   position: relative;
-  min-width: 260px;
-  max-width: min(380px, 42vw);
-  flex: 0 1 340px;
+  min-width: 180px;
+  max-width: min(320px, 34vw);
+  flex: 1 1 240px;
 }
 
 .fa-conversation-switcher::after {
@@ -3635,6 +3677,13 @@ body.fa-is-resizing {
   gap: 8px;
 }
 
+.fa-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .fa-message-stack {
   gap: 8px;
   max-width: min(720px, 88%);
@@ -3671,6 +3720,20 @@ body.fa-is-resizing {
 .fa-message-role.is-streaming,
 .fa-message-meta.is-streaming {
   color: var(--fa-role-streaming-text);
+}
+
+.fa-message-usage-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fa-text-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .fa-message-bubble {
@@ -4492,6 +4555,14 @@ body.fa-is-resizing {
   justify-content: flex-end;
 }
 
+.fa-archived-item-token {
+  color: var(--fa-text-soft);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0 6px;
+}
+
 .fa-archived-item-name {
   color: color-mix(in srgb, var(--fa-branch-role-color) 72%, var(--fa-text) 28%);
   font-size: 12px;
@@ -5119,6 +5190,7 @@ body.fa-is-resizing {
 :root[data-theme="light"] .fa-conversation-select,
 :root[data-theme="light"] .fa-chat-toolbar-button,
 :root[data-theme="light"] .fa-chat-toolbar-pill,
+:root[data-theme="light"] .fa-conversation-token-trigger,
 :root[data-theme="light"] .fa-branch-action-button,
 :root[data-theme="light"] .fa-toolbar-secondary,
 :root[data-theme="light"] .fa-focus-modal-close,
@@ -5135,6 +5207,7 @@ body.fa-is-resizing {
 :root[data-theme="light"] .fa-conversation-select,
 :root[data-theme="light"] .fa-toolbar-primary,
 :root[data-theme="light"] .fa-toolbar-secondary,
+:root[data-theme="light"] .fa-conversation-token-trigger,
 :root[data-theme="light"] .fa-chat-toolbar-button,
 :root[data-theme="light"] .fa-chat-toolbar-pill,
 :root[data-theme="light"] .fa-branch-node-title,
@@ -6463,10 +6536,16 @@ body.fa-is-resizing {
 
 :root[data-theme="light"] .fa-chat-toolbar-pill,
 :root[data-theme="light"] .fa-chat-toolbar-button,
+:root[data-theme="light"] .fa-conversation-token-trigger,
 :root[data-theme="light"] .fa-conversation-select,
 :root[data-theme="light"] .fa-composer-model-trigger,
 :root[data-theme="light"] .fa-composer-icon-button.is-clear {
   background: var(--fa-toolbar-button-bg);
+}
+
+:root[data-theme="light"] .fa-conversation-token-trigger:hover,
+:root[data-theme="light"] .fa-conversation-token-trigger:focus-visible {
+  background: var(--fa-toolbar-button-hover-bg);
 }
 
 /* Final composer placement override: controls sit on the right side of the input */
@@ -6584,9 +6663,9 @@ body.fa-is-resizing {
   position: relative;
   display: flex;
   align-items: center;
-  min-width: 120px;
-  max-width: min(200px, 20vw);
-  flex: 0 1 160px;
+  min-width: 160px;
+  max-width: min(280px, 28vw);
+  flex: 1 1 220px;
 }
 
 .fa-conversation-switcher::after {
@@ -7458,7 +7537,7 @@ body.fa-is-resizing {
 }
 
 .fa-conversation-switcher {
-  flex-basis: 148px;
+  flex-basis: 220px;
 }
 
 .fa-conversation-switcher::after {
@@ -7484,6 +7563,7 @@ body.fa-is-resizing {
 }
 
 .fa-conversation-icon-button,
+.fa-conversation-token-trigger,
 .fa-chat-header-actions.is-compact [data-compact-button="true"],
 .fa-chat-header-actions.is-compact .fa-focus-branches-button {
   width: 34px;

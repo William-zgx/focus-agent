@@ -76,6 +76,86 @@ from .middleware import configure_middleware
 from focus_agent.model_registry import build_model_catalog
 
 
+def _normalize_token_usage(raw: dict[str, Any] | None = None) -> dict[str, int]:
+    payload = dict(raw or {})
+    input_tokens = int(payload.get("input_tokens") or 0)
+    output_tokens = int(payload.get("output_tokens") or 0)
+    total_tokens = int(payload.get("total_tokens") or (input_tokens + output_tokens))
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _accumulate_token_usage(current: dict[str, int], delta: dict[str, int] | None = None) -> dict[str, int]:
+    normalized = _normalize_token_usage(delta)
+    return {
+        "input_tokens": int(current.get("input_tokens") or 0) + normalized["input_tokens"],
+        "output_tokens": int(current.get("output_tokens") or 0) + normalized["output_tokens"],
+        "total_tokens": int(current.get("total_tokens") or 0) + normalized["total_tokens"],
+    }
+
+
+def _aggregate_token_usage_from_turns(turns: Sequence[dict[str, Any]]) -> dict[str, int]:
+    total = _normalize_token_usage()
+    for turn in turns:
+        total = _accumulate_token_usage(total, dict(turn.get("metrics") or {}))
+    return total
+
+
+def _token_usage_for_root_thread(*, runtime: AppRuntime, root_thread_id: str) -> dict[str, int]:
+    repo = _maybe_get_trajectory_repository(runtime)
+    if repo is None:
+        return _normalize_token_usage()
+    try:
+        turns = repo.list_turns(TrajectoryTurnQuery(root_thread_id=root_thread_id, limit=None, newest_first=True))
+    except Exception:  # noqa: BLE001
+        return _normalize_token_usage()
+    return _aggregate_token_usage_from_turns(turns)
+
+
+def _token_usage_by_thread_for_root(*, runtime: AppRuntime, root_thread_id: str) -> dict[str, dict[str, int]]:
+    repo = _maybe_get_trajectory_repository(runtime)
+    if repo is None:
+        return {}
+    try:
+        turns = repo.list_turns(TrajectoryTurnQuery(root_thread_id=root_thread_id, limit=None, newest_first=True))
+    except Exception:  # noqa: BLE001
+        return {}
+
+    grouped: dict[str, dict[str, int]] = {}
+    for turn in turns:
+        thread_id = str(turn.get("thread_id") or "").strip()
+        if not thread_id:
+            continue
+        grouped[thread_id] = _accumulate_token_usage(grouped.get(thread_id, _normalize_token_usage()), dict(turn.get("metrics") or {}))
+    return grouped
+
+
+def _annotate_branch_tree_token_usage(
+    node,
+    *,
+    by_thread_id: dict[str, dict[str, int]],
+    root_thread_usage: dict[str, int] | None = None,
+):
+    is_root_main_node = not getattr(node, "branch_id", None) and str(getattr(node, "thread_id", "")) == str(getattr(node, "root_thread_id", ""))
+    token_usage = root_thread_usage if is_root_main_node and root_thread_usage is not None else by_thread_id.get(node.thread_id)
+    return node.model_copy(
+        update={
+            "token_usage": _normalize_token_usage(token_usage),
+            "children": [
+                _annotate_branch_tree_token_usage(
+                    child,
+                    by_thread_id=by_thread_id,
+                    root_thread_usage=root_thread_usage,
+                )
+                for child in list(node.children or [])
+            ],
+        }
+    )
+
+
 def _conversation_response(record: ConversationRecord) -> ConversationSummaryResponse:
     return ConversationSummaryResponse(
         root_thread_id=record.root_thread_id,
@@ -84,6 +164,7 @@ def _conversation_response(record: ConversationRecord) -> ConversationSummaryRes
         archived_at=record.archived_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        token_usage=_normalize_token_usage(record.token_usage),
     )
 
 
@@ -1126,8 +1207,15 @@ def create_app() -> FastAPI:
         runtime: AppRuntime = Depends(get_app_runtime),
     ) -> ConversationListResponse:
         conversations = _list_or_bootstrap_conversations(runtime=runtime, user_id=principal.user_id)
+        token_usage_by_root = {
+            item.root_thread_id: _token_usage_for_root_thread(runtime=runtime, root_thread_id=item.root_thread_id)
+            for item in conversations
+        }
         return ConversationListResponse(
-            conversations=[_conversation_response(item) for item in conversations],
+            conversations=[
+                _conversation_response(item.model_copy(update={"token_usage": token_usage_by_root.get(item.root_thread_id, {})}))
+                for item in conversations
+            ],
         )
 
     @app.post('/v1/conversations', response_model=ConversationSummaryResponse)
@@ -1153,7 +1241,7 @@ def create_app() -> FastAPI:
                 title_pending_ai=not bool(requested_title),
             )
         )
-        return _conversation_response(record)
+        return _conversation_response(record.model_copy(update={"token_usage": _normalize_token_usage()}))
 
     @app.patch('/v1/conversations/{root_thread_id}', response_model=ConversationSummaryResponse)
     def update_conversation(
@@ -1176,7 +1264,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return _conversation_response(record)
+        return _conversation_response(
+            record.model_copy(
+                update={"token_usage": _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)}
+            )
+        )
 
     @app.post('/v1/conversations/{root_thread_id}/archive', response_model=ConversationSummaryResponse)
     def archive_conversation(
@@ -1193,7 +1285,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return _conversation_response(record)
+        return _conversation_response(
+            record.model_copy(
+                update={"token_usage": _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)}
+            )
+        )
 
     @app.post('/v1/conversations/{root_thread_id}/activate', response_model=ConversationSummaryResponse)
     def activate_conversation(
@@ -1210,7 +1306,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return _conversation_response(record)
+        return _conversation_response(
+            record.model_copy(
+                update={"token_usage": _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)}
+            )
+        )
 
     @app.post('/v1/chat/turns', response_model=ThreadStateResponse)
     def post_chat_turn(
@@ -1454,7 +1554,23 @@ def create_app() -> FastAPI:
             )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
-        return BranchTreeResponse(root=root, archived_branches=archived_branches)
+        token_usage_by_thread = _token_usage_by_thread_for_root(runtime=runtime, root_thread_id=root_thread_id)
+        root_thread_usage = _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)
+        return BranchTreeResponse(
+            root=_annotate_branch_tree_token_usage(
+                root,
+                by_thread_id=token_usage_by_thread,
+                root_thread_usage=root_thread_usage,
+            ),
+            archived_branches=[
+                _annotate_branch_tree_token_usage(
+                    item,
+                    by_thread_id=token_usage_by_thread,
+                    root_thread_usage=root_thread_usage,
+                )
+                for item in archived_branches
+            ],
+        )
 
     return app
 

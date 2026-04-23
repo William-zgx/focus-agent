@@ -154,6 +154,7 @@ def build_tool_error_message(
     return _build_tool_message(
         content=json.dumps(payload, ensure_ascii=False),
         tool_call_id=tool_call_id,
+        tool_name=tool_name,
         status="error",
         runtime_info=merged_runtime_info,
     )
@@ -300,6 +301,13 @@ def _execute_single_untraced(
         cache_key = _cache_key(item=item, cache_scope_key=cache_scope_key)
         if cache_key and cache_store is not None and cache_store.get(cache_key) is not None:
             observation = cache_store.get(cache_key) or ""
+            trimmed_observation, trim_runtime, prompt_observation = _trim_success(
+                observation,
+                tool_name=item.tool_name,
+                tool_call_id=item.tool_call_id,
+                context_budget=context_budget,
+                max_chars=item.runtime.max_observation_chars,
+            )
             _emit_runtime_tool_event(
                 item=item,
                 stage="cache_hit",
@@ -309,17 +317,15 @@ def _execute_single_untraced(
                 index=item.index,
                 cache_hit=True,
                 message=_build_tool_message(
-                    content=_trim_success(
-                        observation,
-                        tool_name=item.tool_name,
-                        context_budget=context_budget,
-                        max_chars=item.runtime.max_observation_chars,
-                    ),
+                    content=trimmed_observation,
                     tool_call_id=item.tool_call_id,
+                    tool_name=item.tool_name,
+                    prompt_observation=prompt_observation,
                     runtime_info={
                         "cache_hit": True,
                         "fallback_used": False,
                         "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                        **trim_runtime,
                     },
                 ),
             )
@@ -341,20 +347,25 @@ def _execute_single_untraced(
         text = str(observation)
         if cache_key and cache_store is not None:
             cache_store.set(cache_key, text)
+        trimmed_text, trim_runtime, prompt_observation = _trim_success(
+            text,
+            tool_name=item.tool_name,
+            tool_call_id=item.tool_call_id,
+            context_budget=context_budget,
+            max_chars=item.runtime.max_observation_chars,
+        )
         return ToolExecutionResult(
             index=item.index,
             message=_build_tool_message(
-                content=_trim_success(
-                    text,
-                    tool_name=item.tool_name,
-                    context_budget=context_budget,
-                    max_chars=item.runtime.max_observation_chars,
-                ),
+                content=trimmed_text,
                 tool_call_id=item.tool_call_id,
+                tool_name=item.tool_name,
+                prompt_observation=prompt_observation,
                 runtime_info={
                     "cache_hit": False,
                     "fallback_used": False,
                     "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                    **trim_runtime,
                 },
             ),
         )
@@ -369,6 +380,13 @@ def _execute_single_untraced(
                 )
                 fallback_observation = item.runtime.fallback_handler(exc, item.args)
                 fallback_text = str(fallback_observation)
+                trimmed_fallback, trim_runtime, prompt_observation = _trim_success(
+                    fallback_text,
+                    tool_name=item.tool_name,
+                    tool_call_id=item.tool_call_id,
+                    context_budget=context_budget,
+                    max_chars=item.runtime.max_observation_chars,
+                )
                 _emit_runtime_tool_event(
                     item=item,
                     stage="fallback_success",
@@ -377,18 +395,16 @@ def _execute_single_untraced(
                 return ToolExecutionResult(
                     index=item.index,
                     message=_build_tool_message(
-                        content=_trim_success(
-                            fallback_text,
-                            tool_name=item.tool_name,
-                            context_budget=context_budget,
-                            max_chars=item.runtime.max_observation_chars,
-                        ),
+                        content=trimmed_fallback,
                         tool_call_id=item.tool_call_id,
+                        tool_name=item.tool_name,
+                        prompt_observation=prompt_observation,
                         runtime_info={
                             "cache_hit": False,
                             "fallback_used": True,
                             "fallback_group": item.runtime.fallback_group,
                             "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                            **trim_runtime,
                         },
                     ),
                 )
@@ -422,15 +438,39 @@ def _trim_success(
     observation: str,
     *,
     tool_name: str,
+    tool_call_id: str,
     context_budget: ContextBudget,
     max_chars: int | None,
-) -> str:
-    return trim_tool_observation(
+) -> tuple[str, dict[str, Any], str | None]:
+    trimmed = trim_tool_observation(
         observation,
         tool_name=tool_name,
         budget=context_budget,
         max_chars=max_chars,
     )
+    runtime_info: dict[str, Any] = {}
+    prompt_observation: str | None = None
+    if trimmed != observation:
+        runtime_info.update(
+            {
+                "observation_prompt_compacted": True,
+                "observation_original_chars": len(observation),
+                "observation_trimmed_chars": len(trimmed),
+            }
+        )
+        prompt_observation = trim_tool_observation(
+            observation,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            budget=context_budget,
+            max_chars=max(
+                160,
+                int(context_budget.tool_reference_token_limit) * max(1, int(context_budget.chars_per_token)),
+            ),
+            artifactize_for_prompt=True,
+            force_artifactize=True,
+        )
+    return trimmed, runtime_info, prompt_observation
 
 
 def _invoke_tool(item: ToolExecutionInput) -> Any:
@@ -521,10 +561,17 @@ def _build_tool_message(
     *,
     content: str,
     tool_call_id: str,
+    tool_name: str,
+    prompt_observation: str | None = None,
     status: str = "success",
     runtime_info: dict[str, Any] | None = None,
 ) -> ToolMessage:
-    artifact = {"runtime": dict(runtime_info or {})}
+    artifact = {
+        "runtime": dict(runtime_info or {}),
+        "tool_name": tool_name,
+    }
+    if prompt_observation:
+        artifact["prompt_observation"] = prompt_observation
     return ToolMessage(
         content=content,
         tool_call_id=tool_call_id,
@@ -541,8 +588,11 @@ def _copy_result_for_tool_call(
 ) -> ToolExecutionResult:
     artifact = getattr(source.message, "artifact", None)
     runtime_info = {}
+    prompt_observation = None
     if isinstance(artifact, dict) and isinstance(artifact.get("runtime"), dict):
         runtime_info = dict(artifact.get("runtime") or {})
+        if isinstance(artifact.get("prompt_observation"), str):
+            prompt_observation = str(artifact.get("prompt_observation"))
     runtime_info["deduplicated"] = True
     if cache_hit:
         runtime_info["cache_hit"] = True
@@ -552,6 +602,8 @@ def _copy_result_for_tool_call(
         message=_build_tool_message(
             content=str(source.message.content),
             tool_call_id=item.tool_call_id,
+            tool_name=item.tool_name,
+            prompt_observation=prompt_observation,
             status=getattr(source.message, "status", "success"),
             runtime_info=runtime_info,
         ),

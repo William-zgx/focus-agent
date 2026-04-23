@@ -47,6 +47,7 @@ class ConversationSummaryResponse(BaseModel):
     archived_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    token_usage: dict[str, int] = Field(default_factory=dict)
 
 
 class ConversationListResponse(BaseModel):

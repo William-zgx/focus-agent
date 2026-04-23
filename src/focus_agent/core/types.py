@@ -62,7 +62,12 @@ class ContextBudget(StateModel):
     citation_limit: int = Field(default=10, ge=0)
     prompt_token_limit: int = Field(default=24000, ge=1)
     chars_per_token: int = Field(default=4, ge=1)
+    token_budget_mode: Literal["chars_fallback", "tokenizer_first"] = "chars_fallback"
+    tokenizer_id: str | None = None
     tool_observation_token_limit: int = Field(default=3000, ge=1)
+    tool_observation_budget_mode: Literal["inherit", "chars_fallback", "tokenizer_first"] = "inherit"
+    tool_observation_tokenizer_id: str | None = None
+    tool_reference_token_limit: int = Field(default=240, ge=1)
 
 
 class PlanStep(StateModel):
@@ -95,3 +100,4 @@ class ConversationRecord(StateModel):
     archived_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    token_usage: dict[str, int] = Field(default_factory=dict)

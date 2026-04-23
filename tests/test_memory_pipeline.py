@@ -111,6 +111,104 @@ def test_render_memory_block_groups_sections_by_memory_role():
     assert "owner 字段首次加载丢失" in rendered
 
 
+def test_render_memory_block_dedupes_branch_and_main_duplicates_preferring_promoted_variant():
+    bundle = RetrievedMemoryBundle(
+        query="owner",
+        hits=[
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-branch",
+                    kind=MemoryKind.BRANCH_FINDING,
+                    scope=MemoryScope.BRANCH,
+                    visibility=MemoryVisibility.PROMOTABLE,
+                    namespace=branch_local_memory_namespace("root-1", "branch-1"),
+                    content="发现 owner 字段首次加载会丢失。",
+                    summary="owner 字段首次加载丢失",
+                    root_thread_id="root-1",
+                    source_branch_id="branch-1",
+                    confidence=0.72,
+                    updated_at="2026-04-20T00:00:00Z",
+                ),
+                score=0.88,
+                namespace=branch_local_memory_namespace("root-1", "branch-1"),
+            ),
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-main",
+                    kind=MemoryKind.IMPORTED_CONCLUSION,
+                    scope=MemoryScope.ROOT_THREAD,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=("conversation", "root-1", "main"),
+                    content="发现 owner 字段首次加载会丢失。",
+                    summary="owner 字段首次加载丢失",
+                    root_thread_id="root-1",
+                    source_branch_id="branch-1",
+                    confidence=0.81,
+                    evidence_refs=["merge-1", "trace-9"],
+                    promoted_to_main=True,
+                    updated_at="2026-04-22T00:00:00Z",
+                ),
+                score=0.87,
+                namespace=("conversation", "root-1", "main"),
+            ),
+        ],
+        namespaces=[],
+        total_hits=2,
+    )
+
+    rendered = render_memory_block(bundle)
+
+    assert rendered.count("owner 字段首次加载丢失") == 1
+    assert "## Approved findings already safe to rely on" in rendered
+    assert "## Branch-local findings pending upstream approval" not in rendered
+    assert "root_thread/imported_conclusion" in rendered
+    assert "branch:branch-1" not in rendered
+
+
+def test_render_memory_block_dedupes_rephrased_duplicate_lines():
+    bundle = RetrievedMemoryBundle(
+        query="owner",
+        hits=[
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-main",
+                    kind=MemoryKind.IMPORTED_CONCLUSION,
+                    scope=MemoryScope.ROOT_THREAD,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=("conversation", "root-1", "main"),
+                    content="owner 丢失问题已经确认可以进入主线。",
+                    summary="owner 丢失问题进入主线",
+                    root_thread_id="root-1",
+                    promoted_to_main=True,
+                ),
+                score=0.91,
+                namespace=("conversation", "root-1", "main"),
+            ),
+            MemorySearchHit(
+                record=MemoryRecord(
+                    memory_id="mem-main-dup",
+                    kind=MemoryKind.IMPORTED_CONCLUSION,
+                    scope=MemoryScope.ROOT_THREAD,
+                    visibility=MemoryVisibility.SHARED,
+                    namespace=("conversation", "root-1", "main"),
+                    content="owner 丢失问题已经确认可以进入主线。",
+                    summary="owner 丢失问题进入主线",
+                    root_thread_id="root-1",
+                    promoted_to_main=True,
+                ),
+                score=0.89,
+                namespace=("conversation", "root-1", "main"),
+            ),
+        ],
+        namespaces=[],
+        total_hits=2,
+    )
+
+    rendered = render_memory_block(bundle)
+
+    assert rendered.count("owner 丢失问题进入主线") == 1
+
+
 def test_memory_writer_merges_duplicate_records(tmp_path):
     store = PersistentInMemoryStore(tmp_path / "memory-store.pkl")
     writer = MemoryWriter(store=store)

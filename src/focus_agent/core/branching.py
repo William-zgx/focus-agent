@@ -120,6 +120,7 @@ class BranchTreeNode(BaseModel):
     archived_at: str | None = None
     branch_depth: int = 0
     fork_strategy: str | None = None
+    token_usage: dict[str, int] = Field(default_factory=dict)
     children: list["BranchTreeNode"] = Field(default_factory=list)
 
 

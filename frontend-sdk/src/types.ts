@@ -232,10 +232,17 @@ export interface FocusAgentConversationSummary {
   archived_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  token_usage?: FocusAgentTokenUsageSummary;
 }
 
 export interface FocusAgentConversationListResponse {
   conversations: FocusAgentConversationSummary[];
+}
+
+export interface FocusAgentTokenUsageSummary {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
 }
 
 export interface FocusAgentTrajectoryFilters {
@@ -542,6 +549,7 @@ export interface BranchTreeNode {
   archived_at?: string | null;
   branch_depth: number;
   fork_strategy?: string | null;
+  token_usage?: FocusAgentTokenUsageSummary;
   children: BranchTreeNode[];
 }
 

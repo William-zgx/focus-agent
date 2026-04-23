@@ -80,6 +80,7 @@ class ChatService:
             'tool_calls': getattr(message, 'tool_calls', None),
             'name': getattr(message, 'name', None),
             'id': getattr(message, 'id', None),
+            'usage_metadata': self._json_safe(getattr(message, 'usage_metadata', None)),
         }
 
     def _safe_snapshot(self, thread_id: str):

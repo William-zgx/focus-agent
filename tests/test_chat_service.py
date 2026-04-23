@@ -750,6 +750,21 @@ def test_trajectory_recorder_failure_does_not_fail_turn(tmp_path: Path):
     assert payload["trace"]["metadata"]["request_id"] == "req-thread-state"
 
 
+def test_serialize_message_keeps_usage_metadata():
+    service = ChatService(SimpleNamespace())
+
+    payload = service._serialize_message(
+        AIMessage(
+            content="done",
+            usage_metadata={"input_tokens": 21, "output_tokens": 9, "total_tokens": 30},
+        )
+    )
+
+    assert payload["content"] == "done"
+    assert payload["usage_metadata"]["total_tokens"] == 30
+    assert payload["usage_metadata"]["input_tokens"] == 21
+
+
 def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")

@@ -1,5 +1,5 @@
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
-from focus_agent.api.main import create_app
+from focus_agent.api.main import _aggregate_token_usage_from_turns, _annotate_branch_tree_token_usage, create_app
 from focus_agent.api.schemas import (
     BranchTreeResponse,
     ConversationListResponse,
@@ -26,6 +26,7 @@ def test_branch_tree_node_shape():
         branch_name="main",
         branch_role=BranchRole.MAIN,
         branch_status=BranchStatus.ACTIVE,
+        token_usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
         children=[
             BranchTreeNode(
                 thread_id="child-1",
@@ -36,6 +37,7 @@ def test_branch_tree_node_shape():
                 branch_role=BranchRole.DEEP_DIVE,
                 branch_status=BranchStatus.ACTIVE,
                 branch_depth=1,
+                token_usage={"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
             )
         ],
     )
@@ -53,6 +55,7 @@ def test_branch_tree_node_shape():
                 is_archived=True,
                 archived_at="2026-04-12 10:00:00",
                 branch_depth=1,
+                token_usage={"input_tokens": 4, "output_tokens": 2, "total_tokens": 6},
             )
         ],
     )
@@ -61,6 +64,8 @@ def test_branch_tree_node_shape():
     assert dumped["root"]["children"][0]["branch_name"] == "deep-dive"
     assert dumped["archived_branches"][0]["branch_id"] == "b2"
     assert dumped["archived_branches"][0]["is_archived"] is True
+    assert dumped["root"]["token_usage"]["total_tokens"] == 15
+    assert dumped["archived_branches"][0]["token_usage"]["total_tokens"] == 6
     assert "conclusion_policy" not in dumped["archived_branches"][0]
 
 
@@ -106,6 +111,7 @@ def test_conversation_contract_shapes():
         is_archived=False,
         created_at="2026-04-17 10:00:00",
         updated_at="2026-04-17 10:05:00",
+        token_usage={"input_tokens": 20, "output_tokens": 12, "total_tokens": 32},
     )
     listing = ConversationListResponse(conversations=[created])
     request = CreateConversationRequest()
@@ -117,9 +123,33 @@ def test_conversation_contract_shapes():
     assert dumped["conversations"][0]["root_thread_id"] == "root-1"
     assert dumped["conversations"][0]["title"] == "Conversation 1"
     assert dumped["conversations"][0]["is_archived"] is False
+    assert dumped["conversations"][0]["token_usage"]["total_tokens"] == 32
     assert request.title is None
     assert update.title == "Renamed"
     assert rename_branch.branch_name == "Renamed node"
+
+
+def test_api_token_usage_helpers_aggregate_and_annotate_tree():
+    total = _aggregate_token_usage_from_turns(
+        [
+            {"metrics": {"input_tokens": 12, "output_tokens": 8}},
+            {"metrics": {"input_tokens": 5, "output_tokens": 7, "total_tokens": 12}},
+        ]
+    )
+    annotated = _annotate_branch_tree_token_usage(
+        BranchTreeNode(
+            thread_id="root-1",
+            root_thread_id="root-1",
+            branch_name="main",
+            branch_role=BranchRole.MAIN,
+            branch_status=BranchStatus.ACTIVE,
+            children=[],
+        ),
+        by_thread_id={"root-1": total},
+    )
+
+    assert total == {"input_tokens": 17, "output_tokens": 15, "total_tokens": 32}
+    assert annotated.token_usage["total_tokens"] == 32
 
 
 def test_apply_merge_decision_request_allows_proposal_overrides():

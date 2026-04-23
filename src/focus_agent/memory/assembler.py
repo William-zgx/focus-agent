@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 
 from .models import MemoryRecord, RetrievedMemoryBundle
@@ -15,6 +16,21 @@ _DANGEROUS_PATTERN_RE = re.compile(
 )
 
 
+@dataclass(slots=True)
+class _RenderedMemoryLine:
+    block_key: str
+    line: str
+    dedupe_key: str
+    promoted: bool
+    root_scoped: bool
+    shared: bool
+    confidence: float
+    evidence_count: int
+    updated_at_ts: float
+    score: float
+    importance: float
+
+
 def build_memory_blocks(bundle: RetrievedMemoryBundle) -> dict[str, list[str]]:
     blocks = {
         "user_preferences": [],
@@ -24,14 +40,18 @@ def build_memory_blocks(bundle: RetrievedMemoryBundle) -> dict[str, list[str]]:
         "episodic_context": [],
         "other": [],
     }
-    for hit in bundle.hits:
-        summary = _sanitize_memory_text(hit.record.summary or hit.record.content)
-        if not summary:
+    deduped: dict[str, _RenderedMemoryLine] = {}
+    for index, hit in enumerate(bundle.hits):
+        candidate = _rendered_memory_line(hit.record, score=hit.score, recency_order=index)
+        if candidate is None:
             continue
-        score = f"{hit.score:.2f}"
-        source = _memory_source_label(hit.record)
-        line = f"[{source}] {summary} [score {score}]"
-        blocks[_memory_block_key(hit.record)].append(line)
+        current = deduped.get(candidate.dedupe_key)
+        if current is None or _memory_line_preference(candidate) > _memory_line_preference(current):
+            deduped[candidate.dedupe_key] = candidate
+
+    for item in sorted(deduped.values(), key=_memory_line_preference, reverse=True):
+        blocks[item.block_key].append(item.line)
+
     return {key: value for key, value in blocks.items() if value}
 
 
@@ -67,6 +87,26 @@ def _sanitize_memory_text(text: str) -> str:
     return " ".join(sanitized.split()).strip()
 
 
+def _rendered_memory_line(record: MemoryRecord, *, score: float, recency_order: int) -> _RenderedMemoryLine | None:
+    summary = _sanitize_memory_text(record.summary or record.content)
+    if not summary:
+        return None
+    line = f"[{_memory_source_label(record)}] {summary} [score {score:.2f}]"
+    return _RenderedMemoryLine(
+        block_key=_memory_block_key(record),
+        line=line,
+        dedupe_key=_memory_line_key(record, summary=summary, recency_order=recency_order),
+        promoted=bool(record.promoted_to_main),
+        root_scoped=record.scope.value == "root_thread",
+        shared=record.visibility.value == "shared",
+        confidence=float(record.confidence or 0.0),
+        evidence_count=len(record.evidence_refs),
+        updated_at_ts=record.updated_at.timestamp(),
+        score=float(score),
+        importance=float(record.importance),
+    )
+
+
 def _memory_block_key(record: MemoryRecord) -> str:
     if record.kind.value in {"user_preference", "user_profile"}:
         return "user_preferences"
@@ -85,3 +125,29 @@ def _memory_source_label(record: MemoryRecord) -> str:
     if record.kind.value == "branch_finding" and record.source_branch_id:
         return f"branch:{record.source_branch_id}"
     return f"{record.scope.value}/{record.kind.value}"
+
+
+def _memory_line_key(record: MemoryRecord, *, summary: str, recency_order: int) -> str:
+    normalized = _normalize_memory_text(summary)
+    if normalized:
+        return normalized
+    return f"{record.memory_id}:{recency_order}"
+
+
+def _normalize_memory_text(text: str) -> str:
+    lowered = text.casefold()
+    lowered = re.sub(r"[^0-9a-z\u4e00-\u9fff/._:-]+", " ", lowered)
+    return " ".join(lowered.split())
+
+
+def _memory_line_preference(item: _RenderedMemoryLine) -> tuple[float, ...]:
+    return (
+        1.0 if item.promoted else 0.0,
+        1.0 if item.root_scoped else 0.0,
+        1.0 if item.shared else 0.0,
+        item.confidence,
+        float(item.evidence_count),
+        item.updated_at_ts,
+        item.score,
+        item.importance,
+    )

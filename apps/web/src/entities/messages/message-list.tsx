@@ -24,6 +24,7 @@ interface TranscriptDisplayMessage {
   id: string;
   type: string;
   content: string;
+  totalTokens?: number;
 }
 
 interface ToolDetailEntry {
@@ -140,6 +141,43 @@ function roleClass(type: unknown) {
     return "fa-message-role fa-message-meta is-system";
   }
   return "fa-message-role fa-message-meta";
+}
+
+function totalTokensFromUsageMetadata(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return 0;
+  }
+  const record = value as Record<string, unknown>;
+  const total = Number(record.total_tokens ?? 0);
+  if (Number.isFinite(total) && total > 0) {
+    return Math.round(total);
+  }
+  const input = Number(record.input_tokens ?? 0);
+  const output = Number(record.output_tokens ?? 0);
+  const sum = (Number.isFinite(input) ? input : 0) + (Number.isFinite(output) ? output : 0);
+  return sum > 0 ? Math.round(sum) : 0;
+}
+
+function formatTokenCount(value: number) {
+  const normalized = Math.max(0, Number(value) || 0);
+  if (normalized >= 1_000_000) {
+    const millions = normalized / 1_000_000;
+    return `${millions >= 10 ? millions.toFixed(0) : millions.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (normalized >= 1_000) {
+    const thousands = normalized / 1_000;
+    return `${thousands >= 10 ? thousands.toFixed(0) : thousands.toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  return new Intl.NumberFormat("en-US").format(Math.round(normalized));
+}
+
+function tokenUsageLabel(totalTokens: number, isChineseUi: boolean) {
+  if (totalTokens <= 0) {
+    return "";
+  }
+  return isChineseUi
+    ? `本次回复 · ${formatTokenCount(totalTokens)} tokens`
+    : `Reply · ${formatTokenCount(totalTokens)} tokens`;
 }
 
 function parseLineList(value: string) {
@@ -432,6 +470,7 @@ function buildTranscriptItems(
       id: messageId,
       type: type || "message",
       content,
+      totalTokens: type === "ai" ? totalTokensFromUsageMetadata(message.usage_metadata) : 0,
     });
   }
 
@@ -452,6 +491,7 @@ function buildTranscriptItems(
       id: "assistant-message-fallback",
       type: "ai",
       content: normalizedAssistantMessage,
+      totalTokens: 0,
     });
     return items;
   }
@@ -463,6 +503,7 @@ function buildTranscriptItems(
       id: `${lastItem.id}-summary`,
       type: "ai",
       content: lastItem.summaryText,
+      totalTokens: 0,
     });
   }
 
@@ -1192,6 +1233,11 @@ export function MessageList({
             <div className="fa-message-stack">
               <div className="fa-message-head">
                 <div className={roleClass(item.type)}>{roleLabel(item.type, isChineseUi)}</div>
+                {item.totalTokens ? (
+                  <div className="fa-message-usage-meta">
+                    {tokenUsageLabel(item.totalTokens, isChineseUi)}
+                  </div>
+                ) : null}
               </div>
               <div className={bubbleClass(item.type)}>
                 <div className="fa-message-content">

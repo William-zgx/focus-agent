@@ -160,6 +160,28 @@ function parentMetaLabel(isChineseUi: boolean) {
   return isChineseUi ? "父分支" : "Parent";
 }
 
+function tokenMetaLabel(isChineseUi: boolean) {
+  return isChineseUi ? "分支累计" : "Branch total";
+}
+
+function formatTokenCount(value: number) {
+  const normalized = Math.max(0, Number(value) || 0);
+  if (normalized >= 1_000_000) {
+    const millions = normalized / 1_000_000;
+    return `${millions >= 10 ? millions.toFixed(0) : millions.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (normalized >= 1_000) {
+    const thousands = normalized / 1_000;
+    return `${thousands >= 10 ? thousands.toFixed(0) : thousands.toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  return new Intl.NumberFormat("en-US").format(Math.round(normalized));
+}
+
+function branchTotalTokens(node?: BranchTreeNode | null) {
+  const raw = Number(node?.token_usage?.total_tokens ?? 0);
+  return Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
+}
+
 function roleMetaLabel(isChineseUi: boolean) {
   return isChineseUi ? "角色" : "Role";
 }
@@ -467,6 +489,9 @@ export function BranchTreePanel() {
                 <span className="fa-branch-node-badge">
                   {isChineseUi ? "深度" : "Depth"} {detailDepth}
                 </span>
+                <span className="fa-branch-node-badge">
+                  {formatTokenCount(branchTotalTokens(detailNode))} tokens
+                </span>
               </div>
 
               <div className="fa-branch-node-meta">
@@ -479,6 +504,7 @@ export function BranchTreePanel() {
                     branchStatusLabel(detailNode.branch_status, isChineseUi),
                   ],
                   [depthMetaLabel(isChineseUi), String(detailDepth)],
+                  [tokenMetaLabel(isChineseUi), `${formatTokenCount(branchTotalTokens(detailNode))} tokens`],
                 ].map(([label, value]) => (
                   <div key={label} className="fa-branch-node-meta-row">
                     <span className="fa-branch-node-meta-label">{label}</span>
@@ -1249,6 +1275,9 @@ export function BranchTreePanel() {
                     ) : null}
                   </div>
                   <div className="fa-archived-item-toolbar">
+                    <div className="fa-archived-item-token">
+                      {formatTokenCount(branchTotalTokens(node))} tokens
+                    </div>
                     <div
                       className={`fa-archived-item-status is-archived ${statusAccentTone(node.branch_status)}`.trim()}
                     >

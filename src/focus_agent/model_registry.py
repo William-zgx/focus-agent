@@ -311,6 +311,7 @@ def create_chat_model(
     if resolved.provider == "moonshot":
         from .providers.moonshot_openai import MoonshotChatOpenAI
 
+        init_kwargs.setdefault("stream_usage", True)
         return MoonshotChatOpenAI(
             model=resolved.model_name,
             **init_kwargs,

@@ -6,6 +6,7 @@ from typing import Any
 from langchain.messages import AIMessage, ToolMessage
 from langchain.tools import tool as langchain_tool
 
+from focus_agent.core import context_policy as context_policy_module
 from focus_agent.core.types import ContextBudget
 
 from .runner import run_case
@@ -82,12 +83,35 @@ def _long_tool_output_script(messages: list[Any], allow_tools: bool) -> AIMessag
             ],
         )
 
-    tool_text = "\n".join(
-        str(message.content) for message in messages if isinstance(message, ToolMessage)
-    )
+    tool_messages = [message for message in messages if isinstance(message, ToolMessage)]
+    tool_text = "\n".join(str(message.content) for message in tool_messages)
     if "POLLUTION" in tool_text:
         return AIMessage(content="POLLUTION leaked into the answer.")
-    return AIMessage(content="Relevant hit: src/focus_agent/core/context_policy.py:42.")
+    tool_message = tool_messages[-1]
+    tool_payload = json.loads(str(tool_message.content))
+    artifact = getattr(tool_message, "artifact", None)
+    prompt_payload = tool_payload
+    if isinstance(artifact, dict) and isinstance(artifact.get("prompt_observation"), str):
+        prompt_payload = json.loads(str(artifact["prompt_observation"]))
+    refs = prompt_payload.get("refs") or []
+    if "src/focus_agent/core/context_policy.py:42" in refs:
+        return AIMessage(content=f"Relevant hit: {refs[0]}.")
+
+    results = prompt_payload.get("results") or []
+    if results and isinstance(results[0], dict):
+        ref = str(results[0].get("ref") or "").strip()
+        if ref:
+            return AIMessage(content=f"Relevant hit: {ref}.")
+        path = str(results[0].get("path") or "").strip()
+        line_number = results[0].get("line_number")
+        if path and line_number is not None:
+            return AIMessage(content=f"Relevant hit: {path}:{line_number}.")
+        if path:
+            return AIMessage(content=f"Relevant hit: {path}.")
+
+    if prompt_payload.get("artifact_ref") == "tool-observation://search_code/call-1":
+        return AIMessage(content="artifact-like prompt reference retained.")
+    return AIMessage(content="search result survived compaction but lost location detail.")
 
 
 def test_eval_long_tool_output_does_not_pollute_final_answer(eval_runtime_factory):
@@ -121,4 +145,134 @@ def test_eval_long_tool_output_does_not_pollute_final_answer(eval_runtime_factor
     assert result.passed, [verdict.reasoning for verdict in result.verdicts]
     assert result.metrics["tool_calls"] == 1
     assert "POLLUTION" not in result.answer
+    assert "artifact-like prompt reference missing" not in result.answer
+    assert "artifact-like refs missing" not in result.answer
     assert "POLLUTION" not in result.trajectory[0].observation
+
+
+def test_eval_long_tool_output_marks_prompt_compaction_runtime(eval_runtime_factory):
+    case = EvalCase(
+        id="budget_long_tool_output_marks_prompt_compaction",
+        tags=["smoke", "regression", "context_budget", "tools"],
+        input={
+            "user_message": "找到仓库里 assemble_context 的定义位置。",
+            "initial_state": {
+                "context_budget": ContextBudget(
+                    prompt_token_limit=500,
+                    chars_per_token=1,
+                    tool_observation_token_limit=180,
+                    tool_reference_token_limit=80,
+                )
+            },
+        },
+        expected={
+            "must_call_tools_any_order": ["search_code"],
+            "answer_contains_all": ["context_policy.py"],
+            "max_tool_calls": 1,
+        },
+        judge={"rule": True, "llm": {"enabled": False}},
+    )
+
+    result = run_case(
+        case,
+        runtime=eval_runtime_factory(script=_long_tool_output_script, tools=[search_code]),
+    )
+
+    assert result.passed, [verdict.reasoning for verdict in result.verdicts]
+    runtime = result.trajectory[0].runtime
+    assert runtime["observation_prompt_compacted"] is True
+    assert runtime["observation_original_chars"] > runtime["observation_trimmed_chars"]
+
+
+def _tokenizer_first_budget_script(messages: list[Any], allow_tools: bool) -> AIMessage:
+    assert not allow_tools, "tokenizer-first budget case should stay tool free"
+    prompt_text = "\n".join(str(getattr(message, "content", "")) for message in messages)
+    assert "Current user turn must stay exact." in prompt_text
+    assert "Preserve this exact constraint." in prompt_text
+    assert "OBSOLETE_HISTORY" not in prompt_text
+    return AIMessage(content="constraint survived tokenizer-first trimming")
+
+
+def test_eval_tokenizer_first_budget_prioritizes_constraints(eval_runtime_factory, monkeypatch):
+    def fake_estimate(message, *, budget):  # noqa: ARG001
+        text = str(getattr(message, "content", ""))
+        if "Current user turn must stay exact." in text:
+            return 20
+        if "Preserve this exact constraint." in text:
+            return 18
+        if "OBSOLETE_HISTORY" in text:
+            return 40
+        return max(1, len(text) // 10)
+
+    monkeypatch.setattr(context_policy_module, "_message_budget_units", fake_estimate)
+
+    case = EvalCase(
+        id="budget_tokenizer_first_constraints_survive",
+        tags=["smoke", "regression", "context_budget", "tokenizer"],
+        input={
+            "user_message": "Current user turn must stay exact.",
+            "initial_state": {
+                "rolling_summary": "OBSOLETE_HISTORY " * 120,
+                "user_constraints": [{"constraint": "Preserve this exact constraint."}],
+                "context_budget": ContextBudget(
+                    prompt_token_limit=45,
+                    chars_per_token=4,
+                    token_budget_mode="tokenizer_first",
+                    tokenizer_id="fake-model",
+                ),
+            },
+        },
+        expected={
+            "answer_contains_all": ["constraint survived tokenizer-first trimming"],
+            "max_tool_calls": 0,
+        },
+        judge={"rule": True, "llm": {"enabled": False}},
+    )
+
+    result = run_case(case, runtime=eval_runtime_factory(script=_tokenizer_first_budget_script))
+
+    assert result.passed, [verdict.reasoning for verdict in result.verdicts]
+    assert result.metrics["tool_calls"] == 0
+
+
+def _branch_review_packing_script(messages: list[Any], allow_tools: bool) -> AIMessage:
+    assert not allow_tools, "branch-review packing case should stay tool free"
+    prompt_text = "\n".join(str(getattr(message, "content", "")) for message in messages)
+    assert "## Findings" in prompt_text
+    assert "## Constraints and goals" in prompt_text
+    assert "## Artifacts in scope" in prompt_text
+    assert prompt_text.index("## Findings") < prompt_text.index("## Constraints and goals")
+    return AIMessage(content="branch review packing preserved import-worthy blocks")
+
+
+def test_eval_branch_review_packing_prioritizes_findings_and_artifacts(eval_runtime_factory):
+    case = EvalCase(
+        id="budget_branch_review_block_packing",
+        tags=["smoke", "regression", "context_budget", "branch_review"],
+        input={
+            "user_message": "请准备 merge review 摘要。",
+            "initial_state": {
+                "prompt_mode": "branch_review",
+                "rolling_summary": "OLD_SUMMARY " * 120,
+                "user_constraints": [{"constraint": "Keep the review concise."}],
+                "branch_meta": {
+                    "branch_id": "branch-pack",
+                    "branch_name": "review-pack",
+                    "branch_role": "verify",
+                },
+                "branch_local_findings": [{"finding": "Branch finding worth importing"}],
+                "artifacts": [{"title": "Review notes", "kind": "note"}],
+                "context_budget": ContextBudget(prompt_token_limit=360, chars_per_token=1),
+            },
+        },
+        expected={
+            "answer_contains_all": ["branch review packing preserved import-worthy blocks"],
+            "max_tool_calls": 0,
+        },
+        judge={"rule": True, "llm": {"enabled": False}},
+    )
+
+    result = run_case(case, runtime=eval_runtime_factory(script=_branch_review_packing_script))
+
+    assert result.passed, [verdict.reasoning for verdict in result.verdicts]
+    assert result.metrics["tool_calls"] == 0
