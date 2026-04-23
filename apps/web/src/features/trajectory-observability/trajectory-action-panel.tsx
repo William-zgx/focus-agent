@@ -109,7 +109,7 @@ export function TrajectoryActionPanel({
 
   if (!selected) {
     return (
-      <div className="fa-observability-detail-block">
+      <div className="fa-observability-detail-block fa-trajectory-workbench-action-panel">
         <h3>{isChineseUi ? "复盘动作" : "Replay actions"}</h3>
         <div className="fa-observability-empty">
           {isChineseUi
@@ -121,7 +121,7 @@ export function TrajectoryActionPanel({
   }
 
   return (
-    <div className="fa-observability-detail-block">
+    <div className="fa-observability-detail-block fa-trajectory-workbench-action-panel">
       <h3>{isChineseUi ? "复盘动作" : "Replay actions"}</h3>
 
       <p>
