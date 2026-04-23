@@ -13,5 +13,7 @@ def test_observability_ui_smoke_script_targets_overview_and_trajectory():
     assert "--no-start-api" in script_text
     assert "request_id" in script_text
     assert "trace_id" in script_text
-    assert "fa-observability-overview-card" in script_text
+    assert "fa-trajectory-overview-metric-card" in script_text
+    assert "fa-trajectory-overview-column" in script_text
     assert "fa-observability-correlation-item" in script_text
+    assert "fa-trajectory-workbench-rail-section" in script_text

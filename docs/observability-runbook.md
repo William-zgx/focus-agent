@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-04-22
+Updated: 2026-04-24
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -75,6 +75,8 @@ Use the overview page first when you need to answer:
 - Which scene, branch role, model, or tool is hot right now?
 - Is latency, failure rate, or fallback density moving first?
 
+The overview page is intentionally limited to issue discovery. It should tell you which slice deserves a deeper review, not replace the single-turn workbench.
+
 ## 3. Drill Into A Failing Sample
 
 After the overview tells you where to look, move to:
@@ -94,8 +96,16 @@ The trajectory workbench is optimized for this sequence:
 
 1. Narrow the sample list with filters or presets.
 2. Select one turn.
-3. Inspect the execution timeline and runtime metadata.
-4. Pivot into the same request, trace, thread, or model.
+3. Read the summary card first so you know whether the sample is failing, slow, zero-step, or detail-degraded.
+4. Inspect the evidence panel in the active mode.
+5. Read the input/output narrative and runtime context below the evidence block.
+6. Use the right rail to pivot into the same request, trace, thread, tool, or model, or run replay/promote.
+
+Evidence modes:
+
+- `timeline`: normal path when step data exists; use it to isolate the exact step, runtime, fallback, cache, or error pivot.
+- `zero_step`: compact fallback when the turn has no recorded trajectory steps; the workbench switches to direct evidence instead of leaving an empty timeline shell.
+- `missing_detail`: explicit degraded state when the detail payload is unavailable; treat this as an observability gap and verify API/runtime readiness before drawing conclusions.
 
 ## 4. Correlate By Request And Trace
 
@@ -127,6 +137,7 @@ The Web workbench also supports:
 - request and trace deep links
 - production pivots from the selected turn
 - correlation hooks collected from trajectory runtime metadata
+- a persistent right rail for copy/download actions, replay, and eval-sample promotion
 
 ## 5. Use The CLI For Fast Terminal Inspection
 
@@ -154,7 +165,7 @@ Once you identify a useful trajectory turn, you can:
 - replay it through `POST /v1/observability/trajectory/{turn_id}/replay`
 - promote it into an eval-ready dataset payload through `POST /v1/observability/trajectory/{turn_id}/promote`
 
-The Web trajectory page surfaces these actions from the selected turn so you can move from diagnosis into regression capture without leaving the console.
+The Web trajectory page surfaces these actions from the selected turn so you can move from diagnosis into regression capture without leaving the console. The right rail is designed to stay visible while you keep reading the selected sample.
 
 ## 7. Recommended Oncall Flow
 
@@ -164,8 +175,9 @@ Use this order when responding to production issues:
 2. Check `/metrics` or `/v1/observability/overview` to see whether the issue is broad or scoped.
 3. Open `/app/observability/overview` and identify the hottest scene, tool, branch role, or model slice.
 4. Open `/app/observability/trajectory` and pivot into the exact request, trace, thread, or model.
-5. Inspect the selected turn's timeline, error text, fallback steps, cache behavior, and runtime metadata.
-6. Replay or promote the turn if it should become a regression artifact.
+5. Read the summary card and note which evidence mode you are in: `timeline`, `zero_step`, or `missing_detail`.
+6. Inspect the selected turn's error text, fallback steps, cache behavior, input/output narrative, and runtime metadata.
+7. Replay or promote the turn if it should become a regression artifact.
 
 ## 8. Local Verification Commands
 

@@ -20,7 +20,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 
 - Branch-aware conversations with controlled merge-back
 - Streaming chat APIs and a built-in React web app at `/app`
-- Observability overview and trajectory console at `/app/observability/overview` and `/app/observability/trajectory`
+- Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, memory pipeline, and typed frontend SDK
 - Built-in repo, git, web, artifact, and memory tools
 

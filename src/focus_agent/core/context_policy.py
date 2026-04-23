@@ -225,7 +225,6 @@ def apply_prompt_budget_guard(
     preserves the current user turn and active constraints first, and only removes
     lower-priority context blocks or older dialogue turns.
     """
-    max_chars = _prompt_char_limit(budget)
     guarded = [_trim_message_tool_observation(message, budget=budget) for message in prompt_messages]
     if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
         return guarded
@@ -278,72 +277,6 @@ def apply_prompt_budget_guard(
         return guarded
 
     return _hard_limit_prompt_messages(guarded, budget=budget)
-
-
-def trim_tool_observation(
-    observation: Any,
-    *,
-    tool_name: str = "",
-    tool_call_id: str = "",
-    budget: ContextBudget | None = None,
-    max_chars: int | None = None,
-    artifactize_for_prompt: bool = False,
-    force_artifactize: bool = False,
-) -> str:
-    text = str(observation)
-    effective_budget = budget or ContextBudget()
-    limit = max_chars if max_chars is not None else _tool_observation_char_limit(effective_budget)
-    limit = max(1, int(limit))
-    enforce_token_budget = max_chars is None
-    if _tool_observation_within_budget(
-        text,
-        budget=effective_budget,
-        max_chars=limit,
-        enforce_token_budget=enforce_token_budget,
-    ) and not (artifactize_for_prompt and force_artifactize):
-        return text
-
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        if not artifactize_for_prompt and budget is None and max_chars is not None and not tool_name:
-            rendered = _truncate_text(text, max_chars=limit)
-            if not enforce_token_budget:
-                return rendered
-            return _fit_tool_observation_to_budget(rendered, budget=effective_budget, max_chars=limit)
-        rendered = _format_textual_tool_reference(
-            text,
-            tool_name=tool_name,
-            tool_call_id=tool_call_id,
-            max_chars=limit,
-            reference_chars=min(limit, _tool_reference_char_limit(effective_budget)),
-        )
-        if len(rendered) > limit:
-            rendered = _truncate_json_payload(json.loads(rendered), max_chars=limit)
-        if not enforce_token_budget:
-            return rendered
-        return _fit_tool_observation_to_budget(rendered, budget=effective_budget, max_chars=limit)
-
-    compact = _compact_structured_observation(
-        payload,
-        tool_name=tool_name,
-        tool_call_id=tool_call_id,
-        max_chars=limit,
-        reference_chars=min(limit, _tool_reference_char_limit(effective_budget)),
-        artifactize_for_prompt=artifactize_for_prompt or force_artifactize,
-    )
-    rendered = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
-    if _tool_observation_within_budget(
-        rendered,
-        budget=effective_budget,
-        max_chars=limit,
-        enforce_token_budget=enforce_token_budget,
-    ):
-        return rendered
-    truncated = _truncate_json_payload(compact, max_chars=limit)
-    if not enforce_token_budget:
-        return truncated
-    return _fit_tool_observation_to_budget(truncated, budget=effective_budget, max_chars=limit)
 
 
 def _coerce_prompt_mode(mode: PromptMode | str | None) -> PromptMode:

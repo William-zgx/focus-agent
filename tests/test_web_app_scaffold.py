@@ -91,9 +91,10 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "let sendSucceeded = false;" in stream_hook_text
     assert "sendSucceeded = !nextState.failed && !controller.signal.aborted;" in stream_hook_text
     assert "failed: {" in stream_hook_text
-    assert "setPendingUserMessage(null);" in stream_hook_text
+    assert "resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted)" in stream_hook_text
+    assert "pendingUserMessage: cleanup.clearPendingUserMessage" in stream_hook_text
     assert "client.sendTurn(" not in stream_hook_text
-    assert 'activeRequestIdRef.current !== requestId || controller.signal.aborted' in stream_hook_text
+    assert 'activeRequestIdsRef.current.get(requestThreadId) !== requestId' in stream_hook_text
 
 
 def test_react_web_app_restores_merged_branch_read_only_mode():

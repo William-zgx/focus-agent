@@ -1,6 +1,6 @@
 # Focus Agent 文档索引
 
-更新时间：2026-04-22
+更新时间：2026-04-24
 
 这份索引只保留当前推荐入口。
 
@@ -9,6 +9,7 @@
 - [../README.md](../README.md) / [../README.zh-CN.md](../README.zh-CN.md)：项目介绍、快速开始和常用入口
 - [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md)：完整的本地启动、repo-local PostgreSQL 和开发模式说明
 - [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：开发命令矩阵、验证口径和常见工作流
+- [observability-runbook.md](observability-runbook.md)：overview 与 trajectory 复盘台的排障顺序、pivot 方式和 replay/promote 路径
 - [architecture.md](architecture.md)：当前工程架构、部署方式、持久化与 observability 现状
 - [memory-system.md](memory-system.md)：当前记忆系统设计、生命周期、promotion 语义与后续扩展方向
 - [docker-deployment.md](docker-deployment.md)：本机启动、本地 Docker 联调、生产模板的边界和迁移方式

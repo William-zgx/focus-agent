@@ -20,7 +20,7 @@ Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式
 
 - 支持分支式会话与受控 merge 回主线
 - 提供流式聊天 API 和内置 React Web 界面 `/app`
-- 内置 observability overview 与 trajectory 观测控制台 `/app/observability/overview`、`/app/observability/trajectory`
+- 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、记忆链路和类型完备的前端 SDK
 - 提供仓库、git、网页、artifact 和 memory 工具
 

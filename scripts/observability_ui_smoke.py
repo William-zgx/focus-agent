@@ -295,7 +295,9 @@ def build_overview_expression(seed: dict[str, str]) -> str:
   const bodyText = () => document.body?.innerText || '';
   const fetches = () => window.__faFetches || [];
   await waitFor(
-    () => bodyText().includes('Ops overview') || bodyText().includes('运营总览'),
+    () =>
+      bodyText().includes('Trajectory operations overview') ||
+      bodyText().includes('Trajectory 运行总览'),
     30000,
     'overview page title'
   );
@@ -305,13 +307,15 @@ def build_overview_expression(seed: dict[str, str]) -> str:
     30000,
     'overview fetch'
   );
-  const cards = document.querySelectorAll('.fa-observability-overview-card').length;
-  if (cards < 3) {{
-    throw new Error('Observability overview cards did not render.');
+  const metricCards = document.querySelectorAll('.fa-trajectory-overview-metric-card').length;
+  const columns = document.querySelectorAll('.fa-trajectory-overview-column').length;
+  if (metricCards < 3 || columns < 3) {{
+    throw new Error('Observability overview sections did not render.');
   }}
   return JSON.stringify({{
     url: location.href,
-    cards,
+    metricCards,
+    columns,
     request: seed.request_id,
   }});
 }})()
@@ -336,7 +340,9 @@ def build_trajectory_expression(seed: dict[str, str]) -> str:
   const bodyText = () => document.body?.innerText || '';
   const fetches = () => window.__faFetches || [];
   await waitFor(
-    () => bodyText().includes('Sample explorer') || bodyText().includes('样本浏览器'),
+    () =>
+      bodyText().includes('High-density sample queue') ||
+      bodyText().includes('高密度样本队列'),
     40000,
     'trajectory workbench title'
   );
@@ -366,18 +372,25 @@ def build_trajectory_expression(seed: dict[str, str]) -> str:
     40000,
     'correlation hooks'
   );
-  const turnCards = document.querySelectorAll('.fa-observability-turn-card').length;
+  const turnCards = document.querySelectorAll(
+    '.fa-trajectory-workbench-sample-card, .fa-observability-turn-card'
+  ).length;
   const correlationItems = Array.from(document.querySelectorAll('.fa-observability-correlation-item strong'))
     .map((item) => item.textContent || '');
   const requestInput = document.querySelector('input[placeholder="req-…"], input[placeholder="req-..."]');
   const traceInput = document.querySelector('input[placeholder="trace-…"], input[placeholder="trace-..."]');
+  const railSections = document.querySelectorAll('.fa-trajectory-workbench-rail-section').length;
   if (!requestInput || !traceInput) {{
     throw new Error('Request/trace filters were not rendered.');
+  }}
+  if (railSections < 4) {{
+    throw new Error('Workbench right rail did not render.');
   }}
   return JSON.stringify({{
     url: location.href,
     turnCards,
     correlationItems,
+    railSections,
   }});
 }})()
 """

@@ -1,6 +1,6 @@
 # Focus Agent 架构现状
 
-更新时间：2026-04-22
+更新时间：2026-04-24
 
 本文描述当前已经落地的工程架构、部署边界和运维观测能力。路线图和后续优先级请看 [roadmap.md](roadmap.md)。
 
@@ -78,7 +78,7 @@ apps/web
 ### 3.2 Web App 与 SDK
 
 - `/app` 由 React Web App 接管；开发模式可重定向到 Vite dev server
-- Web App 覆盖会话列表、聊天、流式响应、分支树、merge review、模型状态、observability overview、trajectory review console
+- Web App 覆盖会话列表、聊天、流式响应、分支树、merge review、模型状态，以及按职责拆分的 observability overview 和 trajectory review workbench
 - `frontend-sdk` 覆盖 conversation、thread state、branch action、merge review、trajectory observability 等 typed client 能力
 - Vite bundle 分割已配置，React / router / query / state / app 代码分块构建
 
@@ -140,7 +140,13 @@ API 入口：
 
 `/readyz` 返回 runtime 组件状态、版本、环境和部署名；`/metrics` 输出 `focus_agent_runtime_*` 与 trajectory 聚合指标。trajectory list/stats/overview 支持按 `request_id` 和 `trace_id` 查询，复盘台支持 request/trace URL 深链、production pivots、correlation hooks 和 runtime signal 展示。
 
-当前代码已提供轻量 span facade、运行时 OTel exporter 初始化、tool/runtime span 元数据和稳定 `trace_id` / `root_span_id` correlation handle。只要部署侧安装 OTel 依赖并提供 `OTEL_TRACES_EXPORTER` 与 `OTEL_EXPORTER_OTLP_*` 配置，就可以把 span 送到外部 collector；剩余工作主要是部署环境里的 collector 连通性、告警接入，以及更长时真实浏览器链路回归。
+当前 Web observability 路由已经按职责拆分：
+
+- `/app/observability/overview`：负责问题发现，只保留 runtime health、趋势、热点工具、模型分布和场景分布，帮助先判断“哪个切片值得进复盘台”
+- `/app/observability/trajectory`：负责单条复盘，默认采用三栏工作台布局，左栏是高密度样本队列和筛选，中栏按“结论摘要 -> 主证据 -> 输入/输出叙事 -> 补充上下文”组织，右栏常驻关联锚点、pivot、热点工具和 replay/promote 动作
+- 证据区支持三种展示/降级模式：`timeline`（有步骤时显示完整执行时间线）、`zero_step`（无步骤时切换到紧凑证据视图，不再保留空白 timeline）、`missing_detail`（详情缺失时明确提示当前是降级态）
+
+当前代码已提供轻量 span facade、运行时 OTel exporter 初始化、tool/runtime span 元数据和稳定 `trace_id` / `root_span_id` correlation handle。只要部署侧安装 OTel 依赖并提供 `OTEL_TRACES_EXPORTER` 与 `OTEL_EXPORTER_OTLP_*` 配置，就可以把 span 送到外部 collector；剩余工作主要是部署环境里的 collector 连通性、告警接入、批量治理，以及更长时真实浏览器链路回归。
 
 ## 4. Docker / Compose 部署与本机启动边界
 
@@ -155,7 +161,7 @@ Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 
 ## 5. 当前限制
 
 - 限流仍是进程内滑动窗口，不适合多副本共享额度；多副本部署应改用 Redis 等外部限流存储
-- trajectory review console 和 overview 已有生产排障入口，但还需要更长时真实浏览器链路、对比/批量治理和告警接入
+- overview / trajectory 的职责拆分和三栏复盘工作台已落地，但还需要更长时真实浏览器链路、对比/批量治理和告警接入
 - context budget 仍以确定性裁剪和近似预算为主，tokenizer 精算与语义压缩仍在路线图中
 - Model Routing 尚未接入 planner / executor / reflect 分工
 
@@ -221,6 +227,8 @@ uv run pytest \
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
 - Web App：`apps/web/src/`
+- Web observability 页面：`apps/web/src/pages/observability/trajectory-page.tsx`
+- Web observability 组件：`apps/web/src/features/trajectory-observability/`
 - SDK：`frontend-sdk/src/`
 
 ## 8. 文档关系
