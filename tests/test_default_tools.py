@@ -901,6 +901,23 @@ def test_search_code_uses_configured_default_max_results(tmp_path):
     assert all(item["path"] == "sample.py" for item in payload["results"])
 
 
+def test_search_code_skips_local_focus_agent_runtime_dir(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "src").mkdir()
+    (project / ".focus_agent" / "postgres" / "run").mkdir(parents=True)
+    (project / "src" / "state.py").write_text("selected_model: str\n", encoding="utf-8")
+    (project / ".focus_agent" / "postgres" / "run" / "noise.py").write_text(
+        "selected_model = 'runtime'\n",
+        encoding="utf-8",
+    )
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    payload = json.loads(tools["search_code"].invoke({"query": "selected_model", "literal": True}))
+
+    assert [item["path"] for item in payload["results"]] == ["src/state.py"]
+
+
 def test_search_code_glob_matches_root_level_files_with_double_star(tmp_path):
     project = tmp_path / "project"
     project.mkdir()

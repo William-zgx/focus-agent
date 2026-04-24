@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import re
 from typing import Any, Literal
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -537,6 +538,34 @@ def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = 
     if policy == "live_web_research":
         return [tool for tool in tools if getattr(tool, "name", "") in _LIVE_WEB_TOOL_NAMES]
     return list(tools)
+
+
+def _workspace_lookup_should_start_with_search(text: str, messages: list[Any], tools: list[Any]) -> bool:
+    normalized = " ".join(text.strip().split())
+    if not normalized:
+        return False
+    if any(isinstance(message, ToolMessage) for message in messages):
+        return False
+    if not any(str(getattr(tool, "name", "")) == "search_code" for tool in tools):
+        return False
+    return _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS) and not _contains_any(
+        normalized,
+        _FILE_BROWSE_INTENT_MARKERS,
+    )
+
+
+def _workspace_search_query(text: str) -> str:
+    tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?", text)
+    seen: list[str] = []
+    for token in tokens:
+        lowered = token.lower()
+        if lowered in {"repo", "repository", "codebase", "source", "file", "function", "class"}:
+            continue
+        if token not in seen:
+            seen.append(token)
+    if seen:
+        return " ".join(seen[:6])
+    return text.strip()
 
 
 def _context_budget_from_state(state: AgentState) -> ContextBudget:
@@ -1304,7 +1333,22 @@ def build_graph(
             thinking_mode=selected_thinking_mode,
             settings=settings,
         )
-        if _should_force_tool_free_answer(list(state.get("messages", []) or [])):
+        if tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
+            latest_user,
+            messages,
+            available_tools,
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"workspace-search-{state.get('llm_calls', 0) + 1}",
+                        "name": "search_code",
+                        "args": {"query": _workspace_search_query(latest_user)},
+                    }
+                ],
+            )
+        elif _should_force_tool_free_answer(list(state.get("messages", []) or [])):
             forced_prompt = apply_prompt_budget_guard(
                 [
                     prompt_messages[0],

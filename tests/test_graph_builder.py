@@ -931,6 +931,71 @@ def test_graph_adds_reasoning_content_before_followup_thinking_invoke(monkeypatc
     assert result.value["messages"][-1].content == "price found"
 
 
+def test_graph_forces_search_code_for_workspace_definition_lookup(monkeypatch):
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        return (
+            '{"results":[{"path":"src/focus_agent/core/state.py",'
+            '"line_number":106,"line":"selected_model: str"}]}'
+        )
+
+    search_code.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+    }
+
+    class _WorkspaceLookupModel:
+        def bind_tools(self, _tools):
+            return self
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            assert any(isinstance(message, ToolMessage) for message in prompt_messages)
+            return AIMessage(
+                content="AgentState.selected_model is defined in src/focus_agent/core/state.py."
+            )
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: _WorkspaceLookupModel(),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(search_code,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content="只用本地仓库工具，找到仓库里 AgentState 的 selected_model 字段定义位置。"
+                )
+            ],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    messages = result.value["messages"]
+    search_messages = [
+        message
+        for message in messages
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None)
+    ]
+    tool_messages = [message for message in messages if isinstance(message, ToolMessage)]
+
+    assert search_messages
+    assert search_messages[0].tool_calls[0]["name"] == "search_code"
+    assert search_messages[0].tool_calls[0]["args"]["query"] == "AgentState selected_model"
+    assert tool_messages
+    assert messages[-1].content == "AgentState.selected_model is defined in src/focus_agent/core/state.py."
+
+
 def test_graph_tool_executor_parallelizes_read_only_tools(monkeypatch):
     @tool
     def slow_lookup(name: str) -> str:

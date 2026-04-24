@@ -26,16 +26,18 @@ class RuleJudge:
         failures: list[str] = []
         checks: list[str] = []
 
+        normalized_answer = _normalize_text(answer)
+
         contains_any = expected.get("answer_contains_any")
         if contains_any:
             checks.append("answer_contains_any")
-            if not any(needle.lower() in answer.lower() for needle in contains_any):
+            if not any(_contains_normalized(normalized_answer, str(needle)) for needle in contains_any):
                 failures.append(f"answer missing any of {contains_any!r}")
 
         contains_all = expected.get("answer_contains_all")
         if contains_all:
             checks.append("answer_contains_all")
-            missing = [n for n in contains_all if n.lower() not in answer.lower()]
+            missing = [n for n in contains_all if not _contains_normalized(normalized_answer, str(n))]
             if missing:
                 failures.append(f"answer missing required substrings {missing!r}")
 
@@ -43,7 +45,7 @@ class RuleJudge:
         if not_contains:
             checks.append("answer_must_not_contain")
             for pattern in not_contains:
-                if pattern.lower() in answer.lower():
+                if _normalize_text(str(pattern)) in normalized_answer:
                     failures.append(f"answer must not contain {pattern!r}")
 
         regex_required = expected.get("answer_regex")
@@ -101,3 +103,26 @@ class RuleJudge:
 def _is_subsequence(needle: Iterable[Any], haystack: list[Any]) -> bool:
     it = iter(haystack)
     return all(any(token == hit for hit in it) for token in needle)
+
+
+def _normalize_text(value: str) -> str:
+    return (
+        value.casefold()
+        .replace("\u2010", "-")
+        .replace("\u2011", "-")
+        .replace("\u2012", "-")
+        .replace("\u2013", "-")
+        .replace("\u2014", "-")
+        .replace("\u2212", "-")
+    )
+
+
+def _contains_normalized(normalized_answer: str, needle: str) -> bool:
+    normalized_needle = _normalize_text(needle)
+    if normalized_needle in normalized_answer:
+        return True
+    if "-" not in normalized_needle:
+        return False
+    compact_answer = normalized_answer.replace("-", "").replace(" ", "")
+    compact_needle = normalized_needle.replace("-", "").replace(" ", "")
+    return bool(compact_needle) and compact_needle in compact_answer

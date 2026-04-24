@@ -63,6 +63,30 @@ def test_rule_judge_passes_when_answer_matches():
     assert verdict.passed
 
 
+def test_rule_judge_normalizes_unicode_hyphens():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_rule_unicode_hyphen",
+            "input": {"user_message": "x"},
+            "expected": {"answer_contains_all": ["self-repair"]},
+        }
+    )
+    verdict = RuleJudge().evaluate(case=case, answer="self\u2011repair preview", trajectory=[])
+    assert verdict.passed
+
+
+def test_rule_judge_matches_hyphenated_terms_with_spaces():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_rule_hyphen_space",
+            "input": {"user_message": "x"},
+            "expected": {"answer_contains_all": ["self-repair"]},
+        }
+    )
+    verdict = RuleJudge().evaluate(case=case, answer="self repair preview", trajectory=[])
+    assert verdict.passed
+
+
 def test_rule_judge_catches_forbidden_tool():
     case = EvalCase.from_dict(
         {

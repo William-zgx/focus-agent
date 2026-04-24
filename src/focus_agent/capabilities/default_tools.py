@@ -45,6 +45,7 @@ _SKIP_DIR_NAMES = {
     ".next",
     ".tox",
     ".cache",
+    ".focus_agent",
     "dist",
     "build",
 }
