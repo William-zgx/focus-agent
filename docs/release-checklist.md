@@ -55,6 +55,7 @@ make web-check
 make web-build
 uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
+uv run python scripts/ui_smoke_test.py
 uv run python -m tests.eval --suite smoke --concurrency 1
 uv run python -m tests.eval --suite observability --concurrency 1
 uv run python -m tests.eval --suite agent_arch --concurrency 1
@@ -64,7 +65,7 @@ uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 ```
 
-- If browser workflows changed outside observability, also run `make ui-smoke`
+- `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target.
 - If deployment or persistence changed, run the targeted Postgres / containerization tests referenced in `docs/architecture.md`
 - If production trajectory failures were promoted, replay the exported slice before tagging:
 

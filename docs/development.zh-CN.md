@@ -68,12 +68,17 @@ make web-build
 
 ```bash
 make ui-smoke
+# 或直接跑底层 browser smoke：
+uv run python scripts/ui_smoke_test.py
 ```
 
 5. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
 ```bash
 make ui-smoke-observability
+# 发布式 observability smoke：
+uv run python scripts/observability_ui_smoke.py --scenario all
+pnpm --dir apps/web smoke:observability
 ```
 
 6. 如果改动影响 trajectory observability contract：
@@ -82,13 +87,22 @@ make ui-smoke-observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-7. 如果改动影响 Agent 角色路由、Memory Curator、Tool Router、helper-model fallback 或治理观测：
+7. 如果改动影响 Agent 角色路由、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
 ```bash
-uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py
+uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
+uv run python -m tests.eval --suite agent_context --concurrency 1
+uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+```
+
+工作区查询回归还应覆盖 local-first 工具路径：
+
+```bash
+uv run pytest tests/test_graph_builder.py::test_graph_forces_search_code_for_workspace_definition_lookup tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
+uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
 如果本机 `.venv` 里的 `psycopg` 因缺少 `libpq` 在测试收集阶段失败，可先用当前 focused observability workaround：

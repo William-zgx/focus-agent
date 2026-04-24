@@ -68,12 +68,17 @@ make web-build
 
 ```bash
 make ui-smoke
+# or run the underlying browser smoke directly:
+uv run python scripts/ui_smoke_test.py
 ```
 
 5. If observability pages or seeded trajectory browser flows changed:
 
 ```bash
 make ui-smoke-observability
+# release-style observability smoke:
+uv run python scripts/observability_ui_smoke.py --scenario all
+pnpm --dir apps/web smoke:observability
 ```
 
 6. If trajectory observability contracts changed:
@@ -91,6 +96,13 @@ uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+```
+
+Workspace lookup regressions should also cover the local-first tool path:
+
+```bash
+uv run pytest tests/test_graph_builder.py::test_graph_forces_search_code_for_workspace_definition_lookup tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
+uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
 If local test collection fails because the active `.venv` `psycopg` install cannot load `libpq`, use the focused stub workaround for observability checks:

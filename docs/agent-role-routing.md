@@ -11,6 +11,7 @@ This note defines the release gate for Agent role routing and governance without
 - `AGENT_DELEGATION_ENABLED=true` builds `agent_delegation_plan`; `AGENT_DELEGATION_ENFORCE=true` marks delegated role runs as enforced governance records for the turn.
 - Routed roles use the current role set: `orchestrator`, `planner`, `executor`, `critic`, `memory_curator`, and `skill_scout`.
 - Workspace lookup must stay local-first and must not call web tools when the user says not to browse.
+- Symbol, definition, usage, or location lookup should start with `search_code` when that tool is available; `.focus_agent/` runtime files are excluded from code search.
 - Memory preview is prompt evidence only; uncommitted preview content must not leak into durable memory or final answers.
 - Role-specific model settings use `AGENT_ROLE_*_MODEL`. If a role model is unset, `executor` falls back to the main selected model; planning, critique, memory, skill, and orchestration roles fall back to `helper_model`, then the main model.
 - Memory Curator is controlled by `AGENT_MEMORY_CURATOR_ENABLED`; auto-promotion only runs after approved branch merge and conflicts stay in `needs_review`.
@@ -45,4 +46,12 @@ If the Web console or SDK contract changed, pair the gate with:
 ```bash
 make sdk-check
 make web-check
+```
+
+If the browser chat, branch, review, or observability surfaces changed, add:
+
+```bash
+uv run python scripts/ui_smoke_test.py
+uv run python scripts/observability_ui_smoke.py --scenario all
+pnpm --dir apps/web smoke:observability
 ```
