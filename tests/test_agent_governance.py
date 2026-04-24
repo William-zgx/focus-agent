@@ -76,6 +76,37 @@ class _DecisionRepo:
                     "agent_review_queue": [
                         {"item_id": "review-1", "item_type": "workspace_write_with_high_risk_tool", "status": "pending"}
                     ],
+                    "agent_task_ledger": {
+                        "enabled": True,
+                        "status": "planned",
+                        "tasks": [
+                            {
+                                "task_id": "task-1",
+                                "role": "executor",
+                                "goal": "Produce evidence.",
+                                "status": "completed",
+                                "artifact_ids": ["artifact-1"],
+                                "retry_count": 0,
+                            }
+                        ],
+                    },
+                    "delegated_artifacts": [
+                        {
+                            "artifact_id": "artifact-1",
+                            "task_id": "task-1",
+                            "role": "executor",
+                            "kind": "evidence",
+                            "title": "Evidence",
+                            "status": "accepted",
+                        }
+                    ],
+                    "critic_gate_result": {
+                        "enabled": True,
+                        "enforce": False,
+                        "verdict": "pass",
+                        "accepted_artifact_ids": ["artifact-1"],
+                        "rejected_artifact_ids": [],
+                    },
                 },
             }
         ]
@@ -271,6 +302,9 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             agent_model_router_enabled=True,
             agent_self_repair_enabled=True,
             agent_review_queue_enabled=True,
+            agent_task_ledger_enabled=True,
+            agent_artifact_synthesis_enabled=True,
+            agent_critic_gate_enabled=True,
         ),
         tool_registry=ToolRegistry(tools=(search_code, write_text_artifact, web_search)),
         trajectory_recorder=_DecisionRepo(),
@@ -312,6 +346,45 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     review_queue = client.get("/v1/agent/review-queue")
     review_approve = client.post("/v1/agent/review-queue/review-1/approve")
     review_reject = client.post("/v1/agent/review-queue/review-1/reject")
+    task_ledger_policy = client.get("/v1/agent/task-ledger/policy")
+    task_ledger_plan = client.post("/v1/agent/task-ledger/plan", json={"message": "Plan task ledger handoff."})
+    task_ledger_runs = client.get("/v1/agent/task-ledger/runs")
+    artifacts = client.get("/v1/agent/artifacts")
+    synthesis = client.post(
+        "/v1/agent/artifacts/synthesize",
+        json={
+            "artifacts": [
+                {
+                    "artifact_id": "artifact-1",
+                    "task_id": "task-1",
+                    "role": "executor",
+                    "kind": "evidence",
+                    "title": "Evidence",
+                    "status": "accepted",
+                }
+            ]
+        },
+    )
+    critic_verdicts = client.get("/v1/agent/critic/verdicts")
+    critic_eval = client.post(
+        "/v1/agent/critic/evaluate",
+        json={
+            "ledger": {
+                "enabled": True,
+                "tasks": [{"task_id": "task-1", "role": "executor", "goal": "Produce evidence."}],
+            },
+            "artifacts": [
+                {
+                    "artifact_id": "artifact-1",
+                    "task_id": "task-1",
+                    "role": "executor",
+                    "kind": "evidence",
+                    "title": "Evidence",
+                    "status": "accepted",
+                }
+            ],
+        },
+    )
     metrics = client.get("/metrics")
 
     assert capabilities.status_code == 200
@@ -333,7 +406,16 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     assert review_queue.json()["items"][0]["item_id"] == "review-1"
     assert review_approve.json()["item"]["status"] == "approved"
     assert review_reject.json()["item"]["status"] == "rejected"
+    assert task_ledger_policy.json()["enabled"] is True
+    assert task_ledger_plan.json()["ledger"]["enabled"] is True
+    assert task_ledger_runs.json()["items"][0]["task_id"] == "task-1"
+    assert artifacts.json()["items"][0]["artifact_id"] == "artifact-1"
+    assert synthesis.json()["result"]["accepted_artifact_ids"] == ["artifact-1"]
+    assert critic_verdicts.json()["items"][0]["verdict"] == "pass"
+    assert critic_eval.json()["result"]["verdict"] == "pass"
     assert "focus_agent_tool_router_denied_count 1" in metrics.text
     assert "focus_agent_memory_conflict_count 1" in metrics.text
     assert "focus_agent_delegation_run_count 1" in metrics.text
     assert "focus_agent_review_pending_count 1" in metrics.text
+    assert "focus_agent_task_ledger_task_count 1" in metrics.text
+    assert "focus_agent_delegated_artifact_count 1" in metrics.text

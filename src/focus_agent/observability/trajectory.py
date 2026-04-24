@@ -277,6 +277,24 @@ def build_turn_trajectory_record(
                     if isinstance(item, dict) and item.get("status") == "pending"
                 ]
             )
+    agent_task_ledger = _json_safe(final_values.get("agent_task_ledger"))
+    if agent_task_ledger:
+        plan_meta["agent_task_ledger"] = agent_task_ledger
+        if isinstance(agent_task_ledger, dict):
+            metrics["agent_task_count"] = len(agent_task_ledger.get("tasks") or [])
+    delegated_artifacts = _json_safe(final_values.get("delegated_artifacts"))
+    if delegated_artifacts:
+        plan_meta["delegated_artifacts"] = delegated_artifacts
+        if isinstance(delegated_artifacts, list):
+            metrics["delegated_artifact_count"] = len(delegated_artifacts)
+    critic_gate_result = _json_safe(final_values.get("critic_gate_result"))
+    if critic_gate_result:
+        plan_meta["critic_gate_result"] = critic_gate_result
+        if isinstance(critic_gate_result, dict):
+            metrics["critic_gate_rejected"] = len(critic_gate_result.get("rejected_artifact_ids") or [])
+    artifact_synthesis_result = _json_safe(final_values.get("artifact_synthesis_result"))
+    if artifact_synthesis_result:
+        plan_meta["artifact_synthesis_result"] = artifact_synthesis_result
 
     return TurnTrajectoryRecord(
         id=str(uuid.uuid4()),

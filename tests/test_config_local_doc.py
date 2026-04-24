@@ -270,6 +270,10 @@ def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
     monkeypatch.setenv("AGENT_MODEL_ROUTER_MODE", "enforce")
     monkeypatch.setenv("AGENT_SELF_REPAIR_ENABLED", "true")
     monkeypatch.setenv("AGENT_REVIEW_QUEUE_ENABLED", "true")
+    monkeypatch.setenv("AGENT_TASK_LEDGER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_ARTIFACT_SYNTHESIS_ENABLED", "true")
+    monkeypatch.setenv("AGENT_CRITIC_GATE_ENABLED", "true")
+    monkeypatch.setenv("AGENT_CRITIC_GATE_ENFORCE", "true")
 
     settings = Settings.from_env()
 
@@ -291,6 +295,10 @@ def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
     assert settings.agent_model_router_mode == "enforce"
     assert settings.agent_self_repair_enabled is True
     assert settings.agent_review_queue_enabled is True
+    assert settings.agent_task_ledger_enabled is True
+    assert settings.agent_artifact_synthesis_enabled is True
+    assert settings.agent_critic_gate_enabled is True
+    assert settings.agent_critic_gate_enforce is True
 
 
 def test_settings_from_env_enables_trajectory_when_database_uri_exists(monkeypatch):

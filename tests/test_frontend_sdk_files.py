@@ -48,6 +48,9 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'FocusAgentContextPolicyResponse' in types_text
     assert 'FocusAgentContextPreviewResponse' in types_text
     assert 'FocusAgentContextArtifactListResponse' in types_text
+    assert 'FocusAgentTaskLedgerPlanResponse' in types_text
+    assert 'FocusAgentArtifactSynthesisResponse' in types_text
+    assert 'FocusAgentCriticEvaluateResponse' in types_text
 
     client_text = (root / 'src' / 'client.ts').read_text()
     assert 'class FocusAgentClient' in client_text
@@ -79,5 +82,8 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'getAgentContextPolicy' in client_text
     assert 'previewAgentContext' in client_text
     assert 'listAgentContextArtifacts' in client_text
+    assert 'planAgentTaskLedger' in client_text
+    assert 'synthesizeAgentArtifacts' in client_text
+    assert 'evaluateAgentCriticGate' in client_text
     assert 'buildTrajectoryQueryString' in client_text
     assert 'new FocusAgentRequestError(response.status, response.statusText)' in client_text

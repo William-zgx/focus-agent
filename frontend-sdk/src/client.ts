@@ -8,11 +8,17 @@ import type {
   FocusAgentConversationSummary,
   FocusAgentCreateConversationRequest,
   FocusAgentCapabilityListResponse,
+  FocusAgentArtifactListResponse,
+  FocusAgentArtifactSynthesisRequest,
+  FocusAgentArtifactSynthesisResponse,
   FocusAgentContextArtifactListResponse,
   FocusAgentContextDecisionListResponse,
   FocusAgentContextPolicyResponse,
   FocusAgentContextPreviewRequest,
   FocusAgentContextPreviewResponse,
+  FocusAgentCriticEvaluateRequest,
+  FocusAgentCriticEvaluateResponse,
+  FocusAgentCriticVerdictListResponse,
   FocusAgentDemoTokenRequest,
   FocusAgentDelegationPlanRequest,
   FocusAgentDelegationPlanResponse,
@@ -45,6 +51,10 @@ import type {
   FocusAgentToolRouteDecisionListResponse,
   FocusAgentToolRouteRequest,
   FocusAgentToolRouteResponse,
+  FocusAgentTaskLedgerPlanRequest,
+  FocusAgentTaskLedgerPlanResponse,
+  FocusAgentTaskLedgerPolicyResponse,
+  FocusAgentTaskLedgerRunListResponse,
   FocusAgentUpdateConversationRequest,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
@@ -489,6 +499,85 @@ export class FocusAgentClient {
       },
       true,
     );
+  }
+
+  async getAgentTaskLedgerPolicy(): Promise<FocusAgentTaskLedgerPolicyResponse> {
+    return this.requestJson<FocusAgentTaskLedgerPolicyResponse>("/v1/agent/task-ledger/policy", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async planAgentTaskLedger(
+    request: FocusAgentTaskLedgerPlanRequest,
+  ): Promise<FocusAgentTaskLedgerPlanResponse> {
+    return this.requestJson<FocusAgentTaskLedgerPlanResponse>("/v1/agent/task-ledger/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentTaskLedgerRuns(limit = 50): Promise<FocusAgentTaskLedgerRunListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentTaskLedgerRunListResponse>(
+      `/v1/agent/task-ledger/runs${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async listAgentArtifacts(limit = 50): Promise<FocusAgentArtifactListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentArtifactListResponse>(
+      `/v1/agent/artifacts${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async synthesizeAgentArtifacts(
+    request: FocusAgentArtifactSynthesisRequest,
+  ): Promise<FocusAgentArtifactSynthesisResponse> {
+    return this.requestJson<FocusAgentArtifactSynthesisResponse>("/v1/agent/artifacts/synthesize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentCriticVerdicts(limit = 50): Promise<FocusAgentCriticVerdictListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentCriticVerdictListResponse>(
+      `/v1/agent/critic/verdicts${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async evaluateAgentCriticGate(
+    request: FocusAgentCriticEvaluateRequest,
+  ): Promise<FocusAgentCriticEvaluateResponse> {
+    return this.requestJson<FocusAgentCriticEvaluateResponse>("/v1/agent/critic/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
   }
 
   async listConversations(): Promise<FocusAgentConversationListResponse> {

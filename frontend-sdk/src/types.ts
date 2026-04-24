@@ -436,6 +436,66 @@ export interface FocusAgentContextArtifactListResponse {
   trajectory_error?: string | null;
 }
 
+export interface FocusAgentTaskLedgerPolicyResponse {
+  enabled: boolean;
+  artifact_synthesis_enabled: boolean;
+  critic_gate_enabled: boolean;
+  critic_gate_enforce: boolean;
+  default_off_legacy_safe: boolean;
+}
+
+export interface FocusAgentTaskLedgerPlanRequest {
+  message?: string;
+  delegation_plan?: Record<string, unknown>;
+}
+
+export interface FocusAgentTaskLedgerPlanResponse {
+  policy: FocusAgentTaskLedgerPolicyResponse;
+  ledger: Record<string, unknown>;
+  artifacts: Array<Record<string, unknown>>;
+  critic_gate_result?: Record<string, unknown> | null;
+  synthesis_result?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentTaskLedgerRunListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentArtifactListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentArtifactSynthesisRequest {
+  artifacts?: Array<Record<string, unknown>>;
+  critic_gate_result?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentArtifactSynthesisResponse {
+  result: Record<string, unknown>;
+}
+
+export interface FocusAgentCriticVerdictListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentCriticEvaluateRequest {
+  ledger?: Record<string, unknown>;
+  artifacts?: Array<Record<string, unknown>>;
+}
+
+export interface FocusAgentCriticEvaluateResponse {
+  result: Record<string, unknown>;
+}
+
 export interface FocusAgentConversationSummary {
   root_thread_id: string;
   title: string;

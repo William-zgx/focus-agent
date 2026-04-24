@@ -18,7 +18,9 @@ This note defines the release gate for Agent role routing and governance without
 - Model Router is controlled by `AGENT_MODEL_ROUTER_ENABLED`; observe mode records `model_route_decision`, enforce mode may replace the effective role model.
 - Self-repair and Review Queue are controlled by `AGENT_SELF_REPAIR_ENABLED` and `AGENT_REVIEW_QUEUE_ENABLED`; they record failure candidates and pending human-review items without writing eval datasets automatically.
 - Context Engineering v2 is controlled by `AGENT_CONTEXT_ENGINEERING_V2_ENABLED`; long context compression and artifact refs are recorded in `plan_meta` and only materialize long observations when `AGENT_CONTEXT_ARTIFACTIZE_LONG_OBSERVATIONS=true`.
-- Web operators can inspect role routing, memory curator, tool route, delegation, model route, self-repair, review queue, and context engineering records at `/app/agent/governance` (`/app/agent/roles` remains compatible).
+- Agent Task Ledger is controlled by `AGENT_TASK_LEDGER_ENABLED`; artifact synthesis and critic gating are separately controlled by `AGENT_ARTIFACT_SYNTHESIS_ENABLED`, `AGENT_CRITIC_GATE_ENABLED`, and `AGENT_CRITIC_GATE_ENFORCE`.
+- Task ledger records convert delegated tasks into traceable task nodes, delegated artifacts, critic verdicts, and optional final synthesis. Critic enforce mode blocks rejected artifacts from synthesis and allows only one local retry task.
+- Web operators can inspect role routing, memory curator, tool route, delegation, model route, self-repair, review queue, context engineering, task ledger, delegated artifact, and critic gate records at `/app/agent/governance` (`/app/agent/roles` remains compatible).
 
 ## Eval Gate
 
@@ -29,12 +31,13 @@ uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
+uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 ```
 
 For framework-only validation without provider credentials:
 
 ```bash
-uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py
+uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
 ```
 
 If the Web console or SDK contract changed, pair the gate with:

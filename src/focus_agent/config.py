@@ -642,6 +642,10 @@ class Settings:
     agent_context_role_views_enabled: bool = False
     agent_context_tokenizer_mode: str = "chars_fallback"
     agent_context_artifact_min_chars: int = 12000
+    agent_task_ledger_enabled: bool = False
+    agent_artifact_synthesis_enabled: bool = False
+    agent_critic_gate_enabled: bool = False
+    agent_critic_gate_enforce: bool = False
     trajectory_enabled: bool | None = None
     trajectory_observation_max_chars: int = 4000
     trajectory_answer_max_chars: int = 4000
@@ -887,6 +891,22 @@ class Settings:
                     )
                 ),
             ),
+            agent_task_ledger_enabled=env.get(
+                "AGENT_TASK_LEDGER_ENABLED",
+                "true" if defaults.agent_task_ledger_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_artifact_synthesis_enabled=env.get(
+                "AGENT_ARTIFACT_SYNTHESIS_ENABLED",
+                "true" if defaults.agent_artifact_synthesis_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_critic_gate_enabled=env.get(
+                "AGENT_CRITIC_GATE_ENABLED",
+                "true" if defaults.agent_critic_gate_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_critic_gate_enforce=env.get(
+                "AGENT_CRITIC_GATE_ENFORCE",
+                "true" if defaults.agent_critic_gate_enforce else "false",
+            ).lower() in {"1", "true", "yes", "on"},
             trajectory_enabled=(
                 bool(database_uri) if trajectory_enabled is None else trajectory_enabled
             ),

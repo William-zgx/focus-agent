@@ -1,5 +1,7 @@
 import {
   type FocusAgentCapabilityListResponse,
+  type FocusAgentArtifactListResponse,
+  type FocusAgentCriticVerdictListResponse,
   type FocusAgentContextArtifactListResponse,
   type FocusAgentContextDecisionListResponse,
   type FocusAgentContextPolicyResponse,
@@ -15,6 +17,9 @@ import {
   type FocusAgentRoleDryRunResponse,
   type FocusAgentRolePolicyResponse,
   type FocusAgentSelfRepairFailureListResponse,
+  type FocusAgentTaskLedgerPlanResponse,
+  type FocusAgentTaskLedgerPolicyResponse,
+  type FocusAgentTaskLedgerRunListResponse,
   type FocusAgentToolRouteDecisionListResponse,
   type FocusAgentToolRouteResponse,
 } from "@focus-agent/web-sdk";
@@ -186,6 +191,42 @@ function useAgentContextArtifacts() {
   });
 }
 
+function useAgentTaskLedgerPolicy() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentTaskLedgerPolicyResponse>({
+    queryKey: queryKeys.agentTaskLedgerPolicy,
+    queryFn: () => client.getAgentTaskLedgerPolicy(),
+    enabled: ready,
+  });
+}
+
+function useAgentTaskLedgerRuns() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentTaskLedgerRunListResponse>({
+    queryKey: queryKeys.agentTaskLedgerRuns(50),
+    queryFn: () => client.listAgentTaskLedgerRuns(50),
+    enabled: ready,
+  });
+}
+
+function useAgentArtifacts() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentArtifactListResponse>({
+    queryKey: queryKeys.agentArtifacts(50),
+    queryFn: () => client.listAgentArtifacts(50),
+    enabled: ready,
+  });
+}
+
+function useAgentCriticVerdicts() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentCriticVerdictListResponse>({
+    queryKey: queryKeys.agentCriticVerdicts(50),
+    queryFn: () => client.listAgentCriticVerdicts(50),
+    enabled: ready,
+  });
+}
+
 export function AgentRoleConsolePage() {
   const { client } = useFocusAgent();
   const { isChineseUi } = useShellUi();
@@ -208,6 +249,10 @@ export function AgentRoleConsolePage() {
   const contextPolicy = useAgentContextPolicy();
   const contextDecisions = useAgentContextDecisions();
   const contextArtifacts = useAgentContextArtifacts();
+  const taskLedgerPolicy = useAgentTaskLedgerPolicy();
+  const taskLedgerRuns = useAgentTaskLedgerRuns();
+  const delegatedArtifacts = useAgentArtifacts();
+  const criticVerdicts = useAgentCriticVerdicts();
   const [toolRouteRole, setToolRouteRole] = useState("executor");
   const [toolRoutePolicy, setToolRoutePolicy] = useState("execution");
   const dryRun = useMutation<FocusAgentRoleDryRunResponse, Error>({
@@ -247,6 +292,12 @@ export function AgentRoleConsolePage() {
         },
       }),
   });
+  const taskLedgerPreview = useMutation<FocusAgentTaskLedgerPlanResponse, Error>({
+    mutationFn: () =>
+      client.planAgentTaskLedger({
+        message,
+      }),
+  });
   const dryRunPlan = asRecord(dryRun.data?.plan);
   const dryRunDecisions = asArray(dryRunPlan.decisions);
   const toolRoutePlan = asRecord(toolRoute.data?.plan);
@@ -265,9 +316,14 @@ export function AgentRoleConsolePage() {
   const reviewQueueItems = reviewQueue.data?.items ?? [];
   const recentContextDecisions = contextDecisions.data?.items ?? [];
   const recentContextArtifacts = contextArtifacts.data?.items ?? [];
+  const recentTaskLedgerRuns = taskLedgerRuns.data?.items ?? [];
+  const recentDelegatedArtifacts = delegatedArtifacts.data?.items ?? [];
+  const recentCriticVerdicts = criticVerdicts.data?.items ?? [];
   const contextPreviewDecision = asRecord(contextPreview.data?.decision);
   const contextPreviewBudget = asRecord(contextPreviewDecision.budget);
   const contextPreviewPlan = asRecord(contextPreviewDecision.compression_plan);
+  const taskLedgerPreviewLedger = asRecord(taskLedgerPreview.data?.ledger);
+  const taskLedgerPreviewTasks = asArray(taskLedgerPreviewLedger.tasks);
 
   return (
     <div className="fa-observability-layout fa-agent-role-console">
@@ -325,6 +381,11 @@ export function AgentRoleConsolePage() {
             <span>{isChineseUi ? "Context v2" : "Context v2"}</span>
             <strong>{contextPolicy.data?.enabled ? "enabled" : "disabled"}</strong>
             <p>{contextPolicy.data?.artifactize_long_observations ? "artifact refs on" : "preview safe"}</p>
+          </div>
+          <div className="fa-observability-stat-card">
+            <span>{isChineseUi ? "Task Ledger" : "Task Ledger"}</span>
+            <strong>{taskLedgerPolicy.data?.enabled ? "enabled" : "disabled"}</strong>
+            <p>{taskLedgerPolicy.data?.critic_gate_enforce ? "critic enforce" : "artifact observe"}</p>
           </div>
         </div>
       </section>
@@ -589,6 +650,135 @@ export function AgentRoleConsolePage() {
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="fa-agent-role-grid">
+        <div className="fa-observability-list-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Task Ledger" : "Task Ledger"}</strong>
+              <h2>{isChineseUi ? "任务账本与 DAG" : "Task DAG"}</h2>
+            </div>
+            <span>{taskLedgerRuns.data?.trajectory_available ? `${recentTaskLedgerRuns.length} tasks` : "not available"}</span>
+          </div>
+          {taskLedgerPolicy.error ? (
+            <div className="fa-inline-notice is-danger">
+              {errorMessage(taskLedgerPolicy.error, "Failed to load task ledger policy")}
+            </div>
+          ) : null}
+          <div className="fa-agent-role-model-list">
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "启用状态" : "Enabled"}</span>
+              <strong>{String(taskLedgerPolicy.data?.enabled ?? false)}</strong>
+            </div>
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "Artifact synthesis" : "Artifact synthesis"}</span>
+              <strong>{String(taskLedgerPolicy.data?.artifact_synthesis_enabled ?? false)}</strong>
+            </div>
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "Critic gate" : "Critic gate"}</span>
+              <strong>{taskLedgerPolicy.data?.critic_gate_enforce ? "enforce" : String(taskLedgerPolicy.data?.critic_gate_enabled ?? false)}</strong>
+            </div>
+          </div>
+          <div className="fa-observability-command-bar">
+            <button
+              className="fa-observability-preset is-primary"
+              disabled={taskLedgerPreview.isPending || !message.trim()}
+              onClick={() => taskLedgerPreview.mutate()}
+              type="button"
+            >
+              {taskLedgerPreview.isPending
+                ? isChineseUi
+                  ? "预览中..."
+                  : "Planning..."
+                : isChineseUi
+                  ? "预览任务账本"
+                  : "Preview Ledger"}
+            </button>
+          </div>
+          {taskLedgerPreview.error ? (
+            <div className="fa-inline-notice is-danger">
+              {errorMessage(taskLedgerPreview.error, "Task ledger preview failed")}
+            </div>
+          ) : null}
+          {taskLedgerPreview.data ? (
+            <div className="fa-agent-role-trajectory-list">
+              {taskLedgerPreviewTasks.map((item, index) => (
+                <details className="fa-agent-role-trajectory-row" key={`task-ledger-preview-${index}`}>
+                  <summary>
+                    <span>{String(item.role ?? item.task_id ?? "task")}</span>
+                    <strong>{String(item.status ?? "planned")}</strong>
+                  </summary>
+                  <pre>{jsonPreview(item)}</pre>
+                </details>
+              ))}
+            </div>
+          ) : null}
+          <div className="fa-agent-role-trajectory-list">
+            {recentTaskLedgerRuns.slice(0, 5).map((item, index) => (
+              <details className="fa-agent-role-trajectory-row" key={`task-ledger-${index}`}>
+                <summary>
+                  <span>{String(item.role ?? item.task_id ?? "task")}</span>
+                  <strong>{`${String(item.status ?? "planned")} / retry ${String(item.retry_count ?? 0)}`}</strong>
+                </summary>
+                <pre>{jsonPreview(item)}</pre>
+              </details>
+            ))}
+            {!recentTaskLedgerRuns.length && !taskLedgerPreview.data ? (
+              <div className="fa-observability-empty is-compact">
+                {isChineseUi ? "还没有 agent_task_ledger trajectory 记录。" : "No agent_task_ledger trajectory records yet."}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="fa-observability-detail-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Delegated Artifacts" : "Delegated Artifacts"}</strong>
+              <h2>{isChineseUi ? "产物交接" : "Artifact Handoff"}</h2>
+            </div>
+            <span>{delegatedArtifacts.data?.trajectory_available ? `${recentDelegatedArtifacts.length} artifacts` : "not available"}</span>
+          </div>
+          {(taskLedgerPreview.data?.artifacts ?? recentDelegatedArtifacts).slice(0, 6).map((item, index) => (
+            <details className="fa-agent-role-trajectory-row" key={`delegated-artifact-${index}`}>
+              <summary>
+                <span>{String(item.kind ?? item.title ?? "artifact")}</span>
+                <strong>{String(item.status ?? "draft")}</strong>
+              </summary>
+              <pre>{jsonPreview(item)}</pre>
+            </details>
+          ))}
+          {!recentDelegatedArtifacts.length && !taskLedgerPreview.data?.artifacts?.length ? (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "还没有 delegated_artifacts trajectory 记录。" : "No delegated artifact records yet."}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="fa-observability-detail-block fa-agent-role-trajectory">
+        <div className="fa-observability-panel-header">
+          <div>
+            <strong>{isChineseUi ? "Critic Gate" : "Critic Gate"}</strong>
+            <h2>{isChineseUi ? "产物验收结果" : "Artifact Verdicts"}</h2>
+          </div>
+          <span>{criticVerdicts.data?.trajectory_available ? `${criticVerdicts.data.count} verdicts` : "not available"}</span>
+        </div>
+        {recentCriticVerdicts.slice(0, 6).map((item, index) => (
+          <details className="fa-agent-role-trajectory-row" key={`critic-gate-${index}`}>
+            <summary>
+              <span>{String(item.turn_id ?? "turn")}</span>
+              <strong>{String(item.verdict ?? "skipped")}</strong>
+            </summary>
+            <pre>{jsonPreview(item)}</pre>
+          </details>
+        ))}
+        {!recentCriticVerdicts.length ? (
+          <div className="fa-observability-empty is-compact">
+            {isChineseUi ? "还没有 critic_gate_result trajectory 记录。" : "No critic gate verdict records yet."}
+          </div>
+        ) : null}
       </section>
 
       <section className="fa-agent-role-grid">

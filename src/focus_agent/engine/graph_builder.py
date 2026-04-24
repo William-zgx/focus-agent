@@ -17,6 +17,13 @@ from ..agent_delegation import (
     build_review_queue,
 )
 from ..agent_context_engineering import build_context_engineering_decision
+from ..agent_task_ledger import (
+    apply_critic_retry_tasks,
+    build_agent_task_ledger,
+    build_delegated_artifacts,
+    evaluate_critic_gate,
+    synthesize_delegated_artifacts,
+)
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..capabilities.tool_runtime import (
     ToolExecutionInput,
@@ -1002,6 +1009,50 @@ def build_graph(
             meta["model_route_decision"] = decision
             if decision.get("enabled") and decision.get("mode") == "enforce":
                 updates["selected_model"] = str(decision.get("effective_model") or state.get("selected_model") or settings.model)
+        if settings.agent_task_ledger_enabled:
+            delegation_plan = updates.get("agent_delegation_plan") or state.get("agent_delegation_plan") or {}
+            ledger = build_agent_task_ledger(
+                settings=settings,
+                delegation_plan=delegation_plan,
+            ).model_dump(mode="json")
+            artifacts = [
+                item.model_dump(mode="json")
+                for item in build_delegated_artifacts(
+                    ledger=ledger,
+                    delegation_plan=delegation_plan,
+                    memory_curator_decision=state.get("memory_curator_decision"),
+                    tool_route_plan=state.get("tool_route_plan"),
+                    context_artifact_refs=state.get("context_artifact_refs") or [],
+                )
+            ]
+            critic_result = None
+            if settings.agent_critic_gate_enabled:
+                critic_result = evaluate_critic_gate(
+                    settings=settings,
+                    ledger=ledger,
+                    artifacts=artifacts,
+                ).model_dump(mode="json")
+                ledger = apply_critic_retry_tasks(
+                    ledger=ledger,
+                    critic_gate_result=critic_result,
+                ).model_dump(mode="json")
+            synthesis_result = None
+            if settings.agent_artifact_synthesis_enabled:
+                synthesis_result = synthesize_delegated_artifacts(
+                    settings=settings,
+                    artifacts=artifacts,
+                    critic_gate_result=critic_result,
+                ).model_dump(mode="json")
+            updates["agent_task_ledger"] = ledger
+            updates["delegated_artifacts"] = artifacts
+            meta["agent_task_ledger"] = ledger
+            meta["delegated_artifacts"] = artifacts
+            if critic_result is not None:
+                updates["critic_gate_result"] = critic_result
+                meta["critic_gate_result"] = critic_result
+            if synthesis_result is not None:
+                updates["artifact_synthesis_result"] = synthesis_result
+                meta["artifact_synthesis_result"] = synthesis_result
         if meta != dict(state.get("plan_meta") or {}):
             updates["plan_meta"] = meta
         return updates

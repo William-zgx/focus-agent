@@ -32,6 +32,7 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 - Confirm Agent role routing expectations still match `docs/agent-role-routing.md`, `/v1/agent/roles/*`, and `/app/agent/roles`
 - If Agent governance changed, confirm `/v1/agent/capabilities`, `/v1/agent/tool-router/*`, `/v1/agent/memory/curator/*`, and `/app/agent/governance`
 - If Context Engineering changed, confirm `/v1/agent/context/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_context.jsonl`
+- If Task Ledger changed, confirm `/v1/agent/task-ledger/*`, `/v1/agent/artifacts`, `/v1/agent/critic/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_task_ledger.jsonl`
 
 ## Configuration Review
 
@@ -60,6 +61,7 @@ uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
+uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 ```
 
 - If browser workflows changed outside observability, also run `make ui-smoke`

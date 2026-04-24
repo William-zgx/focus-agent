@@ -251,6 +251,66 @@ class AgentContextArtifactListResponse(BaseModel):
     trajectory_error: str | None = None
 
 
+class AgentTaskLedgerPolicyResponse(BaseModel):
+    enabled: bool = False
+    artifact_synthesis_enabled: bool = False
+    critic_gate_enabled: bool = False
+    critic_gate_enforce: bool = False
+    default_off_legacy_safe: bool = True
+
+
+class AgentTaskLedgerPlanRequest(BaseModel):
+    message: str = ""
+    delegation_plan: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentTaskLedgerPlanResponse(BaseModel):
+    policy: AgentTaskLedgerPolicyResponse
+    ledger: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    critic_gate_result: dict[str, Any] | None = None
+    synthesis_result: dict[str, Any] | None = None
+
+
+class AgentTaskLedgerRunListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentArtifactListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentArtifactSynthesisRequest(BaseModel):
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    critic_gate_result: dict[str, Any] | None = None
+
+
+class AgentArtifactSynthesisResponse(BaseModel):
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentCriticVerdictListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentCriticEvaluateRequest(BaseModel):
+    ledger: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AgentCriticEvaluateResponse(BaseModel):
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
 class ConversationSummaryResponse(BaseModel):
     root_thread_id: str
     title: str

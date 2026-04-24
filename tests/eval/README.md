@@ -13,6 +13,7 @@ uv run python -m tests.eval --suite smoke
 # Run the Agent architecture / role-routing gate.
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
+uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 
 # Full run with HTML + JSON reports.
 uv run python -m tests.eval --suite all \
@@ -112,6 +113,10 @@ allow/deny expectations.
 Agent delegation cases live in `datasets/agent_delegation.jsonl` and cover
 default-off behavior, role run paths, Model Router decisions, self-repair
 preview, and Review Queue expectations.
+
+Agent task ledger cases live in `datasets/agent_task_ledger.jsonl` and cover
+default-off behavior, delegated task paths, artifact synthesis, critic gate
+blocking, and governance artifacts.
 
 ## Judges
 

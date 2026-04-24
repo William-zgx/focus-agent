@@ -23,4 +23,8 @@ export const queryKeys = {
   agentContextPolicy: ["agent-context-policy"] as const,
   agentContextDecisions: (limit: number) => ["agent-context-decisions", limit] as const,
   agentContextArtifacts: (limit: number) => ["agent-context-artifacts", limit] as const,
+  agentTaskLedgerPolicy: ["agent-task-ledger-policy"] as const,
+  agentTaskLedgerRuns: (limit: number) => ["agent-task-ledger-runs", limit] as const,
+  agentArtifacts: (limit: number) => ["agent-artifacts", limit] as const,
+  agentCriticVerdicts: (limit: number) => ["agent-critic-verdicts", limit] as const,
 };

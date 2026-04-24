@@ -20,6 +20,13 @@ from focus_agent.agent_context_engineering import (
     build_context_engineering_decision,
     build_context_policy,
 )
+from focus_agent.agent_task_ledger import (
+    build_agent_task_ledger,
+    build_delegated_artifacts,
+    build_task_ledger_policy,
+    evaluate_critic_gate,
+    synthesize_delegated_artifacts,
+)
 from focus_agent.capabilities.tool_router import build_capability_registry, build_tool_route_plan
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ConversationRecord
@@ -70,6 +77,16 @@ from .contracts import (
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
+    AgentArtifactListResponse,
+    AgentArtifactSynthesisRequest,
+    AgentArtifactSynthesisResponse,
+    AgentCriticEvaluateRequest,
+    AgentCriticEvaluateResponse,
+    AgentCriticVerdictListResponse,
+    AgentTaskLedgerPlanRequest,
+    AgentTaskLedgerPlanResponse,
+    AgentTaskLedgerPolicyResponse,
+    AgentTaskLedgerRunListResponse,
     AgentSelfRepairFailureListResponse,
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
@@ -729,6 +746,10 @@ def _agent_model_router_policy_response(settings: Settings | Any) -> AgentModelR
     )
 
 
+def _agent_task_ledger_policy_response(settings: Settings | Any) -> AgentTaskLedgerPolicyResponse:
+    return AgentTaskLedgerPolicyResponse(**build_task_ledger_policy(settings))
+
+
 def _available_tool_names(runtime: AppRuntime | Any) -> list[str]:
     registry = getattr(runtime, "tool_registry", None)
     return [
@@ -996,6 +1017,15 @@ def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
         "# HELP focus_agent_context_over_budget_count Context Engineering over-budget decisions observed in trajectory plan_meta.",
         "# TYPE focus_agent_context_over_budget_count gauge",
         _prometheus_metric_line("focus_agent_context_over_budget_count", int(metrics.get("context_over_budget") or 0)),
+        "# HELP focus_agent_task_ledger_task_count Agent Task Ledger tasks observed in trajectory plan_meta.",
+        "# TYPE focus_agent_task_ledger_task_count gauge",
+        _prometheus_metric_line("focus_agent_task_ledger_task_count", int(metrics.get("agent_task_ledger_tasks") or 0)),
+        "# HELP focus_agent_delegated_artifact_count Delegated artifacts observed in trajectory plan_meta.",
+        "# TYPE focus_agent_delegated_artifact_count gauge",
+        _prometheus_metric_line("focus_agent_delegated_artifact_count", int(metrics.get("delegated_artifacts") or 0)),
+        "# HELP focus_agent_critic_gate_rejected_count Rejected artifacts observed in critic gate results.",
+        "# TYPE focus_agent_critic_gate_rejected_count gauge",
+        _prometheus_metric_line("focus_agent_critic_gate_rejected_count", int(metrics.get("critic_gate_rejected") or 0)),
     ]
 
 
@@ -1012,6 +1042,9 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
         "agent_failures": 0,
         "context_artifact_refs": 0,
         "context_over_budget": 0,
+        "agent_task_ledger_tasks": 0,
+        "delegated_artifacts": 0,
+        "critic_gate_rejected": 0,
     }
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
@@ -1046,6 +1079,15 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
         context_budget = plan_meta.get("context_budget_decision")
         if isinstance(context_budget, dict):
             metrics["context_over_budget"] += 1 if int(context_budget.get("over_budget_chars") or 0) > 0 else 0
+        task_ledger = plan_meta.get("agent_task_ledger")
+        if isinstance(task_ledger, dict):
+            metrics["agent_task_ledger_tasks"] += len(task_ledger.get("tasks") or [])
+        delegated_artifacts = plan_meta.get("delegated_artifacts")
+        if isinstance(delegated_artifacts, list):
+            metrics["delegated_artifacts"] += len(delegated_artifacts)
+        critic_gate = plan_meta.get("critic_gate_result")
+        if isinstance(critic_gate, dict):
+            metrics["critic_gate_rejected"] += len(critic_gate.get("rejected_artifact_ids") or [])
     return metrics
 
 
@@ -1633,6 +1675,159 @@ def create_app() -> FastAPI:
             trajectory_available=available,
             trajectory_error=error,
         )
+
+    @app.get('/v1/agent/task-ledger/policy', response_model=AgentTaskLedgerPolicyResponse)
+    def get_agent_task_ledger_policy(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentTaskLedgerPolicyResponse:
+        del principal
+        return _agent_task_ledger_policy_response(runtime.settings)
+
+    @app.post('/v1/agent/task-ledger/plan', response_model=AgentTaskLedgerPlanResponse)
+    def plan_agent_task_ledger(
+        payload: AgentTaskLedgerPlanRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentTaskLedgerPlanResponse:
+        del principal
+        delegation_plan = dict(payload.delegation_plan or {})
+        if not delegation_plan and payload.message:
+            available_tools = _available_tool_names(runtime)
+            role_route = build_role_route_plan(
+                settings=runtime.settings,
+                task_text=payload.message,
+                available_tool_names=available_tools,
+                tool_policy="agent_task_ledger_console",
+            )
+            delegation_plan = build_agent_delegation_plan(
+                settings=runtime.settings,
+                task_text=payload.message,
+                role_route_plan=role_route.model_dump(mode="json"),
+                available_tool_names=available_tools,
+                tool_policy="agent_task_ledger_console",
+            ).model_dump(mode="json")
+        ledger = build_agent_task_ledger(
+            settings=runtime.settings,
+            delegation_plan=delegation_plan,
+        ).model_dump(mode="json")
+        artifacts = [
+            item.model_dump(mode="json")
+            for item in build_delegated_artifacts(
+                ledger=ledger,
+                delegation_plan=delegation_plan,
+            )
+        ]
+        critic_result = (
+            evaluate_critic_gate(
+                settings=runtime.settings,
+                ledger=ledger,
+                artifacts=artifacts,
+            ).model_dump(mode="json")
+            if getattr(runtime.settings, "agent_critic_gate_enabled", False)
+            else None
+        )
+        synthesis_result = (
+            synthesize_delegated_artifacts(
+                settings=runtime.settings,
+                artifacts=artifacts,
+                critic_gate_result=critic_result,
+            ).model_dump(mode="json")
+            if getattr(runtime.settings, "agent_artifact_synthesis_enabled", False)
+            else None
+        )
+        return AgentTaskLedgerPlanResponse(
+            policy=_agent_task_ledger_policy_response(runtime.settings),
+            ledger=ledger,
+            artifacts=artifacts,
+            critic_gate_result=critic_result,
+            synthesis_result=synthesis_result,
+        )
+
+    @app.get('/v1/agent/task-ledger/runs', response_model=AgentTaskLedgerRunListResponse)
+    def list_agent_task_ledger_runs(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentTaskLedgerRunListResponse:
+        del principal
+        items, available, error = _list_plan_meta_list_items(
+            runtime=runtime,
+            key="agent_task_ledger.tasks",
+            limit=limit,
+        )
+        return AgentTaskLedgerRunListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.get('/v1/agent/artifacts', response_model=AgentArtifactListResponse)
+    def list_agent_artifacts(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentArtifactListResponse:
+        del principal
+        items, available, error = _list_plan_meta_list_items(
+            runtime=runtime,
+            key="delegated_artifacts",
+            limit=limit,
+        )
+        return AgentArtifactListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.post('/v1/agent/artifacts/synthesize', response_model=AgentArtifactSynthesisResponse)
+    def synthesize_agent_artifacts(
+        payload: AgentArtifactSynthesisRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentArtifactSynthesisResponse:
+        del principal
+        result = synthesize_delegated_artifacts(
+            settings=runtime.settings,
+            artifacts=payload.artifacts,
+            critic_gate_result=payload.critic_gate_result,
+        )
+        return AgentArtifactSynthesisResponse(result=result.model_dump(mode="json"))
+
+    @app.get('/v1/agent/critic/verdicts', response_model=AgentCriticVerdictListResponse)
+    def list_agent_critic_verdicts(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentCriticVerdictListResponse:
+        del principal
+        items, available, error = _list_plan_meta_decisions(
+            runtime=runtime,
+            key="critic_gate_result",
+            limit=limit,
+        )
+        return AgentCriticVerdictListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.post('/v1/agent/critic/evaluate', response_model=AgentCriticEvaluateResponse)
+    def evaluate_agent_critic_gate(
+        payload: AgentCriticEvaluateRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentCriticEvaluateResponse:
+        del principal
+        result = evaluate_critic_gate(
+            settings=runtime.settings,
+            ledger=payload.ledger,
+            artifacts=payload.artifacts,
+        )
+        return AgentCriticEvaluateResponse(result=result.model_dump(mode="json"))
 
     @app.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)
     def get_observability_overview(

@@ -133,6 +133,13 @@ class AgentState(TypedDict, total=False):
     context_artifact_refs: list[dict[str, Any]]
     role_context_views: list[dict[str, Any]]
 
+    # Written by Task Ledger / Delegated Artifact Synthesis governance when
+    # enabled. These are observability and synthesis artifacts for role runs.
+    agent_task_ledger: dict[str, Any] | None
+    delegated_artifacts: list[dict[str, Any]]
+    artifact_synthesis_result: dict[str, Any] | None
+    critic_gate_result: dict[str, Any] | None
+
     # Written by extraction nodes after a turn, read by persistence nodes,
     # and never merge-imported because it is a transient write queue.
     memory_write_requests: list[dict[str, Any]]
@@ -188,6 +195,10 @@ def initial_agent_state() -> AgentState:
         "context_compression_plan": None,
         "context_artifact_refs": [],
         "role_context_views": [],
+        "agent_task_ledger": None,
+        "delegated_artifacts": [],
+        "artifact_synthesis_result": None,
+        "critic_gate_result": None,
         "memory_write_requests": [],
         "memory_write_result": {},
         "plan": None,

@@ -43,6 +43,10 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["context_compression_plan"] is None
     assert state["context_artifact_refs"] == []
     assert state["role_context_views"] == []
+    assert state["agent_task_ledger"] is None
+    assert state["delegated_artifacts"] == []
+    assert state["artifact_synthesis_result"] is None
+    assert state["critic_gate_result"] is None
     assert state["memory_write_requests"] == []
     assert state["memory_write_result"] == {}
 
@@ -92,6 +96,10 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["context_compression_plan"] is None
     assert normalized["context_artifact_refs"] == []
     assert normalized["role_context_views"] == []
+    assert normalized["agent_task_ledger"] is None
+    assert normalized["delegated_artifacts"] == []
+    assert normalized["artifact_synthesis_result"] is None
+    assert normalized["critic_gate_result"] is None
     assert normalized["memory_write_requests"] == []
     assert normalized["memory_write_result"] == {}
 
@@ -152,6 +160,10 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
             "context_compression_plan": {"enabled": True, "strategy": "semantic_summary_plus_refs"},
             "context_artifact_refs": [{"artifact_id": "context/tool.txt"}],
             "role_context_views": [{"role": "critic", "budget_ratio": 0.55}],
+            "agent_task_ledger": {"enabled": True, "tasks": [{"task_id": "task-1"}]},
+            "delegated_artifacts": [{"artifact_id": "artifact-1", "status": "accepted"}],
+            "artifact_synthesis_result": {"enabled": True, "accepted_artifact_ids": ["artifact-1"]},
+            "critic_gate_result": {"enabled": True, "verdict": "pass"},
             "memory_write_requests": [{"kind": "turn_summary", "summary": "Carry this forward"}],
             "memory_write_result": {"prepared": 1, "written": ["mem-1"]},
         }
@@ -185,5 +197,9 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["context_compression_plan"]["strategy"] == "semantic_summary_plus_refs"
     assert decoded["context_artifact_refs"][0]["artifact_id"] == "context/tool.txt"
     assert decoded["role_context_views"][0]["role"] == "critic"
+    assert decoded["agent_task_ledger"]["tasks"][0]["task_id"] == "task-1"
+    assert decoded["delegated_artifacts"][0]["status"] == "accepted"
+    assert decoded["artifact_synthesis_result"]["accepted_artifact_ids"] == ["artifact-1"]
+    assert decoded["critic_gate_result"]["verdict"] == "pass"
     assert decoded["memory_write_requests"][0]["kind"] == "turn_summary"
     assert decoded["memory_write_result"]["written"] == ["mem-1"]

@@ -20,6 +20,16 @@ from focus_agent.api.schemas import (
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
+    AgentArtifactListResponse,
+    AgentArtifactSynthesisRequest,
+    AgentArtifactSynthesisResponse,
+    AgentCriticEvaluateRequest,
+    AgentCriticEvaluateResponse,
+    AgentCriticVerdictListResponse,
+    AgentTaskLedgerPlanRequest,
+    AgentTaskLedgerPlanResponse,
+    AgentTaskLedgerPolicyResponse,
+    AgentTaskLedgerRunListResponse,
     AgentSelfRepairFailureListResponse,
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
@@ -256,6 +266,20 @@ def test_agent_role_contract_shapes():
     context_preview = AgentContextPreviewResponse(decision={"budget": {"prompt_chars": 12}})
     context_decisions = AgentContextDecisionListResponse(items=[{"prompt_chars": 12}], count=1)
     context_artifacts = AgentContextArtifactListResponse(items=[{"artifact_id": "context/a.txt"}], count=1)
+    task_ledger_policy = AgentTaskLedgerPolicyResponse(enabled=True, artifact_synthesis_enabled=True)
+    task_ledger_request = AgentTaskLedgerPlanRequest(message="Plan tasks")
+    task_ledger_response = AgentTaskLedgerPlanResponse(
+        policy=task_ledger_policy,
+        ledger={"tasks": [{"task_id": "task-1"}]},
+        artifacts=[{"artifact_id": "artifact-1"}],
+    )
+    task_ledger_runs = AgentTaskLedgerRunListResponse(items=[{"task_id": "task-1"}], count=1)
+    artifact_list = AgentArtifactListResponse(items=[{"artifact_id": "artifact-1"}], count=1)
+    synthesis_request = AgentArtifactSynthesisRequest(artifacts=[{"artifact_id": "artifact-1"}])
+    synthesis_response = AgentArtifactSynthesisResponse(result={"accepted_artifact_ids": ["artifact-1"]})
+    critic_verdicts = AgentCriticVerdictListResponse(items=[{"verdict": "pass"}], count=1)
+    critic_request = AgentCriticEvaluateRequest(artifacts=[{"artifact_id": "artifact-1"}])
+    critic_response = AgentCriticEvaluateResponse(result={"verdict": "pass"})
 
     assert delegation_request.scene == "agent_delegation_console"
     assert delegation_response.plan["runs"][0]["role"] == "executor"
@@ -274,6 +298,16 @@ def test_agent_role_contract_shapes():
     assert context_preview.decision["budget"]["prompt_chars"] == 12
     assert context_decisions.count == 1
     assert context_artifacts.items[0]["artifact_id"] == "context/a.txt"
+    assert task_ledger_policy.critic_gate_enforce is False
+    assert task_ledger_request.message == "Plan tasks"
+    assert task_ledger_response.ledger["tasks"][0]["task_id"] == "task-1"
+    assert task_ledger_runs.count == 1
+    assert artifact_list.items[0]["artifact_id"] == "artifact-1"
+    assert synthesis_request.artifacts[0]["artifact_id"] == "artifact-1"
+    assert synthesis_response.result["accepted_artifact_ids"] == ["artifact-1"]
+    assert critic_verdicts.items[0]["verdict"] == "pass"
+    assert critic_request.ledger == {}
+    assert critic_response.result["verdict"] == "pass"
 
 
 def test_conversation_contract_shapes():
