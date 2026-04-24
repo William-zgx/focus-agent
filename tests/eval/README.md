@@ -10,6 +10,9 @@ judges, then aggregates suite-level metrics for CI gating.
 # Run the smoke suite (7 cases, no external API keys required if using a fake model).
 uv run python -m tests.eval --suite smoke
 
+# Run the Agent architecture / role-routing gate.
+uv run python -m tests.eval --suite agent_arch --concurrency 1
+
 # Full run with HTML + JSON reports.
 uv run python -m tests.eval --suite all \
   --report-html reports/eval.html \
@@ -96,6 +99,10 @@ else has sane defaults (`judge.rule = true`, `judge.llm.enabled = false`).
 Smoke cases should include regression coverage for tool selection policy:
 direct writing/no-tools requests, explicit no-web requests, and workspace
 lookup requests that must not expose web tools.
+
+Agent architecture cases live in `datasets/agent_arch.jsonl` and cover the
+role-routing contract: default off behavior, no-web workspace lookup, memory
+preview isolation, and helper-model fallback expectations.
 
 ## Judges
 

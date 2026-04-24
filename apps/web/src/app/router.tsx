@@ -12,6 +12,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { useConversations } from "@/features/conversations/use-conversations";
+import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
@@ -207,12 +208,19 @@ const observabilityOverviewRoute = createRoute({
   component: TrajectoryPage,
 });
 
+const agentRoleConsoleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agent/roles",
+  component: AgentRoleConsolePage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   threadRoute,
   reviewRoute,
   trajectoryRoute,
   observabilityOverviewRoute,
+  agentRoleConsoleRoute,
 ]);
 
 const router = createRouter({

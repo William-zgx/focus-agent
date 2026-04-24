@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from focus_agent.agent_roles import AgentRole, RoleModelResolver, build_role_route_plan
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ConversationRecord
 from focus_agent.security.tokens import Principal, create_access_token
@@ -33,6 +34,10 @@ from focus_agent.web.frontend_app import (
 )
 
 from .contracts import (
+    AgentRoleDecisionListResponse,
+    AgentRoleDryRunRequest,
+    AgentRoleDryRunResponse,
+    AgentRolePolicyResponse,
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
     BranchTreeResponse,
@@ -49,6 +54,11 @@ from .contracts import (
     PrincipalResponse,
     RuntimeComponentStatusResponse,
     RuntimeReadinessResponse,
+    TrajectoryBatchPromotionPreviewRequest,
+    TrajectoryBatchPromotionPreviewResponse,
+    TrajectoryBatchReplayCompareRequest,
+    TrajectoryBatchReplayCompareResponse,
+    TrajectoryBatchReplaySummaryResponse,
     TrajectoryPromotionRequest,
     TrajectoryPromotionResponse,
     TrajectoryReplayComparisonResponse,
@@ -203,6 +213,7 @@ def _as_scalar_or_sequence(values: Sequence[str] | None) -> str | list[str] | No
 
 def _trajectory_query_from_request(
     *,
+    turn_ids: Sequence[str] | None = None,
     request_id: str | None = None,
     trace_id: str | None = None,
     thread_id: str | None = None,
@@ -229,6 +240,7 @@ def _trajectory_query_from_request(
     newest_first: bool = True,
 ) -> TrajectoryTurnQuery:
     return TrajectoryTurnQuery(
+        turn_ids=[str(turn_id) for turn_id in turn_ids or [] if str(turn_id).strip()] or None,
         request_id=request_id,
         trace_id=trace_id,
         thread_id=thread_id,
@@ -357,6 +369,7 @@ def _build_trajectory_stats_response(stats: dict[str, Any]) -> TrajectoryTurnSta
 
 def _trajectory_filters_payload(
     *,
+    turn_ids: Sequence[str] | None = None,
     request_id: str | None = None,
     trace_id: str | None = None,
     thread_id: str | None = None,
@@ -380,6 +393,9 @@ def _trajectory_filters_payload(
     max_tool_calls: int | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
+    normalized_turn_ids = [str(turn_id) for turn_id in turn_ids or [] if str(turn_id).strip()]
+    if normalized_turn_ids:
+        payload["turn_ids"] = normalized_turn_ids
     if request_id:
         payload["request_id"] = request_id
     if trace_id:
@@ -423,6 +439,83 @@ def _trajectory_filters_payload(
     if max_tool_calls is not None:
         payload["max_tool_calls"] = max_tool_calls
     return payload
+
+
+def _trajectory_filters_from_batch_payload(payload: Any) -> dict[str, Any]:
+    return _trajectory_filters_payload(
+        turn_ids=payload.turn_ids,
+        request_id=payload.request_id,
+        trace_id=payload.trace_id,
+        thread_id=payload.thread_id,
+        root_thread_id=payload.root_thread_id,
+        parent_thread_id=payload.parent_thread_id,
+        branch_id=payload.branch_id,
+        branch_role=payload.branch_role,
+        status=payload.status,
+        scene=payload.scene,
+        kind=payload.kind,
+        tool=payload.tool,
+        model=payload.model,
+        fallback_used=payload.fallback_used,
+        cache_hit=payload.cache_hit,
+        has_error=payload.has_error,
+        started_after=payload.started_after,
+        started_before=payload.started_before,
+        min_latency_ms=payload.min_latency_ms,
+        max_latency_ms=payload.max_latency_ms,
+        min_tool_calls=payload.min_tool_calls,
+        max_tool_calls=payload.max_tool_calls,
+    )
+
+
+def _trajectory_query_from_batch_payload(payload: Any) -> TrajectoryTurnQuery:
+    return _trajectory_query_from_request(
+        turn_ids=payload.turn_ids,
+        request_id=payload.request_id,
+        trace_id=payload.trace_id,
+        thread_id=payload.thread_id,
+        root_thread_id=payload.root_thread_id,
+        parent_thread_id=payload.parent_thread_id,
+        branch_id=payload.branch_id,
+        branch_role=payload.branch_role,
+        status=payload.status,
+        scene=payload.scene,
+        kind=payload.kind,
+        tool=payload.tool,
+        model=payload.model,
+        fallback_used=payload.fallback_used,
+        cache_hit=payload.cache_hit,
+        has_error=payload.has_error,
+        started_after=payload.started_after,
+        started_before=payload.started_before,
+        min_latency_ms=payload.min_latency_ms,
+        max_latency_ms=payload.max_latency_ms,
+        min_tool_calls=payload.min_tool_calls,
+        max_tool_calls=payload.max_tool_calls,
+        limit=payload.limit,
+        offset=payload.offset,
+        newest_first=payload.newest_first,
+    )
+
+
+def _export_trajectory_records(repo: Any, query: TrajectoryTurnQuery) -> list[dict[str, Any]]:
+    export_turns = getattr(repo, "export_turns", None)
+    if not callable(export_turns):
+        raise HTTPException(
+            status_code=503,
+            detail="Trajectory batch observability requires a repository that can export turns.",
+        )
+    return [dict(record) for record in export_turns(query)]
+
+
+def _build_batch_replay_summary(results: Sequence[TrajectoryReplayResponse]) -> TrajectoryBatchReplaySummaryResponse:
+    return TrajectoryBatchReplaySummaryResponse(
+        total=len(results),
+        passed=sum(1 for item in results if item.comparison.replay_passed),
+        failed=sum(1 for item in results if not item.comparison.replay_passed),
+        source_failed=sum(1 for item in results if item.comparison.source_failed),
+        tool_path_changed=sum(1 for item in results if item.comparison.tool_path_changed),
+    )
 
 
 def _trajectory_expected(settings: Settings | Any) -> bool:
@@ -559,6 +652,63 @@ def _maybe_get_trajectory_repository(runtime: AppRuntime | Any) -> PostgresTraje
     if database_uri:
         return PostgresTrajectoryRepository(database_uri)
     return None
+
+
+def _agent_role_policy_response(settings: Settings | Any) -> AgentRolePolicyResponse:
+    resolver = RoleModelResolver(settings)
+    return AgentRolePolicyResponse(
+        enabled=bool(getattr(settings, "agent_role_routing_enabled", False)),
+        default_model=str(getattr(settings, "model", "")),
+        helper_model=getattr(settings, "helper_model", None),
+        max_parallel_runs=max(1, int(getattr(settings, "agent_role_max_parallel_runs", 1) or 1)),
+        roles=[role.value for role in AgentRole],
+        role_models={role.value: resolver.resolve(role) for role in AgentRole},
+        fallback_order=[
+            "role-specific model override",
+            "executor selected model",
+            "helper model for planning and critique roles",
+            "default model",
+        ],
+    )
+
+
+def _available_tool_names(runtime: AppRuntime | Any) -> list[str]:
+    registry = getattr(runtime, "tool_registry", None)
+    return [
+        str(getattr(tool, "name", "")).strip()
+        for tool in tuple(getattr(registry, "tools", ()) or ())
+        if str(getattr(tool, "name", "")).strip()
+    ]
+
+
+def _role_route_decision_items(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        plan_meta = dict(row.get("plan_meta") or {})
+        role_route_plan = plan_meta.get("role_route_plan")
+        if not isinstance(role_route_plan, dict):
+            continue
+        decisions = role_route_plan.get("decisions")
+        if not isinstance(decisions, list):
+            decisions = []
+        items.append(
+            {
+                "turn_id": row.get("id"),
+                "request_id": row.get("request_id"),
+                "trace_id": row.get("trace_id"),
+                "thread_id": row.get("thread_id"),
+                "root_thread_id": row.get("root_thread_id"),
+                "status": row.get("status"),
+                "started_at": row.get("started_at"),
+                "enabled": bool(role_route_plan.get("enabled", False)),
+                "route_reason": role_route_plan.get("route_reason"),
+                "max_parallel_runs": role_route_plan.get("max_parallel_runs"),
+                "orchestrator_model_id": role_route_plan.get("orchestrator_model_id"),
+                "role_count": len(decisions),
+                "decisions": decisions,
+            }
+        )
+    return items
 
 
 def _escape_prometheus_label_value(value: Any) -> str:
@@ -843,6 +993,63 @@ def create_app() -> FastAPI:
             ],
         )
 
+    @app.get('/v1/agent/roles/policy', response_model=AgentRolePolicyResponse)
+    def get_agent_role_policy(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentRolePolicyResponse:
+        del principal
+        return _agent_role_policy_response(runtime.settings)
+
+    @app.post('/v1/agent/roles/dry-run', response_model=AgentRoleDryRunResponse)
+    def dry_run_agent_role_route(
+        payload: AgentRoleDryRunRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentRoleDryRunResponse:
+        del principal
+        available_tools = payload.available_tools or _available_tool_names(runtime)
+        plan = build_role_route_plan(
+            settings=runtime.settings,
+            task_text=payload.message,
+            available_tool_names=available_tools,
+            tool_policy=payload.scene,
+        )
+        return AgentRoleDryRunResponse(
+            policy=_agent_role_policy_response(runtime.settings),
+            plan=plan.model_dump(mode="json"),
+        )
+
+    @app.get('/v1/agent/roles/decisions', response_model=AgentRoleDecisionListResponse)
+    def list_agent_role_decisions(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentRoleDecisionListResponse:
+        del principal
+        repo = _maybe_get_trajectory_repository(runtime)
+        if repo is None:
+            return AgentRoleDecisionListResponse(
+                items=[],
+                count=0,
+                trajectory_available=False,
+            )
+        try:
+            rows = repo.list_turns(TrajectoryTurnQuery(limit=limit, newest_first=True))
+        except Exception as exc:  # noqa: BLE001
+            return AgentRoleDecisionListResponse(
+                items=[],
+                count=0,
+                trajectory_available=False,
+                trajectory_error=str(exc),
+            )
+        items = _role_route_decision_items(rows)
+        return AgentRoleDecisionListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=True,
+        )
+
     @app.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)
     def get_observability_overview(
         request_id: str | None = None,
@@ -1109,6 +1316,95 @@ def create_app() -> FastAPI:
         return TrajectoryTurnStatsEnvelopeResponse(
             filters=filters,
             stats=_build_trajectory_stats_response(repo.get_turn_stats(query)),
+        )
+
+    @app.post(
+        '/v1/observability/trajectory/batch/promote-preview',
+        response_model=TrajectoryBatchPromotionPreviewResponse,
+    )
+    def promote_trajectory_turn_batch_preview(
+        payload: TrajectoryBatchPromotionPreviewRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> TrajectoryBatchPromotionPreviewResponse:
+        del principal
+        repo = _get_trajectory_repository(runtime)
+        filters = _trajectory_filters_from_batch_payload(payload)
+        records = _export_trajectory_records(repo, _trajectory_query_from_batch_payload(payload))
+        try:
+            items = [
+                TrajectoryPromotionResponse.model_validate(
+                    build_promoted_dataset_payload(
+                        record,
+                        case_id_prefix=payload.case_id_prefix,
+                        copy_tool_trajectory=payload.copy_tool_trajectory,
+                        copy_answer_substring=payload.copy_answer_substring,
+                        answer_substring_chars=payload.answer_substring_chars,
+                    )
+                )
+                for record in records
+            ]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return TrajectoryBatchPromotionPreviewResponse(
+            items=items,
+            count=len(items),
+            filters=filters,
+            limit=payload.limit,
+            offset=payload.offset,
+            jsonl="\n".join(item.jsonl for item in items),
+        )
+
+    @app.post(
+        '/v1/observability/trajectory/batch/replay-compare',
+        response_model=TrajectoryBatchReplayCompareResponse,
+    )
+    def replay_trajectory_turn_batch_compare(
+        payload: TrajectoryBatchReplayCompareRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> TrajectoryBatchReplayCompareResponse:
+        del principal
+        repo = _get_trajectory_repository(runtime)
+        filters = _trajectory_filters_from_batch_payload(payload)
+        records = _export_trajectory_records(repo, _trajectory_query_from_batch_payload(payload))
+        results: list[TrajectoryReplayResponse] = []
+        try:
+            for record in records:
+                promoted = build_promoted_dataset_payload(
+                    record,
+                    case_id_prefix=payload.case_id_prefix,
+                    copy_tool_trajectory=payload.copy_tool_trajectory,
+                    copy_answer_substring=payload.copy_answer_substring,
+                    answer_substring_chars=payload.answer_substring_chars,
+                )
+                replay = run_replay_for_turn(
+                    record,
+                    settings=runtime.settings,
+                    model=payload.model,
+                    case_id_prefix=payload.case_id_prefix,
+                    copy_tool_trajectory=payload.copy_tool_trajectory,
+                    copy_answer_substring=payload.copy_answer_substring,
+                    answer_substring_chars=payload.answer_substring_chars,
+                )
+                results.append(
+                    TrajectoryReplayResponse(
+                        source_turn_id=replay["source_turn_id"],
+                        model_used=payload.model or runtime.settings.model,
+                        replay_case=TrajectoryReplayCaseResponse.model_validate(promoted["dataset_record"]),
+                        replay_case_jsonl=str(promoted["jsonl"]),
+                        replay_result=TrajectoryReplayResultResponse.model_validate(replay["replay_result"]),
+                        comparison=TrajectoryReplayComparisonResponse.model_validate(replay["comparison"]),
+                    )
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return TrajectoryBatchReplayCompareResponse(
+            results=results,
+            summary=_build_batch_replay_summary(results),
+            filters=filters,
+            limit=payload.limit,
+            offset=payload.offset,
         )
 
     @app.get('/v1/observability/trajectory/{turn_id}', response_model=TrajectoryTurnDetailEnvelopeResponse)

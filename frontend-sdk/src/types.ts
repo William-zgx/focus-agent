@@ -225,6 +225,35 @@ export interface FocusAgentModelsResponse {
   models: FocusAgentModelOption[];
 }
 
+export interface FocusAgentRolePolicyResponse {
+  enabled: boolean;
+  default_model: string;
+  helper_model?: string | null;
+  max_parallel_runs: number;
+  roles: string[];
+  role_models: Record<string, string | null>;
+  fallback_order: string[];
+}
+
+export interface FocusAgentRoleDryRunRequest {
+  message: string;
+  scene?: string;
+  skill_hints?: string[];
+  available_tools?: string[];
+}
+
+export interface FocusAgentRoleDryRunResponse {
+  policy: FocusAgentRolePolicyResponse;
+  plan: Record<string, unknown>;
+}
+
+export interface FocusAgentRoleDecisionListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
 export interface FocusAgentConversationSummary {
   root_thread_id: string;
   title: string;
@@ -439,6 +468,14 @@ export interface FocusAgentTrajectoryPromotionRequest {
   answer_substring_chars?: number;
 }
 
+export interface FocusAgentTrajectoryBatchPromotionPreviewRequest
+  extends FocusAgentTrajectoryListRequest,
+    FocusAgentTrajectoryPromotionRequest {}
+
+export interface FocusAgentTrajectoryBatchReplayCompareRequest
+  extends Omit<FocusAgentTrajectoryListRequest, "model">,
+    FocusAgentTrajectoryReplayRequest {}
+
 export interface FocusAgentTrajectoryEvalCase {
   id: string;
   input: Record<string, unknown>;
@@ -500,6 +537,29 @@ export interface FocusAgentTrajectoryPromotionResponse {
   case_id: string;
   dataset_record: FocusAgentTrajectoryEvalCase;
   jsonl: string;
+}
+
+export interface FocusAgentTrajectoryBatchPromotionPreviewResponse {
+  items: FocusAgentTrajectoryPromotionResponse[];
+  count: number;
+  filters: FocusAgentTrajectoryFilters;
+  limit: number;
+  offset: number;
+  jsonl: string;
+}
+
+export interface FocusAgentTrajectoryBatchReplayCompareResponse {
+  results: FocusAgentTrajectoryReplayResponse[];
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    source_failed: number;
+    tool_path_changed: number;
+  };
+  filters: FocusAgentTrajectoryFilters;
+  limit: number;
+  offset: number;
 }
 
 export interface FocusAgentCreateConversationRequest {

@@ -40,6 +40,35 @@ class ModelCatalogResponse(BaseModel):
     models: list[ModelOptionResponse] = Field(default_factory=list)
 
 
+class AgentRolePolicyResponse(BaseModel):
+    enabled: bool = False
+    default_model: str
+    helper_model: str | None = None
+    max_parallel_runs: int = 1
+    roles: list[str] = Field(default_factory=list)
+    role_models: dict[str, str | None] = Field(default_factory=dict)
+    fallback_order: list[str] = Field(default_factory=list)
+
+
+class AgentRoleDryRunRequest(BaseModel):
+    message: str
+    scene: str = "long_dialog_research"
+    skill_hints: list[str] = Field(default_factory=list)
+    available_tools: list[str] = Field(default_factory=list)
+
+
+class AgentRoleDryRunResponse(BaseModel):
+    policy: AgentRolePolicyResponse
+    plan: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentRoleDecisionListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
 class ConversationSummaryResponse(BaseModel):
     root_thread_id: str
     title: str
@@ -289,6 +318,45 @@ class TrajectoryPromotionRequest(BaseModel):
     answer_substring_chars: int = Field(default=160, ge=0, le=4000)
 
 
+class TrajectoryBatchFilterRequest(BaseModel):
+    turn_ids: list[str] = Field(default_factory=list)
+    request_id: str | None = None
+    trace_id: str | None = None
+    thread_id: str | None = None
+    root_thread_id: str | None = None
+    parent_thread_id: str | None = None
+    branch_id: str | None = None
+    branch_role: list[str] = Field(default_factory=list)
+    status: list[str] = Field(default_factory=list)
+    scene: list[str] = Field(default_factory=list)
+    kind: list[str] = Field(default_factory=list)
+    tool: list[str] = Field(default_factory=list)
+    model: list[str] = Field(default_factory=list)
+    fallback_used: bool | None = None
+    cache_hit: bool | None = None
+    has_error: bool | None = None
+    started_after: datetime | None = None
+    started_before: datetime | None = None
+    min_latency_ms: float | None = None
+    max_latency_ms: float | None = None
+    min_tool_calls: int | None = None
+    max_tool_calls: int | None = None
+    limit: int = Field(default=100, ge=0)
+    offset: int = Field(default=0, ge=0)
+    newest_first: bool = True
+
+
+class TrajectoryBatchPromotionPreviewRequest(TrajectoryBatchFilterRequest):
+    case_id_prefix: str = "traj"
+    copy_tool_trajectory: bool = False
+    copy_answer_substring: bool = False
+    answer_substring_chars: int = Field(default=160, ge=0, le=4000)
+
+
+class TrajectoryBatchReplayCompareRequest(TrajectoryBatchPromotionPreviewRequest):
+    model: str | None = None
+
+
 class TrajectoryEvalCaseResponse(BaseModel):
     id: str
     input: dict[str, Any] = Field(default_factory=dict)
@@ -362,9 +430,38 @@ class TrajectoryPromotionResponse(BaseModel):
     jsonl: str
 
 
+class TrajectoryBatchPromotionPreviewResponse(BaseModel):
+    items: list[TrajectoryPromotionResponse] = Field(default_factory=list)
+    count: int = 0
+    filters: dict[str, Any] = Field(default_factory=dict)
+    limit: int
+    offset: int
+    jsonl: str = ''
+
+
+class TrajectoryBatchReplaySummaryResponse(BaseModel):
+    total: int = 0
+    passed: int = 0
+    failed: int = 0
+    source_failed: int = 0
+    tool_path_changed: int = 0
+
+
+class TrajectoryBatchReplayCompareResponse(BaseModel):
+    results: list[TrajectoryReplayResponse] = Field(default_factory=list)
+    summary: TrajectoryBatchReplaySummaryResponse = Field(default_factory=TrajectoryBatchReplaySummaryResponse)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    limit: int
+    offset: int
+
+
 __all__ = [
     "ApplyMergeDecisionRequest",
     "ApplyMergeDecisionResponse",
+    "AgentRoleDecisionListResponse",
+    "AgentRoleDryRunRequest",
+    "AgentRoleDryRunResponse",
+    "AgentRolePolicyResponse",
     "BranchTreeResponse",
     "ChatResumeRequest",
     "ChatTurnRequest",
@@ -380,6 +477,12 @@ __all__ = [
     "PrincipalResponse",
     "RuntimeComponentStatusResponse",
     "RuntimeReadinessResponse",
+    "TrajectoryBatchFilterRequest",
+    "TrajectoryBatchPromotionPreviewRequest",
+    "TrajectoryBatchPromotionPreviewResponse",
+    "TrajectoryBatchReplayCompareRequest",
+    "TrajectoryBatchReplayCompareResponse",
+    "TrajectoryBatchReplaySummaryResponse",
     "TrajectoryEvalCaseResponse",
     "TrajectoryJudgeVerdictResponse",
     "TrajectoryStatsBucketResponse",

@@ -23,7 +23,8 @@ This SDK packages those concerns into a small, typed client layer.
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
-- Trajectory observability helpers for overview/list/detail/stats/replay/promote flows
+- Trajectory observability helpers for overview/list/detail/stats/replay/promote and batch governance preview flows
+- Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
 - Reducer helpers for accumulating stream state
@@ -101,6 +102,7 @@ console.log(finalState.visibleText);
 - `createDemoToken()` - request a local development token
 - `getPrincipal()` - inspect the authenticated principal
 - `listModels()` - fetch the current model catalog
+- `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, and `listAgentRoleDecisions()` - inspect role routing policy, preview orchestrator decisions, and review persisted role_route_plan records
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app
 - `getBranchTree()` - fetch the branch tree rooted at a conversation
@@ -108,6 +110,7 @@ console.log(finalState.visibleText);
 - `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows
 - `getObservabilityOverview()`, `listTrajectoryTurns()`, `getTrajectoryTurn()`, and `getTrajectoryStats()` - inspect runtime readiness and Postgres-backed trajectory observability data
 - `replayTrajectoryTurn()` and `promoteTrajectoryTurn()` - preview replay and dataset promotion payloads for a trajectory turn
+- `batchPromoteTrajectoryTurnsPreview()` and `batchReplayCompareTrajectoryTurns()` - run non-writing batch promotion previews and replay comparisons for selected trajectory turns
 - `streamTurn()` - stream a new chat turn
 - `streamResume()` - continue from an interrupt or resume payload
 - `collectStream()` - iterate a stream and accumulate a final derived state
@@ -236,5 +239,5 @@ make sdk-build
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch, conversation, merge proposal, imported-conclusion, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
+- Branch, conversation, merge proposal, imported-conclusion, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.

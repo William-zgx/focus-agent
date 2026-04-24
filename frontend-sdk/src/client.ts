@@ -15,12 +15,20 @@ import type {
   FocusAgentObservabilityOverviewResponse,
   FocusAgentPrincipalResponse,
   FocusAgentRenameBranchRequest,
+  FocusAgentRoleDecisionListResponse,
+  FocusAgentRoleDryRunRequest,
+  FocusAgentRoleDryRunResponse,
+  FocusAgentRolePolicyResponse,
   FocusAgentUpdateConversationRequest,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
   FocusAgentTokenResponse,
   FocusAgentTurnRequest,
   FocusAgentResumeRequest,
+  FocusAgentTrajectoryBatchPromotionPreviewRequest,
+  FocusAgentTrajectoryBatchPromotionPreviewResponse,
+  FocusAgentTrajectoryBatchReplayCompareRequest,
+  FocusAgentTrajectoryBatchReplayCompareResponse,
   FocusAgentTrajectoryDetailResponse,
   FocusAgentTrajectoryListRequest,
   FocusAgentTrajectoryListResponse,
@@ -201,6 +209,37 @@ export class FocusAgentClient {
     }, true);
   }
 
+  async getAgentRolePolicy(): Promise<FocusAgentRolePolicyResponse> {
+    return this.requestJson<FocusAgentRolePolicyResponse>("/v1/agent/roles/policy", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async dryRunAgentRoleRoute(
+    request: FocusAgentRoleDryRunRequest,
+  ): Promise<FocusAgentRoleDryRunResponse> {
+    return this.requestJson<FocusAgentRoleDryRunResponse>("/v1/agent/roles/dry-run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentRoleDecisions(limit = 50): Promise<FocusAgentRoleDecisionListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentRoleDecisionListResponse>(
+      `/v1/agent/roles/decisions${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
   async listConversations(): Promise<FocusAgentConversationListResponse> {
     return this.requestJson<FocusAgentConversationListResponse>("/v1/conversations", {
       method: "GET",
@@ -340,6 +379,34 @@ export class FocusAgentClient {
   ): Promise<FocusAgentTrajectoryPromotionResponse> {
     return this.requestJson<FocusAgentTrajectoryPromotionResponse>(
       `/v1/observability/trajectory/${encodeURIComponent(turnId)}/promote`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async batchPromoteTrajectoryTurnsPreview(
+    request: FocusAgentTrajectoryBatchPromotionPreviewRequest,
+  ): Promise<FocusAgentTrajectoryBatchPromotionPreviewResponse> {
+    return this.requestJson<FocusAgentTrajectoryBatchPromotionPreviewResponse>(
+      "/v1/observability/trajectory/batch/promote-preview",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async batchReplayCompareTrajectoryTurns(
+    request: FocusAgentTrajectoryBatchReplayCompareRequest,
+  ): Promise<FocusAgentTrajectoryBatchReplayCompareResponse> {
+    return this.requestJson<FocusAgentTrajectoryBatchReplayCompareResponse>(
+      "/v1/observability/trajectory/batch/replay-compare",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -106,6 +106,10 @@ class AgentState(TypedDict, total=False):
     selected_model: str
     selected_thinking_mode: str
 
+    # Written only when role routing v2 dry-run is enabled. The current graph
+    # still follows the legacy single-run path; this is observability/console data.
+    role_route_plan: dict[str, Any] | None
+
     # Written by extraction nodes after a turn, read by persistence nodes,
     # and never merge-imported because it is a transient write queue.
     memory_write_requests: list[dict[str, Any]]
@@ -149,6 +153,7 @@ def initial_agent_state() -> AgentState:
         "active_skills_block": "",
         "selected_model": "",
         "selected_thinking_mode": "",
+        "role_route_plan": None,
         "memory_write_requests": [],
         "memory_write_result": {},
         "plan": None,

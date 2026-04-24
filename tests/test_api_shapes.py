@@ -1,12 +1,20 @@
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
 from focus_agent.api.main import _aggregate_token_usage_from_turns, _annotate_branch_tree_token_usage, create_app
 from focus_agent.api.schemas import (
+    AgentRoleDecisionListResponse,
+    AgentRoleDryRunRequest,
+    AgentRoleDryRunResponse,
+    AgentRolePolicyResponse,
     BranchTreeResponse,
     ConversationListResponse,
     ConversationSummaryResponse,
     CreateConversationRequest,
     ForkBranchRequest,
     ModelCatalogResponse,
+    TrajectoryBatchPromotionPreviewRequest,
+    TrajectoryBatchPromotionPreviewResponse,
+    TrajectoryBatchReplayCompareRequest,
+    TrajectoryBatchReplayCompareResponse,
     TrajectoryPromotionResponse,
     TrajectoryPromotionRequest,
     TrajectoryReplayResponse,
@@ -104,6 +112,59 @@ def test_model_catalog_response_shape():
     assert dumped["models"][0]["default_thinking_enabled"] is True
 
 
+def test_agent_role_contract_shapes():
+    policy = AgentRolePolicyResponse(
+        enabled=True,
+        default_model="openai:gpt-4.1-mini",
+        helper_model="openai:deepseek-chat",
+        max_parallel_runs=3,
+        roles=["orchestrator", "planner", "executor", "critic", "memory_curator", "skill_scout"],
+        role_models={"executor": "openai:gpt-4.1-mini", "critic": "openai:deepseek-chat"},
+        fallback_order=["role-specific model override", "executor selected model", "helper model"],
+    )
+    dry_run_request = AgentRoleDryRunRequest(
+        message="Plan, implement, and verify the role routing console.",
+        scene="role_routing_console",
+        available_tools=["search_code", "read_file"],
+    )
+    dry_run_response = AgentRoleDryRunResponse(
+        policy=policy,
+        plan={
+            "enabled": True,
+            "decisions": [
+                {"role": "orchestrator", "model_id": "openai:deepseek-chat"},
+                {"role": "executor", "model_id": "openai:gpt-4.1-mini"},
+            ],
+        },
+    )
+    decision_list = AgentRoleDecisionListResponse(
+        items=[
+            {
+                "turn_id": "turn-1",
+                "role_count": 2,
+                "decisions": dry_run_response.plan["decisions"],
+            }
+        ],
+        count=1,
+        trajectory_available=True,
+    )
+
+    dumped = dry_run_response.model_dump(mode="json")
+
+    assert policy.roles == [
+        "orchestrator",
+        "planner",
+        "executor",
+        "critic",
+        "memory_curator",
+        "skill_scout",
+    ]
+    assert dry_run_request.available_tools == ["search_code", "read_file"]
+    assert dumped["plan"]["decisions"][1]["role"] == "executor"
+    assert decision_list.items[0]["turn_id"] == "turn-1"
+    assert decision_list.trajectory_available is True
+
+
 def test_conversation_contract_shapes():
     created = ConversationSummaryResponse(
         root_thread_id="root-1",
@@ -175,6 +236,8 @@ def test_trajectory_contract_shapes():
     stats = TrajectoryTurnStatsEnvelopeResponse(filters={"fallback_used": True})
     replay = TrajectoryReplayRequest(copy_tool_trajectory=True)
     promote = TrajectoryPromotionRequest(copy_answer_substring=True)
+    batch_promote = TrajectoryBatchPromotionPreviewRequest(status=["failed"], limit=5)
+    batch_replay = TrajectoryBatchReplayCompareRequest(model="moonshot:kimi-k2.6", turn_ids=["turn-1"])
     replay_response = TrajectoryReplayResponse(
         source_turn_id="turn-1",
         model_used="openai:gpt-4.1-mini",
@@ -199,15 +262,35 @@ def test_trajectory_contract_shapes():
         },
         jsonl='{"id":"traj-turn-1"}',
     )
+    batch_promote_response = TrajectoryBatchPromotionPreviewResponse(
+        items=[promote_response],
+        count=1,
+        filters={"status": ["failed"]},
+        limit=5,
+        offset=0,
+        jsonl='{"id":"traj-turn-1"}',
+    )
+    batch_replay_response = TrajectoryBatchReplayCompareResponse(
+        results=[replay_response],
+        summary={"total": 1, "passed": 1, "failed": 0, "source_failed": 1, "tool_path_changed": 0},
+        filters={"turn_ids": ["turn-1"]},
+        limit=5,
+        offset=0,
+    )
 
     assert listing.model_dump(mode="json")["count"] == 1
     assert listing.model_dump(mode="json")["filters"]["status"] == ["failed"]
     assert stats.model_dump(mode="json")["filters"]["fallback_used"] is True
     assert replay.copy_tool_trajectory is True
     assert promote.copy_answer_substring is True
+    assert batch_promote.status == ["failed"]
+    assert batch_promote.limit == 5
+    assert batch_replay.model == "moonshot:kimi-k2.6"
     assert replay_response.model_dump(mode="json")["replay_case"]["input"]["user_message"] == "Read README"
     assert replay_response.model_dump(mode="json")["comparison"]["replay_passed"] is True
     assert promote_response.model_dump(mode="json")["dataset_record"]["id"] == "traj-turn-1"
+    assert batch_promote_response.model_dump(mode="json")["jsonl"] == '{"id":"traj-turn-1"}'
+    assert batch_replay_response.model_dump(mode="json")["summary"]["source_failed"] == 1
 
 
 def test_public_api_no_longer_exposes_skill_catalog_routes():
@@ -221,12 +304,17 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/conversations/{root_thread_id}/activate" in route_paths
     assert "/readyz" in route_paths
     assert "/metrics" in route_paths
+    assert "/v1/agent/roles/policy" in route_paths
+    assert "/v1/agent/roles/dry-run" in route_paths
+    assert "/v1/agent/roles/decisions" in route_paths
     assert "/v1/observability/overview" in route_paths
     assert "/v1/observability/trajectory" in route_paths
     assert "/v1/observability/trajectory/stats" in route_paths
     assert "/v1/observability/trajectory/{turn_id}" in route_paths
     assert "/v1/observability/trajectory/{turn_id}/replay" in route_paths
     assert "/v1/observability/trajectory/{turn_id}/promote" in route_paths
+    assert "/v1/observability/trajectory/batch/promote-preview" in route_paths
+    assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
     assert "/v1/skills" not in route_paths
     assert "/v1/skills/{skill_id}" not in route_paths

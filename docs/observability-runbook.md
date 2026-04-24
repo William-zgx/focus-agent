@@ -2,7 +2,7 @@
 
 Updated: 2026-04-24
 
-This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
+This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
 ## 1. Confirm Liveness Versus Readiness
 
@@ -10,7 +10,7 @@ Use the runtime endpoints in this order:
 
 - `/healthz` tells you the process is up.
 - `/readyz` tells you whether the runtime is actually ready to serve traffic.
-- `/metrics` exposes Prometheus text metrics for runtime state and trajectory aggregates.
+- `/metrics` exposes Prometheus text metrics for runtime state, component readiness, and trajectory aggregates.
 
 Examples:
 
@@ -30,6 +30,16 @@ Typical interpretation:
 
 - `/healthz` is `200` but `/readyz` is `503`: the process is alive but one or more runtime checks are degraded.
 - `/readyz` is `200` and `trajectory_recorder.ready=false`: runtime is serving, but trajectory persistence is not available.
+
+Alert guidance should use the existing `/metrics` scrape. Start with these signals before adding custom exporters:
+
+- `focus_agent_runtime_ready == 0`: page immediately; traffic readiness is degraded.
+- `focus_agent_runtime_component_ready{component="trajectory_recorder"} == 0`: trajectory persistence is unavailable.
+- `focus_agent_trajectory_metrics_available == 0`: the runtime is up but trajectory aggregates cannot be read.
+- `focus_agent_trajectory_non_succeeded_count / focus_agent_trajectory_turn_count`: alert on a sustained failure-rate increase, not a single failed turn.
+- `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
+
+Keep alert labels aligned with `app_version`, `environment`, `deployment`, `component`, and trajectory `status` so release regressions can be separated from general traffic noise.
 
 ## 2. Read The Current Slice
 
@@ -167,6 +177,48 @@ Once you identify a useful trajectory turn, you can:
 
 The Web trajectory page surfaces these actions from the selected turn so you can move from diagnosis into regression capture without leaving the console. The right rail is designed to stay visible while you keep reading the selected sample.
 
+Use a preview-first workflow:
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/v1/observability/trajectory/turn-id-here/promote' \
+  -H 'Content-Type: application/json' \
+  -d '{"copy_tool_trajectory":true}'
+```
+
+The API response is a dataset preview. Review the generated expectations before committing it to a suite.
+
+For batch failure promotion and replay:
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/v1/observability/trajectory/batch/promote-preview' \
+  -H 'Content-Type: application/json' \
+  -d '{"status":["failed"],"has_error":true,"limit":20,"copy_tool_trajectory":true}'
+
+curl -X POST 'http://127.0.0.1:8000/v1/observability/trajectory/batch/replay-compare' \
+  -H 'Content-Type: application/json' \
+  -d '{"status":["failed"],"has_error":true,"limit":20,"copy_tool_trajectory":true}'
+
+source .focus_agent/postgres/runtime.env
+focus-agent-trajectory export --status failed --has-error --output /tmp/focus-agent-failed.jsonl
+
+uv run python -m tests.eval promote \
+  --from /tmp/focus-agent-failed.jsonl \
+  --failed-only \
+  --copy-tool-trajectory \
+  --out tests/eval/datasets/promoted-trajectory.jsonl
+
+uv run python -m tests.eval replay \
+  --from /tmp/focus-agent-failed.jsonl \
+  --trajectory-input \
+  --failed-only \
+  --copy-tool-trajectory \
+  --run \
+  --report-json reports/trajectory-replay.json \
+  --fail-if-regression
+```
+
+Use `--copy-answer-substring` only when the source answer is stable enough to become an assertion. Otherwise keep the promoted case focused on tool path, failure status, and runtime metrics.
+
 ## 7. Recommended Oncall Flow
 
 Use this order when responding to production issues:
@@ -177,11 +229,12 @@ Use this order when responding to production issues:
 4. Open `/app/observability/trajectory` and pivot into the exact request, trace, thread, or model.
 5. Read the summary card and note which evidence mode you are in: `timeline`, `zero_step`, or `missing_detail`.
 6. Inspect the selected turn's error text, fallback steps, cache behavior, input/output narrative, and runtime metadata.
-7. Replay or promote the turn if it should become a regression artifact.
+7. Preview promotion for a representative failed turn.
+8. Batch replay or promote the slice if it should become a regression artifact.
 
 ## 8. Local Verification Commands
 
-These are the repo-local checks that currently validate the observability stack:
+These are the repo-local checks that currently validate the observability stack and release regression gate:
 
 ```bash
 make lint
@@ -190,9 +243,13 @@ make sdk-check
 make sdk-build
 make web-check
 make web-build
-make ui-smoke-observability
+uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
+uv run python -m tests.eval --suite smoke --concurrency 1 --fail-if-regression
+uv run python -m tests.eval --suite observability --concurrency 1
 ```
+
+`make ui-smoke-observability` remains the short local target. For release verification, prefer the explicit browser smoke command with `--scenario all` so overview, trajectory, replay, and promotion surfaces are exercised under one scenario set.
 
 If your local `.venv` cannot import `psycopg` because `libpq` is missing, use the focused test workaround already documented in [architecture.md](architecture.md).
 

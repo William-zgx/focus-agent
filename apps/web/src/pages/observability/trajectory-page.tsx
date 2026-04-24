@@ -811,6 +811,9 @@ export function TrajectoryPage() {
   const [selectedTurnId, setSelectedTurnId] = useState(() =>
     readSearchParam("turn"),
   );
+  const [selectedBatchTurnIds, setSelectedBatchTurnIds] = useState<string[]>(
+    [],
+  );
   const [filtersExpanded, setFiltersExpanded] = useState(() =>
     shouldExpandFiltersFromSearch(),
   );
@@ -926,6 +929,18 @@ export function TrajectoryPage() {
     }
     return items;
   }, [listData?.items, sortMode]);
+  const orderedItemIds = useMemo(
+    () => new Set(orderedItems.map((item) => item.id)),
+    [orderedItems],
+  );
+  const selectedBatchItems = useMemo(
+    () => orderedItems.filter((item) => selectedBatchTurnIds.includes(item.id)),
+    [orderedItems, selectedBatchTurnIds],
+  );
+  const selectedBatchIdSet = useMemo(
+    () => new Set(selectedBatchTurnIds),
+    [selectedBatchTurnIds],
+  );
 
   useEffect(() => {
     if (!orderedItems.length) {
@@ -940,6 +955,12 @@ export function TrajectoryPage() {
       setSelectedTurnId(orderedItems[0].id);
     });
   }, [isListLoading, listError, orderedItems, selectedTurnId]);
+
+  useEffect(() => {
+    setSelectedBatchTurnIds((current) =>
+      current.filter((turnId) => orderedItemIds.has(turnId)),
+    );
+  }, [orderedItemIds]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1326,6 +1347,30 @@ export function TrajectoryPage() {
     setFallbackOnly(false);
     setHasErrorOnly(false);
     setSortMode("newest");
+  }
+
+  function toggleBatchSelection(turnId: string) {
+    setSelectedBatchTurnIds((current) =>
+      current.includes(turnId)
+        ? current.filter((item) => item !== turnId)
+        : [...current, turnId],
+    );
+  }
+
+  function selectVisibleBatch() {
+    setSelectedBatchTurnIds(orderedItems.map((item) => item.id));
+  }
+
+  function selectVisibleFailuresBatch() {
+    setSelectedBatchTurnIds(
+      orderedItems
+        .filter((item) => item.status !== "succeeded" || item.error)
+        .map((item) => item.id),
+    );
+  }
+
+  function clearBatchSelection() {
+    setSelectedBatchTurnIds([]);
   }
 
   function focusRequest(value: string) {
@@ -1836,14 +1881,62 @@ export function TrajectoryPage() {
               </div>
             </div>
 
-            <div className="fa-trajectory-workbench-sample-list">
-              {orderedItems.map((item) => (
+            <div className="fa-trajectory-workbench-batch-toolbar">
+              <div>
+                <span>{isChineseUi ? "批量治理选择" : "Batch governance selection"}</span>
+                <strong>
+                  {isChineseUi
+                    ? `${selectedBatchTurnIds.length} 条已勾选`
+                    : `${selectedBatchTurnIds.length} selected`}
+                </strong>
+              </div>
+              <div className="fa-observability-command-bar">
                 <button
-                  key={item.id}
-                  className={`fa-trajectory-workbench-sample-card ${selectedTurnId === item.id ? "is-selected" : ""}`.trim()}
-                  onClick={() => setSelectedTurnId(item.id)}
+                  className="fa-chat-toolbar-button"
+                  disabled={!orderedItems.length}
+                  onClick={selectVisibleBatch}
                   type="button"
                 >
+                  {isChineseUi ? "勾选当前页" : "Select visible"}
+                </button>
+                <button
+                  className="fa-chat-toolbar-button"
+                  disabled={!orderedItems.some((item) => item.status !== "succeeded" || item.error)}
+                  onClick={selectVisibleFailuresBatch}
+                  type="button"
+                >
+                  {isChineseUi ? "仅勾选失败" : "Select failures"}
+                </button>
+                <button
+                  className="fa-chat-toolbar-button"
+                  disabled={!selectedBatchTurnIds.length}
+                  onClick={clearBatchSelection}
+                  type="button"
+                >
+                  {isChineseUi ? "清空" : "Clear"}
+                </button>
+              </div>
+            </div>
+
+            <div className="fa-trajectory-workbench-sample-list">
+              {orderedItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={`fa-trajectory-workbench-sample-row ${selectedBatchIdSet.has(item.id) ? "is-batch-selected" : ""}`.trim()}
+                >
+                  <label className="fa-trajectory-workbench-batch-checkbox">
+                    <input
+                      checked={selectedBatchIdSet.has(item.id)}
+                      onChange={() => toggleBatchSelection(item.id)}
+                      type="checkbox"
+                    />
+                    <span>{isChineseUi ? "批量" : "Batch"}</span>
+                  </label>
+                  <button
+                    className={`fa-trajectory-workbench-sample-card ${selectedTurnId === item.id ? "is-selected" : ""}`.trim()}
+                    onClick={() => setSelectedTurnId(item.id)}
+                    type="button"
+                  >
                   <div className="fa-trajectory-workbench-sample-top">
                     <span
                       className={`fa-observability-pill is-${statusTone(item.status)}`}
@@ -1871,7 +1964,8 @@ export function TrajectoryPage() {
                     <span>{`${item.tool_calls} ${isChineseUi ? "工具" : "tools"}`}</span>
                     <span>{`${item.fallback_uses} fallback`}</span>
                   </div>
-                </button>
+                  </button>
+                </div>
               ))}
 
               {!isListLoading && !orderedItems.length ? (
@@ -2471,7 +2565,9 @@ export function TrajectoryPage() {
                     </div>
                   </div>
                   <TrajectoryActionPanel
+                    batchItems={selectedBatchItems}
                     isChineseUi={isChineseUi}
+                    onClearBatchSelection={clearBatchSelection}
                     selected={selected}
                   />
                 </section>

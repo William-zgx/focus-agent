@@ -31,6 +31,7 @@ DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"
 DEFAULT_RUNTIME_ENV_PATH = ".focus_agent/postgres/runtime.env"
 DEFAULT_API_STARTUP_TIMEOUT_SECONDS = 45.0
 ROOT_DIR = Path(__file__).resolve().parents[1]
+SCENARIOS = ("success", "failed", "zero-step", "missing-detail", "all")
 
 
 def _is_local_url(url: str) -> bool:
@@ -139,56 +140,142 @@ def _resolve_database_uri(explicit: str | None) -> str:
     )
 
 
-def seed_observability_record(database_uri: str) -> dict[str, str]:
-    repo = PostgresTrajectoryRepository(database_uri)
-    repo.setup()
+def _scenario_names(scenario: str) -> tuple[str, ...]:
+    normalized = scenario.strip().lower()
+    if normalized == "all":
+        return ("success", "failed", "zero-step", "missing-detail")
+    if normalized in SCENARIOS:
+        return (normalized,)
+    raise ValueError(f"Unsupported observability smoke scenario: {scenario}")
 
-    now = utc_now()
-    seed = uuid4().hex
-    request_id = f"req-smoke-{seed[:12]}"
+
+def _build_seed_record(
+    *,
+    name: str,
+    now,
+    request_id: str,
+    seed: str,
+) -> TurnTrajectoryRecord:
     trace_id = uuid4().hex
     root_span_id = uuid4().hex[:16]
     turn_id = str(uuid4())
-    thread_id = f"observability-smoke-{seed[:8]}"
+    thread_id = f"observability-smoke-{name}-{seed[:8]}"
+    base_metrics = {
+        "latency_ms": 321.0,
+        "tool_calls": 1,
+        "llm_calls": 1,
+        "cache_hits": 0,
+        "fallback_uses": 0,
+    }
+    base_kwargs = {
+        "id": turn_id,
+        "schema_version": SCHEMA_VERSION,
+        "kind": "chat.turn",
+        "thread_id": thread_id,
+        "root_thread_id": thread_id,
+        "user_id_hash": f"smoke-{seed[:8]}",
+        "scene": "long_dialog_research",
+        "started_at": now,
+        "finished_at": now,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "root_span_id": root_span_id,
+        "environment": "smoke",
+        "deployment": "ui-smoke",
+        "app_version": "ui-smoke",
+        "task_brief": f"Observability smoke {name} seed",
+        "user_message": f"Observability smoke {name} seed question",
+        "answer": f"Observability smoke {name} seed answer",
+        "selected_model": "smoke:model",
+        "metrics": dict(base_metrics),
+    }
+    def record_kwargs(**overrides):
+        return {**base_kwargs, **overrides}
 
-    record = TurnTrajectoryRecord(
-        id=turn_id,
-        schema_version=SCHEMA_VERSION,
-        kind="chat.turn",
-        status="failed",
-        thread_id=thread_id,
-        root_thread_id=thread_id,
-        user_id_hash=f"smoke-{seed[:8]}",
-        scene="long_dialog_research",
-        started_at=now,
-        finished_at=now,
-        request_id=request_id,
-        trace_id=trace_id,
-        root_span_id=root_span_id,
-        environment="smoke",
-        deployment="ui-smoke",
-        app_version="ui-smoke",
-        task_brief="Observability smoke seed",
-        user_message="Observability smoke seed question",
-        answer="Observability smoke seed answer",
-        selected_model="smoke:model",
-        metrics={
-            "latency_ms": 321.0,
-            "tool_calls": 1,
-            "llm_calls": 1,
-            "cache_hits": 0,
-            "fallback_uses": 1,
-        },
-        error="Smoke seed error",
-        trajectory=[
+    if name == "success":
+        return TurnTrajectoryRecord(
+            **record_kwargs(
+                status="succeeded",
+                metrics={
+                    **base_metrics,
+                    "latency_ms": 187.0,
+                    "tool_calls": 2,
+                    "cache_hits": 1,
+                },
+                trajectory=[
+                TrajectoryStep(
+                    tool="read_file",
+                    args={"path": "README.md"},
+                    observation="Smoke success read observation",
+                    duration_ms=44.0,
+                    cache_hit=True,
+                    runtime={
+                        "provider": "smoke",
+                        "model": "smoke:model",
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "span_id": root_span_id,
+                    },
+                ),
+                TrajectoryStep(
+                    tool="search_code",
+                    args={"query": "observability"},
+                    observation="Smoke success search observation",
+                    duration_ms=71.0,
+                    parallel_batch_size=2,
+                    runtime={
+                        "provider": "smoke",
+                        "model": "smoke:model",
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "span_id": root_span_id,
+                    },
+                ),
+                ],
+            ),
+        )
+    if name == "zero-step":
+        return TurnTrajectoryRecord(
+            **record_kwargs(
+                status="succeeded",
+                task_brief="Observability smoke zero-step seed",
+                user_message="Observability smoke zero-step seed question",
+                answer="Observability smoke zero-step answer without tool evidence",
+                metrics={**base_metrics, "latency_ms": 52.0, "tool_calls": 0},
+                trajectory=[],
+            ),
+        )
+    if name == "missing-detail":
+        return TurnTrajectoryRecord(
+            **record_kwargs(
+                trace_id=None,
+                root_span_id=None,
+                selected_model=None,
+                status="missing_detail",
+                task_brief="Observability smoke missing-detail seed",
+                user_message="Observability smoke missing-detail seed question",
+                answer="",
+                error="Smoke missing-detail seed intentionally omits timeline evidence.",
+                metrics={**base_metrics, "latency_ms": 0.0, "tool_calls": 0},
+                plan_meta={"smoke_evidence_state": "missing_detail"},
+                trajectory=[],
+            ),
+        )
+    return TurnTrajectoryRecord(
+        **record_kwargs(
+            status="failed",
+            metrics={**base_metrics, "fallback_uses": 1},
+            error="Smoke seed error",
+            trajectory=[
             TrajectoryStep(
                 tool="web_search",
                 args={"query": "focus-agent observability smoke"},
-                observation="Smoke seed observation",
+                observation="Smoke failed seed observation",
                 duration_ms=123.0,
                 error="Smoke seed error",
                 fallback_used=True,
                 fallback_group="web_search",
+                parallel_batch_size=2,
                 runtime={
                     "provider": "smoke",
                     "model": "smoke:model",
@@ -197,14 +284,36 @@ def seed_observability_record(database_uri: str) -> dict[str, str]:
                     "span_id": root_span_id,
                 },
             )
-        ],
+            ],
+        ),
     )
-    repo.record_turn(record)
+
+
+def seed_observability_records(database_uri: str, *, scenario: str = "all") -> dict[str, object]:
+    repo = PostgresTrajectoryRepository(database_uri)
+    repo.setup()
+
+    now = utc_now()
+    seed = uuid4().hex
+    request_id = f"req-smoke-{seed[:12]}"
+    records = [
+        _build_seed_record(name=name, now=now, request_id=request_id, seed=seed)
+        for name in _scenario_names(scenario)
+    ]
+    for record in records:
+        repo.record_turn(record)
     return {
-        "turn_id": turn_id,
+        "scenario": scenario,
         "request_id": request_id,
-        "trace_id": trace_id,
+        "turn_ids": {name: record.id for name, record in zip(_scenario_names(scenario), records, strict=True)},
+        "trace_ids": {name: record.trace_id for name, record in zip(_scenario_names(scenario), records, strict=True)},
+        "primary_turn_id": records[0].id,
+        "record_count": len(records),
     }
+
+
+def seed_observability_record(database_uri: str) -> dict[str, object]:
+    return seed_observability_records(database_uri, scenario="failed")
 
 
 def _run_expression(client: CdpWebSocket, expression: str) -> dict[str, object]:
@@ -322,11 +431,15 @@ def build_overview_expression(seed: dict[str, str]) -> str:
 """
 
 
-def build_trajectory_expression(seed: dict[str, str]) -> str:
+def build_trajectory_expression(seed: dict[str, object], *, evidence_state: str, promote: bool = False) -> str:
     payload = json.dumps(seed, ensure_ascii=False)
+    expected_state = json.dumps(evidence_state)
+    should_promote = "true" if promote else "false"
     return rf"""
 (async () => {{
   const seed = {payload};
+  const expectedState = {expected_state};
+  const shouldPromote = {should_promote};
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitFor = async (predicate, timeout = 40000, label = 'condition') => {{
     const started = Date.now();
@@ -360,17 +473,9 @@ def build_trajectory_expression(seed: dict[str, str]) -> str:
   );
   await waitFor(
     () =>
-      fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes(`/v1/observability/trajectory/${{seed.turn_id}}`)),
+      fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes('/v1/observability/trajectory/')),
     40000,
     'trajectory detail fetch'
-  );
-  await waitFor(
-    () =>
-      Array.from(document.querySelectorAll('.fa-observability-correlation-item strong'))
-        .map((item) => item.textContent || '')
-        .some((value) => value.includes(seed.request_id) || value.includes(seed.trace_id)),
-    40000,
-    'correlation hooks'
   );
   const turnCards = document.querySelectorAll(
     '.fa-trajectory-workbench-sample-card, .fa-observability-turn-card'
@@ -380,17 +485,83 @@ def build_trajectory_expression(seed: dict[str, str]) -> str:
   const requestInput = document.querySelector('input[placeholder="req-…"], input[placeholder="req-..."]');
   const traceInput = document.querySelector('input[placeholder="trace-…"], input[placeholder="trace-..."]');
   const railSections = document.querySelectorAll('.fa-trajectory-workbench-rail-section').length;
+  const actionPanel = document.querySelector('.fa-trajectory-workbench-action-panel');
+  const batchActionPanel = document.querySelector('.fa-trajectory-workbench-batch-action-panel');
+  const actionGrid = document.querySelector('.fa-observability-action-grid');
+  const actionToggles = document.querySelector('.fa-observability-action-toggles');
+  const commandBars = document.querySelectorAll('.fa-observability-command-bar').length;
+  const replayButton = Array.from(document.querySelectorAll('button')).find((button) =>
+    ['Run replay', '执行 Replay'].some((label) => (button.textContent || '').includes(label))
+  );
+  const promoteButton = Array.from(document.querySelectorAll('button')).find((button) =>
+    ['Generate eval sample', 'Preview eval sample', '生成评测样本'].some((label) => (button.textContent || '').includes(label))
+  );
   if (!requestInput || !traceInput) {{
     throw new Error('Request/trace filters were not rendered.');
   }}
   if (railSections < 4) {{
     throw new Error('Workbench right rail did not render.');
   }}
+  if (!actionPanel || !batchActionPanel || !actionGrid || !actionToggles || commandBars < 2 || !replayButton || !promoteButton) {{
+    throw new Error('Replay/promote action controls did not render.');
+  }}
+  let evidenceSelector = '.fa-observability-step-timeline';
+  let evidenceLabel = 'timeline';
+  if (expectedState === 'zero-step' || expectedState === 'missing-detail') {{
+    evidenceSelector = '.fa-trajectory-workbench-zero-step';
+    evidenceLabel = 'zero-step evidence';
+  }}
+  const evidenceNode = await waitFor(
+    () => document.querySelector(evidenceSelector),
+    40000,
+    evidenceLabel
+  );
+  if (expectedState === 'failed') {{
+    const dangerNotice = document.querySelector('.fa-inline-notice.is-danger');
+    const warningPill = Array.from(document.querySelectorAll('.fa-observability-pill.is-warning'))
+      .some((item) => (item.textContent || '').includes('fallback'));
+    const dangerPill = Array.from(document.querySelectorAll('.fa-observability-pill.is-danger'))
+      .some((item) => (item.textContent || '').includes('error'));
+    const parallelPill = Array.from(document.querySelectorAll('.fa-observability-pill'))
+      .some((item) => (item.textContent || '').includes('parallel 2'));
+    if (!dangerNotice || !warningPill || !dangerPill || !parallelPill) {{
+      throw new Error('Failed evidence state did not render error, fallback, and parallel signals.');
+    }}
+  }}
+  let promoted = false;
+  if (shouldPromote) {{
+    promoteButton.click();
+    await waitFor(
+      () => fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes('/promote')),
+      40000,
+      'promote action fetch'
+    );
+    await waitFor(
+      () => (
+        bodyText().includes('Promotion skeleton generated') ||
+        bodyText().includes('Promotion skeleton preview generated') ||
+        bodyText().includes('Promote skeleton 已生成') ||
+        bodyText().includes('Promote skeleton 预览已生成')
+      ),
+      40000,
+      'promotion success state'
+    );
+    promoted = true;
+  }}
+  if (expectedState === 'missing-detail') {{
+    const rawMetaText = bodyText();
+    if (!rawMetaText.includes('missing-detail') && !rawMetaText.includes('timeline evidence')) {{
+      throw new Error('Missing-detail seed state did not render its sparse evidence context.');
+    }}
+  }}
   return JSON.stringify({{
     url: location.href,
     turnCards,
     correlationItems,
     railSections,
+    commandBars,
+    evidenceClass: evidenceNode.className,
+    promoted,
   }});
 }})()
 """
@@ -403,6 +574,7 @@ def run_observability_ui_smoke_test(
     database_uri: str | None,
     chrome_path: str,
     start_api_if_needed: bool,
+    scenario: str = "all",
 ) -> dict[str, object]:
     managed_api = _ensure_local_api(
         health_url=health_url,
@@ -410,10 +582,10 @@ def run_observability_ui_smoke_test(
     )
     try:
         database_uri = _resolve_database_uri(database_uri)
-        seed = seed_observability_record(database_uri)
+        seed = seed_observability_records(database_uri, scenario=scenario)
         request_query = urllib_parse.urlencode({"request": seed["request_id"]})
         overview_url = f"{app_base_url.rstrip('/')}/observability/overview?{request_query}"
-        trajectory_url = f"{app_base_url.rstrip('/')}/observability/trajectory?{request_query}"
+        turn_ids = dict(seed.get("turn_ids") or {})
 
         port = pick_free_port()
         temp_dir = tempfile.TemporaryDirectory(prefix="focus-agent-observability-ui-smoke-")
@@ -443,8 +615,22 @@ def run_observability_ui_smoke_test(
                 _instrument_browser(client)
                 _wait_for_page_load(client, overview_url)
                 overview = _run_expression(client, build_overview_expression(seed))
-                _wait_for_page_load(client, trajectory_url)
-                trajectory = _run_expression(client, build_trajectory_expression(seed))
+                trajectory: dict[str, object] = {}
+                for name in _scenario_names(scenario):
+                    turn_id = turn_ids.get(name)
+                    if not turn_id:
+                        continue
+                    query = urllib_parse.urlencode({"request": seed["request_id"], "turn": turn_id})
+                    trajectory_url = f"{app_base_url.rstrip('/')}/observability/trajectory?{query}"
+                    _wait_for_page_load(client, trajectory_url)
+                    trajectory[name] = _run_expression(
+                        client,
+                        build_trajectory_expression(
+                            seed,
+                            evidence_state=name,
+                            promote=name == "success",
+                        ),
+                    )
                 return {
                     "seed": seed,
                     "overview": overview,
@@ -475,6 +661,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database-uri", default=None, help="Database URI used to seed observability records.")
     parser.add_argument("--chrome-path", default=None, help="Path to the Chrome executable.")
     parser.add_argument(
+        "--scenario",
+        choices=SCENARIOS,
+        default="all",
+        help="Seed and exercise a single observability evidence scenario or all scenarios.",
+    )
+    parser.add_argument(
         "--no-start-api",
         action="store_true",
         help="Do not auto-start the local API if the health probe fails.",
@@ -490,6 +682,7 @@ def main() -> int:
         database_uri=args.database_uri,
         chrome_path=resolve_chrome_path(args.chrome_path),
         start_api_if_needed=not bool(args.no_start_api),
+        scenario=str(args.scenario),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
+from ..agent_roles import build_role_route_plan
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..capabilities.tool_runtime import (
     ToolExecutionInput,
@@ -918,6 +919,20 @@ def build_graph(
             "available_skills_block": available_skills_block,
         }
 
+    def role_route_dry_run(state: AgentState) -> dict[str, Any]:
+        if not settings.agent_role_routing_enabled:
+            return {}
+        latest_user = _latest_human_message_text(list(state.get("messages", []) or []))
+        task_text = latest_user or str(state.get("task_brief") or "")
+        tool_policy = _classify_turn_tool_policy(task_text)
+        plan = build_role_route_plan(
+            settings=settings,
+            task_text=task_text,
+            available_tool_names=[str(getattr(tool, "name", "")) for tool in tools],
+            tool_policy=tool_policy,
+        )
+        return {"role_route_plan": plan.model_dump(mode="json")}
+
     def plan_node(
         state: AgentState,
         runtime: Runtime[RequestContext],
@@ -1286,6 +1301,7 @@ def build_graph(
     builder.add_node("bootstrap_turn", bootstrap_turn)
     builder.add_node("retrieve_memory", retrieve_memory)
     builder.add_node("assemble_context", assemble_context)
+    builder.add_node("role_route_dry_run", role_route_dry_run)
     builder.add_node("plan", plan_node)
     builder.add_node("agent_loop", agent_loop)
     builder.add_node("tool_executor", tool_executor)
@@ -1298,7 +1314,8 @@ def build_graph(
     builder.add_edge(START, "bootstrap_turn")
     builder.add_edge("bootstrap_turn", "retrieve_memory")
     builder.add_edge("retrieve_memory", "assemble_context")
-    builder.add_edge("assemble_context", "plan")
+    builder.add_edge("assemble_context", "role_route_dry_run")
+    builder.add_edge("role_route_dry_run", "plan")
     builder.add_edge("plan", "agent_loop")
     builder.add_conditional_edges(
         "agent_loop",

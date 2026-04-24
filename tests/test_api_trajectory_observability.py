@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 import pytest
 
+import focus_agent.api.main as api_main
 from focus_agent.api.main import create_app
 from focus_agent.observability.trajectory import TurnTrajectoryRecord
 
@@ -86,6 +87,49 @@ class _FakeTrajectoryRepo:
             "by_day": [{"key": "2026-04-21", "turn_count": 1, "non_succeeded_count": 1, "avg_latency_ms": 1000.0}],
             "by_tool": [{"key": "web_search", "turn_count": 1, "step_count": 1}],
         }
+
+    def export_turns(self, query):
+        if query.status == "succeeded":
+            return []
+        if query.status is not None:
+            assert query.status == "failed"
+        if query.limit is not None:
+            assert query.limit in {1, 100}
+        records = [
+            {
+                "id": "turn-1",
+                "schema_version": 1,
+                "kind": "chat.turn",
+                "status": "failed",
+                "thread_id": "thread-1",
+                "root_thread_id": "root-1",
+                "scene": "long_dialog_research",
+                "user_message": "search docs",
+                "answer": "answer",
+                "selected_model": "openai:gpt-4.1-mini",
+                "metrics": {"latency_ms": 1000.0, "tool_calls": 2, "fallback_uses": 1},
+                "error": "boom",
+                "trajectory": [{"tool": "web_search", "duration_ms": 44.0, "fallback_used": True}],
+            },
+            {
+                "id": "turn-2",
+                "schema_version": 1,
+                "kind": "chat.turn",
+                "status": "failed",
+                "thread_id": "thread-1",
+                "root_thread_id": "root-1",
+                "scene": "long_dialog_research",
+                "user_message": "read README",
+                "answer": "read answer",
+                "selected_model": "openai:gpt-4.1-mini",
+                "metrics": {"latency_ms": 500.0, "tool_calls": 1, "fallback_uses": 0},
+                "error": "still failed",
+                "trajectory": [{"tool": "read_file", "duration_ms": 12.0}],
+            },
+        ]
+        if query.limit is not None:
+            return records[: query.limit]
+        return records
 
     def get_turn(self, turn_id):
         assert turn_id == "turn-1"
@@ -206,6 +250,166 @@ def test_trajectory_api_list_detail_and_stats(monkeypatch: pytest.MonkeyPatch, t
     assert detail_response.json()["item"]["trajectory"][0]["tool"] == "web_search"
 
 
+def test_trajectory_batch_promote_preview_filters_failed_turns_and_honors_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: list[dict[str, object]] = []
+    client = _build_client(monkeypatch, tmp_path)
+
+    def _fake_promote(record, **kwargs):
+        captured.append({"record": record, **kwargs})
+        case_id = f"{kwargs['case_id_prefix']}-{record['id']}"
+        return {
+            "source_turn_id": record["id"],
+            "case_id": case_id,
+            "dataset_record": {
+                "id": case_id,
+                "scene": record["scene"],
+                "input": {"user_message": record["user_message"]},
+                "expected": {},
+                "tags": ["trajectory_replay"],
+                "skill_hints": [],
+                "setup": [],
+                "judge": {"rule": False},
+                "origin": {"trajectory_id": record["id"]},
+            },
+            "jsonl": f'{{"id":"{case_id}"}}',
+        }
+
+    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
+
+    response = client.post(
+        "/v1/observability/trajectory/batch/promote-preview",
+        json={
+            "status": ["failed"],
+            "limit": 1,
+            "case_id_prefix": "batch",
+            "copy_answer_substring": True,
+            "answer_substring_chars": 40,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["limit"] == 1
+    assert body["filters"]["status"] == ["failed"]
+    assert body["items"][0]["source_turn_id"] == "turn-1"
+    assert body["items"][0]["dataset_record"]["origin"]["trajectory_id"] == "turn-1"
+    assert body["jsonl"] == '{"id":"batch-turn-1"}'
+    assert captured[0]["record"]["id"] == "turn-1"
+    assert captured[0]["copy_answer_substring"] is True
+
+
+def test_trajectory_batch_promote_preview_returns_empty_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    called = False
+    client = _build_client(monkeypatch, tmp_path)
+
+    def _fake_promote(record, **kwargs):  # noqa: ARG001
+        nonlocal called
+        called = True
+        raise AssertionError("promote helper should not run for an empty batch")
+
+    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
+
+    response = client.post(
+        "/v1/observability/trajectory/batch/promote-preview",
+        json={"status": ["succeeded"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 0
+    assert body["items"] == []
+    assert body["jsonl"] == ""
+    assert body["filters"]["status"] == ["succeeded"]
+    assert called is False
+
+
+def test_trajectory_batch_replay_compare_returns_summary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _build_client(monkeypatch, tmp_path)
+
+    def _fake_promote(record, **kwargs):
+        case_id = f"{kwargs['case_id_prefix']}-{record['id']}"
+        return {
+            "source_turn_id": record["id"],
+            "case_id": case_id,
+            "dataset_record": {
+                "id": case_id,
+                "scene": record["scene"],
+                "input": {"user_message": record["user_message"]},
+                "expected": {},
+                "tags": ["trajectory_replay"],
+                "skill_hints": [],
+                "setup": [],
+                "judge": {"rule": False},
+                "origin": {"trajectory_id": record["id"]},
+            },
+            "jsonl": f'{{"id":"{case_id}"}}',
+        }
+
+    def _fake_replay(record, **kwargs):
+        case_id = f"{kwargs['case_id_prefix']}-{record['id']}"
+        replay_passed = record["id"] == "turn-1"
+        return {
+            "source_turn_id": record["id"],
+            "replay_result": {
+                "case_id": case_id,
+                "passed": replay_passed,
+                "answer": f"replayed {record['id']}",
+                "metrics": {"latency_ms": 25.0, "tool_calls": 1},
+                "error": None if replay_passed else "mismatch",
+            },
+            "comparison": {
+                "case_id": case_id,
+                "trajectory_id": record["id"],
+                "source_status": record["status"],
+                "source_failed": record["status"] != "succeeded",
+                "replay_passed": replay_passed,
+                "replay_error": None if replay_passed else "mismatch",
+                "source_tools": [step["tool"] for step in record["trajectory"]],
+                "replay_tools": ["read_file"],
+                "tool_path_changed": record["id"] == "turn-1",
+                "source_tool_calls": record["metrics"]["tool_calls"],
+                "replay_tool_calls": 1,
+                "source_latency_ms": record["metrics"]["latency_ms"],
+                "replay_latency_ms": 25.0,
+                "source_fallback_uses": record["metrics"]["fallback_uses"],
+                "replay_fallback_uses": 0,
+                "source_cache_hits": 0,
+                "replay_cache_hits": 0,
+                "source_answer_preview": record["answer"],
+                "replay_answer_preview": f"replayed {record['id']}",
+            },
+        }
+
+    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
+    monkeypatch.setattr(api_main, "run_replay_for_turn", _fake_replay)
+
+    response = client.post(
+        "/v1/observability/trajectory/batch/replay-compare",
+        json={"status": ["failed"], "case_id_prefix": "batch", "model": "moonshot:kimi-k2.6"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["filters"]["status"] == ["failed"]
+    assert body["summary"] == {
+        "total": 2,
+        "passed": 1,
+        "failed": 1,
+        "source_failed": 2,
+        "tool_path_changed": 1,
+    }
+    assert body["results"][0]["model_used"] == "moonshot:kimi-k2.6"
+    assert body["results"][0]["replay_case_jsonl"] == '{"id":"batch-turn-1"}'
+    assert body["results"][1]["comparison"]["replay_error"] == "mismatch"
+
+
 def test_observability_overview_readyz_and_metrics(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _build_client(monkeypatch, tmp_path)
 
@@ -299,6 +503,9 @@ def test_trajectory_api_returns_503_without_repository(
     client = TestClient(app)
 
     response = client.get("/v1/observability/trajectory")
+    batch_response = client.post("/v1/observability/trajectory/batch/replay-compare", json={})
 
     assert response.status_code == 503
     assert "Trajectory observability requires" in response.json()["message"]
+    assert batch_response.status_code == 503
+    assert "Trajectory observability requires" in batch_response.json()["message"]

@@ -589,6 +589,14 @@ class Settings:
     plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
     plan_task_brief_min_chars: int = 120
     plan_max_replans: int = 1
+    agent_role_routing_enabled: bool = False
+    agent_role_orchestrator_model: str | None = None
+    agent_role_planner_model: str | None = None
+    agent_role_executor_model: str | None = None
+    agent_role_critic_model: str | None = None
+    agent_role_memory_model: str | None = None
+    agent_role_skill_model: str | None = None
+    agent_role_max_parallel_runs: int = 2
     trajectory_enabled: bool | None = None
     trajectory_observation_max_chars: int = 4000
     trajectory_answer_max_chars: int = 4000
@@ -732,6 +740,38 @@ class Settings:
             ),
             plan_max_replans=int(
                 env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))
+            ),
+            agent_role_routing_enabled=env.get(
+                "AGENT_ROLE_ROUTING_ENABLED",
+                "true" if defaults.agent_role_routing_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_role_orchestrator_model=(
+                env.get("AGENT_ROLE_ORCHESTRATOR_MODEL")
+                or defaults.agent_role_orchestrator_model
+            ),
+            agent_role_planner_model=(
+                env.get("AGENT_ROLE_PLANNER_MODEL") or defaults.agent_role_planner_model
+            ),
+            agent_role_executor_model=(
+                env.get("AGENT_ROLE_EXECUTOR_MODEL") or defaults.agent_role_executor_model
+            ),
+            agent_role_critic_model=(
+                env.get("AGENT_ROLE_CRITIC_MODEL") or defaults.agent_role_critic_model
+            ),
+            agent_role_memory_model=(
+                env.get("AGENT_ROLE_MEMORY_MODEL") or defaults.agent_role_memory_model
+            ),
+            agent_role_skill_model=(
+                env.get("AGENT_ROLE_SKILL_MODEL") or defaults.agent_role_skill_model
+            ),
+            agent_role_max_parallel_runs=max(
+                1,
+                int(
+                    env.get(
+                        "AGENT_ROLE_MAX_PARALLEL_RUNS",
+                        str(defaults.agent_role_max_parallel_runs),
+                    )
+                ),
             ),
             trajectory_enabled=(
                 bool(database_uri) if trajectory_enabled is None else trajectory_enabled

@@ -496,13 +496,15 @@ select {
 }
 
 .fa-observability-filter input,
-.fa-observability-filter select {
+.fa-observability-filter select,
+.fa-observability-filter textarea {
   width: 100%;
   padding: 9px 11px;
   border: 1px solid var(--fa-border);
   border-radius: 12px;
   background: color-mix(in srgb, var(--fa-panel-2) 92%, transparent 8%);
   color: var(--fa-text);
+  font: inherit;
 }
 
 .fa-observability-filters.is-compact {
@@ -1058,6 +1060,154 @@ select {
   font-family: "SFMono-Regular", "JetBrains Mono", monospace;
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.fa-agent-role-console {
+  gap: 18px;
+}
+
+.fa-agent-role-hero {
+  min-height: auto;
+}
+
+.fa-agent-role-policy-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fa-agent-role-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.fa-agent-role-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.fa-agent-role-model-list,
+.fa-agent-role-decision-list,
+.fa-agent-role-trajectory-list,
+.fa-agent-role-dry-run-form {
+  display: grid;
+  gap: 10px;
+}
+
+.fa-agent-role-model-row,
+.fa-agent-role-decision-card,
+.fa-agent-role-trajectory-row {
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
+}
+
+.fa-agent-role-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+}
+
+.fa-agent-role-model-row span,
+.fa-agent-role-decision-card span,
+.fa-agent-role-trajectory-row span {
+  color: var(--fa-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.fa-agent-role-model-row strong,
+.fa-agent-role-decision-card strong,
+.fa-agent-role-trajectory-row strong {
+  overflow-wrap: anywhere;
+}
+
+.fa-agent-role-field {
+  width: 100%;
+}
+
+.fa-agent-role-field textarea {
+  min-height: 118px;
+  resize: vertical;
+}
+
+.fa-agent-role-field textarea,
+.fa-agent-role-field input {
+  width: 100%;
+  color: var(--fa-text);
+}
+
+.fa-agent-role-decision-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.fa-agent-role-decision-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.fa-agent-role-decision-card p {
+  margin: 0;
+  color: var(--fa-text-muted);
+}
+
+.fa-agent-role-decision-card pre,
+.fa-agent-role-trajectory-row pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 11px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fa-panel-2) 90%, transparent 10%);
+  color: var(--fa-text-muted);
+  font-family: "SFMono-Regular", "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.fa-agent-role-trajectory {
+  display: grid;
+  gap: 12px;
+}
+
+.fa-agent-role-trajectory-row {
+  padding: 0;
+}
+
+.fa-agent-role-trajectory-row summary {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.fa-agent-role-trajectory-row pre {
+  margin: 0 12px 12px;
+}
+
+.fa-observability-preset.is-primary {
+  border-color: var(--fa-border-strong);
+  background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-panel-3) 76%);
+  color: var(--fa-text);
+}
+
+@media (max-width: 900px) {
+  .fa-agent-role-policy-grid,
+  .fa-agent-role-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fa-agent-role-trajectory-row summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .fa-observability-action-grid,
@@ -2162,6 +2312,59 @@ select {
   padding-right: 2px;
 }
 
+.fa-trajectory-workbench-batch-toolbar,
+.fa-trajectory-workbench-sample-row {
+  border: 1px solid var(--fa-border-subtle);
+  background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+}
+
+.fa-trajectory-workbench-batch-toolbar {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.fa-trajectory-workbench-batch-toolbar > div:first-child,
+.fa-trajectory-workbench-batch-action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fa-trajectory-workbench-batch-toolbar span,
+.fa-trajectory-workbench-batch-action-head span {
+  color: var(--fa-text-muted);
+  font-size: 0.78rem;
+}
+
+.fa-trajectory-workbench-sample-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 16px;
+}
+
+.fa-trajectory-workbench-sample-row.is-batch-selected {
+  border-color: var(--fa-border-strong);
+  background: color-mix(in srgb, var(--fa-accent-soft) 20%, var(--fa-panel-1) 80%);
+}
+
+.fa-trajectory-workbench-batch-checkbox {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  min-width: 46px;
+  padding: 5px;
+  border-radius: 12px;
+  color: var(--fa-text-muted);
+  font-size: 0.72rem;
+}
+
 .fa-trajectory-workbench-sample-card {
   display: grid;
   gap: 5px;
@@ -2176,6 +2379,10 @@ select {
     border-color 0.16s ease,
     background 0.16s ease,
     transform 0.16s ease;
+}
+
+.fa-trajectory-workbench-sample-row .fa-trajectory-workbench-sample-card {
+  border-radius: 12px;
 }
 
 .fa-trajectory-workbench-sample-card:hover,
@@ -2396,6 +2603,56 @@ select {
 
 .fa-trajectory-workbench-action-panel .fa-observability-action-console {
   gap: 10px;
+}
+
+.fa-trajectory-workbench-batch-action-panel,
+.fa-trajectory-workbench-batch-result-console {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fa-panel-2) 84%, transparent 16%);
+}
+
+.fa-trajectory-workbench-batch-action-panel p {
+  margin: 0;
+  color: var(--fa-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.fa-trajectory-workbench-batch-result-list {
+  display: grid;
+  gap: 6px;
+}
+
+.fa-trajectory-workbench-batch-result-marker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fa-panel-1) 80%, transparent 20%);
+}
+
+.fa-trajectory-workbench-batch-result-marker > div {
+  display: grid;
+  gap: 2px;
+}
+
+.fa-trajectory-workbench-batch-result-marker.is-success {
+  border-color: color-mix(in srgb, #26a269 55%, var(--fa-border) 45%);
+}
+
+.fa-trajectory-workbench-batch-result-marker.is-warning {
+  border-color: color-mix(in srgb, #d09700 55%, var(--fa-border) 45%);
+}
+
+.fa-trajectory-workbench-batch-result-marker.is-danger {
+  border-color: color-mix(in srgb, #c01c28 55%, var(--fa-border) 45%);
 }
 
 .fa-trajectory-workbench-action-panel .fa-observability-action-snippet pre,

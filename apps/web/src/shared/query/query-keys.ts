@@ -8,4 +8,6 @@ export const queryKeys = {
   trajectoryDetail: (turnId: string) => ["trajectory-detail", turnId] as const,
   trajectoryStats: (filtersKey: string) => ["trajectory-stats", filtersKey] as const,
   observabilityOverview: (filtersKey: string) => ["observability-overview", filtersKey] as const,
+  agentRolePolicy: ["agent-role-policy"] as const,
+  agentRoleDecisions: (limit: number) => ["agent-role-decisions", limit] as const,
 };

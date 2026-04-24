@@ -78,8 +78,8 @@ apps/web
 ### 3.2 Web App 与 SDK
 
 - `/app` 由 React Web App 接管；开发模式可重定向到 Vite dev server
-- Web App 覆盖会话列表、聊天、流式响应、分支树、merge review、模型状态，以及按职责拆分的 observability overview 和 trajectory review workbench
-- `frontend-sdk` 覆盖 conversation、thread state、branch action、merge review、trajectory observability 等 typed client 能力
+- Web App 覆盖会话列表、聊天、流式响应、分支树、merge review、模型状态、Agent role routing console，以及按职责拆分的 observability overview 和 trajectory review workbench
+- `frontend-sdk` 覆盖 conversation、thread state、branch action、merge review、agent role routing、trajectory observability 等 typed client 能力
 - Vite bundle 分割已配置，React / router / query / state / app 代码分块构建
 
 ### 3.3 安全与 API 契约
@@ -163,7 +163,7 @@ Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 
 - 限流仍是进程内滑动窗口，不适合多副本共享额度；多副本部署应改用 Redis 等外部限流存储
 - overview / trajectory 的职责拆分和三栏复盘工作台已落地，但还需要更长时真实浏览器链路、对比/批量治理和告警接入
 - context budget 仍以确定性裁剪和近似预算为主，tokenizer 精算与语义压缩仍在路线图中
-- Model Routing 尚未接入 planner / executor / reflect 分工
+- Model Routing 当前处于 dry-run 和观测态，角色集为 orchestrator / planner / executor / critic / memory_curator / skill_scout，尚未触发真实 delegated agent run
 
 ## 6. 推荐验证
 

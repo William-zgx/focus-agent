@@ -82,6 +82,13 @@ make ui-smoke-observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
+7. 如果改动影响 Agent 角色路由、helper-model fallback 或角色决策观测：
+
+```bash
+uv run pytest tests/test_agent_roles.py tests/eval/test_agent_arch_suite.py
+uv run python -m tests.eval --suite agent_arch --concurrency 1
+```
+
 如果本机 `.venv` 里的 `psycopg` 因缺少 `libpq` 在测试收集阶段失败，可先用当前 focused observability workaround：
 
 ```bash
@@ -100,4 +107,5 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [快速开始](quick-start.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
 - [架构说明](architecture.md)
+- [Agent Role Routing](agent-role-routing.md)
 - [路线图](roadmap.md)

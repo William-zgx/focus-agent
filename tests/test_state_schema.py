@@ -31,6 +31,7 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["active_skill_ids"] == []
     assert state["available_skills_block"] == ""
     assert state["active_skills_block"] == ""
+    assert state["role_route_plan"] is None
     assert state["memory_write_requests"] == []
     assert state["memory_write_result"] == {}
 
@@ -68,6 +69,7 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["active_skill_ids"] == []
     assert normalized["available_skills_block"] == ""
     assert normalized["active_skills_block"] == ""
+    assert normalized["role_route_plan"] is None
     assert normalized["memory_write_requests"] == []
     assert normalized["memory_write_result"] == {}
 
@@ -113,6 +115,10 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
             "active_skill_ids": ["review"],
             "available_skills_block": "## Available skills\n- review",
             "active_skills_block": "## Active skills\n- review",
+            "role_route_plan": {
+                "enabled": True,
+                "decisions": [{"role": "executor", "model_id": "openai:gpt-4.1-mini"}],
+            },
             "memory_write_requests": [{"kind": "turn_summary", "summary": "Carry this forward"}],
             "memory_write_result": {"prepared": 1, "written": ["mem-1"]},
         }
@@ -134,5 +140,6 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["active_skill_ids"] == ["review"]
     assert decoded["available_skills_block"].startswith("## Available skills")
     assert decoded["active_skills_block"].startswith("## Active skills")
+    assert decoded["role_route_plan"]["decisions"][0]["role"] == "executor"
     assert decoded["memory_write_requests"][0]["kind"] == "turn_summary"
     assert decoded["memory_write_result"]["written"] == ["mem-1"]

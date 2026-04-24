@@ -62,6 +62,13 @@ export function TrajectoryWorkbenchHeader({
             <span>{isChineseUi ? "单条复盘" : "Single-turn review"}</span>
             <strong>{isChineseUi ? "样本 / 证据 / 动作" : "Samples / evidence / actions"}</strong>
           </Link>
+          <Link
+            className="fa-trajectory-workbench-tab fa-observability-route-tab"
+            to="/agent/roles"
+          >
+            <span>{isChineseUi ? "角色路由" : "Role routing"}</span>
+            <strong>{isChineseUi ? "策略 / 预演" : "Policy / dry-run"}</strong>
+          </Link>
         </nav>
       </div>
 

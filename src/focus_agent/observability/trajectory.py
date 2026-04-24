@@ -235,6 +235,11 @@ def build_turn_trajectory_record(
         branch_role = getattr(branch_meta, "branch_role", None)
     correlation = trace_correlation
 
+    plan_meta = dict(_json_safe(final_values.get("plan_meta")) or {})
+    role_route_plan = _json_safe(final_values.get("role_route_plan"))
+    if role_route_plan:
+        plan_meta["role_route_plan"] = role_route_plan
+
     return TurnTrajectoryRecord(
         id=str(uuid.uuid4()),
         schema_version=SCHEMA_VERSION,
@@ -261,7 +266,7 @@ def build_turn_trajectory_record(
         selected_thinking_mode=_truncate_optional(final_values.get("selected_thinking_mode"), 100),
         plan=_json_safe(final_values.get("plan")),
         reflection=_json_safe(final_values.get("reflection")),
-        plan_meta=dict(_json_safe(final_values.get("plan_meta")) or {}),
+        plan_meta=plan_meta,
         metrics=metrics,
         error=error,
         started_at=started_at,

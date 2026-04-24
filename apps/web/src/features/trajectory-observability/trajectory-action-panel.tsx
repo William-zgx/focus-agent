@@ -1,14 +1,19 @@
 import {
+  type FocusAgentTrajectoryBatchPromotionPreviewResponse,
+  type FocusAgentTrajectoryBatchReplayCompareResponse,
   type FocusAgentTrajectoryPromotionResponse,
   type FocusAgentTrajectoryReplayResponse,
   type FocusAgentTrajectoryTurnDetail,
+  type FocusAgentTrajectoryTurnSummary,
 } from "@focus-agent/web-sdk";
 import { useEffect, useState } from "react";
 
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 interface TrajectoryActionPanelProps {
+  batchItems?: FocusAgentTrajectoryTurnSummary[];
   isChineseUi: boolean;
+  onClearBatchSelection?: () => void;
   selected: FocusAgentTrajectoryTurnDetail | null;
 }
 
@@ -43,21 +48,35 @@ function formatSignedDelta(next: number, previous: number, unit = "") {
   return `${prefix}${delta.toFixed(1)}${unit}`;
 }
 
+function compactId(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return "—";
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 8)}…${text.slice(-6)}`;
+}
+
 export function TrajectoryActionPanel({
+  batchItems = [],
   isChineseUi,
+  onClearBatchSelection,
   selected,
 }: TrajectoryActionPanelProps) {
   const { client } = useFocusAgent();
+  const batchTurnIds = batchItems.map((item) => item.id);
+  const hasBatchSelection = batchTurnIds.length > 0;
   const [caseIdPrefix, setCaseIdPrefix] = useState("traj");
   const [copyToolTrajectory, setCopyToolTrajectory] = useState(true);
   const [copyAnswerSubstring, setCopyAnswerSubstring] = useState(false);
   const [answerSubstringChars, setAnswerSubstringChars] = useState("160");
-  const [runningAction, setRunningAction] = useState<"replay" | "promote" | null>(null);
+  const [runningAction, setRunningAction] = useState<"replay" | "promote" | "batchReplay" | "batchPromote" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [replayResult, setReplayResult] = useState<FocusAgentTrajectoryReplayResponse | null>(null);
   const [promotionResult, setPromotionResult] = useState<FocusAgentTrajectoryPromotionResponse | null>(null);
+  const [batchReplayResult, setBatchReplayResult] = useState<FocusAgentTrajectoryBatchReplayCompareResponse | null>(null);
+  const [batchPromotionResult, setBatchPromotionResult] = useState<FocusAgentTrajectoryBatchPromotionPreviewResponse | null>(null);
   const [expandedReplayDetails, setExpandedReplayDetails] = useState(false);
   const [expandedPromotionDetails, setExpandedPromotionDetails] = useState(false);
+  const [expandedBatchDetails, setExpandedBatchDetails] = useState(false);
 
   useEffect(() => {
     setReplayResult(null);
@@ -66,6 +85,12 @@ export function TrajectoryActionPanel({
     setExpandedReplayDetails(false);
     setExpandedPromotionDetails(false);
   }, [selected?.id]);
+
+  useEffect(() => {
+    setBatchReplayResult(null);
+    setBatchPromotionResult(null);
+    setExpandedBatchDetails(false);
+  }, [batchTurnIds.join("\n")]);
 
   async function handleReplay() {
     if (!selected) return;
@@ -107,14 +132,58 @@ export function TrajectoryActionPanel({
     }
   }
 
-  if (!selected) {
+  async function handleBatchReplayCompare() {
+    if (!hasBatchSelection) return;
+    setRunningAction("batchReplay");
+    setError(null);
+    try {
+      const result = await client.batchReplayCompareTrajectoryTurns({
+        turn_ids: batchTurnIds,
+        case_id_prefix: caseIdPrefix,
+        copy_tool_trajectory: copyToolTrajectory,
+        copy_answer_substring: copyAnswerSubstring,
+        answer_substring_chars: Number(answerSubstringChars || 0),
+      });
+      setBatchReplayResult(result);
+      setBatchPromotionResult(null);
+      setExpandedBatchDetails(false);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to compare trajectory turns.");
+    } finally {
+      setRunningAction(null);
+    }
+  }
+
+  async function handleBatchPromotePreview() {
+    if (!hasBatchSelection) return;
+    setRunningAction("batchPromote");
+    setError(null);
+    try {
+      const result = await client.batchPromoteTrajectoryTurnsPreview({
+        turn_ids: batchTurnIds,
+        case_id_prefix: caseIdPrefix,
+        copy_tool_trajectory: copyToolTrajectory,
+        copy_answer_substring: copyAnswerSubstring,
+        answer_substring_chars: Number(answerSubstringChars || 0),
+      });
+      setBatchPromotionResult(result);
+      setBatchReplayResult(null);
+      setExpandedBatchDetails(false);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to preview trajectory promotion batch.");
+    } finally {
+      setRunningAction(null);
+    }
+  }
+
+  if (!selected && !hasBatchSelection) {
     return (
       <div className="fa-observability-detail-block fa-trajectory-workbench-action-panel">
         <h3>{isChineseUi ? "复盘动作" : "Replay actions"}</h3>
         <div className="fa-observability-empty">
           {isChineseUi
-            ? "选择一条 turn 后，这里可以直接执行 replay 或生成 dataset skeleton。"
-            : "Select a turn to run replay or generate a dataset skeleton."}
+            ? "选择一条 turn 后可单条 replay；勾选多条后可做批量治理预览。"
+            : "Select a turn for single replay, or tick multiple turns for batch governance previews."}
         </div>
       </div>
     );
@@ -126,8 +195,8 @@ export function TrajectoryActionPanel({
 
       <p>
         {isChineseUi
-          ? "从当前样本直接回放，或把它沉淀成可复制、可下载的评测样本。"
-          : "Replay the selected turn directly, or turn it into a reusable evaluation sample."}
+          ? "从当前样本直接回放，或把已勾选样本做批量治理预览。批量 promote-preview 只生成预览，不写入数据集。"
+          : "Replay the selected turn directly, or run governance previews for checked turns. Batch promote-preview is non-writing."}
       </p>
 
       <div className="fa-observability-action-grid">
@@ -173,9 +242,62 @@ export function TrajectoryActionPanel({
               ? "生成中..."
               : "Promoting..."
             : isChineseUi
-              ? "生成评测样本"
-              : "Generate eval sample"}
+              ? "生成评测样本预览（不写入）"
+              : "Preview eval sample (non-writing)"}
         </button>
+      </div>
+
+      <div className="fa-trajectory-workbench-batch-action-panel">
+        <div className="fa-trajectory-workbench-batch-action-head">
+          <div>
+            <span>{isChineseUi ? "批量治理" : "Batch governance"}</span>
+            <strong>
+              {isChineseUi
+                ? `${batchTurnIds.length} 条已勾选`
+                : `${batchTurnIds.length} selected`}
+            </strong>
+          </div>
+          {hasBatchSelection && onClearBatchSelection ? (
+            <button className="fa-chat-toolbar-button" onClick={onClearBatchSelection} type="button">
+              {isChineseUi ? "清空" : "Clear"}
+            </button>
+          ) : null}
+        </div>
+        <p>
+          {isChineseUi
+            ? "Promote-preview 是非写入操作：只返回可复制的 dataset skeleton，不会落库或修改评测集。Replay-compare 会逐条回放并返回差异。"
+            : "Promote-preview is non-writing: it only returns copyable dataset skeletons and does not persist or modify an eval set. Replay-compare replays each selected turn and returns diffs."}
+        </p>
+        <div className="fa-observability-command-bar">
+          <button
+            className="fa-chat-toolbar-button"
+            disabled={!hasBatchSelection || runningAction !== null}
+            onClick={() => void handleBatchPromotePreview()}
+            type="button"
+          >
+            {runningAction === "batchPromote"
+              ? isChineseUi
+                ? "批量预览中..."
+                : "Previewing..."
+              : isChineseUi
+                ? "批量 Promote 预览（不写入）"
+                : "Batch promote-preview (non-writing)"}
+          </button>
+          <button
+            className="fa-chat-toolbar-button"
+            disabled={!hasBatchSelection || runningAction !== null}
+            onClick={() => void handleBatchReplayCompare()}
+            type="button"
+          >
+            {runningAction === "batchReplay"
+              ? isChineseUi
+                ? "批量对比中..."
+                : "Comparing..."
+              : isChineseUi
+                ? "批量 Replay 对比"
+                : "Batch replay-compare"}
+          </button>
+        </div>
       </div>
 
       {error ? <div className="fa-inline-notice is-danger">{error}</div> : null}
@@ -294,7 +416,7 @@ export function TrajectoryActionPanel({
       {promotionResult ? (
         <div className="fa-observability-action-console">
           <div className="fa-inline-notice is-success">
-          {isChineseUi ? "Promote skeleton 已生成。" : "Promotion skeleton generated."}
+          {isChineseUi ? "Promote skeleton 预览已生成（未写入）。" : "Promotion skeleton preview generated (not written)."}
           </div>
           <div className="fa-observability-action-summary">
             <div>
@@ -334,11 +456,118 @@ export function TrajectoryActionPanel({
         </div>
       ) : null}
 
+      {batchPromotionResult ? (
+        <div className="fa-observability-action-console fa-trajectory-workbench-batch-result-console">
+          <div className="fa-inline-notice is-success">
+            {isChineseUi
+              ? `批量 promote-preview 已完成（未写入）：${batchPromotionResult.items.length}/${batchPromotionResult.count} 条可用。`
+              : `Batch promote-preview completed (non-writing): ${batchPromotionResult.items.length}/${batchPromotionResult.count} usable.`}
+          </div>
+          <div className="fa-trajectory-workbench-batch-result-list">
+            {batchPromotionResult.items.map((item) => {
+              return (
+                <div
+                  key={item.source_turn_id}
+                  className="fa-trajectory-workbench-batch-result-marker is-success"
+                >
+                  <div>
+                    <span>{compactId(item.source_turn_id)}</span>
+                    <strong>{item.case_id || (isChineseUi ? "可生成" : "Ready")}</strong>
+                  </div>
+                  <span>{isChineseUi ? "非写入预览" : "Non-writing preview"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <details
+            className="fa-observability-action-disclosure"
+            open={expandedBatchDetails}
+            onToggle={(event) => setExpandedBatchDetails((event.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>{isChineseUi ? "展开批量预览详情" : "Show batch preview details"}</summary>
+            <div className="fa-observability-command-bar">
+              <button className="fa-chat-toolbar-button" onClick={() => void copyText(JSON.stringify(batchPromotionResult, null, 2))} type="button">
+                {isChineseUi ? "复制结果 JSON" : "Copy result JSON"}
+              </button>
+              {batchPromotionResult.jsonl ? (
+                <button className="fa-chat-toolbar-button" onClick={() => void copyText(batchPromotionResult.jsonl || "")} type="button">
+                  {isChineseUi ? "复制合并 JSONL" : "Copy merged JSONL"}
+                </button>
+              ) : null}
+            </div>
+            <div className="fa-observability-action-snippet">
+              <span>{isChineseUi ? "批量 Promote Preview" : "Batch promote-preview"}</span>
+              <pre>{JSON.stringify(batchPromotionResult, null, 2)}</pre>
+            </div>
+          </details>
+        </div>
+      ) : null}
+
+      {batchReplayResult ? (
+        <div className="fa-observability-action-console fa-trajectory-workbench-batch-result-console">
+          <div className="fa-inline-notice">
+            {isChineseUi
+              ? `批量 replay-compare 已完成：${batchReplayResult.summary.passed}/${batchReplayResult.summary.total} 条通过。`
+              : `Batch replay-compare completed: ${batchReplayResult.summary.passed}/${batchReplayResult.summary.total} passed.`}
+          </div>
+          <div className="fa-trajectory-workbench-batch-result-list">
+            {batchReplayResult.results.map((item) => {
+              const passed = Boolean(item.replay_result.passed);
+              const changed = Boolean(item.comparison.tool_path_changed);
+              return (
+                <div
+                  key={item.source_turn_id}
+                  className={`fa-trajectory-workbench-batch-result-marker ${passed ? "is-success" : "is-warning"}`.trim()}
+                >
+                  <div>
+                    <span>{compactId(item.source_turn_id)}</span>
+                    <strong>
+                      {passed
+                        ? isChineseUi
+                          ? "通过"
+                          : "Passed"
+                        : isChineseUi
+                          ? "未通过"
+                          : "Did not pass"}
+                    </strong>
+                  </div>
+                  <span>
+                    {changed
+                      ? isChineseUi
+                        ? "工具路径变化"
+                        : "Tool path changed"
+                      : isChineseUi
+                        ? "工具路径未变化"
+                        : "Tool path unchanged"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <details
+            className="fa-observability-action-disclosure"
+            open={expandedBatchDetails}
+            onToggle={(event) => setExpandedBatchDetails((event.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>{isChineseUi ? "展开批量 Replay 对比详情" : "Show batch replay details"}</summary>
+            <div className="fa-observability-command-bar">
+              <button className="fa-chat-toolbar-button" onClick={() => void copyText(JSON.stringify(batchReplayResult, null, 2))} type="button">
+                {isChineseUi ? "复制结果 JSON" : "Copy result JSON"}
+              </button>
+            </div>
+            <div className="fa-observability-action-snippet">
+              <span>{isChineseUi ? "批量 Replay Compare" : "Batch replay-compare"}</span>
+              <pre>{JSON.stringify(batchReplayResult, null, 2)}</pre>
+            </div>
+          </details>
+        </div>
+      ) : null}
+
       {!replayResult && !promotionResult && !error ? (
         <div className="fa-inline-notice">
           {isChineseUi
-            ? "从当前选中的 trajectory turn 直接执行 replay，或生成一条可复制/下载的 promote JSONL。"
-            : "Run replay directly from the selected trajectory turn, or generate a promotion JSONL you can copy or download."}
+            ? "从当前选中的 trajectory turn 直接执行 replay，或生成一条可复制/下载的非写入 promote preview JSONL。"
+            : "Run replay directly from the selected trajectory turn, or generate a copyable non-writing promote-preview JSONL."}
         </div>
       ) : null}
     </div>

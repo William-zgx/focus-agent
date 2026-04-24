@@ -82,6 +82,13 @@ make ui-smoke-observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
+7. If Agent role routing, helper-model fallback, or role decision observability changed:
+
+```bash
+uv run pytest tests/test_agent_roles.py tests/eval/test_agent_arch_suite.py
+uv run python -m tests.eval --suite agent_arch --concurrency 1
+```
+
 If local test collection fails because the active `.venv` `psycopg` install cannot load `libpq`, use the focused stub workaround for observability checks:
 
 ```bash
@@ -100,4 +107,5 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [Quick Start](quick-start.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)
+- [Agent Role Routing](agent-role-routing.md)
 - [Roadmap](roadmap.md)

@@ -25,6 +25,11 @@ class ToolRuntimeMeta:
     fallback_handler: ToolFallbackHandler | None = None
     max_observation_chars: int | None = None
     validator: ToolArgValidator | None = None
+    toolset: str | None = None
+    risk_level: str = "low"
+    allowed_roles: tuple[str, ...] = ()
+    requires_approval: bool = False
+    side_effect_kind: str | None = None
 
     @classmethod
     def from_tool(cls, tool_obj: Any) -> ToolRuntimeMeta:
@@ -53,6 +58,15 @@ class ToolRuntimeMeta:
                 else None
             ),
             validator=metadata.get("validator"),
+            toolset=(str(metadata["toolset"]) if metadata.get("toolset") else None),
+            risk_level=str(metadata.get("risk_level") or "low"),
+            allowed_roles=tuple(str(role) for role in (metadata.get("allowed_roles") or ()) if str(role)),
+            requires_approval=bool(metadata.get("requires_approval", False)),
+            side_effect_kind=(
+                str(metadata["side_effect_kind"])
+                if metadata.get("side_effect_kind")
+                else None
+            ),
         )
 
 

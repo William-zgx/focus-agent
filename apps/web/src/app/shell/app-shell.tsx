@@ -184,7 +184,9 @@ export function AppShell({ children }: PropsWithChildren) {
         conversationId: String(routeParams.conversationId ?? ""),
         threadId: String(routeParams.threadId ?? ""),
         isReviewRoute: state.location.pathname.endsWith("/review"),
-        isTrajectoryRoute: state.location.pathname.includes("/observability/"),
+        isTrajectoryRoute:
+          state.location.pathname.includes("/observability/") ||
+          state.location.pathname.includes("/agent/roles"),
       };
     },
   });
