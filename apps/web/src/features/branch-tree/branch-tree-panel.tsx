@@ -1,6 +1,6 @@
 import type { BranchTreeNode } from "@focus-agent/web-sdk";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
@@ -298,6 +298,8 @@ export function BranchTreePanel() {
   const [detailThreadId, setDetailThreadId] = useState<string>("");
   const [detailDepth, setDetailDepth] = useState(0);
   const [detailStyle, setDetailStyle] = useState<CSSProperties>({});
+  const [renameBranchTarget, setRenameBranchTarget] = useState<BranchTreeNode | null>(null);
+  const [renameBranchDraft, setRenameBranchDraft] = useState("");
   const [branchZoom, setBranchZoom] = useState(1);
   const [viewportNudge, setViewportNudge] = useState({
     x: 0,
@@ -513,13 +515,47 @@ export function BranchTreePanel() {
                 ))}
               </div>
 
+              {renameBranchTarget?.thread_id === detailNode.thread_id ? (
+                <form
+                  className="fa-inline-rename-form is-branch"
+                  onSubmit={(event) => void handleRenameBranch(event)}
+                >
+                  <label className="sr-only" htmlFor="branch-rename-input">
+                    {isChineseUi ? "重命名分支" : "Rename branch"}
+                  </label>
+                  <input
+                    id="branch-rename-input"
+                    className="fa-inline-rename-input"
+                    autoFocus
+                    disabled={isWorking}
+                    value={renameBranchDraft}
+                    onChange={(event) => setRenameBranchDraft(event.target.value)}
+                  />
+                  <button
+                    className="fa-branch-inline-action is-primary"
+                    disabled={isWorking || !renameBranchDraft.trim()}
+                    type="submit"
+                  >
+                    {isChineseUi ? "保存" : "Save"}
+                  </button>
+                  <button
+                    className="fa-branch-inline-action"
+                    disabled={isWorking}
+                    onClick={cancelRenameBranch}
+                    type="button"
+                  >
+                    {isChineseUi ? "取消" : "Cancel"}
+                  </button>
+                </form>
+              ) : null}
+
               <div className="fa-branch-node-actions">
-                {detailNode.branch_id ? (
+                {detailNode.branch_id && renameBranchTarget?.thread_id !== detailNode.thread_id ? (
                   <button
                     className="fa-branch-inline-action"
                     {...tooltipProps(isChineseUi ? "重命名这个分支" : "Rename this branch")}
                     disabled={isWorking}
-                    onClick={() => void handleRenameBranch(detailNode)}
+                    onClick={() => startRenameBranch(detailNode)}
                     type="button"
                   >
                     {isChineseUi ? "重命名" : "Rename"}
@@ -840,16 +876,31 @@ export function BranchTreePanel() {
     await createBranch({ parentThreadId: createBranchTargetThreadId });
   }
 
-  async function handleRenameBranch(node: BranchTreeNode) {
+  function startRenameBranch(node: BranchTreeNode) {
     if (!node.branch_id) return;
-    const nextName = window.prompt(
-      isChineseUi ? "重命名分支" : "Rename branch",
-      node.branch_name,
-    );
-    if (!nextName || !nextName.trim()) return;
+    setRenameBranchTarget(node);
+    setRenameBranchDraft(node.branch_name);
+    clearBranchDetailHideTimer();
+  }
+
+  function cancelRenameBranch() {
+    setRenameBranchTarget(null);
+    setRenameBranchDraft("");
+  }
+
+  async function handleRenameBranch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const node = renameBranchTarget;
+    if (!node?.branch_id) return;
+    const nextName = renameBranchDraft.trim();
+    if (!nextName || nextName === node.branch_name) {
+      cancelRenameBranch();
+      return;
+    }
     setIsWorking(true);
     try {
-      await renameBranch(node.thread_id, nextName.trim());
+      await renameBranch(node.thread_id, nextName);
+      cancelRenameBranch();
     } finally {
       setIsWorking(false);
     }

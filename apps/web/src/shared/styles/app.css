@@ -3422,6 +3422,40 @@ body.fa-is-resizing {
   background: color-mix(in srgb, var(--fa-danger) 12%, var(--fa-panel-2) 88%);
 }
 
+.fa-inline-rename-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+  min-width: 240px;
+}
+
+.fa-inline-rename-form.is-branch {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 8px;
+}
+
+.fa-inline-rename-input {
+  min-width: 0;
+  flex: 1 1 180px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.48);
+  color: var(--fa-text);
+  padding: 0 11px;
+  font-size: 12px;
+  outline: none;
+}
+
+.fa-inline-rename-input:focus {
+  border-color: rgba(129, 140, 248, 0.54);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
 .fa-model-pill {
   padding: 10px 14px;
   border-radius: 999px;

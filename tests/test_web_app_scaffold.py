@@ -185,15 +185,22 @@ def test_react_web_app_marks_merged_branch_status_in_danger_tone():
     assert ".fa-archived-item-status.is-danger" in styles_text
 
 
-def test_new_conversation_skips_prompt_but_rename_still_uses_it():
+def test_conversation_rename_uses_inline_form_not_browser_prompt():
     root = Path(__file__).resolve().parents[1]
     conversation_toolbar_text = (
         root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
     ).read_text()
+    branch_tree_text = (
+        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx"
+    ).read_text()
+    styles_text = (root / "apps" / "web" / "src" / "shared" / "styles" / "app.css").read_text()
 
     assert 'const conversation = await createConversation();' in conversation_toolbar_text
-    assert 'const title = window.prompt(\n      isChineseUi ? "对话标题（可选）" : "Conversation title (optional)",\n    );' not in conversation_toolbar_text
-    assert 'const title = window.prompt(\n      isChineseUi ? "重命名对话" : "Rename conversation",\n      conversation.title,\n    );' in conversation_toolbar_text
+    assert "window.prompt" not in conversation_toolbar_text
+    assert "window.prompt" not in branch_tree_text
+    assert 'className="fa-inline-rename-form"' in conversation_toolbar_text
+    assert 'className="fa-inline-rename-form is-branch"' in branch_tree_text
+    assert ".fa-inline-rename-input" in styles_text
 
 
 def test_conversation_switcher_only_lists_active_conversations():

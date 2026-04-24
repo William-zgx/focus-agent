@@ -1,6 +1,6 @@
 import type { FocusAgentConversationSummary } from "@focus-agent/web-sdk";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChangeEvent, useMemo, useState } from "react";
+import { type ChangeEvent, type FormEvent, useMemo, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useConversationActions } from "@/features/conversations/use-conversation-actions";
@@ -43,6 +43,8 @@ export function ConversationToolbar() {
   const { createConversation, renameConversation, archiveConversation, activateConversation } =
     useConversationActions();
   const [isWorking, setIsWorking] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<FocusAgentConversationSummary | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const conversations = data?.conversations ?? [];
   const { isChineseUi, setShellStatus } = useShellUi();
   const activeConversations = conversations.filter((conversation) => !conversation.is_archived);
@@ -97,12 +99,24 @@ export function ConversationToolbar() {
     }
   }
 
-  async function handleRenameConversation(conversation: FocusAgentConversationSummary) {
-    const title = window.prompt(
-      isChineseUi ? "重命名对话" : "Rename conversation",
-      conversation.title,
-    );
-    if (!title || !title.trim()) return;
+  function startRenameConversation(conversation: FocusAgentConversationSummary) {
+    setRenameTarget(conversation);
+    setRenameDraft(conversation.title);
+  }
+
+  function cancelRenameConversation() {
+    setRenameTarget(null);
+    setRenameDraft("");
+  }
+
+  async function handleRenameConversation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!renameTarget) return;
+    const title = renameDraft.trim();
+    if (!title || title === renameTarget.title) {
+      cancelRenameConversation();
+      return;
+    }
     setIsWorking(true);
     try {
       setShellStatus(
@@ -113,7 +127,7 @@ export function ConversationToolbar() {
         },
         { autoClearMs: 2200 },
       );
-      await renameConversation(conversation.root_thread_id, title.trim());
+      await renameConversation(renameTarget.root_thread_id, title);
       setShellStatus(
         {
           tone: "success",
@@ -122,6 +136,7 @@ export function ConversationToolbar() {
         },
         { autoClearMs: 2200 },
       );
+      cancelRenameConversation();
     } finally {
       setIsWorking(false);
     }
@@ -184,7 +199,7 @@ export function ConversationToolbar() {
 
   async function handleRenameActiveConversation() {
     if (!activeConversation || isWorking) return;
-    await handleRenameConversation(activeConversation);
+    startRenameConversation(activeConversation);
   }
 
   return (
@@ -314,6 +329,32 @@ export function ConversationToolbar() {
         <div className="fa-toolbar-note is-danger">
           {isChineseUi ? "加载对话失败。" : "Failed to load conversations."}
         </div>
+      ) : null}
+      {renameTarget ? (
+        <form className="fa-inline-rename-form" onSubmit={(event) => void handleRenameConversation(event)}>
+          <label className="sr-only" htmlFor="conversation-rename-input">
+            {isChineseUi ? "重命名对话" : "Rename conversation"}
+          </label>
+          <input
+            id="conversation-rename-input"
+            className="fa-inline-rename-input"
+            autoFocus
+            value={renameDraft}
+            onChange={(event) => setRenameDraft(event.target.value)}
+            disabled={isWorking}
+          />
+          <button className="fa-branch-action-button is-primary" disabled={isWorking || !renameDraft.trim()} type="submit">
+            {isChineseUi ? "保存" : "Save"}
+          </button>
+          <button
+            className="fa-branch-action-button"
+            disabled={isWorking}
+            onClick={cancelRenameConversation}
+            type="button"
+          >
+            {isChineseUi ? "取消" : "Cancel"}
+          </button>
+        </form>
       ) : null}
     </div>
   );
