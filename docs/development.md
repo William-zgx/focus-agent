@@ -123,5 +123,5 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [Quick Start](quick-start.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)
-- [Agent Role Routing](agent-role-routing.md)
+- [Agent Governance](agent-role-routing.md)
 - [Roadmap](roadmap.md)

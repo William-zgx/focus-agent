@@ -70,19 +70,14 @@ docker compose up --build
 
 ## 文档导航
 
+- [文档索引](docs/README.md)
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
-- [记忆系统设计](docs/memory-system.md)
-- [Observability Runbook](docs/observability-runbook.md)
 - [架构说明](docs/architecture.md)
 - [Docker 部署说明](docs/docker-deployment.md)
-- [路线图](docs/roadmap.md)
-- [Tool / Skill 系统设计](docs/tool-skill-design.md)
 - [前端 SDK](frontend-sdk/README.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
-- [发布检查清单](docs/release-checklist.md)
-- [文档索引](docs/README.md)
 
 ## License
 

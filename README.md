@@ -70,19 +70,14 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 
 ## Documentation
 
+- [Docs Index](docs/README.md)
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
-- [Memory System Design](docs/memory-system.md)
-- [Observability Runbook](docs/observability-runbook.md)
 - [Architecture](docs/architecture.md)
 - [Docker Deployment](docs/docker-deployment.md)
-- [Roadmap](docs/roadmap.md)
-- [Tool and Skill System Design](docs/tool-skill-design.md)
 - [Frontend SDK](frontend-sdk/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
-- [Release Checklist](docs/release-checklist.md)
-- [Docs Index](docs/README.md)
 
 ## License
 

@@ -29,7 +29,7 @@ This checklist is intended for maintainers preparing Focus Agent for a public re
 - Confirm trajectory failure promotion preview and batch replay workflow still match the API and eval CLI
 - Confirm OTel exporter env vars and runtime readiness docs still match the live tracing behavior
 - Confirm alert guidance uses the existing `/metrics` endpoint and current metric names
-- Confirm Agent role routing expectations still match `docs/agent-role-routing.md`, `/v1/agent/roles/*`, and `/app/agent/roles`
+- Confirm Agent governance expectations still match `docs/agent-role-routing.md`, `/v1/agent/*`, and `/app/agent/governance`
 - If Agent governance changed, confirm `/v1/agent/capabilities`, `/v1/agent/tool-router/*`, `/v1/agent/memory/curator/*`, and `/app/agent/governance`
 - If Context Engineering changed, confirm `/v1/agent/context/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_context.jsonl`
 - If Task Ledger changed, confirm `/v1/agent/task-ledger/*`, `/v1/agent/artifacts`, `/v1/agent/critic/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_task_ledger.jsonl`

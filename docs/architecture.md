@@ -1,95 +1,263 @@
-# Focus Agent 架构现状
+# Focus Agent 整体架构设计
 
 更新时间：2026-04-24
 
-本文描述当前已经落地的工程架构、部署边界和运维观测能力。路线图和后续优先级请看 [roadmap.md](roadmap.md)。
+本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
-## 1. 项目概览
+- Agent governance：[agent-role-routing.md](agent-role-routing.md)
+- Memory：[memory-system.md](memory-system.md)
+- Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
+- Docker / Compose：[docker-deployment.md](docker-deployment.md)
+- Observability 操作手册：[observability-runbook.md](observability-runbook.md)
 
-**Focus Agent** 是一个 Python AI 应用框架，核心能力是分支式对话、流式响应、受控 merge-back、访问控制、React Web App 和 TypeScript SDK。
+## 1. 系统定位
 
-当前整体形态是 **FastAPI + LangGraph 后端、React + Vite 前端、Postgres primary persistence、本地 fallback persistence**：
+Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式会话、流式响应、受控 merge-back、记忆治理、工具调用、可观测复盘和 TypeScript SDK 的 AI 应用。
 
-- Python 后端：FastAPI、LangGraph、LangChain、Pydantic
-- Web App：React 19、Vite、TanStack Router、TanStack Query、Zustand
-- SDK：`frontend-sdk` 提供 typed browser / Node client
-- 持久化：Postgres primary path；未配置 `DATABASE_URI` 时，本机启动脚本会托管 repo-local PostgreSQL，裸跑二进制时仍可使用本地 fallback
-- 测试：pytest 后端/API/运行时测试，前端 SDK 类型检查与构建检查
+它的核心假设是：复杂任务不是单线聊天。研究、调试、写作和验证往往需要并行探索，主线需要稳定沉淀，分支需要可丢弃、可合并、可审计。因此系统围绕以下能力设计：
 
-## 2. 当前架构
+| 能力 | 架构含义 | 主要模块 |
+|------|----------|----------|
+| Branch-aware conversation | root thread 派生 child thread，探索不污染主线 | `BranchService`、branch repository、branch tree UI |
+| Controlled merge-back | 分支结论通过 proposal / decision 回到主线 | merge review、imported findings、memory promotion |
+| Long-context governance | 对话、记忆、工具观察和 artifact 需要预算与引用 | context policy、Context Engineering |
+| Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
+| Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
+| Local-first development | 本地命令可以自动托管 repo-local PostgreSQL | `scripts/serve-*.sh`、`make serve-dev` |
 
-```text
-FastAPI
-├── middleware
-│   ├── request id
-│   ├── CORS
-│   └── sliding-window rate limit
-├── API routes
-│   ├── /healthz
-│   ├── /readyz
-│   ├── /metrics
-│   ├── /v1/auth/*
-│   ├── /v1/conversations/*
-│   ├── /v1/chat/*
-│   ├── /v1/branches/*
-│   ├── /v1/observability/overview
-│   └── /v1/observability/trajectory*
-├── services
-│   ├── ChatService
-│   └── BranchService
-├── engine
-│   ├── LangGraph runtime
-│   ├── Plan-Act-Reflect path
-│   ├── memory read/write pipeline
-│   └── tool runtime metadata
-├── repositories
-│   ├── Postgres conversation / branch / artifact metadata
-│   ├── LangGraph Postgres checkpoint/store
-│   └── Postgres trajectory repository
-└── web
-    ├── React build serving
-    └── Vite dev-server redirect in local mode
-```
+## 2. 总体拓扑
+
+当前整体形态：
+
+- Backend：FastAPI + LangGraph + LangChain + Pydantic
+- Frontend：React 19 + Vite + TanStack Router + TanStack Query + Zustand
+- SDK：`frontend-sdk` typed browser / Node client
+- Persistence：Postgres primary persistence；local fallback persistence；filesystem artifact bodies
+- Observability：request id、readiness、metrics、trajectory、replay、promote
 
 ```text
-apps/web
-├── app/                      shell, routing, providers
-├── pages/
-│   ├── thread/               chat, branch tree, merge review route
-│   └── observability/        trajectory review console
-├── features/
-│   ├── branch-tree
-│   ├── conversations
-│   ├── merge-review
-│   ├── thread-stream
-│   └── trajectory-observability
-└── shared/                   SDK provider, UI primitives, query keys, styles
+Browser / SDK
+  |
+  | HTTP / SSE
+  v
+FastAPI app
+  |
+  +-- API contracts, auth, middleware, error envelope
+  +-- ChatService
+  |     +-- LangGraph agent graph
+  |     +-- stream event mapping
+  |     +-- trajectory recording
+  +-- BranchService
+  |     +-- fork / archive / activate / merge
+  |     +-- branch role classification
+  |     +-- merge proposal and imported findings
+  +-- Agent governance APIs
+  |     +-- role route / tool route / context / ledger / critic
+  +-- Observability APIs
+        +-- overview / trajectory / stats / replay / promote
+
+Persistence
+  |
+  +-- Postgres app tables
+  +-- LangGraph Postgres checkpoint/store
+  +-- Postgres trajectory tables
+  +-- artifact metadata table
+  +-- filesystem artifact bodies
+  +-- local SQLite + pickle fallback
 ```
 
-## 3. 已落地能力
+## 3. 代码分层
 
-### 3.1 分支会话与 merge-back
+| 路径 | 责任 |
+|------|------|
+| `src/focus_agent/api/` | FastAPI app、contracts、deps、middleware、errors |
+| `src/focus_agent/engine/` | runtime 创建、LangGraph 图、本地 fallback persistence |
+| `src/focus_agent/core/` | state、branching、request context、context policy、merge review |
+| `src/focus_agent/services/` | ChatService、BranchService 等 API-facing 业务服务 |
+| `src/focus_agent/repositories/` | Postgres / SQLite repository、schema、trajectory、artifact metadata |
+| `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe |
+| `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime、tool router |
+| `src/focus_agent/skills/` | skill registry、skill metadata、skill view rendering |
+| `src/focus_agent/observability/` | trajectory record、actions、tracing facade、OTel runtime |
+| `src/focus_agent/web/` | React build serving 和 Vite dev redirect |
+| `apps/web/src/` | React app shell、pages、features、shared UI |
+| `frontend-sdk/src/` | typed client、types、guards、stream parser、reducers |
 
-- branch tree、fork、archive、rename、merge review 已接入 Web App 和 SDK
-- merged branch 在前后端都按只读处理，不能继续追加 turn 或继续 fork
-- branch role 会在第一轮分支交互后刷新，用于区分 execute / verify / deep dive / alternatives 等语义
-- imported conclusion 会写回父线程可见状态，并可进入 memory pipeline
+## 4. App Runtime
 
-### 3.2 Web App 与 SDK
+`src/focus_agent/engine/runtime.py` 中的 `create_runtime()` 是后端运行态装配点。它根据 `Settings` 创建：
 
-- `/app` 由 React Web App 接管；开发模式可重定向到 Vite dev server
-- Web App 覆盖会话列表、聊天、流式响应、分支树、merge review、模型状态、Agent governance console，以及按职责拆分的 observability overview 和 trajectory review workbench
-- `frontend-sdk` 覆盖 conversation、thread state、branch action、merge review、agent governance、trajectory observability 等 typed client 能力
-- Vite bundle 分割已配置，React / router / query / state / app 代码分块构建
+- `graph`：LangGraph 编译后的 Agent 执行图。
+- `repo`：conversation / branch / thread access repository。
+- `branch_service`：fork、merge 和 branch tree 业务服务。
+- `checkpointer`：LangGraph checkpoint persistence。
+- `store`：LangGraph store，用于 memory。
+- `memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`。
+- `skill_registry`、`tool_registry`。
+- `trajectory_recorder`。
+- `artifact_metadata_repository`。
+- `otel_runtime`。
 
-### 3.3 安全与 API 契约
+当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence；否则选择 local fallback persistence。
 
-- CORS、请求 ID、限流和统一错误信封已落地
-- 认证默认走 Bearer token，demo token bootstrap 仅适合本地与演示
-- 线程和会话操作走 owner / access 检查
-- API contract 通过 Pydantic schema、SDK 类型和 API shape 测试保持对齐
+## 5. API Surface
 
-### 3.4 持久化
+API 路由集中在 `src/focus_agent/api/main.py`：
+
+| 分组 | 代表路径 | 说明 |
+|------|----------|------|
+| Health | `GET /healthz`、`GET /readyz`、`GET /metrics` | 存活、就绪、指标 |
+| Web App | `GET /app`、`GET /app/zh`、`GET /app/{path:path}` | React build serving 或 Vite redirect |
+| Auth | `POST /v1/auth/demo-token`、`GET /v1/auth/me` | demo token 和当前 principal |
+| Models | `GET /v1/models` | 模型目录和能力 |
+| Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
+| Chat | `POST /v1/chat/turns`、stream、resume | 非流式和流式 turn |
+| Threads | `GET /v1/threads/{thread_id}` | 线程状态读取 |
+| Branches | fork、archive、activate、rename、proposal、merge、tree | 分支生命周期 |
+| Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
+| Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
+
+API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业务流程在 services、runtime、repositories 和 graph nodes。
+
+## 6. Chat Turn 数据流
+
+### 6.1 非流式 turn
+
+```text
+POST /v1/chat/turns
+  -> authenticate principal
+  -> ChatService preflight access
+  -> RequestContext
+  -> graph.invoke
+  -> final AgentState
+  -> trajectory record
+  -> ThreadStateResponse
+```
+
+### 6.2 流式 turn
+
+```text
+POST /v1/chat/turns/stream
+  -> authenticate principal
+  -> acquire per-thread active turn lock
+  -> graph stream
+  -> map LangGraph updates to SSE events
+  -> text / reasoning / tool events / metadata
+  -> final thread state
+  -> trajectory record
+```
+
+`ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。
+
+## 7. LangGraph 主路径
+
+核心图在 `src/focus_agent/engine/graph_builder.py`。主路径保留 legacy single-run，同时可插入 governance 记录：
+
+```text
+bootstrap_turn
+  -> retrieve_memories
+  -> assemble_context
+  -> role_route_dry_run
+  -> delegation_governance
+  -> plan
+  -> agent_loop
+       -> tool_executor -> agent_loop
+       -> reflect
+       -> summarize_turn
+  -> extract_memories
+  -> write_memories
+  -> maybe_interrupt_for_merge
+```
+
+关键点：
+
+- `retrieve_memories` 从可读 namespace 检索 durable memory。
+- `assemble_context` 组装 recent messages、rolling summary、memory block、skill block 和 prompt budget。
+- `agent_loop` 根据 tool policy 与 Tool Router 绑定工具。
+- `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。
+- `reflect` 只在 Plan-Act-Reflect 开启并产生 plan 时参与。
+- `extract_memories` / `write_memories` 是 turn 后记忆写入路径。
+- `maybe_interrupt_for_merge` 对 merge proposal 触发 human review interrupt。
+
+## 8. Agent State
+
+`src/focus_agent/core/state.py` 定义跨节点状态。主要类别：
+
+- Conversation：`messages`、`rolling_summary`、`recent_messages`
+- User intent：`task_brief`、`active_goal`、`user_constraints`、`pinned_facts`
+- Branch：`branch_meta`、`branch_local_findings`、`imported_findings`、`merge_queue`
+- Prompt surface：`assembled_context`、`memory_prompt_block`、`available_skills_block`
+- Runtime choice：`selected_model`、`selected_thinking_mode`
+- Governance：`role_route_plan`、`tool_route_plan`、`model_route_decision`、`agent_delegation_plan`
+- Context Engineering：`context_budget_decision`、`context_compression_plan`、`context_artifact_refs`、`role_context_views`
+- Ledger and critic：`agent_task_ledger`、`delegated_artifacts`、`artifact_synthesis_result`、`critic_gate_result`
+- Memory write：`memory_write_requests`、`memory_write_result`
+- Planning：`plan`、`current_step_id`、`reflection`、`plan_meta`
+
+内容型状态可以通过 review 后显式 merge；执行策略、prompt surface 和 runtime choice 属于当前 turn，不应自动回流。
+
+## 9. 分支与 Merge-back
+
+分支业务在 `src/focus_agent/services/branches.py`：
+
+```text
+main thread
+  -> fork branch
+  -> child thread receives branch_meta and checkpoint
+  -> user explores, executes, verifies, or writes in branch
+  -> branch-local findings are collected
+  -> merge proposal is prepared
+  -> user applies merge decision
+  -> imported findings become visible to parent
+  -> optional memory promotion
+```
+
+约束：
+
+- `root_thread_id` 表示整棵会话树。
+- `child_thread_id` 是分支自己的 LangGraph thread。
+- `branch_depth` 受 `BRANCH_MAX_DEPTH` 控制。
+- merged branch 在前后端都按只读处理。
+- branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
+- imported conclusion 可写入父线程状态，并可进入 memory pipeline。
+
+## 10. Memory 概览
+
+Memory 的 canonical 文档是 [memory-system.md](memory-system.md)。架构层只保留边界：
+
+- `MemoryRetriever`：根据 RequestContext、state、query 和 prompt mode 检索。
+- `MemoryExtractor`：从 turn 中提取候选记忆。
+- `MemoryWriter`：按 policy、dedupe、semantic key 和 conflict 规则写入。
+- `MemoryCurator`：只治理 branch-local finding 是否 promotion 到主线。
+
+Namespace 由 `src/focus_agent/storage/namespaces.py` 管理，区分 root thread、conversation main、branch local memory 等作用域。
+
+## 11. Tool / Skill 概览
+
+Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md)。
+
+分层：
+
+- default tools：repo、git、web、artifact、memory、conversation 等工具。
+- tool registry：把工具和 `ToolRuntimeMeta` 组合成 runtime registry。
+- tool runtime：处理并行安全、缓存、fallback、观察裁剪。
+- tool router：按 role、tool policy、risk、side effect 过滤工具。
+- skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具。
+
+## 12. Agent Governance 概览
+
+Agent governance 的 canonical 文档是 [agent-role-routing.md](agent-role-routing.md)。
+
+架构层需要记住两点：
+
+- 默认 off，legacy single-run path 不变。
+- observe-first，enforce 能力逐步打开。
+
+当前治理记录包括 role route、tool route、memory curator、delegation、model router、self repair、review queue、context engineering、task ledger、artifact synthesis 和 critic gate。这些记录写入 AgentState 与 trajectory `plan_meta`，供 Web console、eval 和 replay 使用。
+
+## 13. 持久化
+
+### 13.1 Postgres primary persistence
 
 配置 `DATABASE_URI` 后，主运行态数据走 Postgres primary persistence：
 
@@ -98,94 +266,140 @@ apps/web
 - artifact metadata
 - trajectory turn / step observability tables
 
-artifact 正文仍保留在文件系统，避免把大文件直接塞进数据库。
+应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 `focus_conversations`、`focus_thread_access`、`focus_branches`、`focus_artifacts` 等表。
 
-本机启动命令（`make api`、`make dev`、`make serve-dev`、`make serve-prod`）会在未显式设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL，并把运行态写入 `.focus_agent/postgres/runtime.env`。直接运行 `.venv/bin/focus-agent-api` 时需要自行设置 `DATABASE_URI`，否则会使用本地 fallback 路径。
+Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、checksum、source thread / branch、summary 等字段。
 
-历史 `.focus_agent` 状态可通过 `focus-agent-migrate-local-state` 显式迁入 Postgres；服务启动时不会自动迁移历史数据。
+### 13.2 Local fallback persistence
 
-### 3.5 Agent 主路径
+未配置 `DATABASE_URI` 且直接裸跑 API 二进制时，runtime 使用：
 
-- Plan-Act-Reflect 已接入主链，并保留退化到 ReAct 的路径
-- memory retrieve / extract / write 已接图
-- context budget、Context Engineering v2、长上下文压缩决策与 artifact refs 已落地
-- tool runtime 支持并行安全分组、缓存、fallback metadata 和观察裁剪
-- Agent governance 已具备 role routing、Memory Curator、Tool Router、Delegation Runtime、Model Router、Self Repair、Review Queue、Task Ledger、Delegated Artifact Synthesis 和 Critic Gate 的 feature-flagged 路径
-- eval framework 支持 rule / LLM / trajectory judge、报告聚合、trajectory replay / promote
+- SQLite branch repository
+- pickle-backed LangGraph checkpointer
+- pickle-backed LangGraph store
+- no trajectory recorder
+- no artifact metadata repository
 
-记忆系统的完整设计、生命周期、promotion 语义和 memory tools 对齐规则见 [memory-system.md](memory-system.md)。
+这是本地 fallback，不是生产多副本方案。
 
-### 3.6 Observability
+### 13.3 Managed repo-local PostgreSQL
 
-当前可观测性分三层：
+本机启动命令（`make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod`）会在未显式设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL，并把生成的运行态环境写入 `.focus_agent/postgres/runtime.env`。
 
-- 请求层：request id、结构化请求日志、响应耗时、统一错误信封
-- 运行态层：`/readyz` runtime readiness、`/metrics` Prometheus 文本指标、build/runtime labels
-- agent trajectory 层：Postgres trajectory turn / step 记录、`request_id` / `trace_id` / `root_span_id` correlation 字段、`focus-agent-trajectory` CLI、API overview/list/detail/stats、Web review console、单条 replay / promote 动作预览
+直接运行 `.venv/bin/focus-agent-api` 不会启动托管数据库。历史 `.focus_agent` 状态需要通过 `focus-agent-migrate-local-state` 显式迁移。
 
-Web 入口：
+## 14. Frontend 与 SDK
 
-- `/app/observability/overview`
-- `/app/observability/trajectory`
+Web App 位于 `apps/web/src/`：
 
-API 入口：
-
-- `GET /readyz`
-- `GET /metrics`
-- `GET /v1/observability/overview`
-- `GET /v1/observability/trajectory`
-- `GET /v1/observability/trajectory/stats`
-- `GET /v1/observability/trajectory/{turn_id}`
-- `POST /v1/observability/trajectory/{turn_id}/replay`
-- `POST /v1/observability/trajectory/{turn_id}/promote`
-- `POST /v1/observability/trajectory/batch/promote-preview`
-- `POST /v1/observability/trajectory/batch/replay-compare`
-
-`/readyz` 返回 runtime 组件状态、版本、环境和部署名；`/metrics` 输出 `focus_agent_runtime_*` 与 trajectory 聚合指标。trajectory list/stats/overview 支持按 `request_id` 和 `trace_id` 查询，复盘台支持 request/trace URL 深链、production pivots、correlation hooks 和 runtime signal 展示。
-
-当前 Web observability 路由已经按职责拆分：
-
-- `/app/observability/overview`：负责问题发现，只保留 runtime health、趋势、热点工具、模型分布和场景分布，帮助先判断“哪个切片值得进复盘台”
-- `/app/observability/trajectory`：负责单条复盘，默认采用三栏工作台布局，左栏是高密度样本队列和筛选，中栏按“结论摘要 -> 主证据 -> 输入/输出叙事 -> 补充上下文”组织，右栏常驻关联锚点、pivot、热点工具和 replay/promote 动作
-- 证据区支持三种展示/降级模式：`timeline`（有步骤时显示完整执行时间线）、`zero_step`（无步骤时切换到紧凑证据视图，不再保留空白 timeline）、`missing_detail`（详情缺失时明确提示当前是降级态）
-
-当前代码已提供轻量 span facade、运行时 OTel exporter 初始化、tool/runtime span 元数据和稳定 `trace_id` / `root_span_id` correlation handle。只要部署侧安装 OTel 依赖并提供 `OTEL_TRACES_EXPORTER` 与 `OTEL_EXPORTER_OTLP_*` 配置，就可以把 span 送到外部 collector；剩余工作主要是部署环境里的 collector 连通性、告警接入，以及更长时真实浏览器链路回归。
-
-## 4. Docker / Compose 部署与本机启动边界
-
-### 本机开发
-
-- 推荐 `make api`、`make serve`、`make serve-dev`、`make serve-prod`
-- 未设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL
-- 前端开发可用 `make web-dev`，并通过 `WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app` 让 `/app` 跳转到 Vite
-
-Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 [compose.prod.yaml](../compose.prod.yaml)。部署、环境变量、demo token 和外部 PostgreSQL 边界集中维护在 [docker-deployment.md](docker-deployment.md)。
-
-## 5. 当前限制
-
-- 限流仍是进程内滑动窗口，不适合多副本共享额度；多副本部署应改用 Redis 等外部限流存储
-- overview / trajectory 的职责拆分、三栏复盘工作台和批量 preview/compare 已落地，但还需要更长时真实浏览器链路和告警接入
-- context budget 仍以确定性裁剪和近似预算为主，tokenizer 精算与摘要质量评测仍在路线图中
-- Agent governance 默认由 feature flags 保护；默认保持 legacy single-run，开启后写入 role route、delegation、model route、memory/tool、self-repair、review queue、context 和 task-ledger 观测记录
-
-## 6. 推荐验证
-
-日常改动优先使用：
-
-```bash
-make ci-test
-make web-check
-make sdk-check
+```text
+app/                      router, shell, providers
+pages/thread/             chat, branch tree, merge review
+pages/agents/             governance console
+pages/observability/      overview and trajectory workbench
+features/                 branch, conversation, merge, models, stream, trajectory
+shared/                   config, query keys, SDK provider, UI, styles
 ```
 
-影响前端或 SDK 时补：
+主要入口：
+
+- `/app`
+- `/app/zh`
+- `/app/observability/overview`
+- `/app/observability/trajectory`
+- `/app/agent/governance`
+
+`frontend-sdk` 提供 typed client、types、guards、stream parser 和 reducers。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+
+## 15. 安全边界
+
+当前安全能力：
+
+- Bearer token authentication。
+- demo token bootstrap，仅适合本地与演示。
+- owner / access check，线程和会话操作必须匹配 owner。
+- CORS。
+- 进程内 sliding-window rate limit。
+- 统一错误信封。
+- Tool Router 对 network、workspace write、memory write 做 role-level 收紧。
+
+生产部署必须显式设置 `AUTH_JWT_SECRET`，并关闭 demo token。
+
+## 16. Observability 与 Eval
+
+Observability 分三层：
+
+- 请求层：request id、结构化日志、耗时、错误信封。
+- 运行态层：`/readyz`、`/metrics`、runtime labels、OTel facade。
+- Agent trajectory 层：turn、step、tool、model、fallback、cache、trace correlation、plan_meta。
+
+Trajectory API 支持 list、detail、stats、replay、promote、batch promote preview、batch replay compare。Web 侧拆成 overview 和 trajectory workbench。
+
+Eval framework 使用 rule judge、LLM judge、trajectory judge，把真实运行中的失败和边界案例沉淀为可执行回归。
+
+## 17. Docker / Compose 部署
+
+Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 [compose.prod.yaml](../compose.prod.yaml)。详细部署文档见 [docker-deployment.md](docker-deployment.md)。
+
+边界：
+
+- `compose.yaml` 包含 app + postgres，适合本地 Docker 联调。
+- `compose.prod.yaml` 不内置 Postgres，要求外部注入 `FOCUS_AGENT_DATABASE_URI`。
+- Dockerfile 使用前端构建阶段和 Python runtime 阶段。
+- `docker/entrypoint.sh` 准备 `/data` 下的默认配置和 fallback 路径。
+
+## 18. 本地开发运行
+
+推荐完整开发入口：
 
 ```bash
-make web-build
+make serve-dev
+```
+
+常用命令：
+
+```bash
+make api
+make dev
+make serve
+make serve-prod
+make web-dev
+```
+
+更完整启动说明见 [quick-start.md](quick-start.md) 和 [development.md](development.md)。
+
+## 19. 当前限制
+
+- 进程内限流不适合多副本共享额度。
+- Artifact 正文仍在文件系统，生产多节点需要共享文件系统或对象存储方案。
+- Agent governance 多数能力默认 observe/off，enforce 面需要基于 trajectory 逐步扩大。
+- Context budget 当前仍以确定性裁剪和近似预算为主。
+- Local fallback persistence 只适合本地，不适合生产多副本。
+
+## 20. 推荐验证
+
+日常后端和文档改动：
+
+```bash
+make lint
+make ci-test
+```
+
+影响 SDK：
+
+```bash
+make sdk-check
 make sdk-build
 ```
 
-影响部署、持久化或 observability 时至少关注：
+影响 Web：
+
+```bash
+make web-check
+make web-build
+```
+
+影响部署、持久化或 observability：
 
 ```bash
 uv run pytest \
@@ -198,7 +412,13 @@ uv run pytest \
   tests/test_trajectory_cli.py
 ```
 
-如果本机 `.venv` 的 `psycopg` 缺少 `libpq` 导致测试收集阶段 `ImportError`，可先使用仓库当前测试约定的 stub 路径跑 focused observability 回归：
+影响 Agent governance：
+
+```bash
+uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
+```
+
+如果本机 `.venv` 的 `psycopg` 缺少 `libpq` 导致测试收集阶段 `ImportError`，可使用仓库当前测试约定的 stub 路径跑 focused observability 回归：
 
 ```bash
 PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
@@ -209,39 +429,16 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_chat_service.py
 ```
 
-影响主 agent 路径时补：
+## 21. 文件导航
 
-```bash
-uv run pytest \
-  tests/eval/test_plan_act_reflect.py \
-  tests/eval/test_context_budget.py \
-  tests/test_memory_pipeline.py \
-  tests/test_tool_runtime.py \
-  tests/test_agent_roles.py \
-  tests/test_agent_governance.py \
-  tests/test_agent_delegation.py \
-  tests/test_agent_context_engineering.py \
-  tests/test_agent_task_ledger.py
-```
-
-## 7. 文件导航
-
-- 后端 API：`src/focus_agent/api/main.py`
-- 配置：`src/focus_agent/config.py`
-- 运行时：`src/focus_agent/engine/runtime.py`
-- 图构建：`src/focus_agent/engine/graph_builder.py`
-- 分支服务：`src/focus_agent/services/branches.py`
-- 聊天服务：`src/focus_agent/services/chat.py`
+- API：`src/focus_agent/api/main.py`
+- Contracts：`src/focus_agent/api/contracts.py`
+- Runtime：`src/focus_agent/engine/runtime.py`
+- Graph builder：`src/focus_agent/engine/graph_builder.py`
+- State：`src/focus_agent/core/state.py`
+- Chat service：`src/focus_agent/services/chat.py`
+- Branch service：`src/focus_agent/services/branches.py`
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
 - Web App：`apps/web/src/`
-- Web observability 页面：`apps/web/src/pages/observability/trajectory-page.tsx`
-- Agent governance 页面：`apps/web/src/pages/agents/agent-role-console-page.tsx`
-- Web observability 组件：`apps/web/src/features/trajectory-observability/`
 - SDK：`frontend-sdk/src/`
-
-## 8. 文档关系
-
-- 本文：当前架构事实
-- [docker-deployment.md](docker-deployment.md)：Docker、本机启动和生产模板边界
-- [roadmap.md](roadmap.md)：统一路线图和下一阶段优先级
