@@ -46,3 +46,15 @@ thinking_disable_extra_body_type = "disabled"
 [[models]]
 id = "ollama:qwen2.5:7b"
 label = "Qwen 2.5 7B"
+
+# OpenAI-compatible reasoning models can add provider-specific request payload
+# fields without code changes by using request profiles like this:
+#
+# [[models]]
+# id = "openai:custom-reasoning-pro"
+# label = "Custom Reasoning Pro"
+# supports_thinking = true
+# default_thinking_enabled = true
+# thinking_enabled_request_kwargs = { reasoning_effort = "high", extra_body = { thinking = { type = "enabled" } } }
+# thinking_disabled_request_kwargs = { extra_body = { thinking = { type = "disabled" } } }
+# thinking_disabled_model_name = "custom-chat"

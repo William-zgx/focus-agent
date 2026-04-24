@@ -312,14 +312,14 @@ class ChatService:
             ),
         }
 
-    @staticmethod
-    def _effective_thinking_mode(*, model_id: str, thinking_mode: Any) -> str:
-        if not supports_thinking_mode(model_id):
+    def _effective_thinking_mode(self, *, model_id: str, thinking_mode: Any) -> str:
+        settings = getattr(self.runtime, 'settings', None)
+        if not supports_thinking_mode(model_id, settings=settings):
             return ''
         normalized = str(thinking_mode or '').strip().lower()
         if normalized in {'enabled', 'disabled'}:
             return normalized
-        return 'enabled' if default_thinking_enabled(model_id) else 'disabled'
+        return 'enabled' if default_thinking_enabled(model_id, settings=settings) else 'disabled'
 
     def _turn_span_attributes(
         self,

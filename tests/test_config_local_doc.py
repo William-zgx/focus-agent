@@ -57,6 +57,11 @@ def test_load_model_catalog_document_reads_structured_model_data(tmp_path):
                 'label = "DeepSeek Reasoner"',
                 "supports_thinking = true",
                 "default_thinking_enabled = true",
+                'request_kwargs = { service_tier = "auto" }',
+                'thinking_enabled_request_kwargs = { reasoning_effort = "high", extra_body = { thinking = { type = "enabled" } } }',
+                'thinking_disabled_request_kwargs = { extra_body = { thinking = { type = "disabled" } } }',
+                'thinking_disabled_model_name = "deepseek-chat"',
+                'reasoning_effort = "high"',
                 'thinking_disable_switch_model = "deepseek-chat"',
             ]
         ),
@@ -70,6 +75,16 @@ def test_load_model_catalog_document_reads_structured_model_data(tmp_path):
     assert loaded.model_choices == ("deepseek:deepseek-reasoner", "ollama:gemma4-hauhau:q8")
     assert loaded.providers[0].id == "deepseek"
     assert loaded.providers[0].aliases == ("ds",)
+    assert loaded.models[0].request_kwargs == {"service_tier": "auto"}
+    assert loaded.models[0].thinking_enabled_request_kwargs == {
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+    assert loaded.models[0].thinking_disabled_request_kwargs == {
+        "extra_body": {"thinking": {"type": "disabled"}}
+    }
+    assert loaded.models[0].thinking_disabled_model_name == "deepseek-chat"
+    assert loaded.models[0].reasoning_effort == "high"
     assert loaded.models[0].thinking_disable_switch_model == "deepseek-chat"
 
 

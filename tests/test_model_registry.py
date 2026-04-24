@@ -49,6 +49,77 @@ def test_resolve_model_config_disables_kimi_thinking_via_extra_body():
     assert resolved.request_kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
+def test_resolve_model_config_enables_profile_thinking_body_and_reasoning_effort():
+    settings = Settings(
+        model="openai:custom-reasoning-pro",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:custom-reasoning-pro",
+                    label="Custom Reasoning Pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                    reasoning_effort="high",
+                    thinking_enable_extra_body_type="enabled",
+                ),
+            ),
+        ),
+    )
+
+    resolved = resolve_model_config("openai:custom-reasoning-pro", settings=settings)
+
+    assert resolved.provider == "openai"
+    assert resolved.model_name == "custom-reasoning-pro"
+    assert resolved.request_kwargs == {
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+
+
+def test_resolve_model_config_uses_generic_request_profiles_for_new_models():
+    settings = Settings(
+        model="openai:profiled-reasoner",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:profiled-reasoner",
+                    label="Profiled Reasoner",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                    request_kwargs={"service_tier": "auto"},
+                    thinking_enabled_request_kwargs={
+                        "reasoning_effort": "high",
+                        "extra_body": {"thinking": {"type": "enabled"}},
+                    },
+                    thinking_disabled_model_name="profiled-chat",
+                    thinking_disabled_request_kwargs={
+                        "extra_body": {"thinking": {"type": "disabled"}},
+                    },
+                ),
+            ),
+        ),
+    )
+
+    enabled = resolve_model_config("openai:profiled-reasoner", settings=settings)
+    disabled = resolve_model_config(
+        "openai:profiled-reasoner",
+        thinking_mode="disabled",
+        settings=settings,
+    )
+
+    assert enabled.model_name == "profiled-reasoner"
+    assert enabled.request_kwargs == {
+        "service_tier": "auto",
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+    assert disabled.model_name == "profiled-chat"
+    assert disabled.request_kwargs == {
+        "service_tier": "auto",
+        "extra_body": {"thinking": {"type": "disabled"}},
+    }
+
+
 def test_resolve_model_config_disables_deepseek_reasoner_by_switching_backend_model():
     resolved = resolve_model_config(
         "openai:deepseek-reasoner",
@@ -68,6 +139,24 @@ def test_resolve_model_config_maps_ollama_to_openai_backend():
     assert resolved.model_name == "qwen2.5:7b"
     assert resolved.client_kwargs["base_url"] == "http://127.0.0.1:11434/v1"
     assert resolved.client_kwargs["api_key"] == "ollama"
+
+
+def test_resolve_model_config_respects_explicit_empty_environ():
+    settings = Settings(
+        model="openai:gpt-custom",
+        resolved_env={
+            "OPENAI_BASE_URL": "https://example.invalid/v1",
+            "OPENAI_API_KEY": "should-not-be-read",
+        },
+    )
+
+    resolved = resolve_model_config(
+        "openai:gpt-custom",
+        environ={},
+        settings=settings,
+    )
+
+    assert resolved.client_kwargs == {}
 
 
 def test_build_model_catalog_uses_structured_provider_and_model_metadata():
@@ -106,6 +195,39 @@ def test_build_model_catalog_uses_structured_provider_and_model_metadata():
     assert catalog[0].provider == "deepseek"
     assert catalog[0].provider_label == "DeepSeek"
     assert catalog[0].label == "DeepSeek Reasoner · DeepSeek"
+
+
+def test_model_metadata_lookup_uses_canonical_configured_model_ids():
+    settings = Settings(
+        model="ds:reasoning-pro",
+        model_catalog=ModelCatalogConfig(
+            providers=(
+                ProviderConfig(
+                    id="deepseek",
+                    label="DeepSeek",
+                    backend_provider="openai",
+                    aliases=("ds",),
+                ),
+            ),
+            models=(
+                ConfiguredModel(
+                    id="DS:reasoning-pro",
+                    label="Reasoning Pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                    request_kwargs={"reasoning_effort": "high"},
+                ),
+            ),
+        ),
+    )
+
+    catalog = build_model_catalog(settings)
+    resolved = resolve_model_config("deepseek:reasoning-pro", settings=settings)
+
+    assert catalog[0].id == "deepseek:reasoning-pro"
+    assert catalog[0].label == "Reasoning Pro · DeepSeek"
+    assert catalog[0].supports_thinking is True
+    assert resolved.request_kwargs == {"reasoning_effort": "high"}
 
 
 def test_resolve_model_config_uses_structured_provider_configuration():

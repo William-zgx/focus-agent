@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import os
-from typing import Mapping
 
 from langchain.chat_models import init_chat_model
 
@@ -114,11 +114,14 @@ def _merged_provider_configs(settings: Settings | None = None) -> dict[str, Prov
 
 
 def _merged_model_configs(settings: Settings | None = None) -> dict[str, ConfiguredModel]:
-    merged = {item.id: item for item in _BUILTIN_MODEL_CATALOG.models}
+    merged = {
+        canonical_model_id(item.id, settings=settings): item
+        for item in _BUILTIN_MODEL_CATALOG.models
+    }
     if settings is None:
         return merged
     for item in settings.model_catalog.models:
-        merged[item.id] = item
+        merged[canonical_model_id(item.id, settings=settings)] = item
     return merged
 
 
@@ -157,6 +160,62 @@ def canonical_model_id(model_id: str, *, settings: Settings | None = None) -> st
 
 def _configured_model(model_id: str, *, settings: Settings | None = None) -> ConfiguredModel | None:
     return _merged_model_configs(settings).get(canonical_model_id(model_id, settings=settings))
+
+
+def _merge_request_kwargs(*items: Mapping[str, object] | None) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    for item in items:
+        if not item:
+            continue
+        for key, value in item.items():
+            existing = merged.get(key)
+            if isinstance(existing, dict) and isinstance(value, Mapping):
+                merged[key] = _merge_request_kwargs(existing, value)
+            else:
+                merged[key] = value
+    return merged
+
+
+def _effective_thinking_mode(configured: ConfiguredModel, thinking_mode: str | None) -> str:
+    normalized = str(thinking_mode or "").strip().lower()
+    if normalized in {"enabled", "disabled"}:
+        return normalized
+    return "enabled" if configured.default_thinking_enabled else ""
+
+
+def _request_kwargs_for_model(
+    configured: ConfiguredModel,
+    *,
+    thinking_mode: str,
+) -> dict[str, object]:
+    profile_kwargs = _merge_request_kwargs(configured.request_kwargs)
+    if thinking_mode == "enabled":
+        profile_kwargs = _merge_request_kwargs(
+            profile_kwargs,
+            configured.thinking_enabled_request_kwargs,
+        )
+    elif thinking_mode == "disabled":
+        profile_kwargs = _merge_request_kwargs(
+            profile_kwargs,
+            configured.thinking_disabled_request_kwargs,
+        )
+
+    if configured.reasoning_effort and thinking_mode != "disabled":
+        profile_kwargs = _merge_request_kwargs(
+            profile_kwargs,
+            {"reasoning_effort": configured.reasoning_effort},
+        )
+    if thinking_mode == "enabled" and configured.thinking_enable_extra_body_type:
+        profile_kwargs = _merge_request_kwargs(
+            profile_kwargs,
+            {"extra_body": {"thinking": {"type": configured.thinking_enable_extra_body_type}}},
+        )
+    if thinking_mode == "disabled" and configured.thinking_disable_extra_body_type:
+        profile_kwargs = _merge_request_kwargs(
+            profile_kwargs,
+            {"extra_body": {"thinking": {"type": configured.thinking_disable_extra_body_type}}},
+        )
+    return profile_kwargs
 
 
 def supports_thinking_mode(model_id: str, *, settings: Settings | None = None) -> bool:
@@ -228,7 +287,11 @@ def resolve_model_config(
     environ: Mapping[str, str] | None = None,
     settings: Settings | None = None,
 ) -> ResolvedModelConfig:
-    env = environ or (settings.resolved_env if settings is not None and settings.resolved_env else os.environ)
+    env = (
+        environ
+        if environ is not None
+        else (settings.resolved_env if settings is not None and settings.resolved_env else os.environ)
+    )
     provider, name = parse_model_id(model_id, settings=settings)
     provider_config = _merged_provider_configs(settings).get(provider)
     backend_provider = provider_config.backend_provider if provider_config and provider_config.backend_provider else provider
@@ -255,17 +318,17 @@ def resolve_model_config(
 
     configured = _configured_model(f"{provider}:{name}", settings=settings)
     if configured is not None:
-        if thinking_mode == "enabled" and configured.thinking_enable_extra_body_type:
-            request_kwargs["extra_body"] = {
-                "thinking": {"type": configured.thinking_enable_extra_body_type}
-            }
-        if thinking_mode == "disabled":
-            if configured.thinking_disable_switch_model:
-                name = configured.thinking_disable_switch_model
-            elif configured.thinking_disable_extra_body_type:
-                request_kwargs["extra_body"] = {
-                    "thinking": {"type": configured.thinking_disable_extra_body_type}
-                }
+        effective_thinking_mode = _effective_thinking_mode(configured, thinking_mode)
+        request_kwargs = _request_kwargs_for_model(
+            configured,
+            thinking_mode=effective_thinking_mode,
+        )
+        if effective_thinking_mode == "disabled":
+            name = (
+                configured.thinking_disabled_model_name
+                or configured.thinking_disable_switch_model
+                or name
+            )
 
     return ResolvedModelConfig(
         model_id=f"{provider}:{name}",

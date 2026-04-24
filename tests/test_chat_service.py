@@ -558,6 +558,43 @@ def test_send_message_ignores_thinking_mode_for_models_without_thinking_support(
     assert payload["selected_thinking_mode"] == ""
 
 
+def test_send_message_uses_runtime_model_catalog_for_custom_thinking_model(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    graph = RecordingGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(
+            model="openai:custom-reasoning-pro",
+            model_catalog=ModelCatalogConfig(
+                models=(
+                    ConfiguredModel(
+                        id="openai:custom-reasoning-pro",
+                        label="Custom Reasoning Pro",
+                        supports_thinking=True,
+                        default_thinking_enabled=True,
+                    ),
+                ),
+            ),
+        ),
+        graph=graph,
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="hello",
+        model="openai:custom-reasoning-pro",
+    )
+
+    assert graph.last_payload["selected_model"] == "openai:custom-reasoning-pro"
+    assert graph.last_payload["selected_thinking_mode"] == "enabled"
+    assert payload["selected_model"] == "openai:custom-reasoning-pro"
+    assert payload["selected_thinking_mode"] == "enabled"
+
+
 def test_send_message_records_postgres_trajectory_payload(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")

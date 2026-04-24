@@ -56,6 +56,20 @@ def _split_listish(value: object) -> tuple[str, ...]:
     return ()
 
 
+def _copy_toml_value(value: object) -> object:
+    if isinstance(value, dict):
+        return {str(key): _copy_toml_value(nested) for key, nested in value.items()}
+    if isinstance(value, list):
+        return [_copy_toml_value(item) for item in value]
+    return value
+
+
+def _copy_toml_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): _copy_toml_value(nested) for key, nested in value.items()}
+
+
 def _tool_enabled(raw: object, default: bool = True) -> bool:
     coerced = _coerce_bool(raw)
     return default if coerced is None else coerced
@@ -143,6 +157,11 @@ class ConfiguredModel:
     label: str | None = None
     supports_thinking: bool | None = None
     default_thinking_enabled: bool | None = None
+    request_kwargs: dict[str, object] = field(default_factory=dict)
+    thinking_enabled_request_kwargs: dict[str, object] = field(default_factory=dict)
+    thinking_disabled_request_kwargs: dict[str, object] = field(default_factory=dict)
+    thinking_disabled_model_name: str | None = None
+    reasoning_effort: str | None = None
     no_temperature: bool | None = None
     thinking_enable_extra_body_type: str | None = None
     thinking_disable_extra_body_type: str | None = None
@@ -480,6 +499,17 @@ def load_model_catalog_document(
                 label=_normalize_optional_string(item.get("label")),
                 supports_thinking=_coerce_bool(item.get("supports_thinking")),
                 default_thinking_enabled=_coerce_bool(item.get("default_thinking_enabled")),
+                request_kwargs=_copy_toml_mapping(item.get("request_kwargs")),
+                thinking_enabled_request_kwargs=_copy_toml_mapping(
+                    item.get("thinking_enabled_request_kwargs")
+                ),
+                thinking_disabled_request_kwargs=_copy_toml_mapping(
+                    item.get("thinking_disabled_request_kwargs")
+                ),
+                thinking_disabled_model_name=_normalize_optional_string(
+                    item.get("thinking_disabled_model_name")
+                ),
+                reasoning_effort=_normalize_optional_string(item.get("reasoning_effort")),
                 no_temperature=_coerce_bool(item.get("no_temperature")),
                 thinking_enable_extra_body_type=_normalize_optional_string(
                     item.get("thinking_enable_extra_body_type")
