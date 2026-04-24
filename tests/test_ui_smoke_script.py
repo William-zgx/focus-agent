@@ -5,7 +5,7 @@ def test_ui_smoke_script_matches_bilingual_web_app_flow():
     root = Path(__file__).resolve().parents[1]
     script_text = (root / "scripts" / "ui_smoke_test.py").read_text(encoding="utf-8")
 
-    assert 'DEFAULT_APP_URL = "http://127.0.0.1:8000/app"' in script_text
+    assert 'DEFAULT_APP_URL = "http://127.0.0.1:5173/app/"' in script_text
     assert "newConversationLabels = ['New', 'New conversation', '新建', '新建对话']" in script_text
     assert "newBranchLabels = ['Fork branch', 'New branch', '新建分支', '创建分支']" in script_text
     assert "create branch dialog" not in script_text

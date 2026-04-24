@@ -4,12 +4,13 @@ from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessa
 from langchain.tools import tool
 
 from focus_agent.capabilities.tool_registry import ToolRegistry
-from focus_agent.config import Settings
+from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
 from focus_agent.engine.graph_builder import (
     _classify_turn_tool_policy,
     _count_tool_call_rounds_since_latest_human,
+    _ensure_reasoning_content_for_tool_call_history,
     _fallback_answer_from_tool_results,
     _looks_like_textual_tool_call_artifact,
     _messages_for_model,
@@ -79,6 +80,85 @@ def test_messages_for_model_sanitizes_assistant_tool_call_content_blocks():
     assert isinstance(assistant, AIMessage)
     assert assistant.content == "北京更暖和。"
     assert assistant.additional_kwargs["reasoning_content"] == "先比较两个城市天气。"
+
+
+def test_ensure_reasoning_content_for_thinking_tool_call_history():
+    settings = Settings(
+        model="openai:custom-reasoning-pro",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:custom-reasoning-pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                ),
+            ),
+        ),
+    )
+    messages = [
+        HumanMessage(content="查实时价格"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "tool-call-1",
+                    "name": "web_search",
+                    "args": {"query": "bitcoin price"},
+                }
+            ],
+        ),
+        ToolMessage(content='{"price":"78194.37"}', tool_call_id="tool-call-1"),
+    ]
+
+    fixed = _ensure_reasoning_content_for_tool_call_history(
+        messages,
+        model_id="openai:custom-reasoning-pro",
+        thinking_mode="",
+        settings=settings,
+    )
+
+    assistant = fixed[1]
+    assert isinstance(assistant, AIMessage)
+    assert assistant is not messages[1]
+    assert assistant.additional_kwargs["reasoning_content"]
+    assert assistant.tool_calls == messages[1].tool_calls
+
+
+def test_ensure_reasoning_content_skips_disabled_thinking_mode():
+    settings = Settings(
+        model="openai:custom-reasoning-pro",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:custom-reasoning-pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                ),
+            ),
+        ),
+    )
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "tool-call-1",
+                    "name": "web_search",
+                    "args": {"query": "bitcoin price"},
+                }
+            ],
+        )
+    ]
+
+    fixed = _ensure_reasoning_content_for_tool_call_history(
+        messages,
+        model_id="openai:custom-reasoning-pro",
+        thinking_mode="disabled",
+        settings=settings,
+    )
+
+    assert fixed == messages
+    assert "reasoning_content" not in fixed[0].additional_kwargs
 
 
 def test_messages_for_model_uses_recent_messages_when_no_tool_exchange_is_active():
@@ -784,6 +864,71 @@ def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypa
     assert tool_messages[-1].status == "error"
     assert isinstance(messages[-1], AIMessage)
     assert messages[-1].content == "handled"
+
+
+def test_graph_adds_reasoning_content_before_followup_thinking_invoke(monkeypatch):
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return f"result:{query}"
+
+    web_search.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+    }
+
+    def _assert_reasoning_prompt(prompt_messages):
+        tool_call_messages = [
+            message
+            for message in prompt_messages
+            if isinstance(message, AIMessage) and getattr(message, "tool_calls", None)
+        ]
+        assert tool_call_messages
+        assert tool_call_messages[-1].additional_kwargs["reasoning_content"]
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "search-1",
+                "name": "web_search",
+                "args": {"query": "bitcoin price"},
+            }
+        ],
+        final_answer="price found",
+        on_final_invoke=_assert_reasoning_prompt,
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    settings = Settings(
+        model="openai:custom-reasoning-pro",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:custom-reasoning-pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                ),
+            ),
+        ),
+    )
+    graph = build_graph(
+        settings=settings,
+        tool_registry=ToolRegistry(tools=(web_search,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下比特币实时价格")],
+            "selected_model": "openai:custom-reasoning-pro",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    assert result.value["messages"][-1].content == "price found"
 
 
 def test_graph_tool_executor_parallelizes_read_only_tools(monkeypatch):

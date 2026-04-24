@@ -49,7 +49,7 @@ from ..memory import (
     MemoryWriter,
     render_memory_block,
 )
-from ..model_registry import create_chat_model
+from ..model_registry import create_chat_model, default_thinking_enabled, supports_thinking_mode
 from ..skills import SkillRegistry
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
@@ -410,6 +410,63 @@ def _sanitize_assistant_tool_call_message(message: Any) -> Any:
         invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
         usage_metadata=getattr(message, "usage_metadata", None),
     )
+
+
+def _thinking_mode_requires_reasoning_content(
+    *,
+    model_id: str,
+    thinking_mode: str,
+    settings: Settings,
+) -> bool:
+    normalized = str(thinking_mode or "").strip().lower()
+    if normalized == "disabled":
+        return False
+    if normalized == "enabled":
+        return supports_thinking_mode(model_id, settings=settings)
+    return default_thinking_enabled(model_id, settings=settings)
+
+
+def _ensure_reasoning_content_for_tool_call_history(
+    messages: list[Any],
+    *,
+    model_id: str,
+    thinking_mode: str,
+    settings: Settings,
+) -> list[Any]:
+    if not _thinking_mode_requires_reasoning_content(
+        model_id=model_id,
+        thinking_mode=thinking_mode,
+        settings=settings,
+    ):
+        return messages
+
+    fixed: list[Any] = []
+    for message in messages:
+        if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
+            fixed.append(message)
+            continue
+
+        additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
+        if _stringify_message_block(additional_kwargs.get("reasoning_content")).strip():
+            fixed.append(message)
+            continue
+
+        additional_kwargs["reasoning_content"] = (
+            "Tool-call reasoning was preserved for the provider protocol."
+        )
+        fixed.append(
+            AIMessage(
+                content=getattr(message, "content", ""),
+                additional_kwargs=additional_kwargs,
+                response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
+                name=getattr(message, "name", None),
+                id=getattr(message, "id", None),
+                tool_calls=list(getattr(message, "tool_calls", []) or []),
+                invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
+                usage_metadata=getattr(message, "usage_metadata", None),
+            )
+        )
+    return fixed
 
 
 def _looks_like_textual_tool_call_artifact(message: Any) -> bool:
@@ -1241,6 +1298,12 @@ def build_graph(
         if policy_note:
             prompt_messages = [prompt_messages[0], SystemMessage(content=policy_note), *prompt_messages[1:]]
         prompt_messages = apply_prompt_budget_guard(prompt_messages, budget=context_budget)
+        prompt_messages = _ensure_reasoning_content_for_tool_call_history(
+            prompt_messages,
+            model_id=selected_model,
+            thinking_mode=selected_thinking_mode,
+            settings=settings,
+        )
         if _should_force_tool_free_answer(list(state.get("messages", []) or [])):
             forced_prompt = apply_prompt_budget_guard(
                 [
@@ -1249,6 +1312,12 @@ def build_graph(
                     *prompt_messages[1:],
                 ],
                 budget=context_budget,
+            )
+            forced_prompt = _ensure_reasoning_content_for_tool_call_history(
+                forced_prompt,
+                model_id=selected_model,
+                thinking_mode=selected_thinking_mode,
+                settings=settings,
             )
             response = model_for(selected_model, selected_thinking_mode).invoke(forced_prompt)
             response = _repair_tool_free_answer_response(

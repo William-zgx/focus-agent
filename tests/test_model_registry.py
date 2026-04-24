@@ -299,6 +299,34 @@ def test_create_chat_model_keeps_temperature_for_other_models(monkeypatch):
     assert captured["kwargs"]["temperature"] == 0.2
 
 
+def test_create_chat_model_uses_reasoning_passthrough_for_openai_thinking_model(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    settings = Settings(
+        model="openai:deepseek-v4-pro",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:deepseek-v4-pro",
+                    label="DeepSeek V4 Pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                    reasoning_effort="high",
+                    thinking_enable_extra_body_type="enabled",
+                ),
+            ),
+        ),
+    )
+
+    model = create_chat_model(
+        "openai:deepseek-v4-pro",
+        temperature=0.0,
+        settings=settings,
+    )
+
+    assert isinstance(model, MoonshotChatOpenAI)
+    assert model.model_name == "deepseek-v4-pro"
+
+
 def test_create_chat_model_uses_openai_backend_for_ollama(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -318,14 +346,8 @@ def test_create_chat_model_uses_openai_backend_for_ollama(monkeypatch):
 
 
 def test_create_chat_model_uses_structured_provider_backend(monkeypatch):
-    captured: dict[str, object] = {}
-
-    def fake_init_chat_model(model_name: str, **kwargs):
-        captured["model_name"] = model_name
-        captured["kwargs"] = kwargs
-        return object()
-
-    monkeypatch.setattr(model_registry, "init_chat_model", fake_init_chat_model)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     settings = Settings(
         model="deepseek:deepseek-reasoner",
         model_catalog=ModelCatalogConfig(
@@ -349,10 +371,12 @@ def test_create_chat_model_uses_structured_provider_backend(monkeypatch):
         ),
     )
 
-    create_chat_model(
+    model = create_chat_model(
         "deepseek:deepseek-reasoner",
         temperature=0.1,
         settings=settings,
     )
 
-    assert captured["model_name"] == "openai:deepseek-reasoner"
+    assert isinstance(model, MoonshotChatOpenAI)
+    assert model.model_name == "deepseek-reasoner"
+    assert str(model.openai_api_base).rstrip("/") == "https://api.deepseek.com"

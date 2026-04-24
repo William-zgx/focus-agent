@@ -352,6 +352,15 @@ def _effective_temperature(
     return temperature
 
 
+def _needs_openai_reasoning_passthrough(
+    model_id: str,
+    *,
+    settings: Settings | None = None,
+) -> bool:
+    configured = _configured_model(model_id, settings=settings)
+    return bool(configured and configured.supports_thinking)
+
+
 def create_chat_model(
     model_id: str,
     *,
@@ -371,10 +380,14 @@ def create_chat_model(
     effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
-    if resolved.provider == "moonshot":
+    if resolved.backend_provider == "openai" and (
+        resolved.provider == "moonshot"
+        or _needs_openai_reasoning_passthrough(model_id, settings=settings)
+    ):
         from .providers.moonshot_openai import MoonshotChatOpenAI
 
-        init_kwargs.setdefault("stream_usage", True)
+        if resolved.provider == "moonshot":
+            init_kwargs.setdefault("stream_usage", True)
         return MoonshotChatOpenAI(
             model=resolved.model_name,
             **init_kwargs,
