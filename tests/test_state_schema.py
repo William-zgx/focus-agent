@@ -39,6 +39,10 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["model_route_decision"] is None
     assert state["agent_failure_records"] == []
     assert state["agent_review_queue"] == []
+    assert state["context_budget_decision"] is None
+    assert state["context_compression_plan"] is None
+    assert state["context_artifact_refs"] == []
+    assert state["role_context_views"] == []
     assert state["memory_write_requests"] == []
     assert state["memory_write_result"] == {}
 
@@ -84,6 +88,10 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["model_route_decision"] is None
     assert normalized["agent_failure_records"] == []
     assert normalized["agent_review_queue"] == []
+    assert normalized["context_budget_decision"] is None
+    assert normalized["context_compression_plan"] is None
+    assert normalized["context_artifact_refs"] == []
+    assert normalized["role_context_views"] == []
     assert normalized["memory_write_requests"] == []
     assert normalized["memory_write_result"] == {}
 
@@ -140,6 +148,10 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
             "model_route_decision": {"enabled": True, "effective_model": "openai:gpt-4.1-mini"},
             "agent_failure_records": [{"failure_type": "tool_denied"}],
             "agent_review_queue": [{"item_id": "review-1", "status": "pending"}],
+            "context_budget_decision": {"enabled": True, "prompt_chars": 3200},
+            "context_compression_plan": {"enabled": True, "strategy": "semantic_summary_plus_refs"},
+            "context_artifact_refs": [{"artifact_id": "context/tool.txt"}],
+            "role_context_views": [{"role": "critic", "budget_ratio": 0.55}],
             "memory_write_requests": [{"kind": "turn_summary", "summary": "Carry this forward"}],
             "memory_write_result": {"prepared": 1, "written": ["mem-1"]},
         }
@@ -169,5 +181,9 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["model_route_decision"]["effective_model"] == "openai:gpt-4.1-mini"
     assert decoded["agent_failure_records"][0]["failure_type"] == "tool_denied"
     assert decoded["agent_review_queue"][0]["status"] == "pending"
+    assert decoded["context_budget_decision"]["prompt_chars"] == 3200
+    assert decoded["context_compression_plan"]["strategy"] == "semantic_summary_plus_refs"
+    assert decoded["context_artifact_refs"][0]["artifact_id"] == "context/tool.txt"
+    assert decoded["role_context_views"][0]["role"] == "critic"
     assert decoded["memory_write_requests"][0]["kind"] == "turn_summary"
     assert decoded["memory_write_result"]["written"] == ["mem-1"]

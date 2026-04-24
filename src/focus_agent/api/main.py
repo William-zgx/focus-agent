@@ -16,6 +16,10 @@ from focus_agent.agent_delegation import (
     build_model_route_decision,
     build_self_repair_preview,
 )
+from focus_agent.agent_context_engineering import (
+    build_context_engineering_decision,
+    build_context_policy,
+)
 from focus_agent.capabilities.tool_router import build_capability_registry, build_tool_route_plan
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ConversationRecord
@@ -61,6 +65,11 @@ from .contracts import (
     AgentModelRouterPolicyResponse,
     AgentReviewQueueDecisionResponse,
     AgentReviewQueueListResponse,
+    AgentContextArtifactListResponse,
+    AgentContextDecisionListResponse,
+    AgentContextPolicyResponse,
+    AgentContextPreviewRequest,
+    AgentContextPreviewResponse,
     AgentSelfRepairFailureListResponse,
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
@@ -981,6 +990,12 @@ def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
         "# HELP focus_agent_failure_count Agent failure records observed in trajectory plan_meta.",
         "# TYPE focus_agent_failure_count gauge",
         _prometheus_metric_line("focus_agent_failure_count", int(metrics.get("agent_failures") or 0)),
+        "# HELP focus_agent_context_artifact_ref_count Context Engineering artifact refs observed in trajectory plan_meta.",
+        "# TYPE focus_agent_context_artifact_ref_count gauge",
+        _prometheus_metric_line("focus_agent_context_artifact_ref_count", int(metrics.get("context_artifact_refs") or 0)),
+        "# HELP focus_agent_context_over_budget_count Context Engineering over-budget decisions observed in trajectory plan_meta.",
+        "# TYPE focus_agent_context_over_budget_count gauge",
+        _prometheus_metric_line("focus_agent_context_over_budget_count", int(metrics.get("context_over_budget") or 0)),
     ]
 
 
@@ -995,6 +1010,8 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
         "agent_review_pending": 0,
         "model_router_fallback": 0,
         "agent_failures": 0,
+        "context_artifact_refs": 0,
+        "context_over_budget": 0,
     }
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
@@ -1023,6 +1040,12 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
             metrics["agent_review_pending"] += len(
                 [item for item in review_queue if isinstance(item, dict) and item.get("status") == "pending"]
             )
+        context_refs = plan_meta.get("context_artifact_refs")
+        if isinstance(context_refs, list):
+            metrics["context_artifact_refs"] += len(context_refs)
+        context_budget = plan_meta.get("context_budget_decision")
+        if isinstance(context_budget, dict):
+            metrics["context_over_budget"] += 1 if int(context_budget.get("over_budget_chars") or 0) > 0 else 0
     return metrics
 
 
@@ -1546,6 +1569,70 @@ def create_app() -> FastAPI:
         del principal
         item = apply_review_decision({"item_id": item_id, "item_type": "manual", "summary": "Rejected by operator."}, approved=False)
         return AgentReviewQueueDecisionResponse(item=item.model_dump(mode="json"))
+
+    @app.get('/v1/agent/context/policy', response_model=AgentContextPolicyResponse)
+    def get_agent_context_policy(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentContextPolicyResponse:
+        del principal
+        return AgentContextPolicyResponse(**build_context_policy(runtime.settings))
+
+    @app.post('/v1/agent/context/preview', response_model=AgentContextPreviewResponse)
+    def preview_agent_context(
+        payload: AgentContextPreviewRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentContextPreviewResponse:
+        del principal
+        decision = build_context_engineering_decision(
+            settings=runtime.settings,
+            state=dict(payload.state or {}),
+            prompt_mode=payload.prompt_mode,
+            assembled_context=payload.assembled_context,
+            role=payload.role,
+            artifact_dir=runtime.settings.artifact_dir,
+            materialize=payload.materialize_artifacts,
+        )
+        return AgentContextPreviewResponse(decision=decision.model_dump(mode="json"))
+
+    @app.get('/v1/agent/context/decisions', response_model=AgentContextDecisionListResponse)
+    def list_agent_context_decisions(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentContextDecisionListResponse:
+        del principal
+        items, available, error = _list_plan_meta_decisions(
+            runtime=runtime,
+            key="context_budget_decision",
+            limit=limit,
+        )
+        return AgentContextDecisionListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.get('/v1/agent/context/artifacts', response_model=AgentContextArtifactListResponse)
+    def list_agent_context_artifacts(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentContextArtifactListResponse:
+        del principal
+        items, available, error = _list_plan_meta_list_items(
+            runtime=runtime,
+            key="context_artifact_refs",
+            limit=limit,
+        )
+        return AgentContextArtifactListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
 
     @app.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)
     def get_observability_overview(

@@ -16,6 +16,7 @@ from ..agent_delegation import (
     build_model_route_decision,
     build_review_queue,
 )
+from ..agent_context_engineering import build_context_engineering_decision
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..capabilities.tool_runtime import (
     ToolExecutionInput,
@@ -916,15 +917,44 @@ def build_graph(
         task_brief = state.get("task_brief")
         if not task_brief and latest_user:
             task_brief = latest_user[:300]
-        return {
+        assembled_context = context_slice.render_prompt()
+        updates: dict[str, Any] = {
             "recent_messages": context_slice.recent_messages,
-            "assembled_context": context_slice.render_prompt(),
+            "assembled_context": assembled_context,
             "task_brief": task_brief or state.get("task_brief", ""),
             "prompt_mode": prompt_mode,
             "active_skill_ids": list(active_skill_ids),
             "active_skills_block": active_skills_block,
             "available_skills_block": available_skills_block,
         }
+        if settings.agent_context_engineering_v2_enabled:
+            decision = build_context_engineering_decision(
+                settings=settings,
+                state={
+                    **dict(state),
+                    "recent_messages": context_slice.recent_messages,
+                    "context_budget": _context_budget_from_state(state),
+                },
+                prompt_mode=prompt_mode,
+                assembled_context=assembled_context,
+                role="executor",
+                artifact_dir=settings.artifact_dir,
+            ).model_dump(mode="json")
+            compressed_prompt = decision.pop("compressed_prompt", None)
+            if compressed_prompt:
+                updates["assembled_context"] = str(compressed_prompt)
+            updates["context_budget_decision"] = decision.get("budget")
+            updates["context_compression_plan"] = decision.get("compression_plan")
+            updates["context_artifact_refs"] = list(decision.get("artifact_refs") or [])
+            updates["role_context_views"] = list(decision.get("role_context_views") or [])
+            updates["plan_meta"] = {
+                **(state.get("plan_meta") or {}),
+                "context_budget_decision": updates["context_budget_decision"],
+                "context_compression_plan": updates["context_compression_plan"],
+                "context_artifact_refs": updates["context_artifact_refs"],
+                "role_context_views": updates["role_context_views"],
+            }
+        return updates
 
     def role_route_dry_run(state: AgentState) -> dict[str, Any]:
         if not settings.agent_role_routing_enabled:

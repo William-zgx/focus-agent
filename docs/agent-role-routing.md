@@ -17,7 +17,8 @@ This note defines the release gate for Agent role routing and governance without
 - Tool Router is controlled by `AGENT_TOOL_ROUTER_ENABLED`; when `AGENT_TOOL_ROUTER_ENFORCE=true`, denied tools are not bound to the model.
 - Model Router is controlled by `AGENT_MODEL_ROUTER_ENABLED`; observe mode records `model_route_decision`, enforce mode may replace the effective role model.
 - Self-repair and Review Queue are controlled by `AGENT_SELF_REPAIR_ENABLED` and `AGENT_REVIEW_QUEUE_ENABLED`; they record failure candidates and pending human-review items without writing eval datasets automatically.
-- Web operators can inspect role routing, memory curator, tool route, delegation, model route, self-repair, and review queue records at `/app/agent/governance` (`/app/agent/roles` remains compatible).
+- Context Engineering v2 is controlled by `AGENT_CONTEXT_ENGINEERING_V2_ENABLED`; long context compression and artifact refs are recorded in `plan_meta` and only materialize long observations when `AGENT_CONTEXT_ARTIFACTIZE_LONG_OBSERVATIONS=true`.
+- Web operators can inspect role routing, memory curator, tool route, delegation, model route, self-repair, review queue, and context engineering records at `/app/agent/governance` (`/app/agent/roles` remains compatible).
 
 ## Eval Gate
 
@@ -27,12 +28,13 @@ Run this gate whenever role routing, planning, tool policy, memory preview, or m
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
+uv run python -m tests.eval --suite agent_context --concurrency 1
 ```
 
 For framework-only validation without provider credentials:
 
 ```bash
-uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py
+uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py
 ```
 
 If the Web console or SDK contract changed, pair the gate with:

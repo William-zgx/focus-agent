@@ -637,6 +637,11 @@ class Settings:
     agent_model_router_mode: str = "observe"
     agent_self_repair_enabled: bool = False
     agent_review_queue_enabled: bool = False
+    agent_context_engineering_v2_enabled: bool = False
+    agent_context_artifactize_long_observations: bool = False
+    agent_context_role_views_enabled: bool = False
+    agent_context_tokenizer_mode: str = "chars_fallback"
+    agent_context_artifact_min_chars: int = 12000
     trajectory_enabled: bool | None = None
     trajectory_observation_max_chars: int = 4000
     trajectory_answer_max_chars: int = 4000
@@ -855,6 +860,33 @@ class Settings:
                 "AGENT_REVIEW_QUEUE_ENABLED",
                 "true" if defaults.agent_review_queue_enabled else "false",
             ).lower() in {"1", "true", "yes", "on"},
+            agent_context_engineering_v2_enabled=env.get(
+                "AGENT_CONTEXT_ENGINEERING_V2_ENABLED",
+                "true" if defaults.agent_context_engineering_v2_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_context_artifactize_long_observations=env.get(
+                "AGENT_CONTEXT_ARTIFACTIZE_LONG_OBSERVATIONS",
+                "true" if defaults.agent_context_artifactize_long_observations else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_context_role_views_enabled=env.get(
+                "AGENT_CONTEXT_ROLE_VIEWS_ENABLED",
+                "true" if defaults.agent_context_role_views_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_context_tokenizer_mode=(
+                "tokenizer_first"
+                if str(env.get("AGENT_CONTEXT_TOKENIZER_MODE", defaults.agent_context_tokenizer_mode)).lower()
+                == "tokenizer_first"
+                else "chars_fallback"
+            ),
+            agent_context_artifact_min_chars=max(
+                1,
+                int(
+                    env.get(
+                        "AGENT_CONTEXT_ARTIFACT_MIN_CHARS",
+                        str(defaults.agent_context_artifact_min_chars),
+                    )
+                ),
+            ),
             trajectory_enabled=(
                 bool(database_uri) if trajectory_enabled is None else trajectory_enabled
             ),

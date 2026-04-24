@@ -216,6 +216,41 @@ class AgentReviewQueueDecisionResponse(BaseModel):
     item: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentContextPolicyResponse(BaseModel):
+    enabled: bool = False
+    artifactize_long_observations: bool = False
+    role_views_enabled: bool = False
+    tokenizer_mode: str = "chars_fallback"
+    artifact_min_chars: int = 12000
+    default_off_legacy_safe: bool = True
+
+
+class AgentContextPreviewRequest(BaseModel):
+    state: dict[str, Any] = Field(default_factory=dict)
+    prompt_mode: str = "explore"
+    role: str = "executor"
+    assembled_context: str | None = None
+    materialize_artifacts: bool = False
+
+
+class AgentContextPreviewResponse(BaseModel):
+    decision: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentContextDecisionListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentContextArtifactListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
 class ConversationSummaryResponse(BaseModel):
     root_thread_id: str
     title: str

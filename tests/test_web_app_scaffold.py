@@ -95,7 +95,14 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "Model Router" in agent_console_text
     assert "Self Repair" in agent_console_text
     assert "Review Queue" in agent_console_text
+    assert "Context Engineering v2" in agent_console_text
     assert "listAgentDelegationRuns" in agent_console_text
+    assert "previewAgentContext" in agent_console_text
+    assert "listAgentContextArtifacts" in agent_console_text
+
+    query_keys_text = (web_root / "src" / "shared" / "query" / "query-keys.ts").read_text()
+    assert "agentContextPolicy" in query_keys_text
+    assert "agentContextArtifacts" in query_keys_text
 
     stream_hook_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"

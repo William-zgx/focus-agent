@@ -1,5 +1,9 @@
 import {
   type FocusAgentCapabilityListResponse,
+  type FocusAgentContextArtifactListResponse,
+  type FocusAgentContextDecisionListResponse,
+  type FocusAgentContextPolicyResponse,
+  type FocusAgentContextPreviewResponse,
   type FocusAgentDelegationPolicyResponse,
   type FocusAgentDelegationRunListResponse,
   type FocusAgentMemoryCuratorDecisionListResponse,
@@ -155,6 +159,33 @@ function useAgentReviewQueue() {
   });
 }
 
+function useAgentContextPolicy() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentContextPolicyResponse>({
+    queryKey: queryKeys.agentContextPolicy,
+    queryFn: () => client.getAgentContextPolicy(),
+    enabled: ready,
+  });
+}
+
+function useAgentContextDecisions() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentContextDecisionListResponse>({
+    queryKey: queryKeys.agentContextDecisions(50),
+    queryFn: () => client.listAgentContextDecisions(50),
+    enabled: ready,
+  });
+}
+
+function useAgentContextArtifacts() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentContextArtifactListResponse>({
+    queryKey: queryKeys.agentContextArtifacts(50),
+    queryFn: () => client.listAgentContextArtifacts(50),
+    enabled: ready,
+  });
+}
+
 export function AgentRoleConsolePage() {
   const { client } = useFocusAgent();
   const { isChineseUi } = useShellUi();
@@ -174,6 +205,9 @@ export function AgentRoleConsolePage() {
   const modelRouterDecisions = useAgentModelRouterDecisions();
   const selfRepairFailures = useAgentSelfRepairFailures();
   const reviewQueue = useAgentReviewQueue();
+  const contextPolicy = useAgentContextPolicy();
+  const contextDecisions = useAgentContextDecisions();
+  const contextArtifacts = useAgentContextArtifacts();
   const [toolRouteRole, setToolRouteRole] = useState("executor");
   const [toolRoutePolicy, setToolRoutePolicy] = useState("execution");
   const dryRun = useMutation<FocusAgentRoleDryRunResponse, Error>({
@@ -198,6 +232,21 @@ export function AgentRoleConsolePage() {
           .filter(Boolean),
       }),
   });
+  const contextPreview = useMutation<FocusAgentContextPreviewResponse, Error>({
+    mutationFn: () =>
+      client.previewAgentContext({
+        prompt_mode: "execute",
+        role: "executor",
+        assembled_context: `${message}\n\n${availableTools.repeat(80)}`,
+        state: {
+          context_budget: {
+            prompt_token_limit: 1200,
+            chars_per_token: 1,
+          },
+          rolling_summary: message.repeat(20),
+        },
+      }),
+  });
   const dryRunPlan = asRecord(dryRun.data?.plan);
   const dryRunDecisions = asArray(dryRunPlan.decisions);
   const toolRoutePlan = asRecord(toolRoute.data?.plan);
@@ -214,6 +263,11 @@ export function AgentRoleConsolePage() {
   const recentModelRouteItems = modelRouterDecisions.data?.items ?? [];
   const recentFailures = selfRepairFailures.data?.items ?? [];
   const reviewQueueItems = reviewQueue.data?.items ?? [];
+  const recentContextDecisions = contextDecisions.data?.items ?? [];
+  const recentContextArtifacts = contextArtifacts.data?.items ?? [];
+  const contextPreviewDecision = asRecord(contextPreview.data?.decision);
+  const contextPreviewBudget = asRecord(contextPreviewDecision.budget);
+  const contextPreviewPlan = asRecord(contextPreviewDecision.compression_plan);
 
   return (
     <div className="fa-observability-layout fa-agent-role-console">
@@ -266,6 +320,11 @@ export function AgentRoleConsolePage() {
             <span>{isChineseUi ? "Delegation" : "Delegation"}</span>
             <strong>{delegationPolicy.data?.enabled ? "enabled" : "disabled"}</strong>
             <p>{delegationPolicy.data?.enforce ? "enforce" : "observe"}</p>
+          </div>
+          <div className="fa-observability-stat-card">
+            <span>{isChineseUi ? "Context v2" : "Context v2"}</span>
+            <strong>{contextPolicy.data?.enabled ? "enabled" : "disabled"}</strong>
+            <p>{contextPolicy.data?.artifactize_long_observations ? "artifact refs on" : "preview safe"}</p>
           </div>
         </div>
       </section>
@@ -582,6 +641,102 @@ export function AgentRoleConsolePage() {
         </div>
       </section>
 
+      <section className="fa-agent-role-grid">
+        <div className="fa-observability-list-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Context Engineering v2" : "Context Engineering v2"}</strong>
+              <h2>{isChineseUi ? "长上下文压缩策略" : "Long Context Policy"}</h2>
+            </div>
+            <span>{contextPolicy.data?.enabled ? "enabled" : "disabled"}</span>
+          </div>
+          {contextPolicy.error ? (
+            <div className="fa-inline-notice is-danger">
+              {errorMessage(contextPolicy.error, "Failed to load context policy")}
+            </div>
+          ) : null}
+          <div className="fa-agent-role-model-list">
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "Tokenizer" : "Tokenizer"}</span>
+              <strong>{contextPolicy.data?.tokenizer_mode ?? "chars_fallback"}</strong>
+            </div>
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "Artifact 阈值" : "Artifact threshold"}</span>
+              <strong>{contextPolicy.data?.artifact_min_chars ?? 12000}</strong>
+            </div>
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "角色视图" : "Role views"}</span>
+              <strong>{String(contextPolicy.data?.role_views_enabled ?? false)}</strong>
+            </div>
+          </div>
+          <div className="fa-observability-command-bar">
+            <button
+              className="fa-observability-preset is-primary"
+              disabled={contextPreview.isPending}
+              onClick={() => contextPreview.mutate()}
+              type="button"
+            >
+              {contextPreview.isPending
+                ? isChineseUi
+                  ? "预览中..."
+                  : "Previewing..."
+                : isChineseUi
+                  ? "预览压缩决策"
+                  : "Preview Context"}
+            </button>
+          </div>
+          {contextPreview.error ? (
+            <div className="fa-inline-notice is-danger">
+              {errorMessage(contextPreview.error, "Context preview request failed")}
+            </div>
+          ) : null}
+          {contextPreview.data ? (
+            <div className="fa-agent-role-model-list">
+              <div className="fa-agent-role-model-row">
+                <span>{isChineseUi ? "Prompt chars" : "Prompt chars"}</span>
+                <strong>{String(contextPreviewBudget.prompt_chars ?? 0)}</strong>
+              </div>
+              <div className="fa-agent-role-model-row">
+                <span>{isChineseUi ? "Over budget" : "Over budget"}</span>
+                <strong>{String(contextPreviewBudget.over_budget_chars ?? 0)}</strong>
+              </div>
+              <div className="fa-agent-role-model-row">
+                <span>{isChineseUi ? "Saved chars" : "Saved chars"}</span>
+                <strong>{String(contextPreviewPlan.estimated_saved_chars ?? 0)}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "运行一次预览后，这里会展示预算和压缩结果。" : "Run a preview to inspect budget and compression output."}
+            </div>
+          )}
+        </div>
+
+        <div className="fa-observability-detail-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Context Artifacts" : "Context Artifacts"}</strong>
+              <h2>{isChineseUi ? "Artifact 化证据" : "Artifactized Evidence"}</h2>
+            </div>
+            <span>{contextArtifacts.data?.trajectory_available ? `${recentContextArtifacts.length} refs` : "not available"}</span>
+          </div>
+          {recentContextArtifacts.slice(0, 5).map((item, index) => (
+            <details className="fa-agent-role-trajectory-row" key={`context-artifact-${index}`}>
+              <summary>
+                <span>{String(item.title ?? item.artifact_id ?? "artifact")}</span>
+                <strong>{String(item.source ?? "context")}</strong>
+              </summary>
+              <pre>{jsonPreview(item)}</pre>
+            </details>
+          ))}
+          {!recentContextArtifacts.length ? (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "还没有 context artifact trajectory 记录。" : "No context artifact trajectory records yet."}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
       <section className="fa-observability-detail-block fa-agent-role-trajectory">
         <div className="fa-observability-panel-header">
           <div>
@@ -609,6 +764,30 @@ export function AgentRoleConsolePage() {
             </div>
           ) : null}
         </div>
+      </section>
+
+      <section className="fa-observability-detail-block fa-agent-role-trajectory">
+        <div className="fa-observability-panel-header">
+          <div>
+            <strong>{isChineseUi ? "Context Decisions" : "Context Decisions"}</strong>
+            <h2>{isChineseUi ? "最近上下文预算记录" : "Recent Context Budget Records"}</h2>
+          </div>
+          <span>{contextDecisions.data?.trajectory_available ? `${contextDecisions.data.count} records` : "not available"}</span>
+        </div>
+        {recentContextDecisions.slice(0, 8).map((item, index) => (
+          <details className="fa-agent-role-trajectory-row" key={`context-decision-${index}`}>
+            <summary>
+              <span>{String(item.turn_id ?? "turn")}</span>
+              <strong>{`${String(item.prompt_chars ?? 0)} / ${String(item.prompt_budget_chars ?? 0)} chars`}</strong>
+            </summary>
+            <pre>{jsonPreview(item)}</pre>
+          </details>
+        ))}
+        {!recentContextDecisions.length ? (
+          <div className="fa-observability-empty is-compact">
+            {isChineseUi ? "还没有 context_budget_decision trajectory 记录。" : "No context budget records yet."}
+          </div>
+        ) : null}
       </section>
 
       <section className="fa-observability-detail-block fa-agent-role-trajectory">

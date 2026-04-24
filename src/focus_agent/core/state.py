@@ -126,6 +126,13 @@ class AgentState(TypedDict, total=False):
     agent_failure_records: list[dict[str, Any]]
     agent_review_queue: list[dict[str, Any]]
 
+    # Written by Context Engineering v2 when enabled. These describe context
+    # budget, compression, artifact references, and role-specific prompt views.
+    context_budget_decision: dict[str, Any] | None
+    context_compression_plan: dict[str, Any] | None
+    context_artifact_refs: list[dict[str, Any]]
+    role_context_views: list[dict[str, Any]]
+
     # Written by extraction nodes after a turn, read by persistence nodes,
     # and never merge-imported because it is a transient write queue.
     memory_write_requests: list[dict[str, Any]]
@@ -177,6 +184,10 @@ def initial_agent_state() -> AgentState:
         "model_route_decision": None,
         "agent_failure_records": [],
         "agent_review_queue": [],
+        "context_budget_decision": None,
+        "context_compression_plan": None,
+        "context_artifact_refs": [],
+        "role_context_views": [],
         "memory_write_requests": [],
         "memory_write_result": {},
         "plan": None,

@@ -15,6 +15,11 @@ from focus_agent.api.schemas import (
     AgentModelRouterPolicyResponse,
     AgentReviewQueueDecisionResponse,
     AgentReviewQueueListResponse,
+    AgentContextArtifactListResponse,
+    AgentContextDecisionListResponse,
+    AgentContextPolicyResponse,
+    AgentContextPreviewRequest,
+    AgentContextPreviewResponse,
     AgentSelfRepairFailureListResponse,
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
@@ -243,6 +248,14 @@ def test_agent_role_contract_shapes():
     promote_response = AgentSelfRepairPromotePreviewResponse(preview={"candidates": []})
     review_queue = AgentReviewQueueListResponse(items=[{"item_id": "review-1"}], count=1)
     review_response = AgentReviewQueueDecisionResponse(item={"item_id": "review-1", "status": "approved"})
+    context_policy = AgentContextPolicyResponse(enabled=True, artifact_min_chars=12000)
+    context_preview_request = AgentContextPreviewRequest(
+        state={"context_budget": {"prompt_token_limit": 1200}},
+        assembled_context="long context",
+    )
+    context_preview = AgentContextPreviewResponse(decision={"budget": {"prompt_chars": 12}})
+    context_decisions = AgentContextDecisionListResponse(items=[{"prompt_chars": 12}], count=1)
+    context_artifacts = AgentContextArtifactListResponse(items=[{"artifact_id": "context/a.txt"}], count=1)
 
     assert delegation_request.scene == "agent_delegation_console"
     assert delegation_response.plan["runs"][0]["role"] == "executor"
@@ -256,6 +269,11 @@ def test_agent_role_contract_shapes():
     assert promote_response.preview["candidates"] == []
     assert review_queue.items[0]["item_id"] == "review-1"
     assert review_response.item["status"] == "approved"
+    assert context_policy.tokenizer_mode == "chars_fallback"
+    assert context_preview_request.prompt_mode == "explore"
+    assert context_preview.decision["budget"]["prompt_chars"] == 12
+    assert context_decisions.count == 1
+    assert context_artifacts.items[0]["artifact_id"] == "context/a.txt"
 
 
 def test_conversation_contract_shapes():

@@ -8,6 +8,11 @@ import type {
   FocusAgentConversationSummary,
   FocusAgentCreateConversationRequest,
   FocusAgentCapabilityListResponse,
+  FocusAgentContextArtifactListResponse,
+  FocusAgentContextDecisionListResponse,
+  FocusAgentContextPolicyResponse,
+  FocusAgentContextPreviewRequest,
+  FocusAgentContextPreviewResponse,
   FocusAgentDemoTokenRequest,
   FocusAgentDelegationPlanRequest,
   FocusAgentDelegationPlanResponse,
@@ -435,6 +440,51 @@ export class FocusAgentClient {
       `/v1/agent/review-queue/${encodeURIComponent(itemId)}/reject`,
       {
         method: "POST",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getAgentContextPolicy(): Promise<FocusAgentContextPolicyResponse> {
+    return this.requestJson<FocusAgentContextPolicyResponse>("/v1/agent/context/policy", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async previewAgentContext(
+    request: FocusAgentContextPreviewRequest,
+  ): Promise<FocusAgentContextPreviewResponse> {
+    return this.requestJson<FocusAgentContextPreviewResponse>("/v1/agent/context/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentContextDecisions(limit = 50): Promise<FocusAgentContextDecisionListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentContextDecisionListResponse>(
+      `/v1/agent/context/decisions${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async listAgentContextArtifacts(limit = 50): Promise<FocusAgentContextArtifactListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentContextArtifactListResponse>(
+      `/v1/agent/context/artifacts${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
         headers: {},
       },
       true,

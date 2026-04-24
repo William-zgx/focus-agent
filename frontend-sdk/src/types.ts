@@ -401,6 +401,41 @@ export interface FocusAgentReviewQueueDecisionResponse {
   item: Record<string, unknown>;
 }
 
+export interface FocusAgentContextPolicyResponse {
+  enabled: boolean;
+  artifactize_long_observations: boolean;
+  role_views_enabled: boolean;
+  tokenizer_mode: string;
+  artifact_min_chars: number;
+  default_off_legacy_safe: boolean;
+}
+
+export interface FocusAgentContextPreviewRequest {
+  state?: Record<string, unknown>;
+  prompt_mode?: string;
+  role?: string;
+  assembled_context?: string | null;
+  materialize_artifacts?: boolean;
+}
+
+export interface FocusAgentContextPreviewResponse {
+  decision: Record<string, unknown>;
+}
+
+export interface FocusAgentContextDecisionListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentContextArtifactListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
 export interface FocusAgentConversationSummary {
   root_thread_id: string;
   title: string;

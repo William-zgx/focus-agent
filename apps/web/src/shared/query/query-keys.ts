@@ -20,4 +20,7 @@ export const queryKeys = {
   agentModelRouterDecisions: (limit: number) => ["agent-model-router-decisions", limit] as const,
   agentSelfRepairFailures: (limit: number) => ["agent-self-repair-failures", limit] as const,
   agentReviewQueue: (limit: number) => ["agent-review-queue", limit] as const,
+  agentContextPolicy: ["agent-context-policy"] as const,
+  agentContextDecisions: (limit: number) => ["agent-context-decisions", limit] as const,
+  agentContextArtifacts: (limit: number) => ["agent-context-artifacts", limit] as const,
 };
