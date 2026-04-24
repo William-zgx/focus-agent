@@ -26,11 +26,14 @@ A skill should answer: "How should the agent approach this kind of task?"
 
 The intended flow is:
 
-```text
-User request
-  -> Skill selects the working method
-  -> Tool performs concrete operations
-  -> Memory, notes, tasks, artifacts, or conversation state persist the result
+```mermaid
+flowchart LR
+    User["User request"] --> Skill["Skill selects workflow"]
+    Skill --> Router["Tool Router narrows tools"]
+    Router --> Tool["Tool performs operation"]
+    Tool --> Result["Observation / artifact / memory"]
+    Result --> Agent["Agent response"]
+    Result --> Persist["Store, artifact, or conversation state"]
 ```
 
 ## Tool Boundary
@@ -231,6 +234,23 @@ The newer product primitives make the agent useful beyond repository work: expli
 
 Tool execution is mediated by runtime metadata rather than ad hoc logic in each graph node.
 
+The runtime policy keeps scheduling, cache reuse, side effects, and observation trimming outside individual tool implementations. Tools describe their behavior; the runtime applies the common execution rules.
+
+```mermaid
+flowchart LR
+    Call["Tool call"] --> Metadata["runtime metadata"]
+    Metadata --> Scheduler{"parallel safe?"}
+    Scheduler -- "yes" --> Parallel["parallel round"]
+    Scheduler -- "no" --> Serial["serial boundary"]
+    Parallel --> Cache{"cacheable?"}
+    Serial --> Effect{"side effect?"}
+    Cache -- "hit" --> Observation["trimmed observation"]
+    Cache -- "miss" --> Execute["tool execution"]
+    Effect -- "yes" --> Invalidate["invalidate scoped cache"]
+    Execute --> Observation
+    Invalidate --> Observation
+```
+
 - `parallel_safe` read-only tools can run in the same tool round concurrently.
 - `cacheable` tools may reuse deterministic observations within their declared scope.
 - `side_effect` tools keep a serial boundary and invalidate the current turn/thread/branch namespaces after a successful write.
@@ -246,6 +266,20 @@ Cache scopes are intentionally conservative:
 Execution control fields that require cancellation or hard deadlines should not be exposed until the runtime can enforce them. In particular, timeout/cancel behavior should be treated as a separate runtime feature, not as passive metadata.
 
 ## Product Tool Taxonomy
+
+Product tools should be grouped by the kind of user-visible state or evidence they handle. This taxonomy keeps primitive operations separate from skills that decide when to combine them.
+
+```mermaid
+flowchart TD
+    Tools["Product tools"] --> Retrieval["Retrieval"]
+    Tools --> Persistence["Persistence"]
+    Tools --> Conversation["Conversation"]
+    Tools --> Utility["Utility"]
+    Retrieval --> Evidence["evidence and context"]
+    Persistence --> Stores["memory, notes, tasks, artifacts"]
+    Conversation --> Thread["thread and branch state"]
+    Utility --> Deterministic["deterministic helpers"]
+```
 
 ### Retrieval Tools
 
@@ -322,6 +356,20 @@ Potential future skills after those stores exist:
 - `project-catchup`: summarize a conversation and save follow-up tasks or notes.
 
 ## Permission and Safety Rules
+
+Tool safety is enforced at multiple boundaries: configuration controls whether a tool exists, routing controls whether the current role can see it, and the tool output controls what is exposed back to the model and UI.
+
+```mermaid
+flowchart LR
+    Config["Installation config"] --> Available["available tool set"]
+    Available --> Router["Tool Router"]
+    Router --> Allowed{"allowed for role?"}
+    Allowed -- "no" --> Denied["structured denial"]
+    Allowed -- "yes" --> Execute["execute primitive"]
+    Execute --> Output["structured output"]
+    Output --> Redact["redact secrets + trim"]
+    Redact --> UI["model + activity card"]
+```
 
 - Read tools should be explicit about scope and truncation.
 - Write tools should return stable ids or paths for follow-up turns.

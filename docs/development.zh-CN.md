@@ -2,6 +2,23 @@
 
 这份文档收拢日常开发和验证命令，不把命令矩阵继续堆在根目录 README 里。
 
+```mermaid
+flowchart TD
+    Change["代码或文档改动"] --> Scope{"改动范围"}
+    Scope --> Backend["后端 / contract"]
+    Scope --> Web["Web App"]
+    Scope --> SDK["Frontend SDK"]
+    Scope --> Agent["Agent Governance"]
+    Backend --> CI["make lint + make ci-test"]
+    Web --> WebChecks["make web-check + make web-build"]
+    SDK --> SDKChecks["make sdk-check + make sdk-build"]
+    Agent --> Eval["agent eval suites + governance tests"]
+    CI --> Done["进入 review"]
+    WebChecks --> Done
+    SDKChecks --> Done
+    Eval --> Done
+```
+
 ## 命令矩阵
 
 ```bash

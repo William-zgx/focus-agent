@@ -4,6 +4,23 @@
 
 这份索引是 `docs/` 的唯一导航入口。根目录 README 保持轻量；更完整的说明集中到这里，并按使用场景分组。
 
+```mermaid
+flowchart LR
+    README["Root README"] --> Quick["Quick Start"]
+    README --> Docs["Docs Index"]
+    Docs --> Understand["Understand System"]
+    Docs --> Topics["Core Topics"]
+    Docs --> Ops["Operations"]
+    Understand --> Architecture["Architecture"]
+    Understand --> Roadmap["Roadmap"]
+    Topics --> Governance["Agent Governance"]
+    Topics --> Memory["Memory"]
+    Topics --> Tools["Tool / Skill"]
+    Ops --> Docker["Docker Deployment"]
+    Ops --> Observability["Observability Runbook"]
+    Ops --> Release["Release Checklist"]
+```
+
 ## 快速使用
 
 - [../README.md](../README.md) / [../README.zh-CN.md](../README.zh-CN.md)：项目介绍、最短启动路径和核心入口。

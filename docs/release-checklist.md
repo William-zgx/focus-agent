@@ -2,6 +2,16 @@
 
 This checklist is intended for maintainers preparing Focus Agent for a public release or a tagged internal milestone.
 
+```mermaid
+flowchart LR
+    Repo["Repository readiness"] --> Product["Product and API review"]
+    Product --> Config["Configuration review"]
+    Config --> Quality["Quality checks"]
+    Quality --> Security["Security review"]
+    Security --> Package["Release packaging"]
+    Package --> Followup["Post-release follow-up"]
+```
+
 ## Repository Readiness
 
 - Confirm `README.md` reflects the current project scope and setup flow

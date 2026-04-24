@@ -2,6 +2,19 @@
 
 这份文档承接根目录 README 里的最短启动路径，补充完整的本地运行说明。
 
+```mermaid
+flowchart LR
+    Setup["本地初始化"] --> Config[".focus_agent 配置"]
+    Config --> Build["构建 Web bundle"]
+    Build --> Start["make api / make serve-dev"]
+    Start --> Postgres{"是否已设置 DATABASE_URI?"}
+    Postgres -- "否" --> Managed["托管 repo-local PostgreSQL"]
+    Postgres -- "是" --> External["使用外部数据库"]
+    Managed --> App["打开 /app"]
+    External --> App
+    App --> Observe["检查 /readyz, /metrics 和观测页面"]
+```
+
 ## 1. 本地初始化
 
 ```bash

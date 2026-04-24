@@ -7,6 +7,20 @@
 1. 现在仓库已经完成到了哪一步。
 2. 下一阶段还应该优先收口什么。
 
+```mermaid
+flowchart LR
+    Baseline["Current baseline"] --> Product["Engineering + product closure"]
+    Baseline --> Agent["Agent capability closure"]
+    Product --> Ops["Postgres, deployment, observability"]
+    Product --> Regression["UI/API/eval regression"]
+    Agent --> Governance["Governance quality"]
+    Agent --> Memory["Memory and context quality"]
+    Governance --> Release["Release-ready confidence"]
+    Memory --> Release
+    Ops --> Release
+    Regression --> Release
+```
+
 ## 1. 当前基线
 
 截至 2026-04-24，以下能力已经应视为默认基线，而不是待启动事项：

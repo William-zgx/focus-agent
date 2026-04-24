@@ -2,6 +2,23 @@
 
 This guide collects the day-to-day development and validation commands that do not belong in the root README.
 
+```mermaid
+flowchart TD
+    Change["Code or docs change"] --> Scope{"What changed?"}
+    Scope --> Backend["Backend / contracts"]
+    Scope --> Web["Web app"]
+    Scope --> SDK["Frontend SDK"]
+    Scope --> Agent["Agent governance"]
+    Backend --> CI["make lint + make ci-test"]
+    Web --> WebChecks["make web-check + make web-build"]
+    SDK --> SDKChecks["make sdk-check + make sdk-build"]
+    Agent --> Eval["agent eval suites + governance tests"]
+    CI --> Done["Ready for review"]
+    WebChecks --> Done
+    SDKChecks --> Done
+    Eval --> Done
+```
+
 ## Command Matrix
 
 ```bash

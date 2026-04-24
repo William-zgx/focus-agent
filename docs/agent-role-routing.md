@@ -16,6 +16,22 @@ The layer answers five questions:
 - Which artifacts are accepted, rejected, retried, or waiting for review?
 - Which evidence should be recorded for trajectory, eval, and Web inspection?
 
+```mermaid
+flowchart TD
+    Request["User request"] --> Policy["Tool policy classification"]
+    Policy --> Route["Role routing"]
+    Route --> Delegate["Delegation governance"]
+    Delegate --> Context["Context Engineering"]
+    Context --> Execute["Executor + Tool Runtime"]
+    Execute --> Ledger["Task Ledger + Artifacts"]
+    Ledger --> Critic["Critic Gate"]
+    Critic --> Synthesis{"Accepted?"}
+    Synthesis -- "yes" --> Final["Final synthesis"]
+    Synthesis -- "retry / review" --> Review["Retry task or review queue"]
+    Final --> Trajectory["Trajectory plan_meta"]
+    Review --> Trajectory
+```
+
 ## 2. Role Set
 
 Current routed roles:
@@ -76,6 +92,20 @@ This observe-first design lets the project collect trajectory evidence before gi
 | Artifact Synthesis | off | `AGENT_ARTIFACT_SYNTHESIS_ENABLED` | `artifact_synthesis_result` |
 | Critic Gate | off | `AGENT_CRITIC_GATE_ENABLED` | `critic_gate_result` |
 | Critic Gate enforcement | off | `AGENT_CRITIC_GATE_ENFORCE` | blocked synthesis / retry task |
+
+Feature flags move a capability through three practical stages: no-op, observation, and enforcement. This lets the project collect trajectory evidence before a router, curator, or critic is allowed to change execution behavior.
+
+```mermaid
+flowchart LR
+    Flag["Feature flag"] --> Disabled["disabled: legacy path"]
+    Flag --> Observe["enabled: record evidence"]
+    Observe --> State["state + plan_meta"]
+    State --> Console["governance console"]
+    Observe --> Enforce{"enforce flag?"}
+    Enforce -- "no" --> Legacy["legacy behavior preserved"]
+    Enforce -- "yes" --> Runtime["runtime decision applied"]
+    Runtime --> Audit["trajectory audit"]
+```
 
 ## 5. Behavioral Contract
 
@@ -226,6 +256,21 @@ Critic verdicts:
 - `skipped`
 
 Artifact Synthesis only consumes accepted artifacts. When Critic Gate is enforced, rejected, retried, or review-needed artifacts can block synthesis.
+
+The critic loop is intentionally narrow: it judges artifacts against recorded criteria and either allows synthesis, asks for one bounded retry, or exposes uncertainty for human review.
+
+```mermaid
+flowchart TD
+    Criteria["Acceptance criteria"] --> Artifact["Delegated artifact"]
+    Artifact --> Critic["Critic Gate"]
+    Critic --> Verdict{"Verdict"}
+    Verdict -- "pass" --> Synthesis["Artifact synthesis"]
+    Verdict -- "retry" --> Retry["one local retry task"]
+    Retry --> Artifact
+    Verdict -- "reject" --> Block["blocked from synthesis"]
+    Verdict -- "needs_review" --> Queue["review queue"]
+    Synthesis --> Final["final answer evidence"]
+```
 
 ## 12. Observability Surface
 

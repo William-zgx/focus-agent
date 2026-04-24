@@ -4,6 +4,21 @@ Updated: 2026-04-24
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
+```mermaid
+flowchart TD
+    Alert["Alert or user report"] --> Health["Check /healthz"]
+    Health --> Ready["Check /readyz"]
+    Ready --> Metrics["Read /metrics"]
+    Metrics --> Overview["Open observability overview"]
+    Overview --> Slice["Choose failing slice"]
+    Slice --> Workbench["Inspect trajectory workbench"]
+    Workbench --> Pivot["Pivot by request, trace, tool, model"]
+    Pivot --> Replay["Replay"]
+    Pivot --> Promote["Promote preview"]
+    Replay --> Regression["Eval regression case"]
+    Promote --> Regression
+```
+
 ## 1. Confirm Liveness Versus Readiness
 
 Use the runtime endpoints in this order:
@@ -128,6 +143,19 @@ The current observability model carries these correlation fields through persist
 - `deployment`
 - `app_version`
 
+The fields form a small handoff chain. Start from whichever identifier you already have, then pivot toward the persisted turn record before choosing the next diagnostic surface.
+
+```mermaid
+flowchart LR
+    Request["request_id"] --> Trace["trace_id"]
+    Trace --> Span["root_span_id"]
+    Span --> Turn["Persisted turn"]
+    Turn --> Runtime["Runtime metadata"]
+    Runtime --> Workbench["Trajectory workbench"]
+    Workbench --> CLI["CLI export or show"]
+    Workbench --> Eval["Replay or promote"]
+```
+
 Use them for handoff and root-cause isolation:
 
 - `request_id` is best when you start from a single HTTP request.
@@ -176,6 +204,20 @@ Once you identify a useful trajectory turn, you can:
 - promote it into an eval-ready dataset payload through `POST /v1/observability/trajectory/{turn_id}/promote`
 
 The Web trajectory page surfaces these actions from the selected turn so you can move from diagnosis into regression capture without leaving the console. The right rail is designed to stay visible while you keep reading the selected sample.
+
+The safest loop is preview-first: diagnose one representative turn, compare replay behavior, then promote only stable evidence into an eval artifact.
+
+```mermaid
+flowchart TD
+    Turn["Known bad turn"] --> Diagnose["Read timeline or direct evidence"]
+    Diagnose --> Replay["Replay compare"]
+    Diagnose --> Preview["Promote preview"]
+    Replay --> Stable{"Stable regression?"}
+    Preview --> Stable
+    Stable -->|Yes| Dataset["Eval dataset case"]
+    Stable -->|No| Notes["Investigation notes"]
+    Dataset --> Gate["Release regression gate"]
+```
 
 Use a preview-first workflow:
 

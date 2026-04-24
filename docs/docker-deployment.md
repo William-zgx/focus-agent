@@ -1,10 +1,37 @@
 # Docker 部署方案
 
-更新时间：2026-04-22
+更新时间：2026-04-24
 
 这份文档定义当前仓库推荐的 Docker 部署方式。目标是把 **本机开发启动链**、**本地容器联调**、以及 **生产部署** 明确分层，避免把开发便利逻辑和正式部署逻辑混在一起。
 
+```mermaid
+flowchart LR
+    Dev["Local make commands"] --> LocalPG["Managed repo-local PostgreSQL"]
+    Compose["compose.yaml"] --> App["focus-agent container"]
+    Compose --> PG["postgres service"]
+    Prod["compose.prod.yaml"] --> ProdApp["focus-agent container"]
+    ProdApp --> ExternalPG["External PostgreSQL"]
+    App --> Data["/data volume"]
+    ProdApp --> DataProd["/data volume"]
+```
+
 ## 推荐分层
+
+部署文档按运行环境分层阅读：本机开发强调速度和热更新，本地 Docker 强调镜像与容器入口验证，生产/预发强调外部依赖显式注入和安全默认值。
+
+```mermaid
+flowchart TD
+    Change["Code or config change"] --> Local["Local make commands"]
+    Change --> Compose["compose.yaml"]
+    Change --> Prod["compose.prod.yaml"]
+    Local --> FastFeedback["Fast feedback and hot reload"]
+    Compose --> ContainerCheck["Image, entrypoint, and Postgres check"]
+    Prod --> ProdBoundary["External PostgreSQL and production auth"]
+    FastFeedback --> Promote{"Need deployment confidence?"}
+    ContainerCheck --> Promote
+    Promote -- "Ready" --> Prod
+    ProdBoundary --> Release["Staging or production release"]
+```
 
 ### 1. 本机开发
 
@@ -150,6 +177,21 @@ docker compose -f compose.prod.yaml up -d
 - trajectory 观测表
 
 artifact 正文文件继续保留在文件系统，不直接入库。
+
+本地状态迁移到 PostgreSQL 时，脚本只负责把结构化状态和 artifact metadata 带入 primary persistence；artifact 正文仍通过扫描和 relative path 关联到文件系统：
+
+```mermaid
+flowchart LR
+    LocalDir[".focus_agent source dir"] --> Migrator["focus-agent-migrate-local-state"]
+    Migrator --> Checkpoints["Latest stable checkpoints"]
+    Migrator --> AppState["Conversations and branches"]
+    Migrator --> ArtifactScan["Artifact scan"]
+    Checkpoints --> PG["External PostgreSQL"]
+    AppState --> PG
+    ArtifactScan --> PG
+    ArtifactScan --> Files["Filesystem artifact bodies"]
+    Migrator --> Report["Migration report JSON"]
+```
 
 如果要把现有 repo-local `.focus_agent` 数据迁入 PostgreSQL：
 

@@ -9,6 +9,21 @@
 3. 分支、本地主线、用户偏好、项目事实之间的语义边界是什么。
 4. 后续继续优化时，应该沿着哪些稳定接口演进，而不是重新发明一套并行机制。
 
+```mermaid
+flowchart LR
+    Turn["User turn"] --> Retrieve["retrieve_memory"]
+    Retrieve --> Prompt["memory_prompt_block"]
+    Prompt --> Agent["agent_loop"]
+    Agent --> Extract["extract_memories"]
+    Extract --> Policy["MemoryPolicy"]
+    Policy --> Dedupe["dedupe + semantic keys"]
+    Dedupe --> Store["LangGraph Store"]
+    Store --> Retrieve
+    Agent --> Branch["branch-local findings"]
+    Branch --> Curator["Memory Curator"]
+    Curator --> Main["main durable memory"]
+```
+
 ## 1. 设计目标
 
 当前记忆系统不是一个“通用知识库”，而是一套围绕 Agent 主路径服务的**执行记忆层**。它的目标是：
@@ -87,6 +102,23 @@ namespace 定义在 `src/focus_agent/storage/namespaces.py`，是当前系统最
 - skill 级 memory：`("skill", skill_id, "memory")`
 
 当前实现里，namespace 不是“存储细节”，而是决定记忆权限、检索范围、promotion 行为和 prompt 呈现的核心语义层。
+
+下面这张图把 namespace 的语义分层展开：用户、项目、主线程、分支与 skill 各自承载不同类型的事实，检索阶段再按当前 turn 的上下文组合候选范围。
+
+```mermaid
+flowchart TD
+    Query["当前 turn 查询"] --> Resolver["namespace resolver"]
+    Resolver --> User["user/profile"]
+    Resolver --> Project["project/memory"]
+    Resolver --> Main["conversation/main"]
+    Resolver --> Branch["branch/local_memory"]
+    Resolver --> Skill["skill/memory"]
+    Main --> Prompt["memory_prompt_block"]
+    Branch --> Prompt
+    User --> Prompt
+    Project --> Prompt
+    Skill --> Prompt
+```
 
 ## 3. 主路径生命周期
 
@@ -228,6 +260,22 @@ namespace 定义在 `src/focus_agent/storage/namespaces.py`，是当前系统最
 
 其中真正的治理发生在 `_upsert_record()` 和 `_find_existing_record()`。
 
+写入治理的核心是先判断候选记忆是否应该进入 durable store，再用 fingerprint、semantic key 和 resolution key 决定 append、merge、replace 或 skip。
+
+```mermaid
+flowchart TD
+    Request["MemoryWriteRequest"] --> Policy["MemoryPolicy"]
+    Policy --> Allowed{"允许写入?"}
+    Allowed -- "否" --> Drop["跳过并记录原因"]
+    Allowed -- "是" --> Existing["查找 existing record"]
+    Existing --> Match{"匹配类型"}
+    Match -- "fingerprint" --> Skip["skip duplicate"]
+    Match -- "semantic/resolution" --> Merge["merge or replace"]
+    Match -- "none" --> Append["append new record"]
+    Merge --> Store["LangGraph Store"]
+    Append --> Store
+```
+
 ### 5.2 现有冲突规则
 
 当前已经明确的规则包括：
@@ -277,6 +325,20 @@ namespace 定义在 `src/focus_agent/storage/namespaces.py`，是当前系统最
 - 只有 `merge_importable=True` 的 finding 才允许进入主线 durable memory
 - nested parent merge 不得污染 root main durable memory
 - target 为 `ROOT_THREAD` 时才允许把 branch findings 真正 promotion 到 root main durable memory
+
+promotion 的判断链路只处理经过合并语义确认的 branch finding。没有达到门槛的内容继续留在分支上下文或 review 状态里，不会自动污染主线 durable memory。
+
+```mermaid
+flowchart LR
+    Finding["branch-local finding"] --> Importable{"merge_importable?"}
+    Importable -- "否" --> Local["保留在 branch local"]
+    Importable -- "是" --> Target{"target 是 ROOT_THREAD?"}
+    Target -- "否" --> Nested["仅进入嵌套 merge payload"]
+    Target -- "是" --> Conflict{"主线语义冲突?"}
+    Conflict -- "有" --> Review["needs_review"]
+    Conflict -- "无" --> Promote["promote to main durable"]
+    Promote --> Audit["promoted_memory audit"]
+```
 
 ### 6.3 审计信息
 

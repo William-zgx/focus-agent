@@ -35,6 +35,25 @@ Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式
 - Persistence：Postgres primary persistence；local fallback persistence；filesystem artifact bodies
 - Observability：request id、readiness、metrics、trajectory、replay、promote
 
+```mermaid
+flowchart LR
+    User["Browser / SDK"] --> API["FastAPI API"]
+    API --> Chat["ChatService"]
+    API --> Branch["BranchService"]
+    API --> Governance["Agent Governance APIs"]
+    API --> Obs["Observability APIs"]
+    Chat --> Graph["LangGraph Agent Graph"]
+    Graph --> Tools["Tool Runtime"]
+    Graph --> Memory["Memory Pipeline"]
+    Graph --> Trace["Trajectory Recorder"]
+    Branch --> Repo["Branch Repository"]
+    Memory --> Store["LangGraph Store"]
+    Trace --> PG["Postgres"]
+    Repo --> PG
+    Store --> PG
+    Tools --> Artifacts["Filesystem Artifacts"]
+```
+
 ```text
 Browser / SDK
   |
@@ -120,6 +139,21 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业务流程在 services、runtime、repositories 和 graph nodes。
 
 ## 6. Chat Turn 数据流
+
+Chat turn 的关键不是入口数量，而是非流式和流式入口最终都会汇入同一个 graph 执行、状态落盘和 trajectory 记录路径。下图把共享生命周期和分支点压缩在一起：
+
+```mermaid
+flowchart TD
+    Client["Browser / SDK"] --> Entry{"Turn endpoint"}
+    Entry -- "Non-stream" --> Preflight["Auth and thread access preflight"]
+    Entry -- "Stream" --> Lock["Per-thread active turn lock"]
+    Lock --> Preflight
+    Preflight --> Context["Build RequestContext"]
+    Context --> Graph["LangGraph invoke / stream"]
+    Graph --> Persist["State, checkpoint, memory writes"]
+    Persist --> Trace["Trajectory record"]
+    Trace --> Response["Thread response or SSE final event"]
+```
 
 ### 6.1 非流式 turn
 
@@ -257,6 +291,21 @@ Agent governance 的 canonical 文档是 [agent-role-routing.md](agent-role-rout
 
 ## 13. 持久化
 
+持久化分成三层：生产和容器联调优先使用 Postgres primary persistence，本地裸跑保留 fallback，artifact 正文始终留在文件系统。这个边界避免把大正文塞进数据库，也避免把本地便利路径误当成生产方案：
+
+```mermaid
+flowchart TD
+    Runtime["App Runtime"] --> Decision{"DATABASE_URI available?"}
+    Decision -- "Yes" --> PG["Postgres primary persistence"]
+    Decision -- "No make command" --> Managed["Managed repo-local PostgreSQL"]
+    Decision -- "No raw binary" --> Fallback["Local fallback persistence"]
+    Managed --> PG
+    PG --> AppState["Conversations, branches, access"]
+    PG --> GraphStore["LangGraph checkpoint and store"]
+    PG --> TraceMeta["Trajectory and artifact metadata"]
+    TraceMeta --> Files["Filesystem artifact bodies"]
+```
+
 ### 13.1 Postgres primary persistence
 
 配置 `DATABASE_URI` 后，主运行态数据走 Postgres primary persistence：
@@ -289,6 +338,21 @@ Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、c
 直接运行 `.venv/bin/focus-agent-api` 不会启动托管数据库。历史 `.focus_agent` 状态需要通过 `focus-agent-migrate-local-state` 显式迁移。
 
 ## 14. Frontend 与 SDK
+
+前端和 SDK 共享 API contract：Web App 不绕过 SDK 直接拼 response shape，SDK 也负责把流式事件规整成前端可消费的状态更新。边界如下：
+
+```mermaid
+flowchart LR
+    User["User"] --> Web["React Web App"]
+    Web --> ClientState["React Query and Zustand"]
+    ClientState --> SDK["frontend-sdk client"]
+    SDK --> API["FastAPI API"]
+    API --> Contracts["Pydantic contracts"]
+    API --> Services["Chat and Branch services"]
+    API --> Obs["Observability APIs"]
+    Services --> Runtime["App Runtime"]
+    Obs --> Runtime
+```
 
 Web App 位于 `apps/web/src/`：
 
