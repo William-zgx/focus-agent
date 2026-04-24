@@ -9,12 +9,20 @@ import type {
   FocusAgentCreateConversationRequest,
   FocusAgentCapabilityListResponse,
   FocusAgentDemoTokenRequest,
+  FocusAgentDelegationPlanRequest,
+  FocusAgentDelegationPlanResponse,
+  FocusAgentDelegationPolicyResponse,
+  FocusAgentDelegationRunListResponse,
   FocusAgentEvent,
   FocusAgentForkBranchRequest,
   FocusAgentMemoryCuratorDecisionListResponse,
   FocusAgentMemoryCuratorEvaluateRequest,
   FocusAgentMemoryCuratorEvaluateResponse,
   FocusAgentMemoryCuratorPolicyResponse,
+  FocusAgentModelRouteRequest,
+  FocusAgentModelRouteResponse,
+  FocusAgentModelRouterDecisionListResponse,
+  FocusAgentModelRouterPolicyResponse,
   FocusAgentModelsResponse,
   FocusAgentObservabilityOverviewRequest,
   FocusAgentObservabilityOverviewResponse,
@@ -24,6 +32,11 @@ import type {
   FocusAgentRoleDryRunRequest,
   FocusAgentRoleDryRunResponse,
   FocusAgentRolePolicyResponse,
+  FocusAgentReviewQueueDecisionResponse,
+  FocusAgentReviewQueueListResponse,
+  FocusAgentSelfRepairFailureListResponse,
+  FocusAgentSelfRepairPromotePreviewRequest,
+  FocusAgentSelfRepairPromotePreviewResponse,
   FocusAgentToolRouteDecisionListResponse,
   FocusAgentToolRouteRequest,
   FocusAgentToolRouteResponse,
@@ -302,6 +315,126 @@ export class FocusAgentClient {
       `/v1/agent/memory/curator/decisions${query ? `?${query}` : ""}`,
       {
         method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getAgentDelegationPolicy(): Promise<FocusAgentDelegationPolicyResponse> {
+    return this.requestJson<FocusAgentDelegationPolicyResponse>("/v1/agent/delegation/policy", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async planAgentDelegation(
+    request: FocusAgentDelegationPlanRequest,
+  ): Promise<FocusAgentDelegationPlanResponse> {
+    return this.requestJson<FocusAgentDelegationPlanResponse>("/v1/agent/delegation/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentDelegationRuns(limit = 50): Promise<FocusAgentDelegationRunListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentDelegationRunListResponse>(
+      `/v1/agent/delegation/runs${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getAgentModelRouterPolicy(): Promise<FocusAgentModelRouterPolicyResponse> {
+    return this.requestJson<FocusAgentModelRouterPolicyResponse>("/v1/agent/model-router/policy", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async routeAgentModel(request: FocusAgentModelRouteRequest): Promise<FocusAgentModelRouteResponse> {
+    return this.requestJson<FocusAgentModelRouteResponse>("/v1/agent/model-router/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentModelRouterDecisions(limit = 50): Promise<FocusAgentModelRouterDecisionListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentModelRouterDecisionListResponse>(
+      `/v1/agent/model-router/decisions${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async listAgentSelfRepairFailures(limit = 50): Promise<FocusAgentSelfRepairFailureListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentSelfRepairFailureListResponse>(
+      `/v1/agent/self-repair/failures${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async previewAgentSelfRepairPromotion(
+    request: FocusAgentSelfRepairPromotePreviewRequest,
+  ): Promise<FocusAgentSelfRepairPromotePreviewResponse> {
+    return this.requestJson<FocusAgentSelfRepairPromotePreviewResponse>("/v1/agent/self-repair/promote-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentReviewQueue(limit = 50): Promise<FocusAgentReviewQueueListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentReviewQueueListResponse>(
+      `/v1/agent/review-queue${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async approveAgentReviewQueueItem(itemId: string): Promise<FocusAgentReviewQueueDecisionResponse> {
+    return this.requestJson<FocusAgentReviewQueueDecisionResponse>(
+      `/v1/agent/review-queue/${encodeURIComponent(itemId)}/approve`,
+      {
+        method: "POST",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async rejectAgentReviewQueueItem(itemId: string): Promise<FocusAgentReviewQueueDecisionResponse> {
+    return this.requestJson<FocusAgentReviewQueueDecisionResponse>(
+      `/v1/agent/review-queue/${encodeURIComponent(itemId)}/reject`,
+      {
+        method: "POST",
         headers: {},
       },
       true,

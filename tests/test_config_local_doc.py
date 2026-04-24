@@ -264,6 +264,12 @@ def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
     monkeypatch.setenv("AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE", "false")
     monkeypatch.setenv("AGENT_TOOL_ROUTER_ENABLED", "true")
     monkeypatch.setenv("AGENT_TOOL_ROUTER_ENFORCE", "false")
+    monkeypatch.setenv("AGENT_DELEGATION_ENABLED", "true")
+    monkeypatch.setenv("AGENT_DELEGATION_ENFORCE", "true")
+    monkeypatch.setenv("AGENT_MODEL_ROUTER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_MODEL_ROUTER_MODE", "enforce")
+    monkeypatch.setenv("AGENT_SELF_REPAIR_ENABLED", "true")
+    monkeypatch.setenv("AGENT_REVIEW_QUEUE_ENABLED", "true")
 
     settings = Settings.from_env()
 
@@ -279,6 +285,12 @@ def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
     assert settings.agent_memory_auto_promote_on_merge is False
     assert settings.agent_tool_router_enabled is True
     assert settings.agent_tool_router_enforce is False
+    assert settings.agent_delegation_enabled is True
+    assert settings.agent_delegation_enforce is True
+    assert settings.agent_model_router_enabled is True
+    assert settings.agent_model_router_mode == "enforce"
+    assert settings.agent_self_repair_enabled is True
+    assert settings.agent_review_queue_enabled is True
 
 
 def test_settings_from_env_enables_trajectory_when_database_uri_exists(monkeypatch):

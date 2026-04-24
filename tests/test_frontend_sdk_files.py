@@ -41,6 +41,10 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'FocusAgentTrajectoryReplayRequest' in types_text
     assert 'FocusAgentTrajectoryReplayResponse' in types_text
     assert 'FocusAgentTrajectoryPromotionResponse' in types_text
+    assert 'FocusAgentDelegationPlanResponse' in types_text
+    assert 'FocusAgentModelRouterPolicyResponse' in types_text
+    assert 'FocusAgentSelfRepairPromotePreviewResponse' in types_text
+    assert 'FocusAgentReviewQueueListResponse' in types_text
 
     client_text = (root / 'src' / 'client.ts').read_text()
     assert 'class FocusAgentClient' in client_text
@@ -65,5 +69,9 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'getTrajectoryStats' in client_text
     assert 'replayTrajectoryTurn' in client_text
     assert 'promoteTrajectoryTurn' in client_text
+    assert 'planAgentDelegation' in client_text
+    assert 'routeAgentModel' in client_text
+    assert 'previewAgentSelfRepairPromotion' in client_text
+    assert 'listAgentReviewQueue' in client_text
     assert 'buildTrajectoryQueryString' in client_text
     assert 'new FocusAgentRequestError(response.status, response.statusText)' in client_text

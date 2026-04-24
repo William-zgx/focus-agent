@@ -34,6 +34,11 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["role_route_plan"] is None
     assert state["memory_curator_decision"] is None
     assert state["tool_route_plan"] is None
+    assert state["agent_delegation_plan"] is None
+    assert state["agent_runs"] == []
+    assert state["model_route_decision"] is None
+    assert state["agent_failure_records"] == []
+    assert state["agent_review_queue"] == []
     assert state["memory_write_requests"] == []
     assert state["memory_write_result"] == {}
 
@@ -74,6 +79,11 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["role_route_plan"] is None
     assert normalized["memory_curator_decision"] is None
     assert normalized["tool_route_plan"] is None
+    assert normalized["agent_delegation_plan"] is None
+    assert normalized["agent_runs"] == []
+    assert normalized["model_route_decision"] is None
+    assert normalized["agent_failure_records"] == []
+    assert normalized["agent_review_queue"] == []
     assert normalized["memory_write_requests"] == []
     assert normalized["memory_write_result"] == {}
 
@@ -125,6 +135,11 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
             },
             "memory_curator_decision": {"enabled": True, "status": "ready"},
             "tool_route_plan": {"enabled": True, "allowed_tools": ["search_code"]},
+            "agent_delegation_plan": {"enabled": True, "tasks": [{"task_id": "task-1"}]},
+            "agent_runs": [{"run_id": "run-1", "status": "completed"}],
+            "model_route_decision": {"enabled": True, "effective_model": "openai:gpt-4.1-mini"},
+            "agent_failure_records": [{"failure_type": "tool_denied"}],
+            "agent_review_queue": [{"item_id": "review-1", "status": "pending"}],
             "memory_write_requests": [{"kind": "turn_summary", "summary": "Carry this forward"}],
             "memory_write_result": {"prepared": 1, "written": ["mem-1"]},
         }
@@ -149,5 +164,10 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["role_route_plan"]["decisions"][0]["role"] == "executor"
     assert decoded["memory_curator_decision"]["status"] == "ready"
     assert decoded["tool_route_plan"]["allowed_tools"] == ["search_code"]
+    assert decoded["agent_delegation_plan"]["tasks"][0]["task_id"] == "task-1"
+    assert decoded["agent_runs"][0]["run_id"] == "run-1"
+    assert decoded["model_route_decision"]["effective_model"] == "openai:gpt-4.1-mini"
+    assert decoded["agent_failure_records"][0]["failure_type"] == "tool_denied"
+    assert decoded["agent_review_queue"][0]["status"] == "pending"
     assert decoded["memory_write_requests"][0]["kind"] == "turn_summary"
     assert decoded["memory_write_result"]["written"] == ["mem-1"]

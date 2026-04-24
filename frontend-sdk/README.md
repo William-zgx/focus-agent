@@ -104,6 +104,7 @@ console.log(finalState.visibleText);
 - `listModels()` - fetch the current model catalog
 - `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, and `listAgentRoleDecisions()` - inspect role routing policy, preview orchestrator decisions, and review persisted role_route_plan records
 - `listAgentCapabilities()`, `routeAgentTools()`, `listAgentToolRouteDecisions()`, `getAgentMemoryCuratorPolicy()`, `evaluateAgentMemoryCurator()`, and `listAgentMemoryCuratorDecisions()` - inspect governance capabilities, tool routing, and memory curator decisions
+- `getAgentDelegationPolicy()`, `planAgentDelegation()`, `listAgentDelegationRuns()`, `getAgentModelRouterPolicy()`, `routeAgentModel()`, `listAgentModelRouterDecisions()`, `listAgentSelfRepairFailures()`, `previewAgentSelfRepairPromotion()`, `listAgentReviewQueue()`, `approveAgentReviewQueueItem()`, and `rejectAgentReviewQueueItem()` - inspect delegated role runs, model routing, failure candidates, and human-review queue items
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app
 - `getBranchTree()` - fetch the branch tree rooted at a conversation

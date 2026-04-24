@@ -631,6 +631,12 @@ class Settings:
     agent_memory_auto_promote_on_merge: bool = True
     agent_tool_router_enabled: bool = False
     agent_tool_router_enforce: bool = True
+    agent_delegation_enabled: bool = False
+    agent_delegation_enforce: bool = False
+    agent_model_router_enabled: bool = False
+    agent_model_router_mode: str = "observe"
+    agent_self_repair_enabled: bool = False
+    agent_review_queue_enabled: bool = False
     trajectory_enabled: bool | None = None
     trajectory_observation_max_chars: int = 4000
     trajectory_answer_max_chars: int = 4000
@@ -822,6 +828,32 @@ class Settings:
             agent_tool_router_enforce=env.get(
                 "AGENT_TOOL_ROUTER_ENFORCE",
                 "true" if defaults.agent_tool_router_enforce else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_delegation_enabled=env.get(
+                "AGENT_DELEGATION_ENABLED",
+                "true" if defaults.agent_delegation_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_delegation_enforce=env.get(
+                "AGENT_DELEGATION_ENFORCE",
+                "true" if defaults.agent_delegation_enforce else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_model_router_enabled=env.get(
+                "AGENT_MODEL_ROUTER_ENABLED",
+                "true" if defaults.agent_model_router_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_model_router_mode=(
+                "enforce"
+                if str(env.get("AGENT_MODEL_ROUTER_MODE", defaults.agent_model_router_mode)).lower()
+                == "enforce"
+                else "observe"
+            ),
+            agent_self_repair_enabled=env.get(
+                "AGENT_SELF_REPAIR_ENABLED",
+                "true" if defaults.agent_self_repair_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_review_queue_enabled=env.get(
+                "AGENT_REVIEW_QUEUE_ENABLED",
+                "true" if defaults.agent_review_queue_enabled else "false",
             ).lower() in {"1", "true", "yes", "on"},
             trajectory_enabled=(
                 bool(database_uri) if trajectory_enabled is None else trajectory_enabled

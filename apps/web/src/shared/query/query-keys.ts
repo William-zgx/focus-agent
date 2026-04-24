@@ -14,4 +14,10 @@ export const queryKeys = {
   agentToolRouteDecisions: (limit: number) => ["agent-tool-route-decisions", limit] as const,
   agentMemoryCuratorPolicy: ["agent-memory-curator-policy"] as const,
   agentMemoryCuratorDecisions: (limit: number) => ["agent-memory-curator-decisions", limit] as const,
+  agentDelegationPolicy: ["agent-delegation-policy"] as const,
+  agentDelegationRuns: (limit: number) => ["agent-delegation-runs", limit] as const,
+  agentModelRouterPolicy: ["agent-model-router-policy"] as const,
+  agentModelRouterDecisions: (limit: number) => ["agent-model-router-decisions", limit] as const,
+  agentSelfRepairFailures: (limit: number) => ["agent-self-repair-failures", limit] as const,
+  agentReviewQueue: (limit: number) => ["agent-review-queue", limit] as const,
 };

@@ -106,8 +106,8 @@ class AgentState(TypedDict, total=False):
     selected_model: str
     selected_thinking_mode: str
 
-    # Written only when role routing v2 dry-run is enabled. The current graph
-    # still follows the legacy single-run path; this is observability/console data.
+    # Written when role routing v2 is enabled. By default this is observability
+    # data; Delegation Runtime can consume it when its feature flag is enabled.
     role_route_plan: dict[str, Any] | None
 
     # Written by Memory Curator when branch-local memories are evaluated for
@@ -117,6 +117,14 @@ class AgentState(TypedDict, total=False):
     # Written by Tool Router before model invocation. When enforcement is enabled
     # it also controls the tools bound to the model for this turn.
     tool_route_plan: dict[str, Any] | None
+
+    # Written by Delegation Runtime when multi-agent role runs are planned or
+    # enforced. It stays in plan_meta for observability and replay.
+    agent_delegation_plan: dict[str, Any] | None
+    agent_runs: list[dict[str, Any]]
+    model_route_decision: dict[str, Any] | None
+    agent_failure_records: list[dict[str, Any]]
+    agent_review_queue: list[dict[str, Any]]
 
     # Written by extraction nodes after a turn, read by persistence nodes,
     # and never merge-imported because it is a transient write queue.
@@ -164,6 +172,11 @@ def initial_agent_state() -> AgentState:
         "role_route_plan": None,
         "memory_curator_decision": None,
         "tool_route_plan": None,
+        "agent_delegation_plan": None,
+        "agent_runs": [],
+        "model_route_decision": None,
+        "agent_failure_records": [],
+        "agent_review_queue": [],
         "memory_write_requests": [],
         "memory_write_result": {},
         "plan": None,

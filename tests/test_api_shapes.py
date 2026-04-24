@@ -5,6 +5,19 @@ from focus_agent.api.schemas import (
     AgentRoleDryRunRequest,
     AgentRoleDryRunResponse,
     AgentRolePolicyResponse,
+    AgentDelegationPlanRequest,
+    AgentDelegationPlanResponse,
+    AgentDelegationPolicyResponse,
+    AgentDelegationRunListResponse,
+    AgentModelRouteRequest,
+    AgentModelRouteResponse,
+    AgentModelRouterDecisionListResponse,
+    AgentModelRouterPolicyResponse,
+    AgentReviewQueueDecisionResponse,
+    AgentReviewQueueListResponse,
+    AgentSelfRepairFailureListResponse,
+    AgentSelfRepairPromotePreviewRequest,
+    AgentSelfRepairPromotePreviewResponse,
     BranchTreeResponse,
     ConversationListResponse,
     ConversationSummaryResponse,
@@ -209,6 +222,41 @@ def test_agent_role_contract_shapes():
     assert tool_decisions.count == 1
     assert memory_decisions.count == 1
 
+    delegation_policy = AgentDelegationPolicyResponse(enabled=True, enforce=False, max_parallel_runs=2)
+    delegation_request = AgentDelegationPlanRequest(message="Plan, execute, and verify.")
+    delegation_response = AgentDelegationPlanResponse(
+        policy=delegation_policy,
+        plan={"enabled": True, "runs": [{"role": "executor"}]},
+    )
+    delegation_runs = AgentDelegationRunListResponse(items=[{"run_id": "run-1"}], count=1)
+    model_policy = AgentModelRouterPolicyResponse(
+        enabled=True,
+        mode="observe",
+        default_model="openai:gpt-4.1-mini",
+        role_models={"executor": "openai:gpt-4.1-mini"},
+    )
+    model_request = AgentModelRouteRequest(role="critic", selected_model="openai:gpt-4.1-mini")
+    model_response = AgentModelRouteResponse(decision={"effective_model": "openai:deepseek-chat"})
+    model_decisions = AgentModelRouterDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
+    failures = AgentSelfRepairFailureListResponse(items=[{"failure_type": "tool_denied"}], count=1)
+    promote_request = AgentSelfRepairPromotePreviewRequest(failures=[{"failure_type": "tool_denied"}])
+    promote_response = AgentSelfRepairPromotePreviewResponse(preview={"candidates": []})
+    review_queue = AgentReviewQueueListResponse(items=[{"item_id": "review-1"}], count=1)
+    review_response = AgentReviewQueueDecisionResponse(item={"item_id": "review-1", "status": "approved"})
+
+    assert delegation_request.scene == "agent_delegation_console"
+    assert delegation_response.plan["runs"][0]["role"] == "executor"
+    assert delegation_runs.items[0]["run_id"] == "run-1"
+    assert model_policy.role_models["executor"] == "openai:gpt-4.1-mini"
+    assert model_request.role == "critic"
+    assert model_response.decision["effective_model"] == "openai:deepseek-chat"
+    assert model_decisions.count == 1
+    assert failures.items[0]["failure_type"] == "tool_denied"
+    assert promote_request.case_id_prefix == "agent_delegation"
+    assert promote_response.preview["candidates"] == []
+    assert review_queue.items[0]["item_id"] == "review-1"
+    assert review_response.item["status"] == "approved"
+
 
 def test_conversation_contract_shapes():
     created = ConversationSummaryResponse(
@@ -358,6 +406,17 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/agent/memory/curator/policy" in route_paths
     assert "/v1/agent/memory/curator/evaluate" in route_paths
     assert "/v1/agent/memory/curator/decisions" in route_paths
+    assert "/v1/agent/delegation/policy" in route_paths
+    assert "/v1/agent/delegation/plan" in route_paths
+    assert "/v1/agent/delegation/runs" in route_paths
+    assert "/v1/agent/model-router/policy" in route_paths
+    assert "/v1/agent/model-router/route" in route_paths
+    assert "/v1/agent/model-router/decisions" in route_paths
+    assert "/v1/agent/self-repair/failures" in route_paths
+    assert "/v1/agent/self-repair/promote-preview" in route_paths
+    assert "/v1/agent/review-queue" in route_paths
+    assert "/v1/agent/review-queue/{item_id}/approve" in route_paths
+    assert "/v1/agent/review-queue/{item_id}/reject" in route_paths
     assert "/v1/observability/overview" in route_paths
     assert "/v1/observability/trajectory" in route_paths
     assert "/v1/observability/trajectory/stats" in route_paths

@@ -137,6 +137,85 @@ class AgentMemoryCuratorDecisionListResponse(BaseModel):
     trajectory_error: str | None = None
 
 
+class AgentDelegationPolicyResponse(BaseModel):
+    enabled: bool = False
+    enforce: bool = False
+    max_parallel_runs: int = 1
+    default_off_legacy_safe: bool = True
+
+
+class AgentDelegationPlanRequest(BaseModel):
+    message: str
+    scene: str = "agent_delegation_console"
+    available_tools: list[str] = Field(default_factory=list)
+
+
+class AgentDelegationPlanResponse(BaseModel):
+    policy: AgentDelegationPolicyResponse
+    plan: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentDelegationRunListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentModelRouterPolicyResponse(BaseModel):
+    enabled: bool = False
+    mode: str = "observe"
+    default_model: str
+    helper_model: str | None = None
+    role_models: dict[str, str | None] = Field(default_factory=dict)
+
+
+class AgentModelRouteRequest(BaseModel):
+    role: str = "executor"
+    selected_model: str | None = None
+    task_text: str = ""
+    tool_risk: str = "low"
+    context_size: int = 0
+
+
+class AgentModelRouteResponse(BaseModel):
+    decision: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentModelRouterDecisionListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentSelfRepairFailureListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentSelfRepairPromotePreviewRequest(BaseModel):
+    failures: list[dict[str, Any]] = Field(default_factory=list)
+    case_id_prefix: str = "agent_delegation"
+
+
+class AgentSelfRepairPromotePreviewResponse(BaseModel):
+    preview: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentReviewQueueListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentReviewQueueDecisionResponse(BaseModel):
+    item: dict[str, Any] = Field(default_factory=dict)
+
+
 class ConversationSummaryResponse(BaseModel):
     root_thread_id: str
     title: str

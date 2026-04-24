@@ -1,10 +1,16 @@
 import {
   type FocusAgentCapabilityListResponse,
+  type FocusAgentDelegationPolicyResponse,
+  type FocusAgentDelegationRunListResponse,
   type FocusAgentMemoryCuratorDecisionListResponse,
   type FocusAgentMemoryCuratorPolicyResponse,
+  type FocusAgentModelRouterDecisionListResponse,
+  type FocusAgentModelRouterPolicyResponse,
+  type FocusAgentReviewQueueListResponse,
   type FocusAgentRoleDecisionListResponse,
   type FocusAgentRoleDryRunResponse,
   type FocusAgentRolePolicyResponse,
+  type FocusAgentSelfRepairFailureListResponse,
   type FocusAgentToolRouteDecisionListResponse,
   type FocusAgentToolRouteResponse,
 } from "@focus-agent/web-sdk";
@@ -95,6 +101,60 @@ function useAgentMemoryCuratorDecisions() {
   });
 }
 
+function useAgentDelegationPolicy() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentDelegationPolicyResponse>({
+    queryKey: queryKeys.agentDelegationPolicy,
+    queryFn: () => client.getAgentDelegationPolicy(),
+    enabled: ready,
+  });
+}
+
+function useAgentDelegationRuns() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentDelegationRunListResponse>({
+    queryKey: queryKeys.agentDelegationRuns(50),
+    queryFn: () => client.listAgentDelegationRuns(50),
+    enabled: ready,
+  });
+}
+
+function useAgentModelRouterPolicy() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentModelRouterPolicyResponse>({
+    queryKey: queryKeys.agentModelRouterPolicy,
+    queryFn: () => client.getAgentModelRouterPolicy(),
+    enabled: ready,
+  });
+}
+
+function useAgentModelRouterDecisions() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentModelRouterDecisionListResponse>({
+    queryKey: queryKeys.agentModelRouterDecisions(50),
+    queryFn: () => client.listAgentModelRouterDecisions(50),
+    enabled: ready,
+  });
+}
+
+function useAgentSelfRepairFailures() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentSelfRepairFailureListResponse>({
+    queryKey: queryKeys.agentSelfRepairFailures(50),
+    queryFn: () => client.listAgentSelfRepairFailures(50),
+    enabled: ready,
+  });
+}
+
+function useAgentReviewQueue() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentReviewQueueListResponse>({
+    queryKey: queryKeys.agentReviewQueue(50),
+    queryFn: () => client.listAgentReviewQueue(50),
+    enabled: ready,
+  });
+}
+
 export function AgentRoleConsolePage() {
   const { client } = useFocusAgent();
   const { isChineseUi } = useShellUi();
@@ -108,6 +168,12 @@ export function AgentRoleConsolePage() {
   const toolRouteDecisions = useAgentToolRouteDecisions();
   const memoryPolicy = useAgentMemoryCuratorPolicy();
   const memoryDecisions = useAgentMemoryCuratorDecisions();
+  const delegationPolicy = useAgentDelegationPolicy();
+  const delegationRuns = useAgentDelegationRuns();
+  const modelRouterPolicy = useAgentModelRouterPolicy();
+  const modelRouterDecisions = useAgentModelRouterDecisions();
+  const selfRepairFailures = useAgentSelfRepairFailures();
+  const reviewQueue = useAgentReviewQueue();
   const [toolRouteRole, setToolRouteRole] = useState("executor");
   const [toolRoutePolicy, setToolRoutePolicy] = useState("execution");
   const dryRun = useMutation<FocusAgentRoleDryRunResponse, Error>({
@@ -144,6 +210,10 @@ export function AgentRoleConsolePage() {
   const capabilityItems = capabilities.data?.items ?? [];
   const recentToolRouteItems = toolRouteDecisions.data?.items ?? [];
   const recentMemoryItems = memoryDecisions.data?.items ?? [];
+  const recentDelegationRuns = delegationRuns.data?.items ?? [];
+  const recentModelRouteItems = modelRouterDecisions.data?.items ?? [];
+  const recentFailures = selfRepairFailures.data?.items ?? [];
+  const reviewQueueItems = reviewQueue.data?.items ?? [];
 
   return (
     <div className="fa-observability-layout fa-agent-role-console">
@@ -191,6 +261,11 @@ export function AgentRoleConsolePage() {
             <span>{isChineseUi ? "Capabilities" : "Capabilities"}</span>
             <strong>{capabilities.data?.count ?? "-"}</strong>
             <p>{isChineseUi ? "工具按角色、风险和能力注册" : "Tools are registered by role, risk, and capability"}</p>
+          </div>
+          <div className="fa-observability-stat-card">
+            <span>{isChineseUi ? "Delegation" : "Delegation"}</span>
+            <strong>{delegationPolicy.data?.enabled ? "enabled" : "disabled"}</strong>
+            <p>{delegationPolicy.data?.enforce ? "enforce" : "observe"}</p>
           </div>
         </div>
       </section>
@@ -397,6 +472,113 @@ export function AgentRoleConsolePage() {
               {isChineseUi ? "运行一次工具路由后，这里会展示 allow/deny 决策。" : "Run tool routing to inspect allow/deny decisions."}
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="fa-agent-role-grid">
+        <div className="fa-observability-list-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Delegation Runs" : "Delegation Runs"}</strong>
+              <h2>{isChineseUi ? "多 Agent 执行轨迹" : "Multi-Agent Execution"}</h2>
+            </div>
+            <span>{delegationRuns.data?.trajectory_available ? `${recentDelegationRuns.length} runs` : "not available"}</span>
+          </div>
+          <div className="fa-agent-role-trajectory-list">
+            {recentDelegationRuns.slice(0, 6).map((item, index) => (
+              <details className="fa-agent-role-trajectory-row" key={`delegation-${index}`}>
+                <summary>
+                  <span>{String(item.role ?? item.task_id ?? "role")}</span>
+                  <strong>{String(item.status ?? "planned")}</strong>
+                </summary>
+                <pre>{jsonPreview(item)}</pre>
+              </details>
+            ))}
+            {!recentDelegationRuns.length ? (
+              <div className="fa-observability-empty is-compact">
+                {isChineseUi ? "还没有 agent_delegation_plan 记录。" : "No agent_delegation_plan records yet."}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="fa-observability-detail-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Model Router" : "Model Router"}</strong>
+              <h2>{isChineseUi ? "成本 / 质量 / 延迟路由" : "Cost / Quality / Latency"}</h2>
+            </div>
+            <span>{modelRouterPolicy.data?.enabled ? modelRouterPolicy.data.mode : "disabled"}</span>
+          </div>
+          <div className="fa-agent-role-model-list">
+            {Object.entries(modelRouterPolicy.data?.role_models ?? {}).map(([role, model]) => (
+              <div className="fa-agent-role-model-row" key={`model-router-${role}`}>
+                <span>{roleLabel(role)}</span>
+                <strong>{model ?? "-"}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="fa-agent-role-trajectory-list">
+            {recentModelRouteItems.slice(0, 4).map((item, index) => (
+              <details className="fa-agent-role-trajectory-row" key={`model-route-${index}`}>
+                <summary>
+                  <span>{String(item.role ?? "executor")}</span>
+                  <strong>{String(item.effective_model ?? item.recommended_model ?? "-")}</strong>
+                </summary>
+                <pre>{jsonPreview(item)}</pre>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="fa-agent-role-grid">
+        <div className="fa-observability-list-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Self Repair" : "Self Repair"}</strong>
+              <h2>{isChineseUi ? "失败归因与候选样本" : "Failure Triage"}</h2>
+            </div>
+            <span>{selfRepairFailures.data?.trajectory_available ? `${recentFailures.length} failures` : "not available"}</span>
+          </div>
+          {recentFailures.slice(0, 5).map((item, index) => (
+            <details className="fa-agent-role-trajectory-row" key={`failure-${index}`}>
+              <summary>
+                <span>{String(item.failure_type ?? "failure")}</span>
+                <strong>{String(item.failed_role ?? "role")}</strong>
+              </summary>
+              <pre>{jsonPreview(item)}</pre>
+            </details>
+          ))}
+          {!recentFailures.length ? (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "还没有 agent failure 记录。" : "No agent failure records yet."}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="fa-observability-detail-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Review Queue" : "Review Queue"}</strong>
+              <h2>{isChineseUi ? "人工干预队列" : "Human Review Queue"}</h2>
+            </div>
+            <span>{reviewQueue.data?.trajectory_available ? `${reviewQueueItems.length} items` : "not available"}</span>
+          </div>
+          {reviewQueueItems.slice(0, 5).map((item, index) => (
+            <details className="fa-agent-role-trajectory-row" key={`review-${index}`}>
+              <summary>
+                <span>{String(item.item_type ?? "review")}</span>
+                <strong>{String(item.status ?? "pending")}</strong>
+              </summary>
+              <pre>{jsonPreview(item)}</pre>
+            </details>
+          ))}
+          {!reviewQueueItems.length ? (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "还没有待人工确认的治理项。" : "No pending governance review items."}
+            </div>
+          ) : null}
         </div>
       </section>
 

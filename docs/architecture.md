@@ -163,7 +163,7 @@ Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 
 - 限流仍是进程内滑动窗口，不适合多副本共享额度；多副本部署应改用 Redis 等外部限流存储
 - overview / trajectory 的职责拆分和三栏复盘工作台已落地，但还需要更长时真实浏览器链路、对比/批量治理和告警接入
 - context budget 仍以确定性裁剪和近似预算为主，tokenizer 精算与语义压缩仍在路线图中
-- Model Routing 当前处于 dry-run 和观测态，角色集为 orchestrator / planner / executor / critic / memory_curator / skill_scout，尚未触发真实 delegated agent run
+- Agent Delegation / Model Routing 仍由 feature flags 保护；默认保持 legacy single-run，开启后写入 delegated role run、model route、self-repair 和 review queue 观测记录
 
 ## 6. 推荐验证
 

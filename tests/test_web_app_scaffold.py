@@ -90,6 +90,13 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert ".fa-auth-bootstrap-card" in styles_text
     assert ".fa-auth-bootstrap-input" in styles_text
 
+    agent_console_text = (web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx").read_text()
+    assert "Delegation Runs" in agent_console_text
+    assert "Model Router" in agent_console_text
+    assert "Self Repair" in agent_console_text
+    assert "Review Queue" in agent_console_text
+    assert "listAgentDelegationRuns" in agent_console_text
+
     stream_hook_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"
     ).read_text()

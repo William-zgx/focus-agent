@@ -85,9 +85,10 @@ uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observabili
 7. 如果改动影响 Agent 角色路由、Memory Curator、Tool Router、helper-model fallback 或治理观测：
 
 ```bash
-uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py
+uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
+uv run python -m tests.eval --suite agent_delegation --concurrency 1
 ```
 
 如果本机 `.venv` 里的 `psycopg` 因缺少 `libpq` 在测试收集阶段失败，可先用当前 focused observability workaround：

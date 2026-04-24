@@ -10,6 +10,12 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from fastapi.staticfiles import StaticFiles
 
 from focus_agent.agent_roles import AgentRole, RoleModelResolver, build_role_route_plan
+from focus_agent.agent_delegation import (
+    apply_review_decision,
+    build_agent_delegation_plan,
+    build_model_route_decision,
+    build_self_repair_preview,
+)
 from focus_agent.capabilities.tool_router import build_capability_registry, build_tool_route_plan
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ConversationRecord
@@ -45,6 +51,19 @@ from .contracts import (
     AgentMemoryCuratorEvaluateRequest,
     AgentMemoryCuratorEvaluateResponse,
     AgentMemoryCuratorPolicyResponse,
+    AgentDelegationPlanRequest,
+    AgentDelegationPlanResponse,
+    AgentDelegationPolicyResponse,
+    AgentDelegationRunListResponse,
+    AgentModelRouteRequest,
+    AgentModelRouteResponse,
+    AgentModelRouterDecisionListResponse,
+    AgentModelRouterPolicyResponse,
+    AgentReviewQueueDecisionResponse,
+    AgentReviewQueueListResponse,
+    AgentSelfRepairFailureListResponse,
+    AgentSelfRepairPromotePreviewRequest,
+    AgentSelfRepairPromotePreviewResponse,
     AgentToolRouteDecisionListResponse,
     AgentToolRouteRequest,
     AgentToolRouteResponse,
@@ -682,6 +701,25 @@ def _agent_role_policy_response(settings: Settings | Any) -> AgentRolePolicyResp
     )
 
 
+def _agent_delegation_policy_response(settings: Settings | Any) -> AgentDelegationPolicyResponse:
+    return AgentDelegationPolicyResponse(
+        enabled=bool(getattr(settings, "agent_delegation_enabled", False)),
+        enforce=bool(getattr(settings, "agent_delegation_enforce", False)),
+        max_parallel_runs=max(1, int(getattr(settings, "agent_role_max_parallel_runs", 1) or 1)),
+    )
+
+
+def _agent_model_router_policy_response(settings: Settings | Any) -> AgentModelRouterPolicyResponse:
+    resolver = RoleModelResolver(settings)
+    return AgentModelRouterPolicyResponse(
+        enabled=bool(getattr(settings, "agent_model_router_enabled", False)),
+        mode=str(getattr(settings, "agent_model_router_mode", "observe") or "observe"),
+        default_model=str(getattr(settings, "model", "")),
+        helper_model=getattr(settings, "helper_model", None),
+        role_models={role.value: resolver.resolve(role) for role in AgentRole},
+    )
+
+
 def _available_tool_names(runtime: AppRuntime | Any) -> list[str]:
     registry = getattr(runtime, "tool_registry", None)
     return [
@@ -757,6 +795,45 @@ def _list_plan_meta_decisions(
     except Exception as exc:  # noqa: BLE001
         return [], False, str(exc)
     return _plan_meta_items(rows, key), True, None
+
+
+def _list_plan_meta_list_items(
+    *,
+    runtime: AppRuntime | Any,
+    key: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], bool, str | None]:
+    repo = _maybe_get_trajectory_repository(runtime)
+    if repo is None:
+        return [], False, None
+    try:
+        rows = repo.list_turns(TrajectoryTurnQuery(limit=limit, newest_first=True))
+    except Exception as exc:  # noqa: BLE001
+        return [], False, str(exc)
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        plan_meta = dict(row.get("plan_meta") or {})
+        payload: Any = plan_meta
+        for part in key.split("."):
+            payload = payload.get(part) if isinstance(payload, dict) else None
+        if not isinstance(payload, list):
+            continue
+        for raw in payload:
+            if not isinstance(raw, dict):
+                continue
+            items.append(
+                {
+                    "turn_id": row.get("id"),
+                    "request_id": row.get("request_id"),
+                    "trace_id": row.get("trace_id"),
+                    "thread_id": row.get("thread_id"),
+                    "root_thread_id": row.get("root_thread_id"),
+                    "status": row.get("status"),
+                    "started_at": row.get("started_at"),
+                    **raw,
+                }
+            )
+    return items[:limit], True, None
 
 
 def _escape_prometheus_label_value(value: Any) -> str:
@@ -889,6 +966,21 @@ def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
         "# HELP focus_agent_tool_router_enforced_count Total enforced tool_route_plan records.",
         "# TYPE focus_agent_tool_router_enforced_count gauge",
         _prometheus_metric_line("focus_agent_tool_router_enforced_count", int(metrics.get("tool_router_enforced") or 0)),
+        "# HELP focus_agent_delegation_run_count Total delegated agent runs observed in trajectory plan_meta.",
+        "# TYPE focus_agent_delegation_run_count gauge",
+        _prometheus_metric_line("focus_agent_delegation_run_count", int(metrics.get("agent_delegation_runs") or 0)),
+        "# HELP focus_agent_critic_reject_count Total critic rejection failures observed in trajectory plan_meta.",
+        "# TYPE focus_agent_critic_reject_count gauge",
+        _prometheus_metric_line("focus_agent_critic_reject_count", int(metrics.get("critic_rejects") or 0)),
+        "# HELP focus_agent_review_pending_count Pending agent review queue items observed in trajectory plan_meta.",
+        "# TYPE focus_agent_review_pending_count gauge",
+        _prometheus_metric_line("focus_agent_review_pending_count", int(metrics.get("agent_review_pending") or 0)),
+        "# HELP focus_agent_model_router_fallback_count Model Router fallback events observed in trajectory plan_meta.",
+        "# TYPE focus_agent_model_router_fallback_count gauge",
+        _prometheus_metric_line("focus_agent_model_router_fallback_count", int(metrics.get("model_router_fallback") or 0)),
+        "# HELP focus_agent_failure_count Agent failure records observed in trajectory plan_meta.",
+        "# TYPE focus_agent_failure_count gauge",
+        _prometheus_metric_line("focus_agent_failure_count", int(metrics.get("agent_failures") or 0)),
     ]
 
 
@@ -898,6 +990,11 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
         "memory_conflicts": 0,
         "tool_router_denied": 0,
         "tool_router_enforced": 0,
+        "agent_delegation_runs": 0,
+        "critic_rejects": 0,
+        "agent_review_pending": 0,
+        "model_router_fallback": 0,
+        "agent_failures": 0,
     }
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
@@ -909,6 +1006,23 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
         if isinstance(tool_plan, dict):
             metrics["tool_router_denied"] += len(tool_plan.get("denied_tools") or [])
             metrics["tool_router_enforced"] += 1 if tool_plan.get("enforce") else 0
+        delegation_plan = plan_meta.get("agent_delegation_plan")
+        if isinstance(delegation_plan, dict):
+            metrics["agent_delegation_runs"] += len(delegation_plan.get("runs") or [])
+        model_decision = plan_meta.get("model_route_decision")
+        if isinstance(model_decision, dict):
+            metrics["model_router_fallback"] += 1 if model_decision.get("fallback_used") else 0
+        failures = plan_meta.get("agent_failure_records")
+        if isinstance(failures, list):
+            metrics["agent_failures"] += len(failures)
+            metrics["critic_rejects"] += len(
+                [item for item in failures if isinstance(item, dict) and item.get("failure_type") == "critic_rejected"]
+            )
+        review_queue = plan_meta.get("agent_review_queue")
+        if isinstance(review_queue, list):
+            metrics["agent_review_pending"] += len(
+                [item for item in review_queue if isinstance(item, dict) and item.get("status") == "pending"]
+            )
     return metrics
 
 
@@ -1260,6 +1374,178 @@ def create_app() -> FastAPI:
             trajectory_available=available,
             trajectory_error=error,
         )
+
+    @app.get('/v1/agent/delegation/policy', response_model=AgentDelegationPolicyResponse)
+    def get_agent_delegation_policy(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentDelegationPolicyResponse:
+        del principal
+        return _agent_delegation_policy_response(runtime.settings)
+
+    @app.post('/v1/agent/delegation/plan', response_model=AgentDelegationPlanResponse)
+    def plan_agent_delegation(
+        payload: AgentDelegationPlanRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentDelegationPlanResponse:
+        del principal
+        available_tools = payload.available_tools or _available_tool_names(runtime)
+        role_route = build_role_route_plan(
+            settings=runtime.settings,
+            task_text=payload.message,
+            available_tool_names=available_tools,
+            tool_policy=payload.scene,
+        )
+        plan = build_agent_delegation_plan(
+            settings=runtime.settings,
+            task_text=payload.message,
+            role_route_plan=role_route.model_dump(mode="json"),
+            available_tool_names=available_tools,
+            tool_policy=payload.scene,
+        )
+        return AgentDelegationPlanResponse(
+            policy=_agent_delegation_policy_response(runtime.settings),
+            plan=plan.model_dump(mode="json"),
+        )
+
+    @app.get('/v1/agent/delegation/runs', response_model=AgentDelegationRunListResponse)
+    def list_agent_delegation_runs(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentDelegationRunListResponse:
+        del principal
+        items, available, error = _list_plan_meta_list_items(
+            runtime=runtime,
+            key="agent_runs",
+            limit=limit,
+        )
+        if not items:
+            items, available, error = _list_plan_meta_list_items(
+                runtime=runtime,
+                key="agent_delegation_plan.runs",
+                limit=limit,
+            )
+        return AgentDelegationRunListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.get('/v1/agent/model-router/policy', response_model=AgentModelRouterPolicyResponse)
+    def get_agent_model_router_policy(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentModelRouterPolicyResponse:
+        del principal
+        return _agent_model_router_policy_response(runtime.settings)
+
+    @app.post('/v1/agent/model-router/route', response_model=AgentModelRouteResponse)
+    def route_agent_model(
+        payload: AgentModelRouteRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentModelRouteResponse:
+        del principal
+        decision = build_model_route_decision(
+            settings=runtime.settings,
+            role=payload.role,
+            selected_model=payload.selected_model,
+            task_text=payload.task_text,
+            tool_risk=payload.tool_risk,
+            context_size=payload.context_size,
+        )
+        return AgentModelRouteResponse(decision=decision.model_dump(mode="json"))
+
+    @app.get('/v1/agent/model-router/decisions', response_model=AgentModelRouterDecisionListResponse)
+    def list_agent_model_router_decisions(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentModelRouterDecisionListResponse:
+        del principal
+        items, available, error = _list_plan_meta_decisions(
+            runtime=runtime,
+            key="model_route_decision",
+            limit=limit,
+        )
+        return AgentModelRouterDecisionListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.get('/v1/agent/self-repair/failures', response_model=AgentSelfRepairFailureListResponse)
+    def list_agent_self_repair_failures(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentSelfRepairFailureListResponse:
+        del principal
+        items, available, error = _list_plan_meta_list_items(
+            runtime=runtime,
+            key="agent_failure_records",
+            limit=limit,
+        )
+        return AgentSelfRepairFailureListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.post('/v1/agent/self-repair/promote-preview', response_model=AgentSelfRepairPromotePreviewResponse)
+    def preview_agent_self_repair_promotion(
+        payload: AgentSelfRepairPromotePreviewRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentSelfRepairPromotePreviewResponse:
+        del principal, runtime
+        preview = build_self_repair_preview(
+            failures=payload.failures,
+            case_id_prefix=payload.case_id_prefix,
+        )
+        return AgentSelfRepairPromotePreviewResponse(preview=preview.model_dump(mode="json"))
+
+    @app.get('/v1/agent/review-queue', response_model=AgentReviewQueueListResponse)
+    def list_agent_review_queue(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentReviewQueueListResponse:
+        del principal
+        items, available, error = _list_plan_meta_list_items(
+            runtime=runtime,
+            key="agent_review_queue",
+            limit=limit,
+        )
+        return AgentReviewQueueListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.post('/v1/agent/review-queue/{item_id}/approve', response_model=AgentReviewQueueDecisionResponse)
+    def approve_agent_review_queue_item(
+        item_id: str,
+        principal: Principal = Depends(get_current_principal),
+    ) -> AgentReviewQueueDecisionResponse:
+        del principal
+        item = apply_review_decision({"item_id": item_id, "item_type": "manual", "summary": "Approved by operator."}, approved=True)
+        return AgentReviewQueueDecisionResponse(item=item.model_dump(mode="json"))
+
+    @app.post('/v1/agent/review-queue/{item_id}/reject', response_model=AgentReviewQueueDecisionResponse)
+    def reject_agent_review_queue_item(
+        item_id: str,
+        principal: Principal = Depends(get_current_principal),
+    ) -> AgentReviewQueueDecisionResponse:
+        del principal
+        item = apply_review_decision({"item_id": item_id, "item_type": "manual", "summary": "Rejected by operator."}, approved=False)
+        return AgentReviewQueueDecisionResponse(item=item.model_dump(mode="json"))
 
     @app.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)
     def get_observability_overview(

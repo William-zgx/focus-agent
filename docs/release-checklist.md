@@ -57,6 +57,7 @@ uv run python -m tests.eval --suite smoke --concurrency 1
 uv run python -m tests.eval --suite observability --concurrency 1
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
+uv run python -m tests.eval --suite agent_delegation --concurrency 1
 ```
 
 - If browser workflows changed outside observability, also run `make ui-smoke`

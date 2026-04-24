@@ -60,6 +60,22 @@ class _DecisionRepo:
                         "promoted_memory_ids": [],
                         "conflicts": [{"candidate_id": "branch-1:0"}],
                     },
+                    "agent_delegation_plan": {
+                        "enabled": True,
+                        "runs": [{"run_id": "run-1", "task_id": "task-1", "role": "executor", "status": "completed"}],
+                    },
+                    "model_route_decision": {
+                        "enabled": True,
+                        "mode": "observe",
+                        "role": "executor",
+                        "effective_model": "openai:gpt-4.1-mini",
+                    },
+                    "agent_failure_records": [
+                        {"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}
+                    ],
+                    "agent_review_queue": [
+                        {"item_id": "review-1", "item_type": "workspace_write_with_high_risk_tool", "status": "pending"}
+                    ],
                 },
             }
         ]
@@ -251,6 +267,10 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             auth_enabled=False,
             agent_memory_curator_enabled=True,
             agent_tool_router_enabled=True,
+            agent_delegation_enabled=True,
+            agent_model_router_enabled=True,
+            agent_self_repair_enabled=True,
+            agent_review_queue_enabled=True,
         ),
         tool_registry=ToolRegistry(tools=(search_code, write_text_artifact, web_search)),
         trajectory_recorder=_DecisionRepo(),
@@ -278,6 +298,20 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     )
     tool_decisions = client.get("/v1/agent/tool-router/decisions")
     memory_decisions = client.get("/v1/agent/memory/curator/decisions")
+    delegation_policy = client.get("/v1/agent/delegation/policy")
+    delegation_plan = client.post("/v1/agent/delegation/plan", json={"message": "Plan and implement delegation."})
+    delegation_runs = client.get("/v1/agent/delegation/runs")
+    model_policy = client.get("/v1/agent/model-router/policy")
+    model_route = client.post("/v1/agent/model-router/route", json={"role": "critic"})
+    model_decisions = client.get("/v1/agent/model-router/decisions")
+    failures = client.get("/v1/agent/self-repair/failures")
+    promote_preview = client.post(
+        "/v1/agent/self-repair/promote-preview",
+        json={"failures": [{"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}]},
+    )
+    review_queue = client.get("/v1/agent/review-queue")
+    review_approve = client.post("/v1/agent/review-queue/review-1/approve")
+    review_reject = client.post("/v1/agent/review-queue/review-1/reject")
     metrics = client.get("/metrics")
 
     assert capabilities.status_code == 200
@@ -288,5 +322,18 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     assert memory_eval.json()["decision"]["status"] == "ready"
     assert tool_decisions.json()["count"] == 1
     assert memory_decisions.json()["count"] == 1
+    assert delegation_policy.json()["enabled"] is True
+    assert delegation_plan.json()["plan"]["enabled"] is True
+    assert delegation_runs.json()["items"][0]["run_id"] == "run-1"
+    assert model_policy.json()["enabled"] is True
+    assert model_route.json()["decision"]["role"] == "critic"
+    assert model_decisions.json()["count"] == 1
+    assert failures.json()["items"][0]["failure_type"] == "tool_denied"
+    assert promote_preview.json()["preview"]["candidates"][0]["tags"][0] == "agent_delegation"
+    assert review_queue.json()["items"][0]["item_id"] == "review-1"
+    assert review_approve.json()["item"]["status"] == "approved"
+    assert review_reject.json()["item"]["status"] == "rejected"
     assert "focus_agent_tool_router_denied_count 1" in metrics.text
     assert "focus_agent_memory_conflict_count 1" in metrics.text
+    assert "focus_agent_delegation_run_count 1" in metrics.text
+    assert "focus_agent_review_pending_count 1" in metrics.text

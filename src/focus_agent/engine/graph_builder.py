@@ -10,6 +10,12 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ..agent_roles import build_role_route_plan
+from ..agent_delegation import (
+    build_agent_delegation_plan,
+    build_failure_records,
+    build_model_route_decision,
+    build_review_queue,
+)
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..capabilities.tool_runtime import (
     ToolExecutionInput,
@@ -934,6 +940,42 @@ def build_graph(
         )
         return {"role_route_plan": plan.model_dump(mode="json")}
 
+    def delegation_governance(state: AgentState) -> dict[str, Any]:
+        latest_user = _latest_human_message_text(list(state.get("messages", []) or []))
+        task_text = latest_user or str(state.get("task_brief") or "")
+        tool_policy = _classify_turn_tool_policy(task_text)
+        available_tool_names = [str(getattr(tool, "name", "")) for tool in tools]
+        updates: dict[str, Any] = {}
+        meta = dict(state.get("plan_meta") or {})
+        if settings.agent_delegation_enabled:
+            delegation_plan = build_agent_delegation_plan(
+                settings=settings,
+                task_text=task_text,
+                role_route_plan=state.get("role_route_plan"),
+                available_tool_names=available_tool_names,
+                tool_policy=tool_policy,
+            ).model_dump(mode="json")
+            updates["agent_delegation_plan"] = delegation_plan
+            updates["agent_runs"] = list(delegation_plan.get("runs") or [])
+            meta["agent_delegation_plan"] = delegation_plan
+        if settings.agent_model_router_enabled:
+            role = infer_tool_router_role(state.get("role_route_plan"))
+            decision = build_model_route_decision(
+                settings=settings,
+                role=role,
+                selected_model=str(state.get("selected_model") or settings.model),
+                task_text=task_text,
+                tool_risk="low",
+                context_size=len(str(state.get("assembled_context") or "")),
+            ).model_dump(mode="json")
+            updates["model_route_decision"] = decision
+            meta["model_route_decision"] = decision
+            if decision.get("enabled") and decision.get("mode") == "enforce":
+                updates["selected_model"] = str(decision.get("effective_model") or state.get("selected_model") or settings.model)
+        if meta != dict(state.get("plan_meta") or {}):
+            updates["plan_meta"] = meta
+        return updates
+
     def plan_node(
         state: AgentState,
         runtime: Runtime[RequestContext],
@@ -949,7 +991,16 @@ def build_graph(
         ):
             return {}
 
-        selected_model = str(state.get("selected_model") or settings.model)
+        model_route_decision = state.get("model_route_decision") or {}
+        if (
+            isinstance(model_route_decision, dict)
+            and model_route_decision.get("enabled")
+            and model_route_decision.get("mode") == "enforce"
+            and model_route_decision.get("effective_model")
+        ):
+            selected_model = str(model_route_decision.get("effective_model"))
+        else:
+            selected_model = str(state.get("selected_model") or settings.model)
         task_brief = str(state.get("task_brief") or _latest_human_message_text(state.get("messages", [])))
         tool_names = [t.name for t in tools][:20]
         prior_reflection = state.get("reflection")
@@ -1158,10 +1209,35 @@ def build_graph(
         if tool_route_plan is not None:
             dumped = tool_route_plan.model_dump(mode="json")
             updates["tool_route_plan"] = dumped
-            updates["plan_meta"] = {
+            plan_meta = {
                 **(state.get("plan_meta") or {}),
                 "tool_route_plan": dumped,
             }
+            if settings.agent_self_repair_enabled:
+                failures = [
+                    item.model_dump(mode="json")
+                    for item in build_failure_records(
+                        delegation_plan=state.get("agent_delegation_plan"),
+                        tool_route_plan=dumped,
+                        model_route_decision=state.get("model_route_decision"),
+                    )
+                ]
+                updates["agent_failure_records"] = failures
+                plan_meta["agent_failure_records"] = failures
+            if settings.agent_review_queue_enabled:
+                review_items = [
+                    item.model_dump(mode="json")
+                    for item in build_review_queue(
+                        settings=settings,
+                        memory_curator_decision=state.get("memory_curator_decision"),
+                        tool_route_plan=dumped,
+                        model_route_decision=state.get("model_route_decision"),
+                        agent_failure_records=updates.get("agent_failure_records") or state.get("agent_failure_records") or [],
+                    )
+                ]
+                updates["agent_review_queue"] = review_items
+                plan_meta["agent_review_queue"] = review_items
+            updates["plan_meta"] = plan_meta
         return updates
 
     def tool_executor(
@@ -1341,6 +1417,7 @@ def build_graph(
     builder.add_node("retrieve_memory", retrieve_memory)
     builder.add_node("assemble_context", assemble_context)
     builder.add_node("role_route_dry_run", role_route_dry_run)
+    builder.add_node("delegation_governance", delegation_governance)
     builder.add_node("plan", plan_node)
     builder.add_node("agent_loop", agent_loop)
     builder.add_node("tool_executor", tool_executor)
@@ -1354,7 +1431,8 @@ def build_graph(
     builder.add_edge("bootstrap_turn", "retrieve_memory")
     builder.add_edge("retrieve_memory", "assemble_context")
     builder.add_edge("assemble_context", "role_route_dry_run")
-    builder.add_edge("role_route_dry_run", "plan")
+    builder.add_edge("role_route_dry_run", "delegation_governance")
+    builder.add_edge("delegation_governance", "plan")
     builder.add_edge("plan", "agent_loop")
     builder.add_conditional_edges(
         "agent_loop",

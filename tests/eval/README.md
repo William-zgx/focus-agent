@@ -12,6 +12,7 @@ uv run python -m tests.eval --suite smoke
 
 # Run the Agent architecture / role-routing gate.
 uv run python -m tests.eval --suite agent_arch --concurrency 1
+uv run python -m tests.eval --suite agent_delegation --concurrency 1
 
 # Full run with HTML + JSON reports.
 uv run python -m tests.eval --suite all \
@@ -107,6 +108,10 @@ preview isolation, and helper-model fallback expectations.
 Agent governance cases live in `datasets/agent_governance.jsonl` and cover
 Memory Curator branch promotion boundaries plus Skill Scout / Tool Router
 allow/deny expectations.
+
+Agent delegation cases live in `datasets/agent_delegation.jsonl` and cover
+default-off behavior, role run paths, Model Router decisions, self-repair
+preview, and Review Queue expectations.
 
 ## Judges
 

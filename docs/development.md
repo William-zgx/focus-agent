@@ -85,9 +85,10 @@ uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observabili
 7. If Agent role routing, memory curator, tool router, helper-model fallback, or governance observability changed:
 
 ```bash
-uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py
+uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 uv run python -m tests.eval --suite agent_governance --concurrency 1
+uv run python -m tests.eval --suite agent_delegation --concurrency 1
 ```
 
 If local test collection fails because the active `.venv` `psycopg` install cannot load `libpq`, use the focused stub workaround for observability checks:

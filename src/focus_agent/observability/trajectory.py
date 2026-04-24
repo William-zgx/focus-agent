@@ -251,6 +251,32 @@ def build_turn_trajectory_record(
         if isinstance(tool_route_plan, dict):
             metrics["tool_router_denied"] = len(tool_route_plan.get("denied_tools") or [])
             metrics["tool_router_enforced"] = 1 if tool_route_plan.get("enforce") else 0
+    agent_delegation_plan = _json_safe(final_values.get("agent_delegation_plan"))
+    if agent_delegation_plan:
+        plan_meta["agent_delegation_plan"] = agent_delegation_plan
+        if isinstance(agent_delegation_plan, dict):
+            metrics["agent_delegation_runs"] = len(agent_delegation_plan.get("runs") or [])
+    model_route_decision = _json_safe(final_values.get("model_route_decision"))
+    if model_route_decision:
+        plan_meta["model_route_decision"] = model_route_decision
+        if isinstance(model_route_decision, dict):
+            metrics["model_router_fallback"] = 1 if model_route_decision.get("fallback_used") else 0
+    agent_failure_records = _json_safe(final_values.get("agent_failure_records"))
+    if agent_failure_records:
+        plan_meta["agent_failure_records"] = agent_failure_records
+        if isinstance(agent_failure_records, list):
+            metrics["agent_failures"] = len(agent_failure_records)
+    agent_review_queue = _json_safe(final_values.get("agent_review_queue"))
+    if agent_review_queue:
+        plan_meta["agent_review_queue"] = agent_review_queue
+        if isinstance(agent_review_queue, list):
+            metrics["agent_review_pending"] = len(
+                [
+                    item
+                    for item in agent_review_queue
+                    if isinstance(item, dict) and item.get("status") == "pending"
+                ]
+            )
 
     return TurnTrajectoryRecord(
         id=str(uuid.uuid4()),

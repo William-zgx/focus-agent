@@ -322,6 +322,85 @@ export interface FocusAgentMemoryCuratorDecisionListResponse {
   trajectory_error?: string | null;
 }
 
+export interface FocusAgentDelegationPolicyResponse {
+  enabled: boolean;
+  enforce: boolean;
+  max_parallel_runs: number;
+  default_off_legacy_safe: boolean;
+}
+
+export interface FocusAgentDelegationPlanRequest {
+  message: string;
+  scene?: string;
+  available_tools?: string[];
+}
+
+export interface FocusAgentDelegationPlanResponse {
+  policy: FocusAgentDelegationPolicyResponse;
+  plan: Record<string, unknown>;
+}
+
+export interface FocusAgentDelegationRunListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentModelRouterPolicyResponse {
+  enabled: boolean;
+  mode: string;
+  default_model: string;
+  helper_model?: string | null;
+  role_models: Record<string, string | null>;
+}
+
+export interface FocusAgentModelRouteRequest {
+  role?: string;
+  selected_model?: string | null;
+  task_text?: string;
+  tool_risk?: string;
+  context_size?: number;
+}
+
+export interface FocusAgentModelRouteResponse {
+  decision: Record<string, unknown>;
+}
+
+export interface FocusAgentModelRouterDecisionListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentSelfRepairFailureListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentSelfRepairPromotePreviewRequest {
+  failures?: Array<Record<string, unknown>>;
+  case_id_prefix?: string;
+}
+
+export interface FocusAgentSelfRepairPromotePreviewResponse {
+  preview: Record<string, unknown>;
+}
+
+export interface FocusAgentReviewQueueListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentReviewQueueDecisionResponse {
+  item: Record<string, unknown>;
+}
+
 export interface FocusAgentConversationSummary {
   root_thread_id: string;
   title: string;
