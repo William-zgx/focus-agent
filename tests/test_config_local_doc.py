@@ -260,6 +260,10 @@ def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
     monkeypatch.setenv("AGENT_ROLE_MEMORY_MODEL", "openai:deepseek-chat")
     monkeypatch.setenv("AGENT_ROLE_SKILL_MODEL", "openai:gpt-4.1-mini")
     monkeypatch.setenv("AGENT_ROLE_MAX_PARALLEL_RUNS", "3")
+    monkeypatch.setenv("AGENT_MEMORY_CURATOR_ENABLED", "true")
+    monkeypatch.setenv("AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE", "false")
+    monkeypatch.setenv("AGENT_TOOL_ROUTER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_TOOL_ROUTER_ENFORCE", "false")
 
     settings = Settings.from_env()
 
@@ -271,6 +275,10 @@ def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
     assert settings.agent_role_memory_model == "openai:deepseek-chat"
     assert settings.agent_role_skill_model == "openai:gpt-4.1-mini"
     assert settings.agent_role_max_parallel_runs == 3
+    assert settings.agent_memory_curator_enabled is True
+    assert settings.agent_memory_auto_promote_on_merge is False
+    assert settings.agent_tool_router_enabled is True
+    assert settings.agent_tool_router_enforce is False
 
 
 def test_settings_from_env_enables_trajectory_when_database_uri_exists(monkeypatch):

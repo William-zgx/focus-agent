@@ -69,6 +69,74 @@ class AgentRoleDecisionListResponse(BaseModel):
     trajectory_error: str | None = None
 
 
+class AgentCapabilityResponse(BaseModel):
+    name: str
+    description: str = ""
+    toolset: str | None = None
+    allowed_roles: list[str] = Field(default_factory=list)
+    risk_level: str = "low"
+    side_effect: bool = False
+    parallel_safe: bool = False
+    cacheable: bool = False
+    requires_network: bool = False
+    requires_workspace_write: bool = False
+    requires_approval: bool = False
+
+
+class AgentCapabilityListResponse(BaseModel):
+    items: list[AgentCapabilityResponse] = Field(default_factory=list)
+    count: int = 0
+
+
+class AgentToolRouteRequest(BaseModel):
+    role: str = "executor"
+    tool_policy: str = "execution"
+    available_tools: list[str] = Field(default_factory=list)
+    enforce: bool | None = None
+
+
+class AgentToolRouteResponse(BaseModel):
+    plan: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentToolRouteDecisionListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
+class AgentMemoryCuratorPolicyResponse(BaseModel):
+    enabled: bool = False
+    auto_promote_on_merge: bool = True
+    branch_local_only_until_merge: bool = True
+    conflict_strategy: str = "needs_review"
+
+
+class AgentMemoryCuratorEvaluateRequest(BaseModel):
+    root_thread_id: str
+    branch_id: str
+    branch_name: str = "Branch"
+    branch_role: str = "explore_alternatives"
+    branch_status: str = "active"
+    child_thread_id: str | None = None
+    parent_thread_id: str | None = None
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    user_id: str | None = None
+    auto_promote: bool | None = None
+
+
+class AgentMemoryCuratorEvaluateResponse(BaseModel):
+    decision: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentMemoryCuratorDecisionListResponse(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    trajectory_available: bool = False
+    trajectory_error: str | None = None
+
+
 class ConversationSummaryResponse(BaseModel):
     root_thread_id: str
     title: str

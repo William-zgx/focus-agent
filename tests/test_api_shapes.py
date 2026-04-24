@@ -164,6 +164,51 @@ def test_agent_role_contract_shapes():
     assert decision_list.items[0]["turn_id"] == "turn-1"
     assert decision_list.trajectory_available is True
 
+    from focus_agent.api.contracts import (
+        AgentCapabilityListResponse,
+        AgentCapabilityResponse,
+        AgentMemoryCuratorDecisionListResponse,
+        AgentMemoryCuratorEvaluateRequest,
+        AgentMemoryCuratorEvaluateResponse,
+        AgentMemoryCuratorPolicyResponse,
+        AgentToolRouteDecisionListResponse,
+        AgentToolRouteRequest,
+        AgentToolRouteResponse,
+    )
+
+    capabilities = AgentCapabilityListResponse(
+        items=[
+            AgentCapabilityResponse(
+                name="search_code",
+                description="Search code",
+                toolset="workspace",
+                allowed_roles=["executor", "critic"],
+                parallel_safe=True,
+            )
+        ],
+        count=1,
+    )
+    route_request = AgentToolRouteRequest(role="critic", available_tools=["search_code"])
+    route_response = AgentToolRouteResponse(plan={"allowed_tools": ["search_code"]})
+    memory_policy = AgentMemoryCuratorPolicyResponse(enabled=True)
+    memory_request = AgentMemoryCuratorEvaluateRequest(
+        root_thread_id="root-1",
+        branch_id="branch-1",
+        findings=[{"finding": "Promote me"}],
+    )
+    memory_response = AgentMemoryCuratorEvaluateResponse(decision={"status": "ready"})
+    tool_decisions = AgentToolRouteDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
+    memory_decisions = AgentMemoryCuratorDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
+
+    assert capabilities.items[0].name == "search_code"
+    assert route_request.role == "critic"
+    assert route_response.plan["allowed_tools"] == ["search_code"]
+    assert memory_policy.conflict_strategy == "needs_review"
+    assert memory_request.findings[0]["finding"] == "Promote me"
+    assert memory_response.decision["status"] == "ready"
+    assert tool_decisions.count == 1
+    assert memory_decisions.count == 1
+
 
 def test_conversation_contract_shapes():
     created = ConversationSummaryResponse(
@@ -307,6 +352,12 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/agent/roles/policy" in route_paths
     assert "/v1/agent/roles/dry-run" in route_paths
     assert "/v1/agent/roles/decisions" in route_paths
+    assert "/v1/agent/capabilities" in route_paths
+    assert "/v1/agent/tool-router/route" in route_paths
+    assert "/v1/agent/tool-router/decisions" in route_paths
+    assert "/v1/agent/memory/curator/policy" in route_paths
+    assert "/v1/agent/memory/curator/evaluate" in route_paths
+    assert "/v1/agent/memory/curator/decisions" in route_paths
     assert "/v1/observability/overview" in route_paths
     assert "/v1/observability/trajectory" in route_paths
     assert "/v1/observability/trajectory/stats" in route_paths

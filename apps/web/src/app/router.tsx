@@ -214,6 +214,12 @@ const agentRoleConsoleRoute = createRoute({
   component: AgentRoleConsolePage,
 });
 
+const agentGovernanceConsoleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agent/governance",
+  component: AgentRoleConsolePage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   threadRoute,
@@ -221,6 +227,7 @@ const routeTree = rootRoute.addChildren([
   trajectoryRoute,
   observabilityOverviewRoute,
   agentRoleConsoleRoute,
+  agentGovernanceConsoleRoute,
 ]);
 
 const router = createRouter({

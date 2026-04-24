@@ -254,6 +254,74 @@ export interface FocusAgentRoleDecisionListResponse {
   trajectory_error?: string | null;
 }
 
+export interface FocusAgentCapability {
+  name: string;
+  description: string;
+  toolset?: string | null;
+  allowed_roles: string[];
+  risk_level: string;
+  side_effect: boolean;
+  parallel_safe: boolean;
+  cacheable: boolean;
+  requires_network: boolean;
+  requires_workspace_write: boolean;
+  requires_approval: boolean;
+}
+
+export interface FocusAgentCapabilityListResponse {
+  items: FocusAgentCapability[];
+  count: number;
+}
+
+export interface FocusAgentToolRouteRequest {
+  role?: string;
+  tool_policy?: string;
+  available_tools?: string[];
+  enforce?: boolean | null;
+}
+
+export interface FocusAgentToolRouteResponse {
+  plan: Record<string, unknown>;
+}
+
+export interface FocusAgentToolRouteDecisionListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
+export interface FocusAgentMemoryCuratorPolicyResponse {
+  enabled: boolean;
+  auto_promote_on_merge: boolean;
+  branch_local_only_until_merge: boolean;
+  conflict_strategy: string;
+}
+
+export interface FocusAgentMemoryCuratorEvaluateRequest {
+  root_thread_id: string;
+  branch_id: string;
+  branch_name?: string;
+  branch_role?: string;
+  branch_status?: string;
+  child_thread_id?: string | null;
+  parent_thread_id?: string | null;
+  findings?: Array<Record<string, unknown>>;
+  user_id?: string | null;
+  auto_promote?: boolean | null;
+}
+
+export interface FocusAgentMemoryCuratorEvaluateResponse {
+  decision: Record<string, unknown>;
+}
+
+export interface FocusAgentMemoryCuratorDecisionListResponse {
+  items: Array<Record<string, unknown>>;
+  count: number;
+  trajectory_available: boolean;
+  trajectory_error?: string | null;
+}
+
 export interface FocusAgentConversationSummary {
   root_thread_id: string;
   title: string;

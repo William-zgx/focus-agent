@@ -10,11 +10,13 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from fastapi.staticfiles import StaticFiles
 
 from focus_agent.agent_roles import AgentRole, RoleModelResolver, build_role_route_plan
+from focus_agent.capabilities.tool_router import build_capability_registry, build_tool_route_plan
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ConversationRecord
+from focus_agent.memory import MemoryCurator
 from focus_agent.security.tokens import Principal, create_access_token
 from focus_agent.config import Settings
-from focus_agent.core.branching import MergeDecision
+from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision
 from focus_agent.engine.runtime import AppRuntime, create_runtime
 from focus_agent.observability.trajectory_actions import (
     build_promoted_dataset_payload,
@@ -38,6 +40,14 @@ from .contracts import (
     AgentRoleDryRunRequest,
     AgentRoleDryRunResponse,
     AgentRolePolicyResponse,
+    AgentCapabilityListResponse,
+    AgentMemoryCuratorDecisionListResponse,
+    AgentMemoryCuratorEvaluateRequest,
+    AgentMemoryCuratorEvaluateResponse,
+    AgentMemoryCuratorPolicyResponse,
+    AgentToolRouteDecisionListResponse,
+    AgentToolRouteRequest,
+    AgentToolRouteResponse,
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
     BranchTreeResponse,
@@ -711,6 +721,44 @@ def _role_route_decision_items(rows: Sequence[dict[str, Any]]) -> list[dict[str,
     return items
 
 
+def _plan_meta_items(rows: Sequence[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        plan_meta = dict(row.get("plan_meta") or {})
+        payload = plan_meta.get(key)
+        if not isinstance(payload, dict):
+            continue
+        items.append(
+            {
+                "turn_id": row.get("id"),
+                "request_id": row.get("request_id"),
+                "trace_id": row.get("trace_id"),
+                "thread_id": row.get("thread_id"),
+                "root_thread_id": row.get("root_thread_id"),
+                "status": row.get("status"),
+                "started_at": row.get("started_at"),
+                **payload,
+            }
+        )
+    return items
+
+
+def _list_plan_meta_decisions(
+    *,
+    runtime: AppRuntime | Any,
+    key: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], bool, str | None]:
+    repo = _maybe_get_trajectory_repository(runtime)
+    if repo is None:
+        return [], False, None
+    try:
+        rows = repo.list_turns(TrajectoryTurnQuery(limit=limit, newest_first=True))
+    except Exception as exc:  # noqa: BLE001
+        return [], False, str(exc)
+    return _plan_meta_items(rows, key), True, None
+
+
 def _escape_prometheus_label_value(value: Any) -> str:
     return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
@@ -731,6 +779,7 @@ def _build_prometheus_metrics_payload(
     runtime_status: RuntimeReadinessResponse,
     trajectory_stats: dict[str, Any] | None,
     trajectory_available: bool,
+    agent_governance_metrics: dict[str, int] | None = None,
 ) -> str:
     lines = [
         "# HELP focus_agent_runtime_ready Whether the application runtime is ready to serve traffic.",
@@ -771,6 +820,7 @@ def _build_prometheus_metrics_payload(
         ]
     )
     if not trajectory_available or not trajectory_stats:
+        lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
         return "\n".join(lines) + "\n"
 
     overview = trajectory_stats.get("overview") or {}
@@ -821,7 +871,45 @@ def _build_prometheus_metrics_payload(
                 labels={"status": row.get("key") or "unknown"},
             )
         )
+    lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
     return "\n".join(lines) + "\n"
+
+
+def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
+    return [
+        "# HELP focus_agent_memory_promotion_count Total memory promotions observed in trajectory plan_meta.",
+        "# TYPE focus_agent_memory_promotion_count gauge",
+        _prometheus_metric_line("focus_agent_memory_promotion_count", int(metrics.get("memory_promotions") or 0)),
+        "# HELP focus_agent_memory_conflict_count Total memory curator conflicts observed in trajectory plan_meta.",
+        "# TYPE focus_agent_memory_conflict_count gauge",
+        _prometheus_metric_line("focus_agent_memory_conflict_count", int(metrics.get("memory_conflicts") or 0)),
+        "# HELP focus_agent_tool_router_denied_count Total denied tools observed in tool_route_plan records.",
+        "# TYPE focus_agent_tool_router_denied_count gauge",
+        _prometheus_metric_line("focus_agent_tool_router_denied_count", int(metrics.get("tool_router_denied") or 0)),
+        "# HELP focus_agent_tool_router_enforced_count Total enforced tool_route_plan records.",
+        "# TYPE focus_agent_tool_router_enforced_count gauge",
+        _prometheus_metric_line("focus_agent_tool_router_enforced_count", int(metrics.get("tool_router_enforced") or 0)),
+    ]
+
+
+def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict[str, int]:
+    metrics = {
+        "memory_promotions": 0,
+        "memory_conflicts": 0,
+        "tool_router_denied": 0,
+        "tool_router_enforced": 0,
+    }
+    for row in rows:
+        plan_meta = dict(row.get("plan_meta") or {})
+        memory_decision = plan_meta.get("memory_curator_decision")
+        if isinstance(memory_decision, dict):
+            metrics["memory_promotions"] += len(memory_decision.get("promoted_memory_ids") or [])
+            metrics["memory_conflicts"] += len(memory_decision.get("conflicts") or [])
+        tool_plan = plan_meta.get("tool_route_plan")
+        if isinstance(tool_plan, dict):
+            metrics["tool_router_denied"] += len(tool_plan.get("denied_tools") or [])
+            metrics["tool_router_enforced"] += 1 if tool_plan.get("enforce") else 0
+    return metrics
 
 
 @asynccontextmanager
@@ -908,19 +996,23 @@ def create_app() -> FastAPI:
     def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextResponse:
         runtime_status = _build_runtime_readiness(runtime)
         trajectory_stats: dict[str, Any] | None = None
+        agent_governance_metrics: dict[str, int] = {}
         trajectory_available = False
         repo = _maybe_get_trajectory_repository(runtime)
         if repo is not None:
             try:
                 trajectory_stats = repo.get_turn_stats(TrajectoryTurnQuery(limit=None, newest_first=True))
+                rows = repo.list_turns(TrajectoryTurnQuery(limit=None, newest_first=True))
             except Exception:  # noqa: BLE001
                 trajectory_stats = None
             else:
                 trajectory_available = True
+                agent_governance_metrics = _agent_governance_metrics_from_turns(rows)
         payload = _build_prometheus_metrics_payload(
             runtime_status=runtime_status,
             trajectory_stats=trajectory_stats,
             trajectory_available=trajectory_available,
+            agent_governance_metrics=agent_governance_metrics,
         )
         return PlainTextResponse(payload, media_type="text/plain; version=0.0.4; charset=utf-8")
 
@@ -1048,6 +1140,125 @@ def create_app() -> FastAPI:
             items=items,
             count=len(items),
             trajectory_available=True,
+        )
+
+    @app.get('/v1/agent/capabilities', response_model=AgentCapabilityListResponse)
+    def list_agent_capabilities(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentCapabilityListResponse:
+        del principal
+        registry = getattr(runtime, "tool_registry", None)
+        items = build_capability_registry(registry) if registry is not None else []
+        return AgentCapabilityListResponse(
+            items=[item.model_dump(mode="json") for item in items],
+            count=len(items),
+        )
+
+    @app.post('/v1/agent/tool-router/route', response_model=AgentToolRouteResponse)
+    def route_agent_tools(
+        payload: AgentToolRouteRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentToolRouteResponse:
+        del principal
+        registry = getattr(runtime, "tool_registry", None)
+        if registry is None:
+            raise HTTPException(status_code=503, detail="Tool registry is unavailable.")
+        plan = build_tool_route_plan(
+            tool_registry=registry,
+            role=payload.role,
+            tool_policy=payload.tool_policy,
+            available_tool_names=payload.available_tools or _available_tool_names(runtime),
+            enforce=(
+                bool(getattr(runtime.settings, "agent_tool_router_enforce", True))
+                if payload.enforce is None
+                else bool(payload.enforce)
+            ),
+        )
+        return AgentToolRouteResponse(plan=plan.model_dump(mode="json"))
+
+    @app.get('/v1/agent/tool-router/decisions', response_model=AgentToolRouteDecisionListResponse)
+    def list_agent_tool_route_decisions(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentToolRouteDecisionListResponse:
+        del principal
+        items, available, error = _list_plan_meta_decisions(runtime=runtime, key="tool_route_plan", limit=limit)
+        return AgentToolRouteDecisionListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
+        )
+
+    @app.get('/v1/agent/memory/curator/policy', response_model=AgentMemoryCuratorPolicyResponse)
+    def get_agent_memory_curator_policy(
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentMemoryCuratorPolicyResponse:
+        del principal
+        return AgentMemoryCuratorPolicyResponse(
+            enabled=bool(getattr(runtime.settings, "agent_memory_curator_enabled", False)),
+            auto_promote_on_merge=bool(getattr(runtime.settings, "agent_memory_auto_promote_on_merge", True)),
+        )
+
+    @app.post('/v1/agent/memory/curator/evaluate', response_model=AgentMemoryCuratorEvaluateResponse)
+    def evaluate_agent_memory_curator(
+        payload: AgentMemoryCuratorEvaluateRequest,
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentMemoryCuratorEvaluateResponse:
+        branch_record = BranchRecord(
+            branch_id=payload.branch_id,
+            root_thread_id=payload.root_thread_id,
+            parent_thread_id=payload.parent_thread_id or payload.root_thread_id,
+            child_thread_id=payload.child_thread_id or payload.branch_id,
+            return_thread_id=payload.parent_thread_id or payload.root_thread_id,
+            owner_user_id=payload.user_id or principal.user_id,
+            branch_name=payload.branch_name,
+            branch_role=BranchRole(payload.branch_role),
+            branch_depth=1,
+            branch_status=BranchStatus(payload.branch_status),
+        )
+        context = RequestContext(
+            user_id=payload.user_id or principal.user_id,
+            root_thread_id=payload.root_thread_id,
+            parent_thread_id=payload.parent_thread_id or payload.root_thread_id,
+            branch_id=payload.branch_id,
+            branch_role=payload.branch_role,
+        )
+        curator = MemoryCurator(store=getattr(runtime, "store", None))
+        decision = curator.evaluate_branch_promotion(
+            branch_record=branch_record,
+            findings=payload.findings,
+            context=context,
+            auto_promote=(
+                bool(getattr(runtime.settings, "agent_memory_auto_promote_on_merge", True))
+                if payload.auto_promote is None
+                else bool(payload.auto_promote)
+            ),
+        )
+        return AgentMemoryCuratorEvaluateResponse(decision=decision.model_dump(mode="json"))
+
+    @app.get('/v1/agent/memory/curator/decisions', response_model=AgentMemoryCuratorDecisionListResponse)
+    def list_agent_memory_curator_decisions(
+        limit: int = Query(default=50, ge=0, le=200),
+        principal: Principal = Depends(get_current_principal),
+        runtime: AppRuntime = Depends(get_app_runtime),
+    ) -> AgentMemoryCuratorDecisionListResponse:
+        del principal
+        items, available, error = _list_plan_meta_decisions(
+            runtime=runtime,
+            key="memory_curator_decision",
+            limit=limit,
+        )
+        return AgentMemoryCuratorDecisionListResponse(
+            items=items,
+            count=len(items),
+            trajectory_available=available,
+            trajectory_error=error,
         )
 
     @app.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)

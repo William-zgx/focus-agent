@@ -186,7 +186,8 @@ export function AppShell({ children }: PropsWithChildren) {
         isReviewRoute: state.location.pathname.endsWith("/review"),
         isTrajectoryRoute:
           state.location.pathname.includes("/observability/") ||
-          state.location.pathname.includes("/agent/roles"),
+          state.location.pathname.includes("/agent/roles") ||
+          state.location.pathname.includes("/agent/governance"),
       };
     },
   });

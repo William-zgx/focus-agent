@@ -42,6 +42,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "ThreadPage" in router_text
     assert "AgentRoleConsolePage" in router_text
     assert 'path: "/agent/roles"' in router_text
+    assert 'path: "/agent/governance"' in router_text
     assert "AppShell" in router_text
     assert 'basepath: "/app"' in router_text
     assert "Bearer Token Required" in router_text
@@ -81,6 +82,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     app_shell_text = (web_root / "src" / "app" / "shell" / "app-shell.tsx").read_text()
     assert 'new URLSearchParams(window.location.search).get("lang")' in app_shell_text
     assert 'state.location.pathname.includes("/agent/roles")' in app_shell_text
+    assert 'state.location.pathname.includes("/agent/governance")' in app_shell_text
     assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
     assert 'window.localStorage.getItem(LANGUAGE_KEY)' in app_shell_text
 

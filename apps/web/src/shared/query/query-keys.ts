@@ -10,4 +10,8 @@ export const queryKeys = {
   observabilityOverview: (filtersKey: string) => ["observability-overview", filtersKey] as const,
   agentRolePolicy: ["agent-role-policy"] as const,
   agentRoleDecisions: (limit: number) => ["agent-role-decisions", limit] as const,
+  agentCapabilities: ["agent-capabilities"] as const,
+  agentToolRouteDecisions: (limit: number) => ["agent-tool-route-decisions", limit] as const,
+  agentMemoryCuratorPolicy: ["agent-memory-curator-policy"] as const,
+  agentMemoryCuratorDecisions: (limit: number) => ["agent-memory-curator-decisions", limit] as const,
 };

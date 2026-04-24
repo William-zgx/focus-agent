@@ -104,6 +104,10 @@ Agent architecture cases live in `datasets/agent_arch.jsonl` and cover the
 role-routing contract: default off behavior, no-web workspace lookup, memory
 preview isolation, and helper-model fallback expectations.
 
+Agent governance cases live in `datasets/agent_governance.jsonl` and cover
+Memory Curator branch promotion boundaries plus Skill Scout / Tool Router
+allow/deny expectations.
+
 ## Judges
 
 | Judge             | When it runs                                        | Cost   |

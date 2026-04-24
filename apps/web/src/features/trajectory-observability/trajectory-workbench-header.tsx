@@ -64,10 +64,10 @@ export function TrajectoryWorkbenchHeader({
           </Link>
           <Link
             className="fa-trajectory-workbench-tab fa-observability-route-tab"
-            to="/agent/roles"
+            to="/agent/governance"
           >
-            <span>{isChineseUi ? "角色路由" : "Role routing"}</span>
-            <strong>{isChineseUi ? "策略 / 预演" : "Policy / dry-run"}</strong>
+            <span>{isChineseUi ? "Agent 治理" : "Agent governance"}</span>
+            <strong>{isChineseUi ? "记忆 / 工具 / 路由" : "Memory / tools / routing"}</strong>
           </Link>
         </nav>
       </div>

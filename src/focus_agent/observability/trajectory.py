@@ -239,6 +239,18 @@ def build_turn_trajectory_record(
     role_route_plan = _json_safe(final_values.get("role_route_plan"))
     if role_route_plan:
         plan_meta["role_route_plan"] = role_route_plan
+    memory_curator_decision = _json_safe(final_values.get("memory_curator_decision"))
+    if memory_curator_decision:
+        plan_meta["memory_curator_decision"] = memory_curator_decision
+        if isinstance(memory_curator_decision, dict):
+            metrics["memory_promotions"] = len(memory_curator_decision.get("promoted_memory_ids") or [])
+            metrics["memory_conflicts"] = len(memory_curator_decision.get("conflicts") or [])
+    tool_route_plan = _json_safe(final_values.get("tool_route_plan"))
+    if tool_route_plan:
+        plan_meta["tool_route_plan"] = tool_route_plan
+        if isinstance(tool_route_plan, dict):
+            metrics["tool_router_denied"] = len(tool_route_plan.get("denied_tools") or [])
+            metrics["tool_router_enforced"] = 1 if tool_route_plan.get("enforce") else 0
 
     return TurnTrajectoryRecord(
         id=str(uuid.uuid4()),

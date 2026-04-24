@@ -627,6 +627,10 @@ class Settings:
     agent_role_memory_model: str | None = None
     agent_role_skill_model: str | None = None
     agent_role_max_parallel_runs: int = 2
+    agent_memory_curator_enabled: bool = False
+    agent_memory_auto_promote_on_merge: bool = True
+    agent_tool_router_enabled: bool = False
+    agent_tool_router_enforce: bool = True
     trajectory_enabled: bool | None = None
     trajectory_observation_max_chars: int = 4000
     trajectory_answer_max_chars: int = 4000
@@ -803,6 +807,22 @@ class Settings:
                     )
                 ),
             ),
+            agent_memory_curator_enabled=env.get(
+                "AGENT_MEMORY_CURATOR_ENABLED",
+                "true" if defaults.agent_memory_curator_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_memory_auto_promote_on_merge=env.get(
+                "AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE",
+                "true" if defaults.agent_memory_auto_promote_on_merge else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_tool_router_enabled=env.get(
+                "AGENT_TOOL_ROUTER_ENABLED",
+                "true" if defaults.agent_tool_router_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            agent_tool_router_enforce=env.get(
+                "AGENT_TOOL_ROUTER_ENFORCE",
+                "true" if defaults.agent_tool_router_enforce else "false",
+            ).lower() in {"1", "true", "yes", "on"},
             trajectory_enabled=(
                 bool(database_uri) if trajectory_enabled is None else trajectory_enabled
             ),

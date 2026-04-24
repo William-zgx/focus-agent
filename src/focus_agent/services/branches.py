@@ -23,7 +23,7 @@ from ..core.branching import (
 from ..core.merge_review import generate_merge_proposal
 from ..core.request_context import RequestContext
 from ..core.types import ConversationRecord, FindingItem
-from ..memory import MemoryWriter
+from ..memory import MemoryCurator, MemoryWriter
 from ..memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
 from ..model_registry import create_chat_model
 from ..repositories.branch_repository import BranchRepository
@@ -182,6 +182,7 @@ class BranchService:
         self.repo = repo
         self.store = store
         self.memory_writer = memory_writer
+        self._last_memory_curator_decision: dict[str, object] | None = None
         self.thread_client = get_sync_client(url=settings.langgraph_api_url) if settings.langgraph_api_url else None
         self.proposal_model = create_chat_model(
             settings.helper_model or settings.model,
@@ -377,6 +378,7 @@ class BranchService:
         findings: list[object],
         memory_context: RequestContext | None = None,
     ) -> list[str]:
+        self._last_memory_curator_decision = None
         if self.store is None:
             return []
         promotable_findings = self._filter_merge_importable_findings(findings)
@@ -391,6 +393,32 @@ class BranchService:
         )
         source_thread_id = context.parent_thread_id or context.root_thread_id
         memory_writer = getattr(self, "memory_writer", None)
+        settings = getattr(self, "settings", None)
+        if bool(getattr(settings, "agent_memory_curator_enabled", False)):
+            auto_promote = bool(getattr(settings, "agent_memory_auto_promote_on_merge", True))
+            curator = MemoryCurator(store=self.store)
+            decision = curator.evaluate_branch_promotion(
+                branch_record=branch_record,
+                findings=promotable_findings,
+                context=context,
+                auto_promote=auto_promote,
+            )
+            if not auto_promote:
+                self._last_memory_curator_decision = decision.model_dump(mode="json")
+                return []
+            records = [
+                curator.candidate_to_write_request(
+                    candidate=candidate,
+                    branch_record=branch_record,
+                    context=context,
+                    tags=list(tags),
+                )
+                for candidate in decision.candidates
+            ]
+            keys = (memory_writer or MemoryWriter(store=self.store)).write_records(records)
+            decision.promoted_memory_ids = keys
+            self._last_memory_curator_decision = decision.model_dump(mode="json")
+            return keys
         if memory_writer is not None:
             records = [
                 MemoryWriteRequest(
@@ -1333,6 +1361,18 @@ class BranchService:
                 findings=list(values.get('branch_local_findings', [])),
                 memory_context=memory_context,
             )
+            if self._last_memory_curator_decision is not None:
+                self.graph.update_state(
+                    target_config,
+                    {
+                        'memory_curator_decision': self._last_memory_curator_decision,
+                        'plan_meta': {
+                            **dict(target_values.get('plan_meta') or {}),
+                            'memory_curator_decision': self._last_memory_curator_decision,
+                        },
+                    },
+                    as_node='bootstrap_turn',
+                )
         self.repo.update_status(branch_record.branch_id, BranchStatus.MERGED)
         merged_record = self.repo.get(branch_record.branch_id)
         self.graph.update_state(

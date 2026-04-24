@@ -110,6 +110,14 @@ class AgentState(TypedDict, total=False):
     # still follows the legacy single-run path; this is observability/console data.
     role_route_plan: dict[str, Any] | None
 
+    # Written by Memory Curator when branch-local memories are evaluated for
+    # promotion. It is observability data unless merge auto-promotion is enabled.
+    memory_curator_decision: dict[str, Any] | None
+
+    # Written by Tool Router before model invocation. When enforcement is enabled
+    # it also controls the tools bound to the model for this turn.
+    tool_route_plan: dict[str, Any] | None
+
     # Written by extraction nodes after a turn, read by persistence nodes,
     # and never merge-imported because it is a transient write queue.
     memory_write_requests: list[dict[str, Any]]
@@ -154,6 +162,8 @@ def initial_agent_state() -> AgentState:
         "selected_model": "",
         "selected_thinking_mode": "",
         "role_route_plan": None,
+        "memory_curator_decision": None,
+        "tool_route_plan": None,
         "memory_write_requests": [],
         "memory_write_result": {},
         "plan": None,

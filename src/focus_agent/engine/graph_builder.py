@@ -18,6 +18,7 @@ from ..capabilities.tool_runtime import (
     build_tool_error_message,
     execute_tool_calls,
 )
+from ..capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ..config import Settings
 from ..core.context_policy import (
     apply_prompt_budget_guard,
@@ -1081,6 +1082,23 @@ def build_graph(
         context_budget = _context_budget_from_state(state)
         tool_policy = _classify_turn_tool_policy(latest_user)
         available_tools = _tools_for_policy(tool_policy, tools, latest_user)
+        tool_route_plan = None
+        if settings.agent_tool_router_enabled:
+            router_role = infer_tool_router_role(state.get("role_route_plan"))
+            tool_route_plan = build_tool_route_plan(
+                tool_registry=effective_tool_registry,
+                role=router_role,
+                tool_policy=tool_policy,
+                available_tool_names=[str(getattr(tool, "name", "")) for tool in available_tools],
+                enforce=bool(settings.agent_tool_router_enforce),
+            )
+            if settings.agent_tool_router_enforce:
+                allowed = set(tool_route_plan.allowed_tools)
+                available_tools = [
+                    tool
+                    for tool in available_tools
+                    if str(getattr(tool, "name", "")) in allowed
+                ]
         policy_note = _tool_policy_note(tool_policy)
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
@@ -1133,10 +1151,18 @@ def build_graph(
                 model_for=model_for,
                 model_with_tools_for=model_with_tools_for,
             )
-        return {
+        updates: dict[str, Any] = {
             "messages": [response],
             "llm_calls": state.get("llm_calls", 0) + 1,
         }
+        if tool_route_plan is not None:
+            dumped = tool_route_plan.model_dump(mode="json")
+            updates["tool_route_plan"] = dumped
+            updates["plan_meta"] = {
+                **(state.get("plan_meta") or {}),
+                "tool_route_plan": dumped,
+            }
+        return updates
 
     def tool_executor(
         state: AgentState,
@@ -1169,6 +1195,19 @@ def build_graph(
         messages_by_index: dict[int, ToolMessage] = {}
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
             tool_name = str(tool_call["name"])
+            route_plan = state.get("tool_route_plan") or {}
+            denied_tools = set(route_plan.get("denied_tools") or []) if isinstance(route_plan, dict) else set()
+            if tool_name in denied_tools and bool(route_plan.get("enforce", True)):
+                messages_by_index[index] = (
+                    build_tool_error_message(
+                        tool_call_id=str(tool_call["id"]),
+                        tool_name=tool_name,
+                        args=dict(tool_call.get("args") or {}),
+                        error=f"Forbidden tool by Tool Router policy: {tool_name}",
+                        runtime_info={"forbidden_by_tool_router": True},
+                    )
+                )
+                continue
             tool = tools_by_name.get(tool_name)
             if tool is None:
                 messages_by_index[index] = (

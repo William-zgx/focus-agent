@@ -7,9 +7,14 @@ import type {
   FocusAgentConversationListResponse,
   FocusAgentConversationSummary,
   FocusAgentCreateConversationRequest,
+  FocusAgentCapabilityListResponse,
   FocusAgentDemoTokenRequest,
   FocusAgentEvent,
   FocusAgentForkBranchRequest,
+  FocusAgentMemoryCuratorDecisionListResponse,
+  FocusAgentMemoryCuratorEvaluateRequest,
+  FocusAgentMemoryCuratorEvaluateResponse,
+  FocusAgentMemoryCuratorPolicyResponse,
   FocusAgentModelsResponse,
   FocusAgentObservabilityOverviewRequest,
   FocusAgentObservabilityOverviewResponse,
@@ -19,6 +24,9 @@ import type {
   FocusAgentRoleDryRunRequest,
   FocusAgentRoleDryRunResponse,
   FocusAgentRolePolicyResponse,
+  FocusAgentToolRouteDecisionListResponse,
+  FocusAgentToolRouteRequest,
+  FocusAgentToolRouteResponse,
   FocusAgentUpdateConversationRequest,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
@@ -232,6 +240,66 @@ export class FocusAgentClient {
     const query = params.toString();
     return this.requestJson<FocusAgentRoleDecisionListResponse>(
       `/v1/agent/roles/decisions${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async listAgentCapabilities(): Promise<FocusAgentCapabilityListResponse> {
+    return this.requestJson<FocusAgentCapabilityListResponse>("/v1/agent/capabilities", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async routeAgentTools(request: FocusAgentToolRouteRequest): Promise<FocusAgentToolRouteResponse> {
+    return this.requestJson<FocusAgentToolRouteResponse>("/v1/agent/tool-router/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentToolRouteDecisions(limit = 50): Promise<FocusAgentToolRouteDecisionListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentToolRouteDecisionListResponse>(
+      `/v1/agent/tool-router/decisions${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async getAgentMemoryCuratorPolicy(): Promise<FocusAgentMemoryCuratorPolicyResponse> {
+    return this.requestJson<FocusAgentMemoryCuratorPolicyResponse>("/v1/agent/memory/curator/policy", {
+      method: "GET",
+      headers: {},
+    }, true);
+  }
+
+  async evaluateAgentMemoryCurator(
+    request: FocusAgentMemoryCuratorEvaluateRequest,
+  ): Promise<FocusAgentMemoryCuratorEvaluateResponse> {
+    return this.requestJson<FocusAgentMemoryCuratorEvaluateResponse>("/v1/agent/memory/curator/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listAgentMemoryCuratorDecisions(limit = 50): Promise<FocusAgentMemoryCuratorDecisionListResponse> {
+    const params = new URLSearchParams();
+    appendQueryValue(params, "limit", limit);
+    const query = params.toString();
+    return this.requestJson<FocusAgentMemoryCuratorDecisionListResponse>(
+      `/v1/agent/memory/curator/decisions${query ? `?${query}` : ""}`,
       {
         method: "GET",
         headers: {},

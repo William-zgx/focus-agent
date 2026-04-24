@@ -9,6 +9,12 @@ from .dedupe import (
     user_preference_topic,
 )
 from .assembler import build_memory_blocks, render_memory_block
+from .curator import (
+    MemoryCurator,
+    MemoryCuratorDecision,
+    MemoryPromotionCandidate,
+    MemorySemanticConflict,
+)
 from .extractor import MemoryExtractor
 from .models import (
     MemoryExtractionResult,
@@ -34,6 +40,8 @@ from ..storage.import_memory import (
 __all__ = [
     "MemoryExtractionResult",
     "MemoryExtractor",
+    "MemoryCurator",
+    "MemoryCuratorDecision",
     "MemoryKind",
     "MemoryPolicy",
     "MemoryRecord",
@@ -43,6 +51,8 @@ __all__ = [
     "MemoryVisibility",
     "MemoryWriteRequest",
     "MemoryWriter",
+    "MemoryPromotionCandidate",
+    "MemorySemanticConflict",
     "RetrievedMemoryBundle",
     "branch_memory_namespace",
     "main_conversation_namespace",

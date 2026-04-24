@@ -1,7 +1,12 @@
 import {
+  type FocusAgentCapabilityListResponse,
+  type FocusAgentMemoryCuratorDecisionListResponse,
+  type FocusAgentMemoryCuratorPolicyResponse,
   type FocusAgentRoleDecisionListResponse,
   type FocusAgentRoleDryRunResponse,
   type FocusAgentRolePolicyResponse,
+  type FocusAgentToolRouteDecisionListResponse,
+  type FocusAgentToolRouteResponse,
 } from "@focus-agent/web-sdk";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -54,6 +59,42 @@ function useAgentRoleDecisions() {
   });
 }
 
+function useAgentCapabilities() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentCapabilityListResponse>({
+    queryKey: queryKeys.agentCapabilities,
+    queryFn: () => client.listAgentCapabilities(),
+    enabled: ready,
+  });
+}
+
+function useAgentToolRouteDecisions() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentToolRouteDecisionListResponse>({
+    queryKey: queryKeys.agentToolRouteDecisions(50),
+    queryFn: () => client.listAgentToolRouteDecisions(50),
+    enabled: ready,
+  });
+}
+
+function useAgentMemoryCuratorPolicy() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentMemoryCuratorPolicyResponse>({
+    queryKey: queryKeys.agentMemoryCuratorPolicy,
+    queryFn: () => client.getAgentMemoryCuratorPolicy(),
+    enabled: ready,
+  });
+}
+
+function useAgentMemoryCuratorDecisions() {
+  const { client, ready } = useFocusAgent();
+  return useQuery<FocusAgentMemoryCuratorDecisionListResponse>({
+    queryKey: queryKeys.agentMemoryCuratorDecisions(50),
+    queryFn: () => client.listAgentMemoryCuratorDecisions(50),
+    enabled: ready,
+  });
+}
+
 export function AgentRoleConsolePage() {
   const { client } = useFocusAgent();
   const { isChineseUi } = useShellUi();
@@ -63,6 +104,12 @@ export function AgentRoleConsolePage() {
   );
   const policy = useAgentRolePolicy();
   const decisions = useAgentRoleDecisions();
+  const capabilities = useAgentCapabilities();
+  const toolRouteDecisions = useAgentToolRouteDecisions();
+  const memoryPolicy = useAgentMemoryCuratorPolicy();
+  const memoryDecisions = useAgentMemoryCuratorDecisions();
+  const [toolRouteRole, setToolRouteRole] = useState("executor");
+  const [toolRoutePolicy, setToolRoutePolicy] = useState("execution");
   const dryRun = useMutation<FocusAgentRoleDryRunResponse, Error>({
     mutationFn: () =>
       client.dryRunAgentRoleRoute({
@@ -74,13 +121,29 @@ export function AgentRoleConsolePage() {
           .filter(Boolean),
       }),
   });
+  const toolRoute = useMutation<FocusAgentToolRouteResponse, Error>({
+    mutationFn: () =>
+      client.routeAgentTools({
+        role: toolRouteRole,
+        tool_policy: toolRoutePolicy,
+        available_tools: availableTools
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      }),
+  });
   const dryRunPlan = asRecord(dryRun.data?.plan);
   const dryRunDecisions = asArray(dryRunPlan.decisions);
+  const toolRoutePlan = asRecord(toolRoute.data?.plan);
+  const toolRoutePlanDecisions = asArray(toolRoutePlan.decisions);
   const roleModels = useMemo(
     () => Object.entries(policy.data?.role_models ?? {}),
     [policy.data?.role_models],
   );
   const recentDecisionItems = decisions.data?.items ?? [];
+  const capabilityItems = capabilities.data?.items ?? [];
+  const recentToolRouteItems = toolRouteDecisions.data?.items ?? [];
+  const recentMemoryItems = memoryDecisions.data?.items ?? [];
 
   return (
     <div className="fa-observability-layout fa-agent-role-console">
@@ -89,11 +152,11 @@ export function AgentRoleConsolePage() {
           <p className="fa-observability-kicker">
             {isChineseUi ? "Agent 决策架构" : "Agent Decision Architecture"}
           </p>
-          <h1>{isChineseUi ? "角色路由控制台" : "Role Routing Console"}</h1>
+          <h1>{isChineseUi ? "Agent 治理控制台" : "Agent Governance Console"}</h1>
           <p className="fa-observability-hero-text">
             {isChineseUi
-              ? "查看当前角色模型策略，预演 Orchestrator 的路由决策，并从 trajectory 中回看最近的 role_route_plan。"
-              : "Inspect the active role-model policy, dry-run orchestrator routing, and review recent role_route_plan records from trajectory."}
+              ? "查看角色路由、Memory Curator 分支语义保护，以及 Skill Scout / Tool Router 的能力注册表与实际决策。"
+              : "Inspect role routing, Memory Curator branch semantics, and Skill Scout / Tool Router capability decisions."}
           </p>
           <nav
             aria-label={isChineseUi ? "诊断页面" : "Diagnostics views"}
@@ -107,9 +170,9 @@ export function AgentRoleConsolePage() {
               <span>{isChineseUi ? "单条复盘" : "Single-turn review"}</span>
               <strong>{isChineseUi ? "样本 / 证据" : "Samples / evidence"}</strong>
             </Link>
-            <Link className="fa-trajectory-workbench-tab fa-observability-route-tab is-active" to="/agent/roles">
-              <span>{isChineseUi ? "角色路由" : "Role routing"}</span>
-              <strong>{isChineseUi ? "策略 / 预演" : "Policy / dry-run"}</strong>
+            <Link className="fa-trajectory-workbench-tab fa-observability-route-tab is-active" to="/agent/governance">
+              <span>{isChineseUi ? "Agent 治理" : "Agent governance"}</span>
+              <strong>{isChineseUi ? "记忆 / 工具 / 路由" : "Memory / tools / routing"}</strong>
             </Link>
           </nav>
         </div>
@@ -117,17 +180,17 @@ export function AgentRoleConsolePage() {
           <div className="fa-observability-stat-card">
             <span>{isChineseUi ? "状态" : "Status"}</span>
             <strong>{policy.data?.enabled ? "enabled" : "dry-run off"}</strong>
-            <p>{isChineseUi ? "默认保持 legacy 执行路径" : "Legacy execution remains unchanged"}</p>
+            <p>{isChineseUi ? "角色路由仍可独立预演" : "Role routing can still be previewed"}</p>
           </div>
           <div className="fa-observability-stat-card">
-            <span>{isChineseUi ? "主模型" : "Main model"}</span>
-            <strong>{policy.data?.default_model ?? "loading"}</strong>
-            <p>{isChineseUi ? "executor 默认回落到主模型" : "Executor falls back to the main model"}</p>
+            <span>{isChineseUi ? "Memory Curator" : "Memory Curator"}</span>
+            <strong>{memoryPolicy.data?.enabled ? "enabled" : "disabled"}</strong>
+            <p>{memoryPolicy.data?.auto_promote_on_merge ? "auto promote on merge" : "review only"}</p>
           </div>
           <div className="fa-observability-stat-card">
-            <span>{isChineseUi ? "并行上限" : "Parallel cap"}</span>
-            <strong>{policy.data?.max_parallel_runs ?? "-"}</strong>
-            <p>{isChineseUi ? "只影响路由计划，不触发真实子运行" : "Affects planning only, not real delegated runs"}</p>
+            <span>{isChineseUi ? "Capabilities" : "Capabilities"}</span>
+            <strong>{capabilities.data?.count ?? "-"}</strong>
+            <p>{isChineseUi ? "工具按角色、风险和能力注册" : "Tools are registered by role, risk, and capability"}</p>
           </div>
         </div>
       </section>
@@ -225,6 +288,169 @@ export function AgentRoleConsolePage() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="fa-agent-role-grid">
+        <div className="fa-observability-list-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Memory Curator" : "Memory Curator"}</strong>
+              <h2>{isChineseUi ? "分支语义保护" : "Branch Semantic Guard"}</h2>
+            </div>
+            <span>{memoryPolicy.isLoading ? "loading" : memoryPolicy.data?.conflict_strategy ?? "needs_review"}</span>
+          </div>
+          {memoryPolicy.error ? (
+            <div className="fa-inline-notice is-danger">
+              {errorMessage(memoryPolicy.error, "Failed to load memory curator policy")}
+            </div>
+          ) : null}
+          <div className="fa-agent-role-model-list">
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "启用状态" : "Enabled"}</span>
+              <strong>{String(memoryPolicy.data?.enabled ?? false)}</strong>
+            </div>
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "合并自动提升" : "Auto promote on merge"}</span>
+              <strong>{String(memoryPolicy.data?.auto_promote_on_merge ?? true)}</strong>
+            </div>
+            <div className="fa-agent-role-model-row">
+              <span>{isChineseUi ? "冲突策略" : "Conflict strategy"}</span>
+              <strong>{memoryPolicy.data?.conflict_strategy ?? "needs_review"}</strong>
+            </div>
+          </div>
+          <div className="fa-agent-role-trajectory-list">
+            {recentMemoryItems.slice(0, 5).map((item, index) => (
+              <details className="fa-agent-role-trajectory-row" key={`memory-${index}`}>
+                <summary>
+                  <span>{String(item.branch_id ?? item.turn_id ?? "memory")}</span>
+                  <strong>{String(item.status ?? "curator decision")}</strong>
+                </summary>
+                <pre>{jsonPreview(item)}</pre>
+              </details>
+            ))}
+            {!recentMemoryItems.length ? (
+              <div className="fa-observability-empty is-compact">
+                {isChineseUi ? "还没有 memory curator trajectory 记录。" : "No memory curator trajectory records yet."}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="fa-observability-detail-panel fa-agent-role-panel">
+          <div className="fa-observability-panel-header">
+            <div>
+              <strong>{isChineseUi ? "Tool Router" : "Tool Router"}</strong>
+              <h2>{isChineseUi ? "能力路由预演" : "Capability Routing"}</h2>
+            </div>
+            <span>{toolRoute.isPending ? "routing" : "enforced plan"}</span>
+          </div>
+          <div className="fa-agent-role-dry-run-form">
+            <label className="fa-observability-filter fa-agent-role-field">
+              <span>{isChineseUi ? "角色" : "Role"}</span>
+              <select value={toolRouteRole} onChange={(event) => setToolRouteRole(event.target.value)}>
+                <option value="executor">executor</option>
+                <option value="critic">critic</option>
+                <option value="planner">planner</option>
+                <option value="memory_curator">memory_curator</option>
+                <option value="skill_scout">skill_scout</option>
+              </select>
+            </label>
+            <label className="fa-observability-filter fa-agent-role-field">
+              <span>{isChineseUi ? "工具策略" : "Tool policy"}</span>
+              <select value={toolRoutePolicy} onChange={(event) => setToolRoutePolicy(event.target.value)}>
+                <option value="execution">execution</option>
+                <option value="workspace_lookup">workspace_lookup</option>
+                <option value="live_web_research">live_web_research</option>
+                <option value="direct_answer">direct_answer</option>
+              </select>
+            </label>
+            <div className="fa-observability-command-bar">
+              <button
+                className="fa-observability-preset is-primary"
+                disabled={toolRoute.isPending}
+                onClick={() => toolRoute.mutate()}
+                type="button"
+              >
+                {toolRoute.isPending ? (isChineseUi ? "路由中..." : "Routing...") : isChineseUi ? "预演工具路由" : "Route Tools"}
+              </button>
+            </div>
+          </div>
+          {toolRoute.error ? (
+            <div className="fa-inline-notice is-danger">
+              {errorMessage(toolRoute.error, "Tool route request failed")}
+            </div>
+          ) : null}
+          {toolRoute.data ? (
+            <div className="fa-agent-role-decision-list">
+              {toolRoutePlanDecisions.map((decision, index) => (
+                <div className="fa-agent-role-decision-card" key={`route-${decision.name}-${index}`}>
+                  <div>
+                    <span>{String(decision.name ?? "tool")}</span>
+                    <strong>{String(decision.allowed ?? false)}</strong>
+                  </div>
+                  <p>{String(decision.reason ?? "")}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "运行一次工具路由后，这里会展示 allow/deny 决策。" : "Run tool routing to inspect allow/deny decisions."}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="fa-observability-detail-block fa-agent-role-trajectory">
+        <div className="fa-observability-panel-header">
+          <div>
+            <strong>{isChineseUi ? "Capability Registry" : "Capability Registry"}</strong>
+            <h2>{isChineseUi ? "工具能力注册表" : "Tool Capability Registry"}</h2>
+          </div>
+          <span>{capabilities.isLoading ? "loading" : `${capabilityItems.length} tools`}</span>
+        </div>
+        {capabilities.error ? (
+          <div className="fa-inline-notice is-danger">
+            {errorMessage(capabilities.error, "Failed to load capabilities")}
+          </div>
+        ) : null}
+        <div className="fa-agent-role-model-list">
+          {capabilityItems.map((item) => (
+            <div className="fa-agent-role-model-row" key={item.name}>
+              <span>{item.name}</span>
+              <strong>{`${item.toolset ?? "core"} / ${item.risk_level}`}</strong>
+              <small>{item.allowed_roles.join(", ") || "no roles"}</small>
+            </div>
+          ))}
+          {!capabilityItems.length ? (
+            <div className="fa-observability-empty is-compact">
+              {isChineseUi ? "当前没有可展示的工具能力。" : "No tool capabilities to display."}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="fa-observability-detail-block fa-agent-role-trajectory">
+        <div className="fa-observability-panel-header">
+          <div>
+            <strong>{isChineseUi ? "Tool Router Trajectory" : "Tool Router Trajectory"}</strong>
+            <h2>{isChineseUi ? "最近工具路由记录" : "Recent Tool Route Records"}</h2>
+          </div>
+          <span>{toolRouteDecisions.data?.trajectory_available ? `${toolRouteDecisions.data.count} records` : "not available"}</span>
+        </div>
+        {recentToolRouteItems.map((item, index) => (
+          <details className="fa-agent-role-trajectory-row" key={`tool-route-${index}`}>
+            <summary>
+              <span>{String(item.turn_id ?? "turn")}</span>
+              <strong>{`${String(item.role ?? "role")} / ${String(item.tool_policy ?? "policy")}`}</strong>
+            </summary>
+            <pre>{jsonPreview(item)}</pre>
+          </details>
+        ))}
+        {!recentToolRouteItems.length ? (
+          <div className="fa-observability-empty is-compact">
+            {isChineseUi ? "还没有 tool_route_plan trajectory 记录。" : "No tool_route_plan trajectory records yet."}
+          </div>
+        ) : null}
       </section>
 
       <section className="fa-observability-detail-block fa-agent-role-trajectory">
