@@ -16,7 +16,7 @@ from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
 
-DEFAULT_APP_URL = "http://127.0.0.1:8000/app"
+DEFAULT_APP_URL = "http://127.0.0.1:5173/app/"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"
 DEFAULT_MESSAGE = "请简短回复 OK"
 
