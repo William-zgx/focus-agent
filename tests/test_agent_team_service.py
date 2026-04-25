@@ -167,3 +167,37 @@ def test_agent_team_service_dispatches_default_task_set_without_recursive_agents
         create_branches=False,
     )
     assert [task.task_id for task in repeated_tasks] == [task.task_id for task in tasks]
+
+
+def test_agent_team_merge_bundle_keeps_open_questions_compact() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="上线前复核刷新后的 Agent Team 页面是否能继续保留协作汇总、风险和证据。",
+    )
+
+    _, tasks = service.dispatch_default_tasks(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+    blocked_task = tasks[0]
+    running_task = tasks[1]
+    service.update_task(
+        task_id=blocked_task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.BLOCKED,
+    )
+    service.update_task(
+        task_id=running_task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.RUNNING,
+    )
+
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.recommended_next_action == "request_changes"
+    assert bundle.open_questions
+    assert all("Session goal:" not in question for question in bundle.open_questions)
+    assert all(len(question) <= 170 for question in bundle.open_questions)

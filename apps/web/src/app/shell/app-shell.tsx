@@ -906,14 +906,33 @@ export function AppShell({ children }: PropsWithChildren) {
                 </button>
                 <ConversationToolbar />
               </div>
-              <ThreadHeaderActions onRequestOpenSidebar={() => setSidebarCollapsed(false)} />
-              <Link
-                className="fa-chat-toolbar-button fa-agent-team-shortcut"
-                search={conversationId ? { root_thread_id: conversationId } : undefined}
-                to="/agent-team"
-              >
-                {isChineseUi ? "Agent Team" : "Agent Team"}
-              </Link>
+              <div className="fa-chat-header-right-actions">
+                <ThreadHeaderActions onRequestOpenSidebar={() => setSidebarCollapsed(false)} />
+                <Link
+                  aria-label={isChineseUi ? "打开 Agent Team 多 Agent 协作" : "Open Agent Team"}
+                  className="fa-chat-toolbar-button fa-agent-team-shortcut"
+                  {...tooltipProps(isChineseUi ? "Agent Team：多 Agent 协作" : "Agent Team: multi-agent collaboration")}
+                  search={conversationId ? { root_thread_id: conversationId } : undefined}
+                  to="/agent-team"
+                >
+                  <span className="fa-toolbar-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20">
+                      <circle cx="5.4" cy="6" r="2.2" fill="currentColor" />
+                      <circle cx="14.6" cy="6" r="2.2" fill="currentColor" opacity="0.72" />
+                      <circle cx="10" cy="14" r="2.2" fill="currentColor" opacity="0.88" />
+                      <path
+                        d="M7.2 7.2 9 12.1m3.8-4.9L11 12.1M7.6 6h4.8"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeWidth="1.6"
+                        opacity="0.82"
+                      />
+                    </svg>
+                  </span>
+                  <span className="fa-toolbar-text">Team</span>
+                </Link>
+              </div>
             </div>
             {shellStatus && shellStatus.display !== "chat-floating" ? (
               <div className={`fa-shell-status-line is-${shellStatus.tone}`}>{shellStatus.text}</div>

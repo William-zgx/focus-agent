@@ -344,8 +344,8 @@ class AgentTeamService:
         key_findings = _dedupe(output.summary for output in outputs if output.summary)
         changed_files = _dedupe([path for task in tasks for path in task.changed_files] + [path for output in outputs for path in output.changed_files])
         open_questions = _dedupe(
-            [f"{task.role.value}: {task.goal}" for task in blocked]
-            + [f"Pending {task.role.value}: {task.goal}" for task in pending]
+            [f"{task.role.value}: {self._compact_task_goal(task.goal)}" for task in blocked]
+            + [f"Pending {task.role.value}: {self._compact_task_goal(task.goal)}" for task in pending]
         )
         recommended = self._recommended_action(
             accepted_count=len(accepted),
@@ -435,6 +435,14 @@ class AgentTeamService:
         if not current:
             return "\n".join(evidence)
         return "\n".join(_dedupe([current, *evidence]))
+
+    @staticmethod
+    def _compact_task_goal(goal: str, *, max_chars: int = 140) -> str:
+        summary = goal.split("\n\nSession goal:", 1)[0].strip()
+        summary = " ".join(summary.split())
+        if len(summary) <= max_chars:
+            return summary
+        return f"{summary[: max_chars - 1].rstrip()}…"
 
     @staticmethod
     def _recommended_action(

@@ -150,6 +150,15 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         merge_decision_fields | {"apply", "next_action"},
     )
 
+    _assert_interface_has_fields(
+        _interface_body(sdk_types, "FocusAgentAgentTeamSession"),
+        {"latest_merge_bundle", "merge_decision"},
+    )
+    _assert_interface_has_fields(
+        _interface_body(web_types, "AgentTeamSession"),
+        {"latest_merge_bundle", "merge_decision"},
+    )
+
     assert set(AgentTeamSessionListResponse.model_fields) == {"sessions", "items", "count"}
     assert set(AgentTeamTaskListResponse.model_fields) == {"tasks", "items", "count"}
     assert set(AgentTeamMergeBundleResponse.model_fields) == {"bundle"}
@@ -190,3 +199,22 @@ def test_agent_team_role_and_status_unions_match_sdk_and_web_contracts():
             "FocusAgentAgentTeamTaskRole",
         ) + _type_body(sdk_types, "FocusAgentAgentTeamTaskStatus")
         assert f'"{literal}"' in web_types
+
+
+def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
+    workbench_text = _read(WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench.tsx")
+    stylesheet_text = _read(WEB_ROOT / "src" / "shared" / "styles" / "app.css")
+
+    assert "latest_merge_bundle" in workbench_text
+    assert "data.session.latest_merge_bundle" in workbench_text
+    assert "activeBundle?.recommended_next_action" in workbench_text
+    assert "重新生成协作汇总" in workbench_text
+    assert "fa-header-card fa-agent-team-compact-header" in workbench_text
+    assert "返回对话" in workbench_text
+    assert "fa-agent-team-progress-strip" in workbench_text
+    assert "compactTaskGoal" in workbench_text
+    assert "evidenceItems" in workbench_text
+    assert "task.verification_summary" in workbench_text
+    assert "activeBundle?.test_evidence" in workbench_text
+    assert "white-space: pre-line" in stylesheet_text
+    assert "fa-agent-team-workbench-grid" in stylesheet_text

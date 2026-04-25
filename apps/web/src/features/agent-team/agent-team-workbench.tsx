@@ -38,6 +38,10 @@ const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "neutral">
   awaiting_review: "warning",
   blocked: "warning",
   merging: "warning",
+  merge: "success",
+  request_changes: "warning",
+  split_followup: "warning",
+  discard: "danger",
   failed: "danger",
   cancelled: "danger",
   planning: "neutral",
@@ -53,6 +57,10 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
 
+function uniqueNonEmptyStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim() ?? "").filter(Boolean)));
+}
+
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -60,6 +68,11 @@ function errorMessage(error: unknown, fallback: string) {
 function titleFromGoal(goal: string) {
   const normalized = goal.trim().replace(/\s+/g, " ");
   return normalized.length > 34 ? `${normalized.slice(0, 34)}…` : normalized || "Agent Team Session";
+}
+
+function compactTaskGoal(goal: string) {
+  const summary = goal.split("\n\nSession goal:", 1)[0].trim().replace(/\s+/g, " ");
+  return summary.length > 96 ? `${summary.slice(0, 95)}…` : summary;
 }
 
 function roleLabel(role: string, isChineseUi: boolean) {
@@ -137,11 +150,19 @@ function statusLabel(status: string, isChineseUi: boolean) {
     done: "已完成",
     failed: "失败",
     merging: "汇总中",
+    merge: "可合并",
+    request_changes: "需修改",
+    split_followup: "拆分跟进",
+    discard: "放弃",
     pending: "待开始",
     planning: "规划中",
     running: "执行中",
   };
   return labels[status] ?? status.replaceAll("_", " ");
+}
+
+function asMergeBundle(value: unknown): AgentTeamMergeBundle | null {
+  return isRecord(value) ? (value as unknown as AgentTeamMergeBundle) : null;
 }
 
 function normalizeSessionView(data: AgentTeamSession | AgentTeamSessionView | undefined): AgentTeamSessionView | null {
@@ -151,7 +172,7 @@ function normalizeSessionView(data: AgentTeamSession | AgentTeamSessionView | un
       session: data.session,
       tasks: data.tasks ?? [],
       artifacts: data.artifacts ?? [],
-      merge_bundle: data.merge_bundle ?? null,
+      merge_bundle: data.merge_bundle ?? data.session.latest_merge_bundle ?? null,
     };
   }
 
@@ -160,9 +181,7 @@ function normalizeSessionView(data: AgentTeamSession | AgentTeamSessionView | un
     session: data,
     tasks: Array.isArray(dataRecord.tasks) ? (dataRecord.tasks as AgentTeamTask[]) : [],
     artifacts: Array.isArray(dataRecord.artifacts) ? (dataRecord.artifacts as AgentTeamArtifact[]) : [],
-    merge_bundle: isRecord(dataRecord.merge_bundle)
-      ? (dataRecord.merge_bundle as unknown as AgentTeamMergeBundle)
-      : null,
+    merge_bundle: asMergeBundle(dataRecord.merge_bundle) ?? data.latest_merge_bundle ?? null,
   };
 }
 
@@ -170,7 +189,7 @@ function normalizeMergeBundle(
   data: AgentTeamMergeBundle | AgentTeamSessionView | undefined,
 ): AgentTeamMergeBundle | null {
   if (!data) return null;
-  if ("session" in data) return data.merge_bundle ?? null;
+  if ("session" in data) return data.merge_bundle ?? data.session.latest_merge_bundle ?? null;
   return data;
 }
 
@@ -178,6 +197,40 @@ function StatusPill({ status }: { status: string }) {
   const { isChineseUi } = useShellUi();
   const tone = STATUS_TONES[status] ?? "neutral";
   return <span className={`fa-agent-team-pill is-${tone}`}>{statusLabel(status, isChineseUi)}</span>;
+}
+
+function defaultTaskActionLabel({
+  isChineseUi,
+  isPending,
+  defaultTasksReady,
+  taskCount,
+}: {
+  isChineseUi: boolean;
+  isPending: boolean;
+  defaultTasksReady: boolean;
+  taskCount: number;
+}) {
+  if (isPending) return isChineseUi ? "调度中..." : "Dispatching...";
+  if (defaultTasksReady) return isChineseUi ? "默认任务已就绪" : "Default tasks ready";
+  if (taskCount) return isChineseUi ? "补齐默认任务" : "Fill default tasks";
+  return isChineseUi ? "生成 6 个任务" : "Create 6 tasks";
+}
+
+function mergeBundleActionLabel({
+  isChineseUi,
+  isGenerating,
+  canGenerate,
+  hasBundle,
+}: {
+  isChineseUi: boolean;
+  isGenerating: boolean;
+  canGenerate: boolean;
+  hasBundle: boolean;
+}) {
+  if (isGenerating) return isChineseUi ? "生成中..." : "Generating...";
+  if (!canGenerate) return isChineseUi ? "先生成任务" : "Create tasks first";
+  if (hasBundle) return isChineseUi ? "重新生成协作汇总" : "Regenerate summary";
+  return isChineseUi ? "生成协作汇总" : "Generate summary";
 }
 
 function EmptyList({ children }: { children: string }) {
@@ -195,21 +248,21 @@ function AgentTeamRouteTabs({ isChineseUi }: { isChineseUi: boolean }) {
         to="/observability/overview"
         {...tooltipProps(isChineseUi ? "查看趋势、热点和全局健康状态" : "View trends, hotspots, and global health")}
       >
-        <span>{isChineseUi ? "全局诊断" : "Global health"}</span>
+        <span>{isChineseUi ? "诊断" : "Health"}</span>
       </Link>
       <Link
         className="fa-trajectory-workbench-tab fa-observability-route-tab"
         to="/agent/governance"
         {...tooltipProps(isChineseUi ? "查看记忆、工具和模型路由治理" : "View memory, tools, and routing governance")}
       >
-        <span>{isChineseUi ? "Agent 治理" : "Agent governance"}</span>
+        <span>{isChineseUi ? "治理" : "Governance"}</span>
       </Link>
       <Link
         className="fa-trajectory-workbench-tab fa-observability-route-tab is-active"
         to="/agent-team"
         {...tooltipProps(isChineseUi ? "多 Agent 分工协作工作台" : "Multi-agent collaboration workbench")}
       >
-        <span>{isChineseUi ? "Agent Team" : "Agent Team"}</span>
+        <span>{isChineseUi ? "协作" : "Team"}</span>
       </Link>
     </nav>
   );
@@ -347,7 +400,6 @@ function CreateSessionPanel() {
   const conversationsQuery = useConversations();
   const createSession = useCreateAgentTeamSession();
   const [goal, setGoal] = useState("");
-  const [title, setTitle] = useState("");
   const [rootThreadId, setRootThreadId] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("root_thread_id") ?? "";
@@ -387,60 +439,53 @@ function CreateSessionPanel() {
     if (!nextGoal || !nextRootThreadId || createSession.isPending) return;
     const response = await createSession.mutateAsync({
       goal: nextGoal,
-      title: title.trim() || titleFromGoal(nextGoal),
+      title: titleFromGoal(nextGoal),
       root_thread_id: nextRootThreadId,
     });
     const session = "session" in response ? response.session : response;
     window.history.pushState(null, "", `/app/agent-team/${encodeURIComponent(session.session_id)}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
-  const createHeroHelp = isChineseUi
-    ? "先写一个大目标，再生成角色任务，把每个 Agent 的分支、产出、风险和验证证据集中管理。"
-    : "Enter one large goal, create role tasks, and manage branches, outputs, risks, and evidence in one place.";
+  const createHelp = isChineseUi
+    ? "选择来源对话，写下协作目标，然后创建一个可以派生多个 Agent 分支的协作空间。"
+    : "Choose the source conversation, write the collaboration goal, and create a workspace that can fork agent branches.";
 
   return (
     <div className="fa-agent-team-layout is-create">
-      <div className="fa-agent-team-create-copy">
-        <section className="fa-observability-hero fa-agent-team-hero">
-          <div className="fa-observability-hero-copy">
-            <span className="fa-observability-kicker">Agent Team Workbench</span>
-            <h1>{isChineseUi ? "创建 Agent Team 协作空间" : "Create an Agent Team workspace"}</h1>
-            <p className="fa-observability-hero-text" {...tooltipProps(createHeroHelp)}>
-              {isChineseUi ? "多 Agent 协作控制台" : "Multi-agent collaboration console"}
-            </p>
-            <AgentTeamRouteTabs isChineseUi={isChineseUi} />
-          </div>
-        </section>
-
-        <WorkflowGuide />
-
-        <section className="fa-agent-team-panel fa-agent-team-roles-panel">
-          <div className="fa-agent-team-panel-header">
-            <div>
-              <span>{isChineseUi ? "MVP 默认角色" : "MVP default roles"}</span>
-              <strong>{isChineseUi ? "固定角色，可审计产出" : "Fixed roles, auditable outputs"}</strong>
+      <section className="fa-header-card fa-agent-team-compact-header">
+        <div className="fa-chat-header-top">
+          <div className="fa-chat-header-copy">
+            <div className="fa-agent-team-title-block">
+              <span className="fa-observability-kicker">Agent Team</span>
+              <h1>{isChineseUi ? "从当前对话创建协作空间" : "Create a workspace from a conversation"}</h1>
+              <p {...tooltipProps(createHelp)}>
+                {isChineseUi ? "把一个对话目标拆给多个 Agent 分支执行。" : "Split one conversation goal across agent branches."}
+              </p>
             </div>
           </div>
-          <div className="fa-agent-team-role-grid">
-            {DEFAULT_TASK_ROLES.map((role) => (
-              <div className="fa-agent-team-role-chip" key={role} {...tooltipProps(roleHint(role, isChineseUi))}>
-                <strong>{roleLabel(role, isChineseUi)}</strong>
-              </div>
-            ))}
+          <div className="fa-chat-header-right-actions">
+            <AgentTeamRouteTabs isChineseUi={isChineseUi} />
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
 
-      <div className="fa-agent-team-create-actions">
+      <WorkflowGuide compact />
+
+      <div className="fa-agent-team-create-grid">
         <form className="fa-agent-team-panel fa-agent-team-create-form" onSubmit={handleSubmit}>
           <div className="fa-agent-team-panel-header">
             <div>
               <span>{isChineseUi ? "第一步" : "Step 1"}</span>
-              <strong>{isChineseUi ? "描述协作目标" : "Describe the collaboration goal"}</strong>
+              <strong>{isChineseUi ? "选择对话并写目标" : "Choose conversation and goal"}</strong>
+              <HelpText>
+                {isChineseUi
+                  ? "默认会优先选中最近的对话；只有调试或外部线程才需要手动输入 ID。"
+                  : "The newest conversation is selected by default. Manual IDs are only for debugging or external threads."}
+              </HelpText>
             </div>
           </div>
           <label className="fa-agent-team-field">
-            <span>{isChineseUi ? "主线程" : "Root thread"}</span>
+            <span>{isChineseUi ? "来源对话" : "Source conversation"}</span>
             <select
               value={rootSelectValue}
               onChange={(event) => {
@@ -476,19 +521,6 @@ function CreateSessionPanel() {
                 placeholder="thread_..."
               />
             ) : null}
-            <HelpText>
-              {isChineseUi
-                ? "默认使用当前对话；没有当前对话时可从已有对话中选择。只有调试或粘贴外部线程时才需要手动输入。"
-                : "Defaults to the current conversation. If there is no current conversation, choose an existing one. Manual entry is only for debugging or external thread IDs."}
-            </HelpText>
-          </label>
-          <label className="fa-agent-team-field">
-            <span>{isChineseUi ? "标题（可选）" : "Title (optional)"}</span>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder={isChineseUi ? "默认使用目标摘要" : "Defaults to goal summary"}
-            />
           </label>
           <label className="fa-agent-team-field">
             <span>{isChineseUi ? "协作目标" : "Team goal"}</span>
@@ -503,8 +535,8 @@ function CreateSessionPanel() {
             />
             <HelpText>
               {isChineseUi
-                ? "写清楚这组 Agent 要一起完成什么。创建后可以一键生成规划、执行、测试、审查、验证任务。"
-                : "Describe what the agent team should accomplish together. After creation, generate planning, execution, test, review, and verification tasks."}
+                ? "写清楚这组 Agent 要一起完成什么；标题会自动取目标摘要。"
+                : "Describe what the agent team should accomplish; the title is generated from the goal."}
             </HelpText>
           </label>
           {createSession.error ? (
@@ -512,29 +544,48 @@ function CreateSessionPanel() {
               {errorMessage(createSession.error, isChineseUi ? "创建失败。" : "Failed to create session.")}
             </div>
           ) : null}
-          <button
-            className="fa-observability-preset is-primary"
-            disabled={!goal.trim() || !rootThreadId.trim() || createSession.isPending}
-            type="submit"
-          >
-            {createSession.isPending
-              ? isChineseUi
-                ? "创建中..."
-                : "Creating..."
-              : isChineseUi
-                ? "创建协作空间"
-                : "Create session"}
-          </button>
-          {!goal.trim() || !rootThreadId.trim() ? (
-            <HelpText>
-              {isChineseUi
-                ? "填写主线程 ID 和协作目标后即可创建。"
-                : "Fill the root thread ID and team goal to create the workspace."}
-            </HelpText>
-          ) : null}
+          <div className="fa-agent-team-submit-row">
+            <button
+              className="fa-observability-preset is-primary"
+              disabled={!goal.trim() || !rootThreadId.trim() || createSession.isPending}
+              type="submit"
+            >
+              {createSession.isPending
+                ? isChineseUi
+                  ? "创建中..."
+                  : "Creating..."
+                : isChineseUi
+                  ? "创建协作空间"
+                  : "Create session"}
+            </button>
+            {!goal.trim() || !rootThreadId.trim() ? (
+              <HelpText>
+                {isChineseUi
+                  ? "选择来源对话并填写协作目标后即可创建。"
+                  : "Choose a source conversation and fill the team goal to create the workspace."}
+              </HelpText>
+            ) : null}
+          </div>
         </form>
 
-        <RecentSessionsPanel rootThreadId={rootThreadId} />
+        <div className="fa-agent-team-create-side">
+          <section className="fa-agent-team-panel fa-agent-team-roles-panel">
+            <div className="fa-agent-team-panel-header">
+              <div>
+                <span>{isChineseUi ? "默认分工" : "Default lanes"}</span>
+                <strong>{isChineseUi ? "创建后可一键生成 6 个 Agent 任务" : "Create six agent tasks after setup"}</strong>
+              </div>
+            </div>
+            <div className="fa-agent-team-role-grid">
+              {DEFAULT_TASK_ROLES.map((role) => (
+                <div className="fa-agent-team-role-chip" key={role} {...tooltipProps(roleHint(role, isChineseUi))}>
+                  <strong>{roleLabel(role, isChineseUi)}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+          <RecentSessionsPanel rootThreadId={rootThreadId} />
+        </div>
       </div>
     </div>
   );
@@ -560,7 +611,8 @@ function TaskBoard({
     <div className="fa-agent-team-task-list">
       {tasks.map((task) => {
         const boundThreadId = task.child_thread_id ?? task.branch_id ?? "";
-        const taskTooltip = [roleHint(task.role, isChineseUi), task.goal].filter(Boolean).join(" · ");
+        const taskSummary = compactTaskGoal(task.goal || task.task_id);
+        const taskTooltip = [roleHint(task.role, isChineseUi), taskSummary].filter(Boolean).join(" · ");
         return (
           <article
             className={`fa-agent-team-task-card ${selectedTaskId === task.task_id ? "is-selected" : ""}`.trim()}
@@ -568,7 +620,7 @@ function TaskBoard({
             {...tooltipProps(taskTooltip)}
           >
             <button
-              aria-label={`${roleLabel(task.role, isChineseUi)} · ${task.goal || task.task_id}`}
+              aria-label={`${roleLabel(task.role, isChineseUi)} · ${taskSummary}`}
               className="fa-agent-team-task-select"
               onClick={() => onSelectTask(task.task_id)}
               type="button"
@@ -621,32 +673,30 @@ function TaskDetail({ task, artifacts }: { task: AgentTeamTask | null; artifacts
       </div>
       <div className="fa-agent-team-meta-grid">
         <div>
-          <span>Task ID</span>
-          <code>{task.task_id}</code>
-        </div>
-        <div>
-          <span>{isChineseUi ? "Branch / Thread" : "Branch / Thread"}</span>
-          <code>{task.child_thread_id ?? task.branch_id ?? "—"}</code>
+          <span>{isChineseUi ? "绑定分支" : "Bound branch"}</span>
+          <code {...tooltipProps(task.child_thread_id ?? task.branch_id ?? task.task_id)}>
+            {task.child_thread_id ?? task.branch_id ?? "—"}
+          </code>
         </div>
       </div>
       <section>
-        <h3>{isChineseUi ? "Scope" : "Scope"}</h3>
+        <h3>{isChineseUi ? "改动范围" : "Scope"}</h3>
         <FieldList items={task.scope} />
       </section>
       <section>
-        <h3>{isChineseUi ? "Changed files" : "Changed files"}</h3>
+        <h3>{isChineseUi ? "改动文件" : "Changed files"}</h3>
         <FieldList items={task.changed_files} />
       </section>
       <section>
-        <h3>{isChineseUi ? "Verification" : "Verification"}</h3>
+        <h3>{isChineseUi ? "验证证据" : "Verification"}</h3>
         {task.verification_summary ? <p>{task.verification_summary}</p> : <EmptyList>—</EmptyList>}
       </section>
       <section>
-        <h3>{isChineseUi ? "Risk notes" : "Risk notes"}</h3>
+        <h3>{isChineseUi ? "风险备注" : "Risk notes"}</h3>
         <FieldList items={task.risk_notes} />
       </section>
       <section>
-        <h3>{isChineseUi ? "Outputs / Artifacts" : "Outputs / Artifacts"}</h3>
+        <h3>{isChineseUi ? "产出证据" : "Outputs / Artifacts"}</h3>
         {taskArtifacts.length ? (
           <div className="fa-agent-team-artifact-list">
             {taskArtifacts.map((artifact) => (
@@ -715,7 +765,7 @@ function AddTaskPanel({ sessionId }: { sessionId: string }) {
         />
       </label>
       <label className="fa-agent-team-field">
-        <span>{isChineseUi ? "Scope（每行一个）" : "Scope (one per line)"}</span>
+        <span>{isChineseUi ? "改动范围（每行一个）" : "Scope (one per line)"}</span>
         <textarea value={scope} onChange={(event) => setScope(event.target.value)} />
       </label>
       {createTask.error ? (
@@ -747,6 +797,7 @@ function MergeBundleCard({
   isGenerating,
   error,
   canGenerate,
+  hideAction = false,
 }: {
   bundle: AgentTeamMergeBundle | null;
   pendingBundle: AgentTeamMergeBundle | null;
@@ -754,6 +805,7 @@ function MergeBundleCard({
   isGenerating: boolean;
   error: Error | null;
   canGenerate: boolean;
+  hideAction?: boolean;
 }) {
   const { isChineseUi } = useShellUi();
   const activeBundle = pendingBundle ?? bundle;
@@ -762,8 +814,8 @@ function MergeBundleCard({
     <section className="fa-agent-team-panel fa-agent-team-merge-card">
       <div className="fa-agent-team-panel-header">
         <div>
-          <span>{isChineseUi ? "最终动作 · Merge Bundle" : "Final action · Merge Bundle"}</span>
-          <strong>{isChineseUi ? "受控合并摘要" : "Controlled merge summary"}</strong>
+          <span>{isChineseUi ? "第四步 · 合并汇总" : "Step 4 · Merge summary"}</span>
+          <strong>{isChineseUi ? "改动、证据、风险一次看清" : "Changes, evidence, and risks"}</strong>
           <HelpText>
             {isChineseUi
               ? "把各任务的改动、证据、风险和未决问题收束成一次可审查的合并建议。"
@@ -778,23 +830,23 @@ function MergeBundleCard({
         <div className="fa-agent-team-merge-grid">
           <p>{activeBundle.summary || (isChineseUi ? "暂无摘要。" : "No summary yet.")}</p>
           <div>
-            <h3>{isChineseUi ? "Key findings" : "Key findings"}</h3>
+            <h3>{isChineseUi ? "关键发现" : "Key findings"}</h3>
             <FieldList items={activeBundle.key_findings} />
           </div>
           <div>
-            <h3>{isChineseUi ? "Changed files" : "Changed files"}</h3>
+            <h3>{isChineseUi ? "改动文件" : "Changed files"}</h3>
             <FieldList items={activeBundle.changed_files} />
           </div>
           <div>
-            <h3>{isChineseUi ? "Test evidence" : "Test evidence"}</h3>
+            <h3>{isChineseUi ? "验证证据" : "Test evidence"}</h3>
             <FieldList items={activeBundle.test_evidence} />
           </div>
           <div>
-            <h3>{isChineseUi ? "Open questions" : "Open questions"}</h3>
+            <h3>{isChineseUi ? "未决问题" : "Open questions"}</h3>
             <FieldList items={activeBundle.open_questions} />
           </div>
           <div>
-            <h3>{isChineseUi ? "Risks" : "Risks"}</h3>
+            <h3>{isChineseUi ? "风险" : "Risks"}</h3>
             <FieldList items={activeBundle.risk_items} />
           </div>
         </div>
@@ -802,19 +854,21 @@ function MergeBundleCard({
         <EmptyList>{isChineseUi ? "还没有生成协作汇总。" : "No collaboration summary generated yet."}</EmptyList>
       )}
       {error ? <div className="fa-inline-notice is-danger">{error.message}</div> : null}
-      <button className="fa-observability-preset is-primary" disabled={!canGenerate || isGenerating} onClick={onGenerate} type="button">
-        {isGenerating
-          ? isChineseUi
-            ? "生成中..."
-            : "Generating..."
-          : !canGenerate
-            ? isChineseUi
-              ? "先生成任务再汇总"
-              : "Create tasks before summary"
-            : isChineseUi
-              ? "生成协作汇总"
-              : "Generate collaboration summary"}
-      </button>
+      {!hideAction ? (
+        <button
+          className="fa-observability-preset is-primary"
+          disabled={!canGenerate || isGenerating}
+          onClick={onGenerate}
+          type="button"
+        >
+          {mergeBundleActionLabel({
+            isChineseUi,
+            isGenerating,
+            canGenerate,
+            hasBundle: Boolean(activeBundle),
+          })}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -832,6 +886,7 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
     return tasks.find((task) => task.task_id === selectedTaskId) ?? tasks[0];
   }, [selectedTaskId, tasks]);
   const pendingBundle = normalizeMergeBundle(mergeProposal.data);
+  const activeBundle = pendingBundle ?? view?.merge_bundle ?? null;
 
   if (!sessionId) return <CreateSessionPanel />;
 
@@ -862,96 +917,136 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
   }
 
   const session = view.session;
-  const changedFiles = Array.from(new Set(tasks.flatMap((task) => task.changed_files ?? [])));
-  const outputArtifactIds = Array.from(new Set(tasks.flatMap((task) => task.output_artifact_ids ?? [])));
+  const changedFiles = uniqueNonEmptyStrings(tasks.flatMap((task) => task.changed_files ?? []));
+  const outputArtifactIds = uniqueNonEmptyStrings(tasks.flatMap((task) => task.output_artifact_ids ?? []));
+  const evidenceItems = uniqueNonEmptyStrings([
+    ...outputArtifactIds,
+    ...(view.artifacts ?? []).map((artifact) => artifact.summary ?? artifact.title ?? artifact.artifact_id),
+    ...tasks.map((task) => task.verification_summary),
+    ...(activeBundle?.test_evidence ?? []),
+  ]);
   const taskRoles = new Set(tasks.map((task) => task.role));
   const defaultTasksReady = DEFAULT_TASK_ROLES.every((role) => taskRoles.has(role));
   const displayTitle = session.title && session.title !== session.goal ? session.title : titleFromGoal(session.goal);
-  const sessionHeroHelp = isChineseUi
-    ? "这是协作控制台：左侧拆任务，中间看分支绑定，右侧看产出风险，底部生成合并建议。"
-    : "This is the collaboration console: tasks on the left, branch binding in the middle, outputs and risks on the right, merge guidance at the bottom.";
+  const sessionHeaderHelp = isChineseUi
+    ? "这是从原对话派生出的协作空间：生成任务、进入分支执行、汇总证据并准备合并。"
+    : "This workspace is derived from the source conversation: create tasks, work in branches, collect evidence, and prepare merge.";
   const nextStep = !tasks.length
     ? {
-        label: isChineseUi ? "生成默认任务" : "Create default tasks",
+        label: isChineseUi ? "先生成默认任务，系统会创建 6 条协作分支" : "Create default tasks to add six collaboration branches",
         help: isChineseUi
           ? "生成 6 个默认任务，让规划、执行、测试、审查、验证各自有独立分支。"
           : "Create 6 default tasks so planning, execution, testing, review, and verification each get their own branch.",
       }
-    : outputArtifactIds.length || changedFiles.length
+    : activeBundle?.recommended_next_action === "request_changes"
       ? {
-          label: isChineseUi ? "生成协作汇总" : "Generate merge summary",
+          label: isChineseUi ? "合并前先处理风险和修改项" : "Resolve risks and requested changes before merge",
           help: isChineseUi
-            ? "把产出、风险和验证证据收束成可审查建议。"
-            : "Collect outputs, risks, and evidence into a reviewable recommendation.",
+            ? "协作汇总已经生成，但仍有风险或阻塞项；先处理这些问题再进入合并。"
+            : "The merge bundle exists, but risks or blockers remain. Resolve them before merging.",
         }
-      : {
-          label: isChineseUi ? "打开分支线程执行" : "Open branch threads",
-          help: isChineseUi
-            ? "打开任务线程，让对应 Agent 在分支里工作；产出会回到这里汇总。"
-            : "Open task threads and let each agent work in its branch; outputs will roll back up here.",
-        };
+      : activeBundle
+        ? {
+            label: isChineseUi ? "查看协作汇总并决定下一步" : "Review the merge bundle and decide the next action",
+            help: isChineseUi
+              ? "检查汇总里的改动、证据、风险和开放问题，再决定合并、拆分跟进或放弃。"
+              : "Review changes, evidence, risks, and open questions before choosing merge, follow-up, or discard.",
+          }
+        : evidenceItems.length || changedFiles.length
+          ? {
+              label: isChineseUi ? "已有产出后，生成协作汇总准备合并" : "Generate a merge summary once outputs are ready",
+              help: isChineseUi
+                ? "把产出、风险和验证证据收束成可审查建议。"
+                : "Collect outputs, risks, and evidence into a reviewable recommendation.",
+            }
+          : {
+              label: isChineseUi ? "下一步：打开分支线程执行任务" : "Next: open branch threads and execute tasks",
+              help: isChineseUi
+                ? "打开任务线程，让对应 Agent 在分支里工作；产出会回到这里汇总。"
+                : "Open task threads and let each agent work in its branch; outputs will roll back up here.",
+            };
 
   return (
     <div className="fa-agent-team-layout">
-      <section className="fa-observability-hero fa-agent-team-hero">
-        <div className="fa-observability-hero-copy">
-          <span className="fa-observability-kicker">Agent Team Workbench</span>
-          <h1>{displayTitle || session.session_id}</h1>
-          <p className="fa-observability-hero-text fa-agent-team-goal-line" {...tooltipProps(session.goal)}>
-            {session.goal}
-          </p>
-          <HelpText>{sessionHeroHelp}</HelpText>
-          <AgentTeamRouteTabs isChineseUi={isChineseUi} />
-        </div>
-        <div className="fa-agent-team-session-meta">
-          <StatusPill status={session.status} />
-          <div>
-            <span>Session</span>
-            <code>{session.session_id}</code>
+      <section className="fa-header-card fa-agent-team-compact-header">
+        <div className="fa-chat-header-top">
+          <div className="fa-chat-header-copy">
+            <div className="fa-agent-team-title-block">
+              <span className="fa-observability-kicker">Agent Team</span>
+              <h1 {...tooltipProps(session.goal)}>{displayTitle || session.session_id}</h1>
+              <p {...tooltipProps(sessionHeaderHelp)}>{nextStep.label}</p>
+            </div>
           </div>
-          <div>
-            <span>{isChineseUi ? "主线程" : "Root thread"}</span>
+          <div className="fa-chat-header-right-actions fa-agent-team-header-actions">
+            <StatusPill status={session.status} />
             <Link
-              className="fa-route-state-link"
+              className="fa-chat-toolbar-button"
               params={{ conversationId: session.root_thread_id, threadId: session.root_thread_id }}
               to="/c/$conversationId/t/$threadId"
+              {...tooltipProps(isChineseUi ? "返回来源对话" : "Back to source conversation")}
             >
-              {session.root_thread_id}
+              {isChineseUi ? "返回对话" : "Back"}
             </Link>
+            <button
+              className="fa-chat-toolbar-button"
+              disabled={defaultTasksReady || dispatchSession.isPending}
+              onClick={() => dispatchSession.mutate({ create_branches: true })}
+              type="button"
+              {...tooltipProps(
+                isChineseUi
+                  ? "生成或补齐规划、执行、测试、审查、验证任务"
+                  : "Create or fill planning, execution, test, review, and verification tasks",
+              )}
+            >
+              {defaultTaskActionLabel({
+                isChineseUi,
+                isPending: dispatchSession.isPending,
+                defaultTasksReady,
+                taskCount: tasks.length,
+              })}
+            </button>
+            <button
+              className="fa-chat-toolbar-button is-primary"
+              disabled={!tasks.length || mergeProposal.isPending}
+              onClick={() => mergeProposal.mutate()}
+              type="button"
+              {...tooltipProps(isChineseUi ? "汇总改动、证据、风险和未决问题" : "Summarize changes, evidence, risks, and open questions")}
+            >
+              {mergeBundleActionLabel({
+                isChineseUi,
+                isGenerating: mergeProposal.isPending,
+                canGenerate: tasks.length > 0,
+                hasBundle: Boolean(activeBundle),
+              })}
+            </button>
+            <AgentTeamRouteTabs isChineseUi={isChineseUi} />
           </div>
-          <StatusLegend />
         </div>
       </section>
 
       <WorkflowGuide compact />
 
-      <div className="fa-agent-team-summary-grid">
-        <div
-          className="fa-observability-stat-card"
-          {...tooltipProps(isChineseUi ? "当前协作空间里的 Agent 角色任务数量。" : "Number of agent role tasks in this workspace.")}
-        >
-          <span>{isChineseUi ? "Tasks" : "Tasks"}</span>
-          <strong>{tasks.length}</strong>
-        </div>
-        <div
-          className="fa-observability-stat-card"
-          {...tooltipProps(isChineseUi ? "各任务回传的产出或证据引用数量。" : "Number of output or evidence references returned by tasks.")}
-        >
-          <span>{isChineseUi ? "Outputs" : "Outputs"}</span>
-          <strong>{outputArtifactIds.length}</strong>
-        </div>
-        <div
-          className="fa-observability-stat-card"
-          {...tooltipProps(isChineseUi ? "跨任务汇总出来的改动文件数量。" : "Number of changed files aggregated across tasks.")}
-        >
-          <span>{isChineseUi ? "Changed files" : "Changed files"}</span>
-          <strong>{changedFiles.length}</strong>
-        </div>
-      </div>
-
       <div className="fa-agent-team-next-step">
-        <span>{isChineseUi ? "使用提示" : "Guide"}</span>
+        <span>{isChineseUi ? "下一步" : "Next"}</span>
         <strong {...tooltipProps(nextStep.help)}>{nextStep.label}</strong>
+        <div className="fa-agent-team-progress-strip">
+          <span {...tooltipProps(isChineseUi ? "Agent 任务数量" : "Agent task count")}>
+            {isChineseUi ? "任务" : "Tasks"} · {tasks.length}
+          </span>
+          <span
+            {...tooltipProps(
+              isChineseUi
+                ? "包含 artifact、任务验证摘要和协作汇总里的测试证据"
+                : "Includes artifacts, task verification summaries, and merge-bundle test evidence",
+            )}
+          >
+            {isChineseUi ? "证据" : "Evidence"} · {evidenceItems.length}
+          </span>
+          <span {...tooltipProps(isChineseUi ? "跨任务汇总出的改动文件数量" : "Changed files across tasks")}>
+            {isChineseUi ? "文件" : "Files"} · {changedFiles.length}
+          </span>
+          <StatusLegend />
+        </div>
       </div>
 
       <div className="fa-agent-team-workbench-grid">
@@ -959,7 +1054,7 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
           <div className="fa-agent-team-panel-header">
             <div>
               <span>{isChineseUi ? "第二步 · 任务队列" : "Step 2 · Task queue"}</span>
-              <strong>{isChineseUi ? "Agent Task Board" : "Agent Task Board"}</strong>
+              <strong>{isChineseUi ? "Agent 任务" : "Agent tasks"}</strong>
             </div>
             <button
               className="fa-observability-preset"
@@ -967,21 +1062,12 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
               onClick={() => dispatchSession.mutate({ create_branches: true })}
               type="button"
             >
-              {dispatchSession.isPending
-                ? isChineseUi
-                  ? "调度中..."
-                  : "Dispatching..."
-                : defaultTasksReady
-                  ? isChineseUi
-                    ? "默认任务已就绪"
-                    : "Default tasks ready"
-                : tasks.length
-                  ? isChineseUi
-                    ? "补齐默认任务"
-                    : "Fill default tasks"
-                  : isChineseUi
-                    ? "生成 6 个默认任务"
-                    : "Create 6 default tasks"}
+              {defaultTaskActionLabel({
+                isChineseUi,
+                isPending: dispatchSession.isPending,
+                defaultTasksReady,
+                taskCount: tasks.length,
+              })}
             </button>
           </div>
           <HelpText>
@@ -1007,7 +1093,7 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
           <div className="fa-agent-team-panel-header">
             <div>
               <span>{isChineseUi ? "第三步 · 分支绑定" : "Step 3 · Branch binding"}</span>
-              <strong>{isChineseUi ? "Task Detail / Branch Binding" : "Task Detail / Branch Binding"}</strong>
+              <strong>{isChineseUi ? "任务详情与分支" : "Task detail and branch"}</strong>
               <HelpText>
                 {isChineseUi
                   ? "点左侧任务后，确认它对应的分支线程、改动范围、验证结果和风险。"
@@ -1021,8 +1107,8 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
         <section className="fa-agent-team-panel">
           <div className="fa-agent-team-panel-header">
             <div>
-              <span>{isChineseUi ? "第四步 · 产出与风险" : "Step 4 · Outputs and risks"}</span>
-              <strong>{isChineseUi ? "Outputs / Status" : "Outputs / Status"}</strong>
+              <span>{isChineseUi ? "产出与风险" : "Outputs and risks"}</span>
+              <strong>{isChineseUi ? "合并前检查" : "Pre-merge check"}</strong>
               <HelpText>
                 {isChineseUi
                   ? "这里聚合跨任务文件、artifact 和阻塞项，方便合并前最后检查。"
@@ -1032,15 +1118,15 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
           </div>
           <div className="fa-agent-team-detail">
             <section>
-              <h3>{isChineseUi ? "Changed files" : "Changed files"}</h3>
+              <h3>{isChineseUi ? "改动文件" : "Changed files"}</h3>
               <FieldList items={changedFiles} />
             </section>
             <section>
-              <h3>{isChineseUi ? "Artifact IDs" : "Artifact IDs"}</h3>
-              <FieldList items={outputArtifactIds} />
+              <h3>{isChineseUi ? "产出证据" : "Evidence"}</h3>
+              <FieldList items={evidenceItems} />
             </section>
             <section>
-              <h3>{isChineseUi ? "Blocked / Risks" : "Blocked / Risks"}</h3>
+              <h3>{isChineseUi ? "阻塞 / 风险" : "Blocked / Risks"}</h3>
               <FieldList items={tasks.flatMap((task) => task.risk_notes ?? [])} />
             </section>
           </div>
@@ -1048,12 +1134,13 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
       </div>
 
       <MergeBundleCard
-        bundle={view.merge_bundle ?? null}
+        bundle={activeBundle}
         error={mergeProposal.error}
         isGenerating={mergeProposal.isPending}
         pendingBundle={pendingBundle}
         canGenerate={tasks.length > 0}
         onGenerate={() => mergeProposal.mutate()}
+        hideAction
       />
     </div>
   );

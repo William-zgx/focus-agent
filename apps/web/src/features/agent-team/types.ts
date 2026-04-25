@@ -34,6 +34,8 @@ export interface AgentTeamSession {
   status: AgentTeamSessionStatus;
   created_at?: string;
   updated_at?: string;
+  latest_merge_bundle?: AgentTeamMergeBundle | null;
+  merge_decision?: Record<string, unknown> | null;
 }
 
 export interface AgentTeamTask {

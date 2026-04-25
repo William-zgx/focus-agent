@@ -856,6 +856,8 @@ export interface FocusAgentAgentTeamSession {
   status: FocusAgentAgentTeamSessionStatus;
   created_at: string;
   updated_at: string;
+  latest_merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
+  merge_decision?: Record<string, unknown> | null;
 }
 
 export interface FocusAgentAgentTeamTask {
