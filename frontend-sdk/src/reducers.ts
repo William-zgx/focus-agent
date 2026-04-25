@@ -4,6 +4,7 @@ import type {
   FocusAgentToolCallEvent,
   FocusAgentToolEvent,
 } from "./types";
+import { safeVisibleText } from "./toolProtocol";
 
 export function createInitialStreamState(): FocusAgentStreamState {
   return {
@@ -24,12 +25,15 @@ export function reduceStreamEvent(
   switch (event.event) {
     case "visible_text.delta":
     case "message.delta": {
-      const delta = typeof event.data.delta === "string" ? event.data.delta : "";
+      const delta = safeVisibleText(event.data.delta);
       return { ...state, visibleText: state.visibleText + delta };
     }
     case "visible_text.completed":
     case "message.completed": {
-      const content = typeof event.data.content === "string" ? event.data.content : state.visibleText;
+      const content =
+        typeof event.data.content === "string"
+          ? safeVisibleText(event.data.content)
+          : state.visibleText;
       return { ...state, visibleText: content };
     }
     case "reasoning.delta": {

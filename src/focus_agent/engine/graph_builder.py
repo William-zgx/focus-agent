@@ -41,6 +41,7 @@ from ..core.context_policy import (
 )
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
+from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget, Plan, PlanStep, PromptMode, ReflectionVerdict
 from ..memory import (
     MemoryExtractor,
@@ -85,8 +86,13 @@ _TOOL_CALL_LAST_RESORT_NOTE = (
     "write a concise final answer for the user in natural language."
 )
 _TOOL_CALL_REPAIR_FALLBACK_TEXT = (
-    "I gathered the tool results for this turn, but formatting the final answer failed. "
-    "Please retry this message or switch to a more stable model."
+    "我已经拿到工具结果，但还没有足够可用的信息形成完整结论。请稍后重试，或换一个更稳定的模型。"
+)
+_TOOL_RESULT_SYNTHESIS_NOTE = (
+    "You are writing the final user-facing answer after tool use. Do not call tools. "
+    "Use only the tool observations provided below. If the user wrote Chinese, answer in Chinese. "
+    "Do not mention formatting failures or internal retries. State uncertainty plainly, and include "
+    "dates, numbers, and source names when available."
 )
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
 
@@ -239,6 +245,23 @@ _LIVE_WEB_INTENT_MARKERS = (
     "current",
     "now",
     "weather",
+    "news",
+    "price",
+)
+_LIVE_WEB_SEARCH_FIRST_MARKERS = (
+    "查一下",
+    "查下",
+    "搜一下",
+    "搜索",
+    "新闻",
+    "价格",
+    "股价",
+    "波动",
+    "走势",
+    "行情",
+    "browse",
+    "search",
+    "latest",
     "news",
     "price",
 )
@@ -470,18 +493,23 @@ def _ensure_reasoning_content_for_tool_call_history(
     return fixed
 
 
-def _looks_like_textual_tool_call_artifact(message: Any) -> bool:
-    text = _message_text(message).lower()
-    if not text:
-        return False
-    markers = (
-        "function_calls",
-        "invoke name=",
-        "<｜dsml｜",
-        "<tool_call",
-        '"tool_name"',
+def _known_tool_names(available_tools: list[Any] | tuple[Any, ...] | None = None) -> set[str]:
+    return {
+        str(getattr(tool, "name", "")).strip()
+        for tool in available_tools or []
+        if str(getattr(tool, "name", "")).strip()
+    }
+
+
+def _looks_like_textual_tool_call_artifact(
+    message: Any,
+    *,
+    known_tool_names: list[str] | set[str] | tuple[str, ...] | None = None,
+) -> bool:
+    return looks_like_textual_tool_call_artifact(
+        _message_text(message),
+        known_tool_names=known_tool_names,
     )
-    return any(marker in text for marker in markers)
 
 
 def _latest_human_message_text(messages: list[Any]) -> str:
@@ -554,6 +582,17 @@ def _workspace_lookup_should_start_with_search(text: str, messages: list[Any], t
     )
 
 
+def _live_web_research_should_start_with_search(text: str, messages: list[Any], tools: list[Any]) -> bool:
+    normalized = " ".join(text.strip().split())
+    if not normalized:
+        return False
+    if any(isinstance(message, ToolMessage) for message in messages):
+        return False
+    if not any(str(getattr(tool, "name", "")) == "web_search" for tool in tools):
+        return False
+    return _contains_any(normalized, _LIVE_WEB_SEARCH_FIRST_MARKERS)
+
+
 def _workspace_search_query(text: str) -> str:
     tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?", text)
     seen: list[str] = []
@@ -599,9 +638,83 @@ def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
     return f"{text[: max_chars - 1]}…"
 
 
+def _latest_turn_messages(messages: list[Any]) -> list[Any]:
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return messages[index:]
+    return messages
+
+
 def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
+    snippets = _tool_result_snippets(prompt_messages)
+    if not snippets:
+        return _TOOL_CALL_REPAIR_FALLBACK_TEXT
+    unique_snippets = list(dict.fromkeys(snippets))
+    return "我先根据已拿到的工具结果给出一个保守整理：\n" + "\n".join(unique_snippets[:10])
+
+
+def _tool_call_args_summary(args: Any) -> str:
+    if not isinstance(args, dict) or not args:
+        return ""
+    preferred = []
+    for key in ("query", "url", "path", "symbol", "ticker"):
+        value = args.get(key)
+        if value:
+            preferred.append(f"{key}={_truncate_inline(value, max_chars=80)}")
+    if preferred:
+        return ", ".join(preferred[:3])
+    return _truncate_inline(json.dumps(args, ensure_ascii=False, default=str), max_chars=120)
+
+
+def _tool_runtime_summary(message: ToolMessage) -> str:
+    artifact = getattr(message, "artifact", None)
+    runtime = artifact.get("runtime") if isinstance(artifact, dict) else None
+    if not isinstance(runtime, dict):
+        return ""
+    parts: list[str] = []
+    if runtime.get("cache_hit"):
+        parts.append("cache_hit")
+    if runtime.get("fallback_used"):
+        fallback_group = runtime.get("fallback_group")
+        parts.append(f"fallback={fallback_group}" if fallback_group else "fallback")
+    if runtime.get("duration_ms") is not None:
+        parts.append(f"{float(runtime.get('duration_ms') or 0):.0f}ms")
+    return f" ({', '.join(parts)})" if parts else ""
+
+
+def _tool_observation_summary(payload: Any, raw: str) -> str:
+    if isinstance(payload, dict):
+        for key in ("answer", "summary", "reference", "error", "path", "query"):
+            value = payload.get(key)
+            if value:
+                return _truncate_inline(value)
+        results = payload.get("results")
+        if isinstance(results, list) and results:
+            result = results[0]
+            if isinstance(result, dict):
+                title = str(result.get("title") or "").strip()
+                url = str(result.get("url") or result.get("ref") or "").strip()
+                content = str(result.get("content") or result.get("snippet") or result.get("line") or "").strip()
+                return _truncate_inline(" ".join(part for part in (title, url, content) if part))
+    return _truncate_inline(raw)
+
+
+def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
     snippets: list[str] = []
-    for message in prompt_messages:
+    pending_calls: dict[str, dict[str, Any]] = {}
+    for message in _latest_turn_messages(prompt_messages):
+        if isinstance(message, AIMessage):
+            for call in getattr(message, "tool_calls", None) or []:
+                if not isinstance(call, dict):
+                    continue
+                call_id = str(call.get("id") or "")
+                if not call_id:
+                    continue
+                pending_calls[call_id] = {
+                    "name": str(call.get("name") or "tool"),
+                    "args": dict(call.get("args") or {}),
+                }
+            continue
         if not isinstance(message, ToolMessage):
             continue
         raw = _message_text(message)
@@ -610,7 +723,36 @@ def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
         except json.JSONDecodeError:
             payload = None
 
+        call_id = str(getattr(message, "tool_call_id", "") or "")
+        call = pending_calls.pop(call_id, None)
+        if call is not None:
+            args_summary = _tool_call_args_summary(call.get("args"))
+            status = str(getattr(message, "status", "success") or "success")
+            runtime_summary = _tool_runtime_summary(message)
+            observation = _tool_observation_summary(payload, raw)
+            arg_block = f"({args_summary})" if args_summary else ""
+            snippets.append(
+                f"- 工具 {call['name']}{arg_block} 返回 {status}{runtime_summary}: {observation}"
+            )
+
         if isinstance(payload, dict):
+            query = payload.get("query")
+            if query:
+                snippets.append(f"- 查询：{_truncate_inline(query)}")
+            answer = payload.get("answer")
+            if answer:
+                snippets.append(f"- {_truncate_inline(answer)}")
+            summary = payload.get("summary")
+            if summary:
+                snippets.append(f"- {_truncate_inline(summary)}")
+            reference = payload.get("reference")
+            if reference:
+                snippets.append(f"- {_truncate_inline(reference)}")
+            refs = payload.get("refs")
+            if isinstance(refs, list):
+                for ref in refs[:8]:
+                    if ref:
+                        snippets.append(f"- 来源：{_truncate_inline(ref)}")
             results = payload.get("results")
             if isinstance(results, list):
                 for result in results[:8]:
@@ -623,6 +765,14 @@ def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
                         snippets.append(f"- {path}:{line_number} {_truncate_inline(line)}")
                     elif path:
                         snippets.append(f"- {path} {_truncate_inline(line or result)}")
+                    else:
+                        title = str(result.get("title") or "").strip()
+                        url = str(result.get("url") or "").strip()
+                        ref = str(result.get("ref") or "").strip()
+                        content = str(result.get("content") or result.get("snippet") or "").strip()
+                        result_summary = " ".join(part for part in [title, url or ref, content] if part)
+                        if result_summary:
+                            snippets.append(f"- {_truncate_inline(result_summary)}")
             path = payload.get("path")
             if path and not any(str(path) in snippet for snippet in snippets):
                 line_hint = ""
@@ -634,16 +784,77 @@ def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
         elif raw:
             snippets.append(f"- {_truncate_inline(raw)}")
 
-    if not snippets:
-        return _TOOL_CALL_REPAIR_FALLBACK_TEXT
-    unique_snippets = list(dict.fromkeys(snippets))
-    return "模型最终回答格式化失败，我先把已拿到的工具结果整理如下：\n" + "\n".join(unique_snippets[:10])
+    return list(dict.fromkeys(snippets))
+
+
+def _tool_result_synthesis_prompt(source_messages: list[Any]) -> list[Any]:
+    latest_user = _latest_human_message_text(source_messages) or "请整理本轮工具结果。"
+    snippets = _tool_result_snippets(source_messages)
+    digest = "\n".join(snippets[:12]) or _TOOL_CALL_REPAIR_FALLBACK_TEXT
+    return [
+        SystemMessage(content=_TOOL_RESULT_SYNTHESIS_NOTE),
+        HumanMessage(content=f"用户问题：{latest_user}\n\n本轮工具轨迹与工具结果：\n{digest}\n\n请直接给出最终答复。"),
+    ]
+
+
+def _has_tool_result_messages(prompt_messages: list[Any]) -> bool:
+    return any(isinstance(message, ToolMessage) for message in prompt_messages)
+
+
+def _tool_result_fallback_message(prompt_messages: list[Any]) -> AIMessage:
+    return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
+
+
+def _invoke_tool_result_synthesis(
+    model: Any,
+    source_messages: list[Any],
+    *,
+    known_tool_names: set[str] | None = None,
+) -> Any | None:
+    invoke = getattr(model, "invoke", None)
+    if not callable(invoke):
+        return None
+    try:
+        response = invoke(_tool_result_synthesis_prompt(source_messages))
+    except Exception:
+        return None
+    if getattr(response, "tool_calls", None):
+        return None
+    if not _message_text(response).strip():
+        return None
+    if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_tool_names):
+        return None
+    return response
+
+
+def _invoke_with_tool_result_fallback(
+    model: Any,
+    prompt_messages: list[Any],
+    *,
+    fallback_messages: list[Any] | None = None,
+    known_tool_names: set[str] | None = None,
+) -> Any:
+    try:
+        return model.invoke(prompt_messages)
+    except Exception:
+        source_messages = fallback_messages or prompt_messages
+        if _has_tool_result_messages(source_messages):
+            synthesized = _invoke_tool_result_synthesis(
+                model,
+                source_messages,
+                known_tool_names=known_tool_names,
+            )
+            if synthesized is not None:
+                return synthesized
+            return _tool_result_fallback_message(source_messages)
+        raise
 
 
 def _repair_textual_tool_call_response(
     *,
     response: Any,
     prompt_messages: list[Any],
+    fallback_messages: list[Any] | None = None,
     context_budget: ContextBudget,
     selected_model: str,
     selected_thinking_mode: str,
@@ -651,7 +862,8 @@ def _repair_textual_tool_call_response(
     model_for,
     model_with_tools_for,
 ) -> Any:
-    if not _looks_like_textual_tool_call_artifact(response):
+    known_names = _known_tool_names(available_tools)
+    if not _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
         return response
 
     repaired_prompt = apply_prompt_budget_guard(
@@ -663,10 +875,13 @@ def _repair_textual_tool_call_response(
         ],
         budget=context_budget,
     )
-    repaired = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
-        repaired_prompt
+    repaired = _invoke_with_tool_result_fallback(
+        model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
+        repaired_prompt,
+        fallback_messages=fallback_messages or prompt_messages,
+        known_tool_names=known_names,
     )
-    if not _looks_like_textual_tool_call_artifact(repaired):
+    if not _looks_like_textual_tool_call_artifact(repaired, known_tool_names=known_names):
         return repaired
 
     fallback_prompt = apply_prompt_budget_guard(
@@ -678,22 +893,33 @@ def _repair_textual_tool_call_response(
         ],
         budget=context_budget,
     )
-    return model_for(selected_model, selected_thinking_mode).invoke(fallback_prompt)
+    return _invoke_with_tool_result_fallback(
+        model_for(selected_model, selected_thinking_mode),
+        fallback_prompt,
+        fallback_messages=fallback_messages or prompt_messages,
+        known_tool_names=known_names,
+    )
 
 
 def _repair_tool_free_answer_response(
     *,
     response: Any,
     prompt_messages: list[Any],
+    fallback_messages: list[Any] | None = None,
     context_budget: ContextBudget,
     selected_model: str,
     selected_thinking_mode: str,
     model_for,
 ) -> Any:
-    if not _message_text(response).strip() and any(
-        isinstance(message, ToolMessage) for message in prompt_messages
-    ):
-        return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
+    fallback_source_messages = fallback_messages or prompt_messages
+    if not _message_text(response).strip() and _has_tool_result_messages(fallback_source_messages):
+        synthesized = _invoke_tool_result_synthesis(
+            model_for(selected_model, selected_thinking_mode),
+            fallback_source_messages,
+        )
+        if synthesized is not None:
+            return synthesized
+        return _tool_result_fallback_message(fallback_source_messages)
 
     if not _looks_like_textual_tool_call_artifact(response):
         return response
@@ -708,7 +934,11 @@ def _repair_tool_free_answer_response(
         ],
         budget=context_budget,
     )
-    repaired = model_for(selected_model, selected_thinking_mode).invoke(repaired_prompt)
+    repaired = _invoke_with_tool_result_fallback(
+        model_for(selected_model, selected_thinking_mode),
+        repaired_prompt,
+        fallback_messages=fallback_source_messages,
+    )
     if not _looks_like_textual_tool_call_artifact(repaired):
         return repaired
 
@@ -723,11 +953,22 @@ def _repair_tool_free_answer_response(
         ],
         budget=context_budget,
     )
-    final_attempt = model_for(selected_model, selected_thinking_mode).invoke(final_prompt)
+    final_attempt = _invoke_with_tool_result_fallback(
+        model_for(selected_model, selected_thinking_mode),
+        final_prompt,
+        fallback_messages=fallback_source_messages,
+    )
     if not _looks_like_textual_tool_call_artifact(final_attempt):
         return final_attempt
 
-    return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
+    synthesized = _invoke_tool_result_synthesis(
+        model_for(selected_model, selected_thinking_mode),
+        fallback_source_messages,
+    )
+    if synthesized is not None:
+        return synthesized
+
+    return _tool_result_fallback_message(fallback_source_messages)
 
 
 _PLAN_TRIGGER_KEYWORDS = (
@@ -1291,6 +1532,7 @@ def build_graph(
     ) -> dict[str, Any]:
         del runtime
         messages = _messages_for_model(state)
+        fallback_messages = _latest_turn_messages(list(state.get("messages", []) or messages))
         selected_model = str(state.get("selected_model") or settings.model)
         selected_thinking_mode = str(state.get("selected_thinking_mode") or "")
         assembled = state.get("assembled_context", "")
@@ -1317,6 +1559,9 @@ def build_graph(
                     for tool in available_tools
                     if str(getattr(tool, "name", "")) in allowed
                 ]
+        known_names = _known_tool_names(available_tools)
+        tool_protocol_repair_count = 0
+        tool_protocol_repair_reason = ""
         policy_note = _tool_policy_note(tool_policy)
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
@@ -1333,7 +1578,22 @@ def build_graph(
             thinking_mode=selected_thinking_mode,
             settings=settings,
         )
-        if tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
+        if tool_policy == "live_web_research" and _live_web_research_should_start_with_search(
+            latest_user,
+            messages,
+            available_tools,
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
+                        "name": "web_search",
+                        "args": {"query": latest_user},
+                    }
+                ],
+            )
+        elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
             latest_user,
             messages,
             available_tools,
@@ -1363,32 +1623,57 @@ def build_graph(
                 thinking_mode=selected_thinking_mode,
                 settings=settings,
             )
-            response = model_for(selected_model, selected_thinking_mode).invoke(forced_prompt)
+            response = _invoke_with_tool_result_fallback(
+                model_for(selected_model, selected_thinking_mode),
+                forced_prompt,
+                fallback_messages=fallback_messages,
+                known_tool_names=known_names,
+            )
+            if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
+                tool_protocol_repair_count += 1
+                tool_protocol_repair_reason = "textual_tool_marker"
             response = _repair_tool_free_answer_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                fallback_messages=fallback_messages,
                 context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
             )
         elif not available_tools:
-            response = model_for(selected_model, selected_thinking_mode).invoke(prompt_messages)
+            response = _invoke_with_tool_result_fallback(
+                model_for(selected_model, selected_thinking_mode),
+                prompt_messages,
+                fallback_messages=fallback_messages,
+                known_tool_names=known_names,
+            )
+            if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
+                tool_protocol_repair_count += 1
+                tool_protocol_repair_reason = "textual_tool_marker"
             response = _repair_tool_free_answer_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                fallback_messages=fallback_messages,
                 context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
             )
         else:
-            response = model_with_tools_for(selected_model, selected_thinking_mode, available_tools).invoke(
-                prompt_messages
+            response = _invoke_with_tool_result_fallback(
+                model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
+                prompt_messages,
+                fallback_messages=fallback_messages,
+                known_tool_names=known_names,
             )
+            if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
+                tool_protocol_repair_count += 1
+                tool_protocol_repair_reason = "textual_tool_marker"
             response = _repair_textual_tool_call_response(
                 response=response,
                 prompt_messages=prompt_messages,
+                fallback_messages=fallback_messages,
                 context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
@@ -1431,6 +1716,19 @@ def build_graph(
                 ]
                 updates["agent_review_queue"] = review_items
                 plan_meta["agent_review_queue"] = review_items
+            updates["plan_meta"] = plan_meta
+        if tool_protocol_repair_count:
+            plan_meta = {
+                **(updates.get("plan_meta") or state.get("plan_meta") or {}),
+                "tool_protocol_repair_count": int(
+                    (updates.get("plan_meta") or state.get("plan_meta") or {}).get(
+                        "tool_protocol_repair_count",
+                        0,
+                    )
+                )
+                + tool_protocol_repair_count,
+                "tool_protocol_repair_reason": tool_protocol_repair_reason,
+            }
             updates["plan_meta"] = plan_meta
         return updates
 

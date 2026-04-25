@@ -52,6 +52,16 @@ def test_extract_visible_text_delta_ignores_textual_tool_call_string_payload():
     assert extract_visible_text_delta(chunk) == ''
 
 
+def test_extract_visible_text_delta_ignores_bracket_tool_marker_string_payload():
+    chunk = DummyChunk(content='[web_fetch] 尝试获取沪指（000001）本周逐日行情数据，请稍等。')
+    assert extract_visible_text_delta(chunk) == ''
+
+
+def test_extract_visible_text_delta_keeps_plain_bracket_text():
+    chunk = DummyChunk(content='[背景] 沪指本周围绕关键点位震荡。')
+    assert extract_visible_text_delta(chunk) == '[背景] 沪指本周围绕关键点位震荡。'
+
+
 def test_extract_visible_text_delta_ignores_textual_tool_call_text_blocks():
     chunk = DummyChunk(
         content=[

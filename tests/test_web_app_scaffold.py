@@ -119,8 +119,24 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "failed: {" in stream_hook_text
     assert "resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted)" in stream_hook_text
     assert "pendingUserMessage: cleanup.clearPendingUserMessage" in stream_hook_text
+    assert 'event.event === "turn.completed"' in stream_hook_text
+    assert "queryClient.setQueryData(" in stream_hook_text
+    assert "queryKeys.thread(requestThreadId)" in stream_hook_text
+    assert "void Promise.allSettled([" in stream_hook_text
+    assert 'error.name === "AbortError")' in stream_hook_text
+    assert "sendSucceeded = false;" in stream_hook_text
     assert "client.sendTurn(" not in stream_hook_text
     assert 'activeRequestIdsRef.current.get(requestThreadId) !== requestId' in stream_hook_text
+
+    sdk_root = root / "frontend-sdk" / "src"
+    sdk_index_text = (sdk_root / "index.ts").read_text()
+    sdk_reducer_text = (sdk_root / "reducers.ts").read_text()
+    sdk_tool_protocol_text = (sdk_root / "toolProtocol.ts").read_text()
+    assert 'export * from "./toolProtocol";' in sdk_index_text
+    assert "safeVisibleText(event.data.delta)" in sdk_reducer_text
+    assert "safeVisibleText(event.data.content)" in sdk_reducer_text
+    assert "looksLikeTextualToolCallArtifact" in sdk_tool_protocol_text
+    assert "web_fetch" in sdk_tool_protocol_text
 
 
 def test_react_web_app_restores_merged_branch_read_only_mode():
@@ -174,6 +190,7 @@ def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():
     assert "assistantMessage={data?.assistant_message}" in thread_page_text
     assert "buildTranscriptItems(messages, assistantMessage)" in message_list_text
     assert "looksLikeInternalToolMarkup" in message_list_text
+    assert "looksLikeTextualToolCallArtifact" in message_list_text
     assert 'kind: "tool-activity"' in message_list_text
     assert 'className="fa-tool-activity-card"' in message_list_text
     assert 'id: `${lastItem.id}-summary`' in message_list_text

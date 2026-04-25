@@ -12,6 +12,7 @@ from focus_agent.engine.graph_builder import (
     _count_tool_call_rounds_since_latest_human,
     _ensure_reasoning_content_for_tool_call_history,
     _fallback_answer_from_tool_results,
+    _live_web_research_should_start_with_search,
     _looks_like_textual_tool_call_artifact,
     _messages_for_model,
     _repair_tool_free_answer_response,
@@ -465,6 +466,14 @@ def test_detects_textual_tool_call_artifacts():
     assert _looks_like_textual_tool_call_artifact(
         AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
     )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(content="[web_fetch] 尝试获取沪指本周逐日行情数据，请稍等。")
+    )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(content="[custom_lookup] lookup next"),
+        known_tool_names={"custom_lookup"},
+    )
+    assert not _looks_like_textual_tool_call_artifact(AIMessage(content="[背景] 北京今天晴。"))
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="北京今天晴，最高气温25℃。"))
 
 
@@ -474,6 +483,37 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
     assert _classify_turn_tool_policy("找到仓库里使用 assemble_context 的位置。") == "workspace_lookup"
     assert _classify_turn_tool_policy("北京和上海哪个今天天气好？") == "live_web_research"
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
+
+
+def test_live_web_research_starts_stock_queries_with_web_search():
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return query
+
+    @tool
+    def current_utc_time() -> str:
+        """Current time."""
+        return "now"
+
+    assert _live_web_research_should_start_with_search(
+        "帮我查一下这个周沪指的波动情况。",
+        [HumanMessage(content="帮我查一下这个周沪指的波动情况。")],
+        [web_search, current_utc_time],
+    )
+    assert not _live_web_research_should_start_with_search(
+        "现在几点？",
+        [HumanMessage(content="现在几点？")],
+        [web_search, current_utc_time],
+    )
+    assert not _live_web_research_should_start_with_search(
+        "帮我查一下这个周沪指的波动情况。",
+        [
+            HumanMessage(content="帮我查一下这个周沪指的波动情况。"),
+            ToolMessage(content='{"answer":"done"}', tool_call_id="call-1"),
+        ],
+        [web_search, current_utc_time],
+    )
 
 
 def test_fallback_answer_from_tool_results_preserves_workspace_findings():
@@ -788,6 +828,240 @@ def test_empty_tool_free_repair_falls_back_to_tool_results():
     )
 
     assert "context_policy.py:42" in repaired.content
+
+
+def test_empty_tool_free_repair_synthesizes_plain_answer_before_raw_fallback():
+    class SynthesizingModel:
+        def invoke(self, prompt_messages):
+            assert not any(isinstance(message, ToolMessage) for message in prompt_messages)
+            assert "工具结果" in prompt_messages[-1].content
+            return AIMessage(content="根据工具结果，assemble_context 位于 context_policy.py 第 42 行。")
+
+    prompt_messages = [
+        SystemMessage(content="system"),
+        HumanMessage(content="找到 assemble_context"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "name": "search_code",
+                    "args": {"query": "assemble_context"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=(
+                '{"results":[{"path":"src/focus_agent/core/context_policy.py",'
+                '"line_number":42,"line":"def assemble_context(state, mode):"}]}'
+            ),
+            tool_call_id="call-1",
+        ),
+    ]
+
+    repaired = _repair_tool_free_answer_response(
+        response=AIMessage(content=""),
+        prompt_messages=prompt_messages,
+        context_budget=ContextBudget(),
+        selected_model="openai:fake",
+        selected_thinking_mode="",
+        model_for=lambda *_args: SynthesizingModel(),
+    )
+
+    assert repaired.content == "根据工具结果，assemble_context 位于 context_policy.py 第 42 行。"
+
+
+def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
+    answer = _fallback_answer_from_tool_results(
+        [
+            HumanMessage(content="帮我查一下上个周比亚迪在A股股价的波动情况。"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "web_search",
+                        "args": {"query": "比亚迪 A股 上周 股价 波动"},
+                    }
+                ],
+            ),
+            ToolMessage(
+                content=(
+                    '{"answer":"比亚迪A股上周先涨后跌，波动扩大。",'
+                    '"results":[{"title":"BYD share price","url":"https://example.com/byd",'
+                    '"content":"上周区间振幅约 6%。"}]}'
+                ),
+                tool_call_id="call-1",
+            )
+        ]
+    )
+
+    assert "工具 web_search(query=比亚迪 A股 上周 股价 波动)" in answer
+    assert "比亚迪A股上周先涨后跌" in answer
+    assert "BYD share price" in answer
+
+
+def test_fallback_answer_from_tool_results_uses_latest_turn_and_compacted_refs():
+    answer = _fallback_answer_from_tool_results(
+        [
+            ToolMessage(
+                content='{"answer":"旧一轮比特币结果","results":[{"title":"BTC"}]}',
+                tool_call_id="old-call",
+            ),
+            HumanMessage(content="帮我查一下上个周比亚迪在A股股价的波动情况。"),
+            ToolMessage(
+                content=(
+                    '{"query":"比亚迪 002594 股价 2026年4月20日 4月24日 周行情",'
+                    '"summary":"web_search output was compressed into an artifact-like prompt reference.",'
+                    '"reference":"refs=https://xueqiu.com/S/SZ002594",'
+                    '"results":[{"ref":"https://xueqiu.com/S/SZ002594"}],'
+                    '"refs":["https://quote.eastmoney.com/sz002594.html"]}'
+                ),
+                tool_call_id="new-call",
+            ),
+        ]
+    )
+
+    assert "比亚迪 002594" in answer
+    assert "https://xueqiu.com/S/SZ002594" in answer
+    assert "https://quote.eastmoney.com/sz002594.html" in answer
+    assert "旧一轮比特币结果" not in answer
+
+
+def test_graph_falls_back_to_web_tool_results_when_final_answer_model_fails(monkeypatch):
+    class FakeRunnable:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(list(prompt_messages))
+            if not any(isinstance(message, ToolMessage) for message in prompt_messages):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "web_search",
+                            "args": {"query": "比亚迪 A股 上周 股价 波动"},
+                        }
+                    ],
+                )
+            raise RuntimeError("final answer model failed")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self)
+
+        def with_config(self, _config):
+            return FakeRunnable(self)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return (
+            '{"answer":"比亚迪A股上周先涨后跌，波动扩大。",'
+            '"results":[{"title":"BYD share price","url":"https://example.com/byd",'
+            '"content":"上周区间振幅约 6%。"}]}'
+        )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下上个周比亚迪在A股股价的波动情况。")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+    assert "格式化失败" not in final_answer
+    assert "保守整理" in final_answer
+    assert "比亚迪A股上周先涨后跌" in final_answer
+    assert "BYD share price" in final_answer
+
+
+def test_graph_repairs_kimi_bracket_tool_marker_after_tool_results(monkeypatch):
+    class FakeRunnable:
+        def __init__(self, owner, *, allow_tools: bool):
+            self.owner = owner
+            self.allow_tools = allow_tools
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append({"allow_tools": self.allow_tools, "messages": list(prompt_messages)})
+            if not any(isinstance(message, ToolMessage) for message in prompt_messages):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "web_search",
+                            "args": {"query": "沪指 本周 波动"},
+                        }
+                    ],
+                )
+            tool_enabled_calls = [
+                item
+                for item in self.owner.invocations
+                if item["allow_tools"] and any(isinstance(message, ToolMessage) for message in item["messages"])
+            ]
+            if self.allow_tools and len(tool_enabled_calls) == 1:
+                return AIMessage(content="[web_fetch] 尝试获取沪指（000001）本周逐日行情数据，请稍等。")
+            return AIMessage(content="沪指本周先震荡后回稳，已根据搜索结果整理。")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self, allow_tools=True)
+
+        def with_config(self, _config):
+            return FakeRunnable(self, allow_tools=False)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return '{"answer":"沪指本周区间震荡，成交活跃。"}'
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下这个周沪指的波动情况。")],
+            "selected_model": "moonshot:kimi-k2.6",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+    assert "[web_fetch]" not in final_answer
+    assert "沪指本周先震荡后回稳" in final_answer
+    assert result.value["plan_meta"]["tool_protocol_repair_count"] == 1
+    assert result.value["plan_meta"]["tool_protocol_repair_reason"] == "textual_tool_marker"
 
 
 class _SingleRoundToolModel:

@@ -2,6 +2,7 @@ import {
   createInitialStreamState,
   reduceStreamEvent,
   type FocusAgentStreamState,
+  type ThreadStateResponse,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -200,6 +201,15 @@ export function useThreadStream(options: UseThreadStreamOptions) {
           break;
         }
         nextState = reduceStreamEvent(nextState, event);
+        if (event.event === "turn.completed") {
+          const threadState = event.data.thread_state;
+          if (threadState && typeof threadState === "object") {
+            queryClient.setQueryData(
+              queryKeys.thread(requestThreadId),
+              threadState as unknown as ThreadStateResponse,
+            );
+          }
+        }
         if (
           activeRequestIdsRef.current.get(requestThreadId) !== requestId ||
           controller.signal.aborted
@@ -219,9 +229,8 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         controller.signal.aborted ||
         (error instanceof Error && error.name === "AbortError")
       ) {
-        throw error;
-      }
-      if (
+        sendSucceeded = false;
+      } else if (
         activeRequestIdsRef.current.get(requestThreadId) === requestId &&
         !controller.signal.aborted
       ) {
@@ -260,9 +269,11 @@ export function useThreadStream(options: UseThreadStreamOptions) {
           }),
         );
       }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.thread(requestThreadId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(requestRootThreadId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+      void Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: queryKeys.thread(requestThreadId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(requestRootThreadId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
+      ]);
     }
 
     return { ok: sendSucceeded };

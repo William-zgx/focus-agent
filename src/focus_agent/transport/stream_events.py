@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..core.tool_protocol import looks_like_textual_tool_call_artifact
+
 
 VISIBLE_TEXT_BLOCK_TYPES = {
     'text',
@@ -32,15 +34,6 @@ TOOL_BLOCK_TYPES = {
     'server_tool_call_chunk',
 }
 
-TEXTUAL_TOOL_ARTIFACT_MARKERS = (
-    'function_calls',
-    'invoke name=',
-    '<｜dsml｜',
-    '<tool_call',
-    '"tool_name"',
-)
-
-
 def _stringify(value: Any) -> str:
     if value is None:
         return ''
@@ -67,10 +60,7 @@ def _iter_blocks(message_chunk: Any) -> list[Any]:
 
 
 def _looks_like_textual_tool_artifact(text: str) -> bool:
-    lowered = str(text or '').lower()
-    if not lowered:
-        return False
-    return any(marker in lowered for marker in TEXTUAL_TOOL_ARTIFACT_MARKERS)
+    return looks_like_textual_tool_call_artifact(text)
 
 
 def _message_type(message_chunk: Any) -> str:

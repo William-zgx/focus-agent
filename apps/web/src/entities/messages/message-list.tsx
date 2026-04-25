@@ -3,6 +3,7 @@ import type {
   FocusAgentToolEvent,
   TurnFailedPayload,
 } from "@focus-agent/web-sdk";
+import { looksLikeTextualToolCallArtifact } from "@focus-agent/web-sdk";
 import { createElement, Fragment, type ReactNode, useMemo, useState } from "react";
 
 interface MessageListProps {
@@ -53,17 +54,7 @@ function normalizeText(value: unknown) {
 }
 
 function looksLikeInternalToolMarkup(value: unknown) {
-  const text = normalizeText(value).toLowerCase();
-  if (!text) {
-    return false;
-  }
-  return (
-    text.includes("function_calls") ||
-    text.includes("invoke name=") ||
-    text.includes("<｜dsml｜") ||
-    text.includes("<tool_call") ||
-    text.includes('"tool_name"')
-  );
+  return looksLikeTextualToolCallArtifact(normalizeText(value));
 }
 
 function looksLikeToolPlanningPayload(value: unknown) {

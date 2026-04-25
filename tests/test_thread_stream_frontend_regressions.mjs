@@ -76,6 +76,38 @@ function loadFunctions(relativePath, functionNames) {
   return context.module.exports;
 }
 
+function loadSdkStreamFunctions() {
+  const toolProtocolSource = readFileSync(
+    path.join(repoRoot, "frontend-sdk/src/toolProtocol.ts"),
+    "utf8",
+  );
+  const reducersSource = readFileSync(
+    path.join(repoRoot, "frontend-sdk/src/reducers.ts"),
+    "utf8",
+  );
+  const functionNames = [
+    "looksLikeTextualToolCallArtifact",
+    "safeVisibleText",
+    "createInitialStreamState",
+    "reduceStreamEvent",
+  ];
+  const reducerSnippet = ["createInitialStreamState", "reduceStreamEvent"]
+    .map((name) => extractFunction(reducersSource, name))
+    .join("\n\n");
+  const transpiled = ts.transpileModule(`${toolProtocolSource}\n\n${reducerSnippet}`, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const context = {
+    exports: {},
+    module: { exports: {} },
+  };
+  vm.runInNewContext(`${transpiled}\nmodule.exports = { ${functionNames.join(", ")} };`, context);
+  return context.module.exports;
+}
+
 test("request cleanup clears the optimistic user message after failed sends", () => {
   const {
     createThreadStreamEntry,
@@ -134,6 +166,45 @@ test("request cleanup clears the optimistic user message after failed sends", ()
   assert.equal(cleanedThreadA["thread-a"], undefined);
   assert.equal(cleanedThreadA["thread-b"].pendingUserMessage.content, "hello from b");
   assert.equal(cleanedThreadA["thread-b"].isStreaming, true);
+});
+
+test("stream reducer filters textual tool-call artifacts from visible text", () => {
+  const {
+    createInitialStreamState,
+    looksLikeTextualToolCallArtifact,
+    reduceStreamEvent,
+    safeVisibleText,
+  } = loadSdkStreamFunctions();
+
+  assert.equal(looksLikeTextualToolCallArtifact("[web_fetch] 尝试获取沪指数据，请稍等。"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
+  assert.equal(safeVisibleText("[web_search] searching"), "");
+
+  const withArtifactDelta = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "[web_fetch] 尝试获取沪指数据，请稍等。",
+      channel: "visible_text",
+    },
+  });
+  assert.equal(withArtifactDelta.visibleText, "");
+
+  const withPlainDelta = reduceStreamEvent(withArtifactDelta, {
+    event: "visible_text.delta",
+    data: {
+      delta: "沪指本周震荡回稳。",
+      channel: "visible_text",
+    },
+  });
+  assert.equal(withPlainDelta.visibleText, "沪指本周震荡回稳。");
+
+  const withArtifactCompleted = reduceStreamEvent(withPlainDelta, {
+    event: "message.completed",
+    data: {
+      content: "[web_fetch] 继续获取数据。",
+    },
+  });
+  assert.equal(withArtifactCompleted.visibleText, "");
 });
 
 test("thinking-capable model selection preserves unset backend-default semantics until the user toggles it", () => {
