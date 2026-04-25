@@ -131,7 +131,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
 | Chat | `POST /v1/chat/turns`、stream、resume | 非流式和流式 turn |
-| Threads | `GET /v1/threads/{thread_id}` | 线程状态读取 |
+| Threads | `GET /v1/threads/{thread_id}`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、当前上下文窗口预览和非破坏式压缩 |
 | Branches | fork、archive、activate、rename、proposal、merge、tree | 分支生命周期 |
 | Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
@@ -148,7 +148,8 @@ flowchart TD
     Entry -- "Non-stream" --> Preflight["Auth and thread access preflight"]
     Entry -- "Stream" --> Lock["Per-thread active turn lock"]
     Lock --> Preflight
-    Preflight --> Context["Build RequestContext"]
+    Preflight --> Usage["Preview context usage and optional pre-send compaction"]
+    Usage --> Context["Build RequestContext"]
     Context --> Graph["LangGraph invoke / stream"]
     Graph --> Persist["State, checkpoint, memory writes"]
     Persist --> Trace["Trajectory record"]
@@ -221,6 +222,7 @@ bootstrap_turn
 - User intent：`task_brief`、`active_goal`、`user_constraints`、`pinned_facts`
 - Branch：`branch_meta`、`branch_local_findings`、`imported_findings`、`merge_queue`
 - Prompt surface：`assembled_context`、`memory_prompt_block`、`available_skills_block`
+- Context window：`context_budget`、`context_compaction`；`context_usage` 是响应层派生估算，不作为持久化 state 字段写入
 - Runtime choice：`selected_model`、`selected_thinking_mode`
 - Governance：`role_route_plan`、`tool_route_plan`、`model_route_decision`、`agent_delegation_plan`
 - Context Engineering：`context_budget_decision`、`context_compression_plan`、`context_artifact_refs`、`role_context_views`
@@ -441,7 +443,7 @@ make web-dev
 - 进程内限流不适合多副本共享额度。
 - Artifact 正文仍在文件系统，生产多节点需要共享文件系统或对象存储方案。
 - Agent governance 多数能力默认 observe/off，enforce 面需要基于 trajectory 逐步扩大。
-- Context budget 当前仍以确定性裁剪和近似预算为主。
+- Context window 已有发送栏用量、手动/自动压缩和 128k 默认预算，但 token 估算当前仍以确定性裁剪和近似预算为主。
 - Local fallback persistence 只适合本地，不适合生产多副本。
 
 ## 20. 推荐验证

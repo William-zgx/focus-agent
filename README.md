@@ -20,6 +20,8 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 
 - Branch-aware conversations with controlled merge-back
 - Streaming chat APIs and a built-in React web app at `/app`
+- Current context-window usage in the composer, with non-destructive manual and automatic compaction
+- Agent Team Workbench for auditable multi-agent work branches
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, memory pipeline, and typed frontend SDK
 - Built-in repo, git, web, artifact, and memory tools
@@ -74,6 +76,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
 - [Architecture](docs/architecture.md)
+- [Current Context Window](docs/context-window.md)
 - [Docker Deployment](docs/docker-deployment.md)
 - [Frontend SDK](frontend-sdk/README.md)
 - [Contributing](CONTRIBUTING.md)

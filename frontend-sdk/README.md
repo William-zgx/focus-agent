@@ -108,7 +108,8 @@ console.log(finalState.visibleText);
 - `getAgentContextPolicy()`, `previewAgentContext()`, `listAgentContextDecisions()`, and `listAgentContextArtifacts()` - inspect Context Engineering v2 budget decisions, compression previews, and artifact refs
 - `getAgentTaskLedgerPolicy()`, `planAgentTaskLedger()`, `listAgentTaskLedgerRuns()`, `listAgentArtifacts()`, `synthesizeAgentArtifacts()`, `listAgentCriticVerdicts()`, and `evaluateAgentCriticGate()` - inspect task ledger runs, delegated artifacts, synthesis previews, and critic gate verdicts
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
-- `getThreadState()` - fetch the current thread payload used by the app
+- `getThreadState()` - fetch the current thread payload used by the app, including optional `context_usage`
+- `previewThreadContext()` and `compactThreadContext()` - estimate the current thread context window with an optional draft message, or trigger non-destructive compaction for the active branch
 - `getBranchTree()` - fetch the branch tree rooted at a conversation
 - `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
 - `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows
@@ -141,6 +142,7 @@ Common event families:
 - `tool.call.delta`
 - `tool.*`
 - `task.*`
+- `context.compaction.*`
 - `turn.*`
 - `agent.update`
 
@@ -149,6 +151,7 @@ Recommended usage:
 - Normal chat UI: render `visible_text.delta` and `visible_text.completed`
 - Debug panels: also render `reasoning.*`
 - Tooling consoles: consume `tool_call.*`, `tool.*`, and `task.*`
+- Context meters: watch `context.compaction.started` and `context.compaction.completed` during streamed turns
 - Completion handling: watch `turn.completed`, `turn.failed`, and `turn.closed`
 
 The SDK keeps compatibility with older servers or clients by treating `message.delta` and `message.completed` as visible-text equivalents.
