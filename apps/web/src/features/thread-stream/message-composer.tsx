@@ -1,5 +1,5 @@
-import type { FocusAgentModelOption } from "@focus-agent/web-sdk";
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { ContextUsageResponse, FocusAgentModelOption } from "@focus-agent/web-sdk";
+import { type CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useModels } from "@/features/models/use-models";
@@ -20,6 +20,12 @@ interface MessageComposerProps {
   selectedThinkingMode?: string;
   editDraft?: { id: string; content: string } | null;
   onClearEditDraft?: () => void;
+  contextUsage?: ContextUsageResponse | null;
+  contextUsageError?: string;
+  isContextUsageLoading?: boolean;
+  isCompactingContext?: boolean;
+  onCompactContext?: () => Promise<void> | void;
+  onPreviewContextUsage?: (draftMessage: string) => void;
 }
 
 function mergedBranchReadOnlyLabel(isChineseUi: boolean) {
@@ -68,6 +74,41 @@ function modelDisplayName(model: FocusAgentModelOption | undefined) {
 function normalizeThinkingMode(value: string | undefined) {
   const normalized = String(value || "").trim().toLowerCase();
   return normalized === "enabled" || normalized === "disabled" ? normalized : "";
+}
+
+export function formatContextMarkerCount(value: number) {
+  const normalized = Math.max(0, Number(value) || 0);
+  if (normalized >= 1_000_000) {
+    const millions = normalized / 1_000_000;
+    return `${millions >= 10 ? millions.toFixed(0) : millions.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (normalized >= 1_000) {
+    const thousands = normalized / 1_000;
+    return `${thousands >= 10 ? thousands.toFixed(0) : thousands.toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return new Intl.NumberFormat("en-US").format(Math.round(normalized));
+}
+
+export function contextUsagePercent(usage?: ContextUsageResponse | null) {
+  return Math.max(0, Math.min(100, Math.round(Number(usage?.used_ratio ?? 0) * 100)));
+}
+
+export function contextUsageRemainingPercent(usage?: ContextUsageResponse | null) {
+  return Math.max(0, 100 - contextUsagePercent(usage));
+}
+
+export function shouldShowContextCompactAction(usage?: ContextUsageResponse | null) {
+  const ratio = Number(usage?.used_ratio ?? 0);
+  return ratio >= 0.85 || usage?.status === "hot" || usage?.status === "over";
+}
+
+export function contextUsageTone(usage?: ContextUsageResponse | null) {
+  if (!usage) return "is-idle";
+  if (usage.status === "error") return "is-over";
+  if (usage.status === "over" || Number(usage.used_ratio || 0) >= 0.92) return "is-over";
+  if (usage.status === "hot" || Number(usage.used_ratio || 0) >= 0.85) return "is-hot";
+  if (usage.status === "warm" || Number(usage.used_ratio || 0) >= 0.7) return "is-warm";
+  return "is-ok";
 }
 
 export function effectiveThinkingModeForModel(
@@ -194,6 +235,113 @@ function ProviderLogo({
   );
 }
 
+function ContextUsageMeter({
+  usage,
+  error,
+  isChineseUi,
+  isLoading = false,
+  isCompacting = false,
+  isDisabled = false,
+  onCompact,
+}: {
+  usage?: ContextUsageResponse | null;
+  error?: string;
+  isChineseUi: boolean;
+  isLoading?: boolean;
+  isCompacting?: boolean;
+  isDisabled?: boolean;
+  onCompact?: () => Promise<void> | void;
+}) {
+  const percent = contextUsagePercent(usage);
+  const remainingPercent = contextUsageRemainingPercent(usage);
+  const tone = contextUsageTone(usage);
+  const used = formatContextMarkerCount(Number(usage?.used_tokens ?? 0));
+  const limit = formatContextMarkerCount(Number(usage?.token_limit ?? 0));
+  const showCompact = shouldShowContextCompactAction(usage);
+  const showManualHint = !showCompact && Number(usage?.used_ratio ?? 0) >= 0.7;
+  const progressDegrees = Math.max(0, Math.min(360, percent * 3.6));
+  const title = isChineseUi
+    ? `背景信息窗口：${percent}% 已用`
+    : `Background context window: ${percent}% used`;
+  const statusText = error
+    ? error
+    : !usage
+      ? isChineseUi
+        ? "正在估算当前背景信息窗口"
+        : "Estimating the current background context window"
+    : usage.status === "error"
+      ? isChineseUi
+        ? "背景信息窗口估算失败"
+        : "Background context estimate failed"
+    : isCompacting
+      ? isChineseUi
+        ? "Focus Agent 正在压缩背景信息"
+        : "Focus Agent is compacting background context"
+      : showManualHint
+        ? isChineseUi
+          ? "可手动压缩；接近上限时会自动压缩背景信息"
+          : "Manual compaction is available; Focus Agent also auto-compacts near the limit"
+      : showCompact
+        ? isChineseUi
+          ? "Focus Agent 会在接近上限时自动压缩背景信息"
+          : "Focus Agent auto-compacts background context near the limit"
+        : isChineseUi
+          ? "Focus Agent 会在接近上限时自动压缩背景信息"
+          : "Focus Agent auto-compacts background context near the limit";
+
+  return (
+    <span
+      className={`fa-context-meter ${tone} ${isLoading ? "is-loading" : ""} ${
+        isCompacting ? "is-compacting" : ""
+      }`.trim()}
+    >
+      <button
+        className="fa-context-meter-trigger"
+        style={{ "--fa-context-progress": `${progressDegrees}deg` } as CSSProperties}
+        type="button"
+        aria-label={title}
+        aria-busy={isLoading || isCompacting}
+        title={title}
+      >
+        <span className="fa-context-meter-ring" aria-hidden="true" />
+        <span className="sr-only">{title}</span>
+      </button>
+      <span className="fa-context-meter-popover" role="status">
+        <span className="fa-context-meter-title">
+          {isChineseUi ? "背景信息窗口:" : "Background context window:"}
+        </span>
+        <span className="fa-context-meter-usage">
+          {isChineseUi
+            ? `${percent}% 已用（剩余 ${remainingPercent}%）`
+            : `${percent}% used (${remainingPercent}% remaining)`}
+        </span>
+        <span className="fa-context-meter-window">
+          {isChineseUi
+            ? `已用 ${used} 标记，共 ${limit}`
+            : `${used} context tokens used of ${limit}`}
+        </span>
+        <span className="fa-context-meter-status">{statusText}</span>
+        {showCompact || isCompacting ? (
+          <button
+            className="fa-context-meter-compact"
+            disabled={isDisabled || isCompacting || !onCompact}
+            onClick={() => void onCompact?.()}
+            type="button"
+          >
+            {isCompacting
+              ? isChineseUi
+                ? "压缩中"
+                : "Compacting"
+              : isChineseUi
+                ? "压缩背景信息"
+                : "Compact context"}
+          </button>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 export function MessageComposer({
   isReadOnly = false,
   isStreaming,
@@ -203,6 +351,12 @@ export function MessageComposer({
   selectedThinkingMode,
   editDraft,
   onClearEditDraft,
+  contextUsage,
+  contextUsageError = "",
+  isContextUsageLoading = false,
+  isCompactingContext = false,
+  onCompactContext,
+  onPreviewContextUsage,
 }: MessageComposerProps) {
   const { data } = useModels();
   const { isChineseUi } = useShellUi();
@@ -214,6 +368,7 @@ export function MessageComposer({
   const modelPanelRef = useRef<HTMLDivElement | null>(null);
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null);
   const editSignatureRef = useRef<string>("");
+  const contextPreviewTimerRef = useRef<number | null>(null);
 
   const allModels = data?.models ?? [];
   const activeModel =
@@ -266,6 +421,23 @@ export function MessageComposer({
   useEffect(() => {
     autoResizeComposer();
   }, [message]);
+
+  useEffect(() => {
+    if (!onPreviewContextUsage || isReadOnly) return;
+    if (contextPreviewTimerRef.current !== null) {
+      window.clearTimeout(contextPreviewTimerRef.current);
+    }
+    contextPreviewTimerRef.current = window.setTimeout(() => {
+      onPreviewContextUsage(message);
+      contextPreviewTimerRef.current = null;
+    }, 500);
+    return () => {
+      if (contextPreviewTimerRef.current !== null) {
+        window.clearTimeout(contextPreviewTimerRef.current);
+        contextPreviewTimerRef.current = null;
+      }
+    };
+  }, [isReadOnly, message, onPreviewContextUsage]);
 
   useEffect(() => {
     if (!editDraft) return;
@@ -540,6 +712,15 @@ export function MessageComposer({
           </div>
 
           <div className="fa-composer-actions-row">
+            <ContextUsageMeter
+              usage={contextUsage}
+              error={contextUsageError}
+              isChineseUi={isChineseUi}
+              isLoading={isContextUsageLoading}
+              isCompacting={isCompactingContext}
+              isDisabled={isStreaming || isReadOnly}
+              onCompact={onCompactContext}
+            />
             <div className="fa-composer-inline-actions">
               <button
                 className="fa-composer-icon-button is-clear"

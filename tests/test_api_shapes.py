@@ -34,6 +34,7 @@ from focus_agent.api.schemas import (
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
     BranchTreeResponse,
+    ContextUsageResponse,
     ConversationListResponse,
     ConversationSummaryResponse,
     CreateConversationRequest,
@@ -49,6 +50,10 @@ from focus_agent.api.schemas import (
     TrajectoryReplayRequest,
     TrajectoryTurnListResponse,
     TrajectoryTurnStatsEnvelopeResponse,
+    ThreadContextCompactRequest,
+    ThreadContextPreviewRequest,
+    ThreadContextPreviewResponse,
+    ThreadStateResponse,
     UpdateBranchNameRequest,
     UpdateConversationRequest,
 )
@@ -138,6 +143,46 @@ def test_model_catalog_response_shape():
     assert dumped["models"][0]["name"] == "kimi-k2.6"
     assert dumped["models"][0]["supports_thinking"] is True
     assert dumped["models"][0]["default_thinking_enabled"] is True
+
+
+def test_thread_context_usage_contract_shape_is_separate_from_token_usage():
+    usage = ContextUsageResponse(
+        used_tokens=104000,
+        token_limit=258000,
+        remaining_tokens=154000,
+        used_ratio=0.4,
+        status="ok",
+        prompt_chars=416000,
+        prompt_budget_chars=1032000,
+        tokenizer_mode="chars_fallback",
+        last_compacted_at="2026-04-26T10:00:00+00:00",
+    )
+    thread = ThreadStateResponse(
+        thread_id="thread-1",
+        root_thread_id="thread-1",
+        context_usage=usage,
+        messages=[
+            {
+                "type": "ai",
+                "content": "done",
+                "usage_metadata": {
+                    "input_tokens": 12,
+                    "output_tokens": 8,
+                    "total_tokens": 20,
+                },
+            }
+        ],
+    )
+    preview = ThreadContextPreviewResponse(context_usage=usage)
+
+    dumped = thread.model_dump(mode="json")
+
+    assert ThreadContextPreviewRequest(draft_message="hello").draft_message == "hello"
+    assert ThreadContextCompactRequest(trigger="manual").trigger == "manual"
+    assert preview.context_usage.used_tokens == 104000
+    assert dumped["context_usage"]["used_tokens"] == 104000
+    assert dumped["messages"][0]["usage_metadata"]["total_tokens"] == 20
+    assert "token_usage" not in dumped["context_usage"]
 
 
 def test_agent_role_contract_shapes():

@@ -351,6 +351,30 @@ class ChatResumeRequest(BaseModel):
     user_id: str | None = None
 
 
+class ContextUsageResponse(BaseModel):
+    used_tokens: int = 0
+    token_limit: int = 0
+    remaining_tokens: int = 0
+    used_ratio: float = 0.0
+    status: Literal["ok", "warm", "hot", "over", "compacting", "error"] = "ok"
+    prompt_chars: int = 0
+    prompt_budget_chars: int = 0
+    tokenizer_mode: str = "chars_fallback"
+    last_compacted_at: str | None = None
+
+
+class ThreadContextPreviewRequest(BaseModel):
+    draft_message: str | None = None
+
+
+class ThreadContextPreviewResponse(BaseModel):
+    context_usage: ContextUsageResponse
+
+
+class ThreadContextCompactRequest(BaseModel):
+    trigger: Literal["manual", "auto_pre_send", "auto_post_turn"] = "manual"
+
+
 class ThreadStateResponse(BaseModel):
     thread_id: str
     root_thread_id: str
@@ -366,6 +390,11 @@ class ThreadStateResponse(BaseModel):
     messages: list[dict[str, Any]] = Field(default_factory=list)
     interrupts: list[Any] = Field(default_factory=list)
     trace: dict[str, Any] = Field(default_factory=dict)
+    context_usage: ContextUsageResponse | None = None
+
+
+class ThreadContextCompactResponse(ThreadStateResponse):
+    pass
 
 
 class ForkBranchRequest(BaseModel):
@@ -837,6 +866,7 @@ __all__ = [
     "BranchTreeResponse",
     "ChatResumeRequest",
     "ChatTurnRequest",
+    "ContextUsageResponse",
     "ConversationListResponse",
     "ConversationSummaryResponse",
     "CreateConversationRequest",
@@ -873,6 +903,10 @@ __all__ = [
     "TrajectoryTurnStatsEnvelopeResponse",
     "TrajectoryTurnStatsResponse",
     "TrajectoryTurnSummaryResponse",
+    "ThreadContextCompactRequest",
+    "ThreadContextCompactResponse",
+    "ThreadContextPreviewRequest",
+    "ThreadContextPreviewResponse",
     "ThreadStateResponse",
     "TokenResponse",
     "UpdateBranchNameRequest",

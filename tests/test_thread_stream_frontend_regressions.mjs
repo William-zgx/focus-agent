@@ -234,3 +234,36 @@ test("thinking-capable model selection preserves unset backend-default semantics
   assert.equal(thinkingModeRequestValueForModel(model, ""), "");
   assert.equal(thinkingModeRequestValueForModel(model, "disabled"), "disabled");
 });
+
+test("context meter formats current context usage separately from token spend", () => {
+  const {
+    contextUsagePercent,
+    contextUsageRemainingPercent,
+    contextUsageTone,
+    formatContextMarkerCount,
+    shouldShowContextCompactAction,
+  } = loadFunctions("apps/web/src/features/thread-stream/message-composer.tsx", [
+    "formatContextMarkerCount",
+    "contextUsagePercent",
+    "contextUsageRemainingPercent",
+    "shouldShowContextCompactAction",
+    "contextUsageTone",
+  ]);
+
+  const usage = {
+    used_tokens: 104000,
+    token_limit: 258000,
+    remaining_tokens: 154000,
+    used_ratio: 0.4,
+    status: "ok",
+  };
+
+  assert.equal(formatContextMarkerCount(104000), "104k");
+  assert.equal(formatContextMarkerCount(258000), "258k");
+  assert.equal(contextUsagePercent(usage), 40);
+  assert.equal(contextUsageRemainingPercent(usage), 60);
+  assert.equal(shouldShowContextCompactAction({ ...usage, used_ratio: 0.84, status: "warm" }), false);
+  assert.equal(shouldShowContextCompactAction({ ...usage, used_ratio: 0.86, status: "hot" }), true);
+  assert.equal(contextUsageTone({ ...usage, used_ratio: 0.72, status: "warm" }), "is-warm");
+  assert.equal(contextUsageTone({ ...usage, used_ratio: 0.93, status: "over" }), "is-over");
+});

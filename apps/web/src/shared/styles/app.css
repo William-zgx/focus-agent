@@ -5273,6 +5273,171 @@ body.fa-is-resizing {
   gap: 6px;
 }
 
+.fa-context-meter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  z-index: 5;
+}
+
+.fa-context-meter-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--fa-muted) 88%, white 12%);
+  background: transparent;
+  cursor: default;
+  transition:
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.fa-context-meter-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent-cyan) 70%, white 12%);
+  outline-offset: 2px;
+}
+
+.fa-context-meter:not(.is-idle) .fa-context-meter-trigger {
+  cursor: help;
+}
+
+.fa-context-meter-trigger:hover {
+  transform: translateY(-1px);
+}
+
+.fa-context-meter-ring {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, var(--fa-panel-2) 0 48%, transparent 50%),
+    conic-gradient(
+      currentColor var(--fa-context-progress, 0deg),
+      color-mix(in srgb, var(--fa-border) 76%, transparent) 0
+    );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fa-border) 78%, transparent);
+}
+
+.fa-context-meter.is-loading .fa-context-meter-ring,
+.fa-context-meter.is-compacting .fa-context-meter-ring {
+  animation: fa-context-meter-spin 1s linear infinite;
+}
+
+.fa-context-meter.is-ok .fa-context-meter-trigger {
+  color: color-mix(in srgb, var(--fa-muted) 72%, var(--fa-accent-cyan) 28%);
+}
+
+.fa-context-meter.is-warm .fa-context-meter-trigger {
+  color: color-mix(in srgb, #f2c94c 74%, white 8%);
+}
+
+.fa-context-meter.is-hot .fa-context-meter-trigger {
+  color: color-mix(in srgb, #f2994a 78%, white 10%);
+}
+
+.fa-context-meter.is-over .fa-context-meter-trigger {
+  color: color-mix(in srgb, #eb5757 82%, white 10%);
+}
+
+.fa-context-meter-popover {
+  position: absolute;
+  right: -44px;
+  bottom: calc(100% + 12px);
+  display: grid;
+  gap: 8px;
+  min-width: 264px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 14px 16px 16px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 86%, white 8%);
+  border-radius: 16px;
+  color: var(--fa-foreground);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--fa-panel-2) 98%, white 2%),
+      color-mix(in srgb, var(--fa-panel-1) 97%, black 3%)
+    );
+  box-shadow:
+    0 22px 46px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px) scale(0.98);
+  transform-origin: bottom right;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  z-index: 30;
+}
+
+.fa-context-meter:hover .fa-context-meter-popover,
+.fa-context-meter:focus-within .fa-context-meter-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.fa-context-meter-title {
+  color: color-mix(in srgb, var(--fa-muted) 78%, white 12%);
+  font-weight: 650;
+}
+
+.fa-context-meter-usage {
+  font-size: 18px;
+  font-weight: 740;
+  letter-spacing: 0;
+}
+
+.fa-context-meter-window {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.fa-context-meter-status {
+  color: color-mix(in srgb, var(--fa-muted) 86%, white 8%);
+  font-size: 11px;
+}
+
+.fa-context-meter-compact {
+  min-height: 32px;
+  border: 1px solid color-mix(in srgb, var(--fa-accent-cyan) 42%, var(--fa-border) 58%);
+  border-radius: 10px;
+  color: var(--fa-foreground);
+  background: color-mix(in srgb, var(--fa-accent-cyan) 18%, transparent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.fa-context-meter-compact:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fa-accent-cyan) 26%, transparent);
+}
+
+.fa-context-meter-compact:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+@keyframes fa-context-meter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .fa-composer-model-row {
   display: flex;
   align-items: center;
@@ -8815,7 +8980,7 @@ body.fa-is-resizing {
 
 .fa-composer-footer-row {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 74px;
+  grid-template-columns: 38px minmax(0, 1fr) 116px;
   align-items: center;
   gap: 6px;
   min-height: 34px;
@@ -8828,8 +8993,8 @@ body.fa-is-resizing {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  flex: 0 0 74px;
-  width: 74px;
+  flex: 0 0 116px;
+  width: 116px;
   order: 2;
   grid-column: 3;
   justify-self: end;
@@ -9114,7 +9279,13 @@ body.fa-is-resizing {
   max-width: none !important;
 }
 
-.fa-chat-main-body .fa-composer-actions-row,
+.fa-chat-main-body .fa-composer-actions-row {
+  width: 116px !important;
+  min-width: 116px !important;
+  max-width: 116px !important;
+  flex: 0 0 116px !important;
+}
+
 .fa-chat-main-body .fa-composer-inline-actions {
   width: 74px !important;
   min-width: 74px !important;

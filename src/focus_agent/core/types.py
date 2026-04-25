@@ -60,7 +60,7 @@ class ContextBudget(StateModel):
     findings_limit: int = Field(default=8, ge=0)
     artifact_limit: int = Field(default=6, ge=0)
     citation_limit: int = Field(default=10, ge=0)
-    prompt_token_limit: int = Field(default=24000, ge=1)
+    prompt_token_limit: int = Field(default=128000, ge=1)
     chars_per_token: int = Field(default=4, ge=1)
     token_budget_mode: Literal["chars_fallback", "tokenizer_first"] = "chars_fallback"
     tokenizer_id: str | None = None

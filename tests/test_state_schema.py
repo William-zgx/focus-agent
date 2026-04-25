@@ -19,6 +19,7 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["active_goal"] == ""
     assert state["prompt_mode"] == PromptMode.EXPLORE
     assert state["context_budget"] == ContextBudget()
+    assert state["context_budget"].prompt_token_limit == 128000
     assert state["recent_messages"] == []
     assert state["pinned_facts"] == []
     assert state["user_constraints"] == []

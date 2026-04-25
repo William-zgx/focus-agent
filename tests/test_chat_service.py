@@ -58,6 +58,10 @@ class RecordingGraph:
     def get_state(self, _config):
         return SimpleNamespace(values=self.values, interrupts=[])
 
+    def update_state(self, _config, values, as_node=None):
+        del _config, as_node
+        self.values = {**self.values, **dict(values)}
+
 
 class BackfillImportGraph:
     def __init__(self):
@@ -183,6 +187,108 @@ def test_stream_message_rejects_merged_branch_before_streaming(tmp_path: Path):
 
     with pytest.raises(PermissionError, match="Merged branches are read-only."):
         chat.stream_message(thread_id="child-merged", user_id="owner-1", message="hello")
+
+
+def test_compact_thread_context_rejects_merged_branch(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="b-merged",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-merged",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Merged Branch",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+            branch_status=BranchStatus.MERGED,
+        )
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=FakeGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    with pytest.raises(PermissionError, match="Merged branches are read-only."):
+        chat.compact_thread_context(thread_id="child-merged", user_id="owner-1")
+
+
+def test_preview_thread_context_increases_with_draft_message(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class ContextPreviewGraph:
+        def get_state(self, _config):
+            return SimpleNamespace(
+                values={
+                    "messages": [HumanMessage(content="Known context"), AIMessage(content="Known answer")],
+                    "context_budget": {"prompt_token_limit": 10000, "chars_per_token": 4},
+                },
+                interrupts=[],
+            )
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=ContextPreviewGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    baseline = chat.preview_thread_context(thread_id="root-1", user_id="owner-1")["context_usage"]
+    with_draft = chat.preview_thread_context(
+        thread_id="root-1",
+        user_id="owner-1",
+        draft_message="draft context " * 80,
+    )["context_usage"]
+
+    assert with_draft["used_tokens"] > baseline["used_tokens"]
+    assert with_draft["token_limit"] == 10000
+
+
+def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class CompactGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [
+                    HumanMessage(content="Original user goal"),
+                    AIMessage(content="Original assistant answer"),
+                ],
+                "rolling_summary": "Previous rolling summary.",
+                "user_constraints": [{"constraint": "Keep token usage separate from context usage."}],
+                "context_budget": {"prompt_token_limit": 10000, "chars_per_token": 4},
+            }
+            self.updates = []
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+        def update_state(self, _config, values, as_node=None):
+            self.updates.append((values, as_node))
+            self.values = {**self.values, **dict(values)}
+
+    graph = CompactGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.compact_thread_context(thread_id="root-1", user_id="owner-1", trigger="manual")
+
+    assert len(graph.values["messages"]) == 2
+    assert graph.updates[-1][1] == "context_compaction"
+    assert graph.values["context_compaction"]["trigger"] == "manual"
+    assert graph.values["context_compaction"]["non_destructive"] is True
+    assert "Context compaction snapshot:" in graph.values["rolling_summary"]
+    assert payload["context_usage"]["last_compacted_at"] == graph.values["context_compaction"]["last_compacted_at"]
 
 
 def test_sse_frame_serializes_message_objects():

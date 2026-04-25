@@ -516,6 +516,43 @@ export interface FocusAgentTokenUsageSummary {
   total_tokens: number;
 }
 
+export type ContextUsageStatus =
+  | "ok"
+  | "warm"
+  | "hot"
+  | "over"
+  | "compacting"
+  | "error";
+
+export interface ContextUsageResponse {
+  used_tokens: number;
+  token_limit: number;
+  remaining_tokens: number;
+  used_ratio: number;
+  status: ContextUsageStatus;
+  prompt_chars: number;
+  prompt_budget_chars: number;
+  tokenizer_mode: string;
+  last_compacted_at?: string | null;
+}
+
+export interface ThreadContextPreviewRequest {
+  draft_message?: string | null;
+}
+
+export interface ThreadContextPreviewResponse {
+  context_usage: ContextUsageResponse;
+}
+
+export type ThreadContextCompactTrigger =
+  | "manual"
+  | "auto_pre_send"
+  | "auto_post_turn";
+
+export interface ThreadContextCompactRequest {
+  trigger?: ThreadContextCompactTrigger;
+}
+
 export interface FocusAgentTrajectoryFilters {
   turn_id?: string;
   turn_ids?: string[];
@@ -1125,7 +1162,10 @@ export interface ThreadStateResponse {
   messages: Array<Record<string, unknown>>;
   interrupts: unknown[];
   trace: Record<string, unknown>;
+  context_usage?: ContextUsageResponse | null;
 }
+
+export interface ThreadContextCompactResponse extends ThreadStateResponse {}
 
 export interface FocusAgentForkBranchRequest {
   parent_thread_id: string;

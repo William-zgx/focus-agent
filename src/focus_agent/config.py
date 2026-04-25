@@ -642,6 +642,9 @@ class Settings:
     agent_context_role_views_enabled: bool = False
     agent_context_tokenizer_mode: str = "chars_fallback"
     agent_context_artifact_min_chars: int = 12000
+    context_auto_compaction_enabled: bool = True
+    context_auto_compaction_pre_send_ratio: float = 0.92
+    context_auto_compaction_post_turn_ratio: float = 0.85
     agent_task_ledger_enabled: bool = False
     agent_artifact_synthesis_enabled: bool = False
     agent_critic_gate_enabled: bool = False
@@ -890,6 +893,22 @@ class Settings:
                         str(defaults.agent_context_artifact_min_chars),
                     )
                 ),
+            ),
+            context_auto_compaction_enabled=env.get(
+                "CONTEXT_AUTO_COMPACTION_ENABLED",
+                "true" if defaults.context_auto_compaction_enabled else "false",
+            ).lower() in {"1", "true", "yes", "on"},
+            context_auto_compaction_pre_send_ratio=float(
+                env.get(
+                    "CONTEXT_AUTO_COMPACTION_PRE_SEND_RATIO",
+                    str(defaults.context_auto_compaction_pre_send_ratio),
+                )
+            ),
+            context_auto_compaction_post_turn_ratio=float(
+                env.get(
+                    "CONTEXT_AUTO_COMPACTION_POST_TURN_RATIO",
+                    str(defaults.context_auto_compaction_post_turn_ratio),
+                )
             ),
             agent_task_ledger_enabled=env.get(
                 "AGENT_TASK_LEDGER_ENABLED",

@@ -1,9 +1,11 @@
+import type { ContextUsageResponse } from "@focus-agent/web-sdk";
 import { useRouterState } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { MessageList } from "@/entities/messages/message-list";
 import { MessageComposer } from "@/features/thread-stream/message-composer";
+import { useCompactThreadContext, usePreviewThreadContext } from "@/features/thread/use-thread-context";
 import { useThreadStream } from "@/features/thread-stream/use-thread-stream";
 import { useThreadState } from "@/features/thread/use-thread-state";
 
@@ -22,6 +24,7 @@ export function ThreadPage() {
   const { data, isLoading, error } = useThreadState(threadId);
   const { isChineseUi } = useShellUi();
   const [editDraft, setEditDraft] = useState<{ id: string; content: string } | null>(null);
+  const [previewContextUsage, setPreviewContextUsage] = useState<ContextUsageResponse | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoFollowRef = useRef(true);
   const isMergedReadOnlyThread = data?.branch_meta?.branch_status === "merged";
@@ -31,6 +34,9 @@ export function ThreadPage() {
     selectedModel: data?.selected_model,
     selectedThinkingMode: data?.selected_thinking_mode,
   });
+  const previewThreadContext = usePreviewThreadContext(threadId);
+  const compactThreadContext = useCompactThreadContext(threadId);
+  const previewThreadContextMutate = previewThreadContext.mutate;
   const transcriptMessages = useMemo(() => {
     const baseMessages = ((data?.messages as Array<Record<string, unknown>> | undefined) ?? []).slice();
     if (!pendingUserMessage) {
@@ -77,7 +83,12 @@ export function ThreadPage() {
 
   useEffect(() => {
     setEditDraft(null);
+    setPreviewContextUsage(null);
   }, [threadId]);
+
+  useEffect(() => {
+    setPreviewContextUsage(null);
+  }, [data?.context_usage, threadId]);
 
   useEffect(() => {
     if (isMergedReadOnlyThread) {
@@ -138,6 +149,25 @@ export function ThreadPage() {
     return sendMessage(message, overrides);
   }
 
+  const handlePreviewContextUsage = useCallback(
+    (draftMessage: string) => {
+      if (!threadId) return;
+      previewThreadContextMutate(
+        { draft_message: draftMessage || null },
+        {
+          onSuccess: (payload) => setPreviewContextUsage(payload.context_usage),
+        },
+      );
+    },
+    [previewThreadContextMutate, threadId],
+  );
+
+  async function handleCompactContext() {
+    if (!threadId || isMergedReadOnlyThread) return;
+    const payload = await compactThreadContext.mutateAsync({ trigger: "manual" });
+    setPreviewContextUsage(payload.context_usage ?? null);
+  }
+
   return (
     <div className="fa-thread-layout">
       <div className="fa-transcript-panel">
@@ -189,6 +219,12 @@ export function ThreadPage() {
             onClearEditDraft={() => setEditDraft(null)}
             onSendMessage={handleSendMessage}
             onStopStreaming={stopStreaming}
+            contextUsage={previewContextUsage ?? data?.context_usage ?? null}
+            contextUsageError={previewThreadContext.error?.message ?? compactThreadContext.error?.message ?? ""}
+            isContextUsageLoading={previewThreadContext.isPending}
+            isCompactingContext={compactThreadContext.isPending}
+            onCompactContext={handleCompactContext}
+            onPreviewContextUsage={handlePreviewContextUsage}
             selectedModel={data?.selected_model}
             selectedThinkingMode={data?.selected_thinking_mode}
           />

@@ -136,6 +136,10 @@ from .contracts import (
     TrajectoryReplayResponse,
     TrajectoryReplayResultResponse,
     ThreadStateResponse,
+    ThreadContextCompactRequest,
+    ThreadContextCompactResponse,
+    ThreadContextPreviewRequest,
+    ThreadContextPreviewResponse,
     TokenResponse,
     TrajectoryStatsBucketResponse,
     TrajectoryStatsOverviewResponse,
@@ -2719,6 +2723,42 @@ def create_app() -> FastAPI:
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         return ThreadStateResponse.model_validate(result)
+
+    @app.post('/v1/threads/{thread_id}/context/preview', response_model=ThreadContextPreviewResponse)
+    def preview_thread_context(
+        thread_id: str,
+        payload: ThreadContextPreviewRequest,
+        chat: ChatService = Depends(get_chat_service),
+        principal: Principal = Depends(get_current_principal),
+    ) -> ThreadContextPreviewResponse:
+        try:
+            result = chat.preview_thread_context(
+                thread_id=thread_id,
+                user_id=principal.user_id,
+                draft_message=payload.draft_message,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return ThreadContextPreviewResponse.model_validate(result)
+
+    @app.post('/v1/threads/{thread_id}/context/compact', response_model=ThreadContextCompactResponse)
+    def compact_thread_context(
+        thread_id: str,
+        payload: ThreadContextCompactRequest,
+        chat: ChatService = Depends(get_chat_service),
+        principal: Principal = Depends(get_current_principal),
+    ) -> ThreadContextCompactResponse:
+        try:
+            result = chat.compact_thread_context(
+                thread_id=thread_id,
+                user_id=principal.user_id,
+                trigger=payload.trigger,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ConcurrentTurnError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return ThreadContextCompactResponse.model_validate(result)
 
     @app.post('/v1/branches/fork')
     def create_branch(

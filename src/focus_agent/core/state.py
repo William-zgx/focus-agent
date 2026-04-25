@@ -132,6 +132,7 @@ class AgentState(TypedDict, total=False):
     context_compression_plan: dict[str, Any] | None
     context_artifact_refs: list[dict[str, Any]]
     role_context_views: list[dict[str, Any]]
+    context_compaction: dict[str, Any]
 
     # Written by Task Ledger / Delegated Artifact Synthesis governance when
     # enabled. These are observability and synthesis artifacts for role runs.
@@ -195,6 +196,7 @@ def initial_agent_state() -> AgentState:
         "context_compression_plan": None,
         "context_artifact_refs": [],
         "role_context_views": [],
+        "context_compaction": {},
         "agent_task_ledger": None,
         "delegated_artifacts": [],
         "artifact_synthesis_result": None,

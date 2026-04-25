@@ -93,6 +93,10 @@ import type {
   FocusAgentTrajectoryStatsResponse,
   BranchTreeResponse,
   ThreadStateResponse,
+  ThreadContextCompactRequest,
+  ThreadContextCompactResponse,
+  ThreadContextPreviewRequest,
+  ThreadContextPreviewResponse,
   FocusAgentToolEvent,
 } from "./types";
 
@@ -851,6 +855,36 @@ export class FocusAgentClient {
       method: "GET",
       headers: {},
     }, true);
+  }
+
+  async previewThreadContext(
+    threadId: string,
+    request: ThreadContextPreviewRequest = {},
+  ): Promise<ThreadContextPreviewResponse> {
+    return this.requestJson<ThreadContextPreviewResponse>(
+      `/v1/threads/${encodeURIComponent(threadId)}/context/preview`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async compactThreadContext(
+    threadId: string,
+    request: ThreadContextCompactRequest = {},
+  ): Promise<ThreadContextCompactResponse> {
+    return this.requestJson<ThreadContextCompactResponse>(
+      `/v1/threads/${encodeURIComponent(threadId)}/context/compact`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
   }
 
   async getBranchTree(rootThreadId: string): Promise<BranchTreeResponse> {
