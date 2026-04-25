@@ -19,6 +19,25 @@ class FakeGraph:
         return SimpleNamespace(values={})
 
 
+class StaleBranchMetaGraph:
+    def get_state(self, _config):
+        return SimpleNamespace(
+            values={
+                "branch_meta": {
+                    "branch_id": "b-merged",
+                    "root_thread_id": "root-1",
+                    "parent_thread_id": "root-1",
+                    "return_thread_id": "root-1",
+                    "branch_name": "Merged Branch",
+                    "branch_role": "deep_dive",
+                    "branch_depth": 1,
+                    "branch_status": "active",
+                }
+            },
+            interrupts=[],
+        )
+
+
 class RecordingGraph:
     def __init__(self):
         self.values: dict[str, object] = {}
@@ -102,6 +121,34 @@ def test_send_message_rejects_merged_branch(tmp_path: Path):
     runtime = SimpleNamespace(
         settings=Settings(),
         graph=FakeGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    with pytest.raises(PermissionError, match="Merged branches are read-only."):
+        chat.send_message(thread_id="child-merged", user_id="owner-1", message="hello")
+
+
+def test_send_message_rejects_merged_branch_when_graph_meta_is_stale(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="b-merged",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-merged",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Merged Branch",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+            branch_status=BranchStatus.MERGED,
+        )
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=StaleBranchMetaGraph(),
         repo=repo,
     )
     chat = ChatService(runtime)

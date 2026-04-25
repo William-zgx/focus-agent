@@ -18,6 +18,12 @@ function mergedBranchForkDisabledLabel(isChineseUi: boolean) {
   return isChineseUi ? "已合并分支不能新建分支" : "Merged branches cannot create new branches";
 }
 
+function mergedBranchConclusionDisabledLabel(isChineseUi: boolean) {
+  return isChineseUi
+    ? "已合并分支不能生成或合并结论"
+    : "Merged branches cannot generate or merge conclusions";
+}
+
 export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderActionsProps) {
   const navigate = useNavigate();
   const { conversationId, threadId, isReviewRoute } = useRouterState({
@@ -67,6 +73,10 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
     ? isChineseUi
       ? "回到线程"
       : "Back to thread"
+    : isMergedBranch
+      ? isChineseUi
+        ? "已合并"
+        : "Merged"
     : isGeneratingConclusion
       ? isChineseUi
         ? "生成结论中"
@@ -86,6 +96,8 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
     ? isChineseUi
       ? "回到当前线程"
       : "Back to thread"
+    : isMergedBranch
+      ? mergedBranchConclusionDisabledLabel(isChineseUi)
     : isGeneratingConclusion
       ? isChineseUi
         ? "分支结论正在生成"
@@ -272,6 +284,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
 
   async function handleReviewAction() {
     if (!branchMeta?.branch_id || !threadId) return;
+    if (!isReviewRoute && isMergedBranch) return;
     setIsWorking(true);
     let didStartGeneration = false;
     try {
@@ -379,7 +392,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
             {...tooltipProps(reviewActionTooltip, {
               defaultTooltip: reviewActionTooltip,
             })}
-            disabled={isWorking || (!isReviewRoute && isGeneratingConclusion)}
+            disabled={isWorking || (!isReviewRoute && (isGeneratingConclusion || isMergedBranch))}
             onClick={() => void handleReviewAction()}
             type="button"
             aria-label={reviewActionText}

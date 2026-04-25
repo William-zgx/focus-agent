@@ -201,12 +201,14 @@ class ChatService:
 
     def _branch_meta(self, *, thread_id: str, values: dict[str, Any]) -> BranchMeta | None:
         meta = values.get('branch_meta')
+        repo_meta = self._branch_meta_from_repo(thread_id)
         if not meta:
-            return self._branch_meta_from_repo(thread_id)
+            return repo_meta
         try:
-            return BranchMeta.model_validate(meta)
+            branch_meta = BranchMeta.model_validate(meta)
         except ValidationError:
-            return self._branch_meta_from_repo(thread_id)
+            return repo_meta
+        return repo_meta or branch_meta
 
     def _context_for_thread(
         self,

@@ -286,7 +286,7 @@ def test_fork_branch_rejects_merged_parent_branch():
     ).model_copy(update={"branch_status": BranchStatus.MERGED})
     service = object.__new__(BranchService)
     service.repo = FakeRepo([parent_record])
-    service.graph = FakeGraph({"child-merged": {}})
+    service.graph = FakeGraph({"child-merged": {"branch_meta": {"branch_status": "active"}}})
     service.thread_client = None
     service.proposal_model = None
     service.settings = SimpleNamespace(branch_max_depth=5)
@@ -295,6 +295,47 @@ def test_fork_branch_rejects_merged_parent_branch():
 
     with pytest.raises(ValueError, match="Merged branches cannot create new branches."):
         service.fork_branch(parent_thread_id="child-merged", user_id="user-1")
+
+
+def test_prepare_merge_proposal_rejects_merged_branch():
+    record = _make_record().model_copy(update={"branch_status": BranchStatus.MERGED})
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([record])
+    service.graph = FakeGraph({record.child_thread_id: {}})
+    service.store = None
+    service.memory_writer = None
+    service.proposal_model = None
+
+    with pytest.raises(ValueError, match="Merged branches are read-only."):
+        service.prepare_merge_proposal(child_thread_id=record.child_thread_id, user_id="user-1")
+
+    assert service.repo.get(record.branch_id).branch_status == BranchStatus.MERGED
+    assert service.graph.updates == []
+
+
+def test_apply_merge_decision_rejects_merged_branch():
+    record = _make_record().model_copy(
+        update={
+            "branch_status": BranchStatus.MERGED,
+            "merge_proposal": {"summary": "Already merged."},
+        }
+    )
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([record])
+    service.graph = FakeGraph({record.child_thread_id: {"merge_proposal": {"summary": "Already merged."}}})
+    service.store = None
+    service.memory_writer = None
+
+    with pytest.raises(ValueError, match="Merged branches are read-only."):
+        service.apply_merge_decision(
+            child_thread_id=record.child_thread_id,
+            decision=MergeDecision(approved=True, mode=MergeMode.SUMMARY_ONLY),
+            context=RequestContext(user_id="user-1", root_thread_id=record.root_thread_id),
+        )
+
+    assert service.repo.get(record.branch_id).branch_status == BranchStatus.MERGED
+    assert service.repo.saved_decisions == []
+    assert service.graph.updates == []
 
 
 def test_apply_merge_decision_marks_branch_merged():

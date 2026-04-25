@@ -132,6 +132,8 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     message_list_text = (web_root / "entities" / "messages" / "message-list.tsx").read_text()
     header_actions_text = (web_root / "features" / "thread" / "thread-header-actions.tsx").read_text()
     branch_tree_text = (web_root / "features" / "branch-tree" / "branch-tree-panel.tsx").read_text()
+    app_shell_text = (web_root / "app" / "shell" / "app-shell.tsx").read_text()
+    merge_review_text = (web_root / "features" / "merge-review" / "merge-review-card.tsx").read_text()
 
     assert 'branch_meta?.branch_status === "merged"' in thread_page_text
     assert "isReadOnly={isMergedReadOnlyThread}" in thread_page_text
@@ -148,10 +150,17 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert 'const isMergedBranch = branchMeta?.branch_status === "merged";' in header_actions_text
     assert 'disabled={!threadId || isWorking || isMergedBranch || isCreatingBranch}' in header_actions_text
     assert "Merged branches cannot create new branches" in header_actions_text
+    assert "Merged branches cannot generate or merge conclusions" in header_actions_text
+    assert "if (!isReviewRoute && isMergedBranch) return;" in header_actions_text
+    assert "disabled={isWorking || (!isReviewRoute && (isGeneratingConclusion || isMergedBranch))}" in header_actions_text
     assert 'const isMergedCreateTarget = createBranchTargetNode?.branch_status === "merged";' in branch_tree_text
     assert 'disabled={!createBranchTargetThreadId || isMergedCreateTarget || isCreatingBranch}' in branch_tree_text
     assert "Create a branch from the selected node" in branch_tree_text
     assert "Merged branches cannot create new branches" in branch_tree_text
+    assert 'activeThreadState?.branch_meta?.branch_status === "merged"' in app_shell_text
+    assert "Merged branches cannot generate or merge conclusions." in app_shell_text
+    assert 'const isMergedBranch = pendingStatus === "merged";' in merge_review_text
+    assert "disabled={isSubmitting || isMergedBranch}" in merge_review_text
 
 
 def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():

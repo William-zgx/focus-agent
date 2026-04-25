@@ -230,6 +230,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const isChineseUi = languagePreference === "zh";
   const isDiagnosticsRoute = isTrajectoryRoute;
   const shellSidebarCollapsed = sidebarCollapsed || isDiagnosticsRoute;
+  const activeThreadIsMergedBranch = activeThreadState?.branch_meta?.branch_status === "merged";
   const currentMergeProposalState = threadId ? mergeProposalGeneration[threadId] : null;
   const currentPreparingMergeProposal =
     currentMergeProposalState?.status === "preparing"
@@ -998,14 +999,22 @@ export function AppShell({ children }: PropsWithChildren) {
               </button>
             </div>
             {activeThreadState?.branch_meta ? (
-              <MergeReviewCard
-                rootThreadId={conversationId}
-                threadId={threadId}
-                proposal={activeThreadState.merge_proposal}
-                branchName={activeThreadState.branch_meta.branch_name}
-                pendingStatus={activeThreadState.branch_meta.branch_status}
-                onClose={() => void closeMergeReviewModal()}
-              />
+              activeThreadIsMergedBranch ? (
+                <div className="fa-inline-notice is-danger">
+                  {isChineseUi
+                    ? "已合并分支不能继续生成或合并结论。"
+                    : "Merged branches cannot generate or merge conclusions."}
+                </div>
+              ) : (
+                <MergeReviewCard
+                  rootThreadId={conversationId}
+                  threadId={threadId}
+                  proposal={activeThreadState.merge_proposal}
+                  branchName={activeThreadState.branch_meta.branch_name}
+                  pendingStatus={activeThreadState.branch_meta.branch_status}
+                  onClose={() => void closeMergeReviewModal()}
+                />
+              )
             ) : (
               <div className="fa-inline-notice is-danger">
                 {isChineseUi

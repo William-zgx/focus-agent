@@ -796,6 +796,11 @@ class BranchService:
         return record.branch_depth
 
     def _derive_parent_branch_status(self, parent_thread_id: str, parent_state: dict) -> BranchStatus | None:
+        try:
+            record = self.repo.get_by_child_thread_id(parent_thread_id)
+            return record.branch_status
+        except Exception:
+            pass
         meta = parent_state.get('branch_meta') or {}
         raw_status = meta.get('branch_status')
         if raw_status is not None:
@@ -803,11 +808,7 @@ class BranchService:
                 return BranchStatus(str(raw_status))
             except ValueError:
                 pass
-        try:
-            record = self.repo.get_by_child_thread_id(parent_thread_id)
-        except Exception:
-            return None
-        return record.branch_status
+        return None
 
     def _max_branch_depth(self) -> int:
         settings = getattr(self, "settings", None)
@@ -829,6 +830,11 @@ class BranchService:
         parent_status = self._derive_parent_branch_status(parent_thread_id, parent_values)
         if parent_status == BranchStatus.MERGED:
             raise ValueError("Merged branches cannot create new branches.")
+
+    @staticmethod
+    def _ensure_branch_not_merged(branch_record: BranchRecord) -> None:
+        if branch_record.branch_status == BranchStatus.MERGED:
+            raise ValueError("Merged branches are read-only.")
 
     @staticmethod
     def _branch_meta_payload_from_record(record: BranchRecord, existing_meta: dict | None = None) -> dict[str, object]:
@@ -1194,10 +1200,11 @@ class BranchService:
 
     def prepare_merge_proposal(self, *, child_thread_id: str, user_id: str) -> MergeProposal:
         self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
+        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
+        self._ensure_branch_not_merged(branch_record)
         child_config = {'configurable': {'thread_id': child_thread_id}}
         snapshot = self.graph.get_state(child_config)
         values = deepcopy(snapshot.values)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
         self.repo.update_status(branch_record.branch_id, BranchStatus.PREPARING_MERGE_REVIEW)
         preparing_record = self.repo.get(branch_record.branch_id)
         self.graph.update_state(
@@ -1257,6 +1264,7 @@ class BranchService:
     ) -> ImportedConclusion | None:
         self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=context.user_id)
         branch_record = self.repo.get_by_child_thread_id(child_thread_id)
+        self._ensure_branch_not_merged(branch_record)
         child_config = {'configurable': {'thread_id': child_thread_id}}
         snapshot = self.graph.get_state(child_config)
         values = deepcopy(snapshot.values)

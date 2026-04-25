@@ -78,6 +78,12 @@ function mergeReviewStatusLabel(status: string | undefined, isChineseUi: boolean
   }
 }
 
+function mergedBranchReadOnlyLabel(isChineseUi: boolean) {
+  return isChineseUi
+    ? "已合并分支不能继续生成或合并结论。"
+    : "Merged branches cannot generate or merge conclusions.";
+}
+
 export function MergeReviewCard({
   rootThreadId,
   threadId,
@@ -118,6 +124,7 @@ export function MergeReviewCard({
   const shouldShowSelectedArtifacts =
     decision === "approve" && mode === "selected_artifacts";
   const isPreparingConclusion = isPreparing || isMergeProposalPreparing(threadId);
+  const isMergedBranch = pendingStatus === "merged";
 
   const modeOptions = useMemo(
     () =>
@@ -154,6 +161,10 @@ export function MergeReviewCard({
   }, [threadId, proposalSignature]);
 
   async function handlePrepareProposal() {
+    if (isMergedBranch) {
+      setErrorMessage(mergedBranchReadOnlyLabel(isChineseUi));
+      return;
+    }
     setIsPreparing(true);
     markMergeProposalPreparing(threadId);
     setErrorMessage(null);
@@ -181,6 +192,10 @@ export function MergeReviewCard({
   }
 
   async function handleSubmit() {
+    if (isMergedBranch) {
+      setErrorMessage(mergedBranchReadOnlyLabel(isChineseUi));
+      return;
+    }
     const payload: FocusAgentApplyMergeDecisionRequest = {
       approved: decision === "approve",
       mode,
@@ -235,7 +250,7 @@ export function MergeReviewCard({
               : "This can take a moment while the branch summary is prepared."}
           </p>
           <div className="fa-focus-modal-actions">
-            <button disabled={isPreparingConclusion} onClick={() => void handlePrepareProposal()} type="button">
+            <button disabled={isPreparingConclusion || isMergedBranch} onClick={() => void handlePrepareProposal()} type="button">
               {isPreparingConclusion
                 ? isChineseUi
                   ? "生成中..."
@@ -400,7 +415,7 @@ export function MergeReviewCard({
                 {isChineseUi ? "关闭" : "Close"}
               </button>
             ) : null}
-            <button disabled={isSubmitting} onClick={() => void handleSubmit()} type="button">
+            <button disabled={isSubmitting || isMergedBranch} onClick={() => void handleSubmit()} type="button">
               {isSubmitting
                 ? isChineseUi
                   ? "提交中..."
