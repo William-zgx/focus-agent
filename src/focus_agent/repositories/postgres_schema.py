@@ -5,7 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def ensure_app_postgres_schema(database_uri: str) -> None:
@@ -23,16 +23,16 @@ def ensure_app_postgres_schema_on_connection(conn: object) -> None:
             )
             """
         )
-        cur.execute("SELECT version FROM focus_schema_migrations WHERE version = %s", (SCHEMA_VERSION,))
-        existing = cur.fetchone()
-        if existing is not None:
-            return
-
-        _run_migration_v1(cur.execute)
-        cur.execute(
-            "INSERT INTO focus_schema_migrations (version) VALUES (%s) ON CONFLICT (version) DO NOTHING",
-            (SCHEMA_VERSION,),
-        )
+        for version, migration in _MIGRATIONS:
+            cur.execute("SELECT version FROM focus_schema_migrations WHERE version = %s", (version,))
+            existing = cur.fetchone()
+            if existing is not None:
+                continue
+            migration(cur.execute)
+            cur.execute(
+                "INSERT INTO focus_schema_migrations (version) VALUES (%s) ON CONFLICT (version) DO NOTHING",
+                (version,),
+            )
 
 
 def _run_migration_v1(execute: Callable[..., object]) -> None:
@@ -170,3 +170,71 @@ def _run_migration_v1(execute: Callable[..., object]) -> None:
         ON focus_artifacts(updated_at DESC)
         """
     )
+
+
+def _run_migration_v2(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_agent_team_sessions (
+            session_id TEXT PRIMARY KEY,
+            root_thread_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_agent_team_tasks (
+            task_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            data_json JSONB NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES focus_agent_team_sessions(session_id)
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_agent_team_outputs (
+            output_id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            data_json JSONB NOT NULL,
+            FOREIGN KEY(task_id) REFERENCES focus_agent_team_tasks(task_id)
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_agent_team_sessions_user_created
+        ON focus_agent_team_sessions(user_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_agent_team_sessions_root_created
+        ON focus_agent_team_sessions(root_thread_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_agent_team_tasks_session_created
+        ON focus_agent_team_tasks(session_id, created_at)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_agent_team_outputs_task_created
+        ON focus_agent_team_outputs(task_id, created_at)
+        """
+    )
+
+
+_MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
+    (1, _run_migration_v1),
+    (2, _run_migration_v2),
+)

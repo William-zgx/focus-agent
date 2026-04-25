@@ -7,10 +7,16 @@ from fastapi.testclient import TestClient
 import pytest
 
 from focus_agent.api.main import create_app
+from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
 
 
-def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
+def _client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    agent_team_service: AgentTeamService | None = None,
+) -> TestClient:
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     (dist_dir / "index.html").write_text("<html></html>", encoding="utf-8")
@@ -21,7 +27,7 @@ def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     app = create_app()
     app.state.runtime = SimpleNamespace(
         settings=SimpleNamespace(auth_enabled=False, model="openai:gpt-4.1-mini"),
-        agent_team_service=AgentTeamService(branch_service=None),
+        agent_team_service=agent_team_service or AgentTeamService(branch_service=None),
     )
     return TestClient(app)
 
@@ -104,3 +110,84 @@ def test_agent_team_api_dispatches_default_tasks(monkeypatch: pytest.MonkeyPatch
         "verifier",
     ]
     assert dispatch_payload["tasks"][0]["status"] == "running"
+
+
+def test_agent_team_api_persists_default_dispatch_bundle_across_runtime_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "agent-team.sqlite3"
+    client = _client(
+        monkeypatch,
+        tmp_path,
+        agent_team_service=AgentTeamService(
+            branch_service=None,
+            repository=SQLiteAgentTeamRepository(str(db_path)),
+        ),
+    )
+
+    created = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-1", "goal": "Persist default dispatch"},
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session"]["session_id"]
+
+    dispatch_response = client.post(
+        f"/v1/agent-team/sessions/{session_id}/dispatch",
+        json={"create_branches": False},
+    )
+    assert dispatch_response.status_code == 200
+    dispatched_tasks = dispatch_response.json()["tasks"]
+    assert len(dispatched_tasks) == 6
+
+    bundle_response = client.post(f"/v1/agent-team/sessions/{session_id}/merge-bundle")
+    assert bundle_response.status_code == 200
+    bundle = bundle_response.json()["bundle"]
+    assert bundle["session_id"] == session_id
+    assert bundle["recommended_next_action"] == "split_followup"
+
+    reloaded_client = _client(
+        monkeypatch,
+        tmp_path,
+        agent_team_service=AgentTeamService(
+            branch_service=None,
+            repository=SQLiteAgentTeamRepository(str(db_path)),
+        ),
+    )
+
+    restored_response = reloaded_client.get(f"/v1/agent-team/sessions/{session_id}")
+    assert restored_response.status_code == 200
+    restored_session = restored_response.json()["session"]
+    assert restored_session["status"] == "awaiting_review"
+    assert restored_session["latest_merge_bundle"]["session_id"] == session_id
+    assert restored_session["latest_merge_bundle"]["recommended_next_action"] == "split_followup"
+
+    tasks_response = reloaded_client.get(f"/v1/agent-team/sessions/{session_id}/tasks")
+    assert tasks_response.status_code == 200
+    restored_tasks = tasks_response.json()["tasks"]
+    assert [task["role"] for task in restored_tasks] == [
+        "planner",
+        "backend_executor",
+        "frontend_executor",
+        "test_engineer",
+        "reviewer",
+        "verifier",
+    ]
+    assert restored_tasks[0]["status"] == "running"
+
+
+def test_agent_team_api_missing_session_returns_404(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _client(monkeypatch, tmp_path)
+
+    get_response = client.get("/v1/agent-team/sessions/missing-session")
+    assert get_response.status_code == 404
+
+    dispatch_response = client.post(
+        "/v1/agent-team/sessions/missing-session/dispatch",
+        json={"create_branches": False},
+    )
+    assert dispatch_response.status_code == 404
+
+    bundle_response = client.post("/v1/agent-team/sessions/missing-session/merge-bundle")
+    assert bundle_response.status_code == 404

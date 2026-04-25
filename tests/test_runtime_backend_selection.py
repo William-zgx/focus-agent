@@ -72,6 +72,7 @@ def _install_postgres_modules(monkeypatch):
     branch_repo_cls = _make_postgres_component(with_factory=False)
     artifact_repo_cls = _make_postgres_component(with_factory=False)
     trajectory_repo_cls = _make_postgres_component(with_factory=False)
+    agent_team_repo_cls = _make_postgres_component(with_factory=False)
 
     checkpoint_module = types.ModuleType("langgraph.checkpoint.postgres")
     checkpoint_module.PostgresSaver = saver_cls
@@ -83,12 +84,15 @@ def _install_postgres_modules(monkeypatch):
     artifact_module.ArtifactMetadataRepository = artifact_repo_cls
     trajectory_module = types.ModuleType("focus_agent.repositories.postgres_trajectory_repository")
     trajectory_module.PostgresTrajectoryRepository = trajectory_repo_cls
+    agent_team_module = types.ModuleType("focus_agent.repositories.postgres_agent_team_repository")
+    agent_team_module.PostgresAgentTeamRepository = agent_team_repo_cls
 
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres", checkpoint_module)
     monkeypatch.setitem(sys.modules, "langgraph.store.postgres", store_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_branch_repository", branch_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.artifact_metadata_repository", artifact_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module)
+    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module)
 
     return {
         "saver": saver_cls,
@@ -96,6 +100,7 @@ def _install_postgres_modules(monkeypatch):
         "branch_repo": branch_repo_cls,
         "artifact_repo": artifact_repo_cls,
         "trajectory_repo": trajectory_repo_cls,
+        "agent_team_repo": agent_team_repo_cls,
     }
 
 
@@ -156,17 +161,20 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         repo = fake_modules["branch_repo"].instances[0]
         artifact_repo = fake_modules["artifact_repo"].instances[0]
         trajectory_repo = fake_modules["trajectory_repo"].instances[0]
+        agent_team_repo = fake_modules["agent_team_repo"].instances[0]
 
         assert runtime.checkpointer is saver
         assert runtime.store is store
         assert runtime.repo is repo
         assert runtime.artifact_metadata_repository is artifact_repo
         assert runtime.trajectory_recorder is trajectory_repo
+        assert runtime.agent_team_service.repository is agent_team_repo
         assert saver.setup_calls == 1
         assert store.setup_calls == 1
         assert repo.setup_calls == 1
         assert artifact_repo.setup_calls == 1
         assert trajectory_repo.setup_calls == 1
+        assert agent_team_repo.setup_calls == 1
         assert captured["artifact_metadata_repository"] is artifact_repo
         assert "postgres-primary" in caplog.text
     finally:

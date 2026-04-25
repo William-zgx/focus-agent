@@ -227,7 +227,25 @@ POST  /v1/agent-team/sessions/{session_id}/merge-decision
 POST  /v1/agent-team/sessions/{session_id}/merge          # merge-decision alias
 ```
 
-MVP 可以先使用 repository 内存 / 现有 local fallback 方式实现，后续再做 Postgres 表。
+### 5.1 持久化仓储
+
+Agent Team Workbench 已接入 runtime 的主持久化选择：
+
+- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema v2 初始化表结构。
+- 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `SQLiteAgentTeamRepository`，作为本地 fallback。
+- 通过 `make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod` 启动时，如果没有显式 `DATABASE_URI`，启动脚本会托管 repo-local PostgreSQL 并注入 `DATABASE_URI`，因此 Agent Team 也走 Postgres primary persistence。
+
+Postgres 表名固定为：
+
+```text
+focus_agent_team_sessions
+focus_agent_team_tasks
+focus_agent_team_outputs
+```
+
+每张表都保留 `data_json JSONB NOT NULL` 作为 Pydantic model 的完整 round-trip 来源；其他列只做查询、排序和索引辅助。schema migration v2 会在已有 v1 数据库上继续创建 Agent Team 表，不依赖全新数据库。
+
+当前不会自动把已有 SQLite fallback 数据迁移到 Postgres。需要跨后端迁移时，应通过显式迁移流程处理。
 
 ## 6. Frontend / SDK 设计
 

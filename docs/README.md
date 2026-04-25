@@ -35,6 +35,7 @@ flowchart LR
 ## 核心专题
 
 - [agent-role-routing.md](agent-role-routing.md)：Agent Governance、role routing、tool routing、delegation、context、task ledger、critic gate 和 eval gate。
+- [agent-team-workbench.md](agent-team-workbench.md)：Agent Team Workbench 的协作模型、API、Postgres/SQLite 持久化边界和多 Agent 开发验收口径。
 - [memory-system.md](memory-system.md)：记忆生命周期、namespace、检索、写入、去重、冲突和 branch promotion。
 - [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、运行时策略和扩展检查项。
 

@@ -190,10 +190,15 @@ def _create_local_fallback_persistence(
     return checkpointer, store, repo, None, None
 
 
-def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository | None:
+def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
     if settings.database_uri:
-        return None
-    return SQLiteAgentTeamRepository(settings.branch_db_path)
+        from ..repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
+
+        repository = PostgresAgentTeamRepository(settings.database_uri)
+    else:
+        repository = SQLiteAgentTeamRepository(settings.branch_db_path)
+    _setup_component_if_available(repository)
+    return repository
 
 
 def _setup_component_if_available(component: object) -> None:

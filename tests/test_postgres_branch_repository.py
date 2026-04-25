@@ -47,6 +47,51 @@ def test_postgres_schema_setup_creates_app_tables(monkeypatch):
     assert any("CREATE TABLE IF NOT EXISTS focus_thread_access" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_branches" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_artifacts" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_sessions" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_tasks" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_outputs" in sql for sql in statements)
+
+
+def test_postgres_schema_setup_runs_v2_when_v1_already_exists(monkeypatch):
+    executed: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+            self._params = params
+
+        def fetchone(self):
+            if self._params == (1,):
+                return {"version": 1}
+            return None
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_schema.psycopg.connect",
+        lambda uri: FakeConnection(),
+    )
+
+    ensure_app_postgres_schema("postgresql://example")
+
+    statements = [sql for sql, _ in executed]
+    assert not any("CREATE TABLE IF NOT EXISTS focus_conversations" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_sessions" in sql for sql in statements)
+    assert any(params == (2,) for _, params in executed)
 
 
 def test_postgres_branch_repository_setup_and_write_queries(monkeypatch):

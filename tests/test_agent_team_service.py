@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from focus_agent.core.agent_team import AgentTeamTaskRole, AgentTeamTaskStatus
+from focus_agent.core.agent_team import AgentTeamSessionStatus, AgentTeamTaskRole, AgentTeamTaskStatus
 from focus_agent.core.branching import BranchRole
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
@@ -132,6 +132,50 @@ def test_agent_team_service_persists_workbench_state_across_instances(tmp_path) 
     outputs = second.list_task_outputs(task_id=task.task_id, user_id="user-1")
     assert outputs[0].summary == "Persistence survives service recreation."
     assert outputs[0].metadata == {"source": "unit-test"}
+
+
+def test_agent_team_service_persists_default_dispatch_bundle_across_instances(tmp_path) -> None:
+    db_path = tmp_path / "agent-team.sqlite3"
+    first = AgentTeamService(
+        branch_service=None,
+        repository=SQLiteAgentTeamRepository(str(db_path)),
+    )
+    session = first.create_session(root_thread_id="root-1", user_id="user-1", goal="Persist dispatch bundle")
+
+    dispatched_session, tasks = first.dispatch_default_tasks(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+    bundle = first.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert dispatched_session.status == AgentTeamSessionStatus.RUNNING
+    assert len(tasks) == 6
+    assert bundle.session_id == session.session_id
+    assert bundle.recommended_next_action == "split_followup"
+
+    second = AgentTeamService(
+        branch_service=None,
+        repository=SQLiteAgentTeamRepository(str(db_path)),
+    )
+
+    restored_session = second.get_session(session.session_id, user_id="user-1")
+    assert restored_session.status == AgentTeamSessionStatus.AWAITING_REVIEW
+    assert restored_session.latest_merge_bundle is not None
+    assert restored_session.latest_merge_bundle["session_id"] == session.session_id
+    assert restored_session.latest_merge_bundle["recommended_next_action"] == "split_followup"
+
+    restored_tasks = second.list_tasks(session_id=session.session_id, user_id="user-1")
+    assert [task.role.value for task in restored_tasks] == [
+        "planner",
+        "backend_executor",
+        "frontend_executor",
+        "test_engineer",
+        "reviewer",
+        "verifier",
+    ]
+    assert restored_tasks[0].status == AgentTeamTaskStatus.RUNNING
+    assert all(task.status == AgentTeamTaskStatus.PENDING for task in restored_tasks[1:])
 
 
 def test_agent_team_service_dispatches_default_task_set_without_recursive_agents() -> None:

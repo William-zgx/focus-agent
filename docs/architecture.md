@@ -300,7 +300,7 @@ flowchart TD
     Decision -- "No make command" --> Managed["Managed repo-local PostgreSQL"]
     Decision -- "No raw binary" --> Fallback["Local fallback persistence"]
     Managed --> PG
-    PG --> AppState["Conversations, branches, access"]
+    PG --> AppState["Conversations, branches, access, Agent Team"]
     PG --> GraphStore["LangGraph checkpoint and store"]
     PG --> TraceMeta["Trajectory and artifact metadata"]
     TraceMeta --> Files["Filesystem artifact bodies"]
@@ -311,11 +311,14 @@ flowchart TD
 配置 `DATABASE_URI` 后，主运行态数据走 Postgres primary persistence：
 
 - conversation / branch / thread access
+- Agent Team sessions / tasks / outputs
 - LangGraph checkpoint/store
 - artifact metadata
 - trajectory turn / step observability tables
 
-应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 `focus_conversations`、`focus_thread_access`、`focus_branches`、`focus_artifacts` 等表。
+应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 `focus_conversations`、`focus_thread_access`、`focus_branches`、`focus_artifacts`、`focus_agent_team_sessions`、`focus_agent_team_tasks`、`focus_agent_team_outputs` 等表。
+
+Agent Team 的 Postgres 表使用 `data_json JSONB NOT NULL` 保存完整 Pydantic model，辅助列只用于按用户、root thread、session/task 和创建时间查询排序。schema migration 会逐版本执行，因此已有 v1 数据库会继续升级到包含 Agent Team 表的 v2。
 
 Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、checksum、source thread / branch、summary 等字段。
 
@@ -324,6 +327,7 @@ Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、c
 未配置 `DATABASE_URI` 且直接裸跑 API 二进制时，runtime 使用：
 
 - SQLite branch repository
+- SQLite Agent Team repository
 - pickle-backed LangGraph checkpointer
 - pickle-backed LangGraph store
 - no trajectory recorder

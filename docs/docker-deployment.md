@@ -173,6 +173,9 @@ docker compose -f compose.prod.yaml up -d
 - `focus_thread_access`
 - `focus_branches`
 - `focus_artifacts`
+- `focus_agent_team_sessions`
+- `focus_agent_team_tasks`
+- `focus_agent_team_outputs`
 - LangGraph checkpoint/store
 - trajectory 观测表
 
