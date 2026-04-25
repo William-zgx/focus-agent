@@ -5,6 +5,7 @@ import { type ChangeEvent, type FormEvent, useMemo, useState } from "react";
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useConversationActions } from "@/features/conversations/use-conversation-actions";
 import { useConversations } from "@/features/conversations/use-conversations";
+import { ArchiveIcon, ArchiveRestoreIcon, TokenUsageIcon } from "@/shared/ui/toolbar-icons";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 function formatTokenCount(value: number) {
@@ -255,11 +256,7 @@ export function ConversationToolbar() {
             type="button"
           >
             <span className="fa-toolbar-icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20">
-                <rect x="4" y="11" width="2.6" height="5" rx="1.1" fill="currentColor" />
-                <rect x="8.7" y="8" width="2.6" height="8" rx="1.1" fill="currentColor" />
-                <rect x="13.4" y="5" width="2.6" height="11" rx="1.1" fill="currentColor" />
-              </svg>
+              <TokenUsageIcon />
             </span>
           </button>
         ) : null}
@@ -274,43 +271,26 @@ export function ConversationToolbar() {
                 ? "归档对话"
                 : "Archive conversation"
           )}
+          aria-label={
+            activeConversation?.is_archived
+              ? isChineseUi
+                ? "激活对话"
+                : "Activate conversation"
+              : isChineseUi
+                ? "归档对话"
+                : "Archive conversation"
+          }
           disabled={isWorking || !activeConversation}
           onClick={() => activeConversation && void handleArchiveToggle(activeConversation)}
           type="button"
         >
           {activeConversation?.is_archived ? (
             <span className="fa-toolbar-icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20">
-                <path
-                  d="M5.5 10a4.5 4.5 0 1 0 1.4-3.2"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M4 4.7v3.6h3.6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <ArchiveRestoreIcon />
             </span>
           ) : (
             <span className="fa-toolbar-icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20">
-                <path d="M3.5 4.5h13v3h-13z" fill="currentColor" />
-                <path
-                  d="M5.5 8.5h9v7h-9z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                />
-                <path d="M8 11h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              </svg>
+              <ArchiveIcon />
             </span>
           )}
         </button>

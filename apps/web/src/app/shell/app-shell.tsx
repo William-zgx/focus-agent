@@ -28,6 +28,7 @@ import {
 } from "@/app/shell/shell-ui-context";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { FocusAgentBrand } from "@/shared/ui/focus-agent-brand";
+import { AgentTeamIcon } from "@/shared/ui/toolbar-icons";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 const SIDEBAR_COLLAPSED_KEY = "fa:sidebar-collapsed";
@@ -917,19 +918,7 @@ export function AppShell({ children }: PropsWithChildren) {
                   to="/agent-team"
                 >
                   <span className="fa-toolbar-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20">
-                      <circle cx="5.4" cy="6" r="2.2" fill="currentColor" />
-                      <circle cx="14.6" cy="6" r="2.2" fill="currentColor" opacity="0.72" />
-                      <circle cx="10" cy="14" r="2.2" fill="currentColor" opacity="0.88" />
-                      <path
-                        d="M7.2 7.2 9 12.1m3.8-4.9L11 12.1M7.6 6h4.8"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeWidth="1.6"
-                        opacity="0.82"
-                      />
-                    </svg>
+                    <AgentTeamIcon />
                   </span>
                   <span className="fa-toolbar-text">Team</span>
                 </Link>

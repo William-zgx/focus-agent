@@ -4,6 +4,16 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useBranchActions } from "@/features/branch-tree/use-branch-actions";
 import { useThreadState } from "@/features/thread/use-thread-state";
+import {
+  BackToMainIcon,
+  BackToParentIcon,
+  BackToThreadIcon,
+  BranchFocusIcon,
+  BranchPlusIcon,
+  ConclusionDraftIcon,
+  ConclusionReadyIcon,
+  RefreshConclusionIcon,
+} from "@/shared/ui/toolbar-icons";
 import { syncTooltipText, tooltipProps } from "@/shared/ui/tooltip";
 
 interface ThreadHeaderActionsProps {
@@ -340,19 +350,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
           type="button"
         >
           <span className="fa-toolbar-icon" aria-hidden="true">
-            <svg viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M10 3.2a6.8 6.8 0 1 1 0 13.6 6.8 6.8 0 0 1 0-13.6Zm0 2.3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"
-                fill="currentColor"
-              />
-              <rect x="9.15" y="1.85" width="1.7" height="3.1" rx="0.85" fill="currentColor" />
-              <rect x="9.15" y="15.05" width="1.7" height="3.1" rx="0.85" fill="currentColor" />
-              <rect x="1.85" y="9.15" width="3.1" height="1.7" rx="0.85" fill="currentColor" />
-              <rect x="15.05" y="9.15" width="3.1" height="1.7" rx="0.85" fill="currentColor" />
-              <circle cx="10" cy="10" r="1.6" fill="currentColor" />
-            </svg>
+            <BranchFocusIcon />
           </span>
           <span className="fa-toolbar-text">
             {isChineseUi ? "当前分支" : "current"}: {currentLabel}
@@ -372,14 +370,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
           type="button"
         >
           <span className="fa-toolbar-icon" aria-hidden="true">
-            <svg viewBox="0 0 20 20">
-              <circle cx="5" cy="5" r="1.75" fill="currentColor" />
-              <circle cx="5" cy="15" r="1.75" fill="currentColor" />
-              <rect x="4.15" y="6.6" width="1.7" height="6.8" rx="0.85" fill="currentColor" />
-              <rect x="6.7" y="14.15" width="4.3" height="1.7" rx="0.85" fill="currentColor" />
-              <rect x="12.15" y="4.9" width="5.7" height="1.7" rx="0.85" fill="currentColor" />
-              <rect x="14.15" y="2.9" width="1.7" height="5.7" rx="0.85" fill="currentColor" />
-            </svg>
+            <BranchPlusIcon />
           </span>
           <span className="fa-toolbar-text">{isChineseUi ? "新建分支" : "New branch"}</span>
         </button>
@@ -398,16 +389,15 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
             aria-label={reviewActionText}
           >
             <span className="fa-toolbar-icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20">
-                <path d="M4.5 10h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                <path
-                  d="m10 6 4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              {isReviewRoute ? (
+                <BackToThreadIcon />
+              ) : hasPreparedConclusion ? (
+                <ConclusionReadyIcon />
+              ) : conclusionGenerationError ? (
+                <RefreshConclusionIcon />
+              ) : (
+                <ConclusionDraftIcon />
+              )}
             </span>
             <span className="fa-toolbar-text">
               {reviewActionText}
@@ -431,15 +421,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
               type="button"
             >
               <span className="fa-toolbar-icon" aria-hidden="true">
-                <svg viewBox="0 0 20 20">
-                  <path
-                    d="m12.5 5-5 5 5 5"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <BackToMainIcon />
               </span>
               <span className="fa-toolbar-text">{isChineseUi ? "回到主分支" : "Back to main"}</span>
             </button>
@@ -457,21 +439,7 @@ export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderAction
               type="button"
             >
               <span className="fa-toolbar-icon" aria-hidden="true">
-                <svg viewBox="0 0 20 20">
-                  <path
-                    d="M14 6H9a3 3 0 0 0-3 3v5"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="m9 6-3 3 3 3"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <BackToParentIcon />
               </span>
               <span className="fa-toolbar-text">{isChineseUi ? "回到上一层" : "Back one level"}</span>
             </button>
