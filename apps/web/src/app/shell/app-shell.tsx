@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { BranchTreePanel } from "@/features/branch-tree/branch-tree-panel";
 import { useBranchActions } from "@/features/branch-tree/use-branch-actions";
@@ -186,6 +186,7 @@ export function AppShell({ children }: PropsWithChildren) {
         isReviewRoute: state.location.pathname.endsWith("/review"),
         isTrajectoryRoute:
           state.location.pathname.includes("/observability/") ||
+          state.location.pathname.includes("/agent-team") ||
           state.location.pathname.includes("/agent/roles") ||
           state.location.pathname.includes("/agent/governance"),
       };
@@ -906,6 +907,13 @@ export function AppShell({ children }: PropsWithChildren) {
                 <ConversationToolbar />
               </div>
               <ThreadHeaderActions onRequestOpenSidebar={() => setSidebarCollapsed(false)} />
+              <Link
+                className="fa-chat-toolbar-button fa-agent-team-shortcut"
+                search={conversationId ? { root_thread_id: conversationId } : undefined}
+                to="/agent-team"
+              >
+                {isChineseUi ? "Agent Team" : "Agent Team"}
+              </Link>
             </div>
             {shellStatus && shellStatus.display !== "chat-floating" ? (
               <div className={`fa-shell-status-line is-${shellStatus.tone}`}>{shellStatus.text}</div>

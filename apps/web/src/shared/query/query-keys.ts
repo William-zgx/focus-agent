@@ -27,4 +27,6 @@ export const queryKeys = {
   agentTaskLedgerRuns: (limit: number) => ["agent-task-ledger-runs", limit] as const,
   agentArtifacts: (limit: number) => ["agent-artifacts", limit] as const,
   agentCriticVerdicts: (limit: number) => ["agent-critic-verdicts", limit] as const,
+  agentTeamSessions: (filtersKey: string) => ["agent-team-sessions", filtersKey] as const,
+  agentTeamSession: (sessionId: string) => ["agent-team-session", sessionId] as const,
 };

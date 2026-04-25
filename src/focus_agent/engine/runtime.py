@@ -12,8 +12,11 @@ from ..config import Settings
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
+from ..repositories.agent_team_repository import AgentTeamRepository
 from ..repositories.branch_repository import BranchRepository
+from ..repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from ..repositories.sqlite_branch_repository import SQLiteBranchRepository
+from ..services.agent_team import AgentTeamService
 from ..services.branches import BranchService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
@@ -29,6 +32,7 @@ class AppRuntime:
     graph: object
     repo: BranchRepository
     branch_service: BranchService
+    agent_team_service: AgentTeamService
     checkpointer: object
     store: object
     store_namespace_selector: Callable[[RequestContext], tuple[str, ...]]
@@ -100,12 +104,17 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         store=store,
         memory_writer=memory_writer,
     )
+    agent_team_service = AgentTeamService(
+        branch_service=branch_service,
+        repository=_create_agent_team_repository(settings),
+    )
 
     return AppRuntime(
         settings=settings,
         graph=graph,
         repo=repo,
         branch_service=branch_service,
+        agent_team_service=agent_team_service,
         checkpointer=checkpointer,
         store=store,
         store_namespace_selector=conversation_namespace_for_context,
@@ -179,6 +188,12 @@ def _create_local_fallback_persistence(
     store = PersistentInMemoryStore(store_path)
     repo = SQLiteBranchRepository(settings.branch_db_path)
     return checkpointer, store, repo, None, None
+
+
+def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository | None:
+    if settings.database_uri:
+        return None
+    return SQLiteAgentTeamRepository(settings.branch_db_path)
 
 
 def _setup_component_if_available(component: object) -> None:

@@ -5,6 +5,20 @@ Canonical import:
 """
 
 from .contracts import (
+    AgentTeamMergeBundleResponse,
+    AgentTeamMergeDecisionResponse,
+    AgentTeamSessionListResponse,
+    AgentTeamSessionResponse,
+    AgentTeamDispatchResponse,
+    AgentTeamTaskListResponse,
+    AgentTeamTaskOutputResponse,
+    AgentTeamTaskResponse,
+    ApplyAgentTeamMergeDecisionRequest,
+    DispatchAgentTeamSessionRequest,
+    CreateAgentTeamSessionRequest,
+    CreateAgentTeamTaskRequest,
+    RecordAgentTeamTaskOutputRequest,
+    UpdateAgentTeamTaskRequest,
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
     AgentRoleDecisionListResponse,
@@ -94,6 +108,20 @@ from .contracts import (
 )
 
 __all__ = [
+    "AgentTeamMergeBundleResponse",
+    "AgentTeamMergeDecisionResponse",
+    "AgentTeamSessionListResponse",
+    "AgentTeamSessionResponse",
+    "AgentTeamDispatchResponse",
+    "AgentTeamTaskListResponse",
+    "AgentTeamTaskOutputResponse",
+    "AgentTeamTaskResponse",
+    "ApplyAgentTeamMergeDecisionRequest",
+    "DispatchAgentTeamSessionRequest",
+    "CreateAgentTeamSessionRequest",
+    "CreateAgentTeamTaskRequest",
+    "RecordAgentTeamTaskOutputRequest",
+    "UpdateAgentTeamTaskRequest",
     "ApplyMergeDecisionRequest",
     "ApplyMergeDecisionResponse",
     "AgentRoleDecisionListResponse",

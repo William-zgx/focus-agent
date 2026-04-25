@@ -2,6 +2,23 @@ import { iterSSEEvents } from "./parser";
 import { reduceStreamEvent, createInitialStreamState } from "./reducers";
 import type {
   FocusAgentApplyMergeDecisionRequest,
+  FocusAgentAgentTeamCreateSessionRequest,
+  FocusAgentAgentTeamCreateTaskRequest,
+  FocusAgentAgentTeamDispatchRequest,
+  FocusAgentAgentTeamDispatchResponse,
+  FocusAgentAgentTeamListSessionsRequest,
+  FocusAgentAgentTeamListTasksRequest,
+  FocusAgentAgentTeamMergeBundle,
+  FocusAgentAgentTeamMergeDecisionRequest,
+  FocusAgentAgentTeamMergeDecisionResponse,
+  FocusAgentAgentTeamPrepareMergeBundleRequest,
+  FocusAgentAgentTeamRecordTaskOutputRequest,
+  FocusAgentAgentTeamRecordTaskOutputResponse,
+  FocusAgentAgentTeamSession,
+  FocusAgentAgentTeamSessionListResponse,
+  FocusAgentAgentTeamTask,
+  FocusAgentAgentTeamTaskListResponse,
+  FocusAgentAgentTeamUpdateTaskRequest,
   FocusAgentApplyMergeDecisionResponse,
   FocusAgentBranchRecord,
   FocusAgentConversationListResponse,
@@ -151,6 +168,23 @@ function buildTrajectoryQueryString(
   if ("offset" in request) {
     appendQueryValue(params, "offset", request.offset);
   }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function buildAgentTeamQueryString(
+  request: FocusAgentAgentTeamListSessionsRequest | FocusAgentAgentTeamListTasksRequest = {},
+): string {
+  const params = new URLSearchParams();
+  if ("root_thread_id" in request) {
+    appendQueryValue(params, "root_thread_id", request.root_thread_id);
+  }
+  appendQueryValue(params, "status", request.status);
+  if ("role" in request) {
+    appendQueryValue(params, "role", request.role);
+  }
+  appendQueryValue(params, "limit", request.limit);
+  appendQueryValue(params, "offset", request.offset);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -578,6 +612,184 @@ export class FocusAgentClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     }, true);
+  }
+
+  async createAgentTeamSession(
+    request: FocusAgentAgentTeamCreateSessionRequest,
+  ): Promise<FocusAgentAgentTeamSession> {
+    const response = await this.requestJson<{ session: FocusAgentAgentTeamSession }>("/v1/agent-team/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+    return response.session;
+  }
+
+  async listAgentTeamSessions(
+    request: FocusAgentAgentTeamListSessionsRequest = {},
+  ): Promise<FocusAgentAgentTeamSessionListResponse> {
+    const response = await this.requestJson<FocusAgentAgentTeamSessionListResponse & { sessions?: FocusAgentAgentTeamSession[] }>(
+      `/v1/agent-team/sessions${buildAgentTeamQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+    const items = response.items ?? response.sessions ?? [];
+    return { items, count: response.count ?? items.length };
+  }
+
+  async getAgentTeamSession(sessionId: string): Promise<FocusAgentAgentTeamSession> {
+    const response = await this.requestJson<{ session: FocusAgentAgentTeamSession }>(
+      `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+    return response.session;
+  }
+
+  async dispatchAgentTeamSession(
+    sessionId: string,
+    request: FocusAgentAgentTeamDispatchRequest = {},
+  ): Promise<FocusAgentAgentTeamDispatchResponse> {
+    const response = await this.requestJson<FocusAgentAgentTeamDispatchResponse>(
+      `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/dispatch`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...request,
+          create_branches: request.auto_fork_branch ?? request.create_branches,
+        }),
+      },
+      true,
+    );
+    const items = response.items ?? response.tasks ?? [];
+    return { ...response, tasks: response.tasks ?? items, items, count: response.count ?? items.length };
+  }
+
+  async createAgentTeamTask(
+    sessionId: string,
+    request: FocusAgentAgentTeamCreateTaskRequest,
+  ): Promise<FocusAgentAgentTeamTask> {
+    const response = await this.requestJson<{ task: FocusAgentAgentTeamTask }>(
+      `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/tasks`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...request,
+          create_branch: request.auto_fork_branch ?? request.create_branch,
+        }),
+      },
+      true,
+    );
+    return response.task;
+  }
+
+  async listAgentTeamTasks(
+    sessionId: string,
+    request: FocusAgentAgentTeamListTasksRequest = {},
+  ): Promise<FocusAgentAgentTeamTaskListResponse> {
+    const response = await this.requestJson<FocusAgentAgentTeamTaskListResponse & { tasks?: FocusAgentAgentTeamTask[] }>(
+      `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/tasks${buildAgentTeamQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+    const items = response.items ?? response.tasks ?? [];
+    return { items, count: response.count ?? items.length };
+  }
+
+  async getAgentTeamTaskStatus(taskId: string): Promise<FocusAgentAgentTeamTask> {
+    const response = await this.requestJson<{ task: FocusAgentAgentTeamTask }>(
+      `/v1/agent-team/tasks/${encodeURIComponent(taskId)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+    return response.task;
+  }
+
+  async updateAgentTeamTask(
+    taskId: string,
+    request: FocusAgentAgentTeamUpdateTaskRequest,
+  ): Promise<FocusAgentAgentTeamTask> {
+    const response = await this.requestJson<{ task: FocusAgentAgentTeamTask }>(
+      `/v1/agent-team/tasks/${encodeURIComponent(taskId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return response.task;
+  }
+
+  async recordAgentTeamTaskOutput(
+    taskId: string,
+    request: FocusAgentAgentTeamRecordTaskOutputRequest,
+  ): Promise<FocusAgentAgentTeamRecordTaskOutputResponse> {
+    return this.requestJson<FocusAgentAgentTeamRecordTaskOutputResponse>(
+      `/v1/agent-team/tasks/${encodeURIComponent(taskId)}/outputs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...request,
+          kind: request.artifact_kind,
+          summary: request.summary ?? request.content ?? "",
+          test_evidence: request.verification_summary ? [request.verification_summary] : undefined,
+        }),
+      },
+      true,
+    );
+  }
+
+  async prepareAgentTeamMergeBundle(
+    sessionId: string,
+    request: FocusAgentAgentTeamPrepareMergeBundleRequest = {},
+  ): Promise<FocusAgentAgentTeamMergeBundle> {
+    const response = await this.requestJson<{ bundle: FocusAgentAgentTeamMergeBundle }>(
+      `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-bundle`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return response.bundle;
+  }
+
+  async recordAgentTeamMergeDecision(
+    sessionId: string,
+    request: FocusAgentAgentTeamMergeDecisionRequest,
+  ): Promise<FocusAgentAgentTeamMergeDecisionResponse> {
+    return this.requestJson<FocusAgentAgentTeamMergeDecisionResponse>(
+      `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-decision`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approved: request.apply ?? true,
+          action: request.next_action,
+          rationale: request.rationale,
+          accepted_tasks: request.accepted_tasks,
+          rejected_tasks: request.rejected_tasks,
+        }),
+      },
+      true,
+    );
   }
 
   async listConversations(): Promise<FocusAgentConversationListResponse> {

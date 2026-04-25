@@ -13,6 +13,7 @@ import { useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
+import { AgentTeamWorkbenchPage } from "@/pages/agent-team/team-workbench-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
@@ -85,11 +86,12 @@ function HomePage() {
 }
 
 function AuthBootstrapPage() {
-  const { isChineseUi } = useShellUi();
   const { authError, authHint, authenticateWithToken, clearStoredToken } = useFocusAgent();
   const [token, setToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const showsDisabledDemoTokenHint = authHint === "demo_token_disabled";
+  const isChineseUi =
+    typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -220,6 +222,18 @@ const agentGovernanceConsoleRoute = createRoute({
   component: AgentRoleConsolePage,
 });
 
+const agentTeamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agent-team",
+  component: AgentTeamWorkbenchPage,
+});
+
+const agentTeamSessionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agent-team/$sessionId",
+  component: AgentTeamWorkbenchPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   threadRoute,
@@ -228,6 +242,8 @@ const routeTree = rootRoute.addChildren([
   observabilityOverviewRoute,
   agentRoleConsoleRoute,
   agentGovernanceConsoleRoute,
+  agentTeamRoute,
+  agentTeamSessionRoute,
 ]);
 
 const router = createRouter({

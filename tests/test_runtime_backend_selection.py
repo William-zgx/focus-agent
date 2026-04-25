@@ -195,10 +195,15 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         def __init__(self, path: str):
             self.path = path
 
+    class _FakeSQLiteAgentTeamRepository:
+        def __init__(self, path: str):
+            self.path = path
+
     _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
+    monkeypatch.setattr(runtime_mod, "SQLiteAgentTeamRepository", _FakeSQLiteAgentTeamRepository)
     caplog.set_level(logging.INFO, logger="focus_agent.runtime")
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
@@ -207,6 +212,7 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert runtime.checkpointer.path == tmp_path / "langgraph-checkpoints.pkl"
         assert runtime.store.path == tmp_path / "langgraph-store.pkl"
         assert runtime.repo.path == str(tmp_path / "branches.sqlite3")
+        assert runtime.agent_team_service.repository.path == str(tmp_path / "branches.sqlite3")
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
         assert captured["store"] is runtime.store

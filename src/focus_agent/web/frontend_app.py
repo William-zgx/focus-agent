@@ -38,7 +38,9 @@ def build_frontend_dev_server_redirect_url(
     parsed = urlsplit(base_url)
     suffix = str(path).lstrip("/")
     base_path = parsed.path.rstrip("/")
-    next_path = base_path if not suffix else f"{base_path}/{suffix}"
+    next_path = f"{base_path}/" if not suffix and base_path else base_path
+    if suffix:
+        next_path = f"{base_path}/{suffix}"
     next_query = query or parsed.query
     return urlunsplit(
         SplitResult(

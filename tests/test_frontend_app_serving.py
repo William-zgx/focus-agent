@@ -53,3 +53,12 @@ def test_build_frontend_dev_server_redirect_url_preserves_path_and_query():
     )
 
     assert target == "http://127.0.0.1:5173/app/c/demo/t/demo?lang=zh"
+
+
+def test_build_frontend_dev_server_redirect_url_keeps_app_root_slash():
+    settings = Settings.from_env()
+    settings.web_app_dev_server_url = "http://127.0.0.1:5173/app/"
+
+    target = build_frontend_dev_server_redirect_url(settings=settings)
+
+    assert target == "http://127.0.0.1:5173/app/"
