@@ -73,6 +73,8 @@ def evaluate_release_health(
     trajectory_stats: Mapping[str, Any] | None = None,
     baseline_trajectory_stats: Mapping[str, Any] | None = None,
     replay_comparisons: Iterable[Mapping[str, Any]] | None = None,
+    alert_report: Mapping[str, Any] | None = None,
+    postgres_migration_report: Mapping[str, Any] | None = None,
     eval_regressions: Iterable[str] | None = None,
     thresholds: ReleaseHealthThresholds | None = None,
 ) -> ReleaseHealthReport:
@@ -94,6 +96,10 @@ def evaluate_release_health(
         signals.append(evaluate_replay_gate(replay_comparisons))
     elif regression_items:
         signals.append(_eval_regression_signal(regression_items))
+    if alert_report is not None:
+        signals.append(evaluate_alert_report(alert_report))
+    if postgres_migration_report is not None:
+        signals.append(evaluate_postgres_migration_report(postgres_migration_report))
 
     return ReleaseHealthReport(signals=tuple(signals))
 
@@ -280,6 +286,93 @@ def evaluate_replay_gate(
         key="eval_replay_regression",
         status=PASS,
         summary="eval replay gate passed",
+        details=details,
+    )
+
+
+def evaluate_alert_report(alert_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+    """Validate an executable alert-rules report collected by the deployment job."""
+    rules = alert_report.get("rules")
+    alerts = alert_report.get("alerts")
+    summary = alert_report.get("summary") if isinstance(alert_report.get("summary"), Mapping) else {}
+    rules_checked = int(_number(summary.get("rules_checked")))
+    if isinstance(rules, list):
+        rules_checked = max(rules_checked, len(rules))
+
+    firing_alerts: list[str] = []
+    for index, alert in enumerate(alerts if isinstance(alerts, list) else []):
+        if not isinstance(alert, Mapping):
+            continue
+        state = str(alert.get("state") or alert.get("status") or "").lower()
+        active = alert.get("active")
+        if state in {"firing", "alerting", "critical", "page"} or active is True:
+            firing_alerts.append(str(alert.get("name") or alert.get("alert") or f"alert-{index + 1}"))
+
+    status = str(alert_report.get("status") or "").lower()
+    explicit_passed = alert_report.get("passed")
+    details = {
+        "firing_alerts": firing_alerts,
+        "rules_checked": rules_checked,
+        "status": status or None,
+    }
+    if rules_checked <= 0:
+        return ReleaseHealthSignal(
+            key="alert_rules_report",
+            status=FAIL,
+            summary="alert rules report has no executable rule coverage",
+            details=details,
+        )
+    if explicit_passed is False or status in {"fail", "failed", "error"} or firing_alerts:
+        return ReleaseHealthSignal(
+            key="alert_rules_report",
+            status=FAIL,
+            summary="alert rules report contains firing or failed alerts",
+            details=details,
+        )
+    return ReleaseHealthSignal(
+        key="alert_rules_report",
+        status=PASS,
+        summary="alert rules report passed",
+        details=details,
+    )
+
+
+def evaluate_postgres_migration_report(postgres_migration_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+    """Validate the machine-readable Postgres migration verification report."""
+    status = str(postgres_migration_report.get("status") or "").lower()
+    explicit_passed = postgres_migration_report.get("passed")
+    migrations = postgres_migration_report.get("migrations")
+    command = postgres_migration_report.get("command") or postgres_migration_report.get("verification_command")
+    errors = postgres_migration_report.get("errors")
+    if not isinstance(errors, list):
+        errors = []
+    migration_count = len(migrations) if isinstance(migrations, list) else int(
+        _number(postgres_migration_report.get("migration_count"))
+    )
+    details = {
+        "command": str(command) if command else "",
+        "errors": [str(error) for error in errors],
+        "migration_count": migration_count,
+        "status": status or None,
+    }
+    if not command and migration_count <= 0:
+        return ReleaseHealthSignal(
+            key="postgres_migration_verification",
+            status=FAIL,
+            summary="postgres migration verification has no report or command evidence",
+            details=details,
+        )
+    if explicit_passed is False or status in {"fail", "failed", "error"} or errors:
+        return ReleaseHealthSignal(
+            key="postgres_migration_verification",
+            status=FAIL,
+            summary="postgres migration verification failed",
+            details=details,
+        )
+    return ReleaseHealthSignal(
+        key="postgres_migration_verification",
+        status=PASS,
+        summary="postgres migration verification passed",
         details=details,
     )
 

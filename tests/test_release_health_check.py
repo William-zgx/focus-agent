@@ -56,6 +56,29 @@ def _passing_replay_path(tmp_path: Path) -> Path:
     return _write_json(tmp_path / "replay.json", [{"case_id": "traj-1", "replay_passed": True}])
 
 
+def _passing_alert_report_path(tmp_path: Path) -> Path:
+    return _write_json(
+        tmp_path / "alert-report.json",
+        {
+            "alerts": [],
+            "rules": [{"name": "runtime-ready", "query": "focus_agent_runtime_ready == 0"}],
+            "status": "passed",
+        },
+    )
+
+
+def _passing_postgres_migration_report_path(tmp_path: Path) -> Path:
+    return _write_json(
+        tmp_path / "postgres-migration.json",
+        {
+            "command": "uv run python -m focus_agent.migrate_local_state --report-path reports/pg.json",
+            "errors": [],
+            "passed": True,
+            "status": "passed",
+        },
+    )
+
+
 def test_release_health_check_self_check_writes_report(tmp_path: Path) -> None:
     report_path = tmp_path / "release-health.json"
 
@@ -462,3 +485,75 @@ def test_release_health_check_production_trajectory_recorder_unavailable_blocks_
     assert exit_code == 1
     assert recorder_signal["status"] == "fail"
     assert recorder_signal["detail"] == "database unavailable"
+
+
+def test_release_health_check_alert_report_blocks_release(tmp_path: Path) -> None:
+    alert_report = _write_json(
+        tmp_path / "alert-firing.json",
+        {
+            "alerts": [{"name": "runtime-ready", "state": "firing"}],
+            "rules": [{"name": "runtime-ready"}],
+            "status": "passed",
+        },
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            "--mode",
+            "production",
+            "--readyz-json",
+            str(_readyz_path(tmp_path)),
+            "--trajectory-stats-json",
+            str(_trajectory_stats_path(tmp_path)),
+            "--replay-comparisons-json",
+            str(_passing_replay_path(tmp_path)),
+            "--eval-report-json",
+            str(_passing_eval_path(tmp_path)),
+            "--alert-report-json",
+            str(alert_report),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    alert_signal = next(signal for signal in report["signals"] if signal["key"] == "alert_rules_report")
+
+    assert exit_code == 1
+    assert alert_signal["status"] == "fail"
+    assert alert_signal["details"]["firing_alerts"] == ["runtime-ready"]
+
+
+def test_release_health_check_postgres_migration_report_blocks_release(tmp_path: Path) -> None:
+    postgres_report = _write_json(
+        tmp_path / "postgres-migration-failed.json",
+        {"command": "uv run python -m focus_agent.migrate_local_state", "errors": ["schema drift"], "status": "failed"},
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            "--mode",
+            "production",
+            "--readyz-json",
+            str(_readyz_path(tmp_path)),
+            "--trajectory-stats-json",
+            str(_trajectory_stats_path(tmp_path)),
+            "--replay-comparisons-json",
+            str(_passing_replay_path(tmp_path)),
+            "--eval-report-json",
+            str(_passing_eval_path(tmp_path)),
+            "--postgres-migration-report-json",
+            str(postgres_report),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    postgres_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "postgres_migration_verification"
+    )
+
+    assert exit_code == 1
+    assert postgres_signal["status"] == "fail"
+    assert postgres_signal["details"]["errors"] == ["schema drift"]

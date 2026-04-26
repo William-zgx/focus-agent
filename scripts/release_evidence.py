@@ -176,6 +176,35 @@ def _sample_eval_report() -> dict[str, Any]:
     }
 
 
+def _sample_alert_report() -> dict[str, Any]:
+    return {
+        "alerts": [],
+        "passed": True,
+        "rules": [
+            {"name": "focus_agent_runtime_ready", "query": "focus_agent_runtime_ready == 0"},
+            {
+                "name": "focus_agent_trajectory_recorder_ready",
+                "query": 'focus_agent_runtime_component_ready{component="trajectory_recorder"} == 0',
+            },
+        ],
+        "status": "passed",
+        "summary": {"rules_checked": 2},
+    }
+
+
+def _sample_postgres_migration_report() -> dict[str, Any]:
+    return {
+        "command": (
+            "uv run python -m focus_agent.migrate_local_state --database-uri "
+            "<postgres-uri> --artifact-scan --report-path reports/release-gate/postgres-migration.json"
+        ),
+        "errors": [],
+        "migrations": [{"name": "schema_migrations", "status": "verified"}],
+        "passed": True,
+        "status": "passed",
+    }
+
+
 def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | EvidenceInput]:
     inputs_dir = pack_dir / "inputs"
     readyz = _write_json(inputs_dir / "readyz.json", _sample_readyz())
@@ -183,7 +212,13 @@ def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | E
     replay_comparisons = _write_json(inputs_dir / "replay-comparisons.json", _sample_replay_comparisons())
     eval_report = _write_json(inputs_dir / "eval-sample.json", _sample_eval_report())
     baseline_eval_report = _write_json(inputs_dir / "baseline-eval-sample.json", _sample_eval_report())
+    alert_report = _write_json(inputs_dir / "alert-report.json", _sample_alert_report())
+    postgres_migration_report = _write_json(
+        inputs_dir / "postgres-migration-report.json",
+        _sample_postgres_migration_report(),
+    )
     return {
+        "alert_report": EvidenceInput("alert_report", alert_report, None, False, "generated"),
         "readyz": EvidenceInput("readyz", readyz, None, True, "generated"),
         "trajectory_stats": EvidenceInput("trajectory_stats", trajectory_stats, None, True, "generated"),
         "replay_comparisons": EvidenceInput("replay_comparisons", replay_comparisons, None, True, "generated"),
@@ -191,6 +226,13 @@ def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | E
         "baseline_eval_reports": [
             EvidenceInput("baseline_eval_report", baseline_eval_report, None, True, "generated")
         ],
+        "postgres_migration_report": EvidenceInput(
+            "postgres_migration_report",
+            postgres_migration_report,
+            None,
+            False,
+            "generated",
+        ),
     }
 
 
@@ -201,6 +243,8 @@ def _prepare_provided_inputs(
     readyz_json: str | Path | None,
     trajectory_stats_json: str | Path | None,
     replay_comparisons_json: str | Path | None,
+    alert_report_json: str | Path | None,
+    postgres_migration_report_json: str | Path | None,
     eval_report_json: Sequence[str | Path],
     baseline_eval_report_json: Sequence[str | Path],
 ) -> dict[str, list[EvidenceInput] | EvidenceInput]:
@@ -214,6 +258,16 @@ def _prepare_provided_inputs(
     replay_path, replay_source = _copy_or_reference_json(
         replay_comparisons_json,
         inputs_dir / "replay-comparisons.json",
+        root=root,
+    )
+    alert_path, alert_source = _copy_or_reference_json(
+        alert_report_json,
+        inputs_dir / "alert-report.json",
+        root=root,
+    )
+    postgres_migration_path, postgres_migration_source = _copy_or_reference_json(
+        postgres_migration_report_json,
+        inputs_dir / "postgres-migration-report.json",
         root=root,
     )
 
@@ -232,11 +286,19 @@ def _prepare_provided_inputs(
         baseline_eval_reports.append(EvidenceInput("baseline_eval_report", path, source_path, True, "input"))
 
     return {
+        "alert_report": EvidenceInput("alert_report", alert_path, alert_source, False, "input"),
         "readyz": EvidenceInput("readyz", readyz_path, readyz_source, True, "input"),
         "trajectory_stats": EvidenceInput("trajectory_stats", stats_path, stats_source, True, "input"),
         "replay_comparisons": EvidenceInput("replay_comparisons", replay_path, replay_source, True, "input"),
         "eval_reports": eval_reports,
         "baseline_eval_reports": baseline_eval_reports,
+        "postgres_migration_report": EvidenceInput(
+            "postgres_migration_report",
+            postgres_migration_path,
+            postgres_migration_source,
+            False,
+            "input",
+        ),
     }
 
 
@@ -270,12 +332,18 @@ def _release_health_command(
     readyz = artifacts["readyz"]
     trajectory_stats = artifacts["trajectory_stats"]
     replay_comparisons = artifacts["replay_comparisons"]
+    alert_report = artifacts.get("alert_report")
+    postgres_migration_report = artifacts.get("postgres_migration_report")
     if isinstance(readyz, EvidenceInput) and readyz.path is not None:
         command.extend(("--readyz-json", str(readyz.path)))
     if isinstance(trajectory_stats, EvidenceInput) and trajectory_stats.path is not None:
         command.extend(("--trajectory-stats-json", str(trajectory_stats.path)))
     if isinstance(replay_comparisons, EvidenceInput) and replay_comparisons.path is not None:
         command.extend(("--replay-comparisons-json", str(replay_comparisons.path)))
+    if isinstance(alert_report, EvidenceInput) and alert_report.path is not None:
+        command.extend(("--alert-report-json", str(alert_report.path)))
+    if isinstance(postgres_migration_report, EvidenceInput) and postgres_migration_report.path is not None:
+        command.extend(("--postgres-migration-report-json", str(postgres_migration_report.path)))
     eval_reports = artifacts["eval_reports"]
     baseline_eval_reports = artifacts["baseline_eval_reports"]
     for artifact in eval_reports if isinstance(eval_reports, list) else []:
@@ -529,6 +597,37 @@ def _storage_metadata(
     }
 
 
+def _verify_storage_metadata(*, storage: dict[str, Any]) -> dict[str, Any]:
+    if not storage.get("enabled"):
+        return {
+            "checked": False,
+            "manifest_matches": False,
+            "status": "disabled",
+            "summary_matches": False,
+        }
+
+    manifest_json = Path(str(storage["manifest_json"]))
+    summary_json = Path(str(storage["summary_json"]))
+    stored_manifest_json = Path(str(storage["stored_manifest_json"]))
+    stored_summary_json = Path(str(storage["stored_summary_json"]))
+    manifest_matches = (
+        manifest_json.exists()
+        and stored_manifest_json.exists()
+        and _sha256(manifest_json) == _sha256(stored_manifest_json)
+    )
+    summary_matches = (
+        summary_json.exists()
+        and stored_summary_json.exists()
+        and _sha256(summary_json) == _sha256(stored_summary_json)
+    )
+    return {
+        "checked": True,
+        "manifest_matches": manifest_matches,
+        "status": "verified" if manifest_matches and summary_matches else "failed",
+        "summary_matches": summary_matches,
+    }
+
+
 def _copy_pack_to_storage(*, pack_dir: Path, storage: dict[str, Any]) -> None:
     if not storage.get("enabled"):
         return
@@ -546,31 +645,76 @@ def _copy_pack_to_storage(*, pack_dir: Path, storage: dict[str, Any]) -> None:
     shutil.copytree(pack_dir, stored_pack_dir)
 
 
+def _sync_storage_manifest_files(*, storage: dict[str, Any]) -> None:
+    if not storage.get("enabled"):
+        return
+    shutil.copy2(Path(str(storage["manifest_json"])), Path(str(storage["stored_manifest_json"])))
+    shutil.copy2(Path(str(storage["summary_json"])), Path(str(storage["stored_summary_json"])))
+
+
+def _approval_metadata(
+    *,
+    approval_id: str | None,
+    approval_status: str | None,
+    approval_url: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    status = approval_status or ("approved" if dry_run else "missing")
+    approved = status == "approved" and bool(approval_id or dry_run)
+    return {
+        "approval_id": approval_id,
+        "approval_url": approval_url,
+        "approved": approved,
+        "required": not dry_run,
+        "status": status,
+    }
+
+
 def _production_validation(
     *,
+    approval: dict[str, Any],
     artifacts: dict[str, Any],
     missing_required_artifacts: Sequence[str],
     release_health: dict[str, Any],
+    storage: dict[str, Any],
 ) -> dict[str, Any]:
     report = artifacts.get("release_health_report") if isinstance(artifacts.get("release_health_report"), dict) else {}
     report_exists = bool(report.get("exists")) if isinstance(report, dict) else False
     report_status = str(release_health.get("status") or "unknown")
     report_passed = bool(release_health.get("passed"))
+    storage_verification = storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    storage_ok = (
+        not storage.get("enabled")
+        or not storage_verification
+        or storage_verification.get("status") == "verified"
+    )
+    approval_ok = bool(approval.get("approved")) if approval.get("required") else True
     return {
+        "approval_approved": approval_ok,
         "missing_required_artifacts": list(missing_required_artifacts),
-        "passed": not missing_required_artifacts and report_exists and report_passed and report_status == "passed",
+        "passed": (
+            not missing_required_artifacts
+            and report_exists
+            and report_passed
+            and report_status == "passed"
+            and storage_ok
+            and approval_ok
+        ),
         "release_health_passed": report_passed,
         "release_health_report_exists": report_exists,
         "release_health_status": report_status,
         "required_artifacts": list(REQUIRED_PRODUCTION_ARTIFACT_KEYS),
+        "storage_verified": storage_ok,
     }
 
 
 def _failure_summary(
     *,
+    approval: dict[str, Any],
     commands: Sequence[dict[str, Any]],
     missing_required_artifacts: Sequence[str],
     release_health: dict[str, Any],
+    storage: dict[str, Any],
 ) -> dict[str, Any]:
     failed_commands = [str(command["label"]) for command in commands if command.get("status") == "failed"]
     failed_signals = [
@@ -588,6 +732,11 @@ def _failure_summary(
         reasons.append({"detail": failed_commands, "kind": "failed_commands"})
     if missing_required_artifacts:
         reasons.append({"detail": list(missing_required_artifacts), "kind": "missing_required_artifacts"})
+    if approval.get("required") and not approval.get("approved"):
+        reasons.append({"detail": approval, "kind": "release_approval_missing"})
+    storage_verification = storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    if storage.get("enabled") and storage_verification.get("status") != "verified":
+        reasons.append({"detail": storage_verification, "kind": "artifact_storage_verification_failed"})
     if not bool(release_health.get("passed")):
         reasons.append(
             {
@@ -612,6 +761,7 @@ def _failure_summary(
 
 def _summary_payload(
     *,
+    approval: dict[str, Any],
     artifact_summary: dict[str, Any],
     failure_summary: dict[str, Any],
     manifest_json: Path,
@@ -623,6 +773,7 @@ def _summary_payload(
 ) -> dict[str, Any]:
     return {
         "artifact_summary": artifact_summary,
+        "approval": approval,
         "failure_summary": failure_summary,
         "manifest_json": str(manifest_json),
         "release_health": {
@@ -638,6 +789,7 @@ def _summary_payload(
             "enabled": bool(storage.get("enabled")),
             "status": storage.get("status"),
             "stored_pack_dir": storage.get("stored_pack_dir"),
+            "verification": storage.get("verification"),
         },
         "summary": summary,
     }
@@ -651,6 +803,8 @@ def _manifest_artifacts(
     readyz = prepared_inputs["readyz"]
     trajectory_stats = prepared_inputs["trajectory_stats"]
     replay_comparisons = prepared_inputs["replay_comparisons"]
+    alert_report = prepared_inputs.get("alert_report")
+    postgres_migration_report = prepared_inputs.get("postgres_migration_report")
     eval_reports = prepared_inputs["eval_reports"]
     baseline_eval_reports = prepared_inputs["baseline_eval_reports"]
     if not isinstance(readyz, EvidenceInput):
@@ -664,6 +818,12 @@ def _manifest_artifacts(
             _artifact_record(artifact) for artifact in baseline_eval_reports if isinstance(artifact, EvidenceInput)
         ],
         "eval_reports": [_artifact_record(artifact) for artifact in eval_reports if isinstance(artifact, EvidenceInput)],
+        "alert_report": _artifact_record(alert_report)
+        if isinstance(alert_report, EvidenceInput)
+        else _artifact_record(EvidenceInput("alert_report", None, None, False, "input")),
+        "postgres_migration_report": _artifact_record(postgres_migration_report)
+        if isinstance(postgres_migration_report, EvidenceInput)
+        else _artifact_record(EvidenceInput("postgres_migration_report", None, None, False, "input")),
         "readyz": _artifact_record(readyz),
         "release_health_report": _artifact_record(
             EvidenceInput("release_health_report", release_health_report_json, None, True, "generated")
@@ -683,10 +843,15 @@ def run_release_evidence(
     readyz_json: str | Path | None = None,
     trajectory_stats_json: str | Path | None = None,
     replay_comparisons_json: str | Path | None = None,
+    alert_report_json: str | Path | None = None,
+    postgres_migration_report_json: str | Path | None = None,
     eval_report_json: Sequence[str | Path] = (),
     baseline_eval_report_json: Sequence[str | Path] = (),
     release_health_report_json: str | Path | None = None,
     storage_dir: str | Path | None = None,
+    approval_id: str | None = None,
+    approval_status: str | None = None,
+    approval_url: str | None = None,
     root: Path | None = None,
     runner: Runner | None = None,
 ) -> dict[str, Any]:
@@ -719,6 +884,8 @@ def run_release_evidence(
             readyz_json=readyz_json,
             trajectory_stats_json=trajectory_stats_json,
             replay_comparisons_json=replay_comparisons_json,
+            alert_report_json=alert_report_json,
+            postgres_migration_report_json=postgres_migration_report_json,
             eval_report_json=eval_report_json,
             baseline_eval_report_json=baseline_eval_report_json,
         )
@@ -735,22 +902,16 @@ def run_release_evidence(
     release_health = _load_release_health_summary(report_json)
     failed_commands = [command_record["label"] for command_record in commands if command_record["status"] == "failed"]
     missing_required_artifacts = _missing_required_artifacts(artifacts)
-    production_validation = _production_validation(
-        artifacts=artifacts,
-        missing_required_artifacts=missing_required_artifacts,
-        release_health=release_health,
-    )
-    failed = (
-        bool(failed_commands)
-        or not bool(release_health["passed"])
-        or bool(missing_required_artifacts)
-        or not bool(production_validation["passed"])
-    )
-    status = "failed" if failed else "passed"
     generated_at = datetime.now(UTC)
     retention = _retention_metadata(generated_at=generated_at, retention_days=retention_days)
     manifest_json = pack_dir / "manifest.json"
     summary_json = pack_dir / "summary.json"
+    approval = _approval_metadata(
+        approval_id=approval_id,
+        approval_status=approval_status,
+        approval_url=approval_url,
+        dry_run=dry_run,
+    )
     storage = _storage_metadata(
         manifest_json=manifest_json,
         pack_dir=pack_dir,
@@ -759,11 +920,27 @@ def run_release_evidence(
         storage_dir=storage_dir,
         summary_json=summary_json,
     )
+    production_validation = _production_validation(
+        approval=approval,
+        artifacts=artifacts,
+        missing_required_artifacts=missing_required_artifacts,
+        release_health=release_health,
+        storage=storage,
+    )
+    failed = (
+        bool(failed_commands)
+        or not bool(release_health["passed"])
+        or bool(missing_required_artifacts)
+        or not bool(production_validation["passed"])
+    )
+    status = "failed" if failed else "passed"
     artifact_summary = _artifact_summary(artifacts)
     failure_summary = _failure_summary(
+        approval=approval,
         commands=commands,
         missing_required_artifacts=missing_required_artifacts,
         release_health=release_health,
+        storage=storage,
     )
     summary = {
         "artifact_count": _artifact_count(artifacts),
@@ -776,6 +953,7 @@ def run_release_evidence(
         "summary_json": str(summary_json),
     }
     manifest = {
+        "approval": approval,
         "artifact_summary": artifact_summary,
         "artifacts": artifacts,
         "commands": commands,
@@ -800,6 +978,7 @@ def run_release_evidence(
     _write_json(
         summary_json,
         _summary_payload(
+            approval=approval,
             artifact_summary=artifact_summary,
             failure_summary=failure_summary,
             manifest_json=manifest_json,
@@ -811,6 +990,46 @@ def run_release_evidence(
         ),
     )
     _copy_pack_to_storage(pack_dir=pack_dir, storage=storage)
+    storage["verification"] = _verify_storage_metadata(storage=storage)
+    manifest["storage"] = storage
+    manifest["production_validation"] = _production_validation(
+        approval=approval,
+        artifacts=artifacts,
+        missing_required_artifacts=missing_required_artifacts,
+        release_health=release_health,
+        storage=storage,
+    )
+    final_failed = (
+        bool(failed_commands)
+        or not bool(release_health["passed"])
+        or bool(missing_required_artifacts)
+        or not bool(manifest["production_validation"]["passed"])
+    )
+    summary["status"] = "failed" if final_failed else "passed"
+    manifest["summary"] = summary
+    manifest["failure_summary"] = _failure_summary(
+        approval=approval,
+        commands=commands,
+        missing_required_artifacts=missing_required_artifacts,
+        release_health=release_health,
+        storage=storage,
+    )
+    _write_json(manifest_json, manifest)
+    _write_json(
+        summary_json,
+        _summary_payload(
+            approval=approval,
+            artifact_summary=artifact_summary,
+            failure_summary=manifest["failure_summary"],
+            manifest_json=manifest_json,
+            release_health=release_health,
+            release_id=resolved_release_id,
+            retention=retention,
+            storage=storage,
+            summary=summary,
+        ),
+    )
+    _sync_storage_manifest_files(storage=storage)
     manifest["manifest_json"] = str(manifest_json)
     return manifest
 
@@ -834,6 +1053,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--readyz-json", help="JSON payload from /readyz.")
     parser.add_argument("--trajectory-stats-json", help="Trajectory stats JSON payload.")
     parser.add_argument("--replay-comparisons-json", help="Replay comparison JSON payload.")
+    parser.add_argument("--alert-report-json", help="Executable alert rules report JSON.")
+    parser.add_argument("--postgres-migration-report-json", help="Postgres migration verification report JSON.")
     parser.add_argument(
         "--eval-report-json",
         action="append",
@@ -860,6 +1081,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--storage-dir",
         help="Optional artifact storage directory. The evidence pack is copied to <storage-dir>/<release-id>.",
     )
+    parser.add_argument("--approval-id", help="Release approval identifier from the deployment platform.")
+    parser.add_argument(
+        "--approval-status",
+        choices=("approved", "pending", "rejected", "missing"),
+        help="Release approval status. Production evidence passes only when this is approved.",
+    )
+    parser.add_argument("--approval-url", help="Optional URL for the approval record.")
     return parser.parse_args(argv)
 
 
@@ -867,6 +1095,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         manifest = run_release_evidence(
+            alert_report_json=args.alert_report_json,
+            approval_id=args.approval_id,
+            approval_status=args.approval_status,
+            approval_url=args.approval_url,
             baseline_eval_report_json=args.baseline_eval_report_json,
             dry_run=bool(args.dry_run),
             eval_report_json=args.eval_report_json,
@@ -877,6 +1109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             release_id=args.release_id,
             retention_days=args.retention_days,
             replay_comparisons_json=args.replay_comparisons_json,
+            postgres_migration_report_json=args.postgres_migration_report_json,
             storage_dir=args.storage_dir,
             trajectory_stats_json=args.trajectory_stats_json,
         )

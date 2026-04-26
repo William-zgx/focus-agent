@@ -15,7 +15,9 @@ from focus_agent.security.ownership import (
     OwnershipAuditExportSink,
     allow_ownership,
     assert_owner,
+    build_ownership_audit_report,
     deny_ownership,
+    export_ownership_audit_dashboard,
     export_ownership_audit_events,
 )
 from focus_agent.security.tokens import Principal, create_access_token
@@ -282,6 +284,56 @@ def test_ownership_audit_export_formats_allow_and_deny_events() -> None:
     assert exported[1]["runtime"]["decision"] == "deny"
     assert exported[1]["runtime"]["user_id"] == "intruder-1"
     assert exported[1]["runtime"]["request_id"] == "req-deny"
+
+
+def test_ownership_audit_dashboard_aggregates_deny_reasons_and_trend() -> None:
+    events = OwnershipAuditExportSink()
+
+    allow_ownership(
+        events,
+        principal=Principal(user_id="owner-1"),
+        resource_type="thread",
+        resource_id="root-1",
+        action="read",
+        request_id="req-allow",
+    )
+    for reason, request_id, action in (
+        ("owner_mismatch", "req-deny-1", "read"),
+        ("branch_owner_mismatch", "req-deny-2", "merge"),
+        ("owner_mismatch", "req-deny-3", "write"),
+    ):
+        with pytest.raises(PermissionError):
+            deny_ownership(
+                events,
+                principal=Principal(user_id="intruder-1"),
+                resource_type="thread",
+                resource_id="root-1",
+                action=action,
+                reason=reason,
+                request_id=request_id,
+            )
+
+    report = build_ownership_audit_report(events)
+    exported = export_ownership_audit_dashboard(events)
+
+    assert report == events.report()
+    assert exported == events.export_report()
+    assert report["total_events"] == 4
+    assert report["allow_count"] == 1
+    assert report["deny_count"] == 3
+    assert report["deny_rate"] == 0.75
+    assert report["by_decision"] == {"allow": 1, "deny": 3}
+    assert report["deny_reasons"] == {"branch_owner_mismatch": 1, "owner_mismatch": 2}
+    assert report["deny_by_action"] == {"merge": 1, "read": 1, "write": 1}
+    assert report["deny_by_principal"] == {"intruder-1": 3}
+    assert [item["cumulative_denies"] for item in report["deny_trend"]] == [1, 2, 3]
+    assert [item["request_id"] for item in report["deny_trend"]] == [
+        "req-deny-1",
+        "req-deny-2",
+        "req-deny-3",
+    ]
+    assert exported["tool"] == "ownership.audit.report"
+    assert exported["runtime"]["deny_count"] == 3
 
 
 def test_ownership_audit_uses_user_id_not_tenant_or_scopes() -> None:

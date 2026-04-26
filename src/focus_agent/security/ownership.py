@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import MutableSequence
+from collections import Counter
+from collections.abc import Iterable, MutableSequence
 from dataclasses import dataclass
 from typing import Any, Literal, NoReturn, Protocol
 
@@ -32,11 +33,18 @@ class OwnershipAuditEvent:
 
 OwnershipAuditTrail = list[OwnershipAuditEvent]
 OwnershipAuditExport = dict[str, Any]
+OwnershipAuditReport = dict[str, Any]
 
 
 class OwnershipAuditExportSink(list[OwnershipAuditEvent]):
     def export(self) -> list[OwnershipAuditExport]:
         return export_ownership_audit_events(self)
+
+    def report(self) -> OwnershipAuditReport:
+        return build_ownership_audit_report(self)
+
+    def export_report(self) -> OwnershipAuditExport:
+        return ownership_audit_report_to_export(build_ownership_audit_report(self))
 
 
 def _principal_user_id(principal: PrincipalRef) -> str:
@@ -196,14 +204,84 @@ def export_ownership_audit_events(
     return [ownership_audit_event_to_export(event) for event in events]
 
 
+def build_ownership_audit_report(
+    events: MutableSequence[OwnershipAuditEvent],
+) -> OwnershipAuditReport:
+    items = list(events)
+    allow_count = sum(1 for event in items if event.decision == "allow")
+    deny_events = [event for event in items if event.decision == "deny"]
+    total = len(items)
+    return {
+        "event_type": "ownership.audit.report",
+        "total_events": total,
+        "allow_count": allow_count,
+        "deny_count": len(deny_events),
+        "deny_rate": (len(deny_events) / total) if total else 0.0,
+        "by_decision": _counter_dict(event.decision for event in items),
+        "deny_reasons": _counter_dict(event.reason for event in deny_events),
+        "deny_by_resource_type": _counter_dict(event.resource_type for event in deny_events),
+        "deny_by_action": _counter_dict(event.action for event in deny_events),
+        "deny_by_principal": _counter_dict(event.user_id for event in deny_events),
+        "deny_trend": _deny_trend(deny_events),
+    }
+
+
+def ownership_audit_report_to_export(report: OwnershipAuditReport) -> OwnershipAuditExport:
+    deny_count = int(report.get("deny_count") or 0)
+    total = int(report.get("total_events") or 0)
+    return {
+        "tool": "ownership.audit.report",
+        "args": {},
+        "observation": f"ownership audit report: {deny_count} deny event(s) across {total} audit event(s)",
+        "duration_ms": 0.0,
+        "error": None,
+        "cache_hit": False,
+        "fallback_used": False,
+        "fallback_group": None,
+        "parallel_batch_size": None,
+        "runtime": report,
+        "observation_truncated": False,
+    }
+
+
+def export_ownership_audit_dashboard(
+    events: MutableSequence[OwnershipAuditEvent],
+) -> OwnershipAuditExport:
+    return ownership_audit_report_to_export(build_ownership_audit_report(events))
+
+
+def _counter_dict(values: Iterable[Any]) -> dict[str, int]:
+    return dict(sorted(Counter(str(value) for value in values).items()))
+
+
+def _deny_trend(events: list[OwnershipAuditEvent]) -> list[dict[str, Any]]:
+    trend: list[dict[str, Any]] = []
+    for index, event in enumerate(events, start=1):
+        trend.append(
+            {
+                "index": index,
+                "cumulative_denies": index,
+                "reason": event.reason,
+                "resource_type": event.resource_type,
+                "action": event.action,
+                "request_id": event.request_id,
+            }
+        )
+    return trend
+
+
 __all__ = [
     "OwnershipAuditEvent",
     "OwnershipAuditExport",
     "OwnershipAuditExportSink",
+    "OwnershipAuditReport",
     "OwnershipAuditTrail",
     "allow_ownership",
     "assert_owner",
+    "build_ownership_audit_report",
     "deny_ownership",
+    "export_ownership_audit_dashboard",
     "export_ownership_audit_events",
     "ownership_audit_event_to_export",
+    "ownership_audit_report_to_export",
 ]

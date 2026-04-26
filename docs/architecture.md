@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-04-24
+更新时间：2026-04-26
 
 本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
@@ -23,6 +23,7 @@ Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式
 | Long-context governance | 对话、记忆、工具观察和 artifact 需要预算与引用 | context policy、Context Engineering |
 | Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
 | Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
+| Release confidence | 发布前把 readiness、trajectory、eval、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、release evidence |
 | Local-first development | 本地命令可以自动托管 repo-local PostgreSQL | `scripts/serve-*.sh`、`make serve-dev` |
 
 ## 2. 总体拓扑
@@ -33,7 +34,8 @@ Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式
 - Frontend：React 19 + Vite + TanStack Router + TanStack Query + Zustand
 - SDK：`frontend-sdk` typed browser / Node client
 - Persistence：Postgres primary persistence；local fallback persistence；filesystem artifact bodies
-- Observability：request id、readiness、metrics、trajectory、replay、promote
+- Observability：request id、readiness、metrics、trajectory、replay、promote、release-health
+- Release evidence：release gate reports、production evidence pack、approval、artifact storage verification
 
 ```mermaid
 flowchart LR

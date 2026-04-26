@@ -67,21 +67,34 @@ Recommended validation ladder:
 make ci
 ```
 
-2. If the frontend SDK changed:
+2. If backend routes, stream events, or frontend SDK usage changed:
+
+```bash
+make contract-check
+uv run pytest tests/test_contract_checks.py
+```
+
+`make contract-check` compares the FastAPI route snapshot, frontend SDK public
+surface, SDK package barrel exports, and the Web App's `@focus-agent/web-sdk`
+imports under `apps/web/src`. If a route or SDK/E2E contract drift is
+intentional, update snapshots with `uv run python scripts/check_contracts.py
+--update` and include the snapshot diff in review.
+
+3. If the frontend SDK implementation changed:
 
 ```bash
 make sdk-check
 make sdk-build
 ```
 
-3. If the Web App changed:
+4. If the Web App changed:
 
 ```bash
 make web-check
 make web-build
 ```
 
-4. If browser-level chat, branch tree, or merge-review flows changed:
+5. If browser-level chat, branch tree, or merge-review flows changed:
 
 ```bash
 make ui-smoke
@@ -89,7 +102,7 @@ make ui-smoke
 uv run python scripts/ui_smoke_test.py
 ```
 
-5. If observability pages or seeded trajectory browser flows changed:
+6. If observability pages or seeded trajectory browser flows changed:
 
 ```bash
 make ui-smoke-observability
@@ -98,13 +111,13 @@ uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
 ```
 
-6. If trajectory observability contracts changed:
+7. If trajectory observability contracts changed:
 
 ```bash
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-7. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+8. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

@@ -59,6 +59,21 @@
 | P15 Candidate Promotion Review | 已完成首轮落地 | `scripts/memory_context_eval.py` 增加 candidate review / promotion CLI，只有显式 `--candidate-approve-id` 或 `--candidate-approve-all` 才输出 promoted JSONL，且禁止直接写入 golden dataset |
 | P16 Ownership Audit Export | 已完成首轮落地 | `focus_agent.security.ownership` 增加 trajectory / observability 兼容导出结构与 `OwnershipAuditExportSink`，repository 可导出 allow / deny ownership audit event |
 
+2026-04-26 追加更新：P17-P26 多 Agent 协同开发已继续落地；本轮目标从“可操作闭环”推进到“真实部署接入、长期回归报表、审计报表、执行链硬化与协议漂移防线”。
+
+| 范围 | 状态 | 已完成内容 |
+|---|---|---|
+| P17 Deployment Platform Hook | 已完成首轮落地 | release evidence manifest 追加 artifact storage、release approval、retention 与存储校验字段；production evidence 缺 approved approval 会 fail closed |
+| P18 Memory Regression Dashboard | 已完成首轮落地 | `scripts/memory_context_eval.py` 增加 candidate / reviewed / promoted / golden 趋势报告、promotion history 与污染样本告警 |
+| P19 Ownership Audit Dashboard | 已完成首轮落地 | ownership audit export 增加 allow / deny 聚合、deny reason、resource/action/principal 维度统计与 deny trend |
+| P20 Postgres Ops Verification | 已完成首轮落地 | release-health 支持 Postgres migration verification report，缺证据、失败状态或 errors 会阻断发布健康检查 |
+| P21 Observability Alert Rules | 已完成首轮落地 | release-health 支持 executable alert report，缺 rule coverage、firing alerts 或 failed status 会阻断发布健康检查 |
+| P22 Agent Governance Quality | 已完成首轮落地 | 补充真实子任务质量、成本画像、critic gate 与 review queue 的 observe-first 契约测试和文档 |
+| P23 Context Quality | 已完成首轮落地 | Memory / Context eval 增加 compaction semantic recall / precision / grounding / quality / drift 指标 |
+| P24 Tool Runtime Hardening | 已完成首轮落地 | Tool Runtime 增加参数 validator 失败短路、取消/超时不走 fallback、side-effect tool 串行执行与 runtime metadata |
+| P25 Autonomy Observe-First | 已完成首轮落地 | 技能自选、分支建议与高风险 workflow 默认只输出建议和证据，不自动执行高风险动作 |
+| P26 SDK / E2E Drift Guard | 已完成首轮落地 | contract check 增加 frontend SDK barrel exports 与 Web App `@focus-agent/web-sdk` 实际导入面快照，避免 SDK/E2E 漂移 |
+
 ## 仓库入口与整体架构
 
 从已读取的根目录文件和路径分布看，仓库大致由“后端应用 + 前端应用 + 前端 SDK + 测试 + 文档”构成。`pyproject.toml` 定义了 Python 运行时与核心依赖；`src/focus_agent` 是后端主代码；`apps/web` 是 React Web App；`frontend-sdk` 是对后端 REST/SSE 协议的前端封装；`tests` 中能看到图编排、默认工具、记忆流水线、前端脚手架与治理能力的测试文件；`docs/architecture.md` 则提供了仓库内架构说明文档。fileciteturn17file0L1-L1 fileciteturn42file0L1-L1 fileciteturn45file0L1-L1 fileciteturn35file8L1-L1 fileciteturn35file6L1-L1 fileciteturn37file4L1-L1 fileciteturn41file2L1-L1 fileciteturn41file3L1-L1 fileciteturn16file0L1-L1

@@ -18,6 +18,8 @@ SDK_SNAPSHOT_PATH = REPO_ROOT / "tests" / "contracts" / "frontend_sdk.json"
 SDK_CLIENT_PATH = REPO_ROOT / "frontend-sdk" / "src" / "client.ts"
 SDK_TYPES_PATH = REPO_ROOT / "frontend-sdk" / "src" / "types.ts"
 SDK_REDUCERS_PATH = REPO_ROOT / "frontend-sdk" / "src" / "reducers.ts"
+SDK_INDEX_PATH = REPO_ROOT / "frontend-sdk" / "src" / "index.ts"
+WEB_SRC_PATH = REPO_ROOT / "apps" / "web" / "src"
 
 
 def _json_dumps(payload: Any) -> str:
@@ -275,10 +277,44 @@ def _public_method_signatures(client_body: str) -> dict[str, str]:
     return dict(sorted(signatures.items()))
 
 
+def _sdk_package_exports(index_source: str) -> list[str]:
+    return sorted(set(re.findall(r'export\s+\*\s+from\s+"([^"]+)"', index_source)))
+
+
+def _scan_web_sdk_imports(root: Path = WEB_SRC_PATH) -> dict[str, list[str]]:
+    imports: dict[str, list[str]] = {}
+    if not root.exists():
+        return imports
+    import_pattern = re.compile(
+        r"import\s+(?:type\s+)?\{(?P<body>.*?)\}\s+from\s+[\"']@focus-agent/web-sdk[\"']",
+        flags=re.DOTALL,
+    )
+    for path in sorted(root.rglob("*")):
+        if path.suffix not in {".ts", ".tsx"}:
+            continue
+        source = path.read_text(encoding="utf-8")
+        imported_names: set[str] = set()
+        for match in import_pattern.finditer(source):
+            for raw_name in match.group("body").split(","):
+                name = raw_name.strip()
+                if not name:
+                    continue
+                if name.startswith("type "):
+                    name = name.removeprefix("type ").strip()
+                if " as " in name:
+                    name = name.split(" as ", 1)[0].strip()
+                if name:
+                    imported_names.add(name)
+        if imported_names:
+            imports[str(path.relative_to(REPO_ROOT))] = sorted(imported_names)
+    return imports
+
+
 def build_sdk_contract() -> dict[str, Any]:
     client_source = SDK_CLIENT_PATH.read_text(encoding="utf-8")
     types_source = SDK_TYPES_PATH.read_text(encoding="utf-8")
     reducers_source = SDK_REDUCERS_PATH.read_text(encoding="utf-8")
+    index_source = SDK_INDEX_PATH.read_text(encoding="utf-8")
     client_body = _class_body(client_source, "FocusAgentClient")
     method_signatures = _public_method_signatures(client_body)
     type_declarations = _scan_type_exports(types_source) | _scan_braced_exports(
@@ -294,6 +330,8 @@ def build_sdk_contract() -> dict[str, Any]:
         "exported_type_declarations": dict(sorted(type_declarations.items())),
         "stream_event_names": _event_names(types_source),
         "reducer_event_cases": reducer_events,
+        "package_exports": _sdk_package_exports(index_source),
+        "web_sdk_imports": _scan_web_sdk_imports(),
     }
 
 
@@ -320,6 +358,8 @@ def compare_sdk_contract(expected: dict[str, Any], current: dict[str, Any]) -> l
         "exported_type_declarations",
         "stream_event_names",
         "reducer_event_cases",
+        "package_exports",
+        "web_sdk_imports",
     ):
         if expected.get(key) != current.get(key):
             failures.append(f"SDK contract changed: {key}")

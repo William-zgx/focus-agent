@@ -18,6 +18,7 @@ from typing import Any, Sequence
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_quality.jsonl"
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
+DEFAULT_TREND_REPORT_JSON = Path("reports/release-gate/memory-context-trend.json")
 DEFAULT_CANDIDATE_ID_PREFIX = "mc_candidate"
 _PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok"}
 _SOURCE_TYPES = {"auto", "trajectory", "replay", "memory-context"}
@@ -120,6 +121,38 @@ class CandidatePromotionReviewResult:
         if promoted_dataset is not None:
             payload["promoted_dataset"] = promoted_dataset
         return payload
+
+
+@dataclass(frozen=True, slots=True)
+class TrendStageSummary:
+    name: str
+    source_paths: list[str]
+    total: int
+    passed: int
+    failed: int
+    task_success: float
+    pollution_rate: float
+    context_compaction_semantic_quality: float
+    context_compaction_semantic_drift: float
+    failed_case_ids: list[str]
+    pollution_case_ids: list[str]
+    review_status_counts: dict[str, int]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.name,
+            "source_paths": list(self.source_paths),
+            "total": self.total,
+            "passed": self.passed,
+            "failed": self.failed,
+            "task_success": self.task_success,
+            "pollution_rate": self.pollution_rate,
+            "context_compaction_semantic_quality": self.context_compaction_semantic_quality,
+            "context_compaction_semantic_drift": self.context_compaction_semantic_drift,
+            "failed_case_ids": list(self.failed_case_ids),
+            "pollution_case_ids": list(self.pollution_case_ids),
+            "review_status_counts": dict(self.review_status_counts),
+        }
 
 
 def load_dataset(path: str | Path) -> list[dict[str, Any]]:
@@ -347,6 +380,8 @@ def evaluate_case(case: dict[str, Any]) -> ProbeResult:
         failures.append(f"answer missing markers: {missing_answer!r}")
 
     recall = len(recalled_facts) / len(required_facts) if required_facts else 1.0
+    context_grounding = 0.0 if missing_context or missing_artifacts else 1.0
+    semantic_precision = 0.0 if polluted or stale_context else 1.0
     metrics = {
         "fact_fidelity": 0.0 if polluted else 1.0,
         "key_fact_recall": round(recall, 4),
@@ -355,6 +390,22 @@ def evaluate_case(case: dict[str, Any]) -> ProbeResult:
         "compaction_answerable": 0.0 if missing_answer else 1.0,
         "artifact_refs_present": 0.0 if missing_artifacts else 1.0,
     }
+    if _is_compaction_case(case_id=case_id, tags=tags, context=context):
+        semantic_answerability = 0.0 if missing_answer or missing_facts else 1.0
+        semantic_quality = (
+            recall + semantic_precision + context_grounding + semantic_answerability
+        ) / 4
+        metrics.update(
+            {
+                "context_compaction_semantic_recall": round(recall, 4),
+                "context_compaction_semantic_precision": round(semantic_precision, 4),
+                "context_compaction_semantic_grounding": round(context_grounding, 4),
+                "context_compaction_semantic_quality": round(semantic_quality, 4),
+                "context_compaction_semantic_drift": 1.0
+                if missing_facts or missing_context or polluted or stale_context
+                else 0.0,
+            }
+        )
     return ProbeResult(
         case_id=case_id,
         passed=not failures,
@@ -376,14 +427,14 @@ def build_summary(results: Sequence[ProbeResult]) -> dict[str, Any]:
         "conflict_memory_marked",
         "compaction_answerable",
         "artifact_refs_present",
+        "context_compaction_semantic_recall",
+        "context_compaction_semantic_precision",
+        "context_compaction_semantic_grounding",
+        "context_compaction_semantic_quality",
+        "context_compaction_semantic_drift",
     )
     averages = {
-        name: round(
-            sum(float(result.metrics.get(name, 0.0)) for result in results) / total,
-            4,
-        )
-        if total
-        else 0.0
+        name: _average_metric(results, name)
         for name in metric_names
     }
     per_tag_success: dict[str, float] = {}
@@ -403,6 +454,75 @@ def build_summary(results: Sequence[ProbeResult]) -> dict[str, Any]:
         "per_tag_success": per_tag_success,
         "failed_case_ids": [result.case_id for result in results if not result.passed],
     }
+
+
+def build_memory_regression_trend_report(
+    *,
+    candidate_jsonl: Sequence[str | Path] = (),
+    reviewed_jsonl: Sequence[str | Path] = (),
+    promoted_jsonl: Sequence[str | Path] = (),
+    golden_jsonl: Sequence[str | Path] = (DEFAULT_DATASET,),
+) -> dict[str, Any]:
+    """Summarize candidate/reviewed/promoted/golden quality without mutating datasets."""
+    stages = [
+        _build_trend_stage_summary("candidate", candidate_jsonl),
+        _build_trend_stage_summary("reviewed", reviewed_jsonl),
+        _build_trend_stage_summary("promoted", promoted_jsonl),
+        _build_trend_stage_summary("golden", golden_jsonl),
+    ]
+    alerts = _build_pollution_alerts(stages)
+    return {
+        "meta": {
+            "suite": "memory_context_regression_trend",
+            "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "golden_dataset": str(Path(golden_jsonl[0])) if golden_jsonl else None,
+        },
+        "stages": {stage.name: stage.to_dict() for stage in stages},
+        "trend": [
+            {
+                "stage": stage.name,
+                "total": stage.total,
+                "task_success": stage.task_success,
+                "pollution_rate": stage.pollution_rate,
+                "context_compaction_semantic_quality": stage.context_compaction_semantic_quality,
+                "context_compaction_semantic_drift": stage.context_compaction_semantic_drift,
+            }
+            for stage in stages
+        ],
+        "promotion_history": {
+            "candidate_total": stages[0].total,
+            "reviewed_total": stages[1].total,
+            "promoted_total": stages[2].total,
+            "golden_total": stages[3].total,
+            "review_status_counts": dict(stages[1].review_status_counts),
+            "promoted_case_ids": _load_stage_case_ids(promoted_jsonl),
+        },
+        "pollution_alerts": alerts,
+        "status": "alert" if alerts else "ok",
+    }
+
+
+def write_trend_report(
+    path: str | Path,
+    *,
+    candidate_jsonl: Sequence[str | Path] = (),
+    reviewed_jsonl: Sequence[str | Path] = (),
+    promoted_jsonl: Sequence[str | Path] = (),
+    golden_jsonl: Sequence[str | Path] = (DEFAULT_DATASET,),
+) -> Path:
+    _reject_golden_dataset_output(path, operation="trend reports")
+    target = Path(path)
+    if not target.is_absolute():
+        target = REPO_ROOT / target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = build_memory_regression_trend_report(
+        candidate_jsonl=candidate_jsonl,
+        reviewed_jsonl=reviewed_jsonl,
+        promoted_jsonl=promoted_jsonl,
+        golden_jsonl=golden_jsonl,
+    )
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target
 
 
 def write_report(path: str | Path, *, dataset: Path, results: Sequence[ProbeResult]) -> Path:
@@ -520,6 +640,34 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--candidate-review-note",
         help="Optional review note stored in promotion_review metadata.",
     )
+    parser.add_argument(
+        "--trend-report-json",
+        help="Write Memory Regression Dashboard trend JSON to this path.",
+    )
+    parser.add_argument(
+        "--trend-candidate-jsonl",
+        action="append",
+        default=[],
+        help="Candidate JSONL dataset for trend reporting. Repeatable.",
+    )
+    parser.add_argument(
+        "--trend-reviewed-jsonl",
+        action="append",
+        default=[],
+        help="Reviewed candidate JSONL dataset for trend reporting. Repeatable.",
+    )
+    parser.add_argument(
+        "--trend-promoted-jsonl",
+        action="append",
+        default=[],
+        help="Promoted candidate JSONL dataset for trend reporting. Repeatable.",
+    )
+    parser.add_argument(
+        "--trend-golden-jsonl",
+        action="append",
+        default=[],
+        help="Golden Memory/Context JSONL dataset for trend reporting. Defaults to --dataset.",
+    )
     return parser.parse_args(argv)
 
 
@@ -528,6 +676,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.candidate_source_json and args.candidate_review_jsonl:
             raise ValueError("--candidate-source-json and --candidate-review-jsonl cannot be combined")
+        if (
+            args.trend_report_json
+            or args.trend_candidate_jsonl
+            or args.trend_reviewed_jsonl
+            or args.trend_promoted_jsonl
+            or args.trend_golden_jsonl
+        ):
+            target = write_trend_report(
+                args.trend_report_json or DEFAULT_TREND_REPORT_JSON,
+                candidate_jsonl=args.trend_candidate_jsonl,
+                reviewed_jsonl=args.trend_reviewed_jsonl,
+                promoted_jsonl=args.trend_promoted_jsonl,
+                golden_jsonl=args.trend_golden_jsonl or (args.dataset,),
+            )
+            payload = json.loads(Path(target).read_text(encoding="utf-8"))
+            print(
+                json.dumps(
+                    {
+                        "status": payload["status"],
+                        "trend_report_json": str(target),
+                        "pollution_alerts": len(payload["pollution_alerts"]),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0 if payload["status"] == "ok" else 1
         if args.candidate_review_jsonl:
             if not args.candidate_reviewed_out and not args.candidate_promoted_out:
                 raise ValueError(
@@ -805,10 +980,10 @@ def _with_promotion_review(
     return reviewed_case
 
 
-def _reject_golden_dataset_output(path: str | Path) -> None:
+def _reject_golden_dataset_output(path: str | Path, *, operation: str = "candidate outputs") -> None:
     target = Path(path).expanduser()
     if target.resolve(strict=False) == DEFAULT_DATASET.resolve(strict=False):
-        raise ValueError("candidate outputs must not target the golden memory/context dataset")
+        raise ValueError(f"{operation} must not target the golden memory/context dataset")
 
 
 def _sanitize_json(value: Any) -> Any:
@@ -987,6 +1162,99 @@ def _contains(haystack: str, needle: str) -> bool:
 
 def _normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", str(value).casefold()).strip()
+
+
+def _average_metric(results: Sequence[ProbeResult], name: str) -> float:
+    values = [float(result.metrics[name]) for result in results if name in result.metrics]
+    if not values:
+        return 0.0
+    return round(sum(values) / len(values), 4)
+
+
+def _is_compaction_case(*, case_id: str, tags: Sequence[str], context: str) -> bool:
+    normalized_tags = {_slug(tag) for tag in tags}
+    normalized_id = _slug(case_id)
+    return (
+        "compaction" in normalized_id
+        or "context-compaction" in normalized_tags
+        or "compaction" in normalized_tags
+        or "context_compaction" in normalized_tags
+        or "rolling_summary" in _normalize_text(context)
+    )
+
+
+def _build_trend_stage_summary(
+    name: str,
+    source_paths: Sequence[str | Path],
+) -> TrendStageSummary:
+    cases: list[dict[str, Any]] = []
+    resolved_paths = [str(Path(path)) for path in source_paths]
+    for path in source_paths:
+        cases.extend(load_dataset(path))
+
+    results = [evaluate_case(case) for case in cases]
+    summary = build_summary(results)
+    pollution_case_ids = [
+        result.case_id
+        for result in results
+        if float(result.metrics.get("irrelevant_memory_pollution", 0.0)) > 0.0
+    ]
+    review_status_counts: dict[str, int] = {}
+    for case in cases:
+        review = case.get("promotion_review")
+        if not isinstance(review, dict):
+            continue
+        status = str(review.get("status") or "unknown")
+        review_status_counts[status] = review_status_counts.get(status, 0) + 1
+
+    return TrendStageSummary(
+        name=name,
+        source_paths=resolved_paths,
+        total=summary["total"],
+        passed=summary["passed"],
+        failed=summary["failed"],
+        task_success=summary["task_success"],
+        pollution_rate=summary["irrelevant_memory_pollution"],
+        context_compaction_semantic_quality=summary["context_compaction_semantic_quality"],
+        context_compaction_semantic_drift=summary["context_compaction_semantic_drift"],
+        failed_case_ids=summary["failed_case_ids"],
+        pollution_case_ids=pollution_case_ids,
+        review_status_counts=review_status_counts,
+    )
+
+
+def _build_pollution_alerts(stages: Sequence[TrendStageSummary]) -> list[dict[str, Any]]:
+    alerts: list[dict[str, Any]] = []
+    for stage in stages:
+        if stage.pollution_case_ids:
+            alerts.append(
+                {
+                    "stage": stage.name,
+                    "kind": "irrelevant_memory_pollution",
+                    "severity": "error",
+                    "rate": stage.pollution_rate,
+                    "case_ids": list(stage.pollution_case_ids),
+                }
+            )
+        if stage.context_compaction_semantic_drift > 0.0:
+            alerts.append(
+                {
+                    "stage": stage.name,
+                    "kind": "context_compaction_semantic_drift",
+                    "severity": "warning",
+                    "rate": stage.context_compaction_semantic_drift,
+                    "case_ids": list(stage.failed_case_ids),
+                }
+            )
+    return alerts
+
+
+def _load_stage_case_ids(source_paths: Sequence[str | Path]) -> list[str]:
+    case_ids: list[str] = []
+    for path in source_paths:
+        for case in load_dataset(path):
+            case_ids.append(str(case.get("id") or "unknown"))
+    return case_ids
 
 
 if __name__ == "__main__":

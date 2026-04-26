@@ -506,3 +506,142 @@ def test_memory_context_candidate_review_cli_writes_review_and_promotion(
     assert blocked_exit_code == 2
     assert "--candidate-promoted-out requires" in blocked_output.err
     assert not blocked_out.exists()
+
+
+def test_memory_context_compaction_semantic_metrics_report_drift(tmp_path: Path) -> None:
+    dataset = tmp_path / "compaction.jsonl"
+    dataset.write_text(
+        json.dumps(
+            {
+                "id": "context-compaction-drift",
+                "tags": ["memory_context", "context_compaction"],
+                "input": {
+                    "rendered_context": "rolling_summary says old sqlite path is approved.",
+                    "answer": "Use the sqlite path.",
+                },
+                "expected": {
+                    "required_facts": ["Postgres path"],
+                    "forbidden_facts": ["sqlite path"],
+                    "required_context_markers": ["Postgres path"],
+                    "answer_contains_all": ["Postgres path"],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = memory_context_eval.run(dataset=dataset, report_json=tmp_path / "report.json")
+
+    assert result["status"] == "failed"
+    assert result["summary"]["context_compaction_semantic_recall"] == 0.0
+    assert result["summary"]["context_compaction_semantic_precision"] == 0.0
+    assert result["summary"]["context_compaction_semantic_grounding"] == 0.0
+    assert result["summary"]["context_compaction_semantic_quality"] == 0.0
+    assert result["summary"]["context_compaction_semantic_drift"] == 1.0
+
+
+def test_memory_regression_trend_report_summarizes_stages_and_alerts(
+    tmp_path: Path,
+) -> None:
+    candidate_jsonl = tmp_path / "candidate.jsonl"
+    reviewed_jsonl = tmp_path / "reviewed.jsonl"
+    promoted_jsonl = tmp_path / "promoted.jsonl"
+    golden_jsonl = tmp_path / "golden.jsonl"
+    polluted_candidate = {
+        "id": "candidate-polluted",
+        "tags": ["memory_context", "candidate_import"],
+        "input": {
+            "rendered_context": "Context includes stale sqlite path.",
+            "answer": "Use the Postgres path.",
+        },
+        "expected": {
+            "required_facts": ["Postgres path"],
+            "forbidden_facts": ["sqlite path"],
+        },
+    }
+    reviewed_case = {
+        "id": "reviewed-approved",
+        "tags": ["memory_context", "candidate_import"],
+        "input": {
+            "rendered_context": "Context includes Postgres path.",
+            "answer": "Use the Postgres path.",
+        },
+        "expected": {"required_facts": ["Postgres path"]},
+        "promotion_review": {"status": "approved", "approved": True},
+    }
+    golden_case = {
+        "id": "golden-compaction",
+        "tags": ["memory_context", "context_compaction"],
+        "input": {
+            "rendered_context": "rolling_summary keeps Postgres path.",
+            "answer": "Use the Postgres path.",
+        },
+        "expected": {
+            "required_facts": ["Postgres path"],
+            "required_context_markers": ["Postgres path"],
+            "answer_contains_all": ["Postgres path"],
+        },
+    }
+    for path, cases in (
+        (candidate_jsonl, [polluted_candidate]),
+        (reviewed_jsonl, [reviewed_case]),
+        (promoted_jsonl, [reviewed_case]),
+        (golden_jsonl, [golden_case]),
+    ):
+        path.write_text(
+            "\n".join(json.dumps(case) for case in cases) + "\n",
+            encoding="utf-8",
+        )
+
+    report = memory_context_eval.build_memory_regression_trend_report(
+        candidate_jsonl=[candidate_jsonl],
+        reviewed_jsonl=[reviewed_jsonl],
+        promoted_jsonl=[promoted_jsonl],
+        golden_jsonl=[golden_jsonl],
+    )
+
+    assert report["status"] == "alert"
+    assert report["stages"]["candidate"]["pollution_rate"] == 1.0
+    assert report["stages"]["candidate"]["pollution_case_ids"] == ["candidate-polluted"]
+    assert report["stages"]["reviewed"]["review_status_counts"] == {"approved": 1}
+    assert report["promotion_history"]["promoted_case_ids"] == ["reviewed-approved"]
+    assert report["stages"]["golden"]["context_compaction_semantic_quality"] == 1.0
+    assert report["pollution_alerts"][0]["kind"] == "irrelevant_memory_pollution"
+
+
+def test_memory_regression_trend_cli_writes_report(tmp_path: Path, capsys) -> None:
+    candidate_jsonl = tmp_path / "candidate.jsonl"
+    golden_jsonl = tmp_path / "golden.jsonl"
+    report_json = tmp_path / "trend.json"
+    case = {
+        "id": "candidate-ok",
+        "tags": ["memory_context"],
+        "input": {
+            "rendered_context": "Context includes the branch tree.",
+            "answer": "Use the branch tree.",
+        },
+        "expected": {"required_facts": ["branch tree"]},
+    }
+    for path in (candidate_jsonl, golden_jsonl):
+        path.write_text(json.dumps(case) + "\n", encoding="utf-8")
+
+    exit_code = memory_context_eval.main(
+        [
+            "--trend-report-json",
+            str(report_json),
+            "--trend-candidate-jsonl",
+            str(candidate_jsonl),
+            "--trend-golden-jsonl",
+            str(golden_jsonl),
+        ]
+    )
+    stdout = json.loads(capsys.readouterr().out)
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert stdout["status"] == "ok"
+    assert stdout["trend_report_json"] == str(report_json)
+    assert stdout["pollution_alerts"] == 0
+    assert report["meta"]["suite"] == "memory_context_regression_trend"
+    assert report["stages"]["candidate"]["total"] == 1

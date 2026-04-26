@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-04-24
+Updated: 2026-04-26
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -55,6 +55,19 @@ Alert guidance should use the existing `/metrics` scrape. Start with these signa
 - `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
 
 Keep alert labels aligned with `app_version`, `environment`, `deployment`, `component`, and trajectory `status` so release regressions can be separated from general traffic noise.
+
+Executable alert-rule checks should write a small JSON report for release review. The release-health helper accepts it with `--alert-report-json` and fails the release if the report has no executable rule coverage, declares a failed status, or contains firing alerts. A minimal passing report looks like:
+
+```json
+{
+  "alerts": [],
+  "rules": [
+    {"name": "runtime-ready", "query": "focus_agent_runtime_ready == 0"},
+    {"name": "trajectory-recorder", "query": "focus_agent_runtime_component_ready{component=\"trajectory_recorder\"} == 0"}
+  ],
+  "status": "passed"
+}
+```
 
 ## 2. Read The Current Slice
 
@@ -270,6 +283,8 @@ The release-health helper turns readiness, trajectory, and replay signals into d
 - `chat_failure_rate`: fails when the non-succeeded turn rate crosses the configured threshold after the minimum sample size.
 - `tool_fallback_spike`: fails when fallback usage is high or has grown sharply versus a baseline.
 - `eval_replay_regression`: fails when replay comparison rows contain failed replays or replay errors.
+- `alert_rules_report`: fails when a provided executable alert report is invalid, has no checked rules, or includes firing alerts.
+- `postgres_migration_verification`: fails when a provided Postgres migration verification report is invalid or reports migration errors.
 
 Memory/context quality probes use the same signal shape for deterministic checks such as required markers, forbidden stale markers, and maximum rendered context size.
 
@@ -287,17 +302,26 @@ uv run python scripts/release_health_check.py \
   --report-json reports/release-gate/release-health.json
 ```
 
-For a live deployment, switch to `--mode live` or `--mode production`, remove `--allow-self-check-fallback`, and pass captured deployment signals. The helper accepts `/readyz` from `--readyz-json` or `--runtime-status-json`, trajectory stats from `--trajectory-stats-json`, optional trajectory baselines from `--baseline-trajectory-stats-json`, replay comparison rows from `--replay-comparisons-json`, eval reports from repeated `--eval-report-json` arguments, and optional baseline eval reports from repeated `--baseline-eval-report-json` arguments. In live/production mode, missing readyz, trajectory stats, replay comparison, or eval report inputs are release-blocking and return exit code 1.
+For a live deployment, switch to `--mode live` or `--mode production`, remove `--allow-self-check-fallback`, and pass captured deployment signals. The helper accepts `/readyz` from `--readyz-json` or `--runtime-status-json`, trajectory stats from `--trajectory-stats-json`, optional trajectory baselines from `--baseline-trajectory-stats-json`, replay comparison rows from `--replay-comparisons-json`, alert-rule execution results from `--alert-report-json`, Postgres migration verification from `--postgres-migration-report-json`, eval reports from repeated `--eval-report-json` arguments, and optional baseline eval reports from repeated `--baseline-eval-report-json` arguments. In live/production mode, missing readyz, trajectory stats, replay comparison, or eval report inputs are release-blocking and return exit code 1; supplied alert and Postgres reports are also release-blocking when they are malformed or failed.
 
 Production jobs can also probe the live service directly with `--ready-url` and `--trajectory-stats-url`, but those probes are still fail-closed: an unavailable endpoint writes a failed release-health report instead of silently using local self-check samples.
 
 Production release review should archive an evidence pack after the live signals are captured:
 
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
-The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, artifact summaries, command summaries, release-health status, retention metadata, storage metadata, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, or baseline eval report artifacts should block production release review.
+The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, artifact summaries, command summaries, release-health status, approval metadata, retention metadata, storage verification metadata, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, or baseline eval report artifacts should block production release review. Missing or non-approved deployment-platform approval should also block production evidence review; when `--storage-dir` is used, the manifest records whether the retained manifest and summary match the local pack.
+
+Postgres migration verification can be attached as either a machine-readable migration report or the command evidence that generated it:
+
+```bash
+uv run python -m focus_agent.migrate_local_state \
+  --database-uri postgresql://user:pass@host:5432/focus_agent \
+  --artifact-scan \
+  --report-path reports/release-gate/postgres-migration.json
+```
 
 Ownership allow / deny checks can be exported as trajectory-compatible `ownership.audit` entries. The exported payload includes principal, resource type, resource id, action, decision, reason, and request id, which makes cross-principal denials searchable in the same observability pipeline without adding a new database schema.
 

@@ -9,6 +9,8 @@ from focus_agent.observability.release_health import (
     ReleaseHealthThresholds,
     evaluate_chat_failure_rate,
     evaluate_context_probe,
+    evaluate_alert_report,
+    evaluate_postgres_migration_report,
     evaluate_release_health,
     evaluate_replay_gate,
     evaluate_runtime_ready,
@@ -111,6 +113,43 @@ def test_context_probe_checks_required_forbidden_and_size_markers() -> None:
     assert failed.status == FAIL
     assert failed.details["missing"] == ["Approved"]
     assert failed.details["forbidden"] == ["OBSOLETE"]
+
+
+def test_alert_report_fails_closed_on_firing_alerts_or_missing_rules() -> None:
+    missing_rules = evaluate_alert_report({"alerts": [], "status": "passed"})
+    firing = evaluate_alert_report(
+        {
+            "alerts": [{"name": "runtime-ready", "state": "firing"}],
+            "rules": [{"name": "runtime-ready"}],
+            "status": "passed",
+        }
+    )
+    passed = evaluate_alert_report(
+        {
+            "alerts": [],
+            "rules": [{"name": "runtime-ready"}],
+            "status": "passed",
+        }
+    )
+
+    assert missing_rules.status == FAIL
+    assert firing.status == FAIL
+    assert firing.details["firing_alerts"] == ["runtime-ready"]
+    assert passed.status == PASS
+
+
+def test_postgres_migration_report_accepts_report_or_command_evidence() -> None:
+    passed = evaluate_postgres_migration_report(
+        {
+            "command": "uv run python -m focus_agent.migrate_local_state --report-path reports/pg.json",
+            "status": "passed",
+        }
+    )
+    failed = evaluate_postgres_migration_report({"status": "failed", "errors": ["schema drift"]})
+
+    assert passed.status == PASS
+    assert failed.status == FAIL
+    assert failed.details["errors"] == ["schema drift"]
 
 
 def test_release_health_report_combines_core_signals() -> None:

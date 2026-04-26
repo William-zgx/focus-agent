@@ -78,6 +78,44 @@ def test_sdk_type_shape_change_is_breaking() -> None:
     assert failures == ["SDK contract changed: exported_type_declarations"]
 
 
+def test_sdk_package_export_change_is_breaking() -> None:
+    current = check_contracts.build_sdk_contract()
+    expected = deepcopy(current)
+    expected["package_exports"] = [value for value in expected["package_exports"] if value != "./toolProtocol"]
+
+    failures = check_contracts.compare_sdk_contract(expected, current)
+
+    assert failures == ["SDK contract changed: package_exports"]
+
+
+def test_web_sdk_import_change_is_breaking() -> None:
+    current = check_contracts.build_sdk_contract()
+    expected = deepcopy(current)
+    import_path = next(iter(expected["web_sdk_imports"]))
+    expected["web_sdk_imports"][import_path] = [
+        name for name in expected["web_sdk_imports"][import_path] if name != expected["web_sdk_imports"][import_path][0]
+    ]
+
+    failures = check_contracts.compare_sdk_contract(expected, current)
+
+    assert failures == ["SDK contract changed: web_sdk_imports"]
+
+
+def test_web_sdk_import_scan_captures_app_usage() -> None:
+    current = check_contracts.build_sdk_contract()
+
+    assert "apps/web/src/shared/sdk/focus-agent-provider.tsx" in current["web_sdk_imports"]
+    assert "FocusAgentClient" in current["web_sdk_imports"]["apps/web/src/shared/sdk/focus-agent-provider.tsx"]
+    assert current["package_exports"] == [
+        "./client",
+        "./guards",
+        "./parser",
+        "./reducers",
+        "./toolProtocol",
+        "./types",
+    ]
+
+
 def test_sdk_type_alias_scan_keeps_object_members_after_semicolons() -> None:
     current = check_contracts.build_sdk_contract()
     declaration = current["exported_type_declarations"]["FocusAgentEvent"]

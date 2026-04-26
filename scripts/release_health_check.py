@@ -316,6 +316,8 @@ def build_release_health_report(
     trajectory_stats: dict[str, Any] | None = None,
     baseline_trajectory_stats: dict[str, Any] | None = None,
     replay_comparisons: list[dict[str, Any]] | None = None,
+    alert_report: dict[str, Any] | None = None,
+    postgres_migration_report: dict[str, Any] | None = None,
     eval_report_paths: Sequence[str | Path] = (),
     baseline_eval_report_paths: Sequence[str | Path] = (),
     extra_signals: Sequence[ReleaseHealthSignal] = (),
@@ -327,6 +329,8 @@ def build_release_health_report(
         trajectory_stats=trajectory_stats,
         baseline_trajectory_stats=baseline_trajectory_stats,
         replay_comparisons=replay_comparisons,
+        alert_report=alert_report,
+        postgres_migration_report=postgres_migration_report,
     )
     eval_signals = _eval_report_signals(eval_report_paths, root=root)
     baseline_eval_signals = _baseline_eval_report_signals(
@@ -392,6 +396,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Baseline eval JSON report to compare against current --eval-report-json. May be repeated.",
     )
     parser.add_argument("--replay-comparisons-json", help="Batch replay-compare JSON payload.")
+    parser.add_argument("--alert-report-json", help="Executable alert rules report JSON.")
+    parser.add_argument("--postgres-migration-report-json", help="Postgres migration verification report JSON.")
     parser.add_argument("--ready-url", help="HTTP URL for the runtime readiness probe.")
     parser.add_argument("--trajectory-stats-url", help="HTTP URL for trajectory stats.")
     parser.add_argument(
@@ -445,6 +451,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             live_mode=live_mode,
             fail_closed_signals=fail_closed_signals,
         )
+        alert_report, alert_report_loaded = _load_json_input(
+            args.alert_report_json,
+            input_name="alert_report",
+            live_mode=live_mode,
+            fail_closed_signals=fail_closed_signals,
+        )
+        postgres_migration_report, postgres_migration_report_loaded = _load_json_input(
+            args.postgres_migration_report_json,
+            input_name="postgres_migration_report",
+            live_mode=live_mode,
+            fail_closed_signals=fail_closed_signals,
+        )
         trajectory_stats_url_loaded = False
 
         if runtime_status is None and args.ready_url:
@@ -484,6 +502,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 fail_closed_signals.append(
                     _required_input_signal("replay_comparisons", "empty replay comparison input")
                 )
+            if alert_report_loaded and not isinstance(alert_report, dict):
+                fail_closed_signals.append(_required_input_signal("alert_report", "invalid alert report input"))
+                alert_report = None
+            if postgres_migration_report_loaded and not isinstance(postgres_migration_report, dict):
+                fail_closed_signals.append(
+                    _required_input_signal("postgres_migration_report", "invalid postgres migration report input")
+                )
+                postgres_migration_report = None
             if runtime_status is None and not _input_present(runtime_status_path, args.ready_url):
                 fail_closed_signals.append(_required_input_signal("readyz", "missing readyz input"))
             if trajectory_stats is None and not _input_present(args.trajectory_stats_json, args.trajectory_stats_url):
@@ -516,6 +542,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             trajectory_stats=trajectory_stats,
             baseline_trajectory_stats=baseline_stats,
             replay_comparisons=replay_comparisons,
+            alert_report=alert_report if isinstance(alert_report, dict) else None,
+            postgres_migration_report=postgres_migration_report
+            if isinstance(postgres_migration_report, dict)
+            else None,
             eval_report_paths=args.eval_report_json,
             baseline_eval_report_paths=args.baseline_eval_report_json,
             extra_signals=(*fallback_signals, *fail_closed_signals),
@@ -534,6 +564,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "baseline_trajectory_stats_json": args.baseline_trajectory_stats_json,
                 "baseline_eval_report_json": list(args.baseline_eval_report_json),
                 "replay_comparisons_json": args.replay_comparisons_json,
+                "alert_report_json": args.alert_report_json,
+                "postgres_migration_report_json": args.postgres_migration_report_json,
                 "ready_url": args.ready_url,
                 "trajectory_stats_url": args.trajectory_stats_url,
                 "eval_report_json": list(args.eval_report_json),
