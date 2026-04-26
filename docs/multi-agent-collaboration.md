@@ -1,10 +1,12 @@
-# P4-P35 多 Agent 协同开发技术文档
+# P4-P44 多 Agent 协同开发技术文档
 
 ## Summary
 
 P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分、发布门禁口径、`AgentState` 分域 helper、`BranchService` facade 内部解耦。P4-P7 转向契约自动化、发布门禁一键化、可观测闭环、Auth / Access Model 产品化、Memory / Context 质量评测。P8-P10 把这些能力推进到真实回归闭环：Memory / Context 样本扩容、Auth ownership 运行时边界、release-health 真实部署信号 fail-closed。P11-P13 固化可审计发布证据包、真实样本 candidate 流水线、repository/service ownership audit。P14-P16 接到日常发布与线上回归流程：证据包留存、candidate promotion review、ownership audit export。P17-P26 完成发布证据、长期质量、ownership audit、Postgres 运维、可观测告警、Agent governance、Context quality、Tool Runtime 和 SDK/E2E drift guard。
 
-P27-P35 已完成首轮执行：CI provider binding、nightly regression ops、production smoke、Auth token lifecycle、Postgres ops、Observability Alert Sink / OTel、Memory Review Console、Agent Governance Quality Dashboard 和 Docs/Ops Pack 都有可执行命令、机器可读 report、专项测试和文档状态。真实外部平台仍可继续增强，但本轮已不再停留在方案层。
+P27-P35 已完成首轮执行：CI provider binding、nightly regression ops、production smoke、Auth token lifecycle、Postgres ops、Observability Alert Sink / OTel、Memory Review Console、Agent Governance Quality Dashboard 和 Docs/Ops Pack 都有可执行命令、机器可读 report、专项测试和文档状态。
+
+P36-P44 已继续推进到真实环境信号、历史趋势、阈值门禁和人工运营闭环：release workflow 增加 deployment provider mapping 与 artifact storage 校验，nightly regression 增加历史 trend / delta / append，production smoke v2 增加 stream event contract、真实 graph turn 与 rate-limit threshold，Postgres ops 支持可选 backup/restore drill，OTel smoke 支持 synthetic span round-trip，Auth 支持 JWT `kid` 与 active key set rotation，Memory / Context candidate ops 增加 aging / duplicate reason / PII summary / SLA，Agent governance report 增加 threshold signals 并可接入 release-health。
 
 ## Agent 分工
 
@@ -57,6 +59,15 @@ P27-P35 已完成首轮执行：CI provider binding、nightly regression ops、p
 - P33 Memory Review Console：nightly report 暴露 candidate queue、pending / promoted case id、review summary 和 `golden_write=disabled` 边界，继续禁止自动写 golden dataset。
 - P34 Agent Governance Quality Dashboard：新增 `make agent-governance-report` 和 `reports/agent-governance/latest.json`，聚合 delegation、critic、review queue、cost/token/tool-call 质量信号。
 - P35 Docs / Ops Pack：release checklist、observability runbook、CI 文档、roadmap、deep research、memory/governance docs 已同步 dry-run 与 production 示例。
+- P36 Deployment Binding：GitHub Actions release gate 生成 deployment binding report，production 模式校验 base URL、readyz、trajectory stats、replay、alert、baseline eval、approval、artifact storage、retention、smoke auth token、stream event input、Postgres drill input 与 OTel trace query 映射。
+- P37 Nightly Trend：`scripts/nightly_regression.py` 支持 default / explicit history input，输出 `baseline_status`、`delta` 与 history append，缺历史不阻断。
+- P38 Production Smoke V2：`scripts/production_smoke.py` 继续保留 HTTP probes，并追加 `stream_events`、`graph_turn`、`thresholds`；live 模式缺 stream event input 会失败，graph turn 不再把 401/403 视为成功。
+- P39 Postgres Drill：`scripts/postgres_ops.py` 支持可选 connectivity / migration table live check、backup command、restore command、restore verification evidence/query 和 retention cleanup dry-run。
+- P40 OTel Roundtrip：`scripts/otel_smoke.py` 支持 collector health、synthetic span export 与 trace query evidence；live 模式缺 trace query 会 fail closed。
+- P41 Auth Rotation：JWT 支持 `kid`、`AUTH_JWT_KEY_ID`、`AUTH_JWT_KEYS` / `AUTH_JWT_SECRETS` / `AUTH_JWT_JWKS`，保留单 `AUTH_JWT_SECRET` 兼容；active key set 支持 rotation overlap，配置 key set 时 current `kid` 必须匹配 active key，wrong `kid` 不 fallback。
+- P42 Eval Dataset Ops：candidate import / review 增加 source explanation、candidate aging、duplicate reason、PII redaction summary 和 promotion review SLA，继续禁止自动写 golden dataset。
+- P43 Governance Quality Gate：`scripts/agent_governance_report.py` 增加 delegation、critic、review backlog、cost/token/tool-call threshold signals；production `release-health` 必须读取 `--governance-report-json`，并阻断 blocking signal。
+- P44 Docs / Ops Pack：本文、deep research、roadmap、release checklist、observability runbook 与 deployment docs 同步 P36-P44 状态。
 - Memory / Context 质量先以 deterministic probe 落地，覆盖 required markers、forbidden stale markers、最大上下文长度。
 
 ## 默认验证命令
@@ -74,9 +85,9 @@ make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318
 make agent-governance-report
 ```
 
-## P27-P35 执行矩阵
+## P27-P44 执行矩阵
 
-本轮采用多 Agent 分区实现，合并顺序为 CI Provider -> Nightly Regression -> Production E2E -> Auth Lifecycle -> Postgres Ops -> Observability Sink -> Memory Review -> Governance Dashboard -> Docs -> Reviewer -> Verifier。
+本轮采用多 Agent 分区实现，P27-P35 合并顺序为 CI Provider -> Nightly Regression -> Production E2E -> Auth Lifecycle -> Postgres Ops -> Observability Sink -> Memory Review -> Governance Dashboard -> Docs -> Reviewer -> Verifier；P36-P44 合并顺序为 Deployment Binding -> Nightly Trend -> Production Smoke V2 -> Postgres Drill -> OTel Roundtrip -> Auth Rotation -> Eval Dataset Ops -> Governance Quality Gate -> Docs -> Reviewer -> Verifier。
 
 | 优先级 | 方向 | Agent 责任 | 主要产物 |
 |---|---|---|---|
@@ -89,16 +100,28 @@ make agent-governance-report
 | P33 | Memory Review Console | Memory Review Agent 产品化 candidate review summary | nightly `memory_review`、`candidate_outputs`、golden-write disabled |
 | P34 | Governance Quality Dashboard | Governance Agent 聚合治理质量趋势 | `scripts/agent_governance_report.py`、`reports/agent-governance/latest.json` |
 | P35 | Docs / Ops Pack | Docs Agent 同步发布/运维/路线图文档 | release checklist、observability runbook、CI docs、deep research 状态表 |
+| P36 | Deployment Binding | Release Agent 校验真实部署变量与 evidence storage 映射 | deployment binding report、production env mapping fail-fast |
+| P37 | Nightly Trend | Nightly Agent 增加历史趋势和 delta | history JSON、baseline status、latest-vs-previous delta |
+| P38 | Production Smoke V2 | SDK / E2E Agent 增加协议级 smoke | stream event contract、graph turn、rate-limit threshold |
+| P39 | Postgres Drill | Postgres Ops Agent 接 backup / restore / retention drill | backup/restore command evidence、restore verification |
+| P40 | OTel Roundtrip | Observability Agent 接 collector/export/query round-trip | synthetic span、collector health、trace query evidence |
+| P41 | Auth Rotation | Auth Agent 增加 JWT key lifecycle | `kid`、active key set、rotation overlap tests |
+| P42 | Eval Dataset Ops | Memory Agent 产品化真实失败样本运营 | candidate aging、PII summary、duplicate reason、SLA |
+| P43 | Governance Quality Gate | Governance Agent 将 dashboard 信号变成门禁 | threshold signals、release-health ingestion |
+| P44 | Docs / Ops Pack | Docs Agent 同步 P36-P44 状态 | roadmap、deep research、runbooks、checklist |
 
 完整发布前运行：
 
 ```bash
 make release-gate
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 ## 后续真实环境增强
 
-- Postgres ops 当前已固化 report schema 和 dry-run / fail-closed 边界，真实 `pg_dump` / `pg_restore` round-trip、RPO/RTO 和 retention cleanup 仍应接到部署平台。
-- OTel smoke 当前可验证 endpoint/config/report contract，真实 collector round-trip 需要部署侧提供 collector 凭证和 trace 查询能力。
-- Production smoke 当前提供轻量 HTTP 探针和分类报告，后续可以把 typed SDK stream、真实 graph turn 和更细 rate-limit 压测接入同一 JSON schema。
+- 把 deployment binding report 接到企业实际部署平台变量、审批系统与长期 artifact storage，而不是只依赖 GitHub Actions 示例。
+- 把 nightly history 从 GitHub cache / artifact 推进到长期趋势存储，并补真实 trajectory replay、alert report、长时浏览器回归和历史 dashboard。
+- 把 production smoke v2 的 stream / graph / rate-limit probes 接到真实 base URL、真实 auth token 和 typed SDK stream 客户端。
+- 把 Postgres drill 绑定实际 `pg_dump` / `pg_restore` 命令、RPO/RTO 目标和 retention cleanup 审批。
+- 把 OTel round-trip 绑定真实 collector 凭证和 trace backend query API。
+- 把 Auth rotation 从 HS256 active key set 推进到外部登录、签发、刷新、JWKS 拉取和 key rotation runbook。

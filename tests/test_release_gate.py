@@ -41,6 +41,11 @@ def test_release_gate_plan_matches_release_checklist_order() -> None:
             "--report-json reports/release-gate/memory-context-eval.json",
         ),
         (
+            "agent-governance-report",
+            "uv run python scripts/agent_governance_report.py "
+            "--report-json reports/agent-governance/latest.json",
+        ),
+        (
             "release-health",
             "uv run python scripts/release_health_check.py "
             "--mode local "
@@ -50,6 +55,7 @@ def test_release_gate_plan_matches_release_checklist_order() -> None:
             "--eval-report-json reports/release-gate/eval-smoke.json "
             "--eval-report-json reports/release-gate/eval-observability.json "
             "--eval-report-json reports/release-gate/memory-context-eval.json "
+            "--governance-report-json reports/agent-governance/latest.json "
             "--report-json reports/release-gate/release-health.json",
         ),
     ]

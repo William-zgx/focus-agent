@@ -27,6 +27,10 @@ REQUIRED_PRODUCTION_ARTIFACT_KEYS = (
     "readyz",
     "trajectory_stats",
     "replay_comparisons",
+    "production_smoke_report",
+    "postgres_ops_report",
+    "otel_smoke_report",
+    "governance_report",
     "eval_reports",
     "baseline_eval_reports",
     "release_health_report",
@@ -252,6 +256,20 @@ def _sample_otel_smoke_report() -> dict[str, Any]:
     }
 
 
+def _sample_governance_report() -> dict[str, Any]:
+    return {
+        "report_type": "agent_governance_quality",
+        "signals": [],
+        "status": "passed",
+        "summary": {
+            "blocking_signals": [],
+            "status": "passed",
+            "warning_signals": [],
+        },
+        "thresholds": {},
+    }
+
+
 def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | EvidenceInput]:
     inputs_dir = pack_dir / "inputs"
     readyz = _write_json(inputs_dir / "readyz.json", _sample_readyz())
@@ -270,17 +288,19 @@ def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | E
     )
     postgres_ops_report = _write_json(inputs_dir / "postgres-ops-report.json", _sample_postgres_ops_report())
     otel_smoke_report = _write_json(inputs_dir / "otel-smoke-report.json", _sample_otel_smoke_report())
+    governance_report = _write_json(inputs_dir / "governance-report.json", _sample_governance_report())
     return {
         "alert_report": EvidenceInput("alert_report", alert_report, None, False, "generated"),
         "production_smoke_report": EvidenceInput(
             "production_smoke_report",
             production_smoke_report,
             None,
-            False,
+            True,
             "generated",
         ),
-        "postgres_ops_report": EvidenceInput("postgres_ops_report", postgres_ops_report, None, False, "generated"),
-        "otel_smoke_report": EvidenceInput("otel_smoke_report", otel_smoke_report, None, False, "generated"),
+        "postgres_ops_report": EvidenceInput("postgres_ops_report", postgres_ops_report, None, True, "generated"),
+        "otel_smoke_report": EvidenceInput("otel_smoke_report", otel_smoke_report, None, True, "generated"),
+        "governance_report": EvidenceInput("governance_report", governance_report, None, True, "generated"),
         "readyz": EvidenceInput("readyz", readyz, None, True, "generated"),
         "trajectory_stats": EvidenceInput("trajectory_stats", trajectory_stats, None, True, "generated"),
         "replay_comparisons": EvidenceInput("replay_comparisons", replay_comparisons, None, True, "generated"),
@@ -310,6 +330,7 @@ def _prepare_provided_inputs(
     production_smoke_report_json: str | Path | None,
     postgres_ops_report_json: str | Path | None,
     otel_smoke_report_json: str | Path | None,
+    governance_report_json: str | Path | None,
     eval_report_json: Sequence[str | Path],
     baseline_eval_report_json: Sequence[str | Path],
 ) -> dict[str, list[EvidenceInput] | EvidenceInput]:
@@ -350,6 +371,11 @@ def _prepare_provided_inputs(
         inputs_dir / "otel-smoke-report.json",
         root=root,
     )
+    governance_path, governance_source = _copy_or_reference_json(
+        governance_report_json,
+        inputs_dir / "governance-report.json",
+        root=root,
+    )
 
     eval_reports: list[EvidenceInput] = []
     for index, raw_path in enumerate(eval_report_json, start=1):
@@ -371,21 +397,28 @@ def _prepare_provided_inputs(
             "production_smoke_report",
             production_smoke_path,
             production_smoke_source,
-            False,
+            True,
             "input",
         ),
         "postgres_ops_report": EvidenceInput(
             "postgres_ops_report",
             postgres_ops_path,
             postgres_ops_source,
-            False,
+            True,
             "input",
         ),
         "otel_smoke_report": EvidenceInput(
             "otel_smoke_report",
             otel_smoke_path,
             otel_smoke_source,
-            False,
+            True,
+            "input",
+        ),
+        "governance_report": EvidenceInput(
+            "governance_report",
+            governance_path,
+            governance_source,
+            True,
             "input",
         ),
         "readyz": EvidenceInput("readyz", readyz_path, readyz_source, True, "input"),
@@ -420,6 +453,7 @@ def _artifact_record(input_artifact: EvidenceInput) -> dict[str, Any]:
 
 def _release_health_command(
     *,
+    allow_dry_run_reports: bool = False,
     artifacts: dict[str, list[EvidenceInput] | EvidenceInput],
     report_json: Path,
     root: Path,
@@ -438,6 +472,7 @@ def _release_health_command(
     production_smoke_report = artifacts.get("production_smoke_report")
     postgres_ops_report = artifacts.get("postgres_ops_report")
     otel_smoke_report = artifacts.get("otel_smoke_report")
+    governance_report = artifacts.get("governance_report")
     if isinstance(readyz, EvidenceInput) and readyz.path is not None:
         command.extend(("--readyz-json", str(readyz.path)))
     if isinstance(trajectory_stats, EvidenceInput) and trajectory_stats.path is not None:
@@ -454,6 +489,8 @@ def _release_health_command(
         command.extend(("--postgres-ops-report-json", str(postgres_ops_report.path)))
     if isinstance(otel_smoke_report, EvidenceInput) and otel_smoke_report.path is not None:
         command.extend(("--otel-smoke-report-json", str(otel_smoke_report.path)))
+    if isinstance(governance_report, EvidenceInput) and governance_report.path is not None:
+        command.extend(("--governance-report-json", str(governance_report.path)))
     eval_reports = artifacts["eval_reports"]
     baseline_eval_reports = artifacts["baseline_eval_reports"]
     for artifact in eval_reports if isinstance(eval_reports, list) else []:
@@ -462,6 +499,8 @@ def _release_health_command(
     for artifact in baseline_eval_reports if isinstance(baseline_eval_reports, list) else []:
         if artifact.path is not None:
             command.extend(("--baseline-eval-report-json", str(artifact.path)))
+    if allow_dry_run_reports:
+        command.append("--allow-dry-run-reports")
     command.extend(("--report-json", str(report_json)))
     return tuple(command)
 
@@ -918,6 +957,7 @@ def _manifest_artifacts(
     production_smoke_report = prepared_inputs.get("production_smoke_report")
     postgres_ops_report = prepared_inputs.get("postgres_ops_report")
     otel_smoke_report = prepared_inputs.get("otel_smoke_report")
+    governance_report = prepared_inputs.get("governance_report")
     eval_reports = prepared_inputs["eval_reports"]
     baseline_eval_reports = prepared_inputs["baseline_eval_reports"]
     if not isinstance(readyz, EvidenceInput):
@@ -939,13 +979,16 @@ def _manifest_artifacts(
         else _artifact_record(EvidenceInput("postgres_migration_report", None, None, False, "input")),
         "production_smoke_report": _artifact_record(production_smoke_report)
         if isinstance(production_smoke_report, EvidenceInput)
-        else _artifact_record(EvidenceInput("production_smoke_report", None, None, False, "input")),
+        else _artifact_record(EvidenceInput("production_smoke_report", None, None, True, "input")),
         "postgres_ops_report": _artifact_record(postgres_ops_report)
         if isinstance(postgres_ops_report, EvidenceInput)
-        else _artifact_record(EvidenceInput("postgres_ops_report", None, None, False, "input")),
+        else _artifact_record(EvidenceInput("postgres_ops_report", None, None, True, "input")),
         "otel_smoke_report": _artifact_record(otel_smoke_report)
         if isinstance(otel_smoke_report, EvidenceInput)
-        else _artifact_record(EvidenceInput("otel_smoke_report", None, None, False, "input")),
+        else _artifact_record(EvidenceInput("otel_smoke_report", None, None, True, "input")),
+        "governance_report": _artifact_record(governance_report)
+        if isinstance(governance_report, EvidenceInput)
+        else _artifact_record(EvidenceInput("governance_report", None, None, True, "input")),
         "readyz": _artifact_record(readyz),
         "release_health_report": _artifact_record(
             EvidenceInput("release_health_report", release_health_report_json, None, True, "generated")
@@ -970,6 +1013,7 @@ def run_release_evidence(
     production_smoke_report_json: str | Path | None = None,
     postgres_ops_report_json: str | Path | None = None,
     otel_smoke_report_json: str | Path | None = None,
+    governance_report_json: str | Path | None = None,
     eval_report_json: Sequence[str | Path] = (),
     baseline_eval_report_json: Sequence[str | Path] = (),
     release_health_report_json: str | Path | None = None,
@@ -1014,12 +1058,18 @@ def run_release_evidence(
             production_smoke_report_json=production_smoke_report_json,
             postgres_ops_report_json=postgres_ops_report_json,
             otel_smoke_report_json=otel_smoke_report_json,
+            governance_report_json=governance_report_json,
             eval_report_json=eval_report_json,
             baseline_eval_report_json=baseline_eval_report_json,
         )
     )
 
-    command = _release_health_command(artifacts=prepared_inputs, report_json=report_json, root=root)
+    command = _release_health_command(
+        allow_dry_run_reports=dry_run,
+        artifacts=prepared_inputs,
+        report_json=report_json,
+        root=root,
+    )
     selected_runner = runner or _subprocess_runner
     started_at = time.perf_counter()
     outcome = selected_runner(command, root)
@@ -1186,6 +1236,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--production-smoke-report-json", help="Production smoke report JSON.")
     parser.add_argument("--postgres-ops-report-json", help="Postgres ops report JSON.")
     parser.add_argument("--otel-smoke-report-json", help="OpenTelemetry smoke report JSON.")
+    parser.add_argument("--governance-report-json", help="Agent governance quality report JSON.")
     parser.add_argument(
         "--eval-report-json",
         action="append",
@@ -1244,6 +1295,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             production_smoke_report_json=args.production_smoke_report_json,
             postgres_ops_report_json=args.postgres_ops_report_json,
             otel_smoke_report_json=args.otel_smoke_report_json,
+            governance_report_json=args.governance_report_json,
             storage_dir=args.storage_dir,
             trajectory_stats_json=args.trajectory_stats_json,
         )

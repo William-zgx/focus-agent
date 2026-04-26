@@ -167,10 +167,10 @@ docker compose -f compose.prod.yaml up -d
 - `Principal.user_id` 是 conversation、thread、context、branch、merge 的 ownership 主键；`tenant_id` 只是后续多租户隔离扩展字段，不能替代 ownership；`scope` 只表达能力授权，不能让其他 `user_id` 访问已有线程。
 - 跨 principal 访问 conversation、thread、context preview/compact、branch fork/tree/proposal/merge 应返回 403。
 - repository 层的 thread ownership 校验会生成 allow / deny audit event；事件字段包括 principal、resource type、resource id、action、decision、reason、request id。当前不新增数据库 schema，事件可导出为 trajectory / observability 兼容的 `ownership.audit` 记录，后续可接入统一审计 sink。
-- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致；`compose.prod.yaml` 会把这些 `FOCUS_AGENT_*` 外部变量映射为应用实际读取的 `AUTH_*` / `RATE_LIMIT_*` 环境变量。
+- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET` 或 key set、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致；`compose.prod.yaml` 会把这些 `FOCUS_AGENT_*` 外部变量映射为应用实际读取的 `AUTH_*` / `RATE_LIMIT_*` 环境变量。
 - `FOCUS_AGENT_AUTH_JWT_ISSUER` 必须匹配 JWT `iss`；配置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE` 后 JWT `aud` 必须存在且完全匹配；过期 `exp` 会被拒绝。
 - `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 建议按部署风险设置为较短窗口，例如 900 秒，并由外部登录层负责刷新或重新签发。
-- JWT secret rotation 需要按发行方能力规划：当前 Focus Agent 只校验单个 HS256 secret，因此轮换前应先缩短 TTL，暂停或灰度外部签发方，确认旧 token 自然过期，再同步切换服务端 secret 和签发方 secret；使用旧 secret 签发的 token 在切换后会因为 signature mismatch 被拒绝。
+- JWT rotation 支持两种模式：简单部署仍可只用单个 `FOCUS_AGENT_AUTH_JWT_SECRET`；需要重叠窗口时，配置 `AUTH_JWT_KEY_ID` / `AUTH_JWT_KEYS`、`AUTH_JWT_SECRETS` 或 `AUTH_JWT_JWKS`，服务端会按 JWT header `kid` 选择 active key 校验。只要配置了 key set，`AUTH_JWT_KEY_ID` 必须匹配 active key，即使同时保留 legacy single secret 也不能 fallback 到错误 `kid`；wrong `kid` 不会 fallback 到其他 secret；旧 key 仅应在 rotation overlap window 内保持 active。
 - demo token 仅用于 development/local/test；非开发环境必须设置 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`，否则应用会在启动期 fail-fast。
 
 生产规范：
@@ -244,10 +244,11 @@ focus-agent-migrate-local-state \
   - 可选：`OTEL_EXPORTER_OTLP_HEADERS`、`OTEL_EXPORTER_OTLP_TIMEOUT`
   - `/readyz` 与 `/metrics` 会把 `tracing_exporter` 组件状态暴露出来
 - 生产发布证据建议附加三类机器报告：
-  - `make production-smoke PRODUCTION_SMOKE_ARGS="--base-url https://focus-agent.example.com --report-json reports/release-gate/production-smoke.json"`
-  - `make postgres-ops POSTGRES_OPS_ARGS="--dry-run --report-json reports/release-gate/postgres-ops.json"`
-  - `make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318 --report-json reports/release-gate/otel-smoke.json"`
-  - 当前 Postgres ops 与 OTel smoke 先固定 report schema 和 fail-closed 边界；真实 `pg_dump` / `pg_restore` 演练、collector round-trip 和 retention cleanup 应由部署平台继续接入。
+  - `make production-smoke PRODUCTION_SMOKE_ARGS="--base-url https://focus-agent.example.com --web-base-url https://focus-agent.example.com --auth-token <token> --stream-events-json reports/release-gate/stream-events.json --report-json reports/release-gate/production-smoke.json"`
+  - `make postgres-ops POSTGRES_OPS_ARGS="--database-uri postgresql://user:pass@host:5432/focus_agent --backup-command 'pg_dump --format=custom --file=/tmp/focus-agent.dump postgresql://user:pass@host:5432/focus_agent' --restore-command 'pg_restore --dbname=postgresql://user:pass@restore-host:5432/focus_agent_verify /tmp/focus-agent.dump' --restore-verification-query 'SELECT 1' --retention-cleanup-query 'SELECT 1' --report-json reports/release-gate/postgres-ops.json"`
+  - `make otel-smoke OTEL_SMOKE_ARGS="--endpoint http://otel-collector:4318 --collector-health-url http://otel-collector:13133/healthz --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' --report-json reports/release-gate/otel-smoke.json"`
+  - `make agent-governance-report AGENT_GOVERNANCE_REPORT_ARGS="--report-json reports/agent-governance/latest.json --max-review-queue-backlog 10 --max-avg-cost-usd 0.05"`
+  - 本地或预接入阶段仍可使用 `--dry-run` 生成计划报告；production evidence 必须使用真实 base URL、真实 auth token、stream event contract report、DB backup/restore drill、collector round-trip 和 governance threshold report。
 - trajectory list/stats/overview 支持用 `request_id` 和 `trace_id` 过滤，Web 复盘台也支持 request/trace 深链排障
 - 部署前至少执行：
   - `make ci`

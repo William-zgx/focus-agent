@@ -90,6 +90,17 @@ RELEASE_GATE_COMMANDS: tuple[GateCommand, ...] = (
         ),
     ),
     GateCommand(
+        "agent-governance-report",
+        (
+            "uv",
+            "run",
+            "python",
+            "scripts/agent_governance_report.py",
+            "--report-json",
+            "reports/agent-governance/latest.json",
+        ),
+    ),
+    GateCommand(
         "release-health",
         (
             "uv",
@@ -109,6 +120,8 @@ RELEASE_GATE_COMMANDS: tuple[GateCommand, ...] = (
             "reports/release-gate/eval-observability.json",
             "--eval-report-json",
             "reports/release-gate/memory-context-eval.json",
+            "--governance-report-json",
+            "reports/agent-governance/latest.json",
             "--report-json",
             "reports/release-gate/release-health.json",
         ),

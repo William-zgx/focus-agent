@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
+import json
 import os
 from pathlib import Path
 import re
@@ -17,6 +19,13 @@ _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
 _ToolConfigT = TypeVar("_ToolConfigT")
 
 
+@dataclass(frozen=True, slots=True)
+class AuthJwtKey:
+    kid: str
+    secret: str
+    active: bool = True
+
+
 def _normalize_config_value(raw: str) -> str:
     value = raw.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
@@ -28,6 +37,43 @@ def _split_csv(value: str | None) -> tuple[str, ...]:
     if value is None:
         return ()
     return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _split_key_value_csv(value: str | None) -> dict[str, str]:
+    if value is None:
+        return {}
+    pairs: dict[str, str] = {}
+    for raw_part in value.split(","):
+        part = raw_part.strip()
+        if not part or "=" not in part:
+            continue
+        key, raw_value = part.split("=", 1)
+        key = key.strip()
+        resolved_value = raw_value.strip()
+        if key and resolved_value:
+            pairs[key] = resolved_value
+    return pairs
+
+
+def _parse_key_value_json_or_csv(value: str | None) -> dict[str, str]:
+    if value is None:
+        return {}
+    text = value.strip()
+    if not text:
+        return {}
+    if text.startswith("{"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            str(key).strip(): str(item).strip()
+            for key, item in payload.items()
+            if str(key).strip() and str(item).strip()
+        }
+    return _split_key_value_csv(text)
 
 
 def _normalize_optional_string(value: object) -> str | None:
@@ -48,6 +94,133 @@ def _coerce_bool(value: object) -> bool | None:
     return None
 
 
+def _b64url_decode_string(raw: str) -> str | None:
+    try:
+        decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        return decoded.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
+def _coerce_auth_jwt_key(raw: object, *, default_kid: str | None = None) -> AuthJwtKey | None:
+    if not isinstance(raw, dict):
+        secret = _normalize_optional_string(raw)
+        kid = _normalize_optional_string(default_kid)
+        if kid is None or secret is None:
+            return None
+        return AuthJwtKey(kid=kid, secret=secret)
+
+    kid = _normalize_optional_string(raw.get("kid") or raw.get("id") or default_kid)
+    secret = _normalize_optional_string(
+        raw.get("secret")
+        or raw.get("value")
+        or raw.get("shared_secret")
+    )
+    if secret is None:
+        jwk_secret = _normalize_optional_string(raw.get("k"))
+        if jwk_secret is not None:
+            secret = _b64url_decode_string(jwk_secret) or jwk_secret
+    if kid is None or secret is None:
+        return None
+
+    active = _coerce_bool(raw.get("active"))
+    if active is None:
+        status = (_normalize_optional_string(raw.get("status")) or "active").lower()
+        active = status not in {"disabled", "inactive", "retired", "revoked"}
+    return AuthJwtKey(kid=kid, secret=secret, active=active)
+
+
+def _dedupe_auth_jwt_keys(keys: list[AuthJwtKey]) -> tuple[AuthJwtKey, ...]:
+    deduped: dict[str, AuthJwtKey] = {}
+    for key in keys:
+        deduped[key.kid] = key
+    return tuple(deduped.values())
+
+
+def _parse_auth_jwt_key_object(raw: object) -> tuple[AuthJwtKey, ...]:
+    keys: list[AuthJwtKey] = []
+    if isinstance(raw, list):
+        for item in raw:
+            key = _coerce_auth_jwt_key(item)
+            if key is not None:
+                keys.append(key)
+        return _dedupe_auth_jwt_keys(keys)
+
+    if not isinstance(raw, dict):
+        return ()
+
+    jwks_keys = raw.get("keys")
+    if isinstance(jwks_keys, list):
+        for item in jwks_keys:
+            key = _coerce_auth_jwt_key(item)
+            if key is not None:
+                keys.append(key)
+
+    for kid, value in raw.items():
+        if kid in {"keys", "current_kid", "currentKid"}:
+            continue
+        key = _coerce_auth_jwt_key(value, default_kid=str(kid))
+        if key is not None:
+            keys.append(key)
+
+    return _dedupe_auth_jwt_keys(keys)
+
+
+def _parse_auth_jwt_keys(raw: object) -> tuple[AuthJwtKey, ...]:
+    text = _normalize_optional_string(raw)
+    if text is None:
+        return ()
+
+    if text[0] in "[{":
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError("AUTH_JWT_KEYS must be valid JSON or kid=secret CSV.") from exc
+        return _parse_auth_jwt_key_object(parsed)
+
+    keys: list[AuthJwtKey] = []
+    for item in text.split(","):
+        part = item.strip()
+        if not part:
+            continue
+        if "=" in part:
+            kid, secret = part.split("=", 1)
+        elif ":" in part:
+            kid, secret = part.split(":", 1)
+        else:
+            continue
+        key = _coerce_auth_jwt_key(secret, default_kid=kid)
+        if key is not None:
+            keys.append(key)
+    return _dedupe_auth_jwt_keys(keys)
+
+
+def _auth_jwt_keys_from_env(env: MutableMapping[str, str]) -> tuple[AuthJwtKey, ...]:
+    keys: list[AuthJwtKey] = []
+    for env_key in ("AUTH_JWT_KEYS", "AUTH_JWT_SECRETS", "AUTH_JWT_JWKS"):
+        keys.extend(_parse_auth_jwt_keys(env.get(env_key)))
+    return _dedupe_auth_jwt_keys(keys)
+
+
+def _configured_single_auth_secret(settings: "Settings", env: MutableMapping[str, str]) -> str | None:
+    if _normalize_optional_string(env.get("AUTH_JWT_SECRET")) is None:
+        return None
+    return _normalize_optional_string(settings.auth_jwt_secret)
+
+
+def _current_auth_jwt_secret(settings: "Settings", env: MutableMapping[str, str]) -> str | None:
+    if settings.auth_jwt_key_id:
+        for key in settings.auth_jwt_keys:
+            if key.active and key.kid == settings.auth_jwt_key_id:
+                return key.secret
+        return _configured_single_auth_secret(settings, env)
+
+    for key in settings.auth_jwt_keys:
+        if key.active:
+            return key.secret
+    return _configured_single_auth_secret(settings, env)
+
+
 def _non_development_environment_sources(env: MutableMapping[str, str]) -> tuple[str, ...]:
     sources: list[str] = []
     for key in ("APP_ENVIRONMENT", "ENVIRONMENT"):
@@ -66,10 +239,21 @@ def _validate_non_development_security(settings: "Settings", env: MutableMapping
 
     failures: list[str] = []
     jwt_secret = _normalize_optional_string(env.get("AUTH_JWT_SECRET"))
-    if jwt_secret is None:
-        failures.append("AUTH_JWT_SECRET must be set")
-    elif jwt_secret == DEFAULT_AUTH_JWT_SECRET:
+    current_secret = _current_auth_jwt_secret(settings, env)
+    if jwt_secret == DEFAULT_AUTH_JWT_SECRET:
         failures.append("AUTH_JWT_SECRET must not use the development default")
+    elif current_secret is None:
+        failures.append("AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key")
+    elif current_secret == DEFAULT_AUTH_JWT_SECRET:
+        failures.append("AUTH_JWT_KEYS must not use the development default")
+    if (
+        settings.auth_jwt_key_id
+        and settings.auth_jwt_keys
+        and not any(
+            key.active and key.kid == settings.auth_jwt_key_id for key in settings.auth_jwt_keys
+        )
+    ):
+        failures.append("AUTH_JWT_KEY_ID must match an active AUTH_JWT_KEYS entry")
     if not _normalize_optional_string(settings.auth_jwt_issuer):
         failures.append("AUTH_JWT_ISSUER must be set")
     if settings.auth_access_token_ttl_seconds <= 0:
@@ -643,6 +827,8 @@ class Settings:
     auth_enabled: bool = True
     auth_demo_tokens_enabled: bool = True
     auth_jwt_secret: str = DEFAULT_AUTH_JWT_SECRET
+    auth_jwt_key_id: str | None = None
+    auth_jwt_keys: tuple[AuthJwtKey, ...] = ()
     auth_jwt_issuer: str = "focus-agent"
     auth_jwt_audience: str | None = None
     auth_access_token_ttl_seconds: int = 8 * 60 * 60
@@ -790,6 +976,12 @@ class Settings:
             auth_demo_tokens_enabled=env.get("AUTH_DEMO_TOKENS_ENABLED", "true").lower()
             in {"1", "true", "yes", "on"},
             auth_jwt_secret=env.get("AUTH_JWT_SECRET", defaults.auth_jwt_secret),
+            auth_jwt_key_id=(
+                env.get("AUTH_JWT_KEY_ID")
+                or env.get("AUTH_JWT_CURRENT_KID")
+                or defaults.auth_jwt_key_id
+            ),
+            auth_jwt_keys=_auth_jwt_keys_from_env(env),
             auth_jwt_issuer=env.get("AUTH_JWT_ISSUER", defaults.auth_jwt_issuer),
             auth_jwt_audience=env.get("AUTH_JWT_AUDIENCE") or defaults.auth_jwt_audience,
             auth_access_token_ttl_seconds=int(

@@ -88,6 +88,20 @@
 | P34 Agent Governance Quality Dashboard | 已完成首轮落地 | 新增 `make agent-governance-report` 与 `reports/agent-governance/latest.json`，聚合 delegation、critic、review queue、cost/latency/tool-call 质量信号 |
 | P35 Docs / Ops Pack | 已完成首轮落地 | `docs/multi-agent-collaboration.md`、本文、roadmap、release checklist、observability runbook、CI 文档、memory/governance 文档已同步 P27-P35 状态与验证口径 |
 
+2026-04-26 追加更新：P36-P44 多 Agent 协同开发已继续把 P27-P35 的首轮能力推进到真实信号、历史趋势、阈值门禁和运营闭环；本轮不新增产品内多 Agent UI / 后端能力，仍以工程协作方式落地。
+
+| 范围 | 状态 | 已完成内容 |
+|---|---|---|
+| P36 Deployment Binding | 已完成首轮落地 | GitHub Actions release gate 增加 deployment binding JSON，production 模式校验 base URL、readyz、trajectory stats、replay、alert、baseline eval、approval、artifact storage、retention、smoke auth token、stream event input、Postgres drill input 与 OTel trace query 映射 |
+| P37 Nightly Trend | 已完成首轮落地 | `scripts/nightly_regression.py` 支持历史 report 读取、baseline status、latest-vs-previous delta 与 history append；缺历史标记 `baseline_status=missing` 但不阻断 |
+| P38 Production Smoke V2 | 已完成首轮落地 | `scripts/production_smoke.py` 追加 `stream_events`、`graph_turn`、`thresholds`，覆盖 stream event contract、最小 graph turn 与 rate-limit threshold；live 模式缺 stream input 或 graph 401/403 会 fail closed |
+| P39 Postgres Drill | 已完成首轮落地 | `scripts/postgres_ops.py` 支持可选 live connectivity / migration table check、backup command、restore command、restore verification evidence/query 与 retention cleanup dry-run |
+| P40 OTel Roundtrip | 已完成首轮落地 | `scripts/otel_smoke.py` 支持 collector health、synthetic span export 和 trace query evidence；live 模式缺 trace query 会 fail closed |
+| P41 Auth Rotation | 已完成首轮落地 | JWT 支持 `kid`、`AUTH_JWT_KEY_ID`、`AUTH_JWT_KEYS` / `AUTH_JWT_SECRETS` / `AUTH_JWT_JWKS`，保留单 secret 兼容，active key set 支持 rotation overlap；配置 key set 时 current `kid` 必须匹配 active key，wrong `kid` 不 fallback |
+| P42 Eval Dataset Ops | 已完成首轮落地 | Memory / Context candidate import / review 增加 candidate aging、source explanation、duplicate reason、PII redaction summary 和 promotion review SLA，继续禁止自动写 golden dataset |
+| P43 Governance Quality Gate | 已完成首轮落地 | Agent governance report 增加 delegation、critic、review backlog、cost/token/tool-call threshold signals；production release-health 必须读取 `--governance-report-json` 并阻断 blocking signal |
+| P44 Docs / Ops Pack | 已完成首轮落地 | `docs/multi-agent-collaboration.md`、本文、roadmap、release checklist、observability runbook 与 deployment docs 已同步 P36-P44 状态 |
+
 ## 仓库入口与整体架构
 
 从已读取的根目录文件和路径分布看，仓库大致由“后端应用 + 前端应用 + 前端 SDK + 测试 + 文档”构成。`pyproject.toml` 定义了 Python 运行时与核心依赖；`src/focus_agent` 是后端主代码；`apps/web` 是 React Web App；`frontend-sdk` 是对后端 REST/SSE 协议的前端封装；`tests` 中能看到图编排、默认工具、记忆流水线、前端脚手架与治理能力的测试文件；`docs/architecture.md` 则提供了仓库内架构说明文档。fileciteturn17file0L1-L1 fileciteturn42file0L1-L1 fileciteturn45file0L1-L1 fileciteturn35file8L1-L1 fileciteturn35file6L1-L1 fileciteturn37file4L1-L1 fileciteturn41file2L1-L1 fileciteturn41file3L1-L1 fileciteturn16file0L1-L1

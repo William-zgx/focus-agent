@@ -6,24 +6,34 @@ from pathlib import Path
 from scripts import agent_governance_report
 
 
-def _write_report(path: Path, *, suite: str, per_tag_success: dict[str, float], failed: int = 0) -> None:
+def _write_report(
+    path: Path,
+    *,
+    suite: str,
+    per_tag_success: dict[str, float],
+    failed: int = 0,
+    summary_extra: dict[str, object] | None = None,
+) -> None:
     total = 4
+    summary = {
+        "total": total,
+        "passed": total - failed,
+        "failed": failed,
+        "errors": 0,
+        "task_success": (total - failed) / total,
+        "avg_cost_usd": 0.002,
+        "avg_input_tokens": 120.0,
+        "avg_output_tokens": 40.0,
+        "avg_tool_calls": 0.5,
+        "per_tag_success": per_tag_success,
+    }
+    if summary_extra:
+        summary.update(summary_extra)
     path.write_text(
         json.dumps(
             {
                 "meta": {"suite": suite},
-                "summary": {
-                    "total": total,
-                    "passed": total - failed,
-                    "failed": failed,
-                    "errors": 0,
-                    "task_success": (total - failed) / total,
-                    "avg_cost_usd": 0.002,
-                    "avg_input_tokens": 120.0,
-                    "avg_output_tokens": 40.0,
-                    "avg_tool_calls": 0.5,
-                    "per_tag_success": per_tag_success,
-                },
+                "summary": summary,
                 "comparison": {"regressions": []},
                 "results": [],
             }
@@ -66,7 +76,17 @@ def test_governance_report_aggregates_quality_dimensions(tmp_path: Path) -> None
         "merge_review": 1.0,
     }
     assert report["quality"]["cost"]["avg_cost_usd"] == 0.002
-    assert set(report) == {"meta", "commands", "artifacts", "quality", "summary"}
+    assert report["signals"][0]["key"] == "delegation_success"
+    assert report["signals"][0]["thresholds"]["blocking"] == 0.95
+    assert set(report) == {
+        "meta",
+        "commands",
+        "artifacts",
+        "quality",
+        "thresholds",
+        "signals",
+        "summary",
+    }
 
 
 def test_governance_cli_accepts_label_path_reports(tmp_path: Path, capsys) -> None:
@@ -95,3 +115,70 @@ def test_governance_cli_accepts_label_path_reports(tmp_path: Path, capsys) -> No
     assert report["commands"][0]["label"] == "eval-delegation"
     assert report["summary"]["missing_reports"] == 0
     assert agent_governance_report.DEFAULT_REPORT_JSON == Path("reports/agent-governance/latest.json")
+
+
+def test_governance_report_threshold_blocking_signals(tmp_path: Path) -> None:
+    delegation = tmp_path / "delegation.json"
+    governance = tmp_path / "governance.json"
+    _write_report(
+        delegation,
+        suite="agent_delegation",
+        per_tag_success={"agent_delegation": 0.9},
+    )
+    _write_report(
+        governance,
+        suite="agent_governance",
+        per_tag_success={"critic": 0.82, "review_queue": 1.0},
+        summary_extra={
+            "critic_precision": 0.82,
+            "critic_recall": 0.9,
+            "review_queue_backlog": 11,
+        },
+    )
+
+    report = agent_governance_report.build_governance_report(
+        eval_reports=[("delegation", delegation), ("governance", governance)]
+    )
+    signals = {signal["key"]: signal for signal in report["signals"]}
+
+    assert report["summary"]["status"] == "failed"
+    assert signals["delegation_success"]["status"] == "block"
+    assert signals["delegation_success"]["thresholds"] == {"warning": 0.98, "blocking": 0.95}
+    assert signals["critic_precision"]["status"] == "block"
+    assert signals["critic_recall"]["status"] == "pass"
+    assert signals["review_queue_backlog"]["status"] == "block"
+    assert set(report["summary"]["blocking_signals"]) >= {
+        "delegation_success",
+        "critic_precision",
+        "review_queue_backlog",
+    }
+
+
+def test_governance_report_cost_budget_warning_without_block(tmp_path: Path) -> None:
+    delegation = tmp_path / "delegation.json"
+    governance = tmp_path / "governance.json"
+    _write_report(
+        delegation,
+        suite="agent_delegation",
+        per_tag_success={"agent_delegation": 1.0},
+        summary_extra={"avg_cost_usd": 0.04},
+    )
+    _write_report(
+        governance,
+        suite="agent_governance",
+        per_tag_success={"critic": 1.0, "review_queue": 1.0},
+        summary_extra={"critic_precision": 0.95, "critic_recall": 0.96, "avg_cost_usd": 0.04},
+    )
+
+    report = agent_governance_report.build_governance_report(
+        eval_reports=[("delegation", delegation), ("governance", governance)]
+    )
+    budget_signal = next(signal for signal in report["signals"] if signal["key"] == "cost_token_tool_budget")
+
+    assert report["summary"]["status"] == "passed"
+    assert budget_signal["status"] == "warn"
+    assert "cost_token_tool_budget" in report["summary"]["warning_signals"]
+    assert budget_signal["details"]["checks"][0]["thresholds"] == {
+        "warning": 0.03,
+        "blocking": 0.05,
+    }

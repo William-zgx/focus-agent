@@ -83,9 +83,9 @@ def _passing_production_smoke_report_path(tmp_path: Path) -> Path:
     return _write_json(
         tmp_path / "production-smoke.json",
         {
-            "checks": [{"name": "readyz", "status": "dry-run"}],
+            "checks": [{"name": "readyz", "status": "passed", "passed": True}],
             "passed": True,
-            "status": "dry-run",
+            "status": "passed",
         },
     )
 
@@ -94,9 +94,9 @@ def _passing_postgres_ops_report_path(tmp_path: Path) -> Path:
     return _write_json(
         tmp_path / "postgres-ops.json",
         {
-            "operations": [{"name": "connectivity", "status": "dry-run"}],
+            "operations": [{"name": "connectivity", "status": "passed", "passed": True}],
             "passed": True,
-            "status": "dry-run",
+            "status": "passed",
         },
     )
 
@@ -105,12 +105,40 @@ def _passing_otel_smoke_report_path(tmp_path: Path) -> Path:
     return _write_json(
         tmp_path / "otel-smoke.json",
         {
-            "checks": [{"name": "span_export", "status": "dry-run"}],
+            "checks": [{"name": "span_export", "status": "passed", "passed": True}],
             "passed": True,
             "spans": [{"name": "focus_agent.release.otel_smoke"}],
-            "status": "dry-run",
+            "status": "passed",
         },
     )
+
+
+def _passing_governance_report_path(tmp_path: Path) -> Path:
+    return _write_json(
+        tmp_path / "governance-quality.json",
+        {
+            "summary": {
+                "status": "passed",
+                "blocking_signals": [],
+                "warning_signals": [],
+            },
+            "signals": [],
+            "thresholds": {},
+        },
+    )
+
+
+def _required_production_report_args(tmp_path: Path) -> list[str]:
+    return [
+        "--production-smoke-report-json",
+        str(_passing_production_smoke_report_path(tmp_path)),
+        "--postgres-ops-report-json",
+        str(_passing_postgres_ops_report_path(tmp_path)),
+        "--otel-smoke-report-json",
+        str(_passing_otel_smoke_report_path(tmp_path)),
+        "--governance-report-json",
+        str(_passing_governance_report_path(tmp_path)),
+    ]
 
 
 def test_release_health_check_self_check_writes_report(tmp_path: Path) -> None:
@@ -189,6 +217,7 @@ def test_release_health_check_empty_eval_report_blocks_release(tmp_path: Path) -
             str(_passing_replay_path(tmp_path)),
             "--eval-report-json",
             str(eval_report),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -225,7 +254,16 @@ def test_release_health_check_production_mode_missing_inputs_fails_closed(tmp_pa
 
     assert exit_code == 1
     assert report["status"] == "failed"
-    assert missing_inputs == ["readyz", "trajectory_stats", "replay_comparisons", "eval_report"]
+    assert missing_inputs == [
+        "readyz",
+        "trajectory_stats",
+        "replay_comparisons",
+        "eval_report",
+        "production_smoke_report",
+        "postgres_ops_report",
+        "otel_smoke_report",
+        "governance_report",
+    ]
 
 
 def test_release_health_check_production_bad_json_writes_failed_report(tmp_path: Path) -> None:
@@ -245,6 +283,7 @@ def test_release_health_check_production_bad_json_writes_failed_report(tmp_path:
             str(_passing_replay_path(tmp_path)),
             "--eval-report-json",
             str(_passing_eval_path(tmp_path)),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -280,6 +319,7 @@ def test_release_health_check_production_invalid_trajectory_stats_blocks_release
             str(_passing_replay_path(tmp_path)),
             "--eval-report-json",
             str(_passing_eval_path(tmp_path)),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -314,6 +354,7 @@ def test_release_health_check_production_empty_replay_comparison_blocks_release(
             str(replay),
             "--eval-report-json",
             str(_passing_eval_path(tmp_path)),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -389,6 +430,7 @@ def test_release_health_check_production_replay_comparison_blocks_release(tmp_pa
             str(replay),
             "--eval-report-json",
             str(_passing_eval_path(tmp_path)),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -423,6 +465,7 @@ def test_release_health_check_production_eval_regression_blocks_release(tmp_path
             str(_passing_replay_path(tmp_path)),
             "--eval-report-json",
             str(eval_report),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -479,6 +522,7 @@ def test_release_health_check_production_baseline_eval_regression_blocks_release
             str(current_eval),
             "--baseline-eval-report-json",
             str(baseline_eval),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -507,6 +551,7 @@ def test_release_health_check_production_trajectory_recorder_unavailable_blocks_
             str(_passing_replay_path(tmp_path)),
             "--eval-report-json",
             str(_passing_eval_path(tmp_path)),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -546,6 +591,7 @@ def test_release_health_check_alert_report_blocks_release(tmp_path: Path) -> Non
             str(_passing_eval_path(tmp_path)),
             "--alert-report-json",
             str(alert_report),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -579,6 +625,7 @@ def test_release_health_check_postgres_migration_report_blocks_release(tmp_path:
             str(_passing_eval_path(tmp_path)),
             "--postgres-migration-report-json",
             str(postgres_report),
+            *_required_production_report_args(tmp_path),
             "--report-json",
             str(report_path),
         ]
@@ -614,6 +661,8 @@ def test_release_health_check_reads_production_ops_and_otel_reports(tmp_path: Pa
             str(_passing_postgres_ops_report_path(tmp_path)),
             "--otel-smoke-report-json",
             str(_passing_otel_smoke_report_path(tmp_path)),
+            "--governance-report-json",
+            str(_passing_governance_report_path(tmp_path)),
             "--report-json",
             str(report_path),
         ]
@@ -625,6 +674,54 @@ def test_release_health_check_reads_production_ops_and_otel_reports(tmp_path: Pa
     assert statuses["production_smoke_report"] == "pass"
     assert statuses["postgres_ops_report"] == "pass"
     assert statuses["otel_smoke_report"] == "pass"
+
+
+def test_release_health_check_production_rejects_dry_run_ops_report(tmp_path: Path) -> None:
+    dry_run_postgres = _write_json(
+        tmp_path / "postgres-ops-dry-run.json",
+        {
+            "operations": [{"name": "connectivity", "status": "dry-run"}],
+            "passed": True,
+            "status": "dry-run",
+        },
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            "--mode",
+            "production",
+            "--readyz-json",
+            str(_readyz_path(tmp_path)),
+            "--trajectory-stats-json",
+            str(_trajectory_stats_path(tmp_path)),
+            "--replay-comparisons-json",
+            str(_passing_replay_path(tmp_path)),
+            "--eval-report-json",
+            str(_passing_eval_path(tmp_path)),
+            "--production-smoke-report-json",
+            str(_passing_production_smoke_report_path(tmp_path)),
+            "--postgres-ops-report-json",
+            str(dry_run_postgres),
+            "--otel-smoke-report-json",
+            str(_passing_otel_smoke_report_path(tmp_path)),
+            "--governance-report-json",
+            str(_passing_governance_report_path(tmp_path)),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    dry_run_signal = next(
+        signal
+        for signal in report["signals"]
+        if signal["key"] == "release_health_required_input_missing"
+        and signal["labels"]["input"] == "postgres_ops_report"
+    )
+
+    assert exit_code == 1
+    assert dry_run_signal["status"] == "fail"
+    assert "cannot be dry-run" in dry_run_signal["detail"]
 
 
 def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: Path) -> None:
@@ -650,8 +747,14 @@ def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: 
             str(_passing_replay_path(tmp_path)),
             "--eval-report-json",
             str(_passing_eval_path(tmp_path)),
+            "--production-smoke-report-json",
+            str(_passing_production_smoke_report_path(tmp_path)),
+            "--postgres-ops-report-json",
+            str(_passing_postgres_ops_report_path(tmp_path)),
             "--otel-smoke-report-json",
             str(otel_report),
+            "--governance-report-json",
+            str(_passing_governance_report_path(tmp_path)),
             "--report-json",
             str(report_path),
         ]
@@ -662,3 +765,48 @@ def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: 
     assert exit_code == 1
     assert otel_signal["status"] == "fail"
     assert otel_signal["details"]["failed_checks"] == ["span_export"]
+
+
+def test_release_health_check_governance_blocking_signal_blocks_release(tmp_path: Path) -> None:
+    governance_report = _write_json(
+        tmp_path / "governance-quality.json",
+        {
+            "summary": {
+                "status": "failed",
+                "blocking_signals": ["delegation_success"],
+                "warning_signals": ["cost_token_tool_budget"],
+            },
+            "thresholds": {
+                "delegation_success": {"warning_min": 0.98, "blocking_min": 0.95}
+            },
+            "signals": [
+                {
+                    "key": "delegation_success",
+                    "status": "block",
+                    "severity": "blocking",
+                    "value": 0.9,
+                    "thresholds": {"warning": 0.98, "blocking": 0.95},
+                }
+            ],
+        },
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            "--self-check",
+            "--governance-report-json",
+            str(governance_report),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    governance_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "agent_governance_quality"
+    )
+
+    assert exit_code == 1
+    assert governance_signal["status"] == "fail"
+    assert governance_signal["details"]["blocking_signals"] == ["delegation_success"]
+    assert governance_signal["details"]["thresholds"]["delegation_success"]["blocking_min"] == 0.95

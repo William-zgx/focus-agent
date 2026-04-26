@@ -29,6 +29,12 @@ DEFAULT_READY_URL = "http://127.0.0.1:8000/readyz"
 DEFAULT_TRAJECTORY_STATS_URL = "http://127.0.0.1:8000/v1/observability/trajectory/stats"
 LOCAL_MODE = "local"
 LIVE_MODES = {"live", "production"}
+PRODUCTION_REPORT_INPUTS = (
+    ("production_smoke_report", "production_smoke_report_json"),
+    ("postgres_ops_report", "postgres_ops_report_json"),
+    ("otel_smoke_report", "otel_smoke_report_json"),
+    ("governance_report", "governance_report_json"),
+)
 
 
 def _load_json(path: str | Path) -> Any:
@@ -130,6 +136,13 @@ def _load_replay_comparisons(path: str | Path | None) -> list[dict[str, Any]] | 
 
 def _input_present(*values: str | Path | None) -> bool:
     return any(bool(value) for value in values)
+
+
+def _report_is_dry_run(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    status = str(payload.get("status") or "").lower()
+    return bool(payload.get("dry_run") is True or status == "dry-run")
 
 
 def _eval_report_signals(paths: Iterable[str | Path], *, root: Path) -> list[ReleaseHealthSignal]:
@@ -321,6 +334,7 @@ def build_release_health_report(
     production_smoke_report: dict[str, Any] | None = None,
     postgres_ops_report: dict[str, Any] | None = None,
     otel_smoke_report: dict[str, Any] | None = None,
+    governance_quality_report: dict[str, Any] | None = None,
     eval_report_paths: Sequence[str | Path] = (),
     baseline_eval_report_paths: Sequence[str | Path] = (),
     extra_signals: Sequence[ReleaseHealthSignal] = (),
@@ -337,6 +351,7 @@ def build_release_health_report(
         production_smoke_report=production_smoke_report,
         postgres_ops_report=postgres_ops_report,
         otel_smoke_report=otel_smoke_report,
+        governance_quality_report=governance_quality_report,
     )
     eval_signals = _eval_report_signals(eval_report_paths, root=root)
     baseline_eval_signals = _baseline_eval_report_signals(
@@ -407,6 +422,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--production-smoke-report-json", help="Production smoke report JSON.")
     parser.add_argument("--postgres-ops-report-json", help="Postgres ops report JSON.")
     parser.add_argument("--otel-smoke-report-json", help="OpenTelemetry smoke report JSON.")
+    parser.add_argument("--governance-report-json", help="Agent Governance quality report JSON.")
+    parser.add_argument(
+        "--allow-dry-run-reports",
+        action="store_true",
+        help="Allow dry-run optional reports. Intended only for deterministic local evidence packs.",
+    )
     parser.add_argument("--ready-url", help="HTTP URL for the runtime readiness probe.")
     parser.add_argument("--trajectory-stats-url", help="HTTP URL for trajectory stats.")
     parser.add_argument(
@@ -490,6 +511,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             live_mode=live_mode,
             fail_closed_signals=fail_closed_signals,
         )
+        governance_quality_report, governance_quality_report_loaded = _load_json_input(
+            args.governance_report_json,
+            input_name="governance_report",
+            live_mode=live_mode,
+            fail_closed_signals=fail_closed_signals,
+        )
         trajectory_stats_url_loaded = False
 
         if runtime_status is None and args.ready_url:
@@ -552,6 +579,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _required_input_signal("otel_smoke_report", "invalid otel smoke report input")
                 )
                 otel_smoke_report = None
+            if governance_quality_report_loaded and not isinstance(governance_quality_report, dict):
+                fail_closed_signals.append(
+                    _required_input_signal("governance_report", "invalid governance report input")
+                )
+                governance_quality_report = None
             if runtime_status is None and not _input_present(runtime_status_path, args.ready_url):
                 fail_closed_signals.append(_required_input_signal("readyz", "missing readyz input"))
             if trajectory_stats is None and not _input_present(args.trajectory_stats_json, args.trajectory_stats_url):
@@ -564,6 +596,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             if not args.eval_report_json:
                 fail_closed_signals.append(_required_input_signal("eval_report", "missing eval report input"))
+            for input_name, arg_name in PRODUCTION_REPORT_INPUTS:
+                if not _input_present(getattr(args, arg_name)):
+                    fail_closed_signals.append(_required_input_signal(input_name, f"missing {input_name} input"))
+            if not args.allow_dry_run_reports:
+                for input_name, report in (
+                    ("production_smoke_report", production_smoke_report),
+                    ("postgres_ops_report", postgres_ops_report),
+                    ("otel_smoke_report", otel_smoke_report),
+                    ("governance_report", governance_quality_report),
+                ):
+                    if _report_is_dry_run(report):
+                        fail_closed_signals.append(
+                            _required_input_signal(input_name, f"{input_name} cannot be dry-run in production mode")
+                        )
+        if (
+            governance_quality_report_loaded
+            and governance_quality_report is not None
+            and not isinstance(governance_quality_report, dict)
+        ):
+            raise ValueError("governance report input must be a JSON object")
         if runtime_status is None:
             if args.allow_self_check_fallback:
                 runtime_status = _self_check_runtime()
@@ -593,6 +645,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None,
             postgres_ops_report=postgres_ops_report if isinstance(postgres_ops_report, dict) else None,
             otel_smoke_report=otel_smoke_report if isinstance(otel_smoke_report, dict) else None,
+            governance_quality_report=governance_quality_report
+            if isinstance(governance_quality_report, dict)
+            else None,
             eval_report_paths=args.eval_report_json,
             baseline_eval_report_paths=args.baseline_eval_report_json,
             extra_signals=(*fallback_signals, *fail_closed_signals),
@@ -616,6 +671,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "production_smoke_report_json": args.production_smoke_report_json,
                 "postgres_ops_report_json": args.postgres_ops_report_json,
                 "otel_smoke_report_json": args.otel_smoke_report_json,
+                "governance_report_json": args.governance_report_json,
+                "allow_dry_run_reports": bool(args.allow_dry_run_reports),
                 "ready_url": args.ready_url,
                 "trajectory_stats_url": args.trajectory_stats_url,
                 "eval_report_json": list(args.eval_report_json),

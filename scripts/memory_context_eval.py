@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import ast
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 from pathlib import Path
@@ -20,8 +20,20 @@ DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_qu
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
 DEFAULT_TREND_REPORT_JSON = Path("reports/release-gate/memory-context-trend.json")
 DEFAULT_CANDIDATE_ID_PREFIX = "mc_candidate"
+DEFAULT_PROMOTION_REVIEW_SLA_DAYS = 7
 _PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok"}
 _SOURCE_TYPES = {"auto", "trajectory", "replay", "memory-context"}
+_REDACTION_TYPES = ("email", "bearer_token", "jwt", "token_literal", "secret", "phone")
+_CANDIDATE_TIME_KEYS = (
+    "candidate_created_at",
+    "created_at",
+    "generated_at",
+    "observed_at",
+    "timestamp",
+    "time",
+    "started_at",
+    "completed_at",
+)
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _BEARER_TOKEN_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{10,}")
@@ -73,6 +85,8 @@ class CandidateImportResult:
     record_count: int
     skipped_no_assertions: int
     skipped_duplicates: int
+    duplicate_reasons: list[dict[str, Any]] = field(default_factory=list)
+    pii_redaction_summary: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self, *, dataset: str | None = None) -> dict[str, Any]:
         payload = {
@@ -81,6 +95,13 @@ class CandidateImportResult:
             "records": self.record_count,
             "skipped_no_assertions": self.skipped_no_assertions,
             "skipped_duplicates": self.skipped_duplicates,
+            "duplicate_reasons": list(self.duplicate_reasons),
+            "pii_redaction_summary": _redaction_summary_payload(self.pii_redaction_summary),
+            "candidate_age_summary": _candidate_age_summary(self.cases),
+            "candidate_first_invariant": {
+                "golden_dataset_unchanged": True,
+                "requires_explicit_promotion_review": True,
+            },
         }
         if dataset is not None:
             payload["dataset"] = dataset
@@ -98,6 +119,8 @@ class CandidatePromotionReviewResult:
     approved_count: int
     rejected_count: int
     pending_count: int
+    duplicate_reasons: list[dict[str, Any]] = field(default_factory=list)
+    pii_redaction_summary: dict[str, int] = field(default_factory=dict)
 
     def to_dict(
         self,
@@ -115,6 +138,13 @@ class CandidatePromotionReviewResult:
             "approved": self.approved_count,
             "rejected": self.rejected_count,
             "pending": self.pending_count,
+            "duplicate_reasons": list(self.duplicate_reasons),
+            "pii_redaction_summary": _redaction_summary_payload(self.pii_redaction_summary),
+            "promotion_sla_summary": _promotion_sla_summary(self.reviewed_cases),
+            "candidate_first_invariant": {
+                "golden_dataset_unchanged": True,
+                "promoted_dataset_requires_explicit_approval": True,
+            },
         }
         if reviewed_dataset is not None:
             payload["reviewed_dataset"] = reviewed_dataset
@@ -198,14 +228,19 @@ def import_candidate_cases(
     baseline_label: str = "candidate",
     baseline_marker: str | None = None,
     redact: bool = True,
+    now: datetime | None = None,
+    promotion_review_sla_days: int = DEFAULT_PROMOTION_REVIEW_SLA_DAYS,
 ) -> CandidateImportResult:
     """Import real-sample memory/context candidates from trajectory or report files."""
     if source_type not in _SOURCE_TYPES:
         raise ValueError(f"unsupported candidate source type: {source_type}")
     resolved_baseline_label = baseline_marker or baseline_label
+    observed_now = _coerce_datetime(now) or datetime.now(UTC)
 
     cases: list[dict[str, Any]] = []
-    dedupe_keys: set[str] = set()
+    dedupe_keys: dict[str, str] = {}
+    duplicate_reasons: list[dict[str, Any]] = []
+    pii_redaction_summary = _empty_redaction_summary()
     record_count = 0
     skipped_no_assertions = 0
     skipped_duplicates = 0
@@ -224,17 +259,31 @@ def import_candidate_cases(
                 source_index=index,
                 candidate_id_prefix=candidate_id_prefix,
                 baseline_label=resolved_baseline_label,
+                now=observed_now,
+                promotion_review_sla_days=promotion_review_sla_days,
             )
             if case is None:
                 skipped_no_assertions += 1
                 continue
             if redact:
-                case = _sanitize_json(case)
+                case, redactions = _sanitize_json_with_summary(case)
+            else:
+                redactions = _empty_redaction_summary()
+            pii_redaction_summary = _merge_redaction_summaries(pii_redaction_summary, redactions)
+            case = _with_privacy_summary(case, redactions)
             dedupe_key = _candidate_dedupe_key(case)
             if dedupe_key in dedupe_keys:
                 skipped_duplicates += 1
+                duplicate_reasons.append(
+                    _duplicate_reason(
+                        case,
+                        duplicate_of=dedupe_keys[dedupe_key],
+                        dedupe_key=dedupe_key,
+                        operation="candidate_import",
+                    )
+                )
                 continue
-            dedupe_keys.add(dedupe_key)
+            dedupe_keys[dedupe_key] = str(case.get("id") or f"candidate-{len(cases) + 1}")
             cases.append(case)
 
     return CandidateImportResult(
@@ -243,6 +292,8 @@ def import_candidate_cases(
         record_count=record_count,
         skipped_no_assertions=skipped_no_assertions,
         skipped_duplicates=skipped_duplicates,
+        duplicate_reasons=duplicate_reasons,
+        pii_redaction_summary=pii_redaction_summary,
     )
 
 
@@ -255,6 +306,8 @@ def review_candidate_cases(
     reviewer: str | None = None,
     note: str | None = None,
     redact: bool = True,
+    now: datetime | None = None,
+    promotion_review_sla_days: int = DEFAULT_PROMOTION_REVIEW_SLA_DAYS,
 ) -> CandidatePromotionReviewResult:
     """Review imported candidates and return explicitly approved promotion cases."""
     approved_set = {str(case_id) for case_id in approved_ids if str(case_id)}
@@ -265,7 +318,10 @@ def review_candidate_cases(
 
     reviewed_cases: list[dict[str, Any]] = []
     promoted_cases: list[dict[str, Any]] = []
-    dedupe_keys: set[str] = set()
+    dedupe_keys: dict[str, str] = {}
+    duplicate_reasons: list[dict[str, Any]] = []
+    pii_redaction_summary = _empty_redaction_summary()
+    observed_now = _coerce_datetime(now) or datetime.now(UTC)
     record_count = 0
     skipped_no_assertions = 0
     skipped_duplicates = 0
@@ -276,7 +332,13 @@ def review_candidate_cases(
     for source in candidate_jsonl:
         for case in load_dataset(source):
             record_count += 1
-            candidate = _sanitize_json(case) if redact else dict(case)
+            if redact:
+                candidate, redactions = _sanitize_json_with_summary(case)
+            else:
+                candidate = dict(case)
+                redactions = _empty_redaction_summary()
+            pii_redaction_summary = _merge_redaction_summaries(pii_redaction_summary, redactions)
+            candidate = _with_privacy_summary(candidate, redactions)
             expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
             if not _has_expected_assertions(expected):
                 skipped_no_assertions += 1
@@ -284,8 +346,16 @@ def review_candidate_cases(
             dedupe_key = _candidate_dedupe_key(candidate)
             if dedupe_key in dedupe_keys:
                 skipped_duplicates += 1
+                duplicate_reasons.append(
+                    _duplicate_reason(
+                        candidate,
+                        duplicate_of=dedupe_keys[dedupe_key],
+                        dedupe_key=dedupe_key,
+                        operation="candidate_review",
+                    )
+                )
                 continue
-            dedupe_keys.add(dedupe_key)
+            dedupe_keys[dedupe_key] = str(candidate.get("id") or f"candidate-{record_count}")
 
             candidate_id = str(candidate.get("id") or "")
             if candidate_id in rejected_set:
@@ -301,12 +371,22 @@ def review_candidate_cases(
                 reason = "awaiting_explicit_approval"
                 pending_count += 1
 
+            if redact and (reviewer or note):
+                _review_meta, review_redactions = _sanitize_json_with_summary(
+                    {"reviewer": reviewer, "note": note}
+                )
+                pii_redaction_summary = _merge_redaction_summaries(
+                    pii_redaction_summary,
+                    review_redactions,
+                )
             reviewed_case = _with_promotion_review(
                 candidate,
                 status=status,
                 reason=reason,
                 reviewer=reviewer,
                 note=note,
+                now=observed_now,
+                promotion_review_sla_days=promotion_review_sla_days,
             )
             reviewed_cases.append(reviewed_case)
             if status == "approved":
@@ -322,6 +402,8 @@ def review_candidate_cases(
         approved_count=approved_count,
         rejected_count=rejected_count,
         pending_count=pending_count,
+        duplicate_reasons=duplicate_reasons,
+        pii_redaction_summary=pii_redaction_summary,
     )
 
 
@@ -641,6 +723,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Optional review note stored in promotion_review metadata.",
     )
     parser.add_argument(
+        "--candidate-review-sla-days",
+        type=int,
+        default=DEFAULT_PROMOTION_REVIEW_SLA_DAYS,
+        help="Review SLA, in days, for candidate promotion metadata.",
+    )
+    parser.add_argument(
         "--trend-report-json",
         help="Write Memory Regression Dashboard trend JSON to this path.",
     )
@@ -723,14 +811,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 approve_all=args.candidate_approve_all,
                 reviewer=args.candidate_reviewer,
                 note=args.candidate_review_note,
+                promotion_review_sla_days=args.candidate_review_sla_days,
             )
             reviewed_target = None
             promoted_target = None
             if args.candidate_reviewed_out:
-                _reject_golden_dataset_output(args.candidate_reviewed_out)
+                _reject_golden_dataset_output(args.candidate_reviewed_out, golden_dataset=args.dataset)
                 reviewed_target = write_cases_jsonl(args.candidate_reviewed_out, result.reviewed_cases)
             if args.candidate_promoted_out:
-                _reject_golden_dataset_output(args.candidate_promoted_out)
+                _reject_golden_dataset_output(args.candidate_promoted_out, golden_dataset=args.dataset)
                 promoted_target = write_cases_jsonl(args.candidate_promoted_out, result.promoted_cases)
             print(
                 json.dumps(
@@ -753,8 +842,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_type=args.candidate_source_type,
                 candidate_id_prefix=args.candidate_id_prefix,
                 baseline_label=args.candidate_baseline_label,
+                promotion_review_sla_days=args.candidate_review_sla_days,
             )
-            _reject_golden_dataset_output(args.candidate_dataset_out)
+            _reject_golden_dataset_output(args.candidate_dataset_out, golden_dataset=args.dataset)
             target = write_cases_jsonl(args.candidate_dataset_out, result.cases)
             print(json.dumps(result.to_dict(dataset=str(target)), ensure_ascii=False, indent=2))
             return 0
@@ -854,6 +944,8 @@ def _candidate_record_to_case(
     source_index: int,
     candidate_id_prefix: str,
     baseline_label: str,
+    now: datetime,
+    promotion_review_sla_days: int,
 ) -> dict[str, Any] | None:
     replay_case = record.get("replay_case") if isinstance(record.get("replay_case"), dict) else {}
     eval_case = _first_mapping(record.get("case"), record.get("eval_case"), replay_case)
@@ -900,6 +992,19 @@ def _candidate_record_to_case(
     content_hash = _stable_hash(case_payload)[:12]
     source_slug = f"{_slug(source_type) or 'source'}-{source_index}-{_stable_hash(source_id)[:8]}"
     baseline_slug = _slug(baseline_label) or "candidate"
+    source_observed_at = _candidate_source_observed_at(record, source_path=source_path, now=now)
+    aging = _candidate_aging(
+        source_observed_at,
+        now=now,
+        promotion_review_sla_days=promotion_review_sla_days,
+    )
+    source_explanation = _candidate_source_explanation(
+        source_type=source_type,
+        source_name=source_path.name,
+        source_record_id=source_id,
+        bucket=bucket,
+        expected=converted_expected,
+    )
     tags = _dedupe_strings(
         [
             "memory_context",
@@ -924,6 +1029,14 @@ def _candidate_record_to_case(
             "source_record_id": source_id,
             "source_index": source_index,
             "bucket": bucket,
+            "source_explanation": source_explanation,
+        },
+        "candidate_ops": {
+            "candidate_age_days": aging["age_days"],
+            "candidate_age_bucket": aging["age_bucket"],
+            "candidate_created_at": _isoformat_z(source_observed_at),
+            "source_explanation": source_explanation,
+            "promotion_review_sla": aging["promotion_review_sla"],
         },
     }
 
@@ -954,6 +1067,76 @@ def _candidate_bucket(record: dict[str, Any], expected: dict[str, Any]) -> str:
     return "fact_recall"
 
 
+def _candidate_source_explanation(
+    *,
+    source_type: str,
+    source_name: str,
+    source_record_id: str,
+    bucket: str,
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    assertion_fields = [key for key, value in expected.items() if _strings(value)]
+    return {
+        "summary": (
+            f"Imported {source_type} record {source_record_id} from {source_name} "
+            f"as a {bucket} memory/context candidate."
+        ),
+        "reason": "record contains explicit memory/context assertions and remains candidate-only until review",
+        "assertion_fields": assertion_fields,
+        "selected_bucket": bucket,
+    }
+
+
+def _candidate_source_observed_at(
+    record: dict[str, Any],
+    *,
+    source_path: Path,
+    now: datetime,
+) -> datetime:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    for key in _CANDIDATE_TIME_KEYS:
+        parsed = _coerce_datetime(record.get(key))
+        if parsed is not None:
+            return parsed
+        parsed = _coerce_datetime(metadata.get(key))
+        if parsed is not None:
+            return parsed
+    try:
+        return datetime.fromtimestamp(source_path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return now
+
+
+def _candidate_aging(
+    candidate_created_at: datetime,
+    *,
+    now: datetime,
+    promotion_review_sla_days: int,
+) -> dict[str, Any]:
+    age_days = max(0.0, (now - candidate_created_at).total_seconds() / 86400)
+    sla_days = max(0, int(promotion_review_sla_days))
+    due_at = candidate_created_at + timedelta(days=sla_days)
+    overdue = now > due_at
+    if overdue:
+        age_bucket = "over_sla"
+    elif age_days >= max(1, sla_days * 0.75):
+        age_bucket = "aging"
+    else:
+        age_bucket = "fresh"
+    return {
+        "age_days": round(age_days, 4),
+        "age_bucket": age_bucket,
+        "promotion_review_sla": {
+            "sla_days": sla_days,
+            "candidate_created_at": _isoformat_z(candidate_created_at),
+            "review_due_at": _isoformat_z(due_at),
+            "age_days": round(age_days, 4),
+            "overdue": overdue,
+            "status": "overdue" if overdue else "within_sla",
+        },
+    }
+
+
 def _candidate_dedupe_key(case: dict[str, Any]) -> str:
     return _stable_hash({"input": case.get("input"), "expected": case.get("expected")})
 
@@ -965,12 +1148,21 @@ def _with_promotion_review(
     reason: str,
     reviewer: str | None,
     note: str | None,
+    now: datetime,
+    promotion_review_sla_days: int,
 ) -> dict[str, Any]:
     reviewed_case = dict(case)
+    sla = _promotion_review_sla_for_case(
+        reviewed_case,
+        now=now,
+        promotion_review_sla_days=promotion_review_sla_days,
+    )
     review = {
         "status": status,
         "approved": status == "approved",
         "reason": reason,
+        "reviewed_at": _isoformat_z(now),
+        "sla": sla,
     }
     if reviewer:
         review["reviewer"] = reviewer
@@ -980,29 +1172,159 @@ def _with_promotion_review(
     return reviewed_case
 
 
-def _reject_golden_dataset_output(path: str | Path, *, operation: str = "candidate outputs") -> None:
+def _promotion_review_sla_for_case(
+    case: dict[str, Any],
+    *,
+    now: datetime,
+    promotion_review_sla_days: int,
+) -> dict[str, Any]:
+    candidate_ops = case.get("candidate_ops") if isinstance(case.get("candidate_ops"), dict) else {}
+    existing_sla = (
+        candidate_ops.get("promotion_review_sla")
+        if isinstance(candidate_ops.get("promotion_review_sla"), dict)
+        else {}
+    )
+    candidate_created_at = _coerce_datetime(
+        existing_sla.get("candidate_created_at")
+        or candidate_ops.get("candidate_created_at")
+        or _nested_text(case, ("origin", "candidate_created_at"))
+    )
+    if candidate_created_at is None:
+        candidate_created_at = now
+    sla_days = int(existing_sla.get("sla_days") or promotion_review_sla_days)
+    aging = _candidate_aging(candidate_created_at, now=now, promotion_review_sla_days=sla_days)
+    sla = dict(aging["promotion_review_sla"])
+    sla["reviewed_at"] = _isoformat_z(now)
+    sla["reviewed_after_due"] = bool(sla["overdue"])
+    return sla
+
+
+def _reject_golden_dataset_output(
+    path: str | Path,
+    *,
+    operation: str = "candidate outputs",
+    golden_dataset: str | Path = DEFAULT_DATASET,
+) -> None:
     target = Path(path).expanduser()
-    if target.resolve(strict=False) == DEFAULT_DATASET.resolve(strict=False):
+    if not target.is_absolute():
+        target = REPO_ROOT / target
+    golden = Path(golden_dataset).expanduser()
+    if not golden.is_absolute():
+        golden = REPO_ROOT / golden
+    if target.resolve(strict=False) in {
+        DEFAULT_DATASET.resolve(strict=False),
+        golden.resolve(strict=False),
+    }:
         raise ValueError(f"{operation} must not target the golden memory/context dataset")
 
 
 def _sanitize_json(value: Any) -> Any:
+    sanitized, _summary = _sanitize_json_with_summary(value)
+    return sanitized
+
+
+def _sanitize_json_with_summary(value: Any) -> tuple[Any, dict[str, int]]:
     if isinstance(value, dict):
-        return {str(key): _sanitize_json(item) for key, item in value.items()}
+        sanitized: dict[str, Any] = {}
+        summary = _empty_redaction_summary()
+        for key, item in value.items():
+            redacted_item, item_summary = _sanitize_json_with_summary(item)
+            sanitized[str(key)] = redacted_item
+            summary = _merge_redaction_summaries(summary, item_summary)
+        return sanitized, summary
     if isinstance(value, list):
-        return [_sanitize_json(item) for item in value]
+        sanitized_items: list[Any] = []
+        summary = _empty_redaction_summary()
+        for item in value:
+            redacted_item, item_summary = _sanitize_json_with_summary(item)
+            sanitized_items.append(redacted_item)
+            summary = _merge_redaction_summaries(summary, item_summary)
+        return sanitized_items, summary
     if isinstance(value, str):
-        return _sanitize_text(value)
-    return value
+        return _sanitize_text_with_summary(value)
+    return value, _empty_redaction_summary()
 
 
 def _sanitize_text(value: str) -> str:
-    sanitized = _BEARER_TOKEN_RE.sub("Bearer [REDACTED_TOKEN]", value)
-    sanitized = _JWT_RE.sub("[REDACTED_TOKEN]", sanitized)
-    sanitized = _SECRET_ASSIGNMENT_RE.sub(_redact_secret_assignment, sanitized)
-    sanitized = _TOKEN_LITERAL_RE.sub("[REDACTED_TOKEN]", sanitized)
-    sanitized = _EMAIL_RE.sub("[REDACTED_EMAIL]", sanitized)
-    return _PHONE_CANDIDATE_RE.sub(_redact_phone_like, sanitized)
+    sanitized, _summary = _sanitize_text_with_summary(value)
+    return sanitized
+
+
+def _sanitize_text_with_summary(value: str) -> tuple[str, dict[str, int]]:
+    summary = _empty_redaction_summary()
+    sanitized, count = _BEARER_TOKEN_RE.subn("Bearer [REDACTED_TOKEN]", value)
+    summary["bearer_token"] += count
+    sanitized, count = _JWT_RE.subn("[REDACTED_TOKEN]", sanitized)
+    summary["jwt"] += count
+    sanitized, count = _SECRET_ASSIGNMENT_RE.subn(_redact_secret_assignment, sanitized)
+    summary["secret"] += count
+    sanitized, count = _TOKEN_LITERAL_RE.subn("[REDACTED_TOKEN]", sanitized)
+    summary["token_literal"] += count
+    sanitized, count = _EMAIL_RE.subn("[REDACTED_EMAIL]", sanitized)
+    summary["email"] += count
+    phone_count = 0
+
+    def redact_phone(match: re.Match[str]) -> str:
+        nonlocal phone_count
+        redacted = _redact_phone_like(match)
+        if redacted == "[REDACTED_PHONE]":
+            phone_count += 1
+        return redacted
+
+    sanitized = _PHONE_CANDIDATE_RE.sub(redact_phone, sanitized)
+    summary["phone"] += phone_count
+    return sanitized, summary
+
+
+def _empty_redaction_summary() -> dict[str, int]:
+    return {name: 0 for name in _REDACTION_TYPES}
+
+
+def _merge_redaction_summaries(
+    left: dict[str, int],
+    right: dict[str, int],
+) -> dict[str, int]:
+    return {name: int(left.get(name, 0)) + int(right.get(name, 0)) for name in _REDACTION_TYPES}
+
+
+def _redaction_summary_payload(summary: dict[str, int]) -> dict[str, int]:
+    payload = {name: int(summary.get(name, 0)) for name in _REDACTION_TYPES}
+    payload["total"] = sum(payload.values())
+    return payload
+
+
+def _with_privacy_summary(case: Any, redactions: dict[str, int]) -> Any:
+    if not isinstance(case, dict):
+        return case
+    updated = dict(case)
+    existing = updated.get("privacy") if isinstance(updated.get("privacy"), dict) else {}
+    payload = _redaction_summary_payload(redactions)
+    updated["privacy"] = {
+        **existing,
+        "redacted": payload["total"] > 0,
+        "redaction_summary": payload,
+    }
+    return updated
+
+
+def _duplicate_reason(
+    case: dict[str, Any],
+    *,
+    duplicate_of: str,
+    dedupe_key: str,
+    operation: str,
+) -> dict[str, Any]:
+    origin = case.get("origin") if isinstance(case.get("origin"), dict) else {}
+    return {
+        "operation": operation,
+        "candidate_id": str(case.get("id") or ""),
+        "duplicate_of": duplicate_of,
+        "reason": "same sanitized input and expected assertions",
+        "dedupe_key": dedupe_key[:12],
+        "source_type": str(origin.get("source_type") or ""),
+        "source_name": str(origin.get("source_name") or ""),
+        "source_record_id": str(origin.get("source_record_id") or ""),
+    }
 
 
 def _redact_secret_assignment(match: re.Match[str]) -> str:
@@ -1255,6 +1577,88 @@ def _load_stage_case_ids(source_paths: Sequence[str | Path]) -> list[str]:
         for case in load_dataset(path):
             case_ids.append(str(case.get("id") or "unknown"))
     return case_ids
+
+
+def _number(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _candidate_age_summary(cases: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    ages: list[float] = []
+    buckets: dict[str, int] = {}
+    overdue = 0
+    for case in cases:
+        candidate_ops = case.get("candidate_ops") if isinstance(case.get("candidate_ops"), dict) else {}
+        age = candidate_ops.get("candidate_age_days")
+        if age is not None:
+            ages.append(_number(age))
+        bucket = str(candidate_ops.get("candidate_age_bucket") or "")
+        if bucket:
+            buckets[bucket] = buckets.get(bucket, 0) + 1
+        sla = candidate_ops.get("promotion_review_sla")
+        if isinstance(sla, dict) and sla.get("overdue") is True:
+            overdue += 1
+    return {
+        "total": len(cases),
+        "avg_age_days": round(sum(ages) / len(ages), 4) if ages else 0.0,
+        "max_age_days": round(max(ages), 4) if ages else 0.0,
+        "age_buckets": buckets,
+        "promotion_review_overdue": overdue,
+    }
+
+
+def _promotion_sla_summary(cases: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    reviewed = 0
+    overdue = 0
+    pending_overdue = 0
+    for case in cases:
+        review = case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
+        sla = review.get("sla") if isinstance(review.get("sla"), dict) else {}
+        if not sla:
+            continue
+        reviewed += 1
+        is_overdue = bool(sla.get("overdue") or sla.get("reviewed_after_due"))
+        if is_overdue:
+            overdue += 1
+            if review.get("status") == "pending":
+                pending_overdue += 1
+    return {
+        "reviewed": reviewed,
+        "overdue": overdue,
+        "pending_overdue": pending_overdue,
+    }
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, (int, float)):
+        seconds = float(value)
+        if seconds > 10_000_000_000:
+            seconds /= 1000
+        parsed = datetime.fromtimestamp(seconds, tz=UTC)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.isdigit():
+            return _coerce_datetime(int(text))
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _isoformat_z(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 if __name__ == "__main__":

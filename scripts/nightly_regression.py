@@ -17,8 +17,18 @@ sys.path.insert(0, str(REPO_ROOT))
 from scripts import memory_context_eval  # noqa: E402
 
 DEFAULT_REPORT_JSON = Path("reports/nightly/latest.json")
+DEFAULT_HISTORY_DIR = Path("reports/nightly/history")
 DEFAULT_MEMORY_EVAL_JSON = Path("reports/release-gate/memory-context-eval.json")
 DEFAULT_MEMORY_TREND_JSON = Path("reports/release-gate/memory-context-trend.json")
+DELTA_NUMERIC_SUMMARY_KEYS = (
+    "alert_count",
+    "failed_replay_cases",
+    "memory_review_approved",
+    "memory_review_pending",
+    "memory_review_rejected",
+    "missing_artifacts",
+)
+DELTA_STATUS_SUMMARY_KEYS = ("memory_eval_status", "memory_trend_status", "status")
 
 
 def _now_iso() -> str:
@@ -44,6 +54,174 @@ def _read_json(path: str | Path) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         raise ValueError(f"{target} must contain a JSON object")
     return payload
+
+
+def _history_entry_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    summary = payload.get("summary")
+    return dict(summary) if isinstance(summary, dict) else {}
+
+
+def _history_generated_at(payload: dict[str, Any]) -> str | None:
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    generated_at = meta.get("generated_at") or payload.get("generated_at")
+    return str(generated_at) if generated_at else None
+
+
+def _history_record(path: str | Path, *, source: str) -> dict[str, Any]:
+    target = _resolve(path)
+    payload = _read_json(target)
+    if payload is None:
+        return {
+            "generated_at": None,
+            "path": str(target),
+            "source": source,
+            "status": "missing",
+            "summary": {},
+        }
+    summary = _history_entry_summary(payload)
+    return {
+        "generated_at": _history_generated_at(payload),
+        "path": str(target),
+        "source": source,
+        "status": "available" if summary else "invalid",
+        "summary": summary,
+    }
+
+
+def _history_paths(history_dir: str | Path | None) -> list[Path]:
+    if history_dir is None:
+        return []
+    target = _resolve(history_dir)
+    if not target.exists():
+        return []
+    return sorted(path for path in target.glob("*.json") if path.is_file())
+
+
+def _history_metadata(
+    *,
+    previous_report_json: str | Path | None,
+    history_json: Sequence[str | Path],
+    history_dir: str | Path | None,
+) -> dict[str, Any]:
+    explicit_history = [_resolve(path) for path in history_json]
+    history_dir_path = _resolve(history_dir) if history_dir is not None else None
+    records: list[dict[str, Any]]
+    if previous_report_json is not None:
+        records = [_history_record(previous_report_json, source="previous")]
+    else:
+        records = [_history_record(path, source="explicit_history") for path in explicit_history]
+        records.extend(_history_record(path, source="history_dir") for path in _history_paths(history_dir))
+
+    available = [record for record in records if record.get("status") == "available"]
+    baseline = None
+    if available:
+        baseline = max(
+            available,
+            key=lambda record: (
+                str(record.get("generated_at") or ""),
+                str(record.get("path") or ""),
+            ),
+        )
+    return {
+        "baseline": baseline,
+        "baseline_status": "available" if baseline is not None else "missing",
+        "explicit_history_json": [str(path) for path in explicit_history],
+        "history_dir": str(history_dir_path) if history_dir_path is not None else None,
+        "previous_report_json": str(_resolve(previous_report_json)) if previous_report_json is not None else None,
+        "source_count": len(records),
+        "sources": [
+            {
+                "generated_at": record.get("generated_at"),
+                "path": record.get("path"),
+                "source": record.get("source"),
+                "status": record.get("status"),
+            }
+            for record in records
+        ],
+    }
+
+
+def _delta_value(current: Any, previous: Any) -> dict[str, Any]:
+    return {
+        "current": current,
+        "delta": current - previous,
+        "previous": previous,
+    }
+
+
+def _summary_delta(
+    *,
+    current: dict[str, Any],
+    baseline: dict[str, Any] | None,
+    baseline_generated_at: str | None = None,
+) -> dict[str, Any]:
+    if baseline is None:
+        return {
+            "baseline_status": "missing",
+            "numeric": {},
+            "status": {},
+        }
+
+    numeric: dict[str, dict[str, Any]] = {}
+    for key in DELTA_NUMERIC_SUMMARY_KEYS:
+        current_value = int(current.get(key) or 0)
+        previous_value = int(baseline.get(key) or 0)
+        numeric[key] = _delta_value(current_value, previous_value)
+
+    status: dict[str, dict[str, Any]] = {}
+    for key in DELTA_STATUS_SUMMARY_KEYS:
+        current_value = current.get(key)
+        previous_value = baseline.get(key)
+        status[key] = {
+            "changed": current_value != previous_value,
+            "current": current_value,
+            "previous": previous_value,
+        }
+
+    return {
+        "baseline_generated_at": baseline_generated_at,
+        "baseline_status": "available",
+        "numeric": numeric,
+        "status": status,
+    }
+
+
+def _history_filename(generated_at: str) -> str:
+    safe = "".join(character if character.isalnum() else "-" for character in generated_at).strip("-")
+    return f"{safe or 'nightly'}.json"
+
+
+def _write_history_entry(
+    *,
+    history_dir: str | Path,
+    payload: dict[str, Any],
+    report_json: Path,
+) -> Path:
+    target_dir = _resolve(history_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = str(payload["meta"]["generated_at"])
+    target = target_dir / _history_filename(generated_at)
+    if target.exists():
+        stem = target.stem
+        suffix = target.suffix
+        index = 2
+        while target.exists():
+            target = target_dir / f"{stem}-{index}{suffix}"
+            index += 1
+    memory_context_eval._reject_golden_dataset_output(target, operation="nightly history")
+    entry = {
+        "baseline_status": payload["baseline_status"],
+        "delta": payload["delta"],
+        "meta": {
+            "generated_at": generated_at,
+            "root": str(REPO_ROOT),
+            "source_report_json": str(report_json),
+            "suite": "nightly_regression_history",
+        },
+        "summary": payload["summary"],
+    }
+    target.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target
 
 
 def _artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any]:
@@ -182,6 +360,9 @@ def build_nightly_report(
     *,
     memory_eval_json: str | Path = DEFAULT_MEMORY_EVAL_JSON,
     memory_trend_json: str | Path = DEFAULT_MEMORY_TREND_JSON,
+    previous_report_json: str | Path | None = None,
+    history_json: Sequence[str | Path] = (),
+    history_dir: str | Path | None = DEFAULT_HISTORY_DIR,
     replay_json: Sequence[str | Path] = (),
     alert_json: Sequence[str | Path] = (),
     candidate_review_jsonl: Sequence[str | Path] = (),
@@ -267,8 +448,38 @@ def build_nightly_report(
             "status": "available" if memory_trend.get("status") != "missing" else "missing",
         },
     ]
+    summary = {
+        "status": status,
+        "memory_eval_status": memory_eval.get("status"),
+        "memory_trend_status": memory_trend.get("status"),
+        "alert_count": alert_count,
+        "failed_replay_cases": failed_replays,
+        "missing_artifacts": len(missing_artifacts),
+        "missing_artifact_paths": missing_artifacts,
+        "memory_review_pending": memory_review["queue"]["pending"],
+        "memory_review_approved": memory_review["queue"].get("approved", 0),
+        "memory_review_rejected": memory_review["queue"].get("rejected", 0),
+    }
+    history = _history_metadata(
+        previous_report_json=previous_report_json,
+        history_json=history_json,
+        history_dir=history_dir,
+    )
+    baseline = history.pop("baseline")
+    baseline_summary = baseline.get("summary") if isinstance(baseline, dict) else None
+    baseline_generated_at = baseline.get("generated_at") if isinstance(baseline, dict) else None
+    if not isinstance(baseline_summary, dict):
+        baseline_summary = None
+    delta = _summary_delta(
+        current=summary,
+        baseline=baseline_summary,
+        baseline_generated_at=str(baseline_generated_at) if baseline_generated_at else None,
+    )
+    baseline_status = str(delta["baseline_status"])
+    summary["baseline_status"] = baseline_status
 
     return {
+        "baseline_status": baseline_status,
         "meta": {
             "suite": "nightly_regression",
             "generated_at": _now_iso(),
@@ -276,6 +487,8 @@ def build_nightly_report(
             "golden_write": "disabled",
         },
         "commands": commands,
+        "delta": delta,
+        "history": history,
         "artifacts": {
             "memory_eval": memory_eval,
             "memory_trend": memory_trend,
@@ -285,18 +498,7 @@ def build_nightly_report(
         "memory_review": memory_review,
         "regressions": regressions,
         "candidate_outputs": candidate_outputs,
-        "summary": {
-            "status": status,
-            "memory_eval_status": memory_eval.get("status"),
-            "memory_trend_status": memory_trend.get("status"),
-            "alert_count": alert_count,
-            "failed_replay_cases": failed_replays,
-            "missing_artifacts": len(missing_artifacts),
-            "missing_artifact_paths": missing_artifacts,
-            "memory_review_pending": memory_review["queue"]["pending"],
-            "memory_review_approved": memory_review["queue"].get("approved", 0),
-            "memory_review_rejected": memory_review["queue"].get("rejected", 0),
-        },
+        "summary": summary,
     }
 
 
@@ -327,11 +529,34 @@ def _build_regressions(
     return regressions
 
 
-def write_nightly_report(path: str | Path, **kwargs: Any) -> Path:
+def write_nightly_report(
+    path: str | Path,
+    *,
+    append_history: bool = True,
+    history_dir: str | Path | None = DEFAULT_HISTORY_DIR,
+    **kwargs: Any,
+) -> Path:
     target = _resolve(path)
     memory_context_eval._reject_golden_dataset_output(target, operation="nightly reports")
     target.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_nightly_report(**kwargs)
+    payload = build_nightly_report(history_dir=history_dir, **kwargs)
+    history_append = {
+        "enabled": bool(append_history and history_dir is not None),
+        "path": None,
+        "status": "disabled",
+    }
+    if append_history and history_dir is not None:
+        history_path = _write_history_entry(
+            history_dir=history_dir,
+            payload=payload,
+            report_json=target,
+        )
+        history_append = {
+            "enabled": True,
+            "path": str(history_path),
+            "status": "written",
+        }
+    payload["history"]["append"] = history_append
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target
 
@@ -339,8 +564,11 @@ def write_nightly_report(path: str | Path, **kwargs: Any) -> Path:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON))
+    parser.add_argument("--history-dir", default=str(DEFAULT_HISTORY_DIR))
+    parser.add_argument("--history-json", action="append", default=[])
     parser.add_argument("--memory-eval-json", default=str(DEFAULT_MEMORY_EVAL_JSON))
     parser.add_argument("--memory-trend-json", default=str(DEFAULT_MEMORY_TREND_JSON))
+    parser.add_argument("--previous-report-json")
     parser.add_argument("--replay-json", action="append", default=[])
     parser.add_argument("--alert-json", action="append", default=[])
     parser.add_argument("--candidate-review-jsonl", action="append", default=[])
@@ -349,6 +577,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--candidate-approve-all", action="store_true")
     parser.add_argument("--candidate-reviewer")
     parser.add_argument("--candidate-review-note")
+    parser.add_argument("--skip-history-append", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -357,6 +586,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         target = write_nightly_report(
             args.report_json,
+            append_history=not bool(args.skip_history_append),
+            history_dir=args.history_dir,
+            previous_report_json=args.previous_report_json,
+            history_json=args.history_json,
             memory_eval_json=args.memory_eval_json,
             memory_trend_json=args.memory_trend_json,
             replay_json=args.replay_json,
@@ -374,7 +607,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload = json.loads(target.read_text(encoding="utf-8"))
     print(
         json.dumps(
-            {"status": payload["summary"]["status"], "report_json": str(target)},
+            {
+                "baseline_status": payload["baseline_status"],
+                "report_json": str(target),
+                "status": payload["summary"]["status"],
+            },
             ensure_ascii=False,
             indent=2,
         )

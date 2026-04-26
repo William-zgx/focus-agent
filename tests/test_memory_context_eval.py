@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from scripts import memory_context_eval
@@ -237,13 +238,27 @@ def test_memory_context_candidate_import_multiple_sources_sanitizes_and_dedupes(
     repeated = memory_context_eval.import_candidate_cases([replay_source, trajectory_source])
     serialized = json.dumps(result.cases, ensure_ascii=False, sort_keys=True)
 
-    assert result.to_dict() == {
+    result_summary = result.to_dict()
+    assert {
+        key: result_summary[key]
+        for key in (
+            "imported",
+            "sources",
+            "records",
+            "skipped_no_assertions",
+            "skipped_duplicates",
+        )
+    } == {
         "imported": 2,
         "sources": 2,
         "records": 4,
         "skipped_no_assertions": 1,
         "skipped_duplicates": 1,
     }
+    assert result_summary["pii_redaction_summary"]["total"] >= 4
+    assert result_summary["duplicate_reasons"][0]["duplicate_of"] == result.cases[0]["id"]
+    assert result_summary["duplicate_reasons"][0]["reason"] == "same sanitized input and expected assertions"
+    assert result_summary["candidate_first_invariant"]["golden_dataset_unchanged"] is True
     assert [case["id"] for case in result.cases] == [case["id"] for case in repeated.cases]
     assert result.cases[0]["tags"][:5] == [
         "memory_context",
@@ -254,6 +269,15 @@ def test_memory_context_candidate_import_multiple_sources_sanitizes_and_dedupes(
     ]
     assert result.cases[0]["origin"]["baseline_label"] == "candidate"
     assert result.cases[0]["origin"]["baseline_marker"] == "baseline:candidate"
+    assert result.cases[0]["origin"]["source_explanation"]["assertion_fields"] == [
+        "required_facts",
+        "artifact_refs",
+    ]
+    assert result.cases[0]["candidate_ops"]["promotion_review_sla"]["status"] in {
+        "within_sla",
+        "overdue",
+    }
+    assert result.cases[0]["privacy"]["redaction_summary"]["total"] >= 4
     assert "source:trajectory" in result.cases[1]["tags"]
     assert "bucket:context" in result.cases[1]["tags"]
     assert "alice@example.com" not in serialized
@@ -317,6 +341,76 @@ def test_memory_context_candidate_import_cli_writes_jsonl(
     assert imported[0]["origin"]["source_type"] == "memory-context"
     assert "source:memory-context" in imported[0]["tags"]
     assert "baseline:nightly" in imported[0]["tags"]
+
+
+def test_memory_context_candidate_import_cli_refuses_golden_dataset_output(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    source = tmp_path / "memory-context-report.json"
+    source.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "case_id": "mctx-1",
+                        "input": {
+                            "rendered_context": "Context mentions the compaction summary.",
+                            "answer": "Use the compaction summary.",
+                        },
+                        "expected": {"required_facts": ["compaction summary"]},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = memory_context_eval.main(
+        [
+            "--candidate-source-json",
+            str(source),
+            "--candidate-dataset-out",
+            str(memory_context_eval.DEFAULT_DATASET),
+        ]
+    )
+    stderr = capsys.readouterr().err
+
+    assert exit_code == 2
+    assert "must not target the golden memory/context dataset" in stderr
+
+
+def test_memory_context_candidate_import_reports_age_and_review_sla(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trajectory.jsonl"
+    source.write_text(
+        json.dumps(
+            {
+                "id": "old-candidate",
+                "created_at": "2026-04-20T00:00:00Z",
+                "rendered_context": "Context mentions the BranchTree route.",
+                "answer": "Use the BranchTree route.",
+                "expected": {"required_facts": ["BranchTree route"]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = memory_context_eval.import_candidate_cases(
+        [source],
+        now=datetime(2026, 4, 26, tzinfo=UTC),
+        promotion_review_sla_days=3,
+    )
+    case = result.cases[0]
+    summary = result.to_dict()
+
+    assert case["candidate_ops"]["candidate_age_days"] == 6.0
+    assert case["candidate_ops"]["candidate_age_bucket"] == "over_sla"
+    assert case["candidate_ops"]["promotion_review_sla"]["overdue"] is True
+    assert summary["candidate_age_summary"]["max_age_days"] == 6.0
+    assert summary["candidate_age_summary"]["promotion_review_overdue"] == 1
 
 
 def test_memory_context_candidate_review_promotes_only_explicit_approval(
@@ -394,7 +488,21 @@ def test_memory_context_candidate_review_promotes_only_explicit_approval(
         sort_keys=True,
     )
 
-    assert result.to_dict() == {
+    result_summary = result.to_dict()
+    assert {
+        key: result_summary[key]
+        for key in (
+            "reviewed",
+            "promoted",
+            "sources",
+            "records",
+            "skipped_no_assertions",
+            "skipped_duplicates",
+            "approved",
+            "rejected",
+            "pending",
+        )
+    } == {
         "reviewed": 3,
         "promoted": 1,
         "sources": 1,
@@ -405,6 +513,10 @@ def test_memory_context_candidate_review_promotes_only_explicit_approval(
         "rejected": 1,
         "pending": 1,
     }
+    assert result_summary["duplicate_reasons"][0]["operation"] == "candidate_review"
+    assert result_summary["pii_redaction_summary"]["total"] >= 3
+    assert result_summary["promotion_sla_summary"]["reviewed"] == 3
+    assert result_summary["candidate_first_invariant"]["promoted_dataset_requires_explicit_approval"] is True
     assert [case["id"] for case in result.promoted_cases] == ["mc_candidate_approved"]
     assert result.promoted_cases[0]["origin"]["baseline_label"] == "nightly"
     assert result.promoted_cases[0]["origin"]["baseline_marker"] == "baseline:nightly"
@@ -418,6 +530,56 @@ def test_memory_context_candidate_review_promotes_only_explicit_approval(
     assert "[REDACTED_EMAIL]" in serialized
     assert "[REDACTED_TOKEN]" in serialized
     assert "[REDACTED_SECRET]" in serialized
+
+
+def test_memory_context_candidate_review_marks_promotion_sla_overdue(
+    tmp_path: Path,
+) -> None:
+    candidate_jsonl = tmp_path / "candidates.jsonl"
+    candidate_jsonl.write_text(
+        json.dumps(
+            {
+                "id": "mc_candidate_old_pending",
+                "tags": ["memory_context", "candidate_import"],
+                "input": {
+                    "rendered_context": "Context includes the Postgres path.",
+                    "answer": "Use the Postgres path.",
+                },
+                "expected": {"required_facts": ["Postgres path"]},
+                "candidate_ops": {
+                    "candidate_created_at": "2026-04-20T00:00:00Z",
+                    "candidate_age_days": 6.0,
+                    "candidate_age_bucket": "over_sla",
+                    "promotion_review_sla": {
+                        "sla_days": 3,
+                        "candidate_created_at": "2026-04-20T00:00:00Z",
+                        "review_due_at": "2026-04-23T00:00:00Z",
+                        "age_days": 6.0,
+                        "overdue": True,
+                        "status": "overdue",
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = memory_context_eval.review_candidate_cases(
+        [candidate_jsonl],
+        now=datetime(2026, 4, 26, tzinfo=UTC),
+        promotion_review_sla_days=3,
+    )
+    review = result.reviewed_cases[0]["promotion_review"]
+
+    assert review["status"] == "pending"
+    assert review["sla"]["overdue"] is True
+    assert review["sla"]["reviewed_after_due"] is True
+    assert result.to_dict()["promotion_sla_summary"] == {
+        "reviewed": 1,
+        "overdue": 1,
+        "pending_overdue": 1,
+    }
 
 
 def test_memory_context_candidate_review_cli_writes_review_and_promotion(

@@ -89,23 +89,23 @@ def _production_smoke_report(path: Path) -> Path:
         path,
         {
             "checks": [
-                {"category": "api", "name": "api_readyz", "status": "dry-run"},
-                {"category": "sdk", "name": "sdk_client_healthz", "status": "dry-run"},
-                {"category": "web", "name": "web_app", "status": "dry-run"},
-                {"category": "graph", "name": "graph_min_chat_turn", "status": "dry-run"},
-                {"category": "security", "name": "security_wrong_jwt_denied", "status": "dry-run"},
-                {"category": "rate-limit", "name": "rate_limit_probe", "status": "dry-run"},
+                {"category": "api", "name": "api_readyz", "status": "passed", "passed": True},
+                {"category": "sdk", "name": "sdk_client_healthz", "status": "passed", "passed": True},
+                {"category": "web", "name": "web_app", "status": "passed", "passed": True},
+                {"category": "graph", "name": "graph_min_chat_turn", "status": "passed", "passed": True},
+                {"category": "security", "name": "security_wrong_jwt_denied", "status": "passed", "passed": True},
+                {"category": "rate-limit", "name": "rate_limit_probe", "status": "passed", "passed": True},
             ],
             "passed": True,
-            "status": "dry-run",
+            "status": "passed",
         },
     )
 
 
 def _postgres_ops_report(path: Path) -> Path:
     operations = [
-        {"name": "connectivity", "status": "dry-run"},
-        {"name": "backup_restore_runbook", "status": "dry-run"},
+        {"name": "connectivity", "status": "passed", "passed": True},
+        {"name": "backup_restore_runbook", "status": "passed", "passed": True},
     ]
     return _write_json(
         path,
@@ -116,7 +116,7 @@ def _postgres_ops_report(path: Path) -> Path:
             "errors": [],
             "operations": operations,
             "passed": True,
-            "status": "dry-run",
+            "status": "passed",
         },
     )
 
@@ -125,10 +125,22 @@ def _otel_smoke_report(path: Path) -> Path:
     return _write_json(
         path,
         {
-            "checks": [{"name": "span_export", "status": "dry-run"}],
+            "checks": [{"name": "span_export", "status": "passed", "passed": True}],
             "passed": True,
             "spans": [{"name": "focus_agent.release.otel_smoke"}],
-            "status": "dry-run",
+            "status": "passed",
+        },
+    )
+
+
+def _governance_report(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "summary": {"status": "passed", "blocking_signals": [], "warning_signals": []},
+            "signals": [],
+            "status": "passed",
+            "thresholds": {},
         },
     )
 
@@ -155,6 +167,7 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
     assert _artifact_path(saved["artifacts"]["production_smoke_report"]).exists()
     assert _artifact_path(saved["artifacts"]["postgres_ops_report"]).exists()
     assert _artifact_path(saved["artifacts"]["otel_smoke_report"]).exists()
+    assert _artifact_path(saved["artifacts"]["governance_report"]).exists()
     assert _artifact_path(saved["artifacts"]["release_health_report"]).exists()
     assert saved["approval"]["approved"] is True
     assert saved["release_health"]["status"] == "passed"
@@ -181,6 +194,7 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
         production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
         postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
         otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
+        governance_report_json=_governance_report(source_dir / "governance.json"),
         eval_report_json=[_eval_report(source_dir / "eval.json")],
         baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
         approval_id="approval-1",
@@ -211,6 +225,10 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
     assert (
         _artifact_path(saved["artifacts"]["otel_smoke_report"])
         == pack_dir / "inputs" / "otel-smoke-report.json"
+    )
+    assert (
+        _artifact_path(saved["artifacts"]["governance_report"])
+        == pack_dir / "inputs" / "governance-report.json"
     )
     assert _artifact_path(saved["artifacts"]["eval_reports"][0]) == pack_dir / "inputs" / "eval-report-1.json"
     assert (
@@ -243,6 +261,10 @@ def test_release_evidence_requires_baseline_eval_report_for_production_pack(tmp_
         readyz_json=_readyz(source_dir / "readyz.json"),
         trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
         replay_comparisons_json=_replay(source_dir / "replay.json"),
+        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
+        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
+        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
+        governance_report_json=_governance_report(source_dir / "governance.json"),
         eval_report_json=[_eval_report(source_dir / "eval.json")],
     )
     saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
@@ -262,6 +284,10 @@ def test_release_evidence_requires_approval_for_production_pack(tmp_path: Path) 
         readyz_json=_readyz(source_dir / "readyz.json"),
         trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
         replay_comparisons_json=_replay(source_dir / "replay.json"),
+        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
+        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
+        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
+        governance_report_json=_governance_report(source_dir / "governance.json"),
         eval_report_json=[_eval_report(source_dir / "eval.json")],
         baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
     )
@@ -291,6 +317,10 @@ def test_release_evidence_writes_summary_and_copies_pack_to_storage(tmp_path: Pa
         readyz_json=_readyz(source_dir / "readyz.json"),
         trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
         replay_comparisons_json=_replay(source_dir / "replay.json"),
+        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
+        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
+        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
+        governance_report_json=_governance_report(source_dir / "governance.json"),
         eval_report_json=[_eval_report(source_dir / "eval.json")],
         baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
         approval_id="approval-1",
