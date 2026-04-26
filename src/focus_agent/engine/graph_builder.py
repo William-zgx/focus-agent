@@ -243,6 +243,16 @@ _LIVE_WEB_INTENT_MARKERS = (
     "价格",
     "汇率",
     "股价",
+    "股票",
+    "龙头股",
+    "个股",
+    "板块",
+    "a股",
+    "港股",
+    "美股",
+    "财报",
+    "基本面",
+    "估值",
     "browse",
     "web",
     "search",
@@ -262,6 +272,16 @@ _LIVE_WEB_SEARCH_FIRST_MARKERS = (
     "新闻",
     "价格",
     "股价",
+    "股票",
+    "龙头股",
+    "个股",
+    "板块",
+    "a股",
+    "港股",
+    "美股",
+    "财报",
+    "基本面",
+    "估值",
     "波动",
     "走势",
     "行情",
@@ -1537,12 +1557,13 @@ def build_graph(
         runtime: Runtime[RequestContext],
     ) -> dict[str, Any]:
         del runtime
+        state_messages = list(state.get("messages", []) or [])
         messages = _messages_for_model(state)
-        fallback_messages = _latest_turn_messages(list(state.get("messages", []) or messages))
+        fallback_messages = _latest_turn_messages(state_messages or messages)
         selected_model = str(state.get("selected_model") or settings.model)
         selected_thinking_mode = str(state.get("selected_thinking_mode") or "")
         assembled = state.get("assembled_context", "")
-        latest_user = _latest_human_message_text(list(state.get("messages", []) or []))
+        latest_user = _latest_human_message_text(state_messages)
         if not latest_user:
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
         context_budget = _context_budget_from_state(state)
@@ -1584,37 +1605,7 @@ def build_graph(
             thinking_mode=selected_thinking_mode,
             settings=settings,
         )
-        if tool_policy == "live_web_research" and _live_web_research_should_start_with_search(
-            latest_user,
-            messages,
-            available_tools,
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
-                        "name": "web_search",
-                        "args": {"query": latest_user},
-                    }
-                ],
-            )
-        elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
-            latest_user,
-            messages,
-            available_tools,
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"workspace-search-{state.get('llm_calls', 0) + 1}",
-                        "name": "search_code",
-                        "args": {"query": _workspace_search_query(latest_user)},
-                    }
-                ],
-            )
-        elif _should_force_tool_free_answer(list(state.get("messages", []) or [])):
+        if _should_force_tool_free_answer(state_messages):
             forced_prompt = apply_prompt_budget_guard(
                 [
                     prompt_messages[0],
@@ -1646,6 +1637,36 @@ def build_graph(
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
+            )
+        elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search(
+            latest_user,
+            state_messages,
+            available_tools,
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
+                        "name": "web_search",
+                        "args": {"query": latest_user},
+                    }
+                ],
+            )
+        elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
+            latest_user,
+            state_messages,
+            available_tools,
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"workspace-search-{state.get('llm_calls', 0) + 1}",
+                        "name": "search_code",
+                        "args": {"query": _workspace_search_query(latest_user)},
+                    }
+                ],
             )
         elif not available_tools:
             response = _invoke_with_tool_result_fallback(

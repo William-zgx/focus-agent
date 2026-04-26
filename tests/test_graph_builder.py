@@ -59,6 +59,41 @@ def test_messages_for_model_keeps_current_tool_exchange():
     assert isinstance(messages[2], ToolMessage)
 
 
+def test_live_web_search_first_guard_uses_full_tool_history():
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return query
+
+    latest_user = "我想仔细了解一下电力板块，选几只龙头股分析"
+    stripped_recent_messages = [HumanMessage(content=latest_user)]
+    full_turn_messages = [
+        HumanMessage(content=latest_user),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "search-1",
+                    "name": "web_search",
+                    "args": {"query": latest_user},
+                }
+            ],
+        ),
+        ToolMessage(content='{"answer":"已有搜索结果"}', tool_call_id="search-1"),
+    ]
+
+    assert _live_web_research_should_start_with_search(
+        latest_user,
+        stripped_recent_messages,
+        [web_search],
+    )
+    assert not _live_web_research_should_start_with_search(
+        latest_user,
+        full_turn_messages,
+        [web_search],
+    )
+
+
 def test_messages_for_model_sanitizes_assistant_tool_call_content_blocks():
     state = {
         "recent_messages": [],
@@ -490,6 +525,12 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
     assert _classify_turn_tool_policy("不要联网。简单解释 LangGraph 的 checkpointer 是什么。") == "direct_answer"
     assert _classify_turn_tool_policy("找到仓库里使用 assemble_context 的位置。") == "workspace_lookup"
     assert _classify_turn_tool_policy("北京和上海哪个今天天气好？") == "live_web_research"
+    assert (
+        _classify_turn_tool_policy(
+            "我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？"
+        )
+        == "live_web_research"
+    )
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
 
 
@@ -507,6 +548,11 @@ def test_live_web_research_starts_stock_queries_with_web_search():
     assert _live_web_research_should_start_with_search(
         "帮我查一下这个周沪指的波动情况。",
         [HumanMessage(content="帮我查一下这个周沪指的波动情况。")],
+        [web_search, current_utc_time],
+    )
+    assert _live_web_research_should_start_with_search(
+        "我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？",
+        [HumanMessage(content="我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？")],
         [web_search, current_utc_time],
     )
     assert not _live_web_research_should_start_with_search(

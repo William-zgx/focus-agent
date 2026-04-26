@@ -9,10 +9,11 @@ from focus_agent.transport.stream_events import (
 
 
 class DummyChunk:
-    def __init__(self, content=None, content_blocks=None, message_type=None):
+    def __init__(self, content=None, content_blocks=None, message_type=None, tool_call_chunks=None):
         self.content = content
         self.content_blocks = content_blocks
         self.type = message_type
+        self.tool_call_chunks = tool_call_chunks or []
 
 
 class DummyMessage:
@@ -133,6 +134,24 @@ def test_extract_tool_call_chunks():
             'name': 'search_web',
             'args_delta': '{"q":"agent"}',
             'raw': {'type': 'tool_call_chunk', 'id': 'call-1', 'name': 'search_web', 'args': '{"q":"agent"}'},
+        }
+    ]
+
+
+def test_extract_tool_call_chunks_from_chunk_attributes():
+    chunk = DummyChunk(
+        content="",
+        tool_call_chunks=[
+            {"id": "call-2", "name": "web_search", "args": '{"query":"power"}'},
+        ],
+    )
+
+    assert extract_tool_call_chunks(chunk) == [
+        {
+            "id": "call-2",
+            "name": "web_search",
+            "args_delta": '{"query":"power"}',
+            "raw": {"id": "call-2", "name": "web_search", "args": '{"query":"power"}'},
         }
     ]
 

@@ -141,6 +141,28 @@ def extract_text_delta(message_chunk: Any) -> str:
 
 def extract_tool_call_chunks(message_chunk: Any) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
+    for chunk in getattr(message_chunk, 'tool_call_chunks', []) or []:
+        if not isinstance(chunk, dict):
+            continue
+        chunks.append(
+            {
+                'id': chunk.get('id') or chunk.get('tool_call_id') or chunk.get('call_id'),
+                'name': chunk.get('name'),
+                'args_delta': _stringify(chunk.get('args') or chunk.get('args_text') or chunk.get('input')),
+                'raw': chunk,
+            }
+        )
+    for call in getattr(message_chunk, 'tool_calls', []) or []:
+        if not isinstance(call, dict):
+            continue
+        chunks.append(
+            {
+                'id': call.get('id') or call.get('tool_call_id') or call.get('call_id'),
+                'name': call.get('name'),
+                'args_delta': _stringify(call.get('args') or call.get('args_text') or call.get('input')),
+                'raw': call,
+            }
+        )
     for block in _iter_blocks(message_chunk):
         if not isinstance(block, dict):
             continue
