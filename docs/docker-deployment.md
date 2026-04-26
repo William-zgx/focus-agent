@@ -148,8 +148,10 @@ docker compose logs -f focus-agent postgres
 ```bash
 export FOCUS_AGENT_IMAGE=registry.example.com/focus-agent:2026-04-22
 export FOCUS_AGENT_DATABASE_URI=postgresql://focus_agent:secret@postgres.internal:5432/focus_agent
+export FOCUS_AGENT_AUTH_ENABLED=true
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
 export FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false
+export FOCUS_AGENT_RATE_LIMIT_ENABLED=true
 
 docker compose -f compose.prod.yaml up -d
 ```
@@ -158,7 +160,11 @@ docker compose -f compose.prod.yaml up -d
 
 生产规范：
 
+- `APP_ENVIRONMENT=production` 或其他非 development/local/test 值会启用应用启动期安全校验
+- `FOCUS_AGENT_AUTH_ENABLED=true`
+- `FOCUS_AGENT_AUTH_JWT_SECRET` 必须显式设置，且不能使用开发默认值
 - `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
+- `FOCUS_AGENT_RATE_LIMIT_ENABLED=true`
 - `API_RELOAD=0`
 - `DATABASE_URI` 必须指向外部 PostgreSQL
 - provider secrets 不写入镜像

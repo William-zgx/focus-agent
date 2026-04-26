@@ -49,7 +49,7 @@ flowchart LR
 - Review `.env.example` for completeness and safe defaults
 - Review local config instructions under `.focus_agent/`
 - Decide which settings are development-only versus production-ready
-- Confirm default secrets or demo credentials are not appropriate for public deployment
+- Confirm non-development startup fails when auth is disabled, `AUTH_JWT_SECRET` is missing/default, demo tokens are enabled, or rate limiting is disabled
 - Review persistence-related settings such as `DATABASE_URI`, managed local Postgres runtime files, trajectory settings, and artifact paths
 
 ## Quality Checks
@@ -58,6 +58,7 @@ Required release gate:
 
 ```bash
 make lint
+uv run pytest tests/test_config_security.py
 make ci-test
 make sdk-check
 make sdk-build
@@ -76,6 +77,8 @@ uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 ```
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target.
+- API/router, tool split, state-slice, and branch-service refactors must keep their focused compatibility tests green before the full gate.
+- 2026-04-26 P0-P3 multi-agent engineering gate completed: security config, API/router split, default tool split, state slice helpers, branch-service facade split, SDK/Web checks, UI smoke, observability smoke, and eval smoke all passed.
 - If deployment or persistence changed, run the targeted Postgres / containerization tests referenced in `docs/architecture.md`
 - If production trajectory failures were promoted, replay the exported slice before tagging:
 

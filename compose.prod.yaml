@@ -7,6 +7,7 @@ services:
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
       API_RELOAD: "0"
+      APP_ENVIRONMENT: ${FOCUS_AGENT_APP_ENVIRONMENT:-production}
       WEB_APP_DEV_SERVER_URL: ""
       MODEL: ${FOCUS_AGENT_MODEL:-}
       HELPER_MODEL: ${FOCUS_AGENT_HELPER_MODEL:-}

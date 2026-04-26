@@ -9,12 +9,30 @@ from focus_agent.core.types import (
     PinnedFact,
     PromptMode,
 )
-from focus_agent.core.state import initial_agent_state, normalize_agent_state, serialize_agent_state
+from focus_agent.core.state import (
+    AgentState,
+    ALL_AGENT_STATE_FIELDS,
+    BRANCH_STATE_FIELDS,
+    CONVERSATION_STATE_FIELDS,
+    GOVERNANCE_STATE_FIELDS,
+    MEMORY_STATE_FIELDS,
+    OBSERVABILITY_STATE_FIELDS,
+    STATE_DOMAIN_FIELDS,
+    default_agent_state_slice,
+    initial_agent_state,
+    normalize_agent_state,
+    serialize_agent_state,
+    slice_agent_state,
+    state_domain_fields,
+    state_domains_for_field,
+)
 
 
 def test_initial_agent_state_populates_governance_defaults():
     state = initial_agent_state()
 
+    assert set(AgentState.__annotations__) == set(ALL_AGENT_STATE_FIELDS)
+    assert set(state) == set(ALL_AGENT_STATE_FIELDS)
     assert state["rolling_summary"] == ""
     assert state["active_goal"] == ""
     assert state["prompt_mode"] == PromptMode.EXPLORE
@@ -44,6 +62,7 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["context_compression_plan"] is None
     assert state["context_artifact_refs"] == []
     assert state["role_context_views"] == []
+    assert state["context_compaction"] == {}
     assert state["agent_task_ledger"] is None
     assert state["delegated_artifacts"] == []
     assert state["artifact_synthesis_result"] is None
@@ -97,12 +116,86 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["context_compression_plan"] is None
     assert normalized["context_artifact_refs"] == []
     assert normalized["role_context_views"] == []
+    assert normalized["context_compaction"] == {}
     assert normalized["agent_task_ledger"] is None
     assert normalized["delegated_artifacts"] == []
     assert normalized["artifact_synthesis_result"] is None
     assert normalized["critic_gate_result"] is None
     assert normalized["memory_write_requests"] == []
     assert normalized["memory_write_result"] == {}
+
+
+def test_agent_state_domains_cover_existing_wire_fields():
+    registered_fields = {
+        field for fields in STATE_DOMAIN_FIELDS.values() for field in fields
+    }
+
+    assert set(STATE_DOMAIN_FIELDS) == {
+        "conversation",
+        "branch",
+        "memory",
+        "governance",
+        "observability",
+    }
+    assert set(ALL_AGENT_STATE_FIELDS) <= registered_fields
+    assert set(CONVERSATION_STATE_FIELDS) <= set(ALL_AGENT_STATE_FIELDS)
+    assert set(BRANCH_STATE_FIELDS) <= set(ALL_AGENT_STATE_FIELDS)
+    assert set(MEMORY_STATE_FIELDS) <= set(ALL_AGENT_STATE_FIELDS)
+    assert set(GOVERNANCE_STATE_FIELDS) <= set(ALL_AGENT_STATE_FIELDS)
+    assert set(OBSERVABILITY_STATE_FIELDS) <= set(ALL_AGENT_STATE_FIELDS)
+    assert "messages" in state_domain_fields("conversation")
+    assert "branch_meta" in state_domain_fields("branch")
+    assert "retrieved_memories" in state_domain_fields("memory")
+    assert "tool_route_plan" in state_domain_fields("governance")
+    assert "llm_calls" in state_domain_fields("observability")
+    assert state_domains_for_field("role_route_plan") == (
+        "governance",
+        "observability",
+    )
+
+
+def test_slice_agent_state_exposes_normalized_domain_defaults_without_mutating_input():
+    legacy_wire_state = {
+        "messages": ["legacy-message"],
+        "branch_meta": {"branch_id": "branch-1", "branch_role": "verify"},
+        "role_route_plan": {"enabled": False},
+        "plan_meta": {"trace_id": "trace-1"},
+        "memory_write_result": {"prepared": 1},
+    }
+
+    conversation = slice_agent_state(legacy_wire_state, "conversation")
+    branch = slice_agent_state(legacy_wire_state, "branch")
+    memory = slice_agent_state(legacy_wire_state, "memory")
+    observability_delta = slice_agent_state(
+        legacy_wire_state,
+        "observability",
+        include_defaults=False,
+    )
+
+    assert set(conversation) == set(CONVERSATION_STATE_FIELDS)
+    assert conversation["messages"] == ["legacy-message"]
+    assert conversation["recent_messages"] == []
+    assert branch["branch_meta"] == {"branch_id": "branch-1", "branch_role": "verify"}
+    assert branch["merge_queue"] == []
+    assert memory["retrieved_memories"] == []
+    assert memory["memory_write_result"] == {"prepared": 1}
+    assert observability_delta == {
+        "plan_meta": {"trace_id": "trace-1"},
+        "role_route_plan": {"enabled": False},
+        "memory_write_result": {"prepared": 1},
+    }
+    assert "recent_messages" not in legacy_wire_state
+    assert "merge_queue" not in legacy_wire_state
+
+
+def test_default_agent_state_slices_return_fresh_mutable_defaults():
+    first = default_agent_state_slice("branch")
+    second = default_agent_state_slice("branch")
+
+    first["merge_queue"].append({"branch_id": "branch-1"})
+
+    assert second["merge_queue"] == []
+    assert second["branch_meta"] is None
 
 
 def test_serialize_agent_state_round_trips_structured_governance_models():
@@ -161,6 +254,7 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
             "context_compression_plan": {"enabled": True, "strategy": "semantic_summary_plus_refs"},
             "context_artifact_refs": [{"artifact_id": "context/tool.txt"}],
             "role_context_views": [{"role": "critic", "budget_ratio": 0.55}],
+            "context_compaction": {"enabled": True, "source": "planner"},
             "agent_task_ledger": {"enabled": True, "tasks": [{"task_id": "task-1"}]},
             "delegated_artifacts": [{"artifact_id": "artifact-1", "status": "accepted"}],
             "artifact_synthesis_result": {"enabled": True, "accepted_artifact_ids": ["artifact-1"]},
@@ -198,6 +292,7 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["context_compression_plan"]["strategy"] == "semantic_summary_plus_refs"
     assert decoded["context_artifact_refs"][0]["artifact_id"] == "context/tool.txt"
     assert decoded["role_context_views"][0]["role"] == "critic"
+    assert decoded["context_compaction"]["source"] == "planner"
     assert decoded["agent_task_ledger"]["tasks"][0]["task_id"] == "task-1"
     assert decoded["delegated_artifacts"][0]["status"] == "accepted"
     assert decoded["artifact_synthesis_result"]["accepted_artifact_ids"] == ["artifact-1"]

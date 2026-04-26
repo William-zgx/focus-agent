@@ -11,6 +11,8 @@ from typing import Any, Callable, MutableMapping, TypeVar
 DEFAULT_LOCAL_ENV_FILE = ".focus_agent/local.env"
 DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
+DEFAULT_AUTH_JWT_SECRET = "focus-agent-dev-secret"
+_DEVELOPMENT_ENVIRONMENT_NAMES = {"dev", "development", "local", "test", "testing", "ci"}
 _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
 _ToolConfigT = TypeVar("_ToolConfigT")
 
@@ -44,6 +46,41 @@ def _coerce_bool(value: object) -> bool | None:
     if text in {"0", "false", "no", "off"}:
         return False
     return None
+
+
+def _non_development_environment_sources(env: MutableMapping[str, str]) -> tuple[str, ...]:
+    sources: list[str] = []
+    for key in ("APP_ENVIRONMENT", "ENVIRONMENT"):
+        value = _normalize_optional_string(env.get(key))
+        if value is None:
+            continue
+        if value.lower() not in _DEVELOPMENT_ENVIRONMENT_NAMES:
+            sources.append(f"{key}={value}")
+    return tuple(sources)
+
+
+def _validate_non_development_security(settings: "Settings", env: MutableMapping[str, str]) -> None:
+    environment_sources = _non_development_environment_sources(env)
+    if not environment_sources:
+        return
+
+    failures: list[str] = []
+    jwt_secret = _normalize_optional_string(env.get("AUTH_JWT_SECRET"))
+    if jwt_secret is None:
+        failures.append("AUTH_JWT_SECRET must be set")
+    elif jwt_secret == DEFAULT_AUTH_JWT_SECRET:
+        failures.append("AUTH_JWT_SECRET must not use the development default")
+    if not settings.auth_enabled:
+        failures.append("AUTH_ENABLED must be true")
+    if settings.auth_demo_tokens_enabled:
+        failures.append("AUTH_DEMO_TOKENS_ENABLED must be false")
+    if not settings.rate_limit_enabled:
+        failures.append("RATE_LIMIT_ENABLED must be true")
+    if failures:
+        raise ValueError(
+            "Unsafe security configuration for non-development environment "
+            f"({', '.join(environment_sources)}): {'; '.join(failures)}"
+        )
 
 
 def _split_listish(value: object) -> tuple[str, ...]:
@@ -601,7 +638,7 @@ class Settings:
     web_app_dev_server_url: str | None = None
     auth_enabled: bool = True
     auth_demo_tokens_enabled: bool = True
-    auth_jwt_secret: str = "focus-agent-dev-secret"
+    auth_jwt_secret: str = DEFAULT_AUTH_JWT_SECRET
     auth_jwt_issuer: str = "focus-agent"
     auth_access_token_ttl_seconds: int = 8 * 60 * 60
     sse_heartbeat_seconds: float = 1.5
@@ -946,6 +983,7 @@ class Settings:
                 "true" if defaults.trajectory_hash_user_id else "false",
             ).lower() in {"1", "true", "yes", "on"},
         )
+        _validate_non_development_security(instance, env)
         Path(instance.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         Path(instance.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)
         return instance
