@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import MutableSequence
 from dataclasses import dataclass
-from typing import Literal, NoReturn, Protocol
+from typing import Any, Literal, NoReturn, Protocol
 
 
 OwnershipDecision = Literal["allow", "deny"]
@@ -31,6 +31,12 @@ class OwnershipAuditEvent:
 
 
 OwnershipAuditTrail = list[OwnershipAuditEvent]
+OwnershipAuditExport = dict[str, Any]
+
+
+class OwnershipAuditExportSink(list[OwnershipAuditEvent]):
+    def export(self) -> list[OwnershipAuditExport]:
+        return export_ownership_audit_events(self)
 
 
 def _principal_user_id(principal: PrincipalRef) -> str:
@@ -149,10 +155,55 @@ def assert_owner(
     )
 
 
+def ownership_audit_event_to_export(event: OwnershipAuditEvent) -> OwnershipAuditExport:
+    runtime = {
+        "event_type": "ownership.audit",
+        "user_id": event.user_id,
+        "principal": event.principal,
+        "resource_type": event.resource_type,
+        "resource_id": event.resource_id,
+        "action": event.action,
+        "decision": event.decision,
+        "reason": event.reason,
+        "request_id": event.request_id,
+    }
+    return {
+        "tool": "ownership.audit",
+        "args": {
+            "resource_type": event.resource_type,
+            "resource_id": event.resource_id,
+            "action": event.action,
+            "request_id": event.request_id,
+        },
+        "observation": (
+            f"{event.decision} ownership {event.action} "
+            f"{event.resource_type} {event.resource_id}: {event.reason}"
+        ),
+        "duration_ms": 0.0,
+        "error": event.reason if event.decision == "deny" else None,
+        "cache_hit": False,
+        "fallback_used": False,
+        "fallback_group": None,
+        "parallel_batch_size": None,
+        "runtime": runtime,
+        "observation_truncated": False,
+    }
+
+
+def export_ownership_audit_events(
+    events: MutableSequence[OwnershipAuditEvent],
+) -> list[OwnershipAuditExport]:
+    return [ownership_audit_event_to_export(event) for event in events]
+
+
 __all__ = [
     "OwnershipAuditEvent",
+    "OwnershipAuditExport",
+    "OwnershipAuditExportSink",
     "OwnershipAuditTrail",
     "allow_ownership",
     "assert_owner",
     "deny_ownership",
+    "export_ownership_audit_events",
+    "ownership_audit_event_to_export",
 ]

@@ -1,8 +1,8 @@
-# P4-P13 多 Agent 协同开发技术文档
+# P4-P16 多 Agent 协同开发技术文档
 
 ## Summary
 
-P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分、发布门禁口径、`AgentState` 分域 helper、`BranchService` facade 内部解耦。P4-P7 转向契约自动化、发布门禁一键化、可观测闭环、Auth / Access Model 产品化、Memory / Context 质量评测。P8-P10 把这些能力推进到真实回归闭环：Memory / Context 样本扩容、Auth ownership 运行时边界、release-health 真实部署信号 fail-closed。P11-P13 继续把闭环固化为可审计发布证据包、真实样本 candidate 流水线、repository/service ownership audit。
+P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分、发布门禁口径、`AgentState` 分域 helper、`BranchService` facade 内部解耦。P4-P7 转向契约自动化、发布门禁一键化、可观测闭环、Auth / Access Model 产品化、Memory / Context 质量评测。P8-P10 把这些能力推进到真实回归闭环：Memory / Context 样本扩容、Auth ownership 运行时边界、release-health 真实部署信号 fail-closed。P11-P13 继续把闭环固化为可审计发布证据包、真实样本 candidate 流水线、repository/service ownership audit。P14-P16 把这些闭环接到日常发布与线上回归流程：证据包留存、candidate promotion review、ownership audit export。
 
 ## Agent 分工
 
@@ -31,6 +31,9 @@ P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分
 - P11 新增 `make release-evidence`，生产发布证据包写入 `reports/release-gate/<release-id>/manifest.json`，包含 readyz、trajectory stats、replay comparison、eval report、baseline eval report、release-health report 与命令摘要；production pack 缺 baseline 或其他 required artifact 会 fail closed。
 - P12 `scripts/memory_context_eval.py` 支持从 trajectory export、replay report、memory-context report 导入 candidate JSONL，并在进入 golden baseline 前完成脱敏、去重、分桶和 baseline 标记。
 - P13 新增 ownership audit helper，并把 thread ownership 校验接入 repository 层；allow / deny 事件记录 principal、resource type、resource id、action、decision、reason、request id。
+- P14 将 release evidence 固化为发布制品：manifest 继续保留兼容结构，同时增加发布留存、失败摘要和生产 release id 约束。
+- P15 在 candidate JSONL 与 golden baseline 之间加入显式 promotion review，默认只产出 review / promoted 文件，不自动污染金集。
+- P16 将 ownership audit event 转为 trajectory / observability 兼容的导出结构，便于后续接入统一审计 sink。
 - Memory / Context 质量先以 deterministic probe 落地，覆盖 required markers、forbidden stale markers、最大上下文长度。
 
 ## 默认验证命令
@@ -43,13 +46,13 @@ make release-gate RELEASE_GATE_ARGS="--dry-run --only lint,ci-test"
 
 ## 下一轮建议
 
-P11-P13 已经把生产发布证据、真实样本导入与 ownership audit 补到首轮可用。下一轮不建议继续做大规模拆文件，优先把这些闭环接到更真实的日常发布与线上回归流程：
+P14-P16 已经把生产发布证据、真实样本 promotion review 与 ownership audit export 接入到工程闭环。下一轮不建议继续做大规模拆文件，优先把这些机制接到真实部署平台与长期报表：
 
 | 优先级 | 方向 | Agent 责任 | 主要产物 |
 |---|---|---|---|
-| P14 | Evidence Pack CI / Storage Integration | Release Agent 将 `release-evidence` 接入实际发布任务，固定 artifact 留存位置与 release id 生成规则 | CI 示例、证据包保留策略、失败摘要模板 |
-| P15 | Candidate Promotion Review | Memory / Context Eval Agent 将 candidate JSONL 引入人工确认与 golden promotion 流程 | candidate review checklist、promotion diff、样本污染保护 |
-| P16 | Ownership Audit Export | Auth / Observability Agent 将 repository audit event 输出到 trajectory 或统一审计 sink | audit export adapter、查询说明、跨 principal deny dashboard |
+| P17 | Deployment Platform Hook | Release Agent 将 evidence pack 接入实际 CI/CD 系统的 artifact storage 与 release approval | 平台配置、artifact retention policy、release approval check |
+| P18 | Memory Regression Dashboard | Memory / Context Eval Agent 将 candidate / promoted / golden 变化汇总到长期趋势报告 | promotion history、quality trend、污染样本告警 |
+| P19 | Ownership Audit Dashboard | Auth / Observability Agent 将 deny event 聚合到可查询报表 | audit query API 或导出报表、跨 principal deny trend |
 
 完整发布前运行：
 

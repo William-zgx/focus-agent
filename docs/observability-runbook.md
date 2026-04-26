@@ -294,10 +294,12 @@ Production jobs can also probe the live service directly with `--ready-url` and 
 Production release review should archive an evidence pack after the live signals are captured:
 
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
-The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, command summaries, release-health status, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, or baseline eval report artifacts should block production release review.
+The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, artifact summaries, command summaries, release-health status, retention metadata, storage metadata, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, or baseline eval report artifacts should block production release review.
+
+Ownership allow / deny checks can be exported as trajectory-compatible `ownership.audit` entries. The exported payload includes principal, resource type, resource id, action, decision, reason, and request id, which makes cross-principal denials searchable in the same observability pipeline without adding a new database schema.
 
 ## 8. Recommended Oncall Flow
 

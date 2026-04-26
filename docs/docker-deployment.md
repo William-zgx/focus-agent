@@ -166,7 +166,7 @@ docker compose -f compose.prod.yaml up -d
 - Focus Agent 当前接受 HS256 Bearer JWT，`sub` 作为 `Principal.user_id`，`tenant_id` 与 `scope` 会进入运行时 principal。
 - `Principal.user_id` 是 conversation、thread、context、branch、merge 的 ownership 主键；`tenant_id` 只是后续多租户隔离扩展字段，不能替代 ownership；`scope` 只表达能力授权，不能让其他 `user_id` 访问已有线程。
 - 跨 principal 访问 conversation、thread、context preview/compact、branch fork/tree/proposal/merge 应返回 403。
-- repository 层的 thread ownership 校验会生成 allow / deny audit event；事件字段包括 principal、resource type、resource id、action、decision、reason、request id。当前不新增数据库 schema，后续可把这些事件接入 trajectory 或统一审计 sink。
+- repository 层的 thread ownership 校验会生成 allow / deny audit event；事件字段包括 principal、resource type、resource id、action、decision、reason、request id。当前不新增数据库 schema，事件可导出为 trajectory / observability 兼容的 `ownership.audit` 记录，后续可接入统一审计 sink。
 - 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致。
 - `FOCUS_AGENT_AUTH_JWT_ISSUER` 必须匹配 JWT `iss`；配置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE` 后 JWT `aud` 必须存在且完全匹配；过期 `exp` 会被拒绝。
 - `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 建议按部署风险设置为较短窗口，例如 900 秒，并由外部登录层负责刷新或重新签发。

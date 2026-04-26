@@ -51,6 +51,14 @@
 | P12 Memory / Context 真实样本流水线 | 已完成首轮落地 | `scripts/memory_context_eval.py` 新增 candidate import，支持 trajectory export、replay report、memory-context report 转 JSONL candidate，并完成脱敏、去重、分桶、baseline 标记，默认不污染 golden dataset |
 | P13 Ownership Persistence & Audit | 已完成首轮落地 | 新增 `focus_agent.security.ownership` audit helper，并把 thread ownership allow/deny 记录接到 repository 校验边界；事件包含 principal、resource type、resource id、action、decision、reason、request id |
 
+2026-04-26 追加更新：P14-P16 多 Agent 协同开发已继续落地；本轮目标从“首轮可用”推进到“日常发布与线上回归可操作”。
+
+| 范围 | 状态 | 已完成内容 |
+|---|---|---|
+| P14 Evidence Pack CI / Storage Integration | 已完成首轮落地 | `scripts/release_evidence.py` 增加 production release id 强制规则、artifact summary、failure summary、retention metadata、`summary.json` 与可选 `--storage-dir` 证据包复制 |
+| P15 Candidate Promotion Review | 已完成首轮落地 | `scripts/memory_context_eval.py` 增加 candidate review / promotion CLI，只有显式 `--candidate-approve-id` 或 `--candidate-approve-all` 才输出 promoted JSONL，且禁止直接写入 golden dataset |
+| P16 Ownership Audit Export | 已完成首轮落地 | `focus_agent.security.ownership` 增加 trajectory / observability 兼容导出结构与 `OwnershipAuditExportSink`，repository 可导出 allow / deny ownership audit event |
+
 ## 仓库入口与整体架构
 
 从已读取的根目录文件和路径分布看，仓库大致由“后端应用 + 前端应用 + 前端 SDK + 测试 + 文档”构成。`pyproject.toml` 定义了 Python 运行时与核心依赖；`src/focus_agent` 是后端主代码；`apps/web` 是 React Web App；`frontend-sdk` 是对后端 REST/SSE 协议的前端封装；`tests` 中能看到图编排、默认工具、记忆流水线、前端脚手架与治理能力的测试文件；`docs/architecture.md` 则提供了仓库内架构说明文档。fileciteturn17file0L1-L1 fileciteturn42file0L1-L1 fileciteturn45file0L1-L1 fileciteturn35file8L1-L1 fileciteturn35file6L1-L1 fileciteturn37file4L1-L1 fileciteturn41file2L1-L1 fileciteturn41file3L1-L1 fileciteturn16file0L1-L1

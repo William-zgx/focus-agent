@@ -93,10 +93,10 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
 - `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, baseline eval reports, and current eval JSON reports into release-blocking health signals. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real `--readyz-json` or `--ready-url`, `--trajectory-stats-json` or `--trajectory-stats-url`, `--replay-comparisons-json`, and `--eval-report-json` inputs; add `--baseline-eval-report-json` when comparing against a stored eval baseline. Missing required inputs fail closed with exit code 1.
-- `make release-evidence` builds the production evidence pack. Use it for production release review after collecting real deployment signals; the manifest is written to `reports/release-gate/<release-id>/manifest.json` and includes artifact hashes, command status, release-health summary, and missing-required-artifact checks. Production packs require readyz, trajectory stats, replay comparison, eval report, and baseline eval report artifacts.
+- `make release-evidence` builds the production evidence pack. Use it for production release review after collecting real deployment signals; the manifest is written to `reports/release-gate/<release-id>/manifest.json` and includes artifact hashes, artifact summary, failure summary, retention metadata, release-health summary, and missing-required-artifact checks. Production packs require an explicit `--release-id` plus readyz, trajectory stats, replay comparison, eval report, and baseline eval report artifacts. Add `--storage-dir` when the release job should copy the evidence pack to a retained artifact location.
 
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 - Real memory/context failures should enter candidate review first, not the golden dataset directly:
@@ -106,7 +106,15 @@ uv run python scripts/memory_context_eval.py \
   --candidate-source-json reports/trajectory-replay.json \
   --candidate-source-type replay \
   --candidate-dataset-out reports/memory-context-candidates.jsonl
+
+uv run python scripts/memory_context_eval.py \
+  --candidate-review-jsonl reports/memory-context-candidates.jsonl \
+  --candidate-reviewed-out reports/memory-context-reviewed.jsonl \
+  --candidate-promoted-out reports/memory-context-promoted.jsonl \
+  --candidate-approve-id <candidate-id>
 ```
+
+The review command never updates `tests/eval/datasets/memory_context_quality.jsonl` directly. Treat the promoted JSONL as a human-reviewed patch source.
 
 - API/router, tool split, state-slice, and branch-service refactors must keep their focused compatibility tests green before the full gate.
 - 2026-04-26 P0-P3 multi-agent engineering gate completed: security config, API/router split, default tool split, state slice helpers, branch-service facade split, SDK/Web checks, UI smoke, observability smoke, and eval smoke all passed.

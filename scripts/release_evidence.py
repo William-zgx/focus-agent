@@ -5,22 +5,32 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+import os
 from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = Path("reports/release-gate")
 TAIL_LINE_LIMIT = 80
 TAIL_CHAR_LIMIT = 12_000
+DEFAULT_RETENTION_DAYS = 90
+REQUIRED_PRODUCTION_ARTIFACT_KEYS = (
+    "readyz",
+    "trajectory_stats",
+    "replay_comparisons",
+    "eval_reports",
+    "baseline_eval_reports",
+    "release_health_report",
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +56,10 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _format_utc(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
+
+
 def _resolve_path(path: str | Path | None, root: Path) -> Path | None:
     if path is None:
         return None
@@ -63,7 +77,7 @@ def _normalize_release_id(release_id: str) -> str:
     return normalized
 
 
-def _default_release_id(root: Path) -> str:
+def _default_release_id_with_source(root: Path) -> tuple[str, str]:
     try:
         completed = subprocess.run(
             ("git", "rev-parse", "--short", "HEAD"),
@@ -75,8 +89,13 @@ def _default_release_id(root: Path) -> str:
     except OSError:
         completed = None
     if completed is not None and completed.returncode == 0 and completed.stdout.strip():
-        return _normalize_release_id(completed.stdout.strip())
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        return _normalize_release_id(completed.stdout.strip()), "git"
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"), "timestamp"
+
+
+def _default_release_id(root: Path) -> str:
+    release_id, _source = _default_release_id_with_source(root)
+    return release_id
 
 
 def _write_json(path: Path, payload: object) -> Path:
@@ -303,6 +322,36 @@ def _stream_summary(output: str) -> dict[str, int | bool]:
     }
 
 
+def _ci_metadata(env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    env = env or os.environ
+    github_actions = env.get("GITHUB_ACTIONS") == "true"
+    buildkite = bool(env.get("BUILDKITE"))
+    generic_ci = bool(env.get("CI"))
+    provider = None
+    if github_actions:
+        provider = "github_actions"
+    elif buildkite:
+        provider = "buildkite"
+    elif generic_ci:
+        provider = "generic"
+
+    return {
+        "branch": env.get("GITHUB_REF_NAME") or env.get("BUILDKITE_BRANCH") or env.get("CI_COMMIT_BRANCH"),
+        "commit_sha": env.get("GITHUB_SHA") or env.get("BUILDKITE_COMMIT") or env.get("CI_COMMIT_SHA"),
+        "is_ci": bool(provider),
+        "job": env.get("GITHUB_JOB") or env.get("BUILDKITE_LABEL") or env.get("CI_JOB_NAME"),
+        "provider": provider,
+        "ref": env.get("GITHUB_REF") or env.get("BUILDKITE_BRANCH") or env.get("CI_COMMIT_REF_NAME"),
+        "repository": env.get("GITHUB_REPOSITORY") or env.get("BUILDKITE_PROJECT_SLUG") or env.get("CI_PROJECT_PATH"),
+        "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
+        "run_id": env.get("GITHUB_RUN_ID") or env.get("BUILDKITE_BUILD_ID") or env.get("CI_PIPELINE_ID"),
+        "run_number": env.get("GITHUB_RUN_NUMBER")
+        or env.get("BUILDKITE_BUILD_NUMBER")
+        or env.get("CI_PIPELINE_IID"),
+        "workflow": env.get("GITHUB_WORKFLOW") or env.get("BUILDKITE_PIPELINE_NAME") or env.get("CI_PIPELINE_SOURCE"),
+    }
+
+
 def _command_record(
     *,
     command: Sequence[str],
@@ -377,6 +426,47 @@ def _artifact_count(artifacts: dict[str, Any]) -> int:
     return count
 
 
+def _iter_artifact_records(artifacts: dict[str, Any]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for value in artifacts.values():
+        if isinstance(value, list):
+            records.extend(record for record in value if isinstance(record, dict))
+        elif isinstance(value, dict):
+            records.append(value)
+    return records
+
+
+def _artifact_summary(artifacts: dict[str, Any]) -> dict[str, Any]:
+    records = _iter_artifact_records(artifacts)
+    by_kind: dict[str, dict[str, int]] = {}
+    for record in records:
+        kind = str(record.get("kind") or "unknown")
+        kind_summary = by_kind.setdefault(
+            kind,
+            {"bytes": 0, "missing": 0, "present": 0, "required": 0, "total": 0},
+        )
+        exists = bool(record.get("exists"))
+        required = bool(record.get("required"))
+        kind_summary["bytes"] += int(record.get("bytes") or 0)
+        kind_summary["missing"] += 0 if exists else 1
+        kind_summary["present"] += 1 if exists else 0
+        kind_summary["required"] += 1 if required else 0
+        kind_summary["total"] += 1
+
+    present = sum(1 for record in records if record.get("exists"))
+    required = sum(1 for record in records if record.get("required"))
+    missing = len(records) - present
+    total_bytes = sum(int(record.get("bytes") or 0) for record in records)
+    return {
+        "by_kind": by_kind,
+        "missing": missing,
+        "present": present,
+        "required": required,
+        "total": len(records),
+        "total_bytes": total_bytes,
+    }
+
+
 def _missing_required_artifacts(artifacts: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     for key, value in artifacts.items():
@@ -388,6 +478,169 @@ def _missing_required_artifacts(artifacts: dict[str, Any]) -> list[str]:
                 missing.append(key)
                 break
     return missing
+
+
+def _retention_metadata(*, generated_at: datetime, retention_days: int) -> dict[str, Any]:
+    if retention_days < 1:
+        raise ValueError("--retention-days must be at least 1")
+    retain_until = generated_at + timedelta(days=retention_days)
+    return {
+        "days": retention_days,
+        "generated_at": _format_utc(generated_at),
+        "policy": "retain-evidence-pack",
+        "retain_until": _format_utc(retain_until),
+    }
+
+
+def _storage_metadata(
+    *,
+    manifest_json: Path,
+    pack_dir: Path,
+    release_id: str,
+    root: Path,
+    storage_dir: str | Path | None,
+    summary_json: Path,
+) -> dict[str, Any]:
+    if storage_dir is None:
+        return {
+            "enabled": False,
+            "manifest_json": str(manifest_json),
+            "status": "disabled",
+            "storage_dir": None,
+            "stored_manifest_json": None,
+            "stored_pack_dir": None,
+            "stored_summary_json": None,
+            "summary_json": str(summary_json),
+        }
+
+    storage_base = _resolve_path(storage_dir, root)
+    if storage_base is None:
+        raise ValueError("storage directory could not be resolved")
+    stored_pack_dir = storage_base / release_id
+    return {
+        "enabled": True,
+        "manifest_json": str(manifest_json),
+        "status": "stored",
+        "storage_dir": str(storage_base),
+        "stored_manifest_json": str(stored_pack_dir / manifest_json.name),
+        "stored_pack_dir": str(stored_pack_dir),
+        "stored_summary_json": str(stored_pack_dir / summary_json.name),
+        "summary_json": str(summary_json),
+    }
+
+
+def _copy_pack_to_storage(*, pack_dir: Path, storage: dict[str, Any]) -> None:
+    if not storage.get("enabled"):
+        return
+
+    stored_pack_dir = Path(str(storage["stored_pack_dir"]))
+    pack_dir_resolved = pack_dir.resolve()
+    stored_pack_dir_resolved = stored_pack_dir.resolve()
+    if stored_pack_dir_resolved == pack_dir_resolved:
+        return
+    if stored_pack_dir_resolved.is_relative_to(pack_dir_resolved):
+        raise ValueError("--storage-dir cannot resolve inside the evidence pack directory")
+    if stored_pack_dir.exists():
+        raise FileExistsError(f"evidence storage target already exists: {stored_pack_dir}")
+    stored_pack_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(pack_dir, stored_pack_dir)
+
+
+def _production_validation(
+    *,
+    artifacts: dict[str, Any],
+    missing_required_artifacts: Sequence[str],
+    release_health: dict[str, Any],
+) -> dict[str, Any]:
+    report = artifacts.get("release_health_report") if isinstance(artifacts.get("release_health_report"), dict) else {}
+    report_exists = bool(report.get("exists")) if isinstance(report, dict) else False
+    report_status = str(release_health.get("status") or "unknown")
+    report_passed = bool(release_health.get("passed"))
+    return {
+        "missing_required_artifacts": list(missing_required_artifacts),
+        "passed": not missing_required_artifacts and report_exists and report_passed and report_status == "passed",
+        "release_health_passed": report_passed,
+        "release_health_report_exists": report_exists,
+        "release_health_status": report_status,
+        "required_artifacts": list(REQUIRED_PRODUCTION_ARTIFACT_KEYS),
+    }
+
+
+def _failure_summary(
+    *,
+    commands: Sequence[dict[str, Any]],
+    missing_required_artifacts: Sequence[str],
+    release_health: dict[str, Any],
+) -> dict[str, Any]:
+    failed_commands = [str(command["label"]) for command in commands if command.get("status") == "failed"]
+    failed_signals = [
+        {
+            "detail": signal.get("detail"),
+            "key": signal.get("key"),
+            "status": signal.get("status"),
+            "summary": signal.get("summary"),
+        }
+        for signal in release_health.get("failed_signals", [])
+        if isinstance(signal, dict)
+    ]
+    reasons: list[dict[str, Any]] = []
+    if failed_commands:
+        reasons.append({"detail": failed_commands, "kind": "failed_commands"})
+    if missing_required_artifacts:
+        reasons.append({"detail": list(missing_required_artifacts), "kind": "missing_required_artifacts"})
+    if not bool(release_health.get("passed")):
+        reasons.append(
+            {
+                "detail": {
+                    "failed_signal_count": len(failed_signals),
+                    "status": release_health.get("status"),
+                },
+                "kind": "release_health_failed",
+            }
+        )
+    return {
+        "failed": bool(reasons),
+        "failed_commands": failed_commands,
+        "failed_signal_count": len(failed_signals),
+        "failed_signals": failed_signals,
+        "missing_required_artifacts": list(missing_required_artifacts),
+        "reason_count": len(reasons),
+        "reasons": reasons,
+        "release_health_status": release_health.get("status"),
+    }
+
+
+def _summary_payload(
+    *,
+    artifact_summary: dict[str, Any],
+    failure_summary: dict[str, Any],
+    manifest_json: Path,
+    release_health: dict[str, Any],
+    retention: dict[str, Any],
+    storage: dict[str, Any],
+    summary: dict[str, Any],
+    release_id: str,
+) -> dict[str, Any]:
+    return {
+        "artifact_summary": artifact_summary,
+        "failure_summary": failure_summary,
+        "manifest_json": str(manifest_json),
+        "release_health": {
+            "failed_signal_count": len(release_health.get("failed_signals", [])),
+            "passed": bool(release_health.get("passed")),
+            "report_json": release_health.get("report_json"),
+            "status": release_health.get("status"),
+        },
+        "release_id": release_id,
+        "retention": retention,
+        "status": summary["status"],
+        "storage": {
+            "enabled": bool(storage.get("enabled")),
+            "status": storage.get("status"),
+            "stored_pack_dir": storage.get("stored_pack_dir"),
+        },
+        "summary": summary,
+    }
 
 
 def _manifest_artifacts(
@@ -426,17 +679,25 @@ def run_release_evidence(
     release_id: str | None = None,
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     output_dir: str | Path | None = None,
+    retention_days: int = DEFAULT_RETENTION_DAYS,
     readyz_json: str | Path | None = None,
     trajectory_stats_json: str | Path | None = None,
     replay_comparisons_json: str | Path | None = None,
     eval_report_json: Sequence[str | Path] = (),
     baseline_eval_report_json: Sequence[str | Path] = (),
     release_health_report_json: str | Path | None = None,
+    storage_dir: str | Path | None = None,
     root: Path | None = None,
     runner: Runner | None = None,
 ) -> dict[str, Any]:
     root = root or REPO_ROOT
-    resolved_release_id = _normalize_release_id(release_id) if release_id else _default_release_id(root)
+    if not dry_run and not release_id:
+        raise ValueError("--release-id is required for production evidence packs")
+    if release_id:
+        resolved_release_id = _normalize_release_id(release_id)
+        release_id_source = "explicit"
+    else:
+        resolved_release_id, release_id_source = _default_release_id_with_source(root)
     pack_dir = _resolve_path(output_dir, root) if output_dir is not None else None
     if pack_dir is None:
         output_base = _resolve_path(output_root, root)
@@ -474,31 +735,82 @@ def run_release_evidence(
     release_health = _load_release_health_summary(report_json)
     failed_commands = [command_record["label"] for command_record in commands if command_record["status"] == "failed"]
     missing_required_artifacts = _missing_required_artifacts(artifacts)
-    failed = bool(failed_commands) or not bool(release_health["passed"]) or bool(missing_required_artifacts)
+    production_validation = _production_validation(
+        artifacts=artifacts,
+        missing_required_artifacts=missing_required_artifacts,
+        release_health=release_health,
+    )
+    failed = (
+        bool(failed_commands)
+        or not bool(release_health["passed"])
+        or bool(missing_required_artifacts)
+        or not bool(production_validation["passed"])
+    )
     status = "failed" if failed else "passed"
+    generated_at = datetime.now(UTC)
+    retention = _retention_metadata(generated_at=generated_at, retention_days=retention_days)
+    manifest_json = pack_dir / "manifest.json"
+    summary_json = pack_dir / "summary.json"
+    storage = _storage_metadata(
+        manifest_json=manifest_json,
+        pack_dir=pack_dir,
+        release_id=resolved_release_id,
+        root=root,
+        storage_dir=storage_dir,
+        summary_json=summary_json,
+    )
+    artifact_summary = _artifact_summary(artifacts)
+    failure_summary = _failure_summary(
+        commands=commands,
+        missing_required_artifacts=missing_required_artifacts,
+        release_health=release_health,
+    )
+    summary = {
+        "artifact_count": _artifact_count(artifacts),
+        "baseline_eval_report_count": len(artifacts["baseline_eval_reports"]),
+        "eval_report_count": len(artifacts["eval_reports"]),
+        "failed_commands": failed_commands,
+        "missing_required_artifacts": missing_required_artifacts,
+        "required_artifact_count": len(REQUIRED_PRODUCTION_ARTIFACT_KEYS),
+        "status": status,
+        "summary_json": str(summary_json),
+    }
     manifest = {
+        "artifact_summary": artifact_summary,
         "artifacts": artifacts,
         "commands": commands,
+        "failure_summary": failure_summary,
         "meta": {
+            "ci": _ci_metadata(),
             "dry_run": dry_run,
-            "generated_at": _utc_now(),
+            "generated_at": _format_utc(generated_at),
             "output_dir": str(pack_dir),
+            "release_id_source": release_id_source,
             "release_id": resolved_release_id,
             "root": str(root),
             "schema_version": 1,
         },
+        "production_validation": production_validation,
         "release_health": release_health,
-        "summary": {
-            "artifact_count": _artifact_count(artifacts),
-            "baseline_eval_report_count": len(artifacts["baseline_eval_reports"]),
-            "eval_report_count": len(artifacts["eval_reports"]),
-            "failed_commands": failed_commands,
-            "missing_required_artifacts": missing_required_artifacts,
-            "status": status,
-        },
+        "retention": retention,
+        "storage": storage,
+        "summary": summary,
     }
-    manifest_json = pack_dir / "manifest.json"
     _write_json(manifest_json, manifest)
+    _write_json(
+        summary_json,
+        _summary_payload(
+            artifact_summary=artifact_summary,
+            failure_summary=failure_summary,
+            manifest_json=manifest_json,
+            release_health=release_health,
+            release_id=resolved_release_id,
+            retention=retention,
+            storage=storage,
+            summary=summary,
+        ),
+    )
+    _copy_pack_to_storage(pack_dir=pack_dir, storage=storage)
     manifest["manifest_json"] = str(manifest_json)
     return manifest
 
@@ -506,7 +818,10 @@ def run_release_evidence(
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Use deterministic sample artifacts.")
-    parser.add_argument("--release-id", help="Release identifier. Defaults to git short SHA or UTC timestamp.")
+    parser.add_argument(
+        "--release-id",
+        help="Release identifier. Required for production packs; dry-runs default to git short SHA or UTC timestamp.",
+    )
     parser.add_argument(
         "--output-root",
         default=str(DEFAULT_OUTPUT_ROOT),
@@ -535,6 +850,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--release-health-report-json",
         help="Path for the generated release-health JSON report.",
     )
+    parser.add_argument(
+        "--retention-days",
+        type=int,
+        default=DEFAULT_RETENTION_DAYS,
+        help="Retention window to record in manifest metadata. Defaults to 90 days.",
+    )
+    parser.add_argument(
+        "--storage-dir",
+        help="Optional artifact storage directory. The evidence pack is copied to <storage-dir>/<release-id>.",
+    )
     return parser.parse_args(argv)
 
 
@@ -550,7 +875,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             readyz_json=args.readyz_json,
             release_health_report_json=args.release_health_report_json,
             release_id=args.release_id,
+            retention_days=args.retention_days,
             replay_comparisons_json=args.replay_comparisons_json,
+            storage_dir=args.storage_dir,
             trajectory_stats_json=args.trajectory_stats_json,
         )
     except (OSError, ValueError, json.JSONDecodeError) as exc:

@@ -5,10 +5,20 @@ from collections.abc import MutableSequence
 
 from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
 from ..core.types import ConversationRecord
-from ..security.ownership import OwnershipAuditEvent
+from ..security.ownership import (
+    OwnershipAuditEvent,
+    OwnershipAuditExport,
+    export_ownership_audit_events,
+)
 
 
 class BranchRepository(ABC):
+    def export_ownership_audit_events(
+        self,
+        audit_events: MutableSequence[OwnershipAuditEvent],
+    ) -> list[OwnershipAuditExport]:
+        return export_ownership_audit_events(audit_events)
+
     @abstractmethod
     def create(self, record: BranchRecord) -> None:
         raise NotImplementedError

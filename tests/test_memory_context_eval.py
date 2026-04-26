@@ -317,3 +317,192 @@ def test_memory_context_candidate_import_cli_writes_jsonl(
     assert imported[0]["origin"]["source_type"] == "memory-context"
     assert "source:memory-context" in imported[0]["tags"]
     assert "baseline:nightly" in imported[0]["tags"]
+
+
+def test_memory_context_candidate_review_promotes_only_explicit_approval(
+    tmp_path: Path,
+) -> None:
+    candidate_jsonl = tmp_path / "candidates.jsonl"
+    approved_case = {
+        "id": "mc_candidate_approved",
+        "tags": ["memory_context", "candidate_import", "baseline:nightly"],
+        "input": {
+            "rendered_context": "Contact alice@example.com with Bearer abcdefghij12345.",
+            "answer": "Use the Postgres migration plan.",
+        },
+        "expected": {"required_facts": ["Postgres migration plan"]},
+        "origin": {
+            "type": "candidate_import",
+            "baseline_label": "nightly",
+            "baseline_marker": "baseline:nightly",
+            "source_type": "replay",
+            "source_record_id": "alice@example.com",
+        },
+    }
+    rejected_case = {
+        "id": "mc_candidate_rejected",
+        "tags": ["memory_context", "candidate_import", "baseline:nightly"],
+        "input": {"rendered_context": "Rejected context.", "answer": "Rejected answer."},
+        "expected": {"required_context_markers": ["Rejected context"]},
+        "origin": {
+            "type": "candidate_import",
+            "baseline_label": "nightly",
+            "baseline_marker": "baseline:nightly",
+        },
+    }
+    pending_case = {
+        "id": "mc_candidate_pending",
+        "tags": ["memory_context", "candidate_import", "baseline:nightly"],
+        "input": {"rendered_context": "Pending context.", "answer": "Pending answer."},
+        "expected": {"answer_contains_all": ["Pending answer"]},
+        "origin": {
+            "type": "candidate_import",
+            "baseline_label": "nightly",
+            "baseline_marker": "baseline:nightly",
+        },
+    }
+    no_assertion_case = {
+        "id": "mc_candidate_no_assertions",
+        "input": {"rendered_context": "Metadata only.", "answer": ""},
+        "expected": {},
+    }
+    candidate_jsonl.write_text(
+        "\n".join(
+            json.dumps(case)
+            for case in [
+                approved_case,
+                rejected_case,
+                pending_case,
+                {**approved_case, "id": "mc_candidate_duplicate"},
+                no_assertion_case,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = memory_context_eval.review_candidate_cases(
+        [candidate_jsonl],
+        approved_ids=["mc_candidate_approved"],
+        rejected_ids=["mc_candidate_rejected"],
+        reviewer="qa@example.com",
+        note="approved with token=sk-1234567890abcdef",
+    )
+    serialized = json.dumps(
+        {"reviewed": result.reviewed_cases, "promoted": result.promoted_cases},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    assert result.to_dict() == {
+        "reviewed": 3,
+        "promoted": 1,
+        "sources": 1,
+        "records": 5,
+        "skipped_no_assertions": 1,
+        "skipped_duplicates": 1,
+        "approved": 1,
+        "rejected": 1,
+        "pending": 1,
+    }
+    assert [case["id"] for case in result.promoted_cases] == ["mc_candidate_approved"]
+    assert result.promoted_cases[0]["origin"]["baseline_label"] == "nightly"
+    assert result.promoted_cases[0]["origin"]["baseline_marker"] == "baseline:nightly"
+    assert "baseline:nightly" in result.promoted_cases[0]["tags"]
+    assert result.promoted_cases[0]["promotion_review"]["status"] == "approved"
+    assert result.reviewed_cases[1]["promotion_review"]["status"] == "rejected"
+    assert result.reviewed_cases[2]["promotion_review"]["status"] == "pending"
+    assert "alice@example.com" not in serialized
+    assert "abcdefghi" not in serialized
+    assert "sk-1234567890abcdef" not in serialized
+    assert "[REDACTED_EMAIL]" in serialized
+    assert "[REDACTED_TOKEN]" in serialized
+    assert "[REDACTED_SECRET]" in serialized
+
+
+def test_memory_context_candidate_review_cli_writes_review_and_promotion(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    candidate_jsonl = tmp_path / "candidates.jsonl"
+    candidate_jsonl.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "id": "mc_candidate_approved",
+                        "tags": ["memory_context", "candidate_import", "baseline:candidate"],
+                        "input": {
+                            "rendered_context": "Context mentions the compaction summary.",
+                            "answer": "Use the compaction summary.",
+                        },
+                        "expected": {"required_facts": ["compaction summary"]},
+                        "origin": {
+                            "type": "candidate_import",
+                            "baseline_label": "candidate",
+                            "baseline_marker": "baseline:candidate",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": "mc_candidate_pending",
+                        "tags": ["memory_context", "candidate_import", "baseline:candidate"],
+                        "input": {
+                            "rendered_context": "Context mentions the branch tree.",
+                            "answer": "Use the branch tree.",
+                        },
+                        "expected": {"required_facts": ["branch tree"]},
+                        "origin": {
+                            "type": "candidate_import",
+                            "baseline_label": "candidate",
+                            "baseline_marker": "baseline:candidate",
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    reviewed_out = tmp_path / "reviewed.jsonl"
+    promoted_out = tmp_path / "promoted.jsonl"
+
+    exit_code = memory_context_eval.main(
+        [
+            "--candidate-review-jsonl",
+            str(candidate_jsonl),
+            "--candidate-reviewed-out",
+            str(reviewed_out),
+            "--candidate-promoted-out",
+            str(promoted_out),
+            "--candidate-approve-id",
+            "mc_candidate_approved",
+        ]
+    )
+    stdout = json.loads(capsys.readouterr().out)
+    reviewed = [json.loads(line) for line in reviewed_out.read_text(encoding="utf-8").splitlines()]
+    promoted = [json.loads(line) for line in promoted_out.read_text(encoding="utf-8").splitlines()]
+
+    assert exit_code == 0
+    assert stdout["reviewed"] == 2
+    assert stdout["promoted"] == 1
+    assert stdout["reviewed_dataset"] == str(reviewed_out)
+    assert stdout["promoted_dataset"] == str(promoted_out)
+    assert [case["promotion_review"]["status"] for case in reviewed] == ["approved", "pending"]
+    assert [case["id"] for case in promoted] == ["mc_candidate_approved"]
+
+    blocked_out = tmp_path / "blocked.jsonl"
+    blocked_exit_code = memory_context_eval.main(
+        [
+            "--candidate-review-jsonl",
+            str(candidate_jsonl),
+            "--candidate-promoted-out",
+            str(blocked_out),
+        ]
+    )
+    blocked_output = capsys.readouterr()
+
+    assert blocked_exit_code == 2
+    assert "--candidate-promoted-out requires" in blocked_output.err
+    assert not blocked_out.exists()

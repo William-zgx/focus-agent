@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts import release_evidence
 
 
@@ -77,6 +79,12 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
     assert _artifact_path(saved["artifacts"]["release_health_report"]).exists()
     assert saved["release_health"]["status"] == "passed"
     assert saved["commands"][0]["status"] == "passed"
+    assert saved["artifact_summary"]["total"] == saved["summary"]["artifact_count"]
+    assert saved["failure_summary"]["failed"] is False
+    assert saved["meta"]["release_id_source"] == "explicit"
+    assert saved["retention"]["days"] == 90
+    assert saved["storage"]["enabled"] is False
+    assert Path(saved["summary"]["summary_json"]).exists()
 
 
 def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path: Path) -> None:
@@ -96,6 +104,7 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
 
     assert saved["summary"]["status"] == "passed"
     assert saved["release_health"]["passed"] is True
+    assert saved["production_validation"]["passed"] is True
     assert _artifact_path(saved["artifacts"]["readyz"]) == pack_dir / "inputs" / "readyz.json"
     assert _artifact_path(saved["artifacts"]["trajectory_stats"]) == pack_dir / "inputs" / "trajectory-stats.json"
     assert _artifact_path(saved["artifacts"]["replay_comparisons"]) == pack_dir / "inputs" / "replay-comparisons.json"
@@ -116,6 +125,7 @@ def test_release_evidence_missing_production_inputs_fails_closed(tmp_path: Path)
     assert saved["summary"]["status"] == "failed"
     assert saved["commands"][0]["exit_code"] == 1
     assert saved["release_health"]["status"] == "failed"
+    assert saved["production_validation"]["passed"] is False
     failed_keys = {signal["key"] for signal in saved["release_health"]["failed_signals"]}
     assert "release_health_required_input_missing" in failed_keys
 
@@ -137,3 +147,38 @@ def test_release_evidence_requires_baseline_eval_report_for_production_pack(tmp_
     assert saved["summary"]["missing_required_artifacts"] == ["baseline_eval_reports"]
     assert saved["commands"][0]["status"] == "passed"
     assert saved["release_health"]["passed"] is True
+
+
+def test_release_evidence_requires_release_id_for_production_pack(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--release-id is required"):
+        release_evidence.run_release_evidence(output_root=tmp_path)
+
+
+def test_release_evidence_writes_summary_and_copies_pack_to_storage(tmp_path: Path) -> None:
+    source_dir = tmp_path / "sources"
+    source_dir.mkdir()
+    manifest = release_evidence.run_release_evidence(
+        release_id="prod-release",
+        output_root=tmp_path / "packs",
+        retention_days=7,
+        storage_dir=tmp_path / "storage",
+        readyz_json=_readyz(source_dir / "readyz.json"),
+        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
+        replay_comparisons_json=_replay(source_dir / "replay.json"),
+        eval_report_json=[_eval_report(source_dir / "eval.json")],
+        baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
+    )
+    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+    summary = json.loads(Path(saved["summary"]["summary_json"]).read_text(encoding="utf-8"))
+    stored_pack_dir = Path(saved["storage"]["stored_pack_dir"])
+
+    assert saved["summary"]["status"] == "passed"
+    assert saved["retention"]["days"] == 7
+    assert saved["storage"]["enabled"] is True
+    assert saved["storage"]["status"] == "stored"
+    assert summary["release_id"] == "prod-release"
+    assert summary["status"] == "passed"
+    assert summary["artifact_summary"]["total"] == saved["artifact_summary"]["total"]
+    assert stored_pack_dir.exists()
+    assert (stored_pack_dir / "manifest.json").exists()
+    assert (stored_pack_dir / "summary.json").exists()

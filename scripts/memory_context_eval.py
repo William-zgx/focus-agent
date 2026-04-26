@@ -86,6 +86,42 @@ class CandidateImportResult:
         return payload
 
 
+@dataclass(frozen=True, slots=True)
+class CandidatePromotionReviewResult:
+    reviewed_cases: list[dict[str, Any]]
+    promoted_cases: list[dict[str, Any]]
+    source_count: int
+    record_count: int
+    skipped_no_assertions: int
+    skipped_duplicates: int
+    approved_count: int
+    rejected_count: int
+    pending_count: int
+
+    def to_dict(
+        self,
+        *,
+        reviewed_dataset: str | None = None,
+        promoted_dataset: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "reviewed": len(self.reviewed_cases),
+            "promoted": len(self.promoted_cases),
+            "sources": self.source_count,
+            "records": self.record_count,
+            "skipped_no_assertions": self.skipped_no_assertions,
+            "skipped_duplicates": self.skipped_duplicates,
+            "approved": self.approved_count,
+            "rejected": self.rejected_count,
+            "pending": self.pending_count,
+        }
+        if reviewed_dataset is not None:
+            payload["reviewed_dataset"] = reviewed_dataset
+        if promoted_dataset is not None:
+            payload["promoted_dataset"] = promoted_dataset
+        return payload
+
+
 def load_dataset(path: str | Path) -> list[dict[str, Any]]:
     source = Path(path)
     cases: list[dict[str, Any]] = []
@@ -174,6 +210,85 @@ def import_candidate_cases(
         record_count=record_count,
         skipped_no_assertions=skipped_no_assertions,
         skipped_duplicates=skipped_duplicates,
+    )
+
+
+def review_candidate_cases(
+    candidate_jsonl: Sequence[str | Path],
+    *,
+    approved_ids: Sequence[str] = (),
+    rejected_ids: Sequence[str] = (),
+    approve_all: bool = False,
+    reviewer: str | None = None,
+    note: str | None = None,
+    redact: bool = True,
+) -> CandidatePromotionReviewResult:
+    """Review imported candidates and return explicitly approved promotion cases."""
+    approved_set = {str(case_id) for case_id in approved_ids if str(case_id)}
+    rejected_set = {str(case_id) for case_id in rejected_ids if str(case_id)}
+    conflicts = sorted(approved_set & rejected_set)
+    if conflicts:
+        raise ValueError(f"candidate ids cannot be both approved and rejected: {conflicts!r}")
+
+    reviewed_cases: list[dict[str, Any]] = []
+    promoted_cases: list[dict[str, Any]] = []
+    dedupe_keys: set[str] = set()
+    record_count = 0
+    skipped_no_assertions = 0
+    skipped_duplicates = 0
+    approved_count = 0
+    rejected_count = 0
+    pending_count = 0
+
+    for source in candidate_jsonl:
+        for case in load_dataset(source):
+            record_count += 1
+            candidate = _sanitize_json(case) if redact else dict(case)
+            expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
+            if not _has_expected_assertions(expected):
+                skipped_no_assertions += 1
+                continue
+            dedupe_key = _candidate_dedupe_key(candidate)
+            if dedupe_key in dedupe_keys:
+                skipped_duplicates += 1
+                continue
+            dedupe_keys.add(dedupe_key)
+
+            candidate_id = str(candidate.get("id") or "")
+            if candidate_id in rejected_set:
+                status = "rejected"
+                reason = "explicit_rejection"
+                rejected_count += 1
+            elif approve_all or candidate_id in approved_set:
+                status = "approved"
+                reason = "explicit_approval"
+                approved_count += 1
+            else:
+                status = "pending"
+                reason = "awaiting_explicit_approval"
+                pending_count += 1
+
+            reviewed_case = _with_promotion_review(
+                candidate,
+                status=status,
+                reason=reason,
+                reviewer=reviewer,
+                note=note,
+            )
+            reviewed_cases.append(reviewed_case)
+            if status == "approved":
+                promoted_cases.append(reviewed_case)
+
+    return CandidatePromotionReviewResult(
+        reviewed_cases=reviewed_cases,
+        promoted_cases=promoted_cases,
+        source_count=len(candidate_jsonl),
+        record_count=record_count,
+        skipped_no_assertions=skipped_no_assertions,
+        skipped_duplicates=skipped_duplicates,
+        approved_count=approved_count,
+        rejected_count=rejected_count,
+        pending_count=pending_count,
     )
 
 
@@ -366,12 +481,93 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="candidate",
         help="Stable baseline label stored in candidate origin metadata.",
     )
+    parser.add_argument(
+        "--candidate-review-jsonl",
+        action="append",
+        default=[],
+        help="Candidate JSONL to review for explicit promotion. Repeatable.",
+    )
+    parser.add_argument(
+        "--candidate-reviewed-out",
+        help="Write reviewed candidate JSONL with explicit approval status metadata.",
+    )
+    parser.add_argument(
+        "--candidate-promoted-out",
+        help="Write approved candidate cases to this JSONL path. Never updates the golden dataset.",
+    )
+    parser.add_argument(
+        "--candidate-approve-id",
+        action="append",
+        default=[],
+        help="Candidate id to explicitly approve for promotion. Repeatable.",
+    )
+    parser.add_argument(
+        "--candidate-reject-id",
+        action="append",
+        default=[],
+        help="Candidate id to explicitly reject during review. Repeatable.",
+    )
+    parser.add_argument(
+        "--candidate-approve-all",
+        action="store_true",
+        help="Explicitly approve every non-duplicate candidate that still has assertions.",
+    )
+    parser.add_argument(
+        "--candidate-reviewer",
+        help="Optional reviewer identifier stored in promotion_review metadata.",
+    )
+    parser.add_argument(
+        "--candidate-review-note",
+        help="Optional review note stored in promotion_review metadata.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        if args.candidate_source_json and args.candidate_review_jsonl:
+            raise ValueError("--candidate-source-json and --candidate-review-jsonl cannot be combined")
+        if args.candidate_review_jsonl:
+            if not args.candidate_reviewed_out and not args.candidate_promoted_out:
+                raise ValueError(
+                    "--candidate-reviewed-out or --candidate-promoted-out is required "
+                    "when --candidate-review-jsonl is used"
+                )
+            if args.candidate_promoted_out and not (
+                args.candidate_approve_all or args.candidate_approve_id
+            ):
+                raise ValueError(
+                    "--candidate-promoted-out requires --candidate-approve-id "
+                    "or --candidate-approve-all"
+                )
+            result = review_candidate_cases(
+                args.candidate_review_jsonl,
+                approved_ids=args.candidate_approve_id,
+                rejected_ids=args.candidate_reject_id,
+                approve_all=args.candidate_approve_all,
+                reviewer=args.candidate_reviewer,
+                note=args.candidate_review_note,
+            )
+            reviewed_target = None
+            promoted_target = None
+            if args.candidate_reviewed_out:
+                _reject_golden_dataset_output(args.candidate_reviewed_out)
+                reviewed_target = write_cases_jsonl(args.candidate_reviewed_out, result.reviewed_cases)
+            if args.candidate_promoted_out:
+                _reject_golden_dataset_output(args.candidate_promoted_out)
+                promoted_target = write_cases_jsonl(args.candidate_promoted_out, result.promoted_cases)
+            print(
+                json.dumps(
+                    result.to_dict(
+                        reviewed_dataset=str(reviewed_target) if reviewed_target else None,
+                        promoted_dataset=str(promoted_target) if promoted_target else None,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
         if args.candidate_source_json:
             if not args.candidate_dataset_out:
                 raise ValueError(
@@ -383,6 +579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 candidate_id_prefix=args.candidate_id_prefix,
                 baseline_label=args.candidate_baseline_label,
             )
+            _reject_golden_dataset_output(args.candidate_dataset_out)
             target = write_cases_jsonl(args.candidate_dataset_out, result.cases)
             print(json.dumps(result.to_dict(dataset=str(target)), ensure_ascii=False, indent=2))
             return 0
@@ -584,6 +781,34 @@ def _candidate_bucket(record: dict[str, Any], expected: dict[str, Any]) -> str:
 
 def _candidate_dedupe_key(case: dict[str, Any]) -> str:
     return _stable_hash({"input": case.get("input"), "expected": case.get("expected")})
+
+
+def _with_promotion_review(
+    case: dict[str, Any],
+    *,
+    status: str,
+    reason: str,
+    reviewer: str | None,
+    note: str | None,
+) -> dict[str, Any]:
+    reviewed_case = dict(case)
+    review = {
+        "status": status,
+        "approved": status == "approved",
+        "reason": reason,
+    }
+    if reviewer:
+        review["reviewer"] = reviewer
+    if note:
+        review["note"] = note
+    reviewed_case["promotion_review"] = _sanitize_json(review)
+    return reviewed_case
+
+
+def _reject_golden_dataset_output(path: str | Path) -> None:
+    target = Path(path).expanduser()
+    if target.resolve(strict=False) == DEFAULT_DATASET.resolve(strict=False):
+        raise ValueError("candidate outputs must not target the golden memory/context dataset")
 
 
 def _sanitize_json(value: Any) -> Any:

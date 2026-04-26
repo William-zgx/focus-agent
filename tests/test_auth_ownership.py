@@ -12,9 +12,11 @@ from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.security.ownership import (
     OwnershipAuditEvent,
+    OwnershipAuditExportSink,
     allow_ownership,
     assert_owner,
     deny_ownership,
+    export_ownership_audit_events,
 )
 from focus_agent.security.tokens import Principal, create_access_token
 
@@ -240,6 +242,48 @@ def test_ownership_audit_helpers_collect_allow_and_deny_events() -> None:
     assert denied.request_id == "req-deny"
 
 
+def test_ownership_audit_export_formats_allow_and_deny_events() -> None:
+    events = OwnershipAuditExportSink()
+
+    allow_ownership(
+        events,
+        principal=Principal(user_id="owner-1", tenant_id="tenant-a", scopes=("threads:read",)),
+        resource_type="thread",
+        resource_id="root-1",
+        action="read",
+        reason="owner_match",
+        request_id="req-allow",
+    )
+    with pytest.raises(PermissionError):
+        deny_ownership(
+            events,
+            principal=Principal(user_id="intruder-1"),
+            resource_type="thread",
+            resource_id="root-1",
+            action="write",
+            reason="owner_mismatch",
+            request_id="req-deny",
+        )
+
+    exported = events.export()
+
+    assert exported == export_ownership_audit_events(events)
+    assert [item["tool"] for item in exported] == ["ownership.audit", "ownership.audit"]
+    assert exported[0]["args"] == {
+        "resource_type": "thread",
+        "resource_id": "root-1",
+        "action": "read",
+        "request_id": "req-allow",
+    }
+    assert exported[0]["error"] is None
+    assert exported[0]["runtime"]["decision"] == "allow"
+    assert exported[0]["runtime"]["user_id"] == "owner-1"
+    assert exported[1]["error"] == "owner_mismatch"
+    assert exported[1]["runtime"]["decision"] == "deny"
+    assert exported[1]["runtime"]["user_id"] == "intruder-1"
+    assert exported[1]["runtime"]["request_id"] == "req-deny"
+
+
 def test_ownership_audit_uses_user_id_not_tenant_or_scopes() -> None:
     events: list[OwnershipAuditEvent] = []
 
@@ -278,6 +322,35 @@ def test_ownership_audit_uses_user_id_not_tenant_or_scopes() -> None:
     assert denied.request_id == "req-intruder"
 
 
+def test_ownership_audit_export_does_not_bypass_with_tenant_or_scopes() -> None:
+    events = OwnershipAuditExportSink()
+
+    with pytest.raises(PermissionError):
+        assert_owner(
+            events,
+            principal=Principal(
+                user_id="intruder-1",
+                tenant_id="tenant-a",
+                scopes=("admin", "threads:read", "branches:write"),
+            ),
+            owner_user_id="owner-1",
+            resource_type="thread",
+            resource_id="root-1",
+            action="read",
+            request_id="req-intruder",
+        )
+
+    exported = events.export()
+
+    assert len(exported) == 1
+    assert exported[0]["runtime"]["decision"] == "deny"
+    assert exported[0]["runtime"]["user_id"] == "intruder-1"
+    assert exported[0]["runtime"]["reason"] == "owner_mismatch"
+    assert exported[0]["runtime"]["request_id"] == "req-intruder"
+    assert "tenant-a" not in exported[0]["observation"]
+    assert "admin" not in exported[0]["observation"]
+
+
 def test_repository_thread_ownership_checks_emit_audit_events(tmp_path: Path) -> None:
     repo = SQLiteBranchRepository(str(tmp_path / "state.sqlite"))
     events: list[OwnershipAuditEvent] = []
@@ -310,6 +383,11 @@ def test_repository_thread_ownership_checks_emit_audit_events(tmp_path: Path) ->
     assert events[1].reason == "owner_match"
     assert events[2].user_id == "intruder-1"
     assert events[2].reason == "owner_mismatch"
+
+    exported = repo.export_ownership_audit_events(events)
+    assert [event["runtime"]["decision"] for event in exported] == ["allow", "allow", "deny"]
+    assert exported[2]["tool"] == "ownership.audit"
+    assert exported[2]["error"] == "owner_mismatch"
 
 
 def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata(
