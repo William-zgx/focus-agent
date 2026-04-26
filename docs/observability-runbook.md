@@ -261,7 +261,34 @@ uv run python -m tests.eval replay \
 
 Use `--copy-answer-substring` only when the source answer is stable enough to become an assertion. Otherwise keep the promoted case focused on tool path, failure status, and runtime metrics.
 
-## 7. Recommended Oncall Flow
+## 7. Release Health Gates
+
+The release-health helper turns readiness, trajectory, and replay signals into deterministic gate results that can be used by `make release-gate` or a future CI job:
+
+- `runtime_not_ready`: fails when `/readyz` reports the runtime as not ready.
+- `trajectory_recorder_unavailable`: fails when the trajectory recorder readiness check is present and unhealthy.
+- `chat_failure_rate`: fails when the non-succeeded turn rate crosses the configured threshold after the minimum sample size.
+- `tool_fallback_spike`: fails when fallback usage is high or has grown sharply versus a baseline.
+- `eval_replay_regression`: fails when replay comparison rows contain failed replays or replay errors.
+
+Memory/context quality probes use the same signal shape for deterministic checks such as required markers, forbidden stale markers, and maximum rendered context size.
+
+The release gate runs the helper after the smoke and observability eval suites have written JSON reports:
+
+```bash
+uv run python scripts/release_health_check.py \
+  --ready-url http://127.0.0.1:8000/readyz \
+  --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats \
+  --allow-self-check-fallback \
+  --eval-report-json reports/release-gate/eval-smoke.json \
+  --eval-report-json reports/release-gate/eval-observability.json \
+  --eval-report-json reports/release-gate/memory-context-eval.json \
+  --report-json reports/release-gate/release-health.json
+```
+
+For a live deployment, pass captured `/readyz`, trajectory stats, optional baseline stats, or batch replay-compare JSON via `--runtime-status-json`, `--trajectory-stats-json`, `--baseline-trajectory-stats-json`, and `--replay-comparisons-json`. Production release jobs should remove `--allow-self-check-fallback` so missing live health inputs fail closed.
+
+## 8. Recommended Oncall Flow
 
 Use this order when responding to production issues:
 
@@ -274,12 +301,13 @@ Use this order when responding to production issues:
 7. Preview promotion for a representative failed turn.
 8. Batch replay or promote the slice if it should become a regression artifact.
 
-## 8. Local Verification Commands
+## 9. Local Verification Commands
 
 These are the repo-local checks that currently validate the observability stack and release regression gate:
 
 ```bash
 make lint
+make contract-check
 make ci-test
 make sdk-check
 make sdk-build
@@ -295,7 +323,7 @@ uv run python -m tests.eval --suite observability --concurrency 1
 
 If your local `.venv` cannot import `psycopg` because `libpq` is missing, use the focused test workaround already documented in [architecture.md](architecture.md).
 
-## 9. Current Boundaries
+## 10. Current Boundaries
 
 - Trajectory observability depends on PostgreSQL-backed persistence or another initialized trajectory recorder.
 - `/metrics` currently includes trajectory aggregate metrics when they are available; high-frequency scrape behavior should still be reviewed alongside your global API rate-limit settings.

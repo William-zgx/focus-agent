@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test contract-check release-gate sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -31,6 +31,8 @@ help:
 		'  make check             Run lint + test + sdk-check' \
 		'  make ci                Run local CI parity checks' \
 		'  make ci-test           Run pytest without repo-local env bootstrap' \
+		'  make contract-check    Verify API and frontend SDK contract snapshots' \
+		'  make release-gate      Run the full release gate and write reports/release-gate/latest.json' \
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
 		'  make sdk-build         Build frontend SDK' \
@@ -94,6 +96,12 @@ ci: lint ci-test sdk-check sdk-build
 
 ci-test: .venv/bin/python
 	FOCUS_AGENT_LOCAL_ENV_FILE=$(CI_LOCAL_ENV_FILE) $(PYTEST)
+
+contract-check: .venv/bin/python
+	$(PYTHON) scripts/check_contracts.py
+
+release-gate: .venv/bin/python
+	$(PYTHON) scripts/release_gate.py $(RELEASE_GATE_ARGS)
 
 $(SDK_DIR)/node_modules:
 	cd $(SDK_DIR) && $(NPM) install

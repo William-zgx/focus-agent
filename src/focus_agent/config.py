@@ -640,6 +640,7 @@ class Settings:
     auth_demo_tokens_enabled: bool = True
     auth_jwt_secret: str = DEFAULT_AUTH_JWT_SECRET
     auth_jwt_issuer: str = "focus-agent"
+    auth_jwt_audience: str | None = None
     auth_access_token_ttl_seconds: int = 8 * 60 * 60
     sse_heartbeat_seconds: float = 1.5
     cors_allowed_origins: tuple[str, ...] = ()
@@ -786,6 +787,7 @@ class Settings:
             in {"1", "true", "yes", "on"},
             auth_jwt_secret=env.get("AUTH_JWT_SECRET", defaults.auth_jwt_secret),
             auth_jwt_issuer=env.get("AUTH_JWT_ISSUER", defaults.auth_jwt_issuer),
+            auth_jwt_audience=env.get("AUTH_JWT_AUDIENCE") or defaults.auth_jwt_audience,
             auth_access_token_ttl_seconds=int(
                 env.get(
                     "AUTH_ACCESS_TOKEN_TTL_SECONDS",

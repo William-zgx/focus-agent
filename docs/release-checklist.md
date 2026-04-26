@@ -57,8 +57,25 @@ flowchart LR
 Required release gate:
 
 ```bash
+make release-gate
+```
+
+This writes `reports/release-gate/latest.json` with per-command labels, status, duration, exit code, skip reason, and captured stdout/stderr summaries. For local iteration, pass CLI options such as `--dry-run`, `--only`, `--skip`, `--report-json`, and `--keep-going` through `RELEASE_GATE_ARGS`, for example:
+
+```bash
+make release-gate RELEASE_GATE_ARGS="--dry-run --only lint"
+```
+
+For a fast API/SDK compatibility check before the full gate, run:
+
+```bash
+make contract-check
+```
+
+The orchestrated command plan is:
+
+```bash
 make lint
-uv run pytest tests/test_config_security.py
 make ci-test
 make sdk-check
 make sdk-build
@@ -67,16 +84,15 @@ make web-build
 uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
 uv run python scripts/ui_smoke_test.py
-uv run python -m tests.eval --suite smoke --concurrency 1
-uv run python -m tests.eval --suite observability --concurrency 1
-uv run python -m tests.eval --suite agent_arch --concurrency 1
-uv run python -m tests.eval --suite agent_governance --concurrency 1
-uv run python -m tests.eval --suite agent_delegation --concurrency 1
-uv run python -m tests.eval --suite agent_context --concurrency 1
-uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+uv run python -m tests.eval --suite smoke --concurrency 1 --report-json reports/release-gate/eval-smoke.json
+uv run python -m tests.eval --suite observability --concurrency 1 --report-json reports/release-gate/eval-observability.json
+uv run python scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
+uv run python scripts/release_health_check.py --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/memory-context-eval.json --report-json reports/release-gate/release-health.json
 ```
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target.
+- `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
+- `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, and eval JSON reports into release-blocking health signals. Local release-gate runs allow an explicit self-check fallback when no API is available; production release jobs should pass real `--runtime-status-json`/`--ready-url`, `--trajectory-stats-json`/`--trajectory-stats-url`, and replay comparison inputs without the fallback.
 - API/router, tool split, state-slice, and branch-service refactors must keep their focused compatibility tests green before the full gate.
 - 2026-04-26 P0-P3 multi-agent engineering gate completed: security config, API/router split, default tool split, state slice helpers, branch-service facade split, SDK/Web checks, UI smoke, observability smoke, and eval smoke all passed.
 - If deployment or persistence changed, run the targeted Postgres / containerization tests referenced in `docs/architecture.md`

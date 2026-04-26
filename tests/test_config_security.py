@@ -11,6 +11,7 @@ _CONFIG_ENV_KEYS = (
     "AUTH_ENABLED",
     "AUTH_DEMO_TOKENS_ENABLED",
     "AUTH_JWT_SECRET",
+    "AUTH_JWT_AUDIENCE",
     "RATE_LIMIT_ENABLED",
     "FOCUS_AGENT_LOCAL_ENV_FILE",
     "FOCUS_AGENT_MODEL_CATALOG_DOC",
@@ -123,6 +124,7 @@ def test_settings_from_env_allows_staging_with_secure_settings(monkeypatch, tmp_
     monkeypatch.setenv("APP_ENVIRONMENT", "staging")
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("AUTH_JWT_SECRET", "staging-secret")
+    monkeypatch.setenv("AUTH_JWT_AUDIENCE", "focus-agent-web")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "on")
 
@@ -131,5 +133,6 @@ def test_settings_from_env_allows_staging_with_secure_settings(monkeypatch, tmp_
     assert settings.app_environment == "staging"
     assert settings.auth_enabled is True
     assert settings.auth_jwt_secret == "staging-secret"
+    assert settings.auth_jwt_audience == "focus-agent-web"
     assert settings.auth_demo_tokens_enabled is False
     assert settings.rate_limit_enabled is True

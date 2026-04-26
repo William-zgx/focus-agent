@@ -60,6 +60,8 @@ def create_access_token(
         "exp": expiry,
         "scope": " ".join(scopes or []),
     }
+    if settings.auth_jwt_audience:
+        payload["aud"] = settings.auth_jwt_audience
     if tenant_id:
         payload["tenant_id"] = tenant_id
     header_b64 = _b64url_encode(_json_dumps(header))
@@ -88,6 +90,8 @@ def decode_access_token(token: str, *, settings: Settings) -> Principal:
         raise AuthError('Only HS256 bearer tokens are supported by this skeleton.')
     if payload.get('iss') != settings.auth_jwt_issuer:
         raise AuthError('Bearer token issuer mismatch.')
+    if settings.auth_jwt_audience and payload.get('aud') != settings.auth_jwt_audience:
+        raise AuthError('Bearer token audience mismatch.')
     if not payload.get('sub'):
         raise AuthError('Bearer token is missing subject.')
 

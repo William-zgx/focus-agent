@@ -158,6 +158,13 @@ docker compose -f compose.prod.yaml up -d
 
 如果你保留 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`，内置 `/app` 首次打开时不会再自动申请 demo token，而是会显示 Bearer Token 登录卡片。此时需要提供一个已有的访问令牌，或在你的部署层接入自定义登录 / JWT 分发能力。
 
+生产 Auth / Access Model 边界：
+
+- Focus Agent 当前接受 HS256 Bearer JWT，`sub` 作为 `Principal.user_id`，`tenant_id` 与 `scope` 会进入运行时 principal。
+- conversation、thread、branch 操作按 `Principal.user_id` 做 ownership 检查，跨 principal 访问应返回 403。
+- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`AUTH_JWT_ISSUER`、可选 `AUTH_JWT_AUDIENCE`、`AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致。
+- demo token 仅用于 development/local/test；非开发环境启用 demo token 会在启动时 fail-fast。
+
 生产规范：
 
 - `APP_ENVIRONMENT=production` 或其他非 development/local/test 值会启用应用启动期安全校验
