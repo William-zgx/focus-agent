@@ -26,6 +26,11 @@ def _signed_token(settings: Settings, payload: dict[str, object]) -> str:
     return f"{header_b64}.{payload_b64}.{_b64url_encode(signature)}"
 
 
+def _decode_payload(token: str) -> dict[str, object]:
+    _, payload_b64, _ = token.split(".", 2)
+    return json.loads(base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)))
+
+
 def test_hs256_token_roundtrip():
     settings = Settings(auth_jwt_secret="secret-1", auth_jwt_issuer="focus-agent-test")
     token = create_access_token(
@@ -40,6 +45,35 @@ def test_hs256_token_roundtrip():
     assert principal.tenant_id == "tenant-1"
     assert principal.scopes == ("chat", "branches")
     assert principal.claims["iss"] == "focus-agent-test"
+
+
+def test_token_ttl_uses_settings_default_and_explicit_override():
+    settings = Settings(
+        auth_jwt_secret="secret-1",
+        auth_jwt_issuer="focus-agent-test",
+        auth_access_token_ttl_seconds=900,
+    )
+
+    default_ttl_token = create_access_token(settings=settings, user_id="user-1")
+    default_payload = _decode_payload(default_ttl_token)
+    assert int(default_payload["exp"]) - int(default_payload["iat"]) == 900
+
+    override_ttl_token = create_access_token(
+        settings=settings,
+        user_id="user-1",
+        expires_in_seconds=60,
+    )
+    override_payload = _decode_payload(override_ttl_token)
+    assert int(override_payload["exp"]) - int(override_payload["iat"]) == 60
+
+
+def test_secret_rotation_rejects_tokens_signed_with_previous_secret():
+    old_settings = Settings(auth_jwt_secret="old-secret", auth_jwt_issuer="focus-agent-test")
+    new_settings = Settings(auth_jwt_secret="new-secret", auth_jwt_issuer="focus-agent-test")
+    token = create_access_token(settings=old_settings, user_id="user-1")
+
+    with pytest.raises(AuthError, match="signature is invalid"):
+        decode_access_token(token, settings=new_settings)
 
 
 def test_token_audience_is_enforced_when_configured():

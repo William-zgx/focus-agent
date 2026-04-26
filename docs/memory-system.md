@@ -469,6 +469,36 @@ python scripts/memory_context_eval.py \
 
 这个入口只写独立 report，仍然禁止把 candidate/review/trend 输出写回 `tests/eval/datasets/memory_context_quality.jsonl`。
 
+### 9.2 Nightly Regression + Memory Review Report
+
+`make nightly-regression` 会先生成 memory context eval 与 memory trend report，再调用 `scripts/nightly_regression.py` 聚合到 `reports/nightly/latest.json`。脚本本身不写 golden dataset；它读取已有的 memory context eval、memory trend、trajectory replay、alert JSON，并可复用 `memory_context_eval.review_candidate_cases` 对 candidate review queue 做只读 summary。
+
+推荐输出：
+
+```bash
+make nightly-regression
+
+python scripts/nightly_regression.py \
+  --report-json reports/nightly/latest.json \
+  --memory-eval-json reports/release-gate/memory-context-eval.json \
+  --memory-trend-json reports/release-gate/memory-context-trend.json \
+  --replay-json reports/release-gate/trajectory-replay.json \
+  --alert-json reports/release-gate/release-health.json \
+  --candidate-review-jsonl reports/release-gate/memory-context-candidates.jsonl
+```
+
+输出 JSON 继续保持 dashboard 友好的固定结构：
+
+- `meta`：`suite=nightly_regression`、生成时间、仓库根目录和 `golden_write=disabled`
+- `commands`：上游 report 的建议生成命令和 artifact path
+- `artifacts`：memory eval、memory trend、replay、alert report 摘要
+- `memory_review`：candidate review queue 的 records / pending / approved / rejected / promoted case id
+- `regressions`：memory eval regression、pollution alert、trajectory replay failure、alert report signal 的扁平列表
+- `candidate_outputs`：candidate source、pending / promoted case id、review summary 和 `golden_write=disabled`
+- `summary`：nightly 总状态、alert 数、replay 失败数、缺失 artifact 数和 memory review 计数
+
+这个入口只生成 `reports/nightly/latest.json` 一类独立 report；即使传入 `--candidate-approve-id` 或 `--candidate-reject-id`，也只在本次 report 中计算 review summary，不会把 reviewed/promoted JSONL 写回稳定回归池。缺少核心 memory eval / trend artifact 时 report 会标记为 `failed`，nightly job 应阻断。
+
 ## 10. 后续优化建议
 
 基于当前实现，后续继续优化应优先沿下面几条线推进：

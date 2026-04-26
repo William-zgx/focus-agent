@@ -10,7 +10,10 @@ from focus_agent.observability.release_health import (
     evaluate_chat_failure_rate,
     evaluate_context_probe,
     evaluate_alert_report,
+    evaluate_otel_smoke_report,
+    evaluate_postgres_ops_report,
     evaluate_postgres_migration_report,
+    evaluate_production_smoke_report,
     evaluate_release_health,
     evaluate_replay_gate,
     evaluate_runtime_ready,
@@ -150,6 +153,64 @@ def test_postgres_migration_report_accepts_report_or_command_evidence() -> None:
     assert passed.status == PASS
     assert failed.status == FAIL
     assert failed.details["errors"] == ["schema drift"]
+
+
+def test_production_smoke_report_fails_closed_on_missing_or_failed_checks() -> None:
+    missing = evaluate_production_smoke_report({"status": "passed", "passed": True})
+    failed = evaluate_production_smoke_report(
+        {"status": "passed", "passed": True, "checks": [{"name": "readyz", "status": "failed"}]}
+    )
+    passed = evaluate_production_smoke_report(
+        {"status": "dry-run", "passed": True, "checks": [{"name": "readyz", "status": "dry-run"}]}
+    )
+
+    assert missing.status == FAIL
+    assert failed.status == FAIL
+    assert failed.details["failed_checks"] == ["readyz"]
+    assert passed.status == PASS
+
+
+def test_postgres_ops_report_fails_closed_on_missing_or_failed_operations() -> None:
+    missing = evaluate_postgres_ops_report({"status": "passed", "passed": True})
+    failed = evaluate_postgres_ops_report(
+        {
+            "status": "passed",
+            "passed": True,
+            "operations": [{"name": "migration_table", "passed": False}],
+        }
+    )
+    checks_only = evaluate_postgres_ops_report(
+        {"status": "dry-run", "passed": True, "checks": [{"name": "backup_restore", "status": "dry-run"}]}
+    )
+    passed = evaluate_postgres_ops_report(
+        {"status": "dry-run", "passed": True, "operations": [{"name": "connectivity", "status": "dry-run"}]}
+    )
+
+    assert missing.status == FAIL
+    assert failed.status == FAIL
+    assert failed.details["failed_operations"] == ["migration_table"]
+    assert checks_only.status == PASS
+    assert passed.status == PASS
+
+
+def test_otel_smoke_report_fails_closed_on_missing_or_failed_checks() -> None:
+    missing = evaluate_otel_smoke_report({"status": "passed", "passed": True})
+    failed = evaluate_otel_smoke_report(
+        {"status": "passed", "passed": True, "checks": [{"name": "span_export", "status": "failed"}]}
+    )
+    passed = evaluate_otel_smoke_report(
+        {
+            "status": "dry-run",
+            "passed": True,
+            "checks": [{"name": "span_export", "status": "dry-run"}],
+            "spans": [{"name": "focus_agent.release.otel_smoke"}],
+        }
+    )
+
+    assert missing.status == FAIL
+    assert failed.status == FAIL
+    assert failed.details["failed_checks"] == ["span_export"]
+    assert passed.status == PASS
 
 
 def test_release_health_report_combines_core_signals() -> None:

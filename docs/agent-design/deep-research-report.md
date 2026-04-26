@@ -74,6 +74,20 @@
 | P25 Autonomy Observe-First | 已完成首轮落地 | 技能自选、分支建议与高风险 workflow 默认只输出建议和证据，不自动执行高风险动作 |
 | P26 SDK / E2E Drift Guard | 已完成首轮落地 | contract check 增加 frontend SDK barrel exports 与 Web App `@focus-agent/web-sdk` 实际导入面快照，避免 SDK/E2E 漂移 |
 
+2026-04-26 追加更新：P27-P35 多 Agent 协同开发已从“内部治理能力”推进到“真实环境接入与生产生命周期收口”；本轮用 GitHub Actions / generic CI 文档、nightly 聚合报告、production smoke、Auth token lifecycle、Postgres ops、OTel smoke、memory review、governance dashboard 和 docs ops pack 完成首轮可执行落地。
+
+| 范围 | 状态 | 已完成内容 |
+|---|---|---|
+| P27 CI Provider Binding | 已完成首轮落地 | 新增 `.github/workflows/release-gate.yml`、`make ci-release-gate`、`make ci-release-evidence` 与 GitHub Actions / Buildkite / generic CI 文档；production job 绑定 protected environment、approval metadata、artifact retention 和 evidence pack |
+| P28 Nightly Regression Ops | 已完成首轮落地 | 新增 `.github/workflows/nightly-regression.yml`、`make nightly-regression` 与 `reports/nightly/latest.json`；聚合 memory/context eval、trend、replay、alert 和 candidate review summary，缺核心 artifact 会 fail closed |
+| P29 Production E2E / Load Smoke | 已完成首轮落地 | 新增 `make production-smoke` 与 `reports/release-gate/production-smoke.json`，覆盖 API、SDK、Web、graph、安全和 rate-limit smoke；report 可接入 release-health 和 evidence pack |
+| P30 Auth Token Lifecycle | 已完成首轮落地 | 文档和测试覆盖 issuer、audience、TTL、secret rotation、expired/wrong issuer/wrong audience/missing audience、demo token 生产禁用 |
+| P31 Postgres Backup / Restore / Retention | 已完成首轮落地 | 新增 `make postgres-ops` 与 `reports/release-gate/postgres-ops.json` 稳定 schema，包含 command、checks、errors、artifacts；release-health 可消费并 fail closed |
+| P32 Observability Alert Sink / OTel | 已完成首轮落地 | 新增 `make otel-smoke` 与 `reports/release-gate/otel-smoke.json`，alert / production smoke / Postgres ops / OTel smoke 均可被 release-health 和 release evidence 读取 |
+| P33 Memory Review Console | 已完成首轮落地 | nightly report 汇总 candidate review queue、pending / promoted case id 与 golden-write disabled 边界，继续禁止自动写 golden |
+| P34 Agent Governance Quality Dashboard | 已完成首轮落地 | 新增 `make agent-governance-report` 与 `reports/agent-governance/latest.json`，聚合 delegation、critic、review queue、cost/latency/tool-call 质量信号 |
+| P35 Docs / Ops Pack | 已完成首轮落地 | `docs/multi-agent-collaboration.md`、本文、roadmap、release checklist、observability runbook、CI 文档、memory/governance 文档已同步 P27-P35 状态与验证口径 |
+
 ## 仓库入口与整体架构
 
 从已读取的根目录文件和路径分布看，仓库大致由“后端应用 + 前端应用 + 前端 SDK + 测试 + 文档”构成。`pyproject.toml` 定义了 Python 运行时与核心依赖；`src/focus_agent` 是后端主代码；`apps/web` 是 React Web App；`frontend-sdk` 是对后端 REST/SSE 协议的前端封装；`tests` 中能看到图编排、默认工具、记忆流水线、前端脚手架与治理能力的测试文件；`docs/architecture.md` 则提供了仓库内架构说明文档。fileciteturn17file0L1-L1 fileciteturn42file0L1-L1 fileciteturn45file0L1-L1 fileciteturn35file8L1-L1 fileciteturn35file6L1-L1 fileciteturn37file4L1-L1 fileciteturn41file2L1-L1 fileciteturn41file3L1-L1 fileciteturn16file0L1-L1

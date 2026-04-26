@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test contract-check release-gate release-evidence sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -34,6 +34,10 @@ help:
 		'  make contract-check    Verify API and frontend SDK contract snapshots' \
 		'  make release-gate      Run the full release gate and write reports/release-gate/latest.json' \
 		'  make release-evidence  Generate a production release evidence manifest' \
+		'  make ci-release-gate   Run the CI release gate entrypoint' \
+		'  make ci-release-evidence Generate CI release evidence manifest' \
+		'  make nightly-regression Generate reports/nightly/latest.json' \
+		'  make production-smoke  Generate reports/release-gate/production-smoke.json' \
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
 		'  make sdk-build         Build frontend SDK' \
@@ -106,6 +110,30 @@ release-gate: .venv/bin/python
 
 release-evidence: .venv/bin/python
 	$(PYTHON) scripts/release_evidence.py $(RELEASE_EVIDENCE_ARGS)
+
+ci-release-gate: .venv/bin/python
+	$(PYTHON) scripts/release_gate.py $(CI_RELEASE_GATE_ARGS)
+
+ci-release-evidence: .venv/bin/python
+	$(PYTHON) scripts/release_evidence.py $(CI_RELEASE_EVIDENCE_ARGS)
+
+nightly-regression: .venv/bin/python
+	@mkdir -p reports/release-gate reports/nightly
+	$(PYTHON) scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
+	$(PYTHON) scripts/memory_context_eval.py --trend-report-json reports/release-gate/memory-context-trend.json
+	$(PYTHON) scripts/nightly_regression.py $(NIGHTLY_REGRESSION_ARGS)
+
+production-smoke: .venv/bin/python
+	$(PYTHON) scripts/production_smoke.py $(PRODUCTION_SMOKE_ARGS)
+
+postgres-ops: .venv/bin/python
+	$(PYTHON) scripts/postgres_ops.py $(POSTGRES_OPS_ARGS)
+
+otel-smoke: .venv/bin/python
+	$(PYTHON) scripts/otel_smoke.py $(OTEL_SMOKE_ARGS)
+
+agent-governance-report: .venv/bin/python
+	$(PYTHON) scripts/agent_governance_report.py $(AGENT_GOVERNANCE_REPORT_ARGS)
 
 $(SDK_DIR)/node_modules:
 	cd $(SDK_DIR) && $(NPM) install

@@ -79,6 +79,40 @@ def _passing_postgres_migration_report_path(tmp_path: Path) -> Path:
     )
 
 
+def _passing_production_smoke_report_path(tmp_path: Path) -> Path:
+    return _write_json(
+        tmp_path / "production-smoke.json",
+        {
+            "checks": [{"name": "readyz", "status": "dry-run"}],
+            "passed": True,
+            "status": "dry-run",
+        },
+    )
+
+
+def _passing_postgres_ops_report_path(tmp_path: Path) -> Path:
+    return _write_json(
+        tmp_path / "postgres-ops.json",
+        {
+            "operations": [{"name": "connectivity", "status": "dry-run"}],
+            "passed": True,
+            "status": "dry-run",
+        },
+    )
+
+
+def _passing_otel_smoke_report_path(tmp_path: Path) -> Path:
+    return _write_json(
+        tmp_path / "otel-smoke.json",
+        {
+            "checks": [{"name": "span_export", "status": "dry-run"}],
+            "passed": True,
+            "spans": [{"name": "focus_agent.release.otel_smoke"}],
+            "status": "dry-run",
+        },
+    )
+
+
 def test_release_health_check_self_check_writes_report(tmp_path: Path) -> None:
     report_path = tmp_path / "release-health.json"
 
@@ -557,3 +591,74 @@ def test_release_health_check_postgres_migration_report_blocks_release(tmp_path:
     assert exit_code == 1
     assert postgres_signal["status"] == "fail"
     assert postgres_signal["details"]["errors"] == ["schema drift"]
+
+
+def test_release_health_check_reads_production_ops_and_otel_reports(tmp_path: Path) -> None:
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            "--mode",
+            "production",
+            "--readyz-json",
+            str(_readyz_path(tmp_path)),
+            "--trajectory-stats-json",
+            str(_trajectory_stats_path(tmp_path)),
+            "--replay-comparisons-json",
+            str(_passing_replay_path(tmp_path)),
+            "--eval-report-json",
+            str(_passing_eval_path(tmp_path)),
+            "--production-smoke-report-json",
+            str(_passing_production_smoke_report_path(tmp_path)),
+            "--postgres-ops-report-json",
+            str(_passing_postgres_ops_report_path(tmp_path)),
+            "--otel-smoke-report-json",
+            str(_passing_otel_smoke_report_path(tmp_path)),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    statuses = {signal["key"]: signal["status"] for signal in report["signals"]}
+
+    assert exit_code == 0
+    assert statuses["production_smoke_report"] == "pass"
+    assert statuses["postgres_ops_report"] == "pass"
+    assert statuses["otel_smoke_report"] == "pass"
+
+
+def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: Path) -> None:
+    otel_report = _write_json(
+        tmp_path / "otel-failed.json",
+        {
+            "checks": [{"name": "span_export", "status": "failed"}],
+            "passed": True,
+            "status": "passed",
+        },
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            "--mode",
+            "production",
+            "--readyz-json",
+            str(_readyz_path(tmp_path)),
+            "--trajectory-stats-json",
+            str(_trajectory_stats_path(tmp_path)),
+            "--replay-comparisons-json",
+            str(_passing_replay_path(tmp_path)),
+            "--eval-report-json",
+            str(_passing_eval_path(tmp_path)),
+            "--otel-smoke-report-json",
+            str(otel_report),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    otel_signal = next(signal for signal in report["signals"] if signal["key"] == "otel_smoke_report")
+
+    assert exit_code == 1
+    assert otel_signal["status"] == "fail"
+    assert otel_signal["details"]["failed_checks"] == ["span_export"]

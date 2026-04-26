@@ -75,6 +75,9 @@ def evaluate_release_health(
     replay_comparisons: Iterable[Mapping[str, Any]] | None = None,
     alert_report: Mapping[str, Any] | None = None,
     postgres_migration_report: Mapping[str, Any] | None = None,
+    production_smoke_report: Mapping[str, Any] | None = None,
+    postgres_ops_report: Mapping[str, Any] | None = None,
+    otel_smoke_report: Mapping[str, Any] | None = None,
     eval_regressions: Iterable[str] | None = None,
     thresholds: ReleaseHealthThresholds | None = None,
 ) -> ReleaseHealthReport:
@@ -100,6 +103,12 @@ def evaluate_release_health(
         signals.append(evaluate_alert_report(alert_report))
     if postgres_migration_report is not None:
         signals.append(evaluate_postgres_migration_report(postgres_migration_report))
+    if production_smoke_report is not None:
+        signals.append(evaluate_production_smoke_report(production_smoke_report))
+    if postgres_ops_report is not None:
+        signals.append(evaluate_postgres_ops_report(postgres_ops_report))
+    if otel_smoke_report is not None:
+        signals.append(evaluate_otel_smoke_report(otel_smoke_report))
 
     return ReleaseHealthReport(signals=tuple(signals))
 
@@ -377,6 +386,116 @@ def evaluate_postgres_migration_report(postgres_migration_report: Mapping[str, A
     )
 
 
+def evaluate_production_smoke_report(production_smoke_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+    """Validate a production endpoint smoke report collected by deployment jobs."""
+    checks = production_smoke_report.get("checks")
+    rows = [row for row in checks if isinstance(row, Mapping)] if isinstance(checks, list) else []
+    failures = _failed_report_rows(rows)
+    status = str(production_smoke_report.get("status") or "").lower()
+    explicit_passed = production_smoke_report.get("passed")
+    details = {
+        "checks": len(rows),
+        "failed_checks": failures,
+        "status": status or None,
+    }
+    if not rows:
+        return ReleaseHealthSignal(
+            key="production_smoke_report",
+            status=FAIL,
+            summary="production smoke report has no probe coverage",
+            details=details,
+        )
+    if explicit_passed is False or _failed_report_status(status) or failures:
+        return ReleaseHealthSignal(
+            key="production_smoke_report",
+            status=FAIL,
+            summary="production smoke report failed",
+            details=details,
+        )
+    return ReleaseHealthSignal(
+        key="production_smoke_report",
+        status=PASS,
+        summary="production smoke report passed",
+        details=details,
+    )
+
+
+def evaluate_postgres_ops_report(postgres_ops_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+    """Validate a Postgres operations report collected by deployment jobs."""
+    operations = postgres_ops_report.get("operations")
+    rows = [row for row in operations if isinstance(row, Mapping)] if isinstance(operations, list) else []
+    if not rows:
+        checks = postgres_ops_report.get("checks")
+        rows = [row for row in checks if isinstance(row, Mapping)] if isinstance(checks, list) else []
+    failures = _failed_report_rows(rows)
+    status = str(postgres_ops_report.get("status") or "").lower()
+    explicit_passed = postgres_ops_report.get("passed")
+    details = {
+        "operations": len(rows),
+        "failed_operations": failures,
+        "status": status or None,
+    }
+    if not rows:
+        return ReleaseHealthSignal(
+            key="postgres_ops_report",
+            status=FAIL,
+            summary="postgres ops report has no operation coverage",
+            details=details,
+        )
+    if explicit_passed is False or _failed_report_status(status) or failures:
+        return ReleaseHealthSignal(
+            key="postgres_ops_report",
+            status=FAIL,
+            summary="postgres ops report failed",
+            details=details,
+        )
+    return ReleaseHealthSignal(
+        key="postgres_ops_report",
+        status=PASS,
+        summary="postgres ops report passed",
+        details=details,
+    )
+
+
+def evaluate_otel_smoke_report(otel_smoke_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+    """Validate an OpenTelemetry smoke report collected by deployment jobs."""
+    checks = otel_smoke_report.get("checks")
+    rows = [row for row in checks if isinstance(row, Mapping)] if isinstance(checks, list) else []
+    failures = _failed_report_rows(rows)
+    status = str(otel_smoke_report.get("status") or "").lower()
+    explicit_passed = otel_smoke_report.get("passed")
+    summary = otel_smoke_report.get("summary") if isinstance(otel_smoke_report.get("summary"), Mapping) else {}
+    spans = int(_number(summary.get("spans")))
+    if spans <= 0 and isinstance(otel_smoke_report.get("spans"), list):
+        spans = len(otel_smoke_report["spans"])
+    details = {
+        "checks": len(rows),
+        "failed_checks": failures,
+        "spans": spans,
+        "status": status or None,
+    }
+    if not rows and spans <= 0:
+        return ReleaseHealthSignal(
+            key="otel_smoke_report",
+            status=FAIL,
+            summary="otel smoke report has no check or span coverage",
+            details=details,
+        )
+    if explicit_passed is False or _failed_report_status(status) or failures:
+        return ReleaseHealthSignal(
+            key="otel_smoke_report",
+            status=FAIL,
+            summary="otel smoke report failed",
+            details=details,
+        )
+    return ReleaseHealthSignal(
+        key="otel_smoke_report",
+        status=PASS,
+        summary="otel smoke report passed",
+        details=details,
+    )
+
+
 def evaluate_context_probe(
     rendered_context: str,
     *,
@@ -417,6 +536,21 @@ def _eval_regression_signal(regressions: list[str]) -> ReleaseHealthSignal:
         summary="eval replay regression detected",
         details={"regressions": regressions},
     )
+
+
+def _failed_report_status(status: str) -> bool:
+    return status in {"fail", "failed", "error"}
+
+
+def _failed_report_rows(rows: Iterable[Mapping[str, Any]]) -> list[str]:
+    failures: list[str] = []
+    for index, row in enumerate(rows):
+        name = str(row.get("name") or row.get("label") or f"row-{index + 1}")
+        status = str(row.get("status") or "").lower()
+        explicit_passed = row.get("passed")
+        if explicit_passed is False or _failed_report_status(status):
+            failures.append(name)
+    return failures
 
 
 def _overview(stats: Mapping[str, Any]) -> Mapping[str, Any]:

@@ -84,6 +84,55 @@ def _postgres_migration_report(path: Path) -> Path:
     )
 
 
+def _production_smoke_report(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "checks": [
+                {"category": "api", "name": "api_readyz", "status": "dry-run"},
+                {"category": "sdk", "name": "sdk_client_healthz", "status": "dry-run"},
+                {"category": "web", "name": "web_app", "status": "dry-run"},
+                {"category": "graph", "name": "graph_min_chat_turn", "status": "dry-run"},
+                {"category": "security", "name": "security_wrong_jwt_denied", "status": "dry-run"},
+                {"category": "rate-limit", "name": "rate_limit_probe", "status": "dry-run"},
+            ],
+            "passed": True,
+            "status": "dry-run",
+        },
+    )
+
+
+def _postgres_ops_report(path: Path) -> Path:
+    operations = [
+        {"name": "connectivity", "status": "dry-run"},
+        {"name": "backup_restore_runbook", "status": "dry-run"},
+    ]
+    return _write_json(
+        path,
+        {
+            "artifacts": [],
+            "checks": operations,
+            "command": "uv run python scripts/postgres_ops.py --dry-run",
+            "errors": [],
+            "operations": operations,
+            "passed": True,
+            "status": "dry-run",
+        },
+    )
+
+
+def _otel_smoke_report(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "checks": [{"name": "span_export", "status": "dry-run"}],
+            "passed": True,
+            "spans": [{"name": "focus_agent.release.otel_smoke"}],
+            "status": "dry-run",
+        },
+    )
+
+
 def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) -> None:
     manifest = release_evidence.run_release_evidence(
         release_id="dry-run-release",
@@ -103,6 +152,9 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
     assert _artifact_path(saved["artifacts"]["baseline_eval_reports"][0]).exists()
     assert _artifact_path(saved["artifacts"]["alert_report"]).exists()
     assert _artifact_path(saved["artifacts"]["postgres_migration_report"]).exists()
+    assert _artifact_path(saved["artifacts"]["production_smoke_report"]).exists()
+    assert _artifact_path(saved["artifacts"]["postgres_ops_report"]).exists()
+    assert _artifact_path(saved["artifacts"]["otel_smoke_report"]).exists()
     assert _artifact_path(saved["artifacts"]["release_health_report"]).exists()
     assert saved["approval"]["approved"] is True
     assert saved["release_health"]["status"] == "passed"
@@ -126,6 +178,9 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
         replay_comparisons_json=_replay(source_dir / "replay.json"),
         alert_report_json=_alert_report(source_dir / "alert.json"),
         postgres_migration_report_json=_postgres_migration_report(source_dir / "postgres-migration.json"),
+        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
+        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
+        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
         eval_report_json=[_eval_report(source_dir / "eval.json")],
         baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
         approval_id="approval-1",
@@ -144,6 +199,18 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
     assert (
         _artifact_path(saved["artifacts"]["postgres_migration_report"])
         == pack_dir / "inputs" / "postgres-migration-report.json"
+    )
+    assert (
+        _artifact_path(saved["artifacts"]["production_smoke_report"])
+        == pack_dir / "inputs" / "production-smoke-report.json"
+    )
+    assert (
+        _artifact_path(saved["artifacts"]["postgres_ops_report"])
+        == pack_dir / "inputs" / "postgres-ops-report.json"
+    )
+    assert (
+        _artifact_path(saved["artifacts"]["otel_smoke_report"])
+        == pack_dir / "inputs" / "otel-smoke-report.json"
     )
     assert _artifact_path(saved["artifacts"]["eval_reports"][0]) == pack_dir / "inputs" / "eval-report-1.json"
     assert (

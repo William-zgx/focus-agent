@@ -205,6 +205,53 @@ def _sample_postgres_migration_report() -> dict[str, Any]:
     }
 
 
+def _sample_production_smoke_report() -> dict[str, Any]:
+    return {
+        "checks": [
+            {"category": "api", "name": "api_readyz", "status": "dry-run"},
+            {"category": "sdk", "name": "sdk_client_healthz", "status": "dry-run"},
+            {"category": "web", "name": "web_app", "status": "dry-run"},
+            {"category": "graph", "name": "graph_min_chat_turn", "status": "dry-run"},
+            {"category": "security", "name": "security_wrong_jwt_denied", "status": "dry-run"},
+            {"category": "rate-limit", "name": "rate_limit_probe", "status": "dry-run"},
+        ],
+        "passed": True,
+        "report_type": "production_smoke",
+        "status": "dry-run",
+        "summary": {"failed": 0, "passed": 6, "total": 6},
+    }
+
+
+def _sample_postgres_ops_report() -> dict[str, Any]:
+    checks = [
+        {"name": "connectivity", "status": "dry-run"},
+        {"name": "migration_table", "status": "dry-run"},
+        {"name": "backup_restore_runbook", "status": "dry-run"},
+    ]
+    return {
+        "artifacts": [],
+        "checks": checks,
+        "command": "uv run python scripts/postgres_ops.py --dry-run",
+        "errors": [],
+        "operations": checks,
+        "passed": True,
+        "report_type": "postgres_ops",
+        "status": "dry-run",
+        "summary": {"failed": 0, "passed": len(checks), "total": len(checks)},
+    }
+
+
+def _sample_otel_smoke_report() -> dict[str, Any]:
+    return {
+        "checks": [{"name": "span_export", "status": "dry-run"}],
+        "passed": True,
+        "report_type": "otel_smoke",
+        "spans": [{"name": "focus_agent.release.otel_smoke", "status": "dry-run"}],
+        "status": "dry-run",
+        "summary": {"failed": 0, "passed": 1, "spans": 1, "total": 1},
+    }
+
+
 def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | EvidenceInput]:
     inputs_dir = pack_dir / "inputs"
     readyz = _write_json(inputs_dir / "readyz.json", _sample_readyz())
@@ -217,8 +264,23 @@ def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | E
         inputs_dir / "postgres-migration-report.json",
         _sample_postgres_migration_report(),
     )
+    production_smoke_report = _write_json(
+        inputs_dir / "production-smoke-report.json",
+        _sample_production_smoke_report(),
+    )
+    postgres_ops_report = _write_json(inputs_dir / "postgres-ops-report.json", _sample_postgres_ops_report())
+    otel_smoke_report = _write_json(inputs_dir / "otel-smoke-report.json", _sample_otel_smoke_report())
     return {
         "alert_report": EvidenceInput("alert_report", alert_report, None, False, "generated"),
+        "production_smoke_report": EvidenceInput(
+            "production_smoke_report",
+            production_smoke_report,
+            None,
+            False,
+            "generated",
+        ),
+        "postgres_ops_report": EvidenceInput("postgres_ops_report", postgres_ops_report, None, False, "generated"),
+        "otel_smoke_report": EvidenceInput("otel_smoke_report", otel_smoke_report, None, False, "generated"),
         "readyz": EvidenceInput("readyz", readyz, None, True, "generated"),
         "trajectory_stats": EvidenceInput("trajectory_stats", trajectory_stats, None, True, "generated"),
         "replay_comparisons": EvidenceInput("replay_comparisons", replay_comparisons, None, True, "generated"),
@@ -245,6 +307,9 @@ def _prepare_provided_inputs(
     replay_comparisons_json: str | Path | None,
     alert_report_json: str | Path | None,
     postgres_migration_report_json: str | Path | None,
+    production_smoke_report_json: str | Path | None,
+    postgres_ops_report_json: str | Path | None,
+    otel_smoke_report_json: str | Path | None,
     eval_report_json: Sequence[str | Path],
     baseline_eval_report_json: Sequence[str | Path],
 ) -> dict[str, list[EvidenceInput] | EvidenceInput]:
@@ -270,6 +335,21 @@ def _prepare_provided_inputs(
         inputs_dir / "postgres-migration-report.json",
         root=root,
     )
+    production_smoke_path, production_smoke_source = _copy_or_reference_json(
+        production_smoke_report_json,
+        inputs_dir / "production-smoke-report.json",
+        root=root,
+    )
+    postgres_ops_path, postgres_ops_source = _copy_or_reference_json(
+        postgres_ops_report_json,
+        inputs_dir / "postgres-ops-report.json",
+        root=root,
+    )
+    otel_smoke_path, otel_smoke_source = _copy_or_reference_json(
+        otel_smoke_report_json,
+        inputs_dir / "otel-smoke-report.json",
+        root=root,
+    )
 
     eval_reports: list[EvidenceInput] = []
     for index, raw_path in enumerate(eval_report_json, start=1):
@@ -287,6 +367,27 @@ def _prepare_provided_inputs(
 
     return {
         "alert_report": EvidenceInput("alert_report", alert_path, alert_source, False, "input"),
+        "production_smoke_report": EvidenceInput(
+            "production_smoke_report",
+            production_smoke_path,
+            production_smoke_source,
+            False,
+            "input",
+        ),
+        "postgres_ops_report": EvidenceInput(
+            "postgres_ops_report",
+            postgres_ops_path,
+            postgres_ops_source,
+            False,
+            "input",
+        ),
+        "otel_smoke_report": EvidenceInput(
+            "otel_smoke_report",
+            otel_smoke_path,
+            otel_smoke_source,
+            False,
+            "input",
+        ),
         "readyz": EvidenceInput("readyz", readyz_path, readyz_source, True, "input"),
         "trajectory_stats": EvidenceInput("trajectory_stats", stats_path, stats_source, True, "input"),
         "replay_comparisons": EvidenceInput("replay_comparisons", replay_path, replay_source, True, "input"),
@@ -334,6 +435,9 @@ def _release_health_command(
     replay_comparisons = artifacts["replay_comparisons"]
     alert_report = artifacts.get("alert_report")
     postgres_migration_report = artifacts.get("postgres_migration_report")
+    production_smoke_report = artifacts.get("production_smoke_report")
+    postgres_ops_report = artifacts.get("postgres_ops_report")
+    otel_smoke_report = artifacts.get("otel_smoke_report")
     if isinstance(readyz, EvidenceInput) and readyz.path is not None:
         command.extend(("--readyz-json", str(readyz.path)))
     if isinstance(trajectory_stats, EvidenceInput) and trajectory_stats.path is not None:
@@ -344,6 +448,12 @@ def _release_health_command(
         command.extend(("--alert-report-json", str(alert_report.path)))
     if isinstance(postgres_migration_report, EvidenceInput) and postgres_migration_report.path is not None:
         command.extend(("--postgres-migration-report-json", str(postgres_migration_report.path)))
+    if isinstance(production_smoke_report, EvidenceInput) and production_smoke_report.path is not None:
+        command.extend(("--production-smoke-report-json", str(production_smoke_report.path)))
+    if isinstance(postgres_ops_report, EvidenceInput) and postgres_ops_report.path is not None:
+        command.extend(("--postgres-ops-report-json", str(postgres_ops_report.path)))
+    if isinstance(otel_smoke_report, EvidenceInput) and otel_smoke_report.path is not None:
+        command.extend(("--otel-smoke-report-json", str(otel_smoke_report.path)))
     eval_reports = artifacts["eval_reports"]
     baseline_eval_reports = artifacts["baseline_eval_reports"]
     for artifact in eval_reports if isinstance(eval_reports, list) else []:
@@ -805,6 +915,9 @@ def _manifest_artifacts(
     replay_comparisons = prepared_inputs["replay_comparisons"]
     alert_report = prepared_inputs.get("alert_report")
     postgres_migration_report = prepared_inputs.get("postgres_migration_report")
+    production_smoke_report = prepared_inputs.get("production_smoke_report")
+    postgres_ops_report = prepared_inputs.get("postgres_ops_report")
+    otel_smoke_report = prepared_inputs.get("otel_smoke_report")
     eval_reports = prepared_inputs["eval_reports"]
     baseline_eval_reports = prepared_inputs["baseline_eval_reports"]
     if not isinstance(readyz, EvidenceInput):
@@ -824,6 +937,15 @@ def _manifest_artifacts(
         "postgres_migration_report": _artifact_record(postgres_migration_report)
         if isinstance(postgres_migration_report, EvidenceInput)
         else _artifact_record(EvidenceInput("postgres_migration_report", None, None, False, "input")),
+        "production_smoke_report": _artifact_record(production_smoke_report)
+        if isinstance(production_smoke_report, EvidenceInput)
+        else _artifact_record(EvidenceInput("production_smoke_report", None, None, False, "input")),
+        "postgres_ops_report": _artifact_record(postgres_ops_report)
+        if isinstance(postgres_ops_report, EvidenceInput)
+        else _artifact_record(EvidenceInput("postgres_ops_report", None, None, False, "input")),
+        "otel_smoke_report": _artifact_record(otel_smoke_report)
+        if isinstance(otel_smoke_report, EvidenceInput)
+        else _artifact_record(EvidenceInput("otel_smoke_report", None, None, False, "input")),
         "readyz": _artifact_record(readyz),
         "release_health_report": _artifact_record(
             EvidenceInput("release_health_report", release_health_report_json, None, True, "generated")
@@ -845,6 +967,9 @@ def run_release_evidence(
     replay_comparisons_json: str | Path | None = None,
     alert_report_json: str | Path | None = None,
     postgres_migration_report_json: str | Path | None = None,
+    production_smoke_report_json: str | Path | None = None,
+    postgres_ops_report_json: str | Path | None = None,
+    otel_smoke_report_json: str | Path | None = None,
     eval_report_json: Sequence[str | Path] = (),
     baseline_eval_report_json: Sequence[str | Path] = (),
     release_health_report_json: str | Path | None = None,
@@ -886,6 +1011,9 @@ def run_release_evidence(
             replay_comparisons_json=replay_comparisons_json,
             alert_report_json=alert_report_json,
             postgres_migration_report_json=postgres_migration_report_json,
+            production_smoke_report_json=production_smoke_report_json,
+            postgres_ops_report_json=postgres_ops_report_json,
+            otel_smoke_report_json=otel_smoke_report_json,
             eval_report_json=eval_report_json,
             baseline_eval_report_json=baseline_eval_report_json,
         )
@@ -1055,6 +1183,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--replay-comparisons-json", help="Replay comparison JSON payload.")
     parser.add_argument("--alert-report-json", help="Executable alert rules report JSON.")
     parser.add_argument("--postgres-migration-report-json", help="Postgres migration verification report JSON.")
+    parser.add_argument("--production-smoke-report-json", help="Production smoke report JSON.")
+    parser.add_argument("--postgres-ops-report-json", help="Postgres ops report JSON.")
+    parser.add_argument("--otel-smoke-report-json", help="OpenTelemetry smoke report JSON.")
     parser.add_argument(
         "--eval-report-json",
         action="append",
@@ -1110,6 +1241,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             retention_days=args.retention_days,
             replay_comparisons_json=args.replay_comparisons_json,
             postgres_migration_report_json=args.postgres_migration_report_json,
+            production_smoke_report_json=args.production_smoke_report_json,
+            postgres_ops_report_json=args.postgres_ops_report_json,
+            otel_smoke_report_json=args.otel_smoke_report_json,
             storage_dir=args.storage_dir,
             trajectory_stats_json=args.trajectory_stats_json,
         )

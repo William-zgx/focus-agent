@@ -372,6 +372,28 @@ make web-build
 uv run python -m tests.eval --suite agent_team --concurrency 1
 ```
 
+Nightly / Governance Dashboard 可以额外生成质量汇总 report：
+
+```bash
+make agent-governance-report
+
+python scripts/agent_governance_report.py \
+  --report-json reports/agent-governance/latest.json \
+  --eval-report delegation=reports/release-gate/eval-agent-delegation.json \
+  --eval-report governance=reports/release-gate/eval-agent-governance.json \
+  --eval-report task-ledger=reports/release-gate/eval-agent-task-ledger.json \
+  --eval-report agent-team=reports/release-gate/eval-agent-team.json
+```
+
+该 report 保持 `meta` / `commands` / `artifacts` / `summary` 风格，并额外提供 `quality`：
+
+- `delegation`：汇总 delegation、task ledger、agent team 相关 tag 的成功率
+- `critic`：汇总 critic、critic gate、reviewer 相关质量信号
+- `review`：汇总 review queue、merge review、memory curator 相关质量信号
+- `cost`：汇总平均成本、输入输出 token 和工具调用数
+
+Dashboard 侧只需要读取 `summary.status`、`summary.quality_attention` 和 `quality.*.task_success` 即可给出夜间回归状态，不需要重新跑 eval。
+
 ## 11. 多 Agent 开发分工
 
 - Backend Agent：`src/focus_agent/core/agent_team.py`、`src/focus_agent/services/agent_team.py`、API contract、后端测试。

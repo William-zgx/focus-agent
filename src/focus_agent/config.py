@@ -70,6 +70,10 @@ def _validate_non_development_security(settings: "Settings", env: MutableMapping
         failures.append("AUTH_JWT_SECRET must be set")
     elif jwt_secret == DEFAULT_AUTH_JWT_SECRET:
         failures.append("AUTH_JWT_SECRET must not use the development default")
+    if not _normalize_optional_string(settings.auth_jwt_issuer):
+        failures.append("AUTH_JWT_ISSUER must be set")
+    if settings.auth_access_token_ttl_seconds <= 0:
+        failures.append("AUTH_ACCESS_TOKEN_TTL_SECONDS must be greater than 0")
     if not settings.auth_enabled:
         failures.append("AUTH_ENABLED must be true")
     if settings.auth_demo_tokens_enabled:

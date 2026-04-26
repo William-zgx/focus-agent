@@ -318,6 +318,9 @@ def build_release_health_report(
     replay_comparisons: list[dict[str, Any]] | None = None,
     alert_report: dict[str, Any] | None = None,
     postgres_migration_report: dict[str, Any] | None = None,
+    production_smoke_report: dict[str, Any] | None = None,
+    postgres_ops_report: dict[str, Any] | None = None,
+    otel_smoke_report: dict[str, Any] | None = None,
     eval_report_paths: Sequence[str | Path] = (),
     baseline_eval_report_paths: Sequence[str | Path] = (),
     extra_signals: Sequence[ReleaseHealthSignal] = (),
@@ -331,6 +334,9 @@ def build_release_health_report(
         replay_comparisons=replay_comparisons,
         alert_report=alert_report,
         postgres_migration_report=postgres_migration_report,
+        production_smoke_report=production_smoke_report,
+        postgres_ops_report=postgres_ops_report,
+        otel_smoke_report=otel_smoke_report,
     )
     eval_signals = _eval_report_signals(eval_report_paths, root=root)
     baseline_eval_signals = _baseline_eval_report_signals(
@@ -398,6 +404,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--replay-comparisons-json", help="Batch replay-compare JSON payload.")
     parser.add_argument("--alert-report-json", help="Executable alert rules report JSON.")
     parser.add_argument("--postgres-migration-report-json", help="Postgres migration verification report JSON.")
+    parser.add_argument("--production-smoke-report-json", help="Production smoke report JSON.")
+    parser.add_argument("--postgres-ops-report-json", help="Postgres ops report JSON.")
+    parser.add_argument("--otel-smoke-report-json", help="OpenTelemetry smoke report JSON.")
     parser.add_argument("--ready-url", help="HTTP URL for the runtime readiness probe.")
     parser.add_argument("--trajectory-stats-url", help="HTTP URL for trajectory stats.")
     parser.add_argument(
@@ -463,6 +472,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             live_mode=live_mode,
             fail_closed_signals=fail_closed_signals,
         )
+        production_smoke_report, production_smoke_report_loaded = _load_json_input(
+            args.production_smoke_report_json,
+            input_name="production_smoke_report",
+            live_mode=live_mode,
+            fail_closed_signals=fail_closed_signals,
+        )
+        postgres_ops_report, postgres_ops_report_loaded = _load_json_input(
+            args.postgres_ops_report_json,
+            input_name="postgres_ops_report",
+            live_mode=live_mode,
+            fail_closed_signals=fail_closed_signals,
+        )
+        otel_smoke_report, otel_smoke_report_loaded = _load_json_input(
+            args.otel_smoke_report_json,
+            input_name="otel_smoke_report",
+            live_mode=live_mode,
+            fail_closed_signals=fail_closed_signals,
+        )
         trajectory_stats_url_loaded = False
 
         if runtime_status is None and args.ready_url:
@@ -510,6 +537,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _required_input_signal("postgres_migration_report", "invalid postgres migration report input")
                 )
                 postgres_migration_report = None
+            if production_smoke_report_loaded and not isinstance(production_smoke_report, dict):
+                fail_closed_signals.append(
+                    _required_input_signal("production_smoke_report", "invalid production smoke report input")
+                )
+                production_smoke_report = None
+            if postgres_ops_report_loaded and not isinstance(postgres_ops_report, dict):
+                fail_closed_signals.append(
+                    _required_input_signal("postgres_ops_report", "invalid postgres ops report input")
+                )
+                postgres_ops_report = None
+            if otel_smoke_report_loaded and not isinstance(otel_smoke_report, dict):
+                fail_closed_signals.append(
+                    _required_input_signal("otel_smoke_report", "invalid otel smoke report input")
+                )
+                otel_smoke_report = None
             if runtime_status is None and not _input_present(runtime_status_path, args.ready_url):
                 fail_closed_signals.append(_required_input_signal("readyz", "missing readyz input"))
             if trajectory_stats is None and not _input_present(args.trajectory_stats_json, args.trajectory_stats_url):
@@ -546,6 +588,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             postgres_migration_report=postgres_migration_report
             if isinstance(postgres_migration_report, dict)
             else None,
+            production_smoke_report=production_smoke_report
+            if isinstance(production_smoke_report, dict)
+            else None,
+            postgres_ops_report=postgres_ops_report if isinstance(postgres_ops_report, dict) else None,
+            otel_smoke_report=otel_smoke_report if isinstance(otel_smoke_report, dict) else None,
             eval_report_paths=args.eval_report_json,
             baseline_eval_report_paths=args.baseline_eval_report_json,
             extra_signals=(*fallback_signals, *fail_closed_signals),
@@ -566,6 +613,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "replay_comparisons_json": args.replay_comparisons_json,
                 "alert_report_json": args.alert_report_json,
                 "postgres_migration_report_json": args.postgres_migration_report_json,
+                "production_smoke_report_json": args.production_smoke_report_json,
+                "postgres_ops_report_json": args.postgres_ops_report_json,
+                "otel_smoke_report_json": args.otel_smoke_report_json,
                 "ready_url": args.ready_url,
                 "trajectory_stats_url": args.trajectory_stats_url,
                 "eval_report_json": list(args.eval_report_json),

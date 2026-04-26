@@ -167,10 +167,10 @@ docker compose -f compose.prod.yaml up -d
 - `Principal.user_id` 是 conversation、thread、context、branch、merge 的 ownership 主键；`tenant_id` 只是后续多租户隔离扩展字段，不能替代 ownership；`scope` 只表达能力授权，不能让其他 `user_id` 访问已有线程。
 - 跨 principal 访问 conversation、thread、context preview/compact、branch fork/tree/proposal/merge 应返回 403。
 - repository 层的 thread ownership 校验会生成 allow / deny audit event；事件字段包括 principal、resource type、resource id、action、decision、reason、request id。当前不新增数据库 schema，事件可导出为 trajectory / observability 兼容的 `ownership.audit` 记录，后续可接入统一审计 sink。
-- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致。
+- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致；`compose.prod.yaml` 会把这些 `FOCUS_AGENT_*` 外部变量映射为应用实际读取的 `AUTH_*` / `RATE_LIMIT_*` 环境变量。
 - `FOCUS_AGENT_AUTH_JWT_ISSUER` 必须匹配 JWT `iss`；配置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE` 后 JWT `aud` 必须存在且完全匹配；过期 `exp` 会被拒绝。
 - `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 建议按部署风险设置为较短窗口，例如 900 秒，并由外部登录层负责刷新或重新签发。
-- JWT secret rotation 需要按发行方能力规划：优先支持短 TTL 和双发/灰度切换；当前 Focus Agent 只校验单个 HS256 secret，轮换时应先缩短 TTL，再同步更新 issuer 与服务端 secret，确认旧 token 自然过期后完成切换。
+- JWT secret rotation 需要按发行方能力规划：当前 Focus Agent 只校验单个 HS256 secret，因此轮换前应先缩短 TTL，暂停或灰度外部签发方，确认旧 token 自然过期，再同步切换服务端 secret 和签发方 secret；使用旧 secret 签发的 token 在切换后会因为 signature mismatch 被拒绝。
 - demo token 仅用于 development/local/test；非开发环境必须设置 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`，否则应用会在启动期 fail-fast。
 
 生产规范：
@@ -243,6 +243,11 @@ focus-agent-migrate-local-state \
   - 或 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces`
   - 可选：`OTEL_EXPORTER_OTLP_HEADERS`、`OTEL_EXPORTER_OTLP_TIMEOUT`
   - `/readyz` 与 `/metrics` 会把 `tracing_exporter` 组件状态暴露出来
+- 生产发布证据建议附加三类机器报告：
+  - `make production-smoke PRODUCTION_SMOKE_ARGS="--base-url https://focus-agent.example.com --report-json reports/release-gate/production-smoke.json"`
+  - `make postgres-ops POSTGRES_OPS_ARGS="--dry-run --report-json reports/release-gate/postgres-ops.json"`
+  - `make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318 --report-json reports/release-gate/otel-smoke.json"`
+  - 当前 Postgres ops 与 OTel smoke 先固定 report schema 和 fail-closed 边界；真实 `pg_dump` / `pg_restore` 演练、collector round-trip 和 retention cleanup 应由部署平台继续接入。
 - trajectory list/stats/overview 支持用 `request_id` 和 `trace_id` 过滤，Web 复盘台也支持 request/trace 深链排障
 - 部署前至少执行：
   - `make ci`

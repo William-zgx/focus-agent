@@ -108,6 +108,30 @@ def test_settings_from_env_fails_in_preprod_when_rate_limit_disabled(monkeypatch
         Settings.from_env()
 
 
+@pytest.mark.parametrize(
+    ("env_key", "env_value", "message"),
+    [
+        ("AUTH_JWT_ISSUER", "", "AUTH_JWT_ISSUER must be set"),
+        ("AUTH_ACCESS_TOKEN_TTL_SECONDS", "0", "AUTH_ACCESS_TOKEN_TTL_SECONDS must be greater than 0"),
+    ],
+)
+def test_settings_from_env_fails_in_production_when_token_lifecycle_is_invalid(
+    monkeypatch, tmp_path, env_key, env_value, message
+):
+    _isolate_settings_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
+    monkeypatch.setenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900")
+    monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    monkeypatch.setenv(env_key, env_value)
+
+    with pytest.raises(ValueError, match=message):
+        Settings.from_env()
+
+
 def test_settings_from_env_fails_when_either_environment_is_non_development(
     monkeypatch, tmp_path
 ):

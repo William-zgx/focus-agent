@@ -496,3 +496,23 @@ def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata
         body = response.json()
         assert body["code"] == 403
         assert "User intruder-1 cannot access thread root-1." in body["message"]
+
+
+def test_demo_token_endpoint_is_disabled_for_production_style_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, _ = _build_client(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/v1/auth/demo-token",
+        json={
+            "user_id": "owner-1",
+            "tenant_id": "tenant-a",
+            "scopes": ["admin", "threads:read", "branches:write"],
+        },
+    )
+
+    assert response.status_code == 404
+    body = response.json()
+    assert body["code"] == 404
+    assert body["message"] == "Demo token issuance is disabled."

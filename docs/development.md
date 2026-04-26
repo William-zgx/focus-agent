@@ -117,7 +117,29 @@ pnpm --dir apps/web smoke:observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-8. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+8. If Auth / Access Model, token lifecycle, or ownership semantics changed:
+
+```bash
+uv run pytest tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
+uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
+```
+
+This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated
+tokens, production demo-token blocking, and the rule that `tenant_id` and
+`scope` are claim metadata rather than thread ownership keys.
+
+9. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
+
+```bash
+uv run pytest tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+make nightly-regression
+make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
+make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
+make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
+make agent-governance-report
+```
+
+10. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

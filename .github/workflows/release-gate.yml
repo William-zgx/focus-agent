@@ -1,0 +1,148 @@
+name: Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Release id used for the evidence pack. Required when dry_run is false."
+        required: false
+        type: string
+      dry_run:
+        description: "Use release-gate planning and deterministic evidence samples."
+        required: true
+        default: true
+        type: boolean
+      approval_id:
+        description: "Deployment approval id from GitHub Environments or the release operator."
+        required: false
+        type: string
+      approval_status:
+        description: "Deployment approval status recorded in the evidence manifest."
+        required: true
+        default: "pending"
+        type: choice
+        options:
+          - approved
+          - pending
+          - rejected
+          - missing
+      approval_url:
+        description: "Optional URL for the approval record or workflow run."
+        required: false
+        type: string
+      retention_days:
+        description: "Retention window recorded in release evidence metadata."
+        required: true
+        default: "90"
+        type: string
+      environment_name:
+        description: "GitHub protected Environment used for production approval."
+        required: true
+        default: "production"
+        type: string
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.dry_run && 'release-dry-run' || inputs.environment_name }}
+    env:
+      RELEASE_ID: ${{ inputs.release_id || github.ref_name || github.sha }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+      APPROVAL_ID: ${{ inputs.approval_id }}
+      APPROVAL_STATUS: ${{ inputs.approval_status || 'missing' }}
+      APPROVAL_URL: ${{ inputs.approval_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      RETENTION_DAYS: ${{ inputs.retention_days || '90' }}
+      BASE_URL: ${{ vars.FOCUS_AGENT_BASE_URL }}
+      READY_URL: ${{ vars.FOCUS_AGENT_READY_URL }}
+      TRAJECTORY_STATS_URL: ${{ vars.FOCUS_AGENT_TRAJECTORY_STATS_URL }}
+      REPLAY_COMPARISONS_URL: ${{ vars.FOCUS_AGENT_REPLAY_COMPARISONS_URL }}
+      ALERT_REPORT_URL: ${{ vars.FOCUS_AGENT_ALERT_REPORT_URL }}
+      POSTGRES_MIGRATION_REPORT_URL: ${{ vars.FOCUS_AGENT_POSTGRES_MIGRATION_REPORT_URL }}
+      BASELINE_EVAL_REPORT_URL: ${{ vars.FOCUS_AGENT_BASELINE_EVAL_REPORT_URL }}
+      OTEL_ENDPOINT: ${{ vars.FOCUS_AGENT_OTEL_ENDPOINT }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Install frontend SDK dependencies
+        run: make sdk-install
+
+      - name: Install web dependencies
+        run: make web-install
+
+      - name: Run release gate dry-run
+        if: env.DRY_RUN == 'true'
+        run: make release-gate RELEASE_GATE_ARGS="--dry-run --report-json reports/release-gate/latest.json"
+
+      - name: Run release gate
+        if: env.DRY_RUN != 'true'
+        run: make release-gate
+
+      - name: Capture production release signals
+        if: env.DRY_RUN != 'true'
+        run: |
+          mkdir -p reports/release-gate
+          test -n "$BASE_URL"
+          test -n "$READY_URL"
+          test -n "$TRAJECTORY_STATS_URL"
+          test -n "$REPLAY_COMPARISONS_URL"
+          test -n "$ALERT_REPORT_URL"
+          test -n "$POSTGRES_MIGRATION_REPORT_URL"
+          test -n "$BASELINE_EVAL_REPORT_URL"
+          curl --fail --show-error --silent "$READY_URL" > reports/release-gate/readyz.json
+          curl --fail --show-error --silent "$TRAJECTORY_STATS_URL" > reports/release-gate/trajectory-stats.json
+          curl --fail --show-error --silent "$REPLAY_COMPARISONS_URL" > reports/release-gate/replay-comparisons.json
+          curl --fail --show-error --silent "$ALERT_REPORT_URL" > reports/release-gate/alert-report.json
+          curl --fail --show-error --silent "$POSTGRES_MIGRATION_REPORT_URL" > reports/release-gate/postgres-migration.json
+          curl --fail --show-error --silent "$BASELINE_EVAL_REPORT_URL" > reports/release-gate/baseline-eval-smoke.json
+          make production-smoke PRODUCTION_SMOKE_ARGS="--base-url ${BASE_URL} --web-base-url ${BASE_URL} --report-json reports/release-gate/production-smoke.json"
+          make postgres-ops POSTGRES_OPS_ARGS="--dry-run --report-json reports/release-gate/postgres-ops.json"
+          make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint ${OTEL_ENDPOINT:-http://otel-collector:4318} --service-name focus-agent --report-json reports/release-gate/otel-smoke.json"
+
+      - name: Build dry-run release evidence
+        if: env.DRY_RUN == 'true'
+        run: |
+          make release-evidence RELEASE_EVIDENCE_ARGS="--dry-run --release-id ${RELEASE_ID:-${GITHUB_SHA::7}} --approval-id gha-dry-run-${GITHUB_RUN_ID} --approval-status approved --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir reports/release-gate/archive"
+
+      - name: Build production release evidence
+        if: env.DRY_RUN != 'true'
+        run: |
+          test -n "$RELEASE_ID"
+          test -n "$APPROVAL_ID"
+          test "$APPROVAL_STATUS" = "approved"
+          make release-evidence RELEASE_EVIDENCE_ARGS="--release-id ${RELEASE_ID} --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+
+      - name: Upload release gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-reports-${{ github.run_id }}
+          path: reports/release-gate/
+          retention-days: ${{ fromJSON(env.RETENTION_DAYS) }}
+          if-no-files-found: ignore
