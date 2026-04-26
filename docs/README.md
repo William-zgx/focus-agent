@@ -13,6 +13,7 @@ flowchart LR
     Docs --> Ops["Operations"]
     Understand --> Architecture["Architecture"]
     Understand --> Roadmap["Roadmap"]
+    Understand --> MultiAgent["Multi-Agent Collaboration"]
     Topics --> Governance["Agent Governance"]
     Topics --> ContextWindow["Context Window"]
     Topics --> Memory["Memory"]
@@ -32,6 +33,7 @@ flowchart LR
 
 - [architecture.md](architecture.md)：整体架构、核心请求链路、持久化边界、前端/SDK、部署和验证总览。
 - [roadmap.md](roadmap.md)：当前基线、下一阶段重点和仍在推进的方向。
+- [multi-agent-collaboration.md](multi-agent-collaboration.md)：P4-P7 多 Agent 协同开发分工、契约门禁、发布 gate、observability 与 Auth/Memory 质量闭环。
 
 ## 核心专题
 

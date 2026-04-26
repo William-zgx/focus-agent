@@ -1,5 +1,6 @@
 import json
 import time
+from concurrent.futures import CancelledError as FutureCancelledError
 
 from langchain.tools import tool
 
@@ -370,6 +371,62 @@ def test_tool_runtime_side_effect_invalidates_named_cache_namespaces():
     assert read_count == 2
 
 
+def test_tool_runtime_reports_parameter_validation_errors_without_invoking_tool(monkeypatch):
+    events = []
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_runtime.get_stream_writer",
+        lambda: lambda event: events.append(event),
+    )
+    invoked = False
+    fallback_count = 0
+
+    @tool
+    def validated_lookup(name: str) -> str:
+        """Lookup with runtime argument validation."""
+        nonlocal invoked
+        invoked = True
+        return name
+
+    def _validator(args: dict[str, object]) -> None:
+        if not str(args.get("name") or "").strip():
+            raise ValueError("name is required")
+
+    def _fallback_handler(_error: Exception, _args: dict[str, object]) -> str:
+        nonlocal fallback_count
+        fallback_count += 1
+        return "fallback"
+
+    validated_lookup.metadata = {
+        "validator": _validator,
+        "fallback_handler": _fallback_handler,
+    }
+
+    result = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="call-validation",
+                tool_name="validated_lookup",
+                args={"name": ""},
+                tool=validated_lookup,
+                runtime=ToolRuntimeMeta.from_tool(validated_lookup),
+            )
+        ],
+        context_budget=ContextBudget(),
+        cache_store=ToolResultCacheStore(),
+    )[0]
+    payload = json.loads(result.message.content)
+
+    assert invoked is False
+    assert fallback_count == 0
+    assert result.message.status == "error"
+    assert "parameter validation failed" in payload["error"]
+    assert result.message.artifact["runtime"]["validation_failed"] is True
+    assert result.message.artifact["runtime"]["fallback_used"] is False
+    assert any(event["stage"] == "validation_error" for event in events)
+
+
 def test_tool_runtime_times_out_read_only_tool_without_fallback_or_cache():
     fallback_count = 0
 
@@ -425,6 +482,51 @@ def test_tool_runtime_times_out_read_only_tool_without_fallback_or_cache():
     assert result.message.artifact["runtime"]["fallback_used"] is False
 
 
+def test_tool_runtime_reports_cancelled_tools_without_fallback_or_cache():
+    fallback_count = 0
+
+    @tool
+    def cancelled_lookup(name: str) -> str:
+        """Lookup that is cancelled upstream."""
+        raise FutureCancelledError(f"cancelled:{name}")
+
+    def _fallback_handler(_error: Exception, args: dict[str, object]) -> str:
+        nonlocal fallback_count
+        fallback_count += 1
+        return f"fallback:{args['name']}"
+
+    cancelled_lookup.metadata = {
+        "cacheable": True,
+        "cache_scope": "thread",
+        "fallback_handler": _fallback_handler,
+    }
+
+    cache_store = ToolResultCacheStore()
+    result = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="call-cancelled",
+                tool_name="cancelled_lookup",
+                args={"name": "alpha"},
+                tool=cancelled_lookup,
+                runtime=ToolRuntimeMeta.from_tool(cancelled_lookup),
+            )
+        ],
+        context_budget=ContextBudget(),
+        cache_store=cache_store,
+        cache_scope_keys={0: "thread:test"},
+    )[0]
+    payload = json.loads(result.message.content)
+
+    assert result.message.status == "error"
+    assert "cancelled:alpha" in payload["error"]
+    assert fallback_count == 0
+    assert cache_store.thread == {}
+    assert result.message.artifact["runtime"]["cancelled"] is True
+    assert result.message.artifact["runtime"]["fallback_used"] is False
+
+
 def test_tool_runtime_does_not_apply_runtime_timeout_to_side_effect_tools():
     writes: list[str] = []
 
@@ -461,3 +563,72 @@ def test_tool_runtime_does_not_apply_runtime_timeout_to_side_effect_tools():
     assert result.message.status == "success"
     assert result.message.content == "wrote:alpha"
     assert writes == ["alpha"]
+    assert result.message.artifact["runtime"]["side_effect_serialized"] is True
+
+
+def test_tool_runtime_serializes_side_effects_even_when_marked_parallel_safe(monkeypatch):
+    events = []
+    sequence: list[str] = []
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_runtime.get_stream_writer",
+        lambda: lambda event: events.append(event),
+    )
+
+    @tool
+    def read_lookup(name: str) -> str:
+        """Parallel-safe read."""
+        sequence.append(f"read:{name}")
+        return name
+
+    @tool
+    def write_lookup(name: str) -> str:
+        """Side-effect write."""
+        sequence.append(f"write:{name}")
+        return f"wrote:{name}"
+
+    read_lookup.metadata = {
+        "parallel_safe": True,
+    }
+    write_lookup.metadata = {
+        "parallel_safe": True,
+        "side_effect": True,
+        "side_effect_kind": "workspace_write",
+    }
+
+    results = execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="read-a",
+                tool_name="read_lookup",
+                args={"name": "a"},
+                tool=read_lookup,
+                runtime=ToolRuntimeMeta.from_tool(read_lookup),
+            ),
+            ToolExecutionInput(
+                index=1,
+                tool_call_id="write-b",
+                tool_name="write_lookup",
+                args={"name": "b"},
+                tool=write_lookup,
+                runtime=ToolRuntimeMeta.from_tool(write_lookup),
+            ),
+            ToolExecutionInput(
+                index=2,
+                tool_call_id="read-c",
+                tool_name="read_lookup",
+                args={"name": "c"},
+                tool=read_lookup,
+                runtime=ToolRuntimeMeta.from_tool(read_lookup),
+            ),
+        ],
+        context_budget=ContextBudget(),
+        cache_store=ToolResultCacheStore(),
+    )
+
+    assert sequence == ["read:a", "write:b", "read:c"]
+    assert [result.message.content for result in results] == ["a", "wrote:b", "c"]
+    assert results[1].message.artifact["runtime"]["side_effect_serialized"] is True
+    assert results[1].message.artifact["runtime"]["side_effect_kind"] == "workspace_write"
+    assert any(event["stage"] == "serialized_side_effect" for event in events)

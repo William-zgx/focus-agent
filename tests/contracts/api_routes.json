@@ -1,0 +1,8131 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "operation_id": "render_chat_app_page_app_get",
+      "parameters": [],
+      "path": "/app",
+      "request": null,
+      "responses": {
+        "200": null
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "redirect_chinese_chat_app_app_zh_get",
+      "parameters": [],
+      "path": "/app/zh",
+      "request": null,
+      "responses": {
+        "200": null
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "render_chat_app_subpath_app__path__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/app/{path}",
+      "request": null,
+      "responses": {
+        "200": null,
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "health_check_healthz_get",
+      "parameters": [],
+      "path": "/healthz",
+      "request": null,
+      "responses": {
+        "200": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "metrics_scrape_metrics_get",
+      "parameters": [],
+      "path": "/metrics",
+      "request": null,
+      "responses": {
+        "200": null
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "readiness_check_readyz_get",
+      "parameters": [],
+      "path": "/readyz",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/RuntimeReadinessResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_team_sessions_v1_agent_team_sessions_get",
+      "parameters": [],
+      "path": "/v1/agent-team/sessions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamSessionListResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_agent_team_session_v1_agent_team_sessions_post",
+      "parameters": [],
+      "path": "/v1/agent-team/sessions",
+      "request": {
+        "$ref": "#/components/schemas/CreateAgentTeamSessionRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamSessionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_team_session_v1_agent_team_sessions__session_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamSessionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "dispatch_agent_team_session_v1_agent_team_sessions__session_id__dispatch_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/dispatch",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/DispatchAgentTeamSessionRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamDispatchResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "apply_agent_team_merge_decision_v1_agent_team_sessions__session_id__merge_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge",
+      "request": {
+        "$ref": "#/components/schemas/ApplyAgentTeamMergeDecisionRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "prepare_agent_team_merge_bundle_v1_agent_team_sessions__session_id__merge_bundle_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-bundle",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeBundleResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "apply_agent_team_merge_decision_v1_agent_team_sessions__session_id__merge_decision_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-decision",
+      "request": {
+        "$ref": "#/components/schemas/ApplyAgentTeamMergeDecisionRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "prepare_agent_team_merge_bundle_v1_agent_team_sessions__session_id__merge_proposal_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-proposal",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeBundleResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_team_tasks_v1_agent_team_sessions__session_id__tasks_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/tasks",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_agent_team_task_v1_agent_team_sessions__session_id__tasks_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/tasks",
+      "request": {
+        "$ref": "#/components/schemas/CreateAgentTeamTaskRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_team_task_v1_agent_team_tasks__task_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_agent_team_task_status_v1_agent_team_tasks__task_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateAgentTeamTaskRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "record_agent_team_task_output_v1_agent_team_tasks__task_id__outputs_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}/outputs",
+      "request": {
+        "$ref": "#/components/schemas/RecordAgentTeamTaskOutputRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskOutputResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "update_agent_team_task_status_v1_agent_team_tasks__task_id__status_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}/status",
+      "request": {
+        "$ref": "#/components/schemas/UpdateAgentTeamTaskRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_artifacts_v1_agent_artifacts_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/artifacts",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentArtifactListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "synthesize_agent_artifacts_v1_agent_artifacts_synthesize_post",
+      "parameters": [],
+      "path": "/v1/agent/artifacts/synthesize",
+      "request": {
+        "$ref": "#/components/schemas/AgentArtifactSynthesisRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentArtifactSynthesisResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_capabilities_v1_agent_capabilities_get",
+      "parameters": [],
+      "path": "/v1/agent/capabilities",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentCapabilityListResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_context_artifacts_v1_agent_context_artifacts_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/context/artifacts",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentContextArtifactListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_context_decisions_v1_agent_context_decisions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/context/decisions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentContextDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_context_policy_v1_agent_context_policy_get",
+      "parameters": [],
+      "path": "/v1/agent/context/policy",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentContextPolicyResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "preview_agent_context_v1_agent_context_preview_post",
+      "parameters": [],
+      "path": "/v1/agent/context/preview",
+      "request": {
+        "$ref": "#/components/schemas/AgentContextPreviewRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentContextPreviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "evaluate_agent_critic_gate_v1_agent_critic_evaluate_post",
+      "parameters": [],
+      "path": "/v1/agent/critic/evaluate",
+      "request": {
+        "$ref": "#/components/schemas/AgentCriticEvaluateRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentCriticEvaluateResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_critic_verdicts_v1_agent_critic_verdicts_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/critic/verdicts",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentCriticVerdictListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "plan_agent_delegation_v1_agent_delegation_plan_post",
+      "parameters": [],
+      "path": "/v1/agent/delegation/plan",
+      "request": {
+        "$ref": "#/components/schemas/AgentDelegationPlanRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentDelegationPlanResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_delegation_policy_v1_agent_delegation_policy_get",
+      "parameters": [],
+      "path": "/v1/agent/delegation/policy",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentDelegationPolicyResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_delegation_runs_v1_agent_delegation_runs_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/delegation/runs",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentDelegationRunListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_memory_curator_decisions_v1_agent_memory_curator_decisions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/memory/curator/decisions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentMemoryCuratorDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "evaluate_agent_memory_curator_v1_agent_memory_curator_evaluate_post",
+      "parameters": [],
+      "path": "/v1/agent/memory/curator/evaluate",
+      "request": {
+        "$ref": "#/components/schemas/AgentMemoryCuratorEvaluateRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentMemoryCuratorEvaluateResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_memory_curator_policy_v1_agent_memory_curator_policy_get",
+      "parameters": [],
+      "path": "/v1/agent/memory/curator/policy",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentMemoryCuratorPolicyResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_model_router_decisions_v1_agent_model_router_decisions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/model-router/decisions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentModelRouterDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_model_router_policy_v1_agent_model_router_policy_get",
+      "parameters": [],
+      "path": "/v1/agent/model-router/policy",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentModelRouterPolicyResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "route_agent_model_v1_agent_model_router_route_post",
+      "parameters": [],
+      "path": "/v1/agent/model-router/route",
+      "request": {
+        "$ref": "#/components/schemas/AgentModelRouteRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentModelRouteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_review_queue_v1_agent_review_queue_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/review-queue",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentReviewQueueListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "approve_agent_review_queue_item_v1_agent_review_queue__item_id__approve_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "item_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/review-queue/{item_id}/approve",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentReviewQueueDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "reject_agent_review_queue_item_v1_agent_review_queue__item_id__reject_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "item_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/review-queue/{item_id}/reject",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentReviewQueueDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_role_decisions_v1_agent_roles_decisions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/roles/decisions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentRoleDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "dry_run_agent_role_route_v1_agent_roles_dry_run_post",
+      "parameters": [],
+      "path": "/v1/agent/roles/dry-run",
+      "request": {
+        "$ref": "#/components/schemas/AgentRoleDryRunRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentRoleDryRunResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_role_policy_v1_agent_roles_policy_get",
+      "parameters": [],
+      "path": "/v1/agent/roles/policy",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentRolePolicyResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_self_repair_failures_v1_agent_self_repair_failures_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/self-repair/failures",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSelfRepairFailureListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "preview_agent_self_repair_promotion_v1_agent_self_repair_promote_preview_post",
+      "parameters": [],
+      "path": "/v1/agent/self-repair/promote-preview",
+      "request": {
+        "$ref": "#/components/schemas/AgentSelfRepairPromotePreviewRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSelfRepairPromotePreviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "plan_agent_task_ledger_v1_agent_task_ledger_plan_post",
+      "parameters": [],
+      "path": "/v1/agent/task-ledger/plan",
+      "request": {
+        "$ref": "#/components/schemas/AgentTaskLedgerPlanRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTaskLedgerPlanResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_task_ledger_policy_v1_agent_task_ledger_policy_get",
+      "parameters": [],
+      "path": "/v1/agent/task-ledger/policy",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTaskLedgerPolicyResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_task_ledger_runs_v1_agent_task_ledger_runs_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/task-ledger/runs",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTaskLedgerRunListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_tool_route_decisions_v1_agent_tool_router_decisions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/tool-router/decisions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentToolRouteDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "route_agent_tools_v1_agent_tool_router_route_post",
+      "parameters": [],
+      "path": "/v1/agent/tool-router/route",
+      "request": {
+        "$ref": "#/components/schemas/AgentToolRouteRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentToolRouteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "issue_demo_token_v1_auth_demo_token_post",
+      "parameters": [],
+      "path": "/v1/auth/demo-token",
+      "request": {
+        "$ref": "#/components/schemas/DemoTokenRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TokenResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_me_v1_auth_me_get",
+      "parameters": [],
+      "path": "/v1/auth/me",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/PrincipalResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_branch_v1_branches_fork_post",
+      "parameters": [],
+      "path": "/v1/branches/fork",
+      "request": {
+        "$ref": "#/components/schemas/ForkBranchRequest"
+      },
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_branch_tree_view_v1_branches_tree__root_thread_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "root_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/branches/tree/{root_thread_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BranchTreeResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "rename_branch_route_v1_branches__child_thread_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "child_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/branches/{child_thread_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateBranchNameRequest"
+      },
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "activate_branch_route_v1_branches__child_thread_id__activate_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "child_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/branches/{child_thread_id}/activate",
+      "request": null,
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "archive_branch_route_v1_branches__child_thread_id__archive_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "child_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/branches/{child_thread_id}/archive",
+      "request": null,
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "submit_merge_decision_v1_branches__child_thread_id__merge_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "child_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/branches/{child_thread_id}/merge",
+      "request": {
+        "$ref": "#/components/schemas/ApplyMergeDecisionRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ApplyMergeDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "prepare_branch_merge_proposal_v1_branches__child_thread_id__proposal_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "child_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/branches/{child_thread_id}/proposal",
+      "request": {
+        "$ref": "#/components/schemas/PrepareMergeProposalRequest"
+      },
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "resume_chat_turn_v1_chat_resume_post",
+      "parameters": [],
+      "path": "/v1/chat/resume",
+      "request": {
+        "$ref": "#/components/schemas/ChatResumeRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadStateResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "stream_resumed_chat_turn_v1_chat_resume_stream_post",
+      "parameters": [],
+      "path": "/v1/chat/resume/stream",
+      "request": {
+        "$ref": "#/components/schemas/ChatResumeRequest"
+      },
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "post_chat_turn_v1_chat_turns_post",
+      "parameters": [],
+      "path": "/v1/chat/turns",
+      "request": {
+        "$ref": "#/components/schemas/ChatTurnRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadStateResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "stream_chat_turn_v1_chat_turns_stream_post",
+      "parameters": [],
+      "path": "/v1/chat/turns/stream",
+      "request": {
+        "$ref": "#/components/schemas/ChatTurnRequest"
+      },
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_conversations_v1_conversations_get",
+      "parameters": [],
+      "path": "/v1/conversations",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ConversationListResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_conversation_v1_conversations_post",
+      "parameters": [],
+      "path": "/v1/conversations",
+      "request": {
+        "$ref": "#/components/schemas/CreateConversationRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ConversationSummaryResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_conversation_v1_conversations__root_thread_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "root_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/conversations/{root_thread_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateConversationRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ConversationSummaryResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "activate_conversation_v1_conversations__root_thread_id__activate_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "root_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/conversations/{root_thread_id}/activate",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ConversationSummaryResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "archive_conversation_v1_conversations__root_thread_id__archive_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "root_thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/conversations/{root_thread_id}/archive",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ConversationSummaryResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_models_v1_models_get",
+      "parameters": [],
+      "path": "/v1/models",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ModelCatalogResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_observability_overview_v1_observability_overview_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "request_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "trace_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "root_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "parent_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "branch_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "branch_role",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "scene",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "tool",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "model",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "fallback_used",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "cache_hit",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "has_error",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "started_after",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "started_before",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "min_latency_ms",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "max_latency_ms",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "min_tool_calls",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "max_tool_calls",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "newest_first",
+          "required": false,
+          "schema": {
+            "default": true,
+            "type": "boolean"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/observability/overview",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ObservabilityOverviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_trajectory_turns_v1_observability_trajectory_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "request_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "trace_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "root_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "parent_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "branch_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "branch_role",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "scene",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "tool",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "model",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "fallback_used",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "cache_hit",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "has_error",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "started_after",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "started_before",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "min_latency_ms",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "max_latency_ms",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "min_tool_calls",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "max_tool_calls",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "newest_first",
+          "required": false,
+          "schema": {
+            "default": true,
+            "type": "boolean"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/observability/trajectory",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryTurnListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "promote_trajectory_turn_batch_preview_v1_observability_trajectory_batch_promote_preview_post",
+      "parameters": [],
+      "path": "/v1/observability/trajectory/batch/promote-preview",
+      "request": {
+        "$ref": "#/components/schemas/TrajectoryBatchPromotionPreviewRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryBatchPromotionPreviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "replay_trajectory_turn_batch_compare_v1_observability_trajectory_batch_replay_compare_post",
+      "parameters": [],
+      "path": "/v1/observability/trajectory/batch/replay-compare",
+      "request": {
+        "$ref": "#/components/schemas/TrajectoryBatchReplayCompareRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryBatchReplayCompareResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_trajectory_turn_stats_v1_observability_trajectory_stats_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "request_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "trace_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "root_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "parent_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "branch_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "branch_role",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "scene",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "tool",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "model",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "fallback_used",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "cache_hit",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "has_error",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "started_after",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "started_before",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "min_latency_ms",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "max_latency_ms",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "min_tool_calls",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "max_tool_calls",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "newest_first",
+          "required": false,
+          "schema": {
+            "default": true,
+            "type": "boolean"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/observability/trajectory/stats",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryTurnStatsEnvelopeResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_trajectory_turn_detail_v1_observability_trajectory__turn_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "turn_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/observability/trajectory/{turn_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryTurnDetailEnvelopeResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "promote_trajectory_turn_v1_observability_trajectory__turn_id__promote_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "turn_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/observability/trajectory/{turn_id}/promote",
+      "request": {
+        "$ref": "#/components/schemas/TrajectoryPromotionRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryPromotionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "replay_trajectory_turn_v1_observability_trajectory__turn_id__replay_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "turn_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/observability/trajectory/{turn_id}/replay",
+      "request": {
+        "$ref": "#/components/schemas/TrajectoryReplayRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TrajectoryReplayResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_thread_snapshot_v1_threads__thread_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadStateResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "compact_thread_context_v1_threads__thread_id__context_compact_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/context/compact",
+      "request": {
+        "$ref": "#/components/schemas/ThreadContextCompactRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadContextCompactResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "preview_thread_context_v1_threads__thread_id__context_preview_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/context/preview",
+      "request": {
+        "$ref": "#/components/schemas/ThreadContextPreviewRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadContextPreviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    }
+  ],
+  "schemas": {
+    "AgentArtifactListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentArtifactSynthesisRequest": {
+      "properties": {
+        "artifacts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "critic_gate_result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentArtifactSynthesisResponse": {
+      "properties": {
+        "result": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentCapabilityListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentCapabilityResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentCapabilityResponse": {
+      "properties": {
+        "allowed_roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cacheable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parallel_safe": {
+          "default": false,
+          "type": "boolean"
+        },
+        "requires_approval": {
+          "default": false,
+          "type": "boolean"
+        },
+        "requires_network": {
+          "default": false,
+          "type": "boolean"
+        },
+        "requires_workspace_write": {
+          "default": false,
+          "type": "boolean"
+        },
+        "risk_level": {
+          "default": "low",
+          "type": "string"
+        },
+        "side_effect": {
+          "default": false,
+          "type": "boolean"
+        },
+        "toolset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "AgentContextArtifactListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentContextDecisionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentContextPolicyResponse": {
+      "properties": {
+        "artifact_min_chars": {
+          "default": 12000,
+          "type": "integer"
+        },
+        "artifactize_long_observations": {
+          "default": false,
+          "type": "boolean"
+        },
+        "default_off_legacy_safe": {
+          "default": true,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "role_views_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tokenizer_mode": {
+          "default": "chars_fallback",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentContextPreviewRequest": {
+      "properties": {
+        "assembled_context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "materialize_artifacts": {
+          "default": false,
+          "type": "boolean"
+        },
+        "prompt_mode": {
+          "default": "explore",
+          "type": "string"
+        },
+        "role": {
+          "default": "executor",
+          "type": "string"
+        },
+        "state": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentContextPreviewResponse": {
+      "properties": {
+        "decision": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentCriticEvaluateRequest": {
+      "properties": {
+        "artifacts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "ledger": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentCriticEvaluateResponse": {
+      "properties": {
+        "result": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentCriticVerdictListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentDelegationPlanRequest": {
+      "properties": {
+        "available_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "scene": {
+          "default": "agent_delegation_console",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "AgentDelegationPlanResponse": {
+      "properties": {
+        "plan": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "policy": {
+          "$ref": "#/components/schemas/AgentDelegationPolicyResponse"
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "type": "object"
+    },
+    "AgentDelegationPolicyResponse": {
+      "properties": {
+        "default_off_legacy_safe": {
+          "default": true,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "enforce": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_parallel_runs": {
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AgentDelegationRunListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentMemoryCuratorDecisionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentMemoryCuratorEvaluateRequest": {
+      "properties": {
+        "auto_promote": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "branch_name": {
+          "default": "Branch",
+          "type": "string"
+        },
+        "branch_role": {
+          "default": "explore_alternatives",
+          "type": "string"
+        },
+        "branch_status": {
+          "default": "active",
+          "type": "string"
+        },
+        "child_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "root_thread_id",
+        "branch_id"
+      ],
+      "type": "object"
+    },
+    "AgentMemoryCuratorEvaluateResponse": {
+      "properties": {
+        "decision": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentMemoryCuratorPolicyResponse": {
+      "properties": {
+        "auto_promote_on_merge": {
+          "default": true,
+          "type": "boolean"
+        },
+        "branch_local_only_until_merge": {
+          "default": true,
+          "type": "boolean"
+        },
+        "conflict_strategy": {
+          "default": "needs_review",
+          "type": "string"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentModelRouteRequest": {
+      "properties": {
+        "context_size": {
+          "default": 0,
+          "type": "integer"
+        },
+        "role": {
+          "default": "executor",
+          "type": "string"
+        },
+        "selected_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_text": {
+          "default": "",
+          "type": "string"
+        },
+        "tool_risk": {
+          "default": "low",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentModelRouteResponse": {
+      "properties": {
+        "decision": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentModelRouterDecisionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentModelRouterPolicyResponse": {
+      "properties": {
+        "default_model": {
+          "type": "string"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "helper_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "default": "observe",
+          "type": "string"
+        },
+        "role_models": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "default_model"
+      ],
+      "type": "object"
+    },
+    "AgentReviewQueueDecisionResponse": {
+      "properties": {
+        "item": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentReviewQueueListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentRoleDecisionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentRoleDryRunRequest": {
+      "properties": {
+        "available_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "scene": {
+          "default": "long_dialog_research",
+          "type": "string"
+        },
+        "skill_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "AgentRoleDryRunResponse": {
+      "properties": {
+        "plan": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "policy": {
+          "$ref": "#/components/schemas/AgentRolePolicyResponse"
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "type": "object"
+    },
+    "AgentRolePolicyResponse": {
+      "properties": {
+        "default_model": {
+          "type": "string"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "fallback_order": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "helper_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_parallel_runs": {
+          "default": 1,
+          "type": "integer"
+        },
+        "role_models": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "default_model"
+      ],
+      "type": "object"
+    },
+    "AgentSelfRepairFailureListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentSelfRepairPromotePreviewRequest": {
+      "properties": {
+        "case_id_prefix": {
+          "default": "agent_delegation",
+          "type": "string"
+        },
+        "failures": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentSelfRepairPromotePreviewResponse": {
+      "properties": {
+        "preview": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTaskLedgerPlanRequest": {
+      "properties": {
+        "delegation_plan": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "message": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTaskLedgerPlanResponse": {
+      "properties": {
+        "artifacts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "critic_gate_result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ledger": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "policy": {
+          "$ref": "#/components/schemas/AgentTaskLedgerPolicyResponse"
+        },
+        "synthesis_result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "type": "object"
+    },
+    "AgentTaskLedgerPolicyResponse": {
+      "properties": {
+        "artifact_synthesis_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "critic_gate_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "critic_gate_enforce": {
+          "default": false,
+          "type": "boolean"
+        },
+        "default_off_legacy_safe": {
+          "default": true,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTaskLedgerRunListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamArtifactKind": {
+      "enum": [
+        "plan",
+        "patch_summary",
+        "test_report",
+        "review_report",
+        "risk_report",
+        "handoff",
+        "merge_summary"
+      ],
+      "type": "string"
+    },
+    "AgentTeamDispatchResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTask"
+          },
+          "type": "array"
+        },
+        "session": {
+          "$ref": "#/components/schemas/AgentTeamSession"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTask"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeBundle": {
+      "properties": {
+        "accepted_tasks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "changed_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "key_findings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "open_questions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "recommended_next_action": {
+          "$ref": "#/components/schemas/AgentTeamRecommendedAction"
+        },
+        "rejected_tasks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "risk_items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "test_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "session_id",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeBundleResponse": {
+      "properties": {
+        "bundle": {
+          "$ref": "#/components/schemas/AgentTeamMergeBundle"
+        }
+      },
+      "required": [
+        "bundle"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeDecision": {
+      "properties": {
+        "accepted_tasks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "action": {
+          "$ref": "#/components/schemas/AgentTeamRecommendedAction"
+        },
+        "approved": {
+          "default": true,
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejected_tasks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "session_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeDecisionResponse": {
+      "properties": {
+        "applied": {
+          "default": false,
+          "type": "boolean"
+        },
+        "decision": {
+          "$ref": "#/components/schemas/AgentTeamMergeDecision"
+        },
+        "merge_bundle": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamMergeBundle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamSession"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "type": "object"
+    },
+    "AgentTeamRecommendedAction": {
+      "enum": [
+        "merge",
+        "request_changes",
+        "split_followup",
+        "discard"
+      ],
+      "type": "string"
+    },
+    "AgentTeamSession": {
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "latest_merge_bundle": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_decision": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/AgentTeamSessionStatus"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "root_thread_id",
+        "user_id",
+        "title",
+        "goal",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamSessionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamSession"
+          },
+          "type": "array"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamSession"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamSessionResponse": {
+      "properties": {
+        "session": {
+          "$ref": "#/components/schemas/AgentTeamSession"
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "type": "object"
+    },
+    "AgentTeamSessionStatus": {
+      "enum": [
+        "planning",
+        "running",
+        "awaiting_review",
+        "merging",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "type": "string"
+    },
+    "AgentTeamTask": {
+      "properties": {
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changed_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "child_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "output_artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "risk_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "role": {
+          "$ref": "#/components/schemas/AgentTeamTaskRole"
+        },
+        "scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/AgentTeamTaskStatus"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "verification_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "task_id",
+        "session_id",
+        "role",
+        "goal",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamTaskListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTask"
+          },
+          "type": "array"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTask"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamTaskOutput": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changed_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/AgentTeamArtifactKind"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "output_id": {
+          "type": "string"
+        },
+        "risk_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "default": "",
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "test_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "output_id",
+        "task_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamTaskOutputResponse": {
+      "properties": {
+        "output": {
+          "$ref": "#/components/schemas/AgentTeamTaskOutput"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamTask"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "output"
+      ],
+      "type": "object"
+    },
+    "AgentTeamTaskResponse": {
+      "properties": {
+        "task": {
+          "$ref": "#/components/schemas/AgentTeamTask"
+        }
+      },
+      "required": [
+        "task"
+      ],
+      "type": "object"
+    },
+    "AgentTeamTaskRole": {
+      "enum": [
+        "planner",
+        "architect",
+        "backend_executor",
+        "frontend_executor",
+        "test_engineer",
+        "reviewer",
+        "verifier",
+        "writer"
+      ],
+      "type": "string"
+    },
+    "AgentTeamTaskStatus": {
+      "enum": [
+        "pending",
+        "running",
+        "blocked",
+        "done",
+        "failed",
+        "cancelled"
+      ],
+      "type": "string"
+    },
+    "AgentToolRouteDecisionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentToolRouteRequest": {
+      "properties": {
+        "available_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enforce": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "default": "executor",
+          "type": "string"
+        },
+        "tool_policy": {
+          "default": "execution",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentToolRouteResponse": {
+      "properties": {
+        "plan": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ApplyAgentTeamMergeDecisionRequest": {
+      "properties": {
+        "accepted_tasks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamRecommendedAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "apply": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approved": {
+          "default": true,
+          "type": "boolean"
+        },
+        "next_action": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamRecommendedAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejected_tasks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ApplyMergeDecisionRequest": {
+      "properties": {
+        "approved": {
+          "default": true,
+          "type": "boolean"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/MergeMode"
+        },
+        "proposal_overrides": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MergeProposalOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/components/schemas/MergeTarget"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ApplyMergeDecisionResponse": {
+      "properties": {
+        "imported": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImportedConclusion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "BranchRole": {
+      "enum": [
+        "main",
+        "explore_alternatives",
+        "deep_dive",
+        "execute",
+        "verify",
+        "writeup"
+      ],
+      "type": "string"
+    },
+    "BranchStatus": {
+      "enum": [
+        "active",
+        "paused",
+        "preparing_merge_review",
+        "awaiting_merge_review",
+        "merged",
+        "discarded",
+        "closed"
+      ],
+      "type": "string"
+    },
+    "BranchTreeNode": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_depth": {
+          "default": 0,
+          "type": "integer"
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_name": {
+          "default": "main",
+          "type": "string"
+        },
+        "branch_role": {
+          "$ref": "#/components/schemas/BranchRole"
+        },
+        "branch_status": {
+          "$ref": "#/components/schemas/BranchStatus"
+        },
+        "children": {
+          "items": {
+            "$ref": "#/components/schemas/BranchTreeNode"
+          },
+          "type": "array"
+        },
+        "fork_strategy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "is_archived": {
+          "default": false,
+          "type": "boolean"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "token_usage": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "thread_id",
+        "root_thread_id"
+      ],
+      "type": "object"
+    },
+    "BranchTreeResponse": {
+      "properties": {
+        "archived_branches": {
+          "items": {
+            "$ref": "#/components/schemas/BranchTreeNode"
+          },
+          "type": "array"
+        },
+        "root": {
+          "$ref": "#/components/schemas/BranchTreeNode"
+        }
+      },
+      "required": [
+        "root"
+      ],
+      "type": "object"
+    },
+    "ChatResumeRequest": {
+      "properties": {
+        "resume": {
+          "title": "Resume"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "thread_id",
+        "resume"
+      ],
+      "type": "object"
+    },
+    "ChatTurnRequest": {
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "thinking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "thread_id",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ContextUsageResponse": {
+      "properties": {
+        "last_compacted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prompt_budget_chars": {
+          "default": 0,
+          "type": "integer"
+        },
+        "prompt_chars": {
+          "default": 0,
+          "type": "integer"
+        },
+        "remaining_tokens": {
+          "default": 0,
+          "type": "integer"
+        },
+        "status": {
+          "default": "ok",
+          "enum": [
+            "ok",
+            "warm",
+            "hot",
+            "over",
+            "compacting",
+            "error"
+          ],
+          "type": "string"
+        },
+        "token_limit": {
+          "default": 0,
+          "type": "integer"
+        },
+        "tokenizer_mode": {
+          "default": "chars_fallback",
+          "type": "string"
+        },
+        "used_ratio": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "used_tokens": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ConversationListResponse": {
+      "properties": {
+        "conversations": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationSummaryResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ConversationSummaryResponse": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "is_archived": {
+          "default": false,
+          "type": "boolean"
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "token_usage": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "root_thread_id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "CreateAgentTeamSessionRequest": {
+      "properties": {
+        "goal": {
+          "type": "string"
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "root_thread_id",
+        "goal"
+      ],
+      "type": "object"
+    },
+    "CreateAgentTeamTaskRequest": {
+      "properties": {
+        "auto_fork_branch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "child_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "create_branch": {
+          "default": true,
+          "type": "boolean"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "$ref": "#/components/schemas/AgentTeamTaskRole"
+        },
+        "scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "role",
+        "goal"
+      ],
+      "type": "object"
+    },
+    "CreateConversationRequest": {
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "DemoTokenRequest": {
+      "properties": {
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "default": "researcher-1",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DispatchAgentTeamSessionRequest": {
+      "properties": {
+        "auto_fork_branch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "create_branches": {
+          "default": true,
+          "type": "boolean"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ForkBranchRequest": {
+      "properties": {
+        "branch_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_role": {
+          "$ref": "#/components/schemas/BranchRole"
+        },
+        "fork_checkpoint_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "language": {
+          "anyOf": [
+            {
+              "enum": [
+                "en",
+                "zh"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_thread_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "parent_thread_id"
+      ],
+      "type": "object"
+    },
+    "HTTPValidationError": {
+      "properties": {
+        "detail": {
+          "items": {
+            "$ref": "#/components/schemas/ValidationError"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ImportedConclusion": {
+      "properties": {
+        "artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "branch_name": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "key_findings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/MergeMode"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch_id",
+        "branch_name",
+        "mode",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "MergeMode": {
+      "enum": [
+        "none",
+        "summary_only",
+        "summary_plus_evidence",
+        "selected_artifacts"
+      ],
+      "type": "string"
+    },
+    "MergeProposalOverrides": {
+      "properties": {
+        "artifacts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_refs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "key_findings": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "open_questions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommended_import_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MergeMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "MergeTarget": {
+      "enum": [
+        "return_thread",
+        "root_thread"
+      ],
+      "type": "string"
+    },
+    "ModelCatalogResponse": {
+      "properties": {
+        "default_model": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/components/schemas/ModelOptionResponse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "default_model"
+      ],
+      "type": "object"
+    },
+    "ModelOptionResponse": {
+      "properties": {
+        "default_thinking_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "is_default": {
+          "default": false,
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "provider_label": {
+          "type": "string"
+        },
+        "supports_thinking": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "provider",
+        "provider_label",
+        "name",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ObservabilityOverviewResponse": {
+      "properties": {
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/components/schemas/RuntimeReadinessResponse"
+        },
+        "stats": {
+          "$ref": "#/components/schemas/TrajectoryTurnStatsResponse"
+        },
+        "trajectory_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "generated_at"
+      ],
+      "type": "object"
+    },
+    "PrepareMergeProposalRequest": {
+      "properties": {
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PrincipalResponse": {
+      "properties": {
+        "auth_enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "type": "object"
+    },
+    "RecordAgentTeamTaskOutputRequest": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifact_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamArtifactKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changed_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamArtifactKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "risk_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "default": "",
+          "type": "string"
+        },
+        "test_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "verification_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RuntimeComponentStatusResponse": {
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "ready": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "RuntimeReadinessResponse": {
+      "properties": {
+        "app_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/components/schemas/RuntimeComponentStatusResponse"
+          },
+          "type": "array"
+        },
+        "deployment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ready": {
+          "default": true,
+          "type": "boolean"
+        },
+        "status": {
+          "default": "ok",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ThreadContextCompactRequest": {
+      "properties": {
+        "trigger": {
+          "default": "manual",
+          "enum": [
+            "manual",
+            "auto_pre_send",
+            "auto_post_turn"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ThreadContextCompactResponse": {
+      "properties": {
+        "active_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "assistant_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_meta": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ContextUsageResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interrupts": {
+          "items": {},
+          "type": "array"
+        },
+        "merge_decision": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_proposal": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_queue": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "rolling_summary": {
+          "default": "",
+          "type": "string"
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "selected_model": {
+          "default": "",
+          "type": "string"
+        },
+        "selected_thinking_mode": {
+          "default": "",
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "trace": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "thread_id",
+        "root_thread_id"
+      ],
+      "type": "object"
+    },
+    "ThreadContextPreviewRequest": {
+      "properties": {
+        "draft_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ThreadContextPreviewResponse": {
+      "properties": {
+        "context_usage": {
+          "$ref": "#/components/schemas/ContextUsageResponse"
+        }
+      },
+      "required": [
+        "context_usage"
+      ],
+      "type": "object"
+    },
+    "ThreadStateResponse": {
+      "properties": {
+        "active_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "assistant_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_meta": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ContextUsageResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interrupts": {
+          "items": {},
+          "type": "array"
+        },
+        "merge_decision": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_proposal": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_queue": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "rolling_summary": {
+          "default": "",
+          "type": "string"
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "selected_model": {
+          "default": "",
+          "type": "string"
+        },
+        "selected_thinking_mode": {
+          "default": "",
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "trace": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "thread_id",
+        "root_thread_id"
+      ],
+      "type": "object"
+    },
+    "TokenResponse": {
+      "properties": {
+        "access_token": {
+          "type": "string"
+        },
+        "expires_in_seconds": {
+          "type": "integer"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "token_type": {
+          "default": "bearer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "access_token",
+        "expires_in_seconds",
+        "issuer"
+      ],
+      "type": "object"
+    },
+    "TrajectoryBatchPromotionPreviewRequest": {
+      "properties": {
+        "answer_substring_chars": {
+          "default": 160,
+          "maximum": 4000.0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_role": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cache_hit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "case_id_prefix": {
+          "default": "traj",
+          "type": "string"
+        },
+        "copy_answer_substring": {
+          "default": false,
+          "type": "boolean"
+        },
+        "copy_tool_trajectory": {
+          "default": false,
+          "type": "boolean"
+        },
+        "fallback_used": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_error": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 100,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "max_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "newest_first": {
+          "default": true,
+          "type": "boolean"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scene": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "started_after": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_before": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryBatchPromotionPreviewResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryPromotionResponse"
+          },
+          "type": "array"
+        },
+        "jsonl": {
+          "default": "",
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "limit",
+        "offset"
+      ],
+      "type": "object"
+    },
+    "TrajectoryBatchReplayCompareRequest": {
+      "properties": {
+        "answer_substring_chars": {
+          "default": 160,
+          "maximum": 4000.0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_role": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cache_hit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "case_id_prefix": {
+          "default": "traj",
+          "type": "string"
+        },
+        "copy_answer_substring": {
+          "default": false,
+          "type": "boolean"
+        },
+        "copy_tool_trajectory": {
+          "default": false,
+          "type": "boolean"
+        },
+        "fallback_used": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_error": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 100,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "max_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "newest_first": {
+          "default": true,
+          "type": "boolean"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scene": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "started_after": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_before": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryBatchReplayCompareResponse": {
+      "properties": {
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryReplayResponse"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/components/schemas/TrajectoryBatchReplaySummaryResponse"
+        }
+      },
+      "required": [
+        "limit",
+        "offset"
+      ],
+      "type": "object"
+    },
+    "TrajectoryBatchReplaySummaryResponse": {
+      "properties": {
+        "failed": {
+          "default": 0,
+          "type": "integer"
+        },
+        "passed": {
+          "default": 0,
+          "type": "integer"
+        },
+        "source_failed": {
+          "default": 0,
+          "type": "integer"
+        },
+        "tool_path_changed": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryEvalCaseResponse": {
+      "properties": {
+        "expected": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "judge": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scene": {
+          "type": "string"
+        },
+        "setup": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "skill_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "scene"
+      ],
+      "type": "object"
+    },
+    "TrajectoryJudgeVerdictResponse": {
+      "properties": {
+        "confidence": {
+          "default": 1.0,
+          "type": "number"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "reasoning": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "passed"
+      ],
+      "type": "object"
+    },
+    "TrajectoryPromotionRequest": {
+      "properties": {
+        "answer_substring_chars": {
+          "default": 160,
+          "maximum": 4000.0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "case_id_prefix": {
+          "default": "traj",
+          "type": "string"
+        },
+        "copy_answer_substring": {
+          "default": false,
+          "type": "boolean"
+        },
+        "copy_tool_trajectory": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryPromotionResponse": {
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "dataset_record": {
+          "$ref": "#/components/schemas/TrajectoryEvalCaseResponse"
+        },
+        "jsonl": {
+          "type": "string"
+        },
+        "source_turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_turn_id",
+        "case_id",
+        "dataset_record",
+        "jsonl"
+      ],
+      "type": "object"
+    },
+    "TrajectoryReplayCaseResponse": {
+      "properties": {
+        "expected": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "judge": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scene": {
+          "type": "string"
+        },
+        "setup": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "skill_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "scene"
+      ],
+      "type": "object"
+    },
+    "TrajectoryReplayComparisonResponse": {
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "replay_answer_preview": {
+          "default": "",
+          "type": "string"
+        },
+        "replay_cache_hits": {
+          "default": 0,
+          "type": "integer"
+        },
+        "replay_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replay_fallback_uses": {
+          "default": 0,
+          "type": "integer"
+        },
+        "replay_latency_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "replay_passed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "replay_tool_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "replay_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source_answer_preview": {
+          "default": "",
+          "type": "string"
+        },
+        "source_cache_hits": {
+          "default": 0,
+          "type": "integer"
+        },
+        "source_failed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "source_fallback_uses": {
+          "default": 0,
+          "type": "integer"
+        },
+        "source_latency_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "source_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_tool_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "source_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tool_path_changed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "trajectory_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "case_id"
+      ],
+      "type": "object"
+    },
+    "TrajectoryReplayRequest": {
+      "properties": {
+        "answer_substring_chars": {
+          "default": 160,
+          "maximum": 4000.0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "case_id_prefix": {
+          "default": "traj",
+          "type": "string"
+        },
+        "copy_answer_substring": {
+          "default": false,
+          "type": "boolean"
+        },
+        "copy_tool_trajectory": {
+          "default": false,
+          "type": "boolean"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryReplayResponse": {
+      "properties": {
+        "comparison": {
+          "$ref": "#/components/schemas/TrajectoryReplayComparisonResponse"
+        },
+        "model_used": {
+          "type": "string"
+        },
+        "replay_case": {
+          "$ref": "#/components/schemas/TrajectoryReplayCaseResponse"
+        },
+        "replay_case_jsonl": {
+          "type": "string"
+        },
+        "replay_result": {
+          "$ref": "#/components/schemas/TrajectoryReplayResultResponse"
+        },
+        "source_turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_turn_id",
+        "model_used",
+        "replay_case",
+        "replay_case_jsonl",
+        "replay_result"
+      ],
+      "type": "object"
+    },
+    "TrajectoryReplayResultResponse": {
+      "properties": {
+        "answer": {
+          "type": "string"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "trajectory": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStepResponse"
+          },
+          "type": "array"
+        },
+        "verdicts": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryJudgeVerdictResponse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "case_id",
+        "passed",
+        "answer"
+      ],
+      "type": "object"
+    },
+    "TrajectoryStatsBucketResponse": {
+      "properties": {
+        "avg_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "avg_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cache_hit_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fallback_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "step_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "TrajectoryStatsOverviewResponse": {
+      "properties": {
+        "avg_latency_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "max_latency_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "non_succeeded_count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "succeeded_count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_cache_hits": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_fallback_uses": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_llm_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_tool_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "turn_count": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryStepResponse": {
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "cache_hit": {
+          "default": false,
+          "type": "boolean"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fallback_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fallback_used": {
+          "default": false,
+          "type": "boolean"
+        },
+        "observation": {
+          "default": "",
+          "type": "string"
+        },
+        "observation_truncated": {
+          "default": false,
+          "type": "boolean"
+        },
+        "parallel_batch_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "step_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "type": "object"
+    },
+    "TrajectoryTurnDetailEnvelopeResponse": {
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TrajectoryTurnDetailResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryTurnDetailResponse": {
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "app_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cache_hits": {
+          "default": 0,
+          "type": "integer"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deployment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fallback_uses": {
+          "default": 0,
+          "type": "integer"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "llm_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "title": "Plan"
+        },
+        "plan_meta": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "reflection": {
+          "title": "Reflection"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "scene": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "selected_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_thinking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "task_brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "tool_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trajectory": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStepResponse"
+          },
+          "type": "array"
+        },
+        "turn_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id_hash": {
+          "type": "string"
+        },
+        "user_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "schema_version",
+        "kind",
+        "status",
+        "thread_id",
+        "root_thread_id",
+        "scene",
+        "user_id_hash"
+      ],
+      "type": "object"
+    },
+    "TrajectoryTurnListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryTurnSummaryResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "limit",
+        "offset"
+      ],
+      "type": "object"
+    },
+    "TrajectoryTurnStatsEnvelopeResponse": {
+      "properties": {
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "stats": {
+          "$ref": "#/components/schemas/TrajectoryTurnStatsResponse"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryTurnStatsResponse": {
+      "properties": {
+        "by_branch_role": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStatsBucketResponse"
+          },
+          "type": "array"
+        },
+        "by_day": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStatsBucketResponse"
+          },
+          "type": "array"
+        },
+        "by_model": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStatsBucketResponse"
+          },
+          "type": "array"
+        },
+        "by_scene": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStatsBucketResponse"
+          },
+          "type": "array"
+        },
+        "by_status": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStatsBucketResponse"
+          },
+          "type": "array"
+        },
+        "by_tool": {
+          "items": {
+            "$ref": "#/components/schemas/TrajectoryStatsBucketResponse"
+          },
+          "type": "array"
+        },
+        "overview": {
+          "$ref": "#/components/schemas/TrajectoryStatsOverviewResponse"
+        }
+      },
+      "type": "object"
+    },
+    "TrajectoryTurnSummaryResponse": {
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "app_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cache_hits": {
+          "default": 0,
+          "type": "integer"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deployment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fallback_uses": {
+          "default": 0,
+          "type": "integer"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "llm_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_meta": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "scene": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "selected_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_thinking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "task_brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "tool_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "schema_version",
+        "kind",
+        "status",
+        "thread_id",
+        "root_thread_id",
+        "scene"
+      ],
+      "type": "object"
+    },
+    "UpdateAgentTeamTaskRequest": {
+      "properties": {
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changed_files": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "child_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dependencies": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_artifact_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "risk_notes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamTaskStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verification_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UpdateBranchNameRequest": {
+      "properties": {
+        "branch_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch_name"
+      ],
+      "type": "object"
+    },
+    "UpdateConversationRequest": {
+      "properties": {
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "ValidationError": {
+      "properties": {
+        "ctx": {
+          "type": "object"
+        },
+        "input": {
+          "title": "Input"
+        },
+        "loc": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "msg": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loc",
+        "msg",
+        "type"
+      ],
+      "type": "object"
+    }
+  },
+  "version": 1
+}

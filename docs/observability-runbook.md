@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-04-24
+Updated: 2026-04-26
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -55,6 +55,19 @@ Alert guidance should use the existing `/metrics` scrape. Start with these signa
 - `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
 
 Keep alert labels aligned with `app_version`, `environment`, `deployment`, `component`, and trajectory `status` so release regressions can be separated from general traffic noise.
+
+Executable alert-rule checks should write a small JSON report for release review. The release-health helper accepts it with `--alert-report-json` and fails the release if the report has no executable rule coverage, declares a failed status, or contains firing alerts. A minimal passing report looks like:
+
+```json
+{
+  "alerts": [],
+  "rules": [
+    {"name": "runtime-ready", "query": "focus_agent_runtime_ready == 0"},
+    {"name": "trajectory-recorder", "query": "focus_agent_runtime_component_ready{component=\"trajectory_recorder\"} == 0"}
+  ],
+  "status": "passed"
+}
+```
 
 ## 2. Read The Current Slice
 
@@ -261,7 +274,114 @@ uv run python -m tests.eval replay \
 
 Use `--copy-answer-substring` only when the source answer is stable enough to become an assertion. Otherwise keep the promoted case focused on tool path, failure status, and runtime metrics.
 
-## 7. Recommended Oncall Flow
+## 7. Release Health Gates
+
+The release-health helper turns readiness, trajectory, and replay signals into deterministic gate results that can be used by `make release-gate` or a future CI job:
+
+- `runtime_not_ready`: fails when `/readyz` reports the runtime as not ready.
+- `trajectory_recorder_unavailable`: fails when the trajectory recorder readiness check is present and unhealthy.
+- `chat_failure_rate`: fails when the non-succeeded turn rate crosses the configured threshold after the minimum sample size.
+- `tool_fallback_spike`: fails when fallback usage is high or has grown sharply versus a baseline.
+- `eval_replay_regression`: fails when replay comparison rows contain failed replays or replay errors.
+- `alert_rules_report`: fails when a provided executable alert report is invalid, has no checked rules, or includes firing alerts.
+- `postgres_migration_verification`: fails when a provided Postgres migration verification report is invalid or reports migration errors.
+- `production_smoke_report`: fails when a provided production smoke report is invalid, has no checked probes, or reports failed probes.
+- `postgres_ops_report`: fails when a provided Postgres ops report is invalid, has no checked operations, or reports failed operations.
+- `otel_smoke_report`: fails when a provided OpenTelemetry smoke report is invalid, has no check/span coverage, or reports failed checks.
+
+Memory/context quality probes use the same signal shape for deterministic checks such as required markers, forbidden stale markers, and maximum rendered context size.
+
+The release gate runs the helper after the smoke and observability eval suites have written JSON reports:
+
+```bash
+uv run python scripts/release_health_check.py \
+  --mode local \
+  --ready-url http://127.0.0.1:8000/readyz \
+  --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats \
+  --allow-self-check-fallback \
+  --eval-report-json reports/release-gate/eval-smoke.json \
+  --eval-report-json reports/release-gate/eval-observability.json \
+  --eval-report-json reports/release-gate/memory-context-eval.json \
+  --report-json reports/release-gate/release-health.json
+```
+
+For a live deployment, switch to `--mode live` or `--mode production`, remove `--allow-self-check-fallback`, and pass captured deployment signals. The helper accepts `/readyz` from `--readyz-json` or `--runtime-status-json`, trajectory stats from `--trajectory-stats-json`, optional trajectory baselines from `--baseline-trajectory-stats-json`, replay comparison rows from `--replay-comparisons-json`, alert-rule execution results from `--alert-report-json`, Postgres migration verification from `--postgres-migration-report-json`, production smoke from `--production-smoke-report-json`, Postgres ops from `--postgres-ops-report-json`, OpenTelemetry smoke from `--otel-smoke-report-json`, Agent governance quality from `--governance-report-json`, eval reports from repeated `--eval-report-json` arguments, and optional baseline eval reports from repeated `--baseline-eval-report-json` arguments. In live/production mode, missing readyz, trajectory stats, replay comparison, eval report, production smoke, Postgres ops, OTel smoke, or governance report inputs are release-blocking and return exit code 1. Supplied alert, Postgres, production smoke, Postgres ops, OTel, and governance reports are also release-blocking when they are malformed, failed, contain blocking threshold violations, or are dry-run reports in production.
+
+Production jobs can also probe the live service directly with `--ready-url` and `--trajectory-stats-url`, but those probes are still fail-closed: an unavailable endpoint writes a failed release-health report instead of silently using local self-check samples.
+
+Production release review should archive an evidence pack after the live signals are captured:
+
+```bash
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+```
+
+The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, artifact summaries, command summaries, release-health status, approval metadata, retention metadata, storage verification metadata, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, baseline eval report, production smoke, Postgres ops, OTel smoke, or governance report artifacts should block production release review. Missing or non-approved deployment-platform approval should also block production evidence review; when `--storage-dir` is used, the manifest records whether the retained manifest and summary match the local pack.
+
+Postgres migration verification can be attached as either a machine-readable migration report or the command evidence that generated it:
+
+```bash
+uv run python -m focus_agent.migrate_local_state \
+  --database-uri postgresql://user:pass@host:5432/focus_agent \
+  --artifact-scan \
+  --report-path reports/release-gate/postgres-migration.json
+```
+
+Production smoke, Postgres ops, and OTel smoke can be planned before deployment wiring with deterministic dry-run reports:
+
+```bash
+uv run python scripts/production_smoke.py \
+  --dry-run \
+  --base-url https://focus-agent.example.com \
+  --web-base-url https://focus-agent.example.com \
+  --report-json reports/release-gate/production-smoke.json
+
+uv run python scripts/postgres_ops.py \
+  --dry-run \
+  --report-json reports/release-gate/postgres-ops.json
+
+uv run python scripts/otel_smoke.py \
+  --dry-run \
+  --endpoint http://otel-collector:4318 \
+  --service-name focus-agent \
+  --report-json reports/release-gate/otel-smoke.json
+```
+
+Live production examples:
+
+```bash
+uv run python scripts/production_smoke.py \
+  --base-url https://focus-agent.example.com \
+  --web-base-url https://focus-agent.example.com \
+  --auth-token <token> \
+  --stream-events-json reports/release-gate/stream-events.json \
+  --rate-limit-min-limit 1 \
+  --report-json reports/release-gate/production-smoke.json
+
+uv run python scripts/postgres_ops.py \
+  --database-uri postgresql://user:pass@host:5432/focus_agent \
+  --backup-command 'pg_dump --format=custom --file=/tmp/focus-agent.dump postgresql://user:pass@host:5432/focus_agent' \
+  --restore-command 'pg_restore --dbname=postgresql://user:pass@restore-host:5432/focus_agent_verify /tmp/focus-agent.dump' \
+  --restore-verification-query 'SELECT 1' \
+  --retention-cleanup-query 'SELECT 1' \
+  --report-json reports/release-gate/postgres-ops.json
+
+uv run python scripts/otel_smoke.py \
+  --endpoint http://otel-collector:4318 \
+  --collector-health-url http://otel-collector:13133/healthz \
+  --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' \
+  --report-json reports/release-gate/otel-smoke.json
+
+uv run python scripts/agent_governance_report.py \
+  --report-json reports/agent-governance/latest.json \
+  --max-review-queue-backlog 10 \
+  --max-avg-cost-usd 0.05
+```
+
+Attach these reports to release-health with `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json`. The reports intentionally fail closed when supplied: empty coverage, malformed JSON, explicit `passed=false`, failed statuses, failed row-level checks, or governance blocking signals block the release-health result.
+
+Ownership allow / deny checks can be exported as trajectory-compatible `ownership.audit` entries. The exported payload includes principal, resource type, resource id, action, decision, reason, and request id, which makes cross-principal denials searchable in the same observability pipeline without adding a new database schema.
+
+## 8. Recommended Oncall Flow
 
 Use this order when responding to production issues:
 
@@ -274,12 +394,13 @@ Use this order when responding to production issues:
 7. Preview promotion for a representative failed turn.
 8. Batch replay or promote the slice if it should become a regression artifact.
 
-## 8. Local Verification Commands
+## 9. Local Verification Commands
 
 These are the repo-local checks that currently validate the observability stack and release regression gate:
 
 ```bash
 make lint
+make contract-check
 make ci-test
 make sdk-check
 make sdk-build
@@ -295,7 +416,7 @@ uv run python -m tests.eval --suite observability --concurrency 1
 
 If your local `.venv` cannot import `psycopg` because `libpq` is missing, use the focused test workaround already documented in [architecture.md](architecture.md).
 
-## 9. Current Boundaries
+## 10. Current Boundaries
 
 - Trajectory observability depends on PostgreSQL-backed persistence or another initialized trajectory recorder.
 - `/metrics` currently includes trajectory aggregate metrics when they are available; high-frequency scrape behavior should still be reviewed alongside your global API rate-limit settings.

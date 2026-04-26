@@ -239,22 +239,26 @@ The runtime policy keeps scheduling, cache reuse, side effects, and observation 
 ```mermaid
 flowchart LR
     Call["Tool call"] --> Metadata["runtime metadata"]
-    Metadata --> Scheduler{"parallel safe?"}
+    Metadata --> Validate["validator"]
+    Validate --> Scheduler{"parallel safe?"}
     Scheduler -- "yes" --> Parallel["parallel round"]
     Scheduler -- "no" --> Serial["serial boundary"]
     Parallel --> Cache{"cacheable?"}
     Serial --> Effect{"side effect?"}
     Cache -- "hit" --> Observation["trimmed observation"]
     Cache -- "miss" --> Execute["tool execution"]
-    Effect -- "yes" --> Invalidate["invalidate scoped cache"]
+    Effect -- "yes" --> SerialEffect["serialized side-effect"]
+    SerialEffect --> Invalidate["invalidate scoped cache"]
     Execute --> Observation
     Invalidate --> Observation
 ```
 
 - `parallel_safe` read-only tools can run in the same tool round concurrently.
 - `cacheable` tools may reuse deterministic observations within their declared scope.
-- `side_effect` tools keep a serial boundary and invalidate the current turn/thread/branch namespaces after a successful write.
+- `validator` failures return a `validation_error` tool result and do not invoke the tool, use fallback, or write cache.
+- `side_effect` tools keep a serial boundary even if marked `parallel_safe`; successful writes invalidate the current turn/thread/branch namespaces and runtime metadata records `side_effect_serialized`.
 - `fallback_group` and `fallback_handler` keep provider fallback behind the stable public tool name.
+- Timeout and upstream cancellation bypass fallback and cache, and runtime metadata records `timeout_seconds` or `cancelled`.
 - Runtime observations are trimmed by per-tool limits before being returned to the model.
 
 Cache scopes are intentionally conservative:
@@ -263,7 +267,7 @@ Cache scopes are intentionally conservative:
 - `thread` is the default for workspace read tools such as `list_files`, `read_file`, `search_code`, and `codebase_stats`. Focus Agent conversation branches do not imply separate filesystem or git worktrees, so these reads should not become branch-local by default.
 - `branch` is reserved for future tools that read or write branch-local product state.
 
-Execution control fields that require cancellation or hard deadlines should not be exposed until the runtime can enforce them. In particular, timeout/cancel behavior should be treated as a separate runtime feature, not as passive metadata.
+Execution control is enforced by the runtime, not by individual tools. Hard deadlines and upstream cancellation are treated as release-sensitive behavior: they fail the tool call without fallback so a slow or cancelled side-effect cannot be hidden behind a secondary provider.
 
 ## Product Tool Taxonomy
 

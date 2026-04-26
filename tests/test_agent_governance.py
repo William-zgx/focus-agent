@@ -139,9 +139,23 @@ def web_search(query: str) -> str:
     return query
 
 
+@tool
+def skills_list() -> str:
+    """List skills."""
+    return "plan,security-review"
+
+
+@tool
+def skill_view(name: str) -> str:
+    """View a skill."""
+    return name
+
+
 write_text_artifact.metadata = {"side_effect": True, "side_effect_kind": "workspace_write"}
 web_search.metadata = {"parallel_safe": True}
 search_code.metadata = {"parallel_safe": True}
+skills_list.metadata = {"parallel_safe": True}
+skill_view.metadata = {"parallel_safe": True}
 
 
 def _branch_record(status=BranchStatus.ACTIVE):
@@ -296,6 +310,8 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     app.state.runtime = SimpleNamespace(
         settings=Settings(
             auth_enabled=False,
+            agent_role_routing_enabled=True,
+            agent_role_max_parallel_runs=5,
             agent_memory_curator_enabled=True,
             agent_tool_router_enabled=True,
             agent_delegation_enabled=True,
@@ -306,7 +322,7 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             agent_artifact_synthesis_enabled=True,
             agent_critic_gate_enabled=True,
         ),
-        tool_registry=ToolRegistry(tools=(search_code, write_text_artifact, web_search)),
+        tool_registry=ToolRegistry(tools=(search_code, write_text_artifact, web_search, skills_list, skill_view)),
         trajectory_recorder=_DecisionRepo(),
         store=_MemoryStore(),
         graph=object(),
@@ -317,6 +333,14 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     client = TestClient(app)
 
     capabilities = client.get("/v1/agent/capabilities")
+    role_route = client.post(
+        "/v1/agent/roles/dry-run",
+        json={
+            "message": "Plan skill selection and branch suggestion before implementation.",
+            "scene": "execution",
+            "available_tools": ["skills_list", "skill_view", "search_code", "write_text_artifact"],
+        },
+    )
     route = client.post(
         "/v1/agent/tool-router/route",
         json={"role": "critic", "tool_policy": "execution", "available_tools": ["search_code", "write_text_artifact"]},
@@ -389,6 +413,12 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
 
     assert capabilities.status_code == 200
     assert capabilities.json()["count"] >= 3
+    role_plan = role_route.json()["plan"]
+    assert role_plan["legacy_execution_unchanged"] is True
+    assert any(decision["role"] == "skill_scout" for decision in role_plan["decisions"])
+    skill_decision = next(decision for decision in role_plan["decisions"] if decision["role"] == "skill_scout")
+    assert skill_decision["run_isolation_key"] == "role:skill_scout"
+    assert skill_decision["tool_governance"]["allowed_tools"] == ["skills_list", "skill_view"]
     assert route.json()["plan"]["role"] == "critic"
     assert "write_text_artifact" in route.json()["plan"]["denied_tools"]
     assert memory_policy.json()["enabled"] is True

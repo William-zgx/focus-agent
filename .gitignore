@@ -11,6 +11,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 artifacts/
+reports/
 log/
 node_modules/
 frontend-sdk/node_modules/
@@ -20,3 +21,4 @@ src/*.egg-info/
 src/**/__pycache__/
 src/focus_agent.egg-info/
 .omc/
+/docs/agent-design/

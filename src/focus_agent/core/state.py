@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Any, Mapping, TypedDict
+from types import MappingProxyType
+from typing import Annotated, Any, Literal, Mapping, TypeAlias, TypedDict
 
 from langchain.messages import AnyMessage
 from pydantic import BaseModel
@@ -154,6 +155,218 @@ class AgentState(TypedDict, total=False):
     plan_meta: dict[str, Any]
 
 
+AgentStateKey: TypeAlias = Literal[
+    "messages",
+    "task_brief",
+    "rolling_summary",
+    "recent_messages",
+    "pinned_facts",
+    "pinned_items",
+    "user_constraints",
+    "active_goal",
+    "active_plan",
+    "assembled_context",
+    "llm_calls",
+    "branch_meta",
+    "branch_local_findings",
+    "imported_findings",
+    "merge_queue",
+    "merge_proposal",
+    "merge_decision",
+    "artifacts",
+    "citations",
+    "context_budget",
+    "prompt_mode",
+    "retrieved_memories",
+    "memory_prompt_block",
+    "active_skill_ids",
+    "available_skills_block",
+    "active_skills_block",
+    "selected_model",
+    "selected_thinking_mode",
+    "role_route_plan",
+    "memory_curator_decision",
+    "tool_route_plan",
+    "agent_delegation_plan",
+    "agent_runs",
+    "model_route_decision",
+    "agent_failure_records",
+    "agent_review_queue",
+    "context_budget_decision",
+    "context_compression_plan",
+    "context_artifact_refs",
+    "role_context_views",
+    "context_compaction",
+    "agent_task_ledger",
+    "delegated_artifacts",
+    "artifact_synthesis_result",
+    "critic_gate_result",
+    "memory_write_requests",
+    "memory_write_result",
+    "plan",
+    "current_step_id",
+    "reflection",
+    "plan_meta",
+]
+AgentStateDomain: TypeAlias = Literal[
+    "conversation",
+    "branch",
+    "memory",
+    "governance",
+    "observability",
+]
+
+ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
+    "messages",
+    "task_brief",
+    "rolling_summary",
+    "recent_messages",
+    "pinned_facts",
+    "pinned_items",
+    "user_constraints",
+    "active_goal",
+    "active_plan",
+    "assembled_context",
+    "llm_calls",
+    "branch_meta",
+    "branch_local_findings",
+    "imported_findings",
+    "merge_queue",
+    "merge_proposal",
+    "merge_decision",
+    "artifacts",
+    "citations",
+    "context_budget",
+    "prompt_mode",
+    "retrieved_memories",
+    "memory_prompt_block",
+    "active_skill_ids",
+    "available_skills_block",
+    "active_skills_block",
+    "selected_model",
+    "selected_thinking_mode",
+    "role_route_plan",
+    "memory_curator_decision",
+    "tool_route_plan",
+    "agent_delegation_plan",
+    "agent_runs",
+    "model_route_decision",
+    "agent_failure_records",
+    "agent_review_queue",
+    "context_budget_decision",
+    "context_compression_plan",
+    "context_artifact_refs",
+    "role_context_views",
+    "context_compaction",
+    "agent_task_ledger",
+    "delegated_artifacts",
+    "artifact_synthesis_result",
+    "critic_gate_result",
+    "memory_write_requests",
+    "memory_write_result",
+    "plan",
+    "current_step_id",
+    "reflection",
+    "plan_meta",
+)
+
+# Domain slices are compatibility helpers only; they intentionally mirror the
+# existing LangGraph wire keys rather than introducing nested persisted state.
+CONVERSATION_STATE_FIELDS: tuple[AgentStateKey, ...] = (
+    "messages",
+    "task_brief",
+    "rolling_summary",
+    "recent_messages",
+    "pinned_facts",
+    "pinned_items",
+    "user_constraints",
+    "active_goal",
+    "active_plan",
+    "assembled_context",
+    "context_budget",
+    "prompt_mode",
+    "active_skill_ids",
+    "available_skills_block",
+    "active_skills_block",
+)
+BRANCH_STATE_FIELDS: tuple[AgentStateKey, ...] = (
+    "branch_meta",
+    "branch_local_findings",
+    "imported_findings",
+    "merge_queue",
+    "merge_proposal",
+    "merge_decision",
+    "artifacts",
+    "citations",
+)
+MEMORY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
+    "rolling_summary",
+    "pinned_facts",
+    "pinned_items",
+    "retrieved_memories",
+    "memory_prompt_block",
+    "memory_write_requests",
+    "memory_write_result",
+)
+GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
+    "context_budget",
+    "prompt_mode",
+    "selected_model",
+    "selected_thinking_mode",
+    "role_route_plan",
+    "memory_curator_decision",
+    "tool_route_plan",
+    "agent_delegation_plan",
+    "agent_runs",
+    "model_route_decision",
+    "agent_failure_records",
+    "agent_review_queue",
+    "context_budget_decision",
+    "context_compression_plan",
+    "context_artifact_refs",
+    "role_context_views",
+    "context_compaction",
+    "agent_task_ledger",
+    "delegated_artifacts",
+    "artifact_synthesis_result",
+    "critic_gate_result",
+    "plan",
+    "current_step_id",
+    "reflection",
+)
+OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
+    "llm_calls",
+    "plan_meta",
+    "role_route_plan",
+    "memory_curator_decision",
+    "tool_route_plan",
+    "agent_delegation_plan",
+    "agent_runs",
+    "model_route_decision",
+    "agent_failure_records",
+    "agent_review_queue",
+    "context_budget_decision",
+    "context_compression_plan",
+    "context_artifact_refs",
+    "role_context_views",
+    "context_compaction",
+    "agent_task_ledger",
+    "delegated_artifacts",
+    "artifact_synthesis_result",
+    "critic_gate_result",
+    "memory_write_result",
+)
+STATE_DOMAIN_FIELDS: Mapping[AgentStateDomain, tuple[AgentStateKey, ...]] = MappingProxyType(
+    {
+        "conversation": CONVERSATION_STATE_FIELDS,
+        "branch": BRANCH_STATE_FIELDS,
+        "memory": MEMORY_STATE_FIELDS,
+        "governance": GOVERNANCE_STATE_FIELDS,
+        "observability": OBSERVABILITY_STATE_FIELDS,
+    }
+)
+
+
 def initial_agent_state() -> AgentState:
     return {
         "messages": [],
@@ -215,6 +428,30 @@ def normalize_agent_state(state: Mapping[str, Any] | None = None) -> AgentState:
     if state:
         normalized.update(dict(state))
     return normalized
+
+
+def state_domain_fields(domain: AgentStateDomain) -> tuple[AgentStateKey, ...]:
+    return STATE_DOMAIN_FIELDS[domain]
+
+
+def state_domains_for_field(field: AgentStateKey) -> tuple[AgentStateDomain, ...]:
+    return tuple(
+        domain for domain, fields in STATE_DOMAIN_FIELDS.items() if field in fields
+    )
+
+
+def slice_agent_state(
+    state: Mapping[str, Any] | None,
+    domain: AgentStateDomain,
+    *,
+    include_defaults: bool = True,
+) -> dict[AgentStateKey, Any]:
+    source = normalize_agent_state(state) if include_defaults else dict(state or {})
+    return {field: source[field] for field in state_domain_fields(domain) if field in source}
+
+
+def default_agent_state_slice(domain: AgentStateDomain) -> dict[AgentStateKey, Any]:
+    return slice_agent_state(None, domain)
 
 
 def serialize_agent_state(state: Mapping[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,408 @@
+name: Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Release id used for the evidence pack. Required when dry_run is false."
+        required: false
+        type: string
+      dry_run:
+        description: "Use release-gate planning and deterministic evidence samples."
+        required: true
+        default: true
+        type: boolean
+      approval_id:
+        description: "Deployment approval id from GitHub Environments or the release operator."
+        required: false
+        type: string
+      approval_status:
+        description: "Deployment approval status recorded in the evidence manifest."
+        required: true
+        default: "pending"
+        type: choice
+        options:
+          - approved
+          - pending
+          - rejected
+          - missing
+      approval_url:
+        description: "Optional URL for the approval record or workflow run."
+        required: false
+        type: string
+      retention_days:
+        description: "Retention window recorded in release evidence metadata."
+        required: true
+        default: "90"
+        type: string
+      environment_name:
+        description: "GitHub protected Environment used for production approval."
+        required: true
+        default: "production"
+        type: string
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.dry_run && 'release-dry-run' || inputs.environment_name }}
+    env:
+      RELEASE_ID: ${{ inputs.release_id || github.ref_name || github.sha }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+      APPROVAL_ID: ${{ inputs.approval_id }}
+      APPROVAL_STATUS: ${{ inputs.approval_status || 'missing' }}
+      APPROVAL_URL: ${{ inputs.approval_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      RETENTION_DAYS: ${{ inputs.retention_days || '90' }}
+      ARTIFACT_STORAGE_DIR: reports/release-gate/archive
+      DEPLOYMENT_BINDING_JSON: reports/release-gate/deployment-binding.json
+      BASE_URL: ${{ vars.FOCUS_AGENT_BASE_URL }}
+      READY_URL: ${{ vars.FOCUS_AGENT_READY_URL }}
+      TRAJECTORY_STATS_URL: ${{ vars.FOCUS_AGENT_TRAJECTORY_STATS_URL }}
+      REPLAY_COMPARISONS_URL: ${{ vars.FOCUS_AGENT_REPLAY_COMPARISONS_URL }}
+      ALERT_REPORT_URL: ${{ vars.FOCUS_AGENT_ALERT_REPORT_URL }}
+      POSTGRES_MIGRATION_REPORT_URL: ${{ vars.FOCUS_AGENT_POSTGRES_MIGRATION_REPORT_URL }}
+      BASELINE_EVAL_REPORT_URL: ${{ vars.FOCUS_AGENT_BASELINE_EVAL_REPORT_URL }}
+      AUTH_TOKEN: ${{ secrets.FOCUS_AGENT_SMOKE_AUTH_TOKEN || vars.FOCUS_AGENT_SMOKE_AUTH_TOKEN }}
+      STREAM_EVENTS_REPORT_URL: ${{ vars.FOCUS_AGENT_STREAM_EVENTS_REPORT_URL }}
+      STREAM_EVENTS_URL: ${{ vars.FOCUS_AGENT_STREAM_EVENTS_URL }}
+      DATABASE_URI: ${{ secrets.FOCUS_AGENT_DATABASE_URI || vars.FOCUS_AGENT_DATABASE_URI }}
+      POSTGRES_BACKUP_COMMAND: ${{ secrets.FOCUS_AGENT_POSTGRES_BACKUP_COMMAND || vars.FOCUS_AGENT_POSTGRES_BACKUP_COMMAND }}
+      POSTGRES_RESTORE_COMMAND: ${{ secrets.FOCUS_AGENT_POSTGRES_RESTORE_COMMAND || vars.FOCUS_AGENT_POSTGRES_RESTORE_COMMAND }}
+      POSTGRES_RESTORE_VERIFICATION_QUERY: ${{ secrets.FOCUS_AGENT_POSTGRES_RESTORE_VERIFICATION_QUERY || vars.FOCUS_AGENT_POSTGRES_RESTORE_VERIFICATION_QUERY }}
+      POSTGRES_RETENTION_CLEANUP_QUERY: ${{ secrets.FOCUS_AGENT_POSTGRES_RETENTION_CLEANUP_QUERY || vars.FOCUS_AGENT_POSTGRES_RETENTION_CLEANUP_QUERY }}
+      OTEL_ENDPOINT: ${{ vars.FOCUS_AGENT_OTEL_ENDPOINT }}
+      OTEL_COLLECTOR_HEALTH_URL: ${{ vars.FOCUS_AGENT_OTEL_COLLECTOR_HEALTH_URL }}
+      OTEL_TRACE_QUERY_URL: ${{ vars.FOCUS_AGENT_OTEL_TRACE_QUERY_URL }}
+      GOVERNANCE_REPORT_JSON: reports/agent-governance/latest.json
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Install frontend SDK dependencies
+        run: make sdk-install
+
+      - name: Install web dependencies
+        run: make web-install
+
+      - name: Validate deployment binding metadata
+        run: |
+          mkdir -p reports/release-gate
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import sys
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          dry_run = os.environ.get("DRY_RUN") == "true"
+          production = not dry_run
+          run_id = os.environ.get("GITHUB_RUN_ID", "local")
+          mappings = [
+              {
+                  "key": "base_url",
+                  "env": "BASE_URL",
+                  "source": "vars.FOCUS_AGENT_BASE_URL",
+                  "used_by": "production-smoke --base-url/--web-base-url",
+              },
+              {
+                  "key": "readyz",
+                  "env": "READY_URL",
+                  "source": "vars.FOCUS_AGENT_READY_URL",
+                  "artifact_path": "reports/release-gate/readyz.json",
+                  "used_by": "release-evidence --readyz-json",
+              },
+              {
+                  "key": "trajectory_stats",
+                  "env": "TRAJECTORY_STATS_URL",
+                  "source": "vars.FOCUS_AGENT_TRAJECTORY_STATS_URL",
+                  "artifact_path": "reports/release-gate/trajectory-stats.json",
+                  "used_by": "release-evidence --trajectory-stats-json",
+              },
+              {
+                  "key": "replay_comparison",
+                  "env": "REPLAY_COMPARISONS_URL",
+                  "source": "vars.FOCUS_AGENT_REPLAY_COMPARISONS_URL",
+                  "artifact_path": "reports/release-gate/replay-comparisons.json",
+                  "used_by": "release-evidence --replay-comparisons-json",
+              },
+              {
+                  "key": "alert_report",
+                  "env": "ALERT_REPORT_URL",
+                  "source": "vars.FOCUS_AGENT_ALERT_REPORT_URL",
+                  "artifact_path": "reports/release-gate/alert-report.json",
+                  "used_by": "release-evidence --alert-report-json",
+              },
+              {
+                  "key": "baseline_eval",
+                  "env": "BASELINE_EVAL_REPORT_URL",
+                  "source": "vars.FOCUS_AGENT_BASELINE_EVAL_REPORT_URL",
+                  "artifact_path": "reports/release-gate/baseline-eval-smoke.json",
+                  "used_by": "release-evidence --baseline-eval-report-json",
+              },
+              {
+                  "key": "approval_id",
+                  "env": "APPROVAL_ID",
+                  "source": "workflow_dispatch.inputs.approval_id",
+                  "used_by": "release-evidence --approval-id",
+              },
+              {
+                  "key": "approval_status",
+                  "env": "APPROVAL_STATUS",
+                  "source": "workflow_dispatch.inputs.approval_status",
+                  "used_by": "release-evidence --approval-status",
+              },
+              {
+                  "key": "artifact_storage",
+                  "env": "ARTIFACT_STORAGE_DIR",
+                  "source": "job.env.ARTIFACT_STORAGE_DIR",
+                  "used_by": "release-evidence --storage-dir",
+              },
+              {
+                  "key": "artifact_retention",
+                  "env": "RETENTION_DAYS",
+                  "source": "workflow_dispatch.inputs.retention_days",
+                  "used_by": "release-evidence --retention-days and actions/upload-artifact retention-days",
+              },
+              {
+                  "key": "smoke_auth_token",
+                  "env": "AUTH_TOKEN",
+                  "source": "secrets.FOCUS_AGENT_SMOKE_AUTH_TOKEN or vars.FOCUS_AGENT_SMOKE_AUTH_TOKEN",
+                  "used_by": "production-smoke --auth-token",
+              },
+              {
+                  "key": "stream_events_report_url",
+                  "env": "STREAM_EVENTS_REPORT_URL",
+                  "required_in_production": False,
+                  "source": "vars.FOCUS_AGENT_STREAM_EVENTS_REPORT_URL",
+                  "used_by": "production-smoke --stream-events-json after curl",
+              },
+              {
+                  "key": "stream_events_url",
+                  "env": "STREAM_EVENTS_URL",
+                  "required_in_production": False,
+                  "source": "vars.FOCUS_AGENT_STREAM_EVENTS_URL",
+                  "used_by": "production-smoke --stream-events-url",
+              },
+              {
+                  "key": "database_uri",
+                  "env": "DATABASE_URI",
+                  "source": "secrets.FOCUS_AGENT_DATABASE_URI or vars.FOCUS_AGENT_DATABASE_URI",
+                  "used_by": "postgres-ops --database-uri",
+              },
+              {
+                  "key": "postgres_backup_command",
+                  "env": "POSTGRES_BACKUP_COMMAND",
+                  "source": "secrets.FOCUS_AGENT_POSTGRES_BACKUP_COMMAND or vars.FOCUS_AGENT_POSTGRES_BACKUP_COMMAND",
+                  "used_by": "postgres-ops --backup-command",
+              },
+              {
+                  "key": "postgres_restore_command",
+                  "env": "POSTGRES_RESTORE_COMMAND",
+                  "source": "secrets.FOCUS_AGENT_POSTGRES_RESTORE_COMMAND or vars.FOCUS_AGENT_POSTGRES_RESTORE_COMMAND",
+                  "used_by": "postgres-ops --restore-command",
+              },
+              {
+                  "key": "postgres_restore_verification_query",
+                  "env": "POSTGRES_RESTORE_VERIFICATION_QUERY",
+                  "source": "secrets.FOCUS_AGENT_POSTGRES_RESTORE_VERIFICATION_QUERY or vars.FOCUS_AGENT_POSTGRES_RESTORE_VERIFICATION_QUERY",
+                  "used_by": "postgres-ops --restore-verification-query",
+              },
+              {
+                  "key": "postgres_retention_cleanup_query",
+                  "env": "POSTGRES_RETENTION_CLEANUP_QUERY",
+                  "source": "secrets.FOCUS_AGENT_POSTGRES_RETENTION_CLEANUP_QUERY or vars.FOCUS_AGENT_POSTGRES_RETENTION_CLEANUP_QUERY",
+                  "used_by": "postgres-ops --retention-cleanup-query",
+              },
+              {
+                  "key": "otel_endpoint",
+                  "env": "OTEL_ENDPOINT",
+                  "source": "vars.FOCUS_AGENT_OTEL_ENDPOINT",
+                  "used_by": "otel-smoke --endpoint",
+              },
+              {
+                  "key": "otel_collector_health",
+                  "env": "OTEL_COLLECTOR_HEALTH_URL",
+                  "source": "vars.FOCUS_AGENT_OTEL_COLLECTOR_HEALTH_URL",
+                  "used_by": "otel-smoke --collector-health-url",
+              },
+              {
+                  "key": "otel_trace_query",
+                  "env": "OTEL_TRACE_QUERY_URL",
+                  "source": "vars.FOCUS_AGENT_OTEL_TRACE_QUERY_URL",
+                  "used_by": "otel-smoke --trace-query-url",
+              },
+              {
+                  "key": "governance_report",
+                  "env": "GOVERNANCE_REPORT_JSON",
+                  "source": "job.env.GOVERNANCE_REPORT_JSON",
+                  "used_by": "release-evidence --governance-report-json",
+              },
+          ]
+
+          records = []
+          missing = []
+          invalid = []
+          for mapping in mappings:
+              value = os.environ.get(mapping["env"], "")
+              if dry_run and mapping["key"] == "approval_id":
+                  value = f"gha-dry-run-{run_id}"
+              if dry_run and mapping["key"] == "approval_status":
+                  value = "approved"
+              present = bool(value)
+              required = bool(mapping.get("required_in_production", True))
+              if production and required and not present:
+                  missing.append(mapping["key"])
+              record = dict(mapping)
+              record.update(
+                  {
+                      "present": present,
+                      "required_in_production": required,
+                      "value": value,
+                  }
+              )
+              records.append(record)
+
+          if production and os.environ.get("APPROVAL_STATUS") != "approved":
+              invalid.append("approval_status")
+          if production and not (os.environ.get("STREAM_EVENTS_REPORT_URL") or os.environ.get("STREAM_EVENTS_URL")):
+              missing.append("stream_events")
+
+          status = "passed" if not missing and not invalid else "failed"
+          payload = {
+              "bindings": records,
+              "meta": {
+                  "ci_provider": "github_actions",
+                  "dry_run": dry_run,
+                  "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                  "suite": "deployment_binding",
+              },
+              "summary": {
+                  "binding_count": len(records),
+                  "invalid": invalid,
+                  "missing": missing,
+                  "mode": "dry_run" if dry_run else "production",
+                  "status": status,
+              },
+          }
+          target = Path(os.environ["DEPLOYMENT_BINDING_JSON"])
+          target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          if production and status != "passed":
+              print(json.dumps(payload["summary"], ensure_ascii=False), file=sys.stderr)
+              raise SystemExit(1)
+          PY
+
+      - name: Run release gate dry-run
+        if: env.DRY_RUN == 'true'
+        run: make release-gate RELEASE_GATE_ARGS="--dry-run --report-json reports/release-gate/latest.json"
+
+      - name: Run release gate
+        if: env.DRY_RUN != 'true'
+        run: make release-gate
+
+      - name: Capture production release signals
+        if: env.DRY_RUN != 'true'
+        run: |
+          mkdir -p reports/release-gate
+          test -n "$BASE_URL"
+          test -n "$READY_URL"
+          test -n "$TRAJECTORY_STATS_URL"
+          test -n "$REPLAY_COMPARISONS_URL"
+          test -n "$ALERT_REPORT_URL"
+          test -n "$POSTGRES_MIGRATION_REPORT_URL"
+          test -n "$BASELINE_EVAL_REPORT_URL"
+          test -n "$ARTIFACT_STORAGE_DIR"
+          test -n "$RETENTION_DAYS"
+          test -n "$AUTH_TOKEN"
+          test -n "$DATABASE_URI"
+          test -n "$POSTGRES_BACKUP_COMMAND"
+          test -n "$POSTGRES_RESTORE_COMMAND"
+          test -n "$POSTGRES_RESTORE_VERIFICATION_QUERY"
+          test -n "$POSTGRES_RETENTION_CLEANUP_QUERY"
+          test -n "$OTEL_ENDPOINT"
+          test -n "$OTEL_COLLECTOR_HEALTH_URL"
+          test -n "$OTEL_TRACE_QUERY_URL"
+          curl --fail --show-error --silent "$READY_URL" > reports/release-gate/readyz.json
+          curl --fail --show-error --silent "$TRAJECTORY_STATS_URL" > reports/release-gate/trajectory-stats.json
+          curl --fail --show-error --silent "$REPLAY_COMPARISONS_URL" > reports/release-gate/replay-comparisons.json
+          curl --fail --show-error --silent "$ALERT_REPORT_URL" > reports/release-gate/alert-report.json
+          curl --fail --show-error --silent "$POSTGRES_MIGRATION_REPORT_URL" > reports/release-gate/postgres-migration.json
+          curl --fail --show-error --silent "$BASELINE_EVAL_REPORT_URL" > reports/release-gate/baseline-eval-smoke.json
+          stream_args=()
+          if [ -n "$STREAM_EVENTS_REPORT_URL" ]; then
+            curl --fail --show-error --silent "$STREAM_EVENTS_REPORT_URL" > reports/release-gate/stream-events.json
+            stream_args+=(--stream-events-json reports/release-gate/stream-events.json)
+          elif [ -n "$STREAM_EVENTS_URL" ]; then
+            stream_args+=(--stream-events-url "$STREAM_EVENTS_URL")
+          else
+            echo "STREAM_EVENTS_REPORT_URL or STREAM_EVENTS_URL is required for production smoke" >&2
+            exit 1
+          fi
+          uv run python scripts/production_smoke.py \
+            --base-url "$BASE_URL" \
+            --web-base-url "$BASE_URL" \
+            --auth-token "$AUTH_TOKEN" \
+            "${stream_args[@]}" \
+            --report-json reports/release-gate/production-smoke.json
+          uv run python scripts/postgres_ops.py \
+            --database-uri "$DATABASE_URI" \
+            --backup-command "$POSTGRES_BACKUP_COMMAND" \
+            --restore-command "$POSTGRES_RESTORE_COMMAND" \
+            --restore-verification-query "$POSTGRES_RESTORE_VERIFICATION_QUERY" \
+            --retention-cleanup-query "$POSTGRES_RETENTION_CLEANUP_QUERY" \
+            --report-json reports/release-gate/postgres-ops.json
+          uv run python scripts/otel_smoke.py \
+            --endpoint "$OTEL_ENDPOINT" \
+            --collector-health-url "$OTEL_COLLECTOR_HEALTH_URL" \
+            --trace-query-url "$OTEL_TRACE_QUERY_URL" \
+            --service-name focus-agent \
+            --report-json reports/release-gate/otel-smoke.json
+          test -s "$GOVERNANCE_REPORT_JSON"
+
+      - name: Build dry-run release evidence
+        if: env.DRY_RUN == 'true'
+        run: |
+          make release-evidence RELEASE_EVIDENCE_ARGS="--dry-run --release-id ${RELEASE_ID:-${GITHUB_SHA::7}} --approval-id gha-dry-run-${GITHUB_RUN_ID} --approval-status approved --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR}"
+
+      - name: Build production release evidence
+        if: env.DRY_RUN != 'true'
+        run: |
+          test -n "$RELEASE_ID"
+          test -n "$APPROVAL_ID"
+          test "$APPROVAL_STATUS" = "approved"
+          make release-evidence RELEASE_EVIDENCE_ARGS="--release-id ${RELEASE_ID} --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR} --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json ${GOVERNANCE_REPORT_JSON} --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+
+      - name: Upload release gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-reports-${{ github.run_id }}
+          path: reports/release-gate/
+          retention-days: ${{ fromJSON(env.RETENTION_DAYS) }}
+          if-no-files-found: ignore

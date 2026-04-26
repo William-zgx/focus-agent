@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from copy import deepcopy
 import re
 import uuid
 
@@ -9,7 +7,6 @@ from langchain.messages import HumanMessage, SystemMessage
 from langgraph_sdk import get_sync_client
 
 from ..core.branching import (
-    BranchMeta,
     BranchRecord,
     BranchRole,
     BranchStatus,
@@ -18,9 +15,8 @@ from ..core.branching import (
     MergeDecision,
     MergeProposalOverrides,
     MergeProposal,
-    MergeTarget,
 )
-from ..core.merge_review import generate_merge_proposal
+from ..core.merge_review import generate_merge_proposal  # noqa: F401 - compatibility monkeypatch hook
 from ..core.request_context import RequestContext
 from ..core.types import ConversationRecord, FindingItem
 from ..memory import MemoryCurator, MemoryWriter
@@ -29,6 +25,9 @@ from ..model_registry import create_chat_model
 from ..repositories.branch_repository import BranchRepository
 from ..storage.namespaces import branch_namespace, conversation_main_namespace
 from ..config import Settings
+from .branch_lifecycle import BranchLifecycleCoordinator
+from .branch_merge import BranchMergeCoordinator
+from .branch_tree import BranchTreeCoordinator
 
 
 class BranchService:
@@ -189,6 +188,30 @@ class BranchService:
             temperature=0,
             settings=settings,
         )
+        self.lifecycle = BranchLifecycleCoordinator(self)
+        self.merge_workflow = BranchMergeCoordinator(self)
+        self.tree_view = BranchTreeCoordinator(self)
+
+    def _lifecycle_coordinator(self) -> BranchLifecycleCoordinator:
+        coordinator = getattr(self, "lifecycle", None)
+        if coordinator is None:
+            coordinator = BranchLifecycleCoordinator(self)
+            self.lifecycle = coordinator
+        return coordinator
+
+    def _merge_coordinator(self) -> BranchMergeCoordinator:
+        coordinator = getattr(self, "merge_workflow", None)
+        if coordinator is None:
+            coordinator = BranchMergeCoordinator(self)
+            self.merge_workflow = coordinator
+        return coordinator
+
+    def _tree_coordinator(self) -> BranchTreeCoordinator:
+        coordinator = getattr(self, "tree_view", None)
+        if coordinator is None:
+            coordinator = BranchTreeCoordinator(self)
+            self.tree_view = coordinator
+        return coordinator
 
     def _persist_branch_findings_to_branch_memory(
         self,
@@ -904,91 +927,15 @@ class BranchService:
         branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
         fork_checkpoint_id: str | None = None,
     ) -> BranchRecord:
-        self._ensure_parent_thread_access(parent_thread_id=parent_thread_id, user_id=user_id)
-        parent_config = {'configurable': {'thread_id': parent_thread_id}}
-        parent_snapshot = self.graph.get_state(parent_config)
-        parent_values = deepcopy(parent_snapshot.values)
-        self._ensure_parent_branch_can_fork(
+        return self._lifecycle_coordinator().fork_branch(
             parent_thread_id=parent_thread_id,
-            parent_values=parent_values,
-        )
-        root_thread_id = self._derive_root_thread_id(parent_thread_id, parent_values)
-        next_branch_depth = self._ensure_branch_depth_allowed(
-            parent_thread_id=parent_thread_id,
-            parent_values=parent_values,
-        )
-        resolved_branch_name = self._resolve_initial_branch_name(
-            preferred_name=branch_name,
-            parent_values=parent_values,
+            user_id=user_id,
+            branch_name=branch_name,
             name_source=name_source,
-            branch_role=branch_role,
             language=language,
-        )
-        branch_id = str(uuid.uuid4())
-        child_thread_id: str
-        fork_strategy: str
-
-        if self.thread_client and fork_checkpoint_id is None:
-            copied = self.thread_client.threads.copy(parent_thread_id)
-            child_thread_id = copied['thread_id']
-            fork_strategy = 'copy_thread'
-        else:
-            child_thread_id = str(uuid.uuid4())
-            fork_strategy = 'local_snapshot_seed'
-            self.graph.update_state(
-                {'configurable': {'thread_id': child_thread_id}},
-                parent_values,
-                as_node='bootstrap_turn',
-            )
-
-        branch_meta = BranchMeta(
-            branch_id=branch_id,
-            root_thread_id=root_thread_id,
-            parent_thread_id=parent_thread_id,
-            return_thread_id=parent_thread_id,
-            branch_name=resolved_branch_name,
             branch_role=branch_role,
-            branch_depth=next_branch_depth,
-            branch_status=BranchStatus.ACTIVE,
             fork_checkpoint_id=fork_checkpoint_id,
-            fork_strategy=fork_strategy,
         )
-        branch_meta_payload = branch_meta.model_dump(mode='json')
-        branch_meta_payload['branch_name_pending_ai'] = branch_name is None
-        branch_meta_payload['branch_role_pending_ai'] = branch_role == BranchRole.EXPLORE_ALTERNATIVES
-
-        self.graph.update_state(
-            {'configurable': {'thread_id': child_thread_id}},
-            {
-                'branch_meta': branch_meta_payload,
-                'merge_proposal': None,
-                'merge_decision': None,
-                'branch_local_findings': [],
-            },
-            as_node='bootstrap_turn',
-        )
-        self.repo.ensure_thread_owner(
-            thread_id=child_thread_id,
-            root_thread_id=root_thread_id,
-            owner_user_id=user_id,
-        )
-
-        record = BranchRecord(
-            branch_id=branch_id,
-            root_thread_id=root_thread_id,
-            parent_thread_id=parent_thread_id,
-            child_thread_id=child_thread_id,
-            return_thread_id=parent_thread_id,
-            owner_user_id=user_id,
-            branch_name=resolved_branch_name,
-            branch_role=branch_role,
-            branch_depth=branch_meta.branch_depth,
-            branch_status=BranchStatus.ACTIVE,
-            fork_checkpoint_id=fork_checkpoint_id,
-            fork_strategy=fork_strategy,
-        )
-        self.repo.create(record)
-        return record
 
     def refresh_branch_role(
         self,
@@ -997,30 +944,11 @@ class BranchService:
         user_id: str,
         force: bool = False,
     ) -> BranchRecord | None:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
-        child_config = {'configurable': {'thread_id': child_thread_id}}
-        child_snapshot = self.graph.get_state(child_config)
-        child_values = deepcopy(child_snapshot.values)
-        existing_meta = dict(child_values.get('branch_meta') or {})
-        if not force and not existing_meta.get('branch_role_pending_ai'):
-            return branch_record
-
-        next_role = self._classify_branch_role(
-            thread_values=child_values,
-            current_role=branch_record.branch_role,
+        return self._lifecycle_coordinator().refresh_branch_role(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            force=force,
         )
-        if next_role == branch_record.branch_role:
-            return branch_record
-
-        self.repo.update_branch_role(branch_record.branch_id, next_role)
-        updated_record = branch_record.model_copy(update={'branch_role': next_role})
-        self.graph.update_state(
-            child_config,
-            {'branch_meta': self._branch_meta_payload_from_record(updated_record, existing_meta)},
-            as_node='bootstrap_turn',
-        )
-        return updated_record
 
     def refresh_branch_name(
         self,
@@ -1030,33 +958,12 @@ class BranchService:
         name_source: str | None = None,
         force: bool = False,
     ) -> BranchRecord | None:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
-        if not force and not branch_record.branch_name.strip():
-            force = True
-        if self.proposal_model is None and not force:
-            return branch_record
-
-        child_config = {'configurable': {'thread_id': child_thread_id}}
-        child_snapshot = self.graph.get_state(child_config)
-        child_values = deepcopy(child_snapshot.values)
-        generated_name = self._generate_branch_name(
-            thread_values=child_values,
-            branch_role=branch_record.branch_role,
+        return self._lifecycle_coordinator().refresh_branch_name(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            name_source=name_source,
+            force=force,
         )
-        next_name = self._sanitize_branch_name(generated_name, branch_role=branch_record.branch_role)
-        if not next_name or next_name == branch_record.branch_name:
-            return branch_record
-
-        self.repo.update_branch_name(branch_record.branch_id, next_name)
-        existing_meta = child_values.get('branch_meta') or {}
-        updated_record = branch_record.model_copy(update={'branch_name': next_name})
-        self.graph.update_state(
-            child_config,
-            {'branch_meta': self._branch_meta_payload_from_record(updated_record, existing_meta)},
-            as_node='bootstrap_turn',
-        )
-        return updated_record
 
     def refresh_branch_name_after_first_turn(
         self,
@@ -1075,49 +982,10 @@ class BranchService:
         child_thread_id: str,
         user_id: str,
     ) -> BranchRecord | None:
-        try:
-            self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-            child_config = {'configurable': {'thread_id': child_thread_id}}
-            child_snapshot = self.graph.get_state(child_config)
-            child_values = deepcopy(child_snapshot.values)
-            existing_meta = dict(child_values.get('branch_meta') or {})
-            pending_name = bool(existing_meta.get('branch_name_pending_ai'))
-            pending_role = bool(existing_meta.get('branch_role_pending_ai'))
-            if not pending_name and not pending_role:
-                return None
-
-            updated_record = self.repo.get_by_child_thread_id(child_thread_id)
-            if pending_role:
-                refreshed_role_record = self.refresh_branch_role(
-                    child_thread_id=child_thread_id,
-                    user_id=user_id,
-                    force=True,
-                )
-                if refreshed_role_record is not None:
-                    updated_record = refreshed_role_record
-            if pending_name:
-                refreshed_name_record = self.refresh_branch_name(
-                    child_thread_id=child_thread_id,
-                    user_id=user_id,
-                    name_source=None,
-                    force=True,
-                )
-                if refreshed_name_record is not None:
-                    updated_record = refreshed_name_record
-
-            refreshed_snapshot = self.graph.get_state(child_config)
-            refreshed_values = deepcopy(refreshed_snapshot.values)
-            refreshed_meta = dict(refreshed_values.get('branch_meta') or {})
-            refreshed_meta['branch_name_pending_ai'] = False
-            refreshed_meta['branch_role_pending_ai'] = False
-            self.graph.update_state(
-                child_config,
-                {'branch_meta': refreshed_meta},
-                as_node='bootstrap_turn',
-            )
-            return updated_record
-        except Exception:
-            return None
+        return self._lifecycle_coordinator().refresh_branch_metadata_after_first_turn(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+        )
 
     def rename_branch(
         self,
@@ -1126,25 +994,11 @@ class BranchService:
         user_id: str,
         branch_name: str,
     ) -> BranchRecord:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
-        next_name = self._sanitize_branch_name(branch_name, branch_role=branch_record.branch_role)
-        self.repo.update_branch_name(branch_record.branch_id, next_name)
-        child_config = {'configurable': {'thread_id': child_thread_id}}
-        snapshot = self.graph.get_state(child_config)
-        values = deepcopy(snapshot.values)
-        updated_record = branch_record.model_copy(update={'branch_name': next_name})
-        updated_meta = self._branch_meta_payload_from_record(
-            updated_record,
-            existing_meta=dict(values.get('branch_meta') or {}),
+        return self._lifecycle_coordinator().rename_branch(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            branch_name=branch_name,
         )
-        updated_meta['branch_name_pending_ai'] = False
-        self.graph.update_state(
-            child_config,
-            {'branch_meta': updated_meta},
-            as_node='bootstrap_turn',
-        )
-        return updated_record
 
     def refresh_conversation_title_after_first_turn(
         self,
@@ -1152,23 +1006,10 @@ class BranchService:
         root_thread_id: str,
         user_id: str,
     ) -> ConversationRecord | None:
-        try:
-            self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
-            record = self.repo.get_conversation(root_thread_id)
-            if not record.title_pending_ai:
-                return None
-            snapshot = self.graph.get_state({'configurable': {'thread_id': root_thread_id}})
-            values = deepcopy(getattr(snapshot, 'values', {}) or {})
-            generated_name = self._generate_conversation_name(thread_values=values)
-            next_title = self._sanitize_branch_name(generated_name, branch_role=BranchRole.MAIN)
-            return self.repo.update_conversation_title(
-                root_thread_id=root_thread_id,
-                owner_user_id=user_id,
-                title=next_title,
-                title_pending_ai=False,
-            )
-        except Exception:
-            return None
+        return self._lifecycle_coordinator().refresh_conversation_title_after_first_turn(
+            root_thread_id=root_thread_id,
+            user_id=user_id,
+        )
 
     def _set_conversation_archive_state(
         self,
@@ -1177,10 +1018,9 @@ class BranchService:
         user_id: str,
         is_archived: bool,
     ) -> ConversationRecord:
-        self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
-        return self.repo.update_conversation_archive_state(
+        return self._lifecycle_coordinator().set_conversation_archive_state(
             root_thread_id=root_thread_id,
-            owner_user_id=user_id,
+            user_id=user_id,
             is_archived=is_archived,
         )
 
@@ -1199,60 +1039,10 @@ class BranchService:
         )
 
     def prepare_merge_proposal(self, *, child_thread_id: str, user_id: str) -> MergeProposal:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
-        self._ensure_branch_not_merged(branch_record)
-        child_config = {'configurable': {'thread_id': child_thread_id}}
-        snapshot = self.graph.get_state(child_config)
-        values = deepcopy(snapshot.values)
-        self.repo.update_status(branch_record.branch_id, BranchStatus.PREPARING_MERGE_REVIEW)
-        preparing_record = self.repo.get(branch_record.branch_id)
-        self.graph.update_state(
-            child_config,
-            {
-                'branch_meta': self._branch_meta_payload_from_record(
-                    preparing_record,
-                    existing_meta=dict(values.get('branch_meta') or {}),
-                ),
-            },
-            as_node='bootstrap_turn',
+        return self._merge_coordinator().prepare_merge_proposal(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
         )
-        self._persist_branch_findings_to_branch_memory(
-            branch_record=branch_record,
-            findings=list(values.get('branch_local_findings', [])),
-        )
-        try:
-            proposal = generate_merge_proposal(self.proposal_model, values, values.get('branch_meta'))
-            self.repo.save_merge_proposal(branch_record.branch_id, proposal)
-            self.repo.update_status(branch_record.branch_id, BranchStatus.AWAITING_MERGE_REVIEW)
-            updated_record = self.repo.get(branch_record.branch_id)
-
-            self.graph.update_state(
-                child_config,
-                {
-                    'merge_proposal': proposal.model_dump(mode='json'),
-                    'branch_meta': self._branch_meta_payload_from_record(
-                        updated_record,
-                        existing_meta=dict(values.get('branch_meta') or {}),
-                    ),
-                },
-                as_node='summarize_turn',
-            )
-            return proposal
-        except Exception:
-            self.repo.update_status(branch_record.branch_id, BranchStatus.ACTIVE)
-            reverted_record = self.repo.get(branch_record.branch_id)
-            self.graph.update_state(
-                child_config,
-                {
-                    'branch_meta': self._branch_meta_payload_from_record(
-                        reverted_record,
-                        existing_meta=dict(values.get('branch_meta') or {}),
-                    ),
-                },
-                as_node='bootstrap_turn',
-            )
-            raise
 
     def apply_merge_decision(
         self,
@@ -1262,206 +1052,25 @@ class BranchService:
         context: RequestContext,
         proposal_overrides: MergeProposalOverrides | None = None,
     ) -> ImportedConclusion | None:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=context.user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
-        self._ensure_branch_not_merged(branch_record)
-        child_config = {'configurable': {'thread_id': child_thread_id}}
-        snapshot = self.graph.get_state(child_config)
-        values = deepcopy(snapshot.values)
-        proposal_dict = values.get('merge_proposal') or branch_record.merge_proposal
-        if not proposal_dict:
-            raise ValueError('No merge proposal found for this child thread.')
-        proposal = self._apply_merge_proposal_overrides(
-            proposal=MergeProposal.model_validate(proposal_dict),
-            overrides=proposal_overrides,
+        return self._merge_coordinator().apply_merge_decision(
+            child_thread_id=child_thread_id,
+            decision=decision,
+            context=context,
+            proposal_overrides=proposal_overrides,
         )
-        if proposal_overrides is not None:
-            self.repo.save_merge_proposal(branch_record.branch_id, proposal)
-
-        self.repo.save_merge_decision(branch_record.branch_id, decision)
-        self.graph.update_state(
-            child_config,
-            {
-                'merge_proposal': proposal.model_dump(mode='json'),
-                'merge_decision': decision.model_dump(mode='json'),
-            },
-            as_node='maybe_interrupt_for_merge',
-        )
-
-        if not decision.approved or decision.mode.value == 'none':
-            self.repo.update_status(branch_record.branch_id, BranchStatus.DISCARDED)
-            discarded_record = self.repo.get(branch_record.branch_id)
-            self.graph.update_state(
-                child_config,
-                {
-                    'branch_meta': self._branch_meta_payload_from_record(
-                        discarded_record,
-                        existing_meta=dict(values.get('branch_meta') or {}),
-                    )
-                },
-                as_node='bootstrap_turn',
-            )
-            return None
-
-        artifacts = proposal.artifacts
-        if decision.mode.value == 'selected_artifacts' and decision.selected_artifacts:
-            allowed = set(decision.selected_artifacts)
-            artifacts = [a for a in proposal.artifacts if a in allowed]
-
-        imported = ImportedConclusion(
-            branch_id=branch_record.branch_id,
-            branch_name=branch_record.branch_name,
-            mode=decision.mode,
-            summary=proposal.summary,
-            key_findings=proposal.key_findings,
-            evidence_refs=proposal.evidence_refs if decision.mode.value != 'summary_only' else [],
-            artifacts=artifacts,
-            rationale=decision.rationale,
-        )
-
-        imported_findings = [
-            FindingItem(
-                finding=item,
-                evidence_refs=proposal.evidence_refs if decision.mode.value != 'summary_only' else [],
-                source_branch_id=branch_record.branch_id,
-            )
-            for item in proposal.key_findings
-        ]
-
-        target_thread_id = (
-            branch_record.root_thread_id
-            if decision.target == MergeTarget.ROOT_THREAD
-            else branch_record.return_thread_id
-        )
-        target_config = {'configurable': {'thread_id': target_thread_id}}
-        target_snapshot = self.graph.get_state(target_config)
-        target_values = deepcopy(getattr(target_snapshot, "values", {}) or {})
-        import_notice = SystemMessage(content=self._imported_conclusion_message(imported))
-        self.graph.update_state(
-            target_config,
-            {
-                'messages': [import_notice],
-                'rolling_summary': self._append_imported_summary(
-                    target_values.get('rolling_summary'),
-                    imported,
-                ),
-                'merge_queue': [imported.model_dump(mode='json')],
-                'imported_findings': [finding.model_dump(mode='json') for finding in imported_findings],
-            },
-            as_node='bootstrap_turn',
-        )
-        is_returning_to_root_main = target_thread_id == branch_record.root_thread_id
-        if self.store is not None and is_returning_to_root_main:
-            memory_context = RequestContext(
-                user_id=context.user_id,
-                root_thread_id=branch_record.root_thread_id,
-                parent_thread_id=target_thread_id,
-                branch_id=branch_record.branch_id,
-                branch_role=branch_record.branch_role.value,
-            )
-            self._write_imported_conclusion_to_main_memory(
-                branch_record=branch_record,
-                context=memory_context,
-                imported=imported,
-            )
-            self.promote_branch_findings_to_main_memory(
-                branch_record=branch_record,
-                findings=list(values.get('branch_local_findings', [])),
-                memory_context=memory_context,
-            )
-            if self._last_memory_curator_decision is not None:
-                self.graph.update_state(
-                    target_config,
-                    {
-                        'memory_curator_decision': self._last_memory_curator_decision,
-                        'plan_meta': {
-                            **dict(target_values.get('plan_meta') or {}),
-                            'memory_curator_decision': self._last_memory_curator_decision,
-                        },
-                    },
-                    as_node='bootstrap_turn',
-                )
-        self.repo.update_status(branch_record.branch_id, BranchStatus.MERGED)
-        merged_record = self.repo.get(branch_record.branch_id)
-        self.graph.update_state(
-            child_config,
-            {
-                'branch_meta': self._branch_meta_payload_from_record(
-                    merged_record,
-                    existing_meta=dict(values.get('branch_meta') or {}),
-                )
-            },
-            as_node='bootstrap_turn',
-        )
-        return imported
 
     def get_branch_tree(self, *, root_thread_id: str, user_id: str) -> BranchTreeNode:
-        self._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
-        records = self.repo.list_by_root_thread_id(root_thread_id)
-        try:
-            conversation = self.repo.get_conversation(root_thread_id)
-            root_branch_name = conversation.title
-        except Exception:
-            root_branch_name = 'main'
-        by_parent: dict[str, list[BranchRecord]] = defaultdict(list)
-        for record in records:
-            if record.is_archived:
-                continue
-            by_parent[record.parent_thread_id].append(record)
-
-        return BranchTreeNode(
-            thread_id=root_thread_id,
-            root_thread_id=root_thread_id,
-            branch_name=root_branch_name,
-            branch_role=BranchRole.MAIN,
-            branch_status=BranchStatus.ACTIVE,
-            is_archived=False,
-            branch_depth=0,
-            children=[self._build_tree_node(child, by_parent) for child in by_parent.get(root_thread_id, [])],
-        )
+        return self._tree_coordinator().get_branch_tree(root_thread_id=root_thread_id, user_id=user_id)
 
     def list_archived_branches(self, *, root_thread_id: str, user_id: str) -> list[BranchTreeNode]:
-        self._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
-        records = self.repo.list_by_root_thread_id(root_thread_id)
-        archived_records = [record for record in records if record.is_archived]
-        archived_records.sort(key=lambda record: (record.branch_depth, record.branch_name, record.child_thread_id))
-        return [
-            BranchTreeNode(
-                thread_id=record.child_thread_id,
-                root_thread_id=record.root_thread_id,
-                parent_thread_id=record.parent_thread_id,
-                branch_id=record.branch_id,
-                branch_name=record.branch_name,
-                branch_role=record.branch_role,
-                branch_status=record.branch_status,
-                is_archived=True,
-                archived_at=record.archived_at,
-                branch_depth=record.branch_depth,
-                fork_strategy=record.fork_strategy,
-            )
-            for record in archived_records
-        ]
+        return self._tree_coordinator().list_archived_branches(root_thread_id=root_thread_id, user_id=user_id)
 
     def _set_branch_archive_state(self, *, child_thread_id: str, user_id: str, is_archived: bool) -> BranchRecord:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
-        self.repo.update_archive_state(branch_record.branch_id, is_archived=is_archived)
-        updated_record = self.repo.get(branch_record.branch_id)
-
-        if self.graph is not None:
-            child_config = {'configurable': {'thread_id': child_thread_id}}
-            snapshot = self.graph.get_state(child_config)
-            values = deepcopy(snapshot.values)
-            branch_meta = self._branch_meta_payload_from_record(
-                updated_record,
-                existing_meta=dict(values.get('branch_meta') or {}),
-            )
-            self.graph.update_state(
-                child_config,
-                {'branch_meta': branch_meta},
-                as_node='bootstrap_turn',
-            )
-        return updated_record
+        return self._tree_coordinator().set_branch_archive_state(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            is_archived=is_archived,
+        )
 
     def archive_branch(self, *, child_thread_id: str, user_id: str) -> BranchRecord:
         return self._set_branch_archive_state(child_thread_id=child_thread_id, user_id=user_id, is_archived=True)

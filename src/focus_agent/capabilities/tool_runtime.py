@@ -79,6 +79,13 @@ class ToolInvocationTimeoutError(TimeoutError):
         super().__init__(f"Tool '{tool_name}' timed out after {timeout_seconds:g}s.")
 
 
+class ToolParameterValidationError(ValueError):
+    def __init__(self, *, tool_name: str, error: Exception | str) -> None:
+        self.tool_name = tool_name
+        self.validation_error = str(error)
+        super().__init__(f"Tool '{tool_name}' parameter validation failed: {error}")
+
+
 def execute_tool_calls(
     tool_calls: list[ToolExecutionInput],
     *,
@@ -261,6 +268,12 @@ def _execute_single(
     parallel_batch_size: int | None,
 ) -> ToolExecutionResult:
     started_at = time.perf_counter()
+    if item.runtime.side_effect:
+        _emit_runtime_tool_event(
+            item=item,
+            stage="serialized_side_effect",
+            side_effect_kind=item.runtime.side_effect_kind,
+        )
     with start_trace_span(
         name="focus_agent.tool",
         attributes={
@@ -297,7 +310,13 @@ def _execute_single_untraced(
 ) -> ToolExecutionResult:
     try:
         if item.runtime.validator is not None:
-            item.runtime.validator(item.args)
+            try:
+                item.runtime.validator(item.args)
+            except Exception as validation_exc:  # noqa: BLE001
+                raise ToolParameterValidationError(
+                    tool_name=item.tool_name,
+                    error=validation_exc,
+                ) from validation_exc
         cache_key = _cache_key(item=item, cache_scope_key=cache_scope_key)
         if cache_key and cache_store is not None and cache_store.get(cache_key) is not None:
             observation = cache_store.get(cache_key) or ""
@@ -330,7 +349,12 @@ def _execute_single_untraced(
                 ),
             )
     except Exception as exc:  # noqa: BLE001
-        _emit_runtime_tool_event(item=item, stage="error", error=str(exc))
+        _emit_runtime_tool_event(
+            item=item,
+            stage=_error_stage_for_exception(exc),
+            error=str(exc),
+            **_error_event_payload(exc),
+        )
         return ToolExecutionResult(
             index=item.index,
             message=build_tool_error_message(
@@ -338,6 +362,7 @@ def _execute_single_untraced(
                 tool_name=item.tool_name,
                 args=item.args,
                 error=exc,
+                runtime_info=_runtime_info_for_error(exc=exc, parallel_batch_size=parallel_batch_size),
             ),
         )
 
@@ -365,6 +390,7 @@ def _execute_single_untraced(
                     "cache_hit": False,
                     "fallback_used": False,
                     "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                    **_side_effect_runtime_info(item),
                     **trim_runtime,
                 },
             ),
@@ -522,10 +548,12 @@ def _effective_timeout_seconds(runtime: ToolRuntimeMeta) -> float | None:
 
 
 def _should_bypass_fallback(error: Exception) -> bool:
-    return isinstance(error, (ToolInvocationTimeoutError, FutureCancelledError))
+    return isinstance(error, (ToolInvocationTimeoutError, FutureCancelledError, ToolParameterValidationError))
 
 
 def _error_stage_for_exception(error: Exception) -> str:
+    if isinstance(error, ToolParameterValidationError):
+        return "validation_error"
     if isinstance(error, ToolInvocationTimeoutError):
         return "timeout"
     if isinstance(error, FutureCancelledError):
@@ -534,6 +562,8 @@ def _error_stage_for_exception(error: Exception) -> str:
 
 
 def _error_event_payload(error: Exception) -> dict[str, Any]:
+    if isinstance(error, ToolParameterValidationError):
+        return {"validation_error": error.validation_error}
     if isinstance(error, ToolInvocationTimeoutError):
         return {"timeout_seconds": error.timeout_seconds}
     return {}
@@ -554,6 +584,18 @@ def _runtime_info_for_error(
         runtime_info["timeout_seconds"] = exc.timeout_seconds
     if isinstance(exc, FutureCancelledError):
         runtime_info["cancelled"] = True
+    if isinstance(exc, ToolParameterValidationError):
+        runtime_info["validation_failed"] = True
+        runtime_info["validation_error"] = exc.validation_error
+    return runtime_info
+
+
+def _side_effect_runtime_info(item: ToolExecutionInput) -> dict[str, Any]:
+    if not item.runtime.side_effect:
+        return {}
+    runtime_info: dict[str, Any] = {"side_effect_serialized": True}
+    if item.runtime.side_effect_kind:
+        runtime_info["side_effect_kind"] = item.runtime.side_effect_kind
     return runtime_info
 
 

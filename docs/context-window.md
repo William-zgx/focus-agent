@@ -141,3 +141,17 @@ Web hooks 位于 `apps/web/src/features/thread/use-thread-context.ts`：
 - manual compact 不删除 messages。
 - merged branch compact 应被拒绝。
 - Web Context Meter 的百分比、`k/M` 标记格式和 hover/focus 浮层应保持可读。
+
+## Context Quality 回归指标
+
+`scripts/memory_context_eval.py` 的 memory/context suite 会对压缩样本额外计算 semantic quality 指标，用来衡量 `rolling_summary` 和 `context_compaction` 是否保留了可回答性，而不是只看上下文长度是否下降。
+
+压缩样本通过 case id、tags 或 `rolling_summary` marker 识别。报告中的新增字段包括：
+
+- `context_compaction_semantic_recall`：压缩后回答是否仍召回 required facts
+- `context_compaction_semantic_precision`：压缩后是否没有带入 forbidden facts 或 stale context markers
+- `context_compaction_semantic_grounding`：压缩后 context 是否仍包含 required context markers 和 artifact refs
+- `context_compaction_semantic_quality`：recall、precision、grounding、answerability 的均值
+- `context_compaction_semantic_drift`：出现 required fact 丢失、context marker 丢失、污染或 stale marker 时记为 drift
+
+Memory Regression Dashboard 的 trend JSON 会把这些指标按 `candidate/reviewed/promoted/golden` 阶段汇总，并在 drift 或 pollution 出现时写入 `pollution_alerts`。

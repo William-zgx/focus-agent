@@ -211,7 +211,32 @@ Self Repair records structured failure candidates such as planning gaps, tool de
 
 Review Queue turns governance uncertainty into pending human-review items. It should expose risk rather than pretending the system is certain.
 
-## 10. Context Engineering
+### Observe-First Autonomy Outputs
+
+The autonomy surface is intentionally report-first before it is action-first. When governance is enabled without enforcement, it may emit:
+
+- skill selection: `skill_scout` role decisions use `skills_list` and `skill_view` to recommend prompt-first skills and toolsets.
+- branch suggestion: delegated role decisions include `run_isolation_key` values such as `role:planner`, `role:executor`, and `role:skill_scout`; these are branch/run hints, not background spawns.
+- risk-aware workflow policy: denied high-risk workspace tools are represented as `tool_denied` failure records and `agent_review_queue` items.
+- model routing report: high-risk tool usage can produce a Model Router observe-mode rationale while keeping `effective_model` equal to the selected model.
+
+Observe mode must not execute high-risk actions by itself. It records skill, branch, model, and review evidence for the governance console so a human or later enforcement flag can make the execution decision explicitly.
+
+## 10. Ownership Audit Dashboard
+
+Ownership audit events live in `src/focus_agent/security/ownership.py` and can be exported as individual trajectory-compatible records or as a dashboard report.
+
+The dashboard report aggregates:
+
+- total allow and deny counts
+- deny rate
+- deny reasons
+- denies by resource type, action, and principal
+- deny trend in event order with request ids
+
+The report export uses the `ownership.audit.report` tool name and keeps the aggregated payload under `runtime`. It is meant for dashboard and trajectory inspection only; it does not change the underlying thread or branch ownership decision.
+
+## 11. Context Engineering
 
 Context Engineering lives in `src/focus_agent/agent_context_engineering.py`.
 
@@ -224,7 +249,7 @@ It records:
 
 The purpose is not to create prettier summaries. It is to keep the prompt surface scoped, auditable, and role-appropriate. Long tool observations can become artifact references so the prompt sees a compact summary while replay and humans can still inspect the evidence.
 
-## 11. Task Ledger, Artifact Synthesis, Critic Gate
+## 12. Task Ledger, Artifact Synthesis, Critic Gate
 
 Task Ledger and Critic Gate live in `src/focus_agent/agent_task_ledger.py`.
 
@@ -272,7 +297,7 @@ flowchart TD
     Synthesis --> Final["final answer evidence"]
 ```
 
-## 12. Observability Surface
+## 13. Observability Surface
 
 Governance records are copied into trajectory `plan_meta` so they can be inspected through:
 
@@ -284,7 +309,7 @@ Governance records are copied into trajectory `plan_meta` so they can be inspect
 
 This means a failed turn should be diagnosable by looking at the route, tool decisions, model route, context decisions, task ledger, artifacts, and critic verdict, rather than only reading the final answer.
 
-## 13. Eval Gate
+## 14. Eval Gate
 
 Run this gate whenever role routing, planning, tool policy, memory preview, or model fallback behavior changes:
 

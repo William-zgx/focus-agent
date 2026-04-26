@@ -1,0 +1,70 @@
+name: Nightly Regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 19 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  nightly-regression:
+    name: Nightly regression reports
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Restore nightly trend history
+        uses: actions/cache/restore@v4
+        with:
+          path: reports/nightly/history
+          key: nightly-regression-history-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            nightly-regression-history-${{ github.ref_name }}-
+            nightly-regression-history-
+
+      - name: Build memory/context nightly report
+        run: make nightly-regression
+
+      - name: Build Agent governance quality report
+        run: make agent-governance-report
+
+      - name: Ensure nightly trend history directory
+        if: always()
+        run: mkdir -p reports/nightly/history
+
+      - name: Save nightly trend history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: reports/nightly/history
+          key: nightly-regression-history-${{ github.ref_name }}-${{ github.run_id }}
+
+      - name: Upload nightly reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-regression-${{ github.run_id }}
+          path: |
+            reports/nightly/
+            reports/agent-governance/
+            reports/release-gate/memory-context-*.json
+          retention-days: 30
+          if-no-files-found: ignore
