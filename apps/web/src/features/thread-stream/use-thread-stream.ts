@@ -5,6 +5,7 @@ import {
   type ThreadStateResponse,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { queryKeys } from "@/shared/query/query-keys";
@@ -134,6 +135,7 @@ export function patchThreadEntry(
 export function useThreadStream(options: UseThreadStreamOptions) {
   const { client } = useFocusAgent();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const activeRequestIdsRef = useRef<Map<string, string>>(new Map());
   const [threadEntries, setThreadEntries] = useState<Record<string, ThreadStreamEntry>>({});
@@ -208,6 +210,26 @@ export function useThreadStream(options: UseThreadStreamOptions) {
               queryKeys.thread(requestThreadId),
               threadState as unknown as ThreadStateResponse,
             );
+          }
+        }
+        if (event.event === "branch.action.executed") {
+          const navigation = event.data.navigation ?? event.data.branch_action?.navigation;
+          if (
+            navigation &&
+            typeof navigation.root_thread_id === "string" &&
+            typeof navigation.thread_id === "string"
+          ) {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(navigation.root_thread_id) });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.thread(requestThreadId) });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.thread(navigation.thread_id) });
+            void navigate({
+              to: "/c/$conversationId/t/$threadId",
+              params: {
+                conversationId: navigation.root_thread_id,
+                threadId: navigation.thread_id,
+              },
+            });
           }
         }
         if (

@@ -67,6 +67,8 @@ def update_conversation(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _conversation_response(
@@ -88,6 +90,8 @@ def archive_conversation(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _conversation_response(
@@ -109,6 +113,8 @@ def activate_conversation(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _conversation_response(
@@ -214,6 +220,54 @@ def get_thread_snapshot(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return ThreadStateResponse.model_validate(result)
+
+@router.post('/v1/threads/{thread_id}/branch-actions/{action_id}/execute', response_model=BranchActionExecuteResponse)
+def execute_thread_branch_action(
+    thread_id: str,
+    action_id: str,
+    request: Request,
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+) -> BranchActionExecuteResponse:
+    try:
+        result = chat.execute_branch_action(
+            thread_id=thread_id,
+            action_id=action_id,
+            user_id=principal.user_id,
+            request_id=getattr(request.state, "request_id", None),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return BranchActionExecuteResponse.model_validate(result)
+
+@router.post('/v1/threads/{thread_id}/branch-actions/{action_id}/dismiss', response_model=ThreadStateResponse)
+def dismiss_thread_branch_action(
+    thread_id: str,
+    action_id: str,
+    request: Request,
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+) -> ThreadStateResponse:
+    try:
+        result = chat.dismiss_branch_action(
+            thread_id=thread_id,
+            action_id=action_id,
+            user_id=principal.user_id,
+            request_id=getattr(request.state, "request_id", None),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ThreadStateResponse.model_validate(result)
 
 @router.post('/v1/threads/{thread_id}/context/preview', response_model=ThreadContextPreviewResponse)

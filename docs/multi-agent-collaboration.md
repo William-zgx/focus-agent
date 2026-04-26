@@ -68,7 +68,36 @@ P36-P44 已继续推进到真实环境信号、历史趋势、阈值门禁和人
 - P42 Eval Dataset Ops：candidate import / review 增加 source explanation、candidate aging、duplicate reason、PII redaction summary 和 promotion review SLA，继续禁止自动写 golden dataset。
 - P43 Governance Quality Gate：`scripts/agent_governance_report.py` 增加 delegation、critic、review backlog、cost/token/tool-call threshold signals；production `release-health` 必须读取 `--governance-report-json`，并阻断 blocking signal。
 - P44 Docs / Ops Pack：本文、deep research、roadmap、release checklist、observability runbook 与 deployment docs 同步 P36-P44 状态。
+- Branch Action：聊天里的“切换/创建分支”意图已经收口为结构化 proposal。模型只能提出 `branch_actions`，用户点击确认或回复明确确认后才会调用 execute 接口；执行成功返回 `navigation` 并按现有分支创建体验跳转，失败会回写 action error 与 audit event。
 - Memory / Context 质量先以 deterministic probe 落地，覆盖 required markers、forbidden stale markers、最大上下文长度。
+
+## Branch Action 协同开发收口
+
+本轮 Branch Action 修复的是“助手说已切换分支，但前端没有进入新分支”的产品断层。最终实现遵循 Contract -> Backend -> Frontend -> Prompt Guard -> Audit -> Tests -> Docs 的多 Agent 合并顺序。
+
+| 模块 | 当前实现 | 兼容边界 |
+|---|---|---|
+| Contract | `BranchActionProposal`、`BranchActionNavigation`、`BranchActionExecuteResponse`，`ThreadStateResponse.branch_actions` additive 字段 | 不删除现有 REST / SDK 字段 |
+| Backend | `POST /v1/threads/{thread_id}/branch-actions/{action_id}/execute` 与 `/dismiss`；proposal / execute / dismiss / failed 存入 thread state | 不做数据库 schema migration |
+| Chat UX | 分支意图先生成确认卡；明确文字确认才执行 pending action | 不解析助手自由文本来执行状态变更 |
+| Frontend | 确认卡复用聊天气泡和 toolbar button；执行成功刷新 thread / branch tree / conversations 并导航到新分支 | 分支树仍是最终状态来源 |
+| Guardrail | execution prompt 明确禁止模型在没有真实 execution result 前声称“已切换/已创建” | 不开放默认 mutating branch tool 给模型 |
+| Audit | `branch_action_audit` 记录 principal、thread、action、kind、decision、reason、request id | 只追加 state key，不改变持久化 schema |
+
+验证重点：
+
+```bash
+uv run pytest tests/test_chat_service.py tests/test_api_shapes.py tests/test_state_schema.py tests/test_auth_ownership.py tests/test_graph_builder.py
+node --test tests/test_thread_stream_frontend_regressions.mjs
+make contract-check
+make sdk-check
+make web-check
+```
+
+真实浏览器 smoke 需要覆盖两条路径：
+
+- 点击确认卡：pending card -> `execute` -> 新建同级/子分支 -> URL 进入 returned `navigation.thread_id`。
+- 文字确认：pending card 后回复“直接切过去” -> SSE `branch.action.executed` -> query cache 刷新 -> URL 进入新分支。
 
 ## 默认验证命令
 

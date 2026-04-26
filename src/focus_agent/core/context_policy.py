@@ -1686,6 +1686,7 @@ def _branch_scope_block(*, branch_meta: dict[str, Any], is_branch: bool) -> str:
         "- This branch may later be reviewed for upstream import into its return thread.",
         "- Do not assume local branch findings are upstream facts until they are explicitly approved.",
         "- Prepare import-worthy findings clearly, but treat them as local until approved.",
+        "- Branch switches or new branches remain pending until a structured Branch Action is confirmed and executed.",
     ]
 
     lines = [
@@ -1708,7 +1709,8 @@ def _mode_instructions(mode: PromptMode) -> str:
         PromptMode.EXECUTE: (
             "## Prompt mode\n"
             "- execute\n"
-            "- Prioritize concrete next steps, follow user constraints closely, and avoid speculative branches."
+            "- Prioritize concrete next steps, follow user constraints closely, and avoid speculative branches.\n"
+            "- Do not claim branch changes are complete until a structured Branch Action or branch API result succeeds."
         ),
         PromptMode.SYNTHESIZE: (
             "## Prompt mode\n"

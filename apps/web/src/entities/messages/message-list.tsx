@@ -1,4 +1,5 @@
 import type {
+  FocusAgentBranchActionProposal,
   FocusAgentToolCallEvent,
   FocusAgentToolEvent,
   TurnFailedPayload,
@@ -16,8 +17,13 @@ interface MessageListProps {
   streamToolCalls?: FocusAgentToolCallEvent[];
   streamToolEvents?: FocusAgentToolEvent[];
   streamFailed?: TurnFailedPayload;
+  branchActions?: FocusAgentBranchActionProposal[];
+  branchActionErrors?: Record<string, string>;
+  branchActionInFlightId?: string | null;
   isChineseUi?: boolean;
   onEditMessage?: (message: { id: string; content: string }) => void;
+  onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
+  onDismissBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 }
 
 interface TranscriptDisplayMessage {
@@ -485,17 +491,6 @@ function buildTranscriptItems(
       totalTokens: 0,
     });
     return items;
-  }
-
-  const lastItem = items.at(-1);
-  if (lastItem?.kind === "tool-activity" && lastItem.summaryText) {
-    items.push({
-      kind: "message",
-      id: `${lastItem.id}-summary`,
-      type: "ai",
-      content: lastItem.summaryText,
-      totalTokens: 0,
-    });
   }
 
   return items;
@@ -1186,6 +1181,111 @@ function AgentRunBubble({
   );
 }
 
+function branchActionTitle(action: FocusAgentBranchActionProposal, isChineseUi: boolean) {
+  if (action.kind === "fork_sibling_branch") {
+    return isChineseUi ? "切换到同级分支" : "Switch to sibling branch";
+  }
+  if (action.kind === "fork_child_branch") {
+    return isChineseUi ? "创建子分支" : "Create child branch";
+  }
+  if (action.kind === "return_parent_branch") {
+    return isChineseUi ? "返回上一层分支" : "Return to parent branch";
+  }
+  return isChineseUi ? "打开已有分支" : "Open existing branch";
+}
+
+function branchActionStatusText(action: FocusAgentBranchActionProposal, isChineseUi: boolean) {
+  switch (action.status) {
+    case "executed":
+      return isChineseUi ? "已完成" : "Done";
+    case "dismissed":
+      return isChineseUi ? "已取消" : "Dismissed";
+    case "failed":
+      return isChineseUi ? "执行失败" : "Failed";
+    default:
+      return isChineseUi ? "等待确认" : "Pending confirmation";
+  }
+}
+
+function BranchActionCard({
+  action,
+  isChineseUi,
+  isReadOnly,
+  onExecute,
+  onDismiss,
+  errorMessage,
+  isBusy,
+}: {
+  action: FocusAgentBranchActionProposal;
+  isChineseUi: boolean;
+  isReadOnly: boolean;
+  errorMessage?: string;
+  isBusy?: boolean;
+  onExecute?: (action: FocusAgentBranchActionProposal) => void;
+  onDismiss?: (action: FocusAgentBranchActionProposal) => void;
+}) {
+  const pending = action.status === "pending";
+  const disabled = isReadOnly || Boolean(isBusy);
+  const branchName = normalizeText(action.suggested_branch_name) || (isChineseUi ? "新分支" : "New branch");
+  const failureMessage = normalizeText(errorMessage) || normalizeText(action.error);
+  return (
+    <div className="fa-message-row is-assistant assistant">
+      <div className="fa-message-stack">
+        <div className="fa-message-head">
+          <div className="fa-message-role fa-message-meta">
+            {isChineseUi ? "分支操作" : "Branch action"}
+          </div>
+        </div>
+        <div className={`fa-message-bubble is-assistant fa-branch-action-card is-${action.status}`}>
+          <div className="fa-branch-action-card-header">
+            <div>
+              <div className="fa-branch-action-card-title">{branchActionTitle(action, isChineseUi)}</div>
+              <div className="fa-branch-action-card-meta">{branchActionStatusText(action, isChineseUi)}</div>
+            </div>
+            <span className="fa-branch-action-card-badge">{action.branch_role}</span>
+          </div>
+          <div className="fa-branch-action-card-body">
+            <div>
+              <span>{isChineseUi ? "目标" : "Target"}</span>
+              <strong>{branchName}</strong>
+            </div>
+            <div>
+              <span>{isChineseUi ? "父分支" : "Parent"}</span>
+              <code>{action.target_parent_thread_id}</code>
+            </div>
+            {failureMessage ? (
+              <div className="is-danger">
+                <span>{isChineseUi ? "错误" : "Error"}</span>
+                <strong>{failureMessage}</strong>
+              </div>
+            ) : null}
+          </div>
+          {pending ? (
+            <div className="fa-branch-action-card-actions">
+              <button
+                className="fa-chat-toolbar-button is-primary"
+                disabled={disabled}
+                onClick={() => onExecute?.(action)}
+                type="button"
+              >
+                {isBusy ? (isChineseUi ? "处理中..." : "Working...") : isChineseUi ? "确认切换" : "Confirm"}
+              </button>
+              <button
+                className="fa-chat-toolbar-button"
+                disabled={disabled}
+                onClick={() => onDismiss?.(action)}
+                type="button"
+              >
+                {isChineseUi ? "取消" : "Dismiss"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MessageList({
   isReadOnly = false,
   isStreaming = false,
@@ -1196,8 +1296,13 @@ export function MessageList({
   streamToolCalls,
   streamToolEvents,
   streamFailed,
+  branchActions = [],
+  branchActionErrors = {},
+  branchActionInFlightId = null,
   isChineseUi = false,
   onEditMessage,
+  onExecuteBranchAction,
+  onDismissBranchAction,
 }: MessageListProps) {
   const transcriptItems = useMemo(
     () => buildTranscriptItems(messages, assistantMessage),
@@ -1249,6 +1354,19 @@ export function MessageList({
           </div>
         );
       })}
+
+      {branchActions.map((action) => (
+        <BranchActionCard
+          key={action.action_id}
+          action={action}
+          isChineseUi={isChineseUi}
+          isReadOnly={isReadOnly}
+          errorMessage={branchActionErrors[action.action_id]}
+          isBusy={branchActionInFlightId === action.action_id}
+          onExecute={onExecuteBranchAction}
+          onDismiss={onDismissBranchAction}
+        />
+      ))}
 
       <AgentRunBubble
         isStreaming={isStreaming}

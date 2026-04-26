@@ -20,6 +20,7 @@ import type {
   FocusAgentAgentTeamTaskListResponse,
   FocusAgentAgentTeamUpdateTaskRequest,
   FocusAgentApplyMergeDecisionResponse,
+  FocusAgentBranchActionExecuteResponse,
   FocusAgentBranchRecord,
   FocusAgentConversationListResponse,
   FocusAgentConversationSummary,
@@ -882,6 +883,34 @@ export class FocusAgentClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async executeBranchAction(
+    threadId: string,
+    actionId: string,
+  ): Promise<FocusAgentBranchActionExecuteResponse> {
+    return this.requestJson<FocusAgentBranchActionExecuteResponse>(
+      `/v1/threads/${encodeURIComponent(threadId)}/branch-actions/${encodeURIComponent(actionId)}/execute`,
+      {
+        method: "POST",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async dismissBranchAction(
+    threadId: string,
+    actionId: string,
+  ): Promise<ThreadStateResponse> {
+    return this.requestJson<ThreadStateResponse>(
+      `/v1/threads/${encodeURIComponent(threadId)}/branch-actions/${encodeURIComponent(actionId)}/dismiss`,
+      {
+        method: "POST",
+        headers: {},
       },
       true,
     );

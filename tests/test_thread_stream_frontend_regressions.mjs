@@ -91,7 +91,7 @@ function loadSdkStreamFunctions() {
     "createInitialStreamState",
     "reduceStreamEvent",
   ];
-  const reducerSnippet = ["createInitialStreamState", "reduceStreamEvent"]
+  const reducerSnippet = ["createInitialStreamState", "upsertBranchAction", "reduceStreamEvent"]
     .map((name) => extractFunction(reducersSource, name))
     .join("\n\n");
   const transpiled = ts.transpileModule(`${toolProtocolSource}\n\n${reducerSnippet}`, {
@@ -205,6 +205,54 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withArtifactCompleted.visibleText, "");
+});
+
+test("stream reducer tracks branch action lifecycle events", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+  const proposed = {
+    action_id: "branch-action-1",
+    kind: "fork_sibling_branch",
+    status: "pending",
+    root_thread_id: "root-1",
+    source_thread_id: "child-1",
+    target_parent_thread_id: "root-1",
+    suggested_branch_name: "华英农业",
+    branch_role: "explore_alternatives",
+    reason: "User requested branch switch.",
+    created_at: "2026-04-26T00:00:00+00:00",
+  };
+
+  const pending = reduceStreamEvent(createInitialStreamState(), {
+    event: "branch.action.proposed",
+    data: { thread_id: "child-1", branch_action: proposed },
+  });
+  assert.equal(pending.branchActions.length, 1);
+  assert.equal(pending.branchActions[0].status, "pending");
+
+  const executed = reduceStreamEvent(pending, {
+    event: "branch.action.executed",
+    data: {
+      thread_id: "child-1",
+      branch_action: {
+        ...proposed,
+        status: "executed",
+        navigation: { root_thread_id: "root-1", thread_id: "child-2" },
+      },
+    },
+  });
+  assert.equal(executed.branchActions.length, 1);
+  assert.equal(executed.branchActions[0].status, "executed");
+  assert.equal(executed.branchActions[0].navigation.thread_id, "child-2");
+});
+
+test("message list does not render trailing tool output as a fake assistant reply", () => {
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list.tsx"),
+    "utf8",
+  );
+
+  assert.equal(sourceText.includes("assistant-message-fallback"), true);
+  assert.equal(sourceText.includes("lastItem.id}-summary"), false);
 });
 
 test("thinking-capable model selection preserves unset backend-default semantics until the user toggles it", () => {

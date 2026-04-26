@@ -51,6 +51,9 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'FocusAgentTaskLedgerPlanResponse' in types_text
     assert 'FocusAgentArtifactSynthesisResponse' in types_text
     assert 'FocusAgentCriticEvaluateResponse' in types_text
+    assert 'FocusAgentBranchActionProposal' in types_text
+    assert 'FocusAgentBranchActionExecuteResponse' in types_text
+    assert 'branch.action.executed' in types_text
 
     client_text = (root / 'src' / 'client.ts').read_text()
     assert 'class FocusAgentClient' in client_text
@@ -66,6 +69,8 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'streamTurn' in client_text
     assert 'streamResume' in client_text
     assert 'forkBranch' in client_text
+    assert 'executeBranchAction' in client_text
+    assert 'dismissBranchAction' in client_text
     assert 'archiveBranch' in client_text
     assert 'activateBranch' in client_text
     assert 'prepareMergeProposal' in client_text

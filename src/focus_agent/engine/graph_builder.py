@@ -71,6 +71,12 @@ _WORKSPACE_TOOL_NOTE = (
 _LIVE_WEB_TOOL_NOTE = (
     "This turn may use live web/time tools when needed. Do not inspect local project files unless the user asks."
 )
+_BRANCH_ACTION_GUARD_NOTE = (
+    "Branch management is executed only through structured Branch Action confirmations. "
+    "If the user asks to switch, fork, open, archive, or merge branches, do not claim the branch was created, "
+    "opened, archived, merged, or switched unless the runtime has already returned a successful Branch Action "
+    "or branch API result. Ask for confirmation or describe the pending action instead."
+)
 _TOOL_CALL_PROTOCOL_REPAIR_NOTE = (
     "If you need a tool, emit a real tool call through the tool-calling interface. "
     "Do not write DSML tags, XML, or function-call payloads into the assistant text. "
@@ -628,7 +634,7 @@ def _tool_policy_note(policy: _ToolPolicy) -> str:
         return _WORKSPACE_TOOL_NOTE
     if policy == "live_web_research":
         return _LIVE_WEB_TOOL_NOTE
-    return ""
+    return _BRANCH_ACTION_GUARD_NOTE
 
 
 def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:

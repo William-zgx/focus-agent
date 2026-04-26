@@ -18,7 +18,10 @@ from focus_agent.core.agent_team import (
 )
 
 from focus_agent.core.branching import (
+    BranchActionNavigation,
+    BranchActionProposal,
     BranchRole,
+    BranchRecord,
     MergeProposalOverrides,
     BranchTreeNode,
     ImportedConclusion,
@@ -389,12 +392,20 @@ class ThreadStateResponse(BaseModel):
     active_skill_ids: list[str] = Field(default_factory=list)
     messages: list[dict[str, Any]] = Field(default_factory=list)
     interrupts: list[Any] = Field(default_factory=list)
+    branch_actions: list[BranchActionProposal] = Field(default_factory=list)
     trace: dict[str, Any] = Field(default_factory=dict)
     context_usage: ContextUsageResponse | None = None
 
 
 class ThreadContextCompactResponse(ThreadStateResponse):
     pass
+
+
+class BranchActionExecuteResponse(BaseModel):
+    thread_state: ThreadStateResponse
+    branch_action: BranchActionProposal
+    branch_record: BranchRecord | None = None
+    navigation: BranchActionNavigation | None = None
 
 
 class ForkBranchRequest(BaseModel):
@@ -863,6 +874,9 @@ __all__ = [
     "AgentRoleDryRunRequest",
     "AgentRoleDryRunResponse",
     "AgentRolePolicyResponse",
+    "BranchActionExecuteResponse",
+    "BranchActionNavigation",
+    "BranchActionProposal",
     "BranchTreeResponse",
     "ChatResumeRequest",
     "ChatTurnRequest",

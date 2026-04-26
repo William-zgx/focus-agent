@@ -3076,6 +3076,86 @@
     },
     {
       "method": "POST",
+      "operation_id": "dismiss_thread_branch_action_v1_threads__thread_id__branch_actions__action_id__dismiss_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "action_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/branch-actions/{action_id}/dismiss",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadStateResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "execute_thread_branch_action_v1_threads__thread_id__branch_actions__action_id__execute_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "action_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/branch-actions/{action_id}/execute",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BranchActionExecuteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
       "operation_id": "compact_thread_context_v1_threads__thread_id__context_compact_post",
       "parameters": [
         {
@@ -4865,6 +4945,272 @@
       },
       "type": "object"
     },
+    "BranchActionExecuteResponse": {
+      "properties": {
+        "branch_action": {
+          "$ref": "#/components/schemas/BranchActionProposal"
+        },
+        "branch_record": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchActionNavigation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thread_state": {
+          "$ref": "#/components/schemas/ThreadStateResponse"
+        }
+      },
+      "required": [
+        "thread_state",
+        "branch_action"
+      ],
+      "type": "object"
+    },
+    "BranchActionKind": {
+      "enum": [
+        "fork_sibling_branch",
+        "fork_child_branch",
+        "open_existing_branch",
+        "return_parent_branch"
+      ],
+      "type": "string"
+    },
+    "BranchActionNavigation": {
+      "properties": {
+        "root_thread_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "root_thread_id",
+        "thread_id"
+      ],
+      "type": "object"
+    },
+    "BranchActionProposal": {
+      "properties": {
+        "action_id": {
+          "type": "string"
+        },
+        "branch_role": {
+          "$ref": "#/components/schemas/BranchRole"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "dismissed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/components/schemas/BranchActionKind"
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchActionNavigation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "default": "",
+          "type": "string"
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "source_thread_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/BranchActionStatus"
+        },
+        "suggested_branch_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_parent_thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_id",
+        "kind",
+        "root_thread_id",
+        "source_thread_id",
+        "target_parent_thread_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "BranchActionStatus": {
+      "enum": [
+        "pending",
+        "executed",
+        "dismissed",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "BranchRecord": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_depth": {
+          "type": "integer"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "branch_name": {
+          "type": "string"
+        },
+        "branch_role": {
+          "$ref": "#/components/schemas/BranchRole"
+        },
+        "branch_status": {
+          "$ref": "#/components/schemas/BranchStatus"
+        },
+        "child_thread_id": {
+          "type": "string"
+        },
+        "fork_checkpoint_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fork_strategy": {
+          "default": "copy_thread",
+          "type": "string"
+        },
+        "is_archived": {
+          "default": false,
+          "type": "boolean"
+        },
+        "merge_decision": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_proposal": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "owner_user_id": {
+          "default": "unknown",
+          "type": "string"
+        },
+        "parent_thread_id": {
+          "type": "string"
+        },
+        "return_thread_id": {
+          "type": "string"
+        },
+        "root_thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch_id",
+        "root_thread_id",
+        "parent_thread_id",
+        "child_thread_id",
+        "return_thread_id",
+        "branch_name",
+        "branch_role",
+        "branch_depth",
+        "branch_status"
+      ],
+      "type": "object"
+    },
     "BranchRole": {
       "enum": [
         "main",
@@ -5910,6 +6256,12 @@
             }
           ]
         },
+        "branch_actions": {
+          "items": {
+            "$ref": "#/components/schemas/BranchActionProposal"
+          },
+          "type": "array"
+        },
         "branch_meta": {
           "anyOf": [
             {
@@ -6043,6 +6395,12 @@
               "type": "null"
             }
           ]
+        },
+        "branch_actions": {
+          "items": {
+            "$ref": "#/components/schemas/BranchActionProposal"
+          },
+          "type": "array"
         },
         "branch_meta": {
           "anyOf": [

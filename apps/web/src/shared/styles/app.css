@@ -9458,6 +9458,66 @@ body.fa-is-resizing {
   line-height: 1.55;
 }
 
+.fa-branch-action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fa-branch-action-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fa-branch-action-card-title {
+  color: var(--fa-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.fa-branch-action-card-meta,
+.fa-branch-action-card-body span {
+  color: var(--fa-text-muted);
+  font-size: 12px;
+}
+
+.fa-branch-action-card-badge {
+  border: 1px solid var(--fa-border);
+  border-radius: 999px;
+  color: var(--fa-text-muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.fa-branch-action-card-body {
+  display: grid;
+  gap: 8px;
+}
+
+.fa-branch-action-card-body div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fa-branch-action-card-body code {
+  overflow-wrap: anywhere;
+}
+
+.fa-branch-action-card-body .is-danger strong {
+  color: var(--fa-danger);
+}
+
+.fa-branch-action-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 900px) {
   .fa-chat-main-body .fa-tool-activity-stack {
     max-width: min(100%, 680px);

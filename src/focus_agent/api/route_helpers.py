@@ -113,6 +113,8 @@ from .contracts import (
     AgentTeamMergeBundleResponse,
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
+    BranchActionExecuteResponse,
+    BranchActionProposal,
     BranchTreeResponse,
     ChatResumeRequest,
     ChatTurnRequest,

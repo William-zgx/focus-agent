@@ -17,9 +17,17 @@ from focus_agent.engine.graph_builder import (
     _messages_for_model,
     _repair_tool_free_answer_response,
     _should_force_tool_free_answer,
+    _tool_policy_note,
     _tools_for_policy,
     build_graph,
 )
+
+
+def test_execution_policy_note_guards_branch_action_claims():
+    note = _tool_policy_note("execution")
+
+    assert "Branch Action" in note
+    assert "do not claim" in note
 
 
 def test_messages_for_model_keeps_current_tool_exchange():

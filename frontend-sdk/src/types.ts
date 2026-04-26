@@ -10,6 +10,10 @@ export type FocusAgentEventName =
   | "turn.completed"
   | "turn.failed"
   | "turn.closed"
+  | "branch.action.proposed"
+  | "branch.action.executed"
+  | "branch.action.dismissed"
+  | "branch.action.failed"
   | "visible_text.delta"
   | "visible_text.completed"
   | "message.delta"
@@ -116,6 +120,47 @@ export interface TurnClosedPayload extends FocusAgentBaseEventPayload {
   status: string;
 }
 
+export type BranchActionKind =
+  | "fork_sibling_branch"
+  | "fork_child_branch"
+  | "open_existing_branch"
+  | "return_parent_branch";
+
+export type BranchActionStatus =
+  | "pending"
+  | "executed"
+  | "dismissed"
+  | "failed";
+
+export interface FocusAgentBranchActionNavigation {
+  root_thread_id: string;
+  thread_id: string;
+}
+
+export interface FocusAgentBranchActionProposal {
+  action_id: string;
+  kind: BranchActionKind;
+  status: BranchActionStatus;
+  root_thread_id: string;
+  source_thread_id: string;
+  target_parent_thread_id: string;
+  suggested_branch_name?: string | null;
+  branch_role: BranchRole;
+  reason: string;
+  created_at: string;
+  executed_at?: string | null;
+  dismissed_at?: string | null;
+  failed_at?: string | null;
+  error?: string | null;
+  navigation?: FocusAgentBranchActionNavigation | null;
+}
+
+export interface BranchActionPayload extends FocusAgentBaseEventPayload {
+  branch_action?: FocusAgentBranchActionProposal | null;
+  branch_record?: FocusAgentBranchRecord | null;
+  navigation?: FocusAgentBranchActionNavigation | null;
+}
+
 export interface AgentUpdatePayload extends FocusAgentBaseEventPayload {
   data: Record<string, unknown>;
 }
@@ -141,6 +186,10 @@ export interface FocusAgentEventPayloadMap {
   "turn.completed": TurnCompletedPayload;
   "turn.failed": TurnFailedPayload;
   "turn.closed": TurnClosedPayload;
+  "branch.action.proposed": BranchActionPayload;
+  "branch.action.executed": BranchActionPayload;
+  "branch.action.dismissed": BranchActionPayload;
+  "branch.action.failed": BranchActionPayload;
   "visible_text.delta": VisibleTextDeltaPayload;
   "visible_text.completed": VisibleTextCompletedPayload;
   "message.delta": VisibleTextDeltaPayload;
@@ -1161,11 +1210,19 @@ export interface ThreadStateResponse {
   active_skill_ids: string[];
   messages: Array<Record<string, unknown>>;
   interrupts: unknown[];
+  branch_actions: FocusAgentBranchActionProposal[];
   trace: Record<string, unknown>;
   context_usage?: ContextUsageResponse | null;
 }
 
 export interface ThreadContextCompactResponse extends ThreadStateResponse {}
+
+export interface FocusAgentBranchActionExecuteResponse {
+  thread_state: ThreadStateResponse;
+  branch_action: FocusAgentBranchActionProposal;
+  branch_record?: FocusAgentBranchRecord | null;
+  navigation?: FocusAgentBranchActionNavigation | null;
+}
 
 export interface FocusAgentForkBranchRequest {
   parent_thread_id: string;
@@ -1220,6 +1277,7 @@ export interface FocusAgentStreamState {
   reasoningText: string;
   toolCalls: FocusAgentToolCallEvent[];
   toolEvents: FocusAgentToolEvent[];
+  branchActions: FocusAgentBranchActionProposal[];
   latestTurnState?: Record<string, unknown>;
   isClosed: boolean;
   failed?: TurnFailedPayload;

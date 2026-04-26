@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from pydantic import ValidationError
 
 from ..context_usage import build_context_usage
-from ..core.branching import BranchMeta, BranchStatus
+from ..core.branching import BranchActionKind, BranchActionNavigation, BranchMeta, BranchStatus
 from ..core.request_context import RequestContext
 from ..core.state import normalize_agent_state
 from ..engine.runtime import AppRuntime
@@ -28,6 +28,26 @@ from ..observability.tracing import (
 )
 from ..observability.trajectory import build_turn_trajectory_record, utc_now
 from ..skills.models import SkillSelection
+from .branch_actions import (
+    branch_action_audit_event,
+    build_branch_action_proposal,
+    dismissal_message,
+    execution_message,
+    infer_suggested_branch_name,
+    is_branch_action_confirmation,
+    is_branch_action_dismissal,
+    is_branch_action_request,
+    latest_pending_branch_action,
+    mark_branch_action_dismissed,
+    mark_branch_action_executed,
+    mark_branch_action_failed,
+    normalize_branch_actions,
+    proposal_message,
+    replace_branch_action,
+    requested_branch_action_kind,
+    serialize_branch_actions,
+    target_parent_thread_id,
+)
 from ..transport.stream_events import (
     extract_reasoning_delta,
     extract_visible_text_delta,
@@ -42,6 +62,8 @@ logger = logging.getLogger("focus_agent.chat")
 
 
 _STREAM_END = object()
+_INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
+_TOOL_RESULT_FALLBACK_VISIBLE_PREFIX = "我先根据已拿到的工具结果给出一个保守整理："
 
 
 class ChatService:
@@ -524,6 +546,7 @@ class ChatService:
     ) -> dict[str, Any]:
         values = self._safe_get_values(thread_id)
         messages = values.get('messages', [])
+        branch_actions = serialize_branch_actions(normalize_branch_actions(values.get('branch_actions')))
         selected_model = str(values.get('selected_model') or self.runtime.settings.model)
         selected_thinking_mode = self._effective_thinking_mode(
             model_id=selected_model,
@@ -544,6 +567,7 @@ class ChatService:
             'active_skill_ids': values.get('active_skill_ids', []),
             'messages': self._thread_state_messages(list(messages)),
             'interrupts': [getattr(item, 'value', item) for item in interrupts],
+            'branch_actions': branch_actions,
             'trace': build_invoke_config(
                 settings=self.runtime.settings,
                 thread_id=thread_id,
@@ -721,6 +745,15 @@ class ChatService:
         request_id: str | None = None,
         skill_hints: tuple[str, ...] = (),
     ) -> dict[str, Any]:
+        branch_action_result = self._handle_branch_action_turn(
+            thread_id=thread_id,
+            user_id=user_id,
+            message=message,
+            request_id=request_id,
+        )
+        if branch_action_result is not None:
+            return branch_action_result["thread_state"]
+
         selection = self._select_skills_for_message(
             message=message,
             explicit_skill_hints=skill_hints,
@@ -773,6 +806,415 @@ class ChatService:
             interrupts=self._safe_get_interrupts(thread_id),
             trace_correlation=trace_correlation,
         )
+
+    @staticmethod
+    def _is_chinese_text(text: str) -> bool:
+        return any("\u4e00" <= char <= "\u9fff" for char in str(text or ""))
+
+    def _branch_action_intent(self, *, values: dict[str, Any], branch_meta: BranchMeta | None, message: str) -> str | None:
+        pending = latest_pending_branch_action(values.get("branch_actions"))
+        if pending is not None and is_branch_action_confirmation(message):
+            return "execute"
+        if pending is not None and is_branch_action_dismissal(message):
+            return "dismiss"
+        if is_branch_action_request(message):
+            return "propose"
+        return None
+
+    def _update_branch_action_state(
+        self,
+        *,
+        thread_id: str,
+        actions: list[Any],
+        audit_event: dict[str, Any] | None = None,
+        messages: list[Any] | None = None,
+    ) -> None:
+        update: dict[str, Any] = {"branch_actions": serialize_branch_actions(normalize_branch_actions(actions))}
+        if audit_event is not None:
+            values = self._safe_get_values(thread_id)
+            audit = [item for item in list(values.get("branch_action_audit") or []) if isinstance(item, dict)]
+            update["branch_action_audit"] = [*audit, audit_event]
+        if messages:
+            update["messages"] = messages
+        update_state = getattr(self.runtime.graph, "update_state", None)
+        if not callable(update_state):
+            raise RuntimeError("Conversation graph does not support branch action state updates.")
+        update_state(
+            {"configurable": {"thread_id": thread_id}},
+            update,
+            as_node="bootstrap_turn",
+        )
+
+    def _build_branch_action_proposal(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        message: str,
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        context, branch_meta, values = self._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
+            require_writable=True,
+        )
+        kind = requested_branch_action_kind(message, branch_meta)
+        kind, target_parent = target_parent_thread_id(
+            source_thread_id=thread_id,
+            branch_meta=branch_meta,
+            kind=kind,
+        )
+        previous_actions = normalize_branch_actions(values.get("branch_actions"))
+        actions = [
+            mark_branch_action_dismissed(action)
+            if action.status.value == "pending"
+            else action
+            for action in previous_actions
+        ]
+        recent_messages = list(values.get("messages", []) or [])
+        action = build_branch_action_proposal(
+            kind=kind,
+            root_thread_id=context.root_thread_id,
+            source_thread_id=thread_id,
+            target_parent_thread_id=target_parent,
+            suggested_branch_name=infer_suggested_branch_name(message, recent_messages),
+            reason="User requested a branch switch from chat.",
+        )
+        actions.append(action)
+        is_chinese = self._is_chinese_text(message)
+        assistant_text = proposal_message(action, is_chinese=is_chinese)
+        audit = branch_action_audit_event(
+            user_id=user_id,
+            thread_id=thread_id,
+            action=action,
+            decision="proposed",
+            reason="chat_branch_action_request",
+            request_id=request_id,
+        )
+        self._update_branch_action_state(
+            thread_id=thread_id,
+            actions=actions,
+            audit_event=audit,
+            messages=[HumanMessage(content=message), AIMessage(content=assistant_text)],
+        )
+        thread_state = self.get_thread_state(thread_id=thread_id, user_id=user_id, request_id=request_id)
+        return {
+            "kind": "proposed",
+            "message": assistant_text,
+            "thread_state": thread_state,
+            "branch_action": action.model_dump(mode="json"),
+        }
+
+    def _execute_branch_action_locked(
+        self,
+        *,
+        thread_id: str,
+        action_id: str,
+        user_id: str,
+        request_id: str | None = None,
+        user_message: str | None = None,
+    ) -> dict[str, Any]:
+        context, branch_meta, values = self._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
+            require_writable=True,
+        )
+        del branch_meta
+        actions = normalize_branch_actions(values.get("branch_actions"))
+        action = next((item for item in actions if item.action_id == action_id), None)
+        if action is None:
+            raise KeyError(action_id)
+        if action.status.value != "pending":
+            raise ValueError(f"Branch action {action_id} is not pending.")
+
+        branch_record = None
+        navigation: BranchActionNavigation | None = None
+        try:
+            if action.kind in {BranchActionKind.FORK_SIBLING_BRANCH, BranchActionKind.FORK_CHILD_BRANCH}:
+                branch_record = self.runtime.branch_service.fork_branch(
+                    parent_thread_id=action.target_parent_thread_id,
+                    user_id=user_id,
+                    branch_name=action.suggested_branch_name,
+                    branch_role=action.branch_role,
+                )
+                navigation = BranchActionNavigation(
+                    root_thread_id=branch_record.root_thread_id,
+                    thread_id=branch_record.child_thread_id,
+                )
+            elif action.kind == BranchActionKind.RETURN_PARENT_BRANCH:
+                navigation = BranchActionNavigation(root_thread_id=action.root_thread_id, thread_id=action.target_parent_thread_id)
+            elif action.kind == BranchActionKind.OPEN_EXISTING_BRANCH:
+                navigation = BranchActionNavigation(root_thread_id=action.root_thread_id, thread_id=action.target_parent_thread_id)
+            else:
+                raise ValueError(f"Unsupported branch action kind: {action.kind}")
+        except Exception as exc:
+            failed = mark_branch_action_failed(action, str(exc))
+            self._update_branch_action_state(
+                thread_id=thread_id,
+                actions=replace_branch_action(actions, failed),
+                audit_event=branch_action_audit_event(
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    action=failed,
+                    decision="failed",
+                    reason=str(exc),
+                    request_id=request_id,
+                ),
+            )
+            raise
+
+        executed = mark_branch_action_executed(action, navigation=navigation)
+        is_chinese = self._is_chinese_text(user_message or action.reason or "")
+        assistant_text = execution_message(
+            executed,
+            branch_name=getattr(branch_record, "branch_name", None),
+            is_chinese=is_chinese,
+        )
+        messages: list[Any] = []
+        if user_message is not None:
+            messages.append(HumanMessage(content=user_message))
+        messages.append(AIMessage(content=assistant_text))
+        self._update_branch_action_state(
+            thread_id=thread_id,
+            actions=replace_branch_action(actions, executed),
+            audit_event=branch_action_audit_event(
+                user_id=user_id,
+                thread_id=thread_id,
+                action=executed,
+                decision="executed",
+                reason="user_confirmed",
+                request_id=request_id,
+            ),
+            messages=messages,
+        )
+        latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+        del context
+        thread_state = self._response_payload(
+            thread_id=thread_id,
+            user_id=user_id,
+            context=latest_context,
+            branch_meta=latest_branch_meta,
+            interrupts=self._safe_get_interrupts(thread_id),
+            trace_correlation=build_trace_correlation(settings=self.runtime.settings, request_id=request_id),
+        )
+        return {
+            "kind": "executed",
+            "message": assistant_text,
+            "thread_state": thread_state,
+            "branch_action": executed.model_dump(mode="json"),
+            "branch_record": branch_record.model_dump(mode="json") if branch_record is not None else None,
+            "navigation": navigation.model_dump(mode="json") if navigation is not None else None,
+        }
+
+    def execute_branch_action(
+        self,
+        *,
+        thread_id: str,
+        action_id: str,
+        user_id: str,
+        request_id: str | None = None,
+        user_message: str | None = None,
+    ) -> dict[str, Any]:
+        self._acquire_thread_turn(thread_id=thread_id)
+        try:
+            return self._execute_branch_action_locked(
+                thread_id=thread_id,
+                action_id=action_id,
+                user_id=user_id,
+                request_id=request_id,
+                user_message=user_message,
+            )
+        finally:
+            self._release_thread_turn(thread_id=thread_id)
+
+    def _dismiss_branch_action_locked(
+        self,
+        *,
+        thread_id: str,
+        action_id: str,
+        user_id: str,
+        request_id: str | None = None,
+        user_message: str | None = None,
+    ) -> dict[str, Any]:
+        self._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
+            require_writable=True,
+        )
+        values = self._safe_get_values(thread_id)
+        actions = normalize_branch_actions(values.get("branch_actions"))
+        action = next((item for item in actions if item.action_id == action_id), None)
+        if action is None:
+            raise KeyError(action_id)
+        if action.status.value != "pending":
+            raise ValueError(f"Branch action {action_id} is not pending.")
+        dismissed = mark_branch_action_dismissed(action)
+        is_chinese = self._is_chinese_text(user_message or action.reason or "")
+        assistant_text = dismissal_message(is_chinese=is_chinese)
+        messages: list[Any] = []
+        if user_message is not None:
+            messages.append(HumanMessage(content=user_message))
+        messages.append(AIMessage(content=assistant_text))
+        self._update_branch_action_state(
+            thread_id=thread_id,
+            actions=replace_branch_action(actions, dismissed),
+            audit_event=branch_action_audit_event(
+                user_id=user_id,
+                thread_id=thread_id,
+                action=dismissed,
+                decision="dismissed",
+                reason="user_dismissed",
+                request_id=request_id,
+            ),
+            messages=messages,
+        )
+        return self.get_thread_state(thread_id=thread_id, user_id=user_id, request_id=request_id)
+
+    def dismiss_branch_action(
+        self,
+        *,
+        thread_id: str,
+        action_id: str,
+        user_id: str,
+        request_id: str | None = None,
+        user_message: str | None = None,
+    ) -> dict[str, Any]:
+        self._acquire_thread_turn(thread_id=thread_id)
+        try:
+            return self._dismiss_branch_action_locked(
+                thread_id=thread_id,
+                action_id=action_id,
+                user_id=user_id,
+                request_id=request_id,
+                user_message=user_message,
+            )
+        finally:
+            self._release_thread_turn(thread_id=thread_id)
+
+    def _handle_branch_action_turn(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        message: str,
+        request_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        context, branch_meta, values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        intent = self._branch_action_intent(values=values, branch_meta=branch_meta, message=message)
+        if intent is None:
+            return None
+        self._acquire_thread_turn(thread_id=thread_id)
+        try:
+            context, branch_meta, values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+            intent = self._branch_action_intent(values=values, branch_meta=branch_meta, message=message)
+            if intent is None:
+                return None
+            if intent == "propose":
+                return self._build_branch_action_proposal(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    message=message,
+                    request_id=request_id,
+                )
+            pending = latest_pending_branch_action(values.get("branch_actions"))
+            if pending is None:
+                return None
+            if intent == "execute":
+                return self._execute_branch_action_locked(
+                    thread_id=thread_id,
+                    action_id=pending.action_id,
+                    user_id=user_id,
+                    request_id=request_id,
+                    user_message=message,
+                )
+            if intent == "dismiss":
+                thread_state = self._dismiss_branch_action_locked(
+                    thread_id=thread_id,
+                    action_id=pending.action_id,
+                    user_id=user_id,
+                    request_id=request_id,
+                    user_message=message,
+                )
+                return {
+                    "kind": "dismissed",
+                    "message": dismissal_message(is_chinese=self._is_chinese_text(message)),
+                    "thread_state": thread_state,
+                    "branch_action": next(
+                        (
+                            item
+                            for item in thread_state.get("branch_actions", [])
+                            if isinstance(item, dict) and item.get("action_id") == pending.action_id
+                        ),
+                        None,
+                    ),
+                }
+            return None
+        finally:
+            self._release_thread_turn(thread_id=thread_id)
+
+    async def _astream_branch_action_result(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        message: str,
+        request_id: str | None,
+    ) -> AsyncIterator[str]:
+        try:
+            result = self._handle_branch_action_turn(
+                thread_id=thread_id,
+                user_id=user_id,
+                message=message,
+                request_id=request_id,
+            )
+            if result is None:
+                raise RuntimeError("No branch action intent was available.")
+            yield self._sse_frame(
+                event="turn.status",
+                data={"phase": "accepted", "thread_id": thread_id, "kind": "chat.turn"},
+            )
+            event_name = f"branch.action.{result['kind']}"
+            payload = {
+                "thread_id": thread_id,
+                "branch_action": result.get("branch_action"),
+            }
+            if result.get("branch_record") is not None:
+                payload["branch_record"] = result["branch_record"]
+            if result.get("navigation") is not None:
+                payload["navigation"] = result["navigation"]
+            yield self._sse_frame(event=event_name, data=payload)
+            if result.get("message"):
+                yield self._sse_frame(
+                    event="visible_text.completed",
+                    data={"content": result["message"], "thread_id": thread_id},
+                )
+                yield self._sse_frame(
+                    event="message.completed",
+                    data={"content": result["message"], "thread_id": thread_id},
+                )
+            yield self._sse_frame(event="turn.completed", data={"thread_state": result["thread_state"]})
+        except Exception as exc:  # noqa: BLE001
+            failed_action = next(
+                (
+                    action
+                    for action in reversed(normalize_branch_actions(self._safe_get_values(thread_id).get("branch_actions")))
+                    if action.status.value == "failed"
+                ),
+                None,
+            )
+            if failed_action is not None:
+                yield self._sse_frame(
+                    event="branch.action.failed",
+                    data={"thread_id": thread_id, "branch_action": failed_action.model_dump(mode="json")},
+                )
+            yield self._sse_frame(
+                event="turn.failed",
+                data={"error": exc.__class__.__name__, "message": str(exc), "thread_id": thread_id},
+            )
+        finally:
+            yield self._sse_frame(event="turn.closed", data={"status": "ok", "thread_id": thread_id})
 
     def _select_skills_for_message(
         self,
@@ -991,6 +1433,15 @@ class ChatService:
             return False
         return type(checkpointer).aget_tuple is BaseCheckpointSaver.aget_tuple
 
+    @staticmethod
+    def _is_internal_message_stream(metadata: dict[str, Any] | None) -> bool:
+        node = str((metadata or {}).get('langgraph_node') or '').strip()
+        return node in _INTERNAL_MESSAGE_STREAM_NODES
+
+    @staticmethod
+    def _is_tool_result_fallback_visible_delta(delta: str) -> bool:
+        return delta.lstrip().startswith(_TOOL_RESULT_FALLBACK_VISIBLE_PREFIX)
+
     async def _stream_graph_chunks_via_sync_stream(
         self,
         *,
@@ -1137,9 +1588,16 @@ class ChatService:
                 if chunk_type == 'messages':
                     message_chunk, metadata = data
                     safe_metadata = sanitize_stream_metadata(metadata)
+                    is_internal_message_stream = self._is_internal_message_stream(safe_metadata)
+                    tool_chunks = extract_tool_call_chunks(message_chunk)
 
                     visible_delta = extract_visible_text_delta(message_chunk)
-                    if visible_delta:
+                    should_hide_visible_delta = (
+                        is_internal_message_stream
+                        or bool(tool_chunks)
+                        or self._is_tool_result_fallback_visible_delta(visible_delta)
+                    )
+                    if visible_delta and not should_hide_visible_delta:
                         visible_text_buffer += visible_delta
                         payload_data = {
                             'delta': visible_delta,
@@ -1151,7 +1609,7 @@ class ChatService:
                         yield self._sse_frame(event='message.delta', data=payload_data)
 
                     reasoning_delta = extract_reasoning_delta(message_chunk)
-                    if reasoning_delta:
+                    if reasoning_delta and not is_internal_message_stream:
                         reasoning_buffer += reasoning_delta
                         yield self._sse_frame(
                             event='reasoning.delta',
@@ -1163,7 +1621,7 @@ class ChatService:
                             },
                         )
 
-                    for tool_chunk in extract_tool_call_chunks(message_chunk):
+                    for tool_chunk in tool_chunks:
                         yield self._sse_frame(
                             event='tool_call.delta',
                             data={
@@ -1237,7 +1695,7 @@ class ChatService:
                 if len(final_messages) >= initial_message_count
                 else final_messages
             )
-            final_visible_text = visible_text_buffer or self._latest_final_ai_text(appended_messages)
+            final_visible_text = self._latest_final_ai_text(appended_messages) or visible_text_buffer
             if final_visible_text:
                 yield self._sse_frame(
                     event='visible_text.completed',
@@ -1340,6 +1798,16 @@ class ChatService:
         request_id: str | None = None,
         skill_hints: tuple[str, ...] = (),
     ) -> AsyncIterator[str]:
+        context, branch_meta, values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        if self._branch_action_intent(values=values, branch_meta=branch_meta, message=message) is not None:
+            return self._astream_branch_action_result(
+                thread_id=thread_id,
+                user_id=user_id,
+                message=message,
+                request_id=request_id,
+            )
+
         selection = self._select_skills_for_message(
             message=message,
             explicit_skill_hints=skill_hints,

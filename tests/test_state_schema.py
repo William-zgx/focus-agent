@@ -42,6 +42,8 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["pinned_facts"] == []
     assert state["user_constraints"] == []
     assert state["branch_local_findings"] == []
+    assert state["branch_actions"] == []
+    assert state["branch_action_audit"] == []
     assert state["imported_findings"] == []
     assert state["artifacts"] == []
     assert state["citations"] == []
@@ -98,6 +100,8 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["llm_calls"] == 4
     assert normalized["pinned_facts"] == []
     assert normalized["imported_findings"] == []
+    assert normalized["branch_actions"] == []
+    assert normalized["branch_action_audit"] == []
     assert normalized["prompt_mode"] == PromptMode.EXPLORE
     assert normalized["retrieved_memories"] == []
     assert normalized["memory_prompt_block"] == ""
@@ -145,9 +149,11 @@ def test_agent_state_domains_cover_existing_wire_fields():
     assert set(OBSERVABILITY_STATE_FIELDS) <= set(ALL_AGENT_STATE_FIELDS)
     assert "messages" in state_domain_fields("conversation")
     assert "branch_meta" in state_domain_fields("branch")
+    assert "branch_actions" in state_domain_fields("branch")
     assert "retrieved_memories" in state_domain_fields("memory")
     assert "tool_route_plan" in state_domain_fields("governance")
     assert "llm_calls" in state_domain_fields("observability")
+    assert "branch_action_audit" in state_domain_fields("observability")
     assert state_domains_for_field("role_route_plan") == (
         "governance",
         "observability",
@@ -176,6 +182,7 @@ def test_slice_agent_state_exposes_normalized_domain_defaults_without_mutating_i
     assert conversation["messages"] == ["legacy-message"]
     assert conversation["recent_messages"] == []
     assert branch["branch_meta"] == {"branch_id": "branch-1", "branch_role": "verify"}
+    assert branch["branch_actions"] == []
     assert branch["merge_queue"] == []
     assert memory["retrieved_memories"] == []
     assert memory["memory_write_result"] == {"prepared": 1}

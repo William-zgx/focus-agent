@@ -8,6 +8,7 @@ from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMe
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
+from focus_agent.services.branch_actions import is_branch_action_request
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
@@ -91,6 +92,69 @@ class BackfillImportGraph:
             self.values["rolling_summary"] = values["rolling_summary"]
 
 
+class BranchActionGraph:
+    def __init__(self, values: dict[str, object] | None = None):
+        self.values = values or {}
+        self.updates: list[tuple[dict[str, object], str | None]] = []
+
+    def get_state(self, _config):
+        return SimpleNamespace(values=self.values, interrupts=[])
+
+    def update_state(self, _config, values, as_node=None):
+        self.updates.append((values, as_node))
+        if "messages" in values:
+            self.values["messages"] = list(self.values.get("messages", [])) + list(values["messages"])
+        for key, value in values.items():
+            if key != "messages":
+                self.values[key] = value
+
+
+class BranchActionBranchService:
+    def __init__(self):
+        self.fork_calls: list[dict[str, object]] = []
+
+    def fork_branch(self, **kwargs):
+        self.fork_calls.append(kwargs)
+        return BranchRecord(
+            branch_id="branch-new",
+            root_thread_id="root-1",
+            parent_thread_id=str(kwargs["parent_thread_id"]),
+            child_thread_id="child-new",
+            return_thread_id=str(kwargs["parent_thread_id"]),
+            owner_user_id=str(kwargs["user_id"]),
+            branch_name=str(kwargs.get("branch_name") or "New Branch"),
+            branch_role=kwargs.get("branch_role") or BranchRole.EXPLORE_ALTERNATIVES,
+            branch_depth=1,
+            branch_status=BranchStatus.ACTIVE,
+        )
+
+
+class FailingBranchActionBranchService:
+    def fork_branch(self, **_kwargs):
+        raise ValueError("fork failed for test")
+
+
+def _repo_with_child_branch(tmp_path: Path) -> SQLiteBranchRepository:
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.ensure_thread_owner(thread_id="child-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="branch-1",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-1",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Nanwang Energy Deep Dive",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+            branch_status=BranchStatus.ACTIVE,
+        )
+    )
+    return repo
+
+
 def test_stream_message_raises_permission_error_before_streaming(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -103,6 +167,128 @@ def test_stream_message_raises_permission_error_before_streaming(tmp_path: Path)
 
     with pytest.raises(PermissionError):
         chat.stream_message(thread_id="root-1", user_id="other-user", message="hello")
+
+
+def test_send_message_creates_pending_branch_action_without_forking(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [
+                HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？"),
+                AIMessage(content="这需要切换分支后再分析。"),
+            ]
+        }
+    )
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="child-1",
+        user_id="owner-1",
+        message="是的，帮我切换一个同级分支吧。",
+    )
+
+    assert branch_service.fork_calls == []
+    assert payload["branch_actions"][0]["kind"] == "fork_sibling_branch"
+    assert payload["branch_actions"][0]["status"] == "pending"
+    assert payload["branch_actions"][0]["target_parent_thread_id"] == "root-1"
+    assert "华英农业" in payload["branch_actions"][0]["suggested_branch_name"]
+    assert "已创建" not in payload["assistant_message"]
+    assert graph.updates[-1][1] == "bootstrap_turn"
+
+
+def test_branch_action_intent_requires_branch_context():
+    assert is_branch_action_request("帮我切换一个同级分支吧。")
+    assert is_branch_action_request("Create a sibling branch for this idea.")
+    assert not is_branch_action_request("帮我切换一下模型。")
+    assert not is_branch_action_request("切换到深度思考模式。")
+
+
+def test_stream_message_executes_pending_branch_action_and_emits_navigation(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？")],
+        }
+    )
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+    )
+    chat = ChatService(runtime)
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="child-1", user_id="owner-1", message="直接切过去。")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert branch_service.fork_calls[0]["parent_thread_id"] == "root-1"
+    assert branch_service.fork_calls[0]["branch_name"]
+    assert any("event: branch.action.executed" in frame and '"thread_id": "child-new"' in frame for frame in frames)
+    assert any("event: turn.completed" in frame for frame in frames)
+    assert graph.values["branch_actions"][0]["status"] == "executed"
+
+
+def test_stream_message_emits_failed_branch_action_when_execution_fails(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？")],
+        }
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=FailingBranchActionBranchService(),
+    )
+    chat = ChatService(runtime)
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="child-1", user_id="owner-1", message="直接切过去。")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert any("event: branch.action.failed" in frame and "fork failed for test" in frame for frame in frames)
+    assert any("event: turn.failed" in frame for frame in frames)
+    assert graph.values["branch_actions"][0]["status"] == "failed"
+    assert graph.values["branch_actions"][0]["error"] == "fork failed for test"
+
+
+def test_branch_action_execute_uses_thread_turn_lock(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？")],
+        }
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=BranchActionBranchService(),
+    )
+    chat = ChatService(runtime)
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+    action_id = graph.values["branch_actions"][0]["action_id"]
+
+    chat._acquire_thread_turn(thread_id="child-1")
+    try:
+        with pytest.raises(ConcurrentTurnError, match="still processing the previous turn"):
+            chat.execute_branch_action(thread_id="child-1", action_id=action_id, user_id="owner-1")
+    finally:
+        chat._release_thread_turn(thread_id="child-1")
 
 
 def test_send_message_rejects_merged_branch(tmp_path: Path):
@@ -427,6 +613,172 @@ def test_stream_message_falls_back_to_sync_stream_when_checkpointer_lacks_async_
 
     assert any("event: visible_text.delta" in frame and '"delta": "Hi"' in frame for frame in frames)
     assert any("event: turn.completed" in frame for frame in frames)
+
+
+def test_stream_message_hides_internal_plan_chunks_but_keeps_answer_stream(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class PlanThenAnswerGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="真正回答会继续流式输出。")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (
+                    AIMessageChunk(content='{"steps":[{"expected_tools":["web_search"]}]}'),
+                    {"langgraph_node": "plan"},
+                ),
+            }
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (
+                    AIMessageChunk(content='{"status":"replan","missing":["final answer"]}'),
+                    {"langgraph_node": "reflect"},
+                ),
+            }
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (
+                    AIMessageChunk(content="真正回答"),
+                    {"langgraph_node": "agent_loop"},
+                ),
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=PlanThenAnswerGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+
+    visible_frames = [frame for frame in frames if "event: visible_text.delta" in frame]
+    assert not any("expected_tools" in frame for frame in visible_frames)
+    assert not any('"status":"replan"' in frame for frame in visible_frames)
+    assert any('"delta": "真正回答"' in frame for frame in visible_frames)
+
+
+def test_stream_message_completed_prefers_final_ai_over_stale_visible_buffer(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class DraftThenFinalGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del config, context, stream_mode, version
+            human = payload["messages"][-1]
+            self.values = {
+                "messages": [
+                    human,
+                    AIMessage(content="最终回答会保留下来。"),
+                ],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (
+                    AIMessageChunk(content="旧草稿不应该成为 completed 内容。"),
+                    {"langgraph_node": "agent_loop"},
+                ),
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=DraftThenFinalGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+    completed_frames = [frame for frame in frames if "event: visible_text.completed" in frame]
+
+    assert any("最终回答会保留下来。" in frame for frame in completed_frames)
+    assert not any("旧草稿不应该成为 completed 内容。" in frame for frame in completed_frames)
+
+
+def test_stream_message_hides_tool_result_fallback_draft_chunks(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class FallbackDraftGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="最终中文回答。")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (
+                    AIMessageChunk(content="我先根据已拿到的工具结果给出一个保守整理：\n- web_search: interim"),
+                    {"langgraph_node": "agent_loop"},
+                ),
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=FallbackDraftGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+    visible_frames = [frame for frame in frames if "event: visible_text.delta" in frame]
+
+    assert not any("保守整理" in frame for frame in visible_frames)
 
 
 def test_send_message_rejects_concurrent_turn_on_same_thread(tmp_path: Path):

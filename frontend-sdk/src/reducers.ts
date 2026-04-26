@@ -12,10 +12,20 @@ export function createInitialStreamState(): FocusAgentStreamState {
     reasoningText: "",
     toolCalls: [],
     toolEvents: [],
+    branchActions: [],
     latestTurnState: undefined,
     isClosed: false,
     failed: undefined,
   };
+}
+
+function upsertBranchAction(
+  state: FocusAgentStreamState,
+  action: FocusAgentStreamState["branchActions"][number] | null | undefined,
+): FocusAgentStreamState {
+  if (!action) return state;
+  const existing = state.branchActions.filter((item) => item.action_id !== action.action_id);
+  return { ...state, branchActions: [...existing, action] };
 }
 
 export function reduceStreamEvent(
@@ -54,6 +64,11 @@ export function reduceStreamEvent(
     case "tool.error":
     case "tool.result":
       return { ...state, toolEvents: [...state.toolEvents, event as FocusAgentToolEvent] };
+    case "branch.action.proposed":
+    case "branch.action.executed":
+    case "branch.action.dismissed":
+    case "branch.action.failed":
+      return upsertBranchAction(state, event.data.branch_action);
     case "turn.completed":
       return {
         ...state,

@@ -75,6 +75,21 @@ class _OwnershipChatService:
         self._assert_owner(user_id)
         return _thread_payload(thread_id)
 
+    def execute_branch_action(self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None):
+        del action_id, request_id
+        self._assert_owner(user_id)
+        return {
+            "thread_state": _thread_payload(thread_id),
+            "branch_action": _branch_action_payload(),
+            "branch_record": None,
+            "navigation": None,
+        }
+
+    def dismiss_branch_action(self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None):
+        del action_id, request_id
+        self._assert_owner(user_id)
+        return _thread_payload(thread_id)
+
 
 class _OwnershipBranchService:
     def _assert_owner(self, user_id: str) -> None:
@@ -159,8 +174,24 @@ def _thread_payload(thread_id: str) -> dict[str, object]:
         "active_skill_ids": [],
         "messages": [],
         "interrupts": [],
+        "branch_actions": [],
         "trace": {},
         "context_usage": _context_usage(),
+    }
+
+
+def _branch_action_payload() -> dict[str, object]:
+    return {
+        "action_id": "branch-action-1",
+        "kind": "fork_child_branch",
+        "status": "pending",
+        "root_thread_id": "root-1",
+        "source_thread_id": "root-1",
+        "target_parent_thread_id": "root-1",
+        "suggested_branch_name": "New Branch",
+        "branch_role": "explore_alternatives",
+        "reason": "test",
+        "created_at": "2026-04-26T00:00:00+00:00",
     }
 
 
@@ -479,6 +510,8 @@ def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata
         ("GET", "/v1/threads/root-1", None),
         ("POST", "/v1/threads/root-1/context/preview", {"draft_message": "hello"}),
         ("POST", "/v1/threads/root-1/context/compact", {"trigger": "manual"}),
+        ("POST", "/v1/threads/root-1/branch-actions/branch-action-1/execute", {}),
+        ("POST", "/v1/threads/root-1/branch-actions/branch-action-1/dismiss", {}),
         ("POST", "/v1/branches/fork", {"parent_thread_id": "root-1"}),
         ("GET", "/v1/branches/tree/root-1", None),
         ("POST", "/v1/branches/child-1/proposal", {}),

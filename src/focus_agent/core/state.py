@@ -56,6 +56,8 @@ class AgentState(TypedDict, total=False):
 
     llm_calls: int
     branch_meta: dict[str, Any] | None
+    branch_actions: list[dict[str, Any]]
+    branch_action_audit: list[dict[str, Any]]
 
     # Written only by branch execution nodes, read by merge proposal generation,
     # and merge-importable after explicit review.
@@ -168,6 +170,8 @@ AgentStateKey: TypeAlias = Literal[
     "assembled_context",
     "llm_calls",
     "branch_meta",
+    "branch_actions",
+    "branch_action_audit",
     "branch_local_findings",
     "imported_findings",
     "merge_queue",
@@ -229,6 +233,8 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "assembled_context",
     "llm_calls",
     "branch_meta",
+    "branch_actions",
+    "branch_action_audit",
     "branch_local_findings",
     "imported_findings",
     "merge_queue",
@@ -291,6 +297,7 @@ CONVERSATION_STATE_FIELDS: tuple[AgentStateKey, ...] = (
 )
 BRANCH_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "branch_meta",
+    "branch_actions",
     "branch_local_findings",
     "imported_findings",
     "merge_queue",
@@ -336,6 +343,7 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
 )
 OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "llm_calls",
+    "branch_action_audit",
     "plan_meta",
     "role_route_plan",
     "memory_curator_decision",
@@ -381,6 +389,8 @@ def initial_agent_state() -> AgentState:
         "assembled_context": "",
         "llm_calls": 0,
         "branch_meta": None,
+        "branch_actions": [],
+        "branch_action_audit": [],
         "branch_local_findings": [],
         "imported_findings": [],
         "merge_queue": [],

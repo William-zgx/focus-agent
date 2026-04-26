@@ -33,6 +33,9 @@ from focus_agent.api.schemas import (
     AgentSelfRepairFailureListResponse,
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
+    BranchActionExecuteResponse,
+    BranchActionNavigation,
+    BranchActionProposal,
     BranchTreeResponse,
     ContextUsageResponse,
     ConversationListResponse,
@@ -57,7 +60,7 @@ from focus_agent.api.schemas import (
     UpdateBranchNameRequest,
     UpdateConversationRequest,
 )
-from focus_agent.core.branching import BranchRole, BranchStatus, BranchTreeNode
+from focus_agent.core.branching import BranchActionKind, BranchActionStatus, BranchRole, BranchStatus, BranchTreeNode
 
 
 def test_branch_tree_node_shape():
@@ -183,6 +186,37 @@ def test_thread_context_usage_contract_shape_is_separate_from_token_usage():
     assert dumped["context_usage"]["used_tokens"] == 104000
     assert dumped["messages"][0]["usage_metadata"]["total_tokens"] == 20
     assert "token_usage" not in dumped["context_usage"]
+
+
+def test_branch_action_contract_shapes():
+    action = BranchActionProposal(
+        action_id="branch-action-1",
+        kind=BranchActionKind.FORK_SIBLING_BRANCH,
+        status=BranchActionStatus.PENDING,
+        root_thread_id="root-1",
+        source_thread_id="child-1",
+        target_parent_thread_id="root-1",
+        suggested_branch_name="华英农业",
+        branch_role=BranchRole.EXPLORE_ALTERNATIVES,
+        reason="User requested branch switch.",
+        created_at="2026-04-26T00:00:00+00:00",
+    )
+    thread = ThreadStateResponse(
+        thread_id="child-1",
+        root_thread_id="root-1",
+        branch_actions=[action],
+    )
+    response = BranchActionExecuteResponse(
+        thread_state=thread,
+        branch_action=action.model_copy(update={"status": BranchActionStatus.EXECUTED}),
+        navigation=BranchActionNavigation(root_thread_id="root-1", thread_id="child-2"),
+    )
+
+    dumped = response.model_dump(mode="json")
+
+    assert thread.branch_actions[0].kind == BranchActionKind.FORK_SIBLING_BRANCH
+    assert dumped["branch_action"]["status"] == "executed"
+    assert dumped["navigation"] == {"root_thread_id": "root-1", "thread_id": "child-2"}
 
 
 def test_agent_role_contract_shapes():

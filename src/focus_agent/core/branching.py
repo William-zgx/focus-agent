@@ -25,6 +25,20 @@ class BranchStatus(str, Enum):
     CLOSED = "closed"
 
 
+class BranchActionKind(str, Enum):
+    FORK_SIBLING_BRANCH = "fork_sibling_branch"
+    FORK_CHILD_BRANCH = "fork_child_branch"
+    OPEN_EXISTING_BRANCH = "open_existing_branch"
+    RETURN_PARENT_BRANCH = "return_parent_branch"
+
+
+class BranchActionStatus(str, Enum):
+    PENDING = "pending"
+    EXECUTED = "executed"
+    DISMISSED = "dismissed"
+    FAILED = "failed"
+
+
 class MergeMode(str, Enum):
     NONE = "none"
     SUMMARY_ONLY = "summary_only"
@@ -122,6 +136,29 @@ class BranchTreeNode(BaseModel):
     fork_strategy: str | None = None
     token_usage: dict[str, int] = Field(default_factory=dict)
     children: list["BranchTreeNode"] = Field(default_factory=list)
+
+
+class BranchActionNavigation(BaseModel):
+    root_thread_id: str
+    thread_id: str
+
+
+class BranchActionProposal(BaseModel):
+    action_id: str
+    kind: BranchActionKind
+    status: BranchActionStatus = BranchActionStatus.PENDING
+    root_thread_id: str
+    source_thread_id: str
+    target_parent_thread_id: str
+    suggested_branch_name: str | None = None
+    branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES
+    reason: str = ""
+    created_at: str
+    executed_at: str | None = None
+    dismissed_at: str | None = None
+    failed_at: str | None = None
+    error: str | None = None
+    navigation: BranchActionNavigation | None = None
 
 
 BranchTreeNode.model_rebuild()
