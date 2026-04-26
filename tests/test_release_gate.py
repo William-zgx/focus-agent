@@ -43,6 +43,7 @@ def test_release_gate_plan_matches_release_checklist_order() -> None:
         (
             "release-health",
             "uv run python scripts/release_health_check.py "
+            "--mode local "
             "--ready-url http://127.0.0.1:8000/readyz "
             "--trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats "
             "--allow-self-check-fallback "

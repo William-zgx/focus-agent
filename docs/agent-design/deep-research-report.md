@@ -35,6 +35,14 @@
 | P6 Auth / Access Model | 部分完成 | 保持生产 fail-fast 基线，新增可选 `AUTH_JWT_AUDIENCE`，JWT 签发与验证按 audience 对齐；完整 principal ownership 产品化仍可继续扩展 |
 | P7 Memory / Context Evaluation | 已完成首轮落地 | 新增 `memory_context_quality` 小样本金集与 `scripts/memory_context_eval.py`，覆盖事实保真、关键事实召回、无关记忆污染、冲突记忆标记、compaction 后可回答率和 artifact refs，并接入 release-health |
 
+2026-04-26 追加更新：P8-P10 多 Agent 协同开发已继续落地到 `docs/multi-agent-collaboration.md`、release gate / release-health 脚本、Auth 文档与 Memory / Context eval 金集；本轮目标从“首轮可用”推进到“真实回归闭环与生产访问边界”。
+
+| 范围 | 状态 | 已完成内容 |
+|---|---|---|
+| P8 Memory / Context Eval Expansion | 已完成首轮落地 | `memory_context_quality` 扩展到 18 个 deterministic regression 小样本，覆盖 failed replay、compaction 错答、冲突记忆误用、artifact refs 丢失和无关 memory 污染；`scripts/memory_context_eval.py` 支持从 trajectory export / replay report JSON 转换失败样本 |
+| P9 Auth Ownership Model | 已完成首轮落地 | 明确 `Principal.user_id` 是 thread/context/branch/merge ownership 主键，`tenant_id` 与 `scopes` 不绕过 ownership；补齐 external JWT issuer/audience/TTL、过期 token、demo token 生产禁用与 secret rotation 文档 |
+| P10 Live Release Signals | 已完成首轮落地 | `scripts/release_health_check.py` 新增 `local` / `live` / `production` 模式；production 缺 readyz、trajectory stats、replay comparison 或 eval report 时 fail closed，并支持 baseline eval regression 阻断 |
+
 ## 仓库入口与整体架构
 
 从已读取的根目录文件和路径分布看，仓库大致由“后端应用 + 前端应用 + 前端 SDK + 测试 + 文档”构成。`pyproject.toml` 定义了 Python 运行时与核心依赖；`src/focus_agent` 是后端主代码；`apps/web` 是 React Web App；`frontend-sdk` 是对后端 REST/SSE 协议的前端封装；`tests` 中能看到图编排、默认工具、记忆流水线、前端脚手架与治理能力的测试文件；`docs/architecture.md` 则提供了仓库内架构说明文档。fileciteturn17file0L1-L1 fileciteturn42file0L1-L1 fileciteturn45file0L1-L1 fileciteturn35file8L1-L1 fileciteturn35file6L1-L1 fileciteturn37file4L1-L1 fileciteturn41file2L1-L1 fileciteturn41file3L1-L1 fileciteturn16file0L1-L1
@@ -286,13 +294,13 @@ gantt
 | 再做 `api/main.py` 与 `default_tools.py` 拆分 | 这是维护效率与回归风险的主要瓶颈 | 提升代码可维护性与团队协作效率 | 中 | 极高 | fileciteturn39file0L1-L1 fileciteturn38file0L1-L1 |
 | 然后做 `AgentState` 与 `BranchService` 解耦 | 这是平台复杂度继续上升的根因 | 为后续长期演进腾出结构空间 | 高 | 高 | fileciteturn22file0L1-L1 fileciteturn24file0L1-L1 |
 
-下一轮 P4-P7 已启动后，如果只能选 **最值得继续推进的三项改进**，建议改为：
+P8-P10 已完成首轮落地后，如果只能选 **下一步最值得继续推进的三项改进**，建议改为：
 
 | 建议 | 原因 | 改进后收益 | 难度 | 优先级 |
 |---|---|---|---|---|
-| Memory / Context Evaluation 样本扩容 | P7 已有小样本门禁，但覆盖面还需要从 deterministic fixtures 扩到真实失败 trajectory 与线上 memory/context 样本 | 把事实保真、关键事实召回、冲突记忆识别和 compaction 后可回答率变成长期可回归指标 | 中 | 极高 |
-| Auth / Access Model ownership 产品化 | P6 已补 audience，但 principal、thread ownership、外部登录接入边界仍需要更完整的产品化测试与文档 | 让生产访问模型从“启动安全”升级到“运行时权限可靠” | 中 | 高 |
-| Release Gate 接入真实部署信号 | P4/P5 已有本地 gate 与 release-health helper，但线上 `/readyz`、trajectory stats、baseline replay 输入仍需环境化 | 让坏 trajectory、metrics 异常和 replay regression 在真实发布链路中稳定阻断 | 中 | 高 |
+| P11 Production Release Evidence Pack | P10 已让 production release-health fail closed，但真实 `/readyz`、trajectory stats、replay comparison、baseline eval 输入仍需要标准采集与归档流程 | 把“脚本能阻断”升级成“每次发布都有可审计证据包”，降低手工发布漏传信号风险 | 中 | 极高 |
+| P12 Memory / Context 真实样本流水线 | P8 已支持失败样本转换，但还缺从 trajectory export、replay report、线上 memory/context 样本进入金集的去重、脱敏、baseline 管理 | 让 memory/context 质量评测从 deterministic 小集升级成持续增长的回归资产 | 中 | 极高 |
+| P13 Ownership Persistence & Audit | P9 已明确 runtime ownership 语义，但 ownership 元数据持久化、审计记录、跨 repo/service 的统一校验仍需产品化 | 把访问模型从“接口层拒绝”升级成“持久化数据、审计和服务边界一致可靠” | 中高 | 高 |
 
 ## 开放问题与研究限制
 

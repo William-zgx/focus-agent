@@ -11,7 +11,9 @@ _CONFIG_ENV_KEYS = (
     "AUTH_ENABLED",
     "AUTH_DEMO_TOKENS_ENABLED",
     "AUTH_JWT_SECRET",
+    "AUTH_JWT_ISSUER",
     "AUTH_JWT_AUDIENCE",
+    "AUTH_ACCESS_TOKEN_TTL_SECONDS",
     "RATE_LIMIT_ENABLED",
     "FOCUS_AGENT_LOCAL_ENV_FILE",
     "FOCUS_AGENT_MODEL_CATALOG_DOC",
@@ -136,3 +138,23 @@ def test_settings_from_env_allows_staging_with_secure_settings(monkeypatch, tmp_
     assert settings.auth_jwt_audience == "focus-agent-web"
     assert settings.auth_demo_tokens_enabled is False
     assert settings.rate_limit_enabled is True
+
+
+def test_settings_from_env_preserves_external_jwt_issuer_audience_and_ttl(
+    monkeypatch, tmp_path
+):
+    _isolate_settings_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
+    monkeypatch.setenv("AUTH_JWT_AUDIENCE", "focus-agent-web")
+    monkeypatch.setenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900")
+    monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+
+    settings = Settings.from_env()
+
+    assert settings.auth_jwt_issuer == "https://issuer.example.com"
+    assert settings.auth_jwt_audience == "focus-agent-web"
+    assert settings.auth_access_token_ttl_seconds == 900

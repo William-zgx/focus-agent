@@ -277,6 +277,7 @@ The release gate runs the helper after the smoke and observability eval suites h
 
 ```bash
 uv run python scripts/release_health_check.py \
+  --mode local \
   --ready-url http://127.0.0.1:8000/readyz \
   --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats \
   --allow-self-check-fallback \
@@ -286,7 +287,9 @@ uv run python scripts/release_health_check.py \
   --report-json reports/release-gate/release-health.json
 ```
 
-For a live deployment, pass captured `/readyz`, trajectory stats, optional baseline stats, or batch replay-compare JSON via `--runtime-status-json`, `--trajectory-stats-json`, `--baseline-trajectory-stats-json`, and `--replay-comparisons-json`. Production release jobs should remove `--allow-self-check-fallback` so missing live health inputs fail closed.
+For a live deployment, switch to `--mode live` or `--mode production`, remove `--allow-self-check-fallback`, and pass captured deployment signals. The helper accepts `/readyz` from `--readyz-json` or `--runtime-status-json`, trajectory stats from `--trajectory-stats-json`, optional trajectory baselines from `--baseline-trajectory-stats-json`, replay comparison rows from `--replay-comparisons-json`, eval reports from repeated `--eval-report-json` arguments, and optional baseline eval reports from repeated `--baseline-eval-report-json` arguments. In live/production mode, missing readyz, trajectory stats, replay comparison, or eval report inputs are release-blocking and return exit code 1.
+
+Production jobs can also probe the live service directly with `--ready-url` and `--trajectory-stats-url`, but those probes are still fail-closed: an unavailable endpoint writes a failed release-health report instead of silently using local self-check samples.
 
 ## 8. Recommended Oncall Flow
 

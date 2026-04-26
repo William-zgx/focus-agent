@@ -150,6 +150,9 @@ export FOCUS_AGENT_IMAGE=registry.example.com/focus-agent:2026-04-22
 export FOCUS_AGENT_DATABASE_URI=postgresql://focus_agent:secret@postgres.internal:5432/focus_agent
 export FOCUS_AGENT_AUTH_ENABLED=true
 export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+export FOCUS_AGENT_AUTH_JWT_ISSUER=https://issuer.example.com
+export FOCUS_AGENT_AUTH_JWT_AUDIENCE=focus-agent-web
+export FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS=900
 export FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false
 export FOCUS_AGENT_RATE_LIMIT_ENABLED=true
 
@@ -161,15 +164,22 @@ docker compose -f compose.prod.yaml up -d
 生产 Auth / Access Model 边界：
 
 - Focus Agent 当前接受 HS256 Bearer JWT，`sub` 作为 `Principal.user_id`，`tenant_id` 与 `scope` 会进入运行时 principal。
-- conversation、thread、branch 操作按 `Principal.user_id` 做 ownership 检查，跨 principal 访问应返回 403。
-- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`AUTH_JWT_ISSUER`、可选 `AUTH_JWT_AUDIENCE`、`AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致。
-- demo token 仅用于 development/local/test；非开发环境启用 demo token 会在启动时 fail-fast。
+- `Principal.user_id` 是 conversation、thread、context、branch、merge 的 ownership 主键；`tenant_id` 只是后续多租户隔离扩展字段，不能替代 ownership；`scope` 只表达能力授权，不能让其他 `user_id` 访问已有线程。
+- 跨 principal 访问 conversation、thread、context preview/compact、branch fork/tree/proposal/merge 应返回 403。
+- 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET`、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致。
+- `FOCUS_AGENT_AUTH_JWT_ISSUER` 必须匹配 JWT `iss`；配置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE` 后 JWT `aud` 必须存在且完全匹配；过期 `exp` 会被拒绝。
+- `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 建议按部署风险设置为较短窗口，例如 900 秒，并由外部登录层负责刷新或重新签发。
+- JWT secret rotation 需要按发行方能力规划：优先支持短 TTL 和双发/灰度切换；当前 Focus Agent 只校验单个 HS256 secret，轮换时应先缩短 TTL，再同步更新 issuer 与服务端 secret，确认旧 token 自然过期后完成切换。
+- demo token 仅用于 development/local/test；非开发环境必须设置 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`，否则应用会在启动期 fail-fast。
 
 生产规范：
 
 - `APP_ENVIRONMENT=production` 或其他非 development/local/test 值会启用应用启动期安全校验
 - `FOCUS_AGENT_AUTH_ENABLED=true`
 - `FOCUS_AGENT_AUTH_JWT_SECRET` 必须显式设置，且不能使用开发默认值
+- `FOCUS_AGENT_AUTH_JWT_ISSUER` 与外部签发方 `iss` 保持一致
+- 建议设置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`，将 token 限定给 Focus Agent Web/API 使用
+- 建议显式设置 `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS`，并配合外部登录层刷新策略
 - `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
 - `FOCUS_AGENT_RATE_LIMIT_ENABLED=true`
 - `API_RELOAD=0`

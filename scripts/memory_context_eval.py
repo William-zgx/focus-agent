@@ -16,6 +16,7 @@ from typing import Any, Sequence
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_quality.jsonl"
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
+_PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,32 @@ def load_dataset(path: str | Path) -> list[dict[str, Any]]:
             raise ValueError(f"{source}:{line_no} must be a JSON object")
         cases.append(payload)
     return cases
+
+
+def convert_failure_report_to_cases(
+    path: str | Path,
+    *,
+    case_id_prefix: str = "mc_replay",
+) -> list[dict[str, Any]]:
+    """Convert failed trajectory/replay JSON records into deterministic eval cases."""
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    records = _extract_failure_records(payload)
+    cases: list[dict[str, Any]] = []
+    for index, record in enumerate(records, start=1):
+        if not _record_failed(record):
+            continue
+        case = _failure_record_to_case(record, case_id_prefix=case_id_prefix, index=index)
+        if case is not None:
+            cases.append(case)
+    return cases
+
+
+def write_cases_jsonl(path: str | Path, cases: Sequence[dict[str, Any]]) -> Path:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps(case, ensure_ascii=False, sort_keys=True) for case in cases]
+    target.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    return target
 
 
 def evaluate_case(case: dict[str, Any]) -> ProbeResult:
@@ -206,12 +233,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET), help="Memory/context quality JSONL dataset.")
     parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured JSON report path.")
+    parser.add_argument(
+        "--convert-failures-json",
+        help="Trajectory export or replay report JSON to convert into memory/context cases.",
+    )
+    parser.add_argument(
+        "--converted-dataset-out",
+        help="Write converted failure cases as JSONL instead of running the suite.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        if args.convert_failures_json:
+            cases = convert_failure_report_to_cases(args.convert_failures_json)
+            if args.converted_dataset_out:
+                target = write_cases_jsonl(args.converted_dataset_out, cases)
+                print(json.dumps({"converted": len(cases), "dataset": str(target)}, indent=2))
+            else:
+                print(json.dumps({"converted": len(cases), "cases": cases}, ensure_ascii=False, indent=2))
+            return 0
         result = run(dataset=args.dataset, report_json=args.report_json)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[memory-context-eval] {exc}", file=sys.stderr)
@@ -222,6 +265,125 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _strings(value: Any) -> list[str]:
     return [str(item) for item in list(value or []) if str(item)]
+
+
+def _extract_failure_records(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [record for record in payload if isinstance(record, dict)]
+    if isinstance(payload, dict):
+        for key in ("results", "comparisons", "records", "turns", "items", "data"):
+            records = payload.get(key)
+            if isinstance(records, list):
+                return [record for record in records if isinstance(record, dict)]
+        if payload:
+            return [payload]
+    raise ValueError("unsupported failure conversion payload")
+
+
+def _record_failed(record: dict[str, Any]) -> bool:
+    for key in ("passed", "replay_passed", "success"):
+        if key in record:
+            return not bool(record.get(key))
+    if record.get("error") or record.get("replay_error"):
+        return True
+    status = str(record.get("status") or record.get("source_status") or "").strip().lower()
+    return bool(status) and status not in _PASS_STATUSES
+
+
+def _failure_record_to_case(
+    record: dict[str, Any],
+    *,
+    case_id_prefix: str,
+    index: int,
+) -> dict[str, Any] | None:
+    replay_case = record.get("replay_case") if isinstance(record.get("replay_case"), dict) else {}
+    input_payload = _first_mapping(record.get("input"), replay_case.get("input"))
+    expected = _first_mapping(record.get("expected"), replay_case.get("expected"))
+    context = _first_text(
+        record.get("rendered_context"),
+        record.get("context"),
+        record.get("memory_context"),
+        input_payload.get("rendered_context"),
+        input_payload.get("context"),
+        input_payload.get("memory_context"),
+    )
+    answer = _first_text(
+        record.get("answer"),
+        record.get("replay_answer"),
+        record.get("replay_answer_preview"),
+        _nested_text(record, ("replay_result", "answer")),
+        input_payload.get("answer"),
+    )
+    converted_expected = _convert_expected(record, expected)
+    if not _has_expected_assertions(converted_expected):
+        return None
+
+    source_id = str(record.get("case_id") or record.get("id") or record.get("trajectory_id") or index)
+    return {
+        "id": f"{_slug(case_id_prefix)}_{_slug(source_id) or index}",
+        "tags": ["memory_context", "converted_failure", "trajectory_replay"],
+        "input": {"rendered_context": context, "answer": answer},
+        "expected": converted_expected,
+        "origin": {
+            "type": "trajectory_replay_failure",
+            "case_id": record.get("case_id"),
+            "trajectory_id": record.get("trajectory_id") or record.get("id"),
+            "source_status": record.get("source_status") or record.get("status"),
+            "replay_error": record.get("replay_error") or record.get("error"),
+        },
+    }
+
+
+def _convert_expected(record: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "required_facts": _strings(
+            expected.get("required_facts")
+            or expected.get("answer_contains_all")
+            or record.get("required_facts")
+            or record.get("missing_required_facts")
+        ),
+        "forbidden_facts": _strings(
+            expected.get("forbidden_facts") or record.get("forbidden_facts") or record.get("leaked_facts")
+        ),
+        "required_context_markers": _strings(expected.get("required_context_markers")),
+        "forbidden_context_markers": _strings(expected.get("forbidden_context_markers")),
+        "artifact_refs": _strings(
+            expected.get("artifact_refs") or record.get("artifact_refs") or record.get("missing_artifact_refs")
+        ),
+        "conflict_markers": _strings(expected.get("conflict_markers") or record.get("conflict_markers")),
+        "answer_contains_all": _strings(expected.get("answer_contains_all") or record.get("answer_contains_all")),
+    }
+
+
+def _has_expected_assertions(expected: dict[str, Any]) -> bool:
+    return any(_strings(value) for value in expected.values())
+
+
+def _first_mapping(*values: Any) -> dict[str, Any]:
+    for value in values:
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if value is not None and str(value).strip():
+            return str(value)
+    return ""
+
+
+def _nested_text(mapping: dict[str, Any], path: Sequence[str]) -> str:
+    current: Any = mapping
+    for key in path:
+        if not isinstance(current, dict):
+            return ""
+        current = current.get(key)
+    return str(current or "")
+
+
+def _slug(value: object) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "")).strip("-").lower()
 
 
 def _contains(haystack: str, needle: str) -> bool:

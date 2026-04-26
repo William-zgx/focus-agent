@@ -96,6 +96,8 @@ RELEASE_GATE_COMMANDS: tuple[GateCommand, ...] = (
             "run",
             "python",
             "scripts/release_health_check.py",
+            "--mode",
+            "local",
             "--ready-url",
             "http://127.0.0.1:8000/readyz",
             "--trajectory-stats-url",
