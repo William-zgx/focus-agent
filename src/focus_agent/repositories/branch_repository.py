@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import MutableSequence
 
 from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
 from ..core.types import ConversationRecord
+from ..security.ownership import OwnershipAuditEvent
 
 
 class BranchRepository(ABC):
@@ -52,11 +54,26 @@ class BranchRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def ensure_thread_owner(self, *, thread_id: str, root_thread_id: str, owner_user_id: str) -> None:
+    def ensure_thread_owner(
+        self,
+        *,
+        thread_id: str,
+        root_thread_id: str,
+        owner_user_id: str,
+        audit_events: MutableSequence[OwnershipAuditEvent] | None = None,
+        request_id: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def assert_thread_owner(self, *, thread_id: str, owner_user_id: str) -> None:
+    def assert_thread_owner(
+        self,
+        *,
+        thread_id: str,
+        owner_user_id: str,
+        audit_events: MutableSequence[OwnershipAuditEvent] | None = None,
+        request_id: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     @abstractmethod

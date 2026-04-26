@@ -9,7 +9,14 @@ from fastapi.testclient import TestClient
 from focus_agent.api.main import create_app
 from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
-from focus_agent.security.tokens import create_access_token
+from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
+from focus_agent.security.ownership import (
+    OwnershipAuditEvent,
+    allow_ownership,
+    assert_owner,
+    deny_ownership,
+)
+from focus_agent.security.tokens import Principal, create_access_token
 
 
 def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -191,6 +198,120 @@ def _auth_header(
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_ownership_audit_helpers_collect_allow_and_deny_events() -> None:
+    events: list[OwnershipAuditEvent] = []
+    principal = Principal(user_id="owner-1", tenant_id="tenant-a", scopes=("threads:read",))
+
+    event = allow_ownership(
+        events,
+        principal=principal,
+        resource_type="thread",
+        resource_id="root-1",
+        action="read",
+        reason="owner_match",
+        request_id="req-allow",
+    )
+
+    assert event == events[0]
+    assert event.principal == "owner-1"
+    assert event.user_id == "owner-1"
+    assert event.resource_type == "thread"
+    assert event.resource_id == "root-1"
+    assert event.action == "read"
+    assert event.decision == "allow"
+    assert event.reason == "owner_match"
+    assert event.request_id == "req-allow"
+
+    with pytest.raises(PermissionError, match="cannot write thread root-1"):
+        deny_ownership(
+            events,
+            principal=Principal(user_id="intruder-1"),
+            resource_type="thread",
+            resource_id="root-1",
+            action="write",
+            reason="owner_mismatch",
+            request_id="req-deny",
+        )
+
+    assert [item.decision for item in events] == ["allow", "deny"]
+    denied = events[-1]
+    assert denied.user_id == "intruder-1"
+    assert denied.reason == "owner_mismatch"
+    assert denied.request_id == "req-deny"
+
+
+def test_ownership_audit_uses_user_id_not_tenant_or_scopes() -> None:
+    events: list[OwnershipAuditEvent] = []
+
+    allowed = assert_owner(
+        events,
+        principal=Principal(user_id="owner-1", tenant_id="tenant-b", scopes=()),
+        owner_user_id="owner-1",
+        resource_type="thread",
+        resource_id="root-1",
+        action="read",
+        request_id="req-owner",
+    )
+
+    assert allowed.decision == "allow"
+    assert allowed.user_id == "owner-1"
+
+    with pytest.raises(PermissionError):
+        assert_owner(
+            events,
+            principal=Principal(
+                user_id="intruder-1",
+                tenant_id="tenant-a",
+                scopes=("admin", "threads:read", "branches:write"),
+            ),
+            owner_user_id="owner-1",
+            resource_type="thread",
+            resource_id="root-1",
+            action="read",
+            request_id="req-intruder",
+        )
+
+    denied = events[-1]
+    assert denied.decision == "deny"
+    assert denied.user_id == "intruder-1"
+    assert denied.reason == "owner_mismatch"
+    assert denied.request_id == "req-intruder"
+
+
+def test_repository_thread_ownership_checks_emit_audit_events(tmp_path: Path) -> None:
+    repo = SQLiteBranchRepository(str(tmp_path / "state.sqlite"))
+    events: list[OwnershipAuditEvent] = []
+
+    repo.ensure_thread_owner(
+        thread_id="root-1",
+        root_thread_id="root-1",
+        owner_user_id="owner-1",
+        audit_events=events,
+        request_id="req-create",
+    )
+    repo.assert_thread_owner(
+        thread_id="root-1",
+        owner_user_id="owner-1",
+        audit_events=events,
+        request_id="req-owner",
+    )
+
+    with pytest.raises(PermissionError, match="User intruder-1 cannot access thread root-1."):
+        repo.assert_thread_owner(
+            thread_id="root-1",
+            owner_user_id="intruder-1",
+            audit_events=events,
+            request_id="req-deny",
+        )
+
+    assert [event.decision for event in events] == ["allow", "allow", "deny"]
+    assert [event.request_id for event in events] == ["req-create", "req-owner", "req-deny"]
+    assert events[0].reason == "thread_owner_registered"
+    assert events[1].reason == "owner_match"
+    assert events[2].user_id == "intruder-1"
+    assert events[2].reason == "owner_mismatch"
+
+
 def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -242,3 +363,6 @@ def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata
             json=payload,
         )
         assert response.status_code == 403, f"{method} {path}: {response.text}"
+        body = response.json()
+        assert body["code"] == 403
+        assert "User intruder-1 cannot access thread root-1." in body["message"]

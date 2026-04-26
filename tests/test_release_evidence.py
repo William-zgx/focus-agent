@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from scripts import release_evidence
+
+
+def _artifact_path(artifact: dict[str, object]) -> Path:
+    assert artifact["exists"] is True
+    assert isinstance(artifact["path"], str)
+    assert artifact["sha256"]
+    return Path(artifact["path"])
+
+
+def _write_json(path: Path, payload: object) -> Path:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _readyz(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "ready": True,
+            "status": "ok",
+            "checks": [{"name": "trajectory_recorder", "ready": True, "detail": ""}],
+        },
+    )
+
+
+def _trajectory_stats(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "overview": {
+                "turn_count": 40,
+                "non_succeeded_count": 0,
+                "total_tool_calls": 40,
+                "total_fallback_uses": 0,
+            }
+        },
+    )
+
+
+def _replay(path: Path) -> Path:
+    return _write_json(path, [{"case_id": "traj-1", "replay_passed": True}])
+
+
+def _eval_report(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "summary": {"total": 2, "passed": 2, "failed": 0, "errors": 0},
+            "comparison": {"regressions": []},
+        },
+    )
+
+
+def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) -> None:
+    manifest = release_evidence.run_release_evidence(
+        release_id="dry-run-release",
+        dry_run=True,
+        output_root=tmp_path,
+    )
+    manifest_path = Path(manifest["manifest_json"])
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert saved["summary"]["status"] == "passed"
+    assert saved["meta"]["release_id"] == "dry-run-release"
+    assert saved["meta"]["dry_run"] is True
+    assert _artifact_path(saved["artifacts"]["readyz"]).exists()
+    assert _artifact_path(saved["artifacts"]["trajectory_stats"]).exists()
+    assert _artifact_path(saved["artifacts"]["replay_comparisons"]).exists()
+    assert _artifact_path(saved["artifacts"]["eval_reports"][0]).exists()
+    assert _artifact_path(saved["artifacts"]["baseline_eval_reports"][0]).exists()
+    assert _artifact_path(saved["artifacts"]["release_health_report"]).exists()
+    assert saved["release_health"]["status"] == "passed"
+    assert saved["commands"][0]["status"] == "passed"
+
+
+def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path: Path) -> None:
+    source_dir = tmp_path / "sources"
+    source_dir.mkdir()
+    manifest = release_evidence.run_release_evidence(
+        release_id="prod-release",
+        output_root=tmp_path / "packs",
+        readyz_json=_readyz(source_dir / "readyz.json"),
+        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
+        replay_comparisons_json=_replay(source_dir / "replay.json"),
+        eval_report_json=[_eval_report(source_dir / "eval.json")],
+        baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
+    )
+    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+    pack_dir = tmp_path / "packs" / "prod-release"
+
+    assert saved["summary"]["status"] == "passed"
+    assert saved["release_health"]["passed"] is True
+    assert _artifact_path(saved["artifacts"]["readyz"]) == pack_dir / "inputs" / "readyz.json"
+    assert _artifact_path(saved["artifacts"]["trajectory_stats"]) == pack_dir / "inputs" / "trajectory-stats.json"
+    assert _artifact_path(saved["artifacts"]["replay_comparisons"]) == pack_dir / "inputs" / "replay-comparisons.json"
+    assert _artifact_path(saved["artifacts"]["eval_reports"][0]) == pack_dir / "inputs" / "eval-report-1.json"
+    assert (
+        _artifact_path(saved["artifacts"]["baseline_eval_reports"][0])
+        == pack_dir / "inputs" / "baseline-eval-report-1.json"
+    )
+
+
+def test_release_evidence_missing_production_inputs_fails_closed(tmp_path: Path) -> None:
+    manifest = release_evidence.run_release_evidence(
+        release_id="missing-inputs",
+        output_root=tmp_path,
+    )
+    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+
+    assert saved["summary"]["status"] == "failed"
+    assert saved["commands"][0]["exit_code"] == 1
+    assert saved["release_health"]["status"] == "failed"
+    failed_keys = {signal["key"] for signal in saved["release_health"]["failed_signals"]}
+    assert "release_health_required_input_missing" in failed_keys
+
+
+def test_release_evidence_requires_baseline_eval_report_for_production_pack(tmp_path: Path) -> None:
+    source_dir = tmp_path / "sources"
+    source_dir.mkdir()
+    manifest = release_evidence.run_release_evidence(
+        release_id="missing-baseline",
+        output_root=tmp_path / "packs",
+        readyz_json=_readyz(source_dir / "readyz.json"),
+        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
+        replay_comparisons_json=_replay(source_dir / "replay.json"),
+        eval_report_json=[_eval_report(source_dir / "eval.json")],
+    )
+    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+
+    assert saved["summary"]["status"] == "failed"
+    assert saved["summary"]["missing_required_artifacts"] == ["baseline_eval_reports"]
+    assert saved["commands"][0]["status"] == "passed"
+    assert saved["release_health"]["passed"] is True

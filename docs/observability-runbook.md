@@ -291,6 +291,14 @@ For a live deployment, switch to `--mode live` or `--mode production`, remove `-
 
 Production jobs can also probe the live service directly with `--ready-url` and `--trajectory-stats-url`, but those probes are still fail-closed: an unavailable endpoint writes a failed release-health report instead of silently using local self-check samples.
 
+Production release review should archive an evidence pack after the live signals are captured:
+
+```bash
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+```
+
+The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, command summaries, release-health status, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, or baseline eval report artifacts should block production release review.
+
 ## 8. Recommended Oncall Flow
 
 Use this order when responding to production issues:

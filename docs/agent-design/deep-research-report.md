@@ -43,6 +43,14 @@
 | P9 Auth Ownership Model | 已完成首轮落地 | 明确 `Principal.user_id` 是 thread/context/branch/merge ownership 主键，`tenant_id` 与 `scopes` 不绕过 ownership；补齐 external JWT issuer/audience/TTL、过期 token、demo token 生产禁用与 secret rotation 文档 |
 | P10 Live Release Signals | 已完成首轮落地 | `scripts/release_health_check.py` 新增 `local` / `live` / `production` 模式；production 缺 readyz、trajectory stats、replay comparison 或 eval report 时 fail closed，并支持 baseline eval regression 阻断 |
 
+2026-04-26 追加更新：P11-P13 多 Agent 协同开发已继续落地到 `docs/multi-agent-collaboration.md`、release evidence 脚本、Memory / Context candidate import 和 ownership audit helper；本轮目标从“生产信号 fail-closed”推进到“发布证据可审计、真实样本可沉淀、ownership 拒绝可记录”。
+
+| 范围 | 状态 | 已完成内容 |
+|---|---|---|
+| P11 Production Release Evidence Pack | 已完成首轮落地 | 新增 `make release-evidence` 与 `scripts/release_evidence.py`，生成 `reports/release-gate/<release-id>/manifest.json`；证据包包含 readyz、trajectory stats、replay comparison、eval report、baseline eval report、release-health report 与命令摘要，缺 required artifact 会 fail closed |
+| P12 Memory / Context 真实样本流水线 | 已完成首轮落地 | `scripts/memory_context_eval.py` 新增 candidate import，支持 trajectory export、replay report、memory-context report 转 JSONL candidate，并完成脱敏、去重、分桶、baseline 标记，默认不污染 golden dataset |
+| P13 Ownership Persistence & Audit | 已完成首轮落地 | 新增 `focus_agent.security.ownership` audit helper，并把 thread ownership allow/deny 记录接到 repository 校验边界；事件包含 principal、resource type、resource id、action、decision、reason、request id |
+
 ## 仓库入口与整体架构
 
 从已读取的根目录文件和路径分布看，仓库大致由“后端应用 + 前端应用 + 前端 SDK + 测试 + 文档”构成。`pyproject.toml` 定义了 Python 运行时与核心依赖；`src/focus_agent` 是后端主代码；`apps/web` 是 React Web App；`frontend-sdk` 是对后端 REST/SSE 协议的前端封装；`tests` 中能看到图编排、默认工具、记忆流水线、前端脚手架与治理能力的测试文件；`docs/architecture.md` 则提供了仓库内架构说明文档。fileciteturn17file0L1-L1 fileciteturn42file0L1-L1 fileciteturn45file0L1-L1 fileciteturn35file8L1-L1 fileciteturn35file6L1-L1 fileciteturn37file4L1-L1 fileciteturn41file2L1-L1 fileciteturn41file3L1-L1 fileciteturn16file0L1-L1

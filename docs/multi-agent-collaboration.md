@@ -1,8 +1,8 @@
-# P4-P10 多 Agent 协同开发技术文档
+# P4-P13 多 Agent 协同开发技术文档
 
 ## Summary
 
-P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分、发布门禁口径、`AgentState` 分域 helper、`BranchService` facade 内部解耦。P4-P7 转向契约自动化、发布门禁一键化、可观测闭环、Auth / Access Model 产品化、Memory / Context 质量评测。P8-P10 继续把这些能力推进到真实回归闭环：Memory / Context 样本扩容、Auth ownership 运行时边界、release-health 真实部署信号 fail-closed。
+P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分、发布门禁口径、`AgentState` 分域 helper、`BranchService` facade 内部解耦。P4-P7 转向契约自动化、发布门禁一键化、可观测闭环、Auth / Access Model 产品化、Memory / Context 质量评测。P8-P10 把这些能力推进到真实回归闭环：Memory / Context 样本扩容、Auth ownership 运行时边界、release-health 真实部署信号 fail-closed。P11-P13 继续把闭环固化为可审计发布证据包、真实样本 candidate 流水线、repository/service ownership audit。
 
 ## Agent 分工
 
@@ -28,6 +28,9 @@ P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分
 - P9 生产 JWT 分发文档覆盖 issuer、audience、TTL、secret rotation 与 demo token 禁用策略。
 - P10 release-health 支持 `local` / `live` / `production` 模式；production 缺少 readyz、trajectory stats、replay comparison 或 eval report 时直接 fail closed。
 - P10 支持 baseline eval report comparison，eval regression、replay failed、trajectory recorder unavailable 都会阻断 release-health。
+- P11 新增 `make release-evidence`，生产发布证据包写入 `reports/release-gate/<release-id>/manifest.json`，包含 readyz、trajectory stats、replay comparison、eval report、baseline eval report、release-health report 与命令摘要；production pack 缺 baseline 或其他 required artifact 会 fail closed。
+- P12 `scripts/memory_context_eval.py` 支持从 trajectory export、replay report、memory-context report 导入 candidate JSONL，并在进入 golden baseline 前完成脱敏、去重、分桶和 baseline 标记。
+- P13 新增 ownership audit helper，并把 thread ownership 校验接入 repository 层；allow / deny 事件记录 principal、resource type、resource id、action、decision、reason、request id。
 - Memory / Context 质量先以 deterministic probe 落地，覆盖 required markers、forbidden stale markers、最大上下文长度。
 
 ## 默认验证命令
@@ -35,18 +38,18 @@ P0-P3 已完成生产安全 fail-fast、API router 拆分、default tools 拆分
 ```bash
 make contract-check
 make release-gate RELEASE_GATE_ARGS="--dry-run --only lint,ci-test"
-.venv/bin/pytest tests/test_contract_checks.py tests/test_release_gate.py tests/test_observability_release_health.py tests/test_memory_context_eval.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py tests/test_release_health_check.py
+.venv/bin/pytest tests/test_contract_checks.py tests/test_release_gate.py tests/test_release_evidence.py tests/test_observability_release_health.py tests/test_memory_context_eval.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py tests/test_release_health_check.py
 ```
 
 ## 下一轮建议
 
-P8-P10 已经把质量评测、访问边界和 release-health fail-closed 补到首轮可用。下一轮不建议继续做大规模拆文件，优先把这些门禁接成真实生产闭环：
+P11-P13 已经把生产发布证据、真实样本导入与 ownership audit 补到首轮可用。下一轮不建议继续做大规模拆文件，优先把这些闭环接到更真实的日常发布与线上回归流程：
 
 | 优先级 | 方向 | Agent 责任 | 主要产物 |
 |---|---|---|---|
-| P11 | Production Release Evidence Pack | Release / Observability Agent 采集真实 `/readyz`、trajectory stats、replay comparison、baseline eval report，并生成可审计发布证据包 | `reports/release-gate/<release-id>/`、生产 release-health 示例命令、证据包 schema |
-| P12 | Memory / Context 真实样本流水线 | Memory / Context Eval Agent 将 trajectory export、replay report、线上 memory/context 样本脱敏、去重、分桶并纳入 baseline | 样本导入脚本、baseline 管理文档、真实 regression fixture |
-| P13 | Ownership Persistence & Audit | Auth Agent 将 `user_id` ownership 语义下沉到持久化数据、repository/service 校验和审计记录 | ownership metadata 策略、audit log tests、跨 principal 回归矩阵 |
+| P14 | Evidence Pack CI / Storage Integration | Release Agent 将 `release-evidence` 接入实际发布任务，固定 artifact 留存位置与 release id 生成规则 | CI 示例、证据包保留策略、失败摘要模板 |
+| P15 | Candidate Promotion Review | Memory / Context Eval Agent 将 candidate JSONL 引入人工确认与 golden promotion 流程 | candidate review checklist、promotion diff、样本污染保护 |
+| P16 | Ownership Audit Export | Auth / Observability Agent 将 repository audit event 输出到 trajectory 或统一审计 sink | audit export adapter、查询说明、跨 principal deny dashboard |
 
 完整发布前运行：
 

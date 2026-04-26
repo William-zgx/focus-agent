@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -16,7 +18,21 @@ from typing import Any, Sequence
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_quality.jsonl"
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
+DEFAULT_CANDIDATE_ID_PREFIX = "mc_candidate"
 _PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok"}
+_SOURCE_TYPES = {"auto", "trajectory", "replay", "memory-context"}
+
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_BEARER_TOKEN_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{10,}")
+_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
+_TOKEN_LITERAL_RE = re.compile(
+    r"\b(?:sk|pk|rk|ghp|gho|github_pat|xoxb|xoxp|ya29|pat|tok)[-_A-Za-z0-9.]{10,}\b"
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(?P<key>api[_-]?key|secret|access[_-]?token|refresh[_-]?token|token|"
+    r"password|passwd|pwd)(?P<sep>\s*[:=]\s*)(?P<quote>[\"']?)(?P<value>[^\s\"',;)}\]]+)"
+)
+_PHONE_CANDIDATE_RE = re.compile(r"(?<![\w/])(?:\+?\d[\d .()/-]{8,}\d)(?![\w/])")
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +63,27 @@ class ProbeResult:
             "error": None,
             "tags": list(self.tags),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateImportResult:
+    cases: list[dict[str, Any]]
+    source_count: int
+    record_count: int
+    skipped_no_assertions: int
+    skipped_duplicates: int
+
+    def to_dict(self, *, dataset: str | None = None) -> dict[str, Any]:
+        payload = {
+            "imported": len(self.cases),
+            "sources": self.source_count,
+            "records": self.record_count,
+            "skipped_no_assertions": self.skipped_no_assertions,
+            "skipped_duplicates": self.skipped_duplicates,
+        }
+        if dataset is not None:
+            payload["dataset"] = dataset
+        return payload
 
 
 def load_dataset(path: str | Path) -> list[dict[str, Any]]:
@@ -82,6 +119,62 @@ def convert_failure_report_to_cases(
         if case is not None:
             cases.append(case)
     return cases
+
+
+def import_candidate_cases(
+    sources: Sequence[str | Path],
+    *,
+    source_type: str = "auto",
+    candidate_id_prefix: str = DEFAULT_CANDIDATE_ID_PREFIX,
+    baseline_label: str = "candidate",
+    baseline_marker: str | None = None,
+    redact: bool = True,
+) -> CandidateImportResult:
+    """Import real-sample memory/context candidates from trajectory or report files."""
+    if source_type not in _SOURCE_TYPES:
+        raise ValueError(f"unsupported candidate source type: {source_type}")
+    resolved_baseline_label = baseline_marker or baseline_label
+
+    cases: list[dict[str, Any]] = []
+    dedupe_keys: set[str] = set()
+    record_count = 0
+    skipped_no_assertions = 0
+    skipped_duplicates = 0
+
+    for source in sources:
+        source_path = Path(source).expanduser()
+        payload = _load_json_or_jsonl(source_path)
+        resolved_type = _resolve_candidate_source_type(payload, source_type=source_type)
+        records = _extract_candidate_records(payload, source_type=resolved_type)
+        for index, record in enumerate(records, start=1):
+            record_count += 1
+            case = _candidate_record_to_case(
+                record,
+                source_path=source_path,
+                source_type=resolved_type,
+                source_index=index,
+                candidate_id_prefix=candidate_id_prefix,
+                baseline_label=resolved_baseline_label,
+            )
+            if case is None:
+                skipped_no_assertions += 1
+                continue
+            if redact:
+                case = _sanitize_json(case)
+            dedupe_key = _candidate_dedupe_key(case)
+            if dedupe_key in dedupe_keys:
+                skipped_duplicates += 1
+                continue
+            dedupe_keys.add(dedupe_key)
+            cases.append(case)
+
+    return CandidateImportResult(
+        cases=cases,
+        source_count=len(sources),
+        record_count=record_count,
+        skipped_no_assertions=skipped_no_assertions,
+        skipped_duplicates=skipped_duplicates,
+    )
 
 
 def write_cases_jsonl(path: str | Path, cases: Sequence[dict[str, Any]]) -> Path:
@@ -241,12 +334,58 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--converted-dataset-out",
         help="Write converted failure cases as JSONL instead of running the suite.",
     )
+    parser.add_argument(
+        "--candidate-source-json",
+        "--candidate-source",
+        dest="candidate_source_json",
+        action="append",
+        default=[],
+        help="Trajectory export, replay report, or memory-context report to import candidates from. Repeatable.",
+    )
+    parser.add_argument(
+        "--candidate-source-type",
+        choices=sorted(_SOURCE_TYPES),
+        default="auto",
+        help="Type for --candidate-source files; auto detects each source by default.",
+    )
+    parser.add_argument(
+        "--candidate-dataset-out",
+        "--candidate-out",
+        dest="candidate_dataset_out",
+        help="Write imported candidate cases to this JSONL path. This never updates the golden dataset.",
+    )
+    parser.add_argument(
+        "--candidate-id-prefix",
+        default=DEFAULT_CANDIDATE_ID_PREFIX,
+        help="Stable prefix for imported candidate ids.",
+    )
+    parser.add_argument(
+        "--candidate-baseline-label",
+        "--baseline-marker",
+        dest="candidate_baseline_label",
+        default="candidate",
+        help="Stable baseline label stored in candidate origin metadata.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        if args.candidate_source_json:
+            if not args.candidate_dataset_out:
+                raise ValueError(
+                    "--candidate-dataset-out is required when --candidate-source-json is used"
+                )
+            result = import_candidate_cases(
+                args.candidate_source_json,
+                source_type=args.candidate_source_type,
+                candidate_id_prefix=args.candidate_id_prefix,
+                baseline_label=args.candidate_baseline_label,
+            )
+            target = write_cases_jsonl(args.candidate_dataset_out, result.cases)
+            print(json.dumps(result.to_dict(dataset=str(target)), ensure_ascii=False, indent=2))
+            return 0
         if args.convert_failures_json:
             cases = convert_failure_report_to_cases(args.convert_failures_json)
             if args.converted_dataset_out:
@@ -264,7 +403,236 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _strings(value: Any) -> list[str]:
-    return [str(item) for item in list(value or []) if str(item)]
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if str(item)]
+    return [str(value)] if str(value) else []
+
+
+def _load_json_or_jsonl(path: Path) -> Any:
+    source = path.expanduser()
+    text = source.read_text(encoding="utf-8")
+    stripped = text.strip()
+    if not stripped:
+        return []
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        records: list[Any] = []
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            candidate = line.strip()
+            if not candidate or candidate.startswith("#"):
+                continue
+            try:
+                records.append(json.loads(candidate))
+            except json.JSONDecodeError:
+                try:
+                    records.append(ast.literal_eval(candidate))
+                except (SyntaxError, ValueError) as exc:
+                    raise ValueError(f"{source}:{line_no} invalid JSON/JSONL: {exc}") from exc
+        return records
+
+
+def _resolve_candidate_source_type(payload: Any, *, source_type: str) -> str:
+    if source_type != "auto":
+        return source_type
+    if isinstance(payload, dict):
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        suite = str(meta.get("suite") or payload.get("suite") or "").strip().lower()
+        if "memory_context" in suite or "memory-context" in suite:
+            return "memory-context"
+        if "replay" in suite:
+            return "replay"
+        records = payload.get("results")
+        if isinstance(records, list) and any(
+            isinstance(record, dict) and "verdicts" in record for record in records
+        ):
+            return "memory-context"
+        if any(key in payload for key in ("trajectory_id", "turns", "events", "messages")):
+            return "trajectory"
+    return "trajectory"
+
+
+def _extract_candidate_records(payload: Any, *, source_type: str) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [record for record in payload if isinstance(record, dict)]
+    if isinstance(payload, dict):
+        preferred_keys = (
+            ("results", "records", "items", "data", "candidates")
+            if source_type in {"memory-context", "replay"}
+            else ("turns", "events", "records", "items", "data", "results", "candidates")
+        )
+        for key in preferred_keys:
+            records = payload.get(key)
+            if isinstance(records, list):
+                return [record for record in records if isinstance(record, dict)]
+        if payload:
+            return [payload]
+    raise ValueError("unsupported candidate source payload")
+
+
+def _candidate_record_to_case(
+    record: dict[str, Any],
+    *,
+    source_path: Path,
+    source_type: str,
+    source_index: int,
+    candidate_id_prefix: str,
+    baseline_label: str,
+) -> dict[str, Any] | None:
+    replay_case = record.get("replay_case") if isinstance(record.get("replay_case"), dict) else {}
+    eval_case = _first_mapping(record.get("case"), record.get("eval_case"), replay_case)
+    input_payload = _first_mapping(record.get("input"), eval_case.get("input"))
+    expected = _first_mapping(record.get("expected"), eval_case.get("expected"))
+    context = _first_text(
+        record.get("rendered_context"),
+        record.get("context"),
+        record.get("memory_context"),
+        record.get("prompt_context"),
+        record.get("selected_context"),
+        input_payload.get("rendered_context"),
+        input_payload.get("context"),
+        input_payload.get("memory_context"),
+        _nested_text(record, ("context_result", "rendered_context")),
+    )
+    answer = _first_text(
+        record.get("answer"),
+        record.get("output"),
+        record.get("actual_answer"),
+        record.get("replay_answer"),
+        record.get("replay_answer_preview"),
+        input_payload.get("answer"),
+        _nested_text(record, ("replay_result", "answer")),
+        _nested_text(record, ("response", "answer")),
+        _nested_text(record, ("response", "content")),
+    )
+    converted_expected = _convert_expected(record, expected)
+    if not _has_expected_assertions(converted_expected):
+        return None
+
+    bucket = _candidate_bucket(record, converted_expected)
+    source_id = _first_text(
+        record.get("case_id"),
+        record.get("id"),
+        record.get("candidate_id"),
+        record.get("trajectory_id"),
+        record.get("thread_id"),
+        record.get("turn_id"),
+        eval_case.get("id"),
+        source_index,
+    )
+    case_payload = {"input": {"rendered_context": context, "answer": answer}, "expected": converted_expected}
+    content_hash = _stable_hash(case_payload)[:12]
+    source_slug = f"{_slug(source_type) or 'source'}-{source_index}-{_stable_hash(source_id)[:8]}"
+    baseline_slug = _slug(baseline_label) or "candidate"
+    tags = _dedupe_strings(
+        [
+            "memory_context",
+            "candidate_import",
+            f"source:{_slug(source_type)}",
+            f"bucket:{_slug(bucket)}",
+            f"baseline:{baseline_slug}",
+            *_strings(record.get("tags") or eval_case.get("tags")),
+        ]
+    )
+    return {
+        "id": f"{_slug(candidate_id_prefix)}_{source_slug}_{content_hash}",
+        "tags": tags,
+        "input": case_payload["input"],
+        "expected": converted_expected,
+        "origin": {
+            "type": "candidate_import",
+            "baseline_label": baseline_label,
+            "baseline_marker": f"baseline:{baseline_slug}",
+            "source_type": source_type,
+            "source_name": source_path.name,
+            "source_record_id": source_id,
+            "source_index": source_index,
+            "bucket": bucket,
+        },
+    }
+
+
+def _candidate_bucket(record: dict[str, Any], expected: dict[str, Any]) -> str:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    explicit = _first_text(
+        record.get("bucket"),
+        record.get("bucket_name"),
+        record.get("category"),
+        record.get("kind"),
+        metadata.get("bucket"),
+    )
+    if explicit:
+        return _slug(explicit) or "general"
+    if _strings(expected.get("artifact_refs")):
+        return "artifact_ref"
+    if _strings(expected.get("conflict_markers")):
+        return "conflict"
+    if _strings(expected.get("forbidden_facts")) or _strings(
+        expected.get("forbidden_context_markers")
+    ):
+        return "pollution"
+    if _strings(expected.get("required_context_markers")):
+        return "context"
+    if _strings(expected.get("answer_contains_all")):
+        return "answerability"
+    return "fact_recall"
+
+
+def _candidate_dedupe_key(case: dict[str, Any]) -> str:
+    return _stable_hash({"input": case.get("input"), "expected": case.get("expected")})
+
+
+def _sanitize_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _sanitize_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_json(item) for item in value]
+    if isinstance(value, str):
+        return _sanitize_text(value)
+    return value
+
+
+def _sanitize_text(value: str) -> str:
+    sanitized = _BEARER_TOKEN_RE.sub("Bearer [REDACTED_TOKEN]", value)
+    sanitized = _JWT_RE.sub("[REDACTED_TOKEN]", sanitized)
+    sanitized = _SECRET_ASSIGNMENT_RE.sub(_redact_secret_assignment, sanitized)
+    sanitized = _TOKEN_LITERAL_RE.sub("[REDACTED_TOKEN]", sanitized)
+    sanitized = _EMAIL_RE.sub("[REDACTED_EMAIL]", sanitized)
+    return _PHONE_CANDIDATE_RE.sub(_redact_phone_like, sanitized)
+
+
+def _redact_secret_assignment(match: re.Match[str]) -> str:
+    quote = match.group("quote") or ""
+    return f"{match.group('key')}{match.group('sep')}{quote}[REDACTED_SECRET]{quote}"
+
+
+def _redact_phone_like(match: re.Match[str]) -> str:
+    value = match.group(0)
+    digits = re.sub(r"\D", "", value)
+    if 10 <= len(digits) <= 15:
+        return "[REDACTED_PHONE]"
+    return value
+
+
+def _stable_hash(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
+
+
+def _dedupe_strings(values: Sequence[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        deduped.append(text)
+    return deduped
 
 
 def _extract_failure_records(payload: Any) -> list[dict[str, Any]]:

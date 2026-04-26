@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import MutableSequence
 from pathlib import Path
 
 from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
 from ..core.types import ConversationRecord
+from ..security.ownership import OwnershipAuditEvent, allow_ownership, deny_ownership
 from .branch_repository import BranchRepository
 
 
@@ -280,7 +282,16 @@ class SQLiteBranchRepository(BranchRepository):
             )
             conn.commit()
 
-    def ensure_thread_owner(self, *, thread_id: str, root_thread_id: str, owner_user_id: str) -> None:
+    def ensure_thread_owner(
+        self,
+        *,
+        thread_id: str,
+        root_thread_id: str,
+        owner_user_id: str,
+        audit_events: MutableSequence[OwnershipAuditEvent] | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        events = audit_events if audit_events is not None else []
         with self._connect() as conn:
             existing = conn.execute(
                 'SELECT owner_user_id FROM thread_access WHERE thread_id = ?', (thread_id,)
@@ -291,19 +302,79 @@ class SQLiteBranchRepository(BranchRepository):
                     (thread_id, root_thread_id, owner_user_id),
                 )
                 conn.commit()
+                allow_ownership(
+                    events,
+                    principal=owner_user_id,
+                    resource_type="thread",
+                    resource_id=thread_id,
+                    action="access",
+                    reason="thread_owner_registered",
+                    request_id=request_id,
+                )
                 return
             if existing['owner_user_id'] != owner_user_id:
-                raise PermissionError(f'User {owner_user_id} cannot access thread {thread_id}.')
+                deny_ownership(
+                    events,
+                    principal=owner_user_id,
+                    resource_type="thread",
+                    resource_id=thread_id,
+                    action="access",
+                    reason="owner_mismatch",
+                    request_id=request_id,
+                )
+            allow_ownership(
+                events,
+                principal=owner_user_id,
+                resource_type="thread",
+                resource_id=thread_id,
+                action="access",
+                reason="owner_match",
+                request_id=request_id,
+            )
 
-    def assert_thread_owner(self, *, thread_id: str, owner_user_id: str) -> None:
+    def assert_thread_owner(
+        self,
+        *,
+        thread_id: str,
+        owner_user_id: str,
+        audit_events: MutableSequence[OwnershipAuditEvent] | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        events = audit_events if audit_events is not None else []
         with self._connect() as conn:
             row = conn.execute(
                 'SELECT owner_user_id FROM thread_access WHERE thread_id = ?', (thread_id,)
             ).fetchone()
         if row is None:
-            raise PermissionError(f'Thread {thread_id} is not registered for access yet.')
+            deny_ownership(
+                events,
+                principal=owner_user_id,
+                resource_type="thread",
+                resource_id=thread_id,
+                action="access",
+                reason="thread_unregistered",
+                request_id=request_id,
+                message=f"Thread {thread_id} is not registered for access yet.",
+            )
         if row['owner_user_id'] != owner_user_id:
-            raise PermissionError(f'User {owner_user_id} cannot access thread {thread_id}.')
+            deny_ownership(
+                events,
+                principal=owner_user_id,
+                resource_type="thread",
+                resource_id=thread_id,
+                action="access",
+                reason="owner_mismatch",
+                request_id=request_id,
+            )
+        allow_ownership(
+            events,
+            principal=owner_user_id,
+            resource_type="thread",
+            resource_id=thread_id,
+            action="access",
+            reason="owner_match",
+            request_id=request_id,
+        )
 
     def get_thread_owner(self, *, thread_id: str) -> str | None:
         with self._connect() as conn:

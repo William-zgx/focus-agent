@@ -168,3 +168,152 @@ def test_memory_context_failure_conversion_skips_records_without_assertions(
     cases = memory_context_eval.convert_failure_report_to_cases(replay_report)
 
     assert cases == []
+
+
+def test_memory_context_candidate_import_multiple_sources_sanitizes_and_dedupes(
+    tmp_path: Path,
+) -> None:
+    replay_source = tmp_path / "replay-report.json"
+    duplicate_input = {
+        "rendered_context": (
+            "Use the Postgres migration plan. Contact alice@example.com, phone "
+            "+1 (415) 555-2671, auth Bearer abcdefghij12345, api_key=sk-1234567890abcdef."
+        ),
+        "answer": "Use the Postgres migration plan.",
+    }
+    duplicate_expected = {
+        "required_facts": ["Postgres migration plan"],
+        "artifact_refs": ["artifact://candidate/postgres-plan"],
+    }
+    replay_source.write_text(
+        json.dumps(
+            {
+                "meta": {"suite": "trajectory_replay"},
+                "results": [
+                    {
+                        "case_id": "alice@example.com",
+                        "input": duplicate_input,
+                        "expected": duplicate_expected,
+                    },
+                    {
+                        "case_id": "metadata-only",
+                        "input": {"rendered_context": "No assertions here."},
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    trajectory_source = tmp_path / "trajectory.jsonl"
+    trajectory_source.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "id": "artifact-secret-duplicate",
+                        "input": duplicate_input,
+                        "expected": duplicate_expected,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": "context-freshness",
+                        "bucket": "context",
+                        "rendered_context": "Current route is BranchTree.",
+                        "answer": "Use the BranchTree route.",
+                        "expected": {
+                            "required_context_markers": ["Current route"],
+                            "answer_contains_all": ["BranchTree route"],
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = memory_context_eval.import_candidate_cases([replay_source, trajectory_source])
+    repeated = memory_context_eval.import_candidate_cases([replay_source, trajectory_source])
+    serialized = json.dumps(result.cases, ensure_ascii=False, sort_keys=True)
+
+    assert result.to_dict() == {
+        "imported": 2,
+        "sources": 2,
+        "records": 4,
+        "skipped_no_assertions": 1,
+        "skipped_duplicates": 1,
+    }
+    assert [case["id"] for case in result.cases] == [case["id"] for case in repeated.cases]
+    assert result.cases[0]["tags"][:5] == [
+        "memory_context",
+        "candidate_import",
+        "source:replay",
+        "bucket:artifact_ref",
+        "baseline:candidate",
+    ]
+    assert result.cases[0]["origin"]["baseline_label"] == "candidate"
+    assert result.cases[0]["origin"]["baseline_marker"] == "baseline:candidate"
+    assert "source:trajectory" in result.cases[1]["tags"]
+    assert "bucket:context" in result.cases[1]["tags"]
+    assert "alice@example.com" not in serialized
+    assert "alice-example-com" not in serialized
+    assert "415" not in serialized
+    assert "abcdefghi" not in serialized
+    assert "sk-1234567890abcdef" not in serialized
+    assert "[REDACTED_EMAIL]" in serialized
+    assert "[REDACTED_PHONE]" in serialized
+    assert "[REDACTED_TOKEN]" in serialized
+    assert "[REDACTED_SECRET]" in serialized
+
+
+def test_memory_context_candidate_import_cli_writes_jsonl(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    source = tmp_path / "memory-context-report.json"
+    source.write_text(
+        json.dumps(
+            {
+                "meta": {"suite": "memory_context_quality"},
+                "results": [
+                    {
+                        "case_id": "mctx-1",
+                        "case": {
+                            "tags": ["regression"],
+                            "input": {
+                                "rendered_context": "Context mentions the compaction summary.",
+                                "answer": "Use the compaction summary.",
+                            },
+                            "expected": {
+                                "required_facts": ["compaction summary"],
+                            },
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    dataset_out = tmp_path / "candidates.jsonl"
+
+    exit_code = memory_context_eval.main(
+        [
+            "--candidate-source-json",
+            str(source),
+            "--candidate-dataset-out",
+            str(dataset_out),
+            "--candidate-baseline-label",
+            "nightly",
+        ]
+    )
+    stdout = json.loads(capsys.readouterr().out)
+    imported = [json.loads(line) for line in dataset_out.read_text(encoding="utf-8").splitlines()]
+
+    assert exit_code == 0
+    assert stdout["imported"] == 1
+    assert stdout["dataset"] == str(dataset_out)
+    assert imported[0]["origin"]["baseline_label"] == "nightly"
+    assert imported[0]["origin"]["source_type"] == "memory-context"
+    assert "source:memory-context" in imported[0]["tags"]
+    assert "baseline:nightly" in imported[0]["tags"]
