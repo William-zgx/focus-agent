@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-validation",
+    "rootDir": "src",
+    "declaration": false,
+    "noEmit": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "include": [
+    "src/errors.ts",
+    "src/transport.ts",
+    "src/transport.validation.ts"
+  ],
+  "exclude": []
+}

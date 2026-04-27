@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import focus_agent.engine.runtime as runtime_mod
-from focus_agent.config import Settings
+from focus_agent.config import Settings, ensure_runtime_directories
 
 
 class _FakeContextManager:
@@ -228,6 +228,54 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert "local-fallback" in caplog.text
     finally:
         runtime.close()
+
+def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):
+    def fake_build_tool_registry(*, settings, skill_registry, store=None, checkpointer=None):
+        return {"store": store, "checkpointer": checkpointer}
+
+    class _FakeLocalSaver:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeLocalStore:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeSQLiteBranchRepository:
+        def __init__(self, path: str):
+            self.path = path
+
+    class _FakeSQLiteAgentTeamRepository:
+        def __init__(self, path: str):
+            self.path = path
+
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+    monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
+    monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
+    monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
+    monkeypatch.setattr(runtime_mod, "SQLiteAgentTeamRepository", _FakeSQLiteAgentTeamRepository)
+
+    branch_db_path = tmp_path / "runtime" / "db" / "branches.sqlite3"
+    artifact_dir = tmp_path / "runtime" / "artifacts"
+    settings = Settings(
+        branch_db_path=str(branch_db_path),
+        artifact_dir=str(artifact_dir),
+        local_checkpoint_path=str(tmp_path / "runtime" / "checkpoints.pkl"),
+        local_store_path=str(tmp_path / "runtime" / "store.pkl"),
+    )
+
+    assert not branch_db_path.parent.exists()
+    assert not artifact_dir.exists()
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        assert branch_db_path.parent.is_dir()
+        assert artifact_dir.is_dir()
+    finally:
+        runtime.close()
+
+
+def test_runtime_reexports_directory_helper() -> None:
+    assert runtime_mod.ensure_runtime_directories is ensure_runtime_directories
 
 
 def test_create_runtime_skips_trajectory_repo_when_disabled(monkeypatch, tmp_path):

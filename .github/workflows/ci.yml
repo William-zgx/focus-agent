@@ -8,7 +8,8 @@ on:
   pull_request:
 
 jobs:
-  test-and-lint:
+  python:
+    name: Python lint and test
     runs-on: ubuntu-latest
 
     steps:
@@ -32,19 +33,57 @@ jobs:
       - name: Run pytest
         run: pytest
 
+  contracts:
+    name: Contract check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python dependencies
+        run: uv pip install --system -e '.[openai,dev]'
+
+      - name: Run contract check
+        run: python3 scripts/check_contracts.py
+
+  frontend:
+    name: SDK and Web check/build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install frontend SDK dependencies
-        working-directory: frontend-sdk
-        run: npm install
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
 
-      - name: Type-check frontend SDK
-        working-directory: frontend-sdk
-        run: npm run check
+      - name: Install frontend workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check frontend SDK
+        run: pnpm sdk:check
 
       - name: Build frontend SDK
-        working-directory: frontend-sdk
-        run: npm run build
+        run: pnpm sdk:build
+
+      - name: Check web app
+        run: pnpm web:check
+
+      - name: Build web app
+        run: pnpm web:build

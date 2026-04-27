@@ -1,5 +1,7 @@
-import { iterSSEEvents } from "./parser";
-import { reduceStreamEvent, createInitialStreamState } from "./reducers";
+import { iterSSEEvents } from "./parser.js";
+import { reduceStreamEvent, createInitialStreamState } from "./reducers.js";
+import { FocusAgentTransport } from "./transport.js";
+export { FocusAgentRequestError } from "./errors.js";
 import type {
   FocusAgentApplyMergeDecisionRequest,
   FocusAgentAgentTeamCreateSessionRequest,
@@ -99,25 +101,13 @@ import type {
   ThreadContextPreviewRequest,
   ThreadContextPreviewResponse,
   FocusAgentToolEvent,
-} from "./types";
+} from "./types.js";
 
 export interface FocusAgentClientOptions {
   baseUrl: string;
   token?: string;
   getToken?: () => string | null | Promise<string | null>;
   fetchImpl?: typeof fetch;
-}
-
-export class FocusAgentRequestError extends Error {
-  readonly status: number;
-  readonly statusText: string;
-
-  constructor(status: number, statusText: string) {
-    super(`FocusAgent request failed: ${status} ${statusText}`);
-    this.name = "FocusAgentRequestError";
-    this.status = status;
-    this.statusText = statusText;
-  }
 }
 
 function appendQueryValue(params: URLSearchParams, key: string, value: unknown): void {
@@ -247,7 +237,7 @@ async function* dedupeAndCanonicalizeAliasEvents(
 
 export class FocusAgentClient {
   readonly baseUrl: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly transport: FocusAgentTransport;
   private token?: string;
   private readonly getTokenFn?: () => string | null | Promise<string | null>;
 
@@ -255,7 +245,11 @@ export class FocusAgentClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.token = options.token;
     this.getTokenFn = options.getToken;
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.transport = new FocusAgentTransport({
+      baseUrl: this.baseUrl,
+      fetchImpl: options.fetchImpl,
+      getHeaders: (headers, auth) => this.buildHeaders(headers, auth),
+    });
   }
 
   setToken(token: string | undefined): void {
@@ -1148,13 +1142,16 @@ export class FocusAgentClient {
     body: unknown,
     options: { signal?: AbortSignal } = {},
   ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: await this.buildHeaders({ "Content-Type": "application/json", Accept: "text/event-stream" }, true),
-      body: JSON.stringify(body),
-      signal: options.signal,
+    const response = await this.transport.fetch({
+      path,
+      auth: true,
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      },
     });
-    this.ensureOk(response);
     if (!response.body) {
       throw new Error("FocusAgent stream response did not include a body.");
     }
@@ -1162,12 +1159,7 @@ export class FocusAgentClient {
   }
 
   private async requestJson<T>(path: string, init: RequestInit, auth: boolean): Promise<T> {
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: await this.buildHeaders(init.headers ?? {}, auth),
-    });
-    this.ensureOk(response);
-    return (await response.json()) as T;
+    return this.transport.requestJson<T>({ path, init, auth });
   }
 
   private async buildHeaders(headers: HeadersInit, auth: boolean): Promise<HeadersInit> {
@@ -1183,10 +1175,5 @@ export class FocusAgentClient {
     if (this.token) return this.token;
     if (this.getTokenFn) return (await this.getTokenFn()) ?? null;
     return null;
-  }
-
-  private ensureOk(response: Response): void {
-    if (response.ok) return;
-    throw new FocusAgentRequestError(response.status, response.statusText);
   }
 }

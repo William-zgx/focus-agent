@@ -11,6 +11,8 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
         root / 'src' / 'types.ts',
         root / 'src' / 'parser.ts',
         root / 'src' / 'client.ts',
+        root / 'src' / 'errors.ts',
+        root / 'src' / 'transport.ts',
         root / 'src' / 'reducers.ts',
         root / 'src' / 'guards.ts',
     ]
@@ -57,7 +59,17 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
 
     client_text = (root / 'src' / 'client.ts').read_text()
     assert 'class FocusAgentClient' in client_text
-    assert 'class FocusAgentRequestError' in client_text
+    assert 'FocusAgentRequestError' in client_text
+    assert 'FocusAgentTransport' in client_text
+
+    errors_text = (root / 'src' / 'errors.ts').read_text()
+    assert 'class FocusAgentRequestError' in errors_text
+    assert 'request_id' in errors_text
+    assert 'raw' in errors_text
+
+    transport_text = (root / 'src' / 'transport.ts').read_text()
+    assert 'class FocusAgentTransport' in transport_text
+    assert 'createFocusAgentRequestError' in transport_text
     assert 'listModels' in client_text
     assert 'listConversations' in client_text
     assert 'createConversation' in client_text
@@ -91,4 +103,4 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'synthesizeAgentArtifacts' in client_text
     assert 'evaluateAgentCriticGate' in client_text
     assert 'buildTrajectoryQueryString' in client_text
-    assert 'new FocusAgentRequestError(response.status, response.statusText)' in client_text
+    assert 'this.transport.requestJson' in client_text

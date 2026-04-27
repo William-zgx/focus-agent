@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..capabilities import ToolRegistry, build_tool_registry
-from ..config import Settings
+from ..config import Settings, ensure_runtime_directories
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
@@ -56,6 +56,7 @@ class AppRuntime:
 
 def create_runtime(settings: Settings | None = None) -> AppRuntime:
     settings = settings or Settings.from_env()
+    ensure_runtime_directories(settings)
     exit_stack = ExitStack()
     otel_runtime = initialize_otel_runtime(settings)
     exit_stack.callback(otel_runtime.shutdown)

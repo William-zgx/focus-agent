@@ -3,16 +3,18 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from focus_agent.config import Settings
-
-from .errors import register_exception_handlers
-from .middleware import configure_middleware
-from .route_helpers import (
-    _aggregate_token_usage_from_turns,
-    _annotate_branch_tree_token_usage,
-    app_lifespan,
+from focus_agent.observability.trajectory_actions import (
     build_promoted_dataset_payload,
     load_turn_export,
     run_replay_for_turn,
+)
+
+from .errors import register_exception_handlers
+from .lifespan import app_lifespan
+from .middleware import configure_middleware
+from .route_utils import (
+    aggregate_token_usage_from_turns as _aggregate_token_usage_from_turns,
+    annotate_branch_tree_token_usage as _annotate_branch_tree_token_usage,
 )
 from .routers import (
     agent_governance,

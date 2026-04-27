@@ -3,10 +3,14 @@
   "private": true,
   "packageManager": "pnpm@9.15.9",
   "scripts": {
+    "contract:check": "python3 scripts/check_contracts.py",
+    "sdk:build": "pnpm --filter @focus-agent/web-sdk build",
+    "sdk:check": "pnpm --filter @focus-agent/web-sdk check",
     "web:dev": "pnpm --filter @focus-agent/web-app dev",
     "web:build": "pnpm --filter @focus-agent/web-app build",
     "web:check": "pnpm --filter @focus-agent/web-app check",
-    "sdk:build": "pnpm --filter @focus-agent/web-sdk build",
-    "sdk:check": "pnpm --filter @focus-agent/web-sdk check"
+    "check": "pnpm contract:check && pnpm sdk:check && pnpm web:check",
+    "build": "pnpm sdk:build && pnpm web:build",
+    "ci": "pnpm check && pnpm build"
   }
 }

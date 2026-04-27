@@ -218,7 +218,7 @@ def test_settings_default_artifact_dir_stays_under_focus_agent(tmp_path, monkeyp
     settings = Settings.from_env()
 
     assert settings.artifact_dir == ".focus_agent/artifacts"
-    assert (tmp_path / ".focus_agent" / "artifacts").is_dir()
+    assert not (tmp_path / ".focus_agent" / "artifacts").exists()
 
 
 def test_load_local_env_file_ignores_missing_file(tmp_path):

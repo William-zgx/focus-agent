@@ -1,4 +1,4 @@
-import type { FocusAgentEvent } from "./types";
+import type { FocusAgentEvent } from "./types.js";
 
 export function isVisibleTextDeltaEvent(
   event: FocusAgentEvent,

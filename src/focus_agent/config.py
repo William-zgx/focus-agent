@@ -14,6 +14,11 @@ DEFAULT_LOCAL_ENV_FILE = ".focus_agent/local.env"
 DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
 DEFAULT_AUTH_JWT_SECRET = "focus-agent-dev-secret"
+_INSECURE_AUTH_JWT_SECRETS = {
+    DEFAULT_AUTH_JWT_SECRET,
+    "change-me-before-sharing",
+    "change-me-in-shared-env",
+}
 _DEVELOPMENT_ENVIRONMENT_NAMES = {"dev", "development", "local", "test", "testing", "ci"}
 _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
 _ToolConfigT = TypeVar("_ToolConfigT")
@@ -240,12 +245,12 @@ def _validate_non_development_security(settings: "Settings", env: MutableMapping
     failures: list[str] = []
     jwt_secret = _normalize_optional_string(env.get("AUTH_JWT_SECRET"))
     current_secret = _current_auth_jwt_secret(settings, env)
-    if jwt_secret == DEFAULT_AUTH_JWT_SECRET:
-        failures.append("AUTH_JWT_SECRET must not use the development default")
+    if jwt_secret in _INSECURE_AUTH_JWT_SECRETS:
+        failures.append("AUTH_JWT_SECRET must not use a development or demo default")
     elif current_secret is None:
         failures.append("AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key")
-    elif current_secret == DEFAULT_AUTH_JWT_SECRET:
-        failures.append("AUTH_JWT_KEYS must not use the development default")
+    elif current_secret in _INSECURE_AUTH_JWT_SECRETS:
+        failures.append("AUTH_JWT_KEYS must not use a development or demo default")
     if (
         settings.auth_jwt_key_id
         and settings.auth_jwt_keys
@@ -264,11 +269,25 @@ def _validate_non_development_security(settings: "Settings", env: MutableMapping
         failures.append("AUTH_DEMO_TOKENS_ENABLED must be false")
     if not settings.rate_limit_enabled:
         failures.append("RATE_LIMIT_ENABLED must be true")
+    if settings.rate_limit_per_minute <= 0:
+        failures.append("RATE_LIMIT_PER_MINUTE must be greater than 0")
+    if settings.rate_limit_chat_per_minute <= 0:
+        failures.append("RATE_LIMIT_CHAT_PER_MINUTE must be greater than 0")
+    if not settings.cors_allowed_origins:
+        failures.append("CORS_ALLOWED_ORIGINS must be explicitly set")
+    if "*" in settings.cors_allowed_origins and settings.cors_allow_credentials:
+        failures.append("CORS_ALLOW_CREDENTIALS must be false when CORS_ALLOWED_ORIGINS contains '*'")
     if failures:
         raise ValueError(
             "Unsafe security configuration for non-development environment "
             f"({', '.join(environment_sources)}): {'; '.join(failures)}"
         )
+
+
+def ensure_runtime_directories(settings: "Settings") -> None:
+    """Create directories required by runtime persistence and artifacts."""
+    Path(settings.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+    Path(settings.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)
 
 
 def _split_listish(value: object) -> tuple[str, ...]:
@@ -1182,6 +1201,4 @@ class Settings:
             ).lower() in {"1", "true", "yes", "on"},
         )
         _validate_non_development_security(instance, env)
-        Path(instance.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        Path(instance.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)
         return instance

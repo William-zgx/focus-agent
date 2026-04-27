@@ -18,7 +18,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "validate:transport": "tsc -p tsconfig.validation.json && node dist-validation/transport.validation.js"
   },
   "devDependencies": {
     "typescript": "^5.8.0"

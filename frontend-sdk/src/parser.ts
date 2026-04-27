@@ -1,4 +1,4 @@
-import type { FocusAgentEvent, FocusAgentEventName, FocusAgentEventPayload } from "./types";
+import type { FocusAgentEvent, FocusAgentEventName, FocusAgentEventPayload } from "./types.js";
 
 export interface ParsedSSEFrame {
   event: string;

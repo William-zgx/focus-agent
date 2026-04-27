@@ -3,8 +3,8 @@ import type {
   FocusAgentStreamState,
   FocusAgentToolCallEvent,
   FocusAgentToolEvent,
-} from "./types";
-import { safeVisibleText } from "./toolProtocol";
+} from "./types.js";
+import { safeVisibleText } from "./toolProtocol.js";
 
 export function createInitialStreamState(): FocusAgentStreamState {
   return {

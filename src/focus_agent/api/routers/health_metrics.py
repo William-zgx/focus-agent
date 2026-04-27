@@ -1,7 +1,21 @@
 from __future__ import annotations
 
-# ruff: noqa: F403, F405
-from ..route_helpers import *
+from typing import Any
+
+from fastapi import APIRouter, Depends, Response
+from fastapi.responses import PlainTextResponse
+
+from focus_agent.engine.runtime import AppRuntime
+from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
+
+from ..contracts import RuntimeReadinessResponse
+from ..deps import get_app_runtime
+from ..route_utils import (
+    agent_governance_metrics_from_turns,
+    build_prometheus_metrics_payload,
+    build_runtime_readiness,
+    maybe_get_trajectory_repository,
+)
 
 router = APIRouter()
 
@@ -15,18 +29,18 @@ def readiness_check(
     response: Response,
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> RuntimeReadinessResponse:
-    readiness = _build_runtime_readiness(runtime)
+    readiness = build_runtime_readiness(runtime)
     if not readiness.ready:
         response.status_code = 503
     return readiness
 
 @router.get('/metrics', response_class=PlainTextResponse)
 def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextResponse:
-    runtime_status = _build_runtime_readiness(runtime)
+    runtime_status = build_runtime_readiness(runtime)
     trajectory_stats: dict[str, Any] | None = None
     agent_governance_metrics: dict[str, int] = {}
     trajectory_available = False
-    repo = _maybe_get_trajectory_repository(runtime)
+    repo = maybe_get_trajectory_repository(runtime)
     if repo is not None:
         try:
             trajectory_stats = repo.get_turn_stats(TrajectoryTurnQuery(limit=None, newest_first=True))
@@ -35,8 +49,8 @@ def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextR
             trajectory_stats = None
         else:
             trajectory_available = True
-            agent_governance_metrics = _agent_governance_metrics_from_turns(rows)
-    payload = _build_prometheus_metrics_payload(
+            agent_governance_metrics = agent_governance_metrics_from_turns(rows)
+    payload = build_prometheus_metrics_payload(
         runtime_status=runtime_status,
         trajectory_stats=trajectory_stats,
         trajectory_available=trajectory_available,

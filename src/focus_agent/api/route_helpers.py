@@ -4,7 +4,6 @@ from __future__ import annotations
 
 # ruff: noqa: F401
 
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Sequence
 from uuid import uuid4
@@ -164,6 +163,24 @@ from .errors import register_exception_handlers
 from .middleware import configure_middleware
 from focus_agent.model_registry import build_model_catalog
 
+from .lifespan import app_lifespan
+from .route_utils import (
+    accumulate_token_usage as _accumulate_token_usage,
+    agent_governance_metric_lines as _agent_governance_metric_lines,
+    aggregate_token_usage_from_turns as _aggregate_token_usage_from_turns,
+    annotate_branch_tree_token_usage as _annotate_branch_tree_token_usage,
+    build_prometheus_metrics_payload as _build_prometheus_metrics_payload,
+    build_runtime_readiness as _build_runtime_readiness,
+    escape_prometheus_label_value as _escape_prometheus_label_value,
+    agent_governance_metrics_from_turns as _agent_governance_metrics_from_turns,
+    maybe_get_trajectory_repository as _maybe_get_trajectory_repository,
+    normalize_token_usage as _normalize_token_usage,
+    prometheus_metric_line as _prometheus_metric_line,
+    token_usage_by_thread_for_root as _token_usage_by_thread_for_root,
+    token_usage_for_root_thread as _token_usage_for_root_thread,
+    trajectory_expected as _trajectory_expected,
+)
+
 def _agent_team_service_or_503(runtime: AppRuntime | Any):
     service = getattr(runtime, "agent_team_service", None)
     if service is None:
@@ -179,86 +196,6 @@ def _agent_team_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=500, detail=str(exc))
-
-def _normalize_token_usage(raw: dict[str, Any] | None = None) -> dict[str, int]:
-    payload = dict(raw or {})
-    input_tokens = int(payload.get("input_tokens") or 0)
-    output_tokens = int(payload.get("output_tokens") or 0)
-    total_tokens = int(payload.get("total_tokens") or (input_tokens + output_tokens))
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-    }
-
-
-def _accumulate_token_usage(current: dict[str, int], delta: dict[str, int] | None = None) -> dict[str, int]:
-    normalized = _normalize_token_usage(delta)
-    return {
-        "input_tokens": int(current.get("input_tokens") or 0) + normalized["input_tokens"],
-        "output_tokens": int(current.get("output_tokens") or 0) + normalized["output_tokens"],
-        "total_tokens": int(current.get("total_tokens") or 0) + normalized["total_tokens"],
-    }
-
-
-def _aggregate_token_usage_from_turns(turns: Sequence[dict[str, Any]]) -> dict[str, int]:
-    total = _normalize_token_usage()
-    for turn in turns:
-        total = _accumulate_token_usage(total, dict(turn.get("metrics") or {}))
-    return total
-
-
-def _token_usage_for_root_thread(*, runtime: AppRuntime, root_thread_id: str) -> dict[str, int]:
-    repo = _maybe_get_trajectory_repository(runtime)
-    if repo is None:
-        return _normalize_token_usage()
-    try:
-        turns = repo.list_turns(TrajectoryTurnQuery(root_thread_id=root_thread_id, limit=None, newest_first=True))
-    except Exception:  # noqa: BLE001
-        return _normalize_token_usage()
-    return _aggregate_token_usage_from_turns(turns)
-
-
-def _token_usage_by_thread_for_root(*, runtime: AppRuntime, root_thread_id: str) -> dict[str, dict[str, int]]:
-    repo = _maybe_get_trajectory_repository(runtime)
-    if repo is None:
-        return {}
-    try:
-        turns = repo.list_turns(TrajectoryTurnQuery(root_thread_id=root_thread_id, limit=None, newest_first=True))
-    except Exception:  # noqa: BLE001
-        return {}
-
-    grouped: dict[str, dict[str, int]] = {}
-    for turn in turns:
-        thread_id = str(turn.get("thread_id") or "").strip()
-        if not thread_id:
-            continue
-        grouped[thread_id] = _accumulate_token_usage(grouped.get(thread_id, _normalize_token_usage()), dict(turn.get("metrics") or {}))
-    return grouped
-
-
-def _annotate_branch_tree_token_usage(
-    node,
-    *,
-    by_thread_id: dict[str, dict[str, int]],
-    root_thread_usage: dict[str, int] | None = None,
-):
-    is_root_main_node = not getattr(node, "branch_id", None) and str(getattr(node, "thread_id", "")) == str(getattr(node, "root_thread_id", ""))
-    token_usage = root_thread_usage if is_root_main_node and root_thread_usage is not None else by_thread_id.get(node.thread_id)
-    return node.model_copy(
-        update={
-            "token_usage": _normalize_token_usage(token_usage),
-            "children": [
-                _annotate_branch_tree_token_usage(
-                    child,
-                    by_thread_id=by_thread_id,
-                    root_thread_usage=root_thread_usage,
-                )
-                for child in list(node.children or [])
-            ],
-        }
-    )
-
 
 def _conversation_response(record: ConversationRecord) -> ConversationSummaryResponse:
     return ConversationSummaryResponse(
@@ -612,142 +549,6 @@ def _build_batch_replay_summary(results: Sequence[TrajectoryReplayResponse]) -> 
     )
 
 
-def _trajectory_expected(settings: Settings | Any) -> bool:
-    enabled = getattr(settings, "trajectory_enabled", None)
-    database_uri = getattr(settings, "database_uri", None)
-    if enabled is None:
-        return bool(database_uri)
-    return bool(enabled and database_uri)
-
-
-def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
-    settings = getattr(runtime, "settings", None)
-    otel_runtime = getattr(runtime, "otel_runtime", None)
-    checks = [
-        RuntimeComponentStatusResponse(
-            name="graph",
-            ready=getattr(runtime, "graph", None) is not None,
-            detail="langgraph pipeline initialized" if getattr(runtime, "graph", None) is not None else "graph missing",
-        ),
-        RuntimeComponentStatusResponse(
-            name="branch_repository",
-            ready=getattr(runtime, "repo", None) is not None,
-            detail="branch persistence ready" if getattr(runtime, "repo", None) is not None else "branch repository missing",
-        ),
-        RuntimeComponentStatusResponse(
-            name="branch_service",
-            ready=getattr(runtime, "branch_service", None) is not None,
-            detail="branch service initialized" if getattr(runtime, "branch_service", None) is not None else "branch service missing",
-        ),
-        RuntimeComponentStatusResponse(
-            name="tool_registry",
-            ready=getattr(runtime, "tool_registry", None) is not None,
-            detail="tool registry loaded" if getattr(runtime, "tool_registry", None) is not None else "tool registry missing",
-        ),
-        RuntimeComponentStatusResponse(
-            name="skill_registry",
-            ready=getattr(runtime, "skill_registry", None) is not None,
-            detail="skill registry loaded" if getattr(runtime, "skill_registry", None) is not None else "skill registry missing",
-        ),
-    ]
-    if getattr(settings, "database_uri", None):
-        checks.append(
-            RuntimeComponentStatusResponse(
-                name="persistence_backend",
-                ready=True,
-                detail="postgres-primary",
-            )
-        )
-    else:
-        checks.append(
-            RuntimeComponentStatusResponse(
-                name="persistence_backend",
-                ready=True,
-                detail="local-fallback",
-            )
-        )
-
-    tracing_enabled = bool(getattr(settings, "tracing_enabled", False))
-    tracing_exporters = tuple(getattr(settings, "otel_traces_exporters", ()) or ())
-    if tracing_enabled:
-        if otel_runtime is not None:
-            checks.append(
-                RuntimeComponentStatusResponse(
-                    name="tracing_exporter",
-                    ready=bool(getattr(otel_runtime, "ready", False)),
-                    detail=str(getattr(otel_runtime, "detail", "tracing exporter state unavailable")),
-                )
-            )
-        elif tracing_exporters:
-            checks.append(
-                RuntimeComponentStatusResponse(
-                    name="tracing_exporter",
-                    ready=False,
-                    detail="tracing exporters requested but runtime exporter state is missing",
-                )
-            )
-        else:
-            checks.append(
-                RuntimeComponentStatusResponse(
-                    name="tracing_exporter",
-                    ready=True,
-                    detail="tracing enabled without exporter",
-                )
-            )
-    else:
-        checks.append(
-            RuntimeComponentStatusResponse(
-                name="tracing_exporter",
-                ready=True,
-                detail="tracing disabled",
-            )
-        )
-
-    trajectory_expected = _trajectory_expected(settings)
-    trajectory_recorder = getattr(runtime, "trajectory_recorder", None)
-    if trajectory_expected:
-        checks.append(
-            RuntimeComponentStatusResponse(
-                name="trajectory_recorder",
-                ready=trajectory_recorder is not None,
-                detail=(
-                    "trajectory recorder ready"
-                    if trajectory_recorder is not None
-                    else "trajectory recorder missing while trajectory persistence is configured"
-                ),
-            )
-        )
-    else:
-        checks.append(
-            RuntimeComponentStatusResponse(
-                name="trajectory_recorder",
-                ready=True,
-                detail="trajectory persistence disabled",
-            )
-        )
-
-    ready = all(check.ready for check in checks)
-    return RuntimeReadinessResponse(
-        status="ok" if ready else "degraded",
-        ready=ready,
-        app_version=getattr(settings, "app_version", None),
-        environment=getattr(settings, "app_environment", None),
-        deployment=getattr(settings, "deployment_name", None),
-        checks=checks,
-    )
-
-
-def _maybe_get_trajectory_repository(runtime: AppRuntime | Any) -> PostgresTrajectoryRepository | Any | None:
-    candidate = getattr(runtime, "trajectory_recorder", None)
-    required_methods = ("list_turns", "get_turn", "list_steps_by_turn_ids", "get_turn_stats")
-    if candidate is not None and all(callable(getattr(candidate, name, None)) for name in required_methods):
-        return candidate
-    database_uri = getattr(getattr(runtime, "settings", None), "database_uri", None)
-    if database_uri:
-        return PostgresTrajectoryRepository(database_uri)
-    return None
-
-
 def _agent_role_policy_response(settings: Settings | Any) -> AgentRolePolicyResponse:
     resolver = RoleModelResolver(settings)
     return AgentRolePolicyResponse(
@@ -903,242 +704,6 @@ def _list_plan_meta_list_items(
                 }
             )
     return items[:limit], True, None
-
-
-def _escape_prometheus_label_value(value: Any) -> str:
-    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
-
-
-def _prometheus_metric_line(name: str, value: int | float, labels: dict[str, Any] | None = None) -> str:
-    if labels:
-        rendered = ",".join(
-            f'{key}="{_escape_prometheus_label_value(label_value)}"'
-            for key, label_value in labels.items()
-            if label_value is not None
-        )
-        return f"{name}{{{rendered}}} {value}"
-    return f"{name} {value}"
-
-
-def _build_prometheus_metrics_payload(
-    *,
-    runtime_status: RuntimeReadinessResponse,
-    trajectory_stats: dict[str, Any] | None,
-    trajectory_available: bool,
-    agent_governance_metrics: dict[str, int] | None = None,
-) -> str:
-    lines = [
-        "# HELP focus_agent_runtime_ready Whether the application runtime is ready to serve traffic.",
-        "# TYPE focus_agent_runtime_ready gauge",
-        _prometheus_metric_line("focus_agent_runtime_ready", 1 if runtime_status.ready else 0),
-    ]
-    lines.extend(
-        [
-            "# HELP focus_agent_runtime_build_info Build metadata for the running service.",
-            "# TYPE focus_agent_runtime_build_info gauge",
-            _prometheus_metric_line(
-                "focus_agent_runtime_build_info",
-                1,
-                labels={
-                    "version": runtime_status.app_version or "unknown",
-                    "environment": runtime_status.environment or "unknown",
-                    "deployment": runtime_status.deployment or "unknown",
-                },
-            ),
-            "# HELP focus_agent_runtime_component_ready Per-component readiness for the running service.",
-            "# TYPE focus_agent_runtime_component_ready gauge",
-        ]
-    )
-    for check in runtime_status.checks:
-        lines.append(
-            _prometheus_metric_line(
-                "focus_agent_runtime_component_ready",
-                1 if check.ready else 0,
-                labels={"component": check.name, "detail": check.detail or ""},
-            )
-        )
-
-    lines.extend(
-        [
-            "# HELP focus_agent_trajectory_metrics_available Whether trajectory metrics were available for this scrape.",
-            "# TYPE focus_agent_trajectory_metrics_available gauge",
-            _prometheus_metric_line("focus_agent_trajectory_metrics_available", 1 if trajectory_available else 0),
-        ]
-    )
-    if not trajectory_available or not trajectory_stats:
-        lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
-        return "\n".join(lines) + "\n"
-
-    overview = trajectory_stats.get("overview") or {}
-    lines.extend(
-        [
-            "# HELP focus_agent_trajectory_turn_count Total recorded trajectory turns in the selected scope.",
-            "# TYPE focus_agent_trajectory_turn_count gauge",
-            _prometheus_metric_line("focus_agent_trajectory_turn_count", int(overview.get("turn_count") or 0)),
-            "# HELP focus_agent_trajectory_non_succeeded_count Total non-succeeded trajectory turns in the selected scope.",
-            "# TYPE focus_agent_trajectory_non_succeeded_count gauge",
-            _prometheus_metric_line(
-                "focus_agent_trajectory_non_succeeded_count",
-                int(overview.get("non_succeeded_count") or 0),
-            ),
-            "# HELP focus_agent_trajectory_avg_latency_ms Average end-to-end turn latency in milliseconds.",
-            "# TYPE focus_agent_trajectory_avg_latency_ms gauge",
-            _prometheus_metric_line(
-                "focus_agent_trajectory_avg_latency_ms",
-                float(overview.get("avg_latency_ms") or 0.0),
-            ),
-            "# HELP focus_agent_trajectory_max_latency_ms Maximum end-to-end turn latency in milliseconds.",
-            "# TYPE focus_agent_trajectory_max_latency_ms gauge",
-            _prometheus_metric_line(
-                "focus_agent_trajectory_max_latency_ms",
-                float(overview.get("max_latency_ms") or 0.0),
-            ),
-            "# HELP focus_agent_trajectory_total_tool_calls Total tool invocations across recorded turns.",
-            "# TYPE focus_agent_trajectory_total_tool_calls gauge",
-            _prometheus_metric_line(
-                "focus_agent_trajectory_total_tool_calls",
-                int(overview.get("total_tool_calls") or 0),
-            ),
-            "# HELP focus_agent_trajectory_total_fallback_uses Total fallback tool executions across recorded turns.",
-            "# TYPE focus_agent_trajectory_total_fallback_uses gauge",
-            _prometheus_metric_line(
-                "focus_agent_trajectory_total_fallback_uses",
-                int(overview.get("total_fallback_uses") or 0),
-            ),
-            "# HELP focus_agent_trajectory_turns_by_status Turn counts grouped by trajectory status.",
-            "# TYPE focus_agent_trajectory_turns_by_status gauge",
-        ]
-    )
-    for row in trajectory_stats.get("by_status") or []:
-        lines.append(
-            _prometheus_metric_line(
-                "focus_agent_trajectory_turns_by_status",
-                int(row.get("turn_count") or 0),
-                labels={"status": row.get("key") or "unknown"},
-            )
-        )
-    lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
-    return "\n".join(lines) + "\n"
-
-
-def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
-    return [
-        "# HELP focus_agent_memory_promotion_count Total memory promotions observed in trajectory plan_meta.",
-        "# TYPE focus_agent_memory_promotion_count gauge",
-        _prometheus_metric_line("focus_agent_memory_promotion_count", int(metrics.get("memory_promotions") or 0)),
-        "# HELP focus_agent_memory_conflict_count Total memory curator conflicts observed in trajectory plan_meta.",
-        "# TYPE focus_agent_memory_conflict_count gauge",
-        _prometheus_metric_line("focus_agent_memory_conflict_count", int(metrics.get("memory_conflicts") or 0)),
-        "# HELP focus_agent_tool_router_denied_count Total denied tools observed in tool_route_plan records.",
-        "# TYPE focus_agent_tool_router_denied_count gauge",
-        _prometheus_metric_line("focus_agent_tool_router_denied_count", int(metrics.get("tool_router_denied") or 0)),
-        "# HELP focus_agent_tool_router_enforced_count Total enforced tool_route_plan records.",
-        "# TYPE focus_agent_tool_router_enforced_count gauge",
-        _prometheus_metric_line("focus_agent_tool_router_enforced_count", int(metrics.get("tool_router_enforced") or 0)),
-        "# HELP focus_agent_delegation_run_count Total delegated agent runs observed in trajectory plan_meta.",
-        "# TYPE focus_agent_delegation_run_count gauge",
-        _prometheus_metric_line("focus_agent_delegation_run_count", int(metrics.get("agent_delegation_runs") or 0)),
-        "# HELP focus_agent_critic_reject_count Total critic rejection failures observed in trajectory plan_meta.",
-        "# TYPE focus_agent_critic_reject_count gauge",
-        _prometheus_metric_line("focus_agent_critic_reject_count", int(metrics.get("critic_rejects") or 0)),
-        "# HELP focus_agent_review_pending_count Pending agent review queue items observed in trajectory plan_meta.",
-        "# TYPE focus_agent_review_pending_count gauge",
-        _prometheus_metric_line("focus_agent_review_pending_count", int(metrics.get("agent_review_pending") or 0)),
-        "# HELP focus_agent_model_router_fallback_count Model Router fallback events observed in trajectory plan_meta.",
-        "# TYPE focus_agent_model_router_fallback_count gauge",
-        _prometheus_metric_line("focus_agent_model_router_fallback_count", int(metrics.get("model_router_fallback") or 0)),
-        "# HELP focus_agent_failure_count Agent failure records observed in trajectory plan_meta.",
-        "# TYPE focus_agent_failure_count gauge",
-        _prometheus_metric_line("focus_agent_failure_count", int(metrics.get("agent_failures") or 0)),
-        "# HELP focus_agent_context_artifact_ref_count Context Engineering artifact refs observed in trajectory plan_meta.",
-        "# TYPE focus_agent_context_artifact_ref_count gauge",
-        _prometheus_metric_line("focus_agent_context_artifact_ref_count", int(metrics.get("context_artifact_refs") or 0)),
-        "# HELP focus_agent_context_over_budget_count Context Engineering over-budget decisions observed in trajectory plan_meta.",
-        "# TYPE focus_agent_context_over_budget_count gauge",
-        _prometheus_metric_line("focus_agent_context_over_budget_count", int(metrics.get("context_over_budget") or 0)),
-        "# HELP focus_agent_task_ledger_task_count Agent Task Ledger tasks observed in trajectory plan_meta.",
-        "# TYPE focus_agent_task_ledger_task_count gauge",
-        _prometheus_metric_line("focus_agent_task_ledger_task_count", int(metrics.get("agent_task_ledger_tasks") or 0)),
-        "# HELP focus_agent_delegated_artifact_count Delegated artifacts observed in trajectory plan_meta.",
-        "# TYPE focus_agent_delegated_artifact_count gauge",
-        _prometheus_metric_line("focus_agent_delegated_artifact_count", int(metrics.get("delegated_artifacts") or 0)),
-        "# HELP focus_agent_critic_gate_rejected_count Rejected artifacts observed in critic gate results.",
-        "# TYPE focus_agent_critic_gate_rejected_count gauge",
-        _prometheus_metric_line("focus_agent_critic_gate_rejected_count", int(metrics.get("critic_gate_rejected") or 0)),
-    ]
-
-
-def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict[str, int]:
-    metrics = {
-        "memory_promotions": 0,
-        "memory_conflicts": 0,
-        "tool_router_denied": 0,
-        "tool_router_enforced": 0,
-        "agent_delegation_runs": 0,
-        "critic_rejects": 0,
-        "agent_review_pending": 0,
-        "model_router_fallback": 0,
-        "agent_failures": 0,
-        "context_artifact_refs": 0,
-        "context_over_budget": 0,
-        "agent_task_ledger_tasks": 0,
-        "delegated_artifacts": 0,
-        "critic_gate_rejected": 0,
-    }
-    for row in rows:
-        plan_meta = dict(row.get("plan_meta") or {})
-        memory_decision = plan_meta.get("memory_curator_decision")
-        if isinstance(memory_decision, dict):
-            metrics["memory_promotions"] += len(memory_decision.get("promoted_memory_ids") or [])
-            metrics["memory_conflicts"] += len(memory_decision.get("conflicts") or [])
-        tool_plan = plan_meta.get("tool_route_plan")
-        if isinstance(tool_plan, dict):
-            metrics["tool_router_denied"] += len(tool_plan.get("denied_tools") or [])
-            metrics["tool_router_enforced"] += 1 if tool_plan.get("enforce") else 0
-        delegation_plan = plan_meta.get("agent_delegation_plan")
-        if isinstance(delegation_plan, dict):
-            metrics["agent_delegation_runs"] += len(delegation_plan.get("runs") or [])
-        model_decision = plan_meta.get("model_route_decision")
-        if isinstance(model_decision, dict):
-            metrics["model_router_fallback"] += 1 if model_decision.get("fallback_used") else 0
-        failures = plan_meta.get("agent_failure_records")
-        if isinstance(failures, list):
-            metrics["agent_failures"] += len(failures)
-            metrics["critic_rejects"] += len(
-                [item for item in failures if isinstance(item, dict) and item.get("failure_type") == "critic_rejected"]
-            )
-        review_queue = plan_meta.get("agent_review_queue")
-        if isinstance(review_queue, list):
-            metrics["agent_review_pending"] += len(
-                [item for item in review_queue if isinstance(item, dict) and item.get("status") == "pending"]
-            )
-        context_refs = plan_meta.get("context_artifact_refs")
-        if isinstance(context_refs, list):
-            metrics["context_artifact_refs"] += len(context_refs)
-        context_budget = plan_meta.get("context_budget_decision")
-        if isinstance(context_budget, dict):
-            metrics["context_over_budget"] += 1 if int(context_budget.get("over_budget_chars") or 0) > 0 else 0
-        task_ledger = plan_meta.get("agent_task_ledger")
-        if isinstance(task_ledger, dict):
-            metrics["agent_task_ledger_tasks"] += len(task_ledger.get("tasks") or [])
-        delegated_artifacts = plan_meta.get("delegated_artifacts")
-        if isinstance(delegated_artifacts, list):
-            metrics["delegated_artifacts"] += len(delegated_artifacts)
-        critic_gate = plan_meta.get("critic_gate_result")
-        if isinstance(critic_gate, dict):
-            metrics["critic_gate_rejected"] += len(critic_gate.get("rejected_artifact_ids") or [])
-    return metrics
-
-
-@asynccontextmanager
-async def app_lifespan(app: FastAPI):
-    runtime = create_runtime(Settings.from_env())
-    app.state.runtime = runtime
-    app.state.chat_service = ChatService(runtime)
-    try:
-        yield
-    finally:
-        runtime.close()
 
 
 def _event_stream_response(stream: AsyncIterator[str]) -> StreamingResponse:

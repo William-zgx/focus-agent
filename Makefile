@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build web-install web-dev web-check web-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build web-install web-dev web-check web-build frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -28,7 +28,7 @@ help:
 		'  make dev               Start the API server with API_RELOAD=1' \
 		'  make test              Run pytest' \
 		'  make lint              Run ruff check .' \
-		'  make check             Run lint + test + sdk-check' \
+		'  make check             Run lint + test + contract-check + SDK/Web checks' \
 		'  make ci                Run local CI parity checks' \
 		'  make ci-test           Run pytest without repo-local env bootstrap' \
 		'  make contract-check    Verify API and frontend SDK contract snapshots' \
@@ -45,6 +45,8 @@ help:
 		'  make web-dev           Start the React frontend app' \
 		'  make web-check         Run frontend app type-check' \
 		'  make web-build         Build the React frontend app' \
+		'  make frontend-check    Run frontend SDK and Web checks' \
+		'  make frontend-build    Build frontend SDK and Web app' \
 		'  make docker-up         Start the Compose service' \
 		'  make docker-rebuild    Rebuild image and recreate the Compose service' \
 		'  make docker-restart    Restart the running Compose service' \
@@ -95,9 +97,9 @@ test: .venv/bin/python
 lint: .venv/bin/python
 	$(RUFF) check .
 
-check: lint test sdk-check
+check: lint test contract-check sdk-check sdk-build web-check web-build
 
-ci: lint ci-test sdk-check sdk-build
+ci: lint ci-test contract-check sdk-check sdk-build web-check web-build
 
 ci-test: .venv/bin/python
 	FOCUS_AGENT_LOCAL_ENV_FILE=$(CI_LOCAL_ENV_FILE) $(PYTEST)
@@ -159,6 +161,10 @@ web-check: node_modules
 
 web-build: node_modules
 	$(PNPM) web:build
+
+frontend-check: sdk-check web-check
+
+frontend-build: sdk-build web-build
 
 docker-up:
 	$(DOCKER_COMPOSE) up -d focus-agent
