@@ -1,15 +1,14 @@
-"""Runtime readiness helpers for API routes."""
-
 from __future__ import annotations
 
 from typing import Any
 
+from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import RuntimeComponentStatusResponse, RuntimeReadinessResponse
 
 
-def trajectory_expected(settings: Any) -> bool:
+def _trajectory_expected(settings: Settings | Any) -> bool:
     enabled = getattr(settings, "trajectory_enabled", None)
     database_uri = getattr(settings, "database_uri", None)
     if enabled is None:
@@ -17,7 +16,7 @@ def trajectory_expected(settings: Any) -> bool:
     return bool(enabled and database_uri)
 
 
-def build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
+def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
     settings = getattr(runtime, "settings", None)
     otel_runtime = getattr(runtime, "otel_runtime", None)
     checks = [
@@ -100,8 +99,9 @@ def build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespon
             )
         )
 
+    trajectory_expected = _trajectory_expected(settings)
     trajectory_recorder = getattr(runtime, "trajectory_recorder", None)
-    if trajectory_expected(settings):
+    if trajectory_expected:
         checks.append(
             RuntimeComponentStatusResponse(
                 name="trajectory_recorder",
@@ -133,4 +133,8 @@ def build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespon
     )
 
 
-__all__ = ["build_runtime_readiness", "trajectory_expected"]
+
+
+__all__ = [
+    "_build_runtime_readiness",
+]

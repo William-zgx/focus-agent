@@ -51,7 +51,24 @@ from ..memory import (
     MemoryWriter,
     render_memory_block,
 )
-from ..model_registry import create_chat_model, default_thinking_enabled, supports_thinking_mode
+from ..model_registry import create_chat_model
+from .graph_messages import (
+    collect_tool_names_since_latest_human as _graph_messages_collect_tool_names_since_latest_human,
+    collapse_unanswered_trailing_humans as _graph_messages_collapse_unanswered_trailing_humans,
+    count_tool_call_rounds_since_latest_human as _graph_messages_count_tool_call_rounds_since_latest_human,
+    ensure_reasoning_content_for_tool_call_history as _graph_messages_ensure_reasoning_content_for_tool_call_history,
+    find_trailing_tool_span_start as _graph_messages_find_trailing_tool_span_start,
+    has_tool_calls as _graph_messages_has_tool_calls,
+    latest_final_ai_text as _graph_messages_latest_final_ai_text,
+    latest_human_message_text as _graph_messages_latest_human_message_text,
+    latest_turn_messages as _graph_messages_latest_turn_messages,
+    message_text as _graph_messages_message_text,
+    messages_for_model as _graph_messages_messages_for_model,
+    sanitize_assistant_tool_call_message as _graph_messages_sanitize_assistant_tool_call_message,
+    should_force_tool_free_answer as _graph_messages_should_force_tool_free_answer,
+    stringify_message_block as _graph_messages_stringify_message_block,
+    thinking_mode_requires_reasoning_content as _graph_messages_thinking_mode_requires_reasoning_content,
+)
 from ..skills import SkillRegistry
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
@@ -119,12 +136,6 @@ _WORKSPACE_TOOL_NAMES = frozenset(
     }
 )
 _LIVE_WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch", "current_utc_time"})
-_REASONING_MESSAGE_BLOCK_TYPES = frozenset(
-    {"reasoning", "reasoning_delta", "reasoning_content", "reasoningcontent", "thinking", "thinking_delta"}
-)
-_TOOL_MESSAGE_BLOCK_TYPES = frozenset(
-    {"tool_call", "tool_call_chunk", "server_tool_call", "server_tool_call_chunk"}
-)
 
 _NO_TOOL_INTENT_MARKERS = (
     "不要联网",
@@ -322,144 +333,42 @@ _EXECUTION_INTENT_MARKERS = (
 
 
 def _has_tool_calls(message: Any) -> bool:
-    return bool(getattr(message, "tool_calls", None))
+    return _graph_messages_has_tool_calls(message)
 
 
 def _find_trailing_tool_span_start(messages: list[Any]) -> int | None:
-    if not messages:
-        return None
-
-    index = len(messages) - 1
-    while index >= 0 and isinstance(messages[index], ToolMessage):
-        index -= 1
-
-    if index < 0:
-        return None
-    if _has_tool_calls(messages[index]):
-        return index
-    return None
+    return _graph_messages_find_trailing_tool_span_start(messages)
 
 
 def _collapse_unanswered_trailing_humans(messages: list[Any]) -> list[Any]:
-    if len(messages) < 2:
-        return messages
-
-    tail_start = len(messages)
-    index = len(messages) - 1
-    while index >= 0 and isinstance(messages[index], HumanMessage):
-        tail_start = index
-        index -= 1
-
-    trailing_human_count = len(messages) - tail_start
-    if trailing_human_count <= 1:
-        return messages
-    return [*messages[:tail_start], messages[-1]]
+    return _graph_messages_collapse_unanswered_trailing_humans(messages)
 
 
 def _messages_for_model(state: AgentState) -> list[Any]:
-    recent_messages = list(state.get("recent_messages") or [])
-    messages = list(state.get("messages", []) or [])
-    trailing_tool_span_start = _find_trailing_tool_span_start(messages)
-    if trailing_tool_span_start is None:
-        selected = _collapse_unanswered_trailing_humans(recent_messages or messages)
-    else:
-        selected = _collapse_unanswered_trailing_humans([*recent_messages, *messages[trailing_tool_span_start:]])
-    return [_sanitize_assistant_tool_call_message(message) for message in selected]
+    return _graph_messages_messages_for_model(state)
 
 
 def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
-    rounds = 0
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            break
-        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None):
-            rounds += 1
-    return rounds
+    return _graph_messages_count_tool_call_rounds_since_latest_human(messages)
 
 
 def _should_force_tool_free_answer(messages: list[Any]) -> bool:
-    if not messages or not isinstance(messages[-1], ToolMessage):
-        return False
-    return _count_tool_call_rounds_since_latest_human(messages) >= _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS
+    return _graph_messages_should_force_tool_free_answer(
+        messages,
+        max_rounds=_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS,
+    )
 
 
 def _message_text(message: Any) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, list):
-        return json.dumps(content, ensure_ascii=False)
-    return str(content)
+    return _graph_messages_message_text(message)
 
 
 def _stringify_message_block(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float, bool)):
-        return str(value)
-    if isinstance(value, list):
-        return "".join(_stringify_message_block(item) for item in value)
-    if isinstance(value, dict):
-        for key in (
-            "text",
-            "content",
-            "value",
-            "reasoning_content",
-            "reasoningcontent",
-            "reasoning",
-            "summary",
-        ):
-            if value.get(key) is not None:
-                return _stringify_message_block(value[key])
-        return ""
-    return str(value)
+    return _graph_messages_stringify_message_block(value)
 
 
 def _sanitize_assistant_tool_call_message(message: Any) -> Any:
-    if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
-        return message
-    content = getattr(message, "content", None)
-    if not isinstance(content, list):
-        return message
-
-    visible_parts: list[str] = []
-    reasoning_parts: list[str] = []
-    for block in content:
-        if isinstance(block, str):
-            if block.strip():
-                visible_parts.append(block)
-            continue
-        if not isinstance(block, dict):
-            text = _stringify_message_block(block).strip()
-            if text:
-                visible_parts.append(text)
-            continue
-        block_type = str(block.get("type") or "").strip().lower()
-        if block_type in _REASONING_MESSAGE_BLOCK_TYPES:
-            text = _stringify_message_block(block).strip()
-            if text:
-                reasoning_parts.append(text)
-            continue
-        if block_type in _TOOL_MESSAGE_BLOCK_TYPES:
-            continue
-        text = _stringify_message_block(block).strip()
-        if text:
-            visible_parts.append(text)
-
-    additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
-    if reasoning_parts and not additional_kwargs.get("reasoning_content"):
-        additional_kwargs["reasoning_content"] = "".join(reasoning_parts)
-
-    return AIMessage(
-        content="".join(visible_parts).strip(),
-        additional_kwargs=additional_kwargs,
-        response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
-        name=getattr(message, "name", None),
-        id=getattr(message, "id", None),
-        tool_calls=list(getattr(message, "tool_calls", []) or []),
-        invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
-        usage_metadata=getattr(message, "usage_metadata", None),
-    )
+    return _graph_messages_sanitize_assistant_tool_call_message(message)
 
 
 def _thinking_mode_requires_reasoning_content(
@@ -468,12 +377,11 @@ def _thinking_mode_requires_reasoning_content(
     thinking_mode: str,
     settings: Settings,
 ) -> bool:
-    normalized = str(thinking_mode or "").strip().lower()
-    if normalized == "disabled":
-        return False
-    if normalized == "enabled":
-        return supports_thinking_mode(model_id, settings=settings)
-    return default_thinking_enabled(model_id, settings=settings)
+    return _graph_messages_thinking_mode_requires_reasoning_content(
+        model_id=model_id,
+        thinking_mode=thinking_mode,
+        settings=settings,
+    )
 
 
 def _ensure_reasoning_content_for_tool_call_history(
@@ -483,40 +391,12 @@ def _ensure_reasoning_content_for_tool_call_history(
     thinking_mode: str,
     settings: Settings,
 ) -> list[Any]:
-    if not _thinking_mode_requires_reasoning_content(
+    return _graph_messages_ensure_reasoning_content_for_tool_call_history(
+        messages,
         model_id=model_id,
         thinking_mode=thinking_mode,
         settings=settings,
-    ):
-        return messages
-
-    fixed: list[Any] = []
-    for message in messages:
-        if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
-            fixed.append(message)
-            continue
-
-        additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
-        if _stringify_message_block(additional_kwargs.get("reasoning_content")).strip():
-            fixed.append(message)
-            continue
-
-        additional_kwargs["reasoning_content"] = (
-            "Tool-call reasoning was preserved for the provider protocol."
-        )
-        fixed.append(
-            AIMessage(
-                content=getattr(message, "content", ""),
-                additional_kwargs=additional_kwargs,
-                response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
-                name=getattr(message, "name", None),
-                id=getattr(message, "id", None),
-                tool_calls=list(getattr(message, "tool_calls", []) or []),
-                invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
-                usage_metadata=getattr(message, "usage_metadata", None),
-            )
-        )
-    return fixed
+    )
 
 
 def _known_tool_names(available_tools: list[Any] | tuple[Any, ...] | None = None) -> set[str]:
@@ -539,17 +419,11 @@ def _looks_like_textual_tool_call_artifact(
 
 
 def _latest_human_message_text(messages: list[Any]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            return _message_text(message)
-    return ""
+    return _graph_messages_latest_human_message_text(messages)
 
 
 def _latest_final_ai_text(messages: list[Any]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
-            return _message_text(message)
-    return ""
+    return _graph_messages_latest_final_ai_text(messages)
 
 
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
@@ -665,10 +539,7 @@ def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
 
 
 def _latest_turn_messages(messages: list[Any]) -> list[Any]:
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            return messages[index:]
-    return messages
+    return _graph_messages_latest_turn_messages(messages)
 
 
 def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -1125,17 +996,7 @@ def _parse_reflection_json(text: str) -> ReflectionVerdict | None:
 
 
 def _collect_tool_names_since_latest_human(messages: list[Any]) -> list[str]:
-    names: list[str] = []
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            break
-        if isinstance(message, AIMessage):
-            for call in getattr(message, "tool_calls", None) or []:
-                name = call.get("name") if isinstance(call, dict) else None
-                if name:
-                    names.append(str(name))
-    names.reverse()
-    return names
+    return _graph_messages_collect_tool_names_since_latest_human(messages)
 
 
 def _resolve_prompt_mode(state: AgentState) -> PromptMode:

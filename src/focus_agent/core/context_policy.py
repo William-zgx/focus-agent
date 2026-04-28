@@ -9,6 +9,10 @@ from typing import Any, Iterable
 
 from langchain.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 
+from .context_policy_helpers import (
+    render_block_order as _render_block_order_helper,
+    units_to_char_budget as _units_to_char_budget_helper,
+)
 from .types import ArtifactRef, ConstraintItem, ContextBudget, FindingItem, PinnedFact, PromptMode
 from .state import normalize_agent_state
 
@@ -2123,53 +2127,7 @@ def _first_nonempty_line(text: str) -> str:
 
 
 def _render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
-    if prompt_mode == PromptMode.SYNTHESIZE:
-        return (
-            "system_instructions",
-            "constraints_block",
-            "findings_block",
-            "memory_block",
-            "pinned_block",
-            "summary_block",
-            "active_skills_block",
-            "available_skills_block",
-            "artifact_block",
-        )
-    if prompt_mode == PromptMode.BRANCH_REVIEW:
-        return (
-            "system_instructions",
-            "findings_block",
-            "artifact_block",
-            "constraints_block",
-            "pinned_block",
-            "memory_block",
-            "summary_block",
-            "active_skills_block",
-            "available_skills_block",
-        )
-    if prompt_mode == PromptMode.EXECUTE:
-        return (
-            "system_instructions",
-            "constraints_block",
-            "pinned_block",
-            "findings_block",
-            "artifact_block",
-            "memory_block",
-            "summary_block",
-            "active_skills_block",
-            "available_skills_block",
-        )
-    return (
-        "system_instructions",
-        "constraints_block",
-        "findings_block",
-        "artifact_block",
-        "memory_block",
-        "summary_block",
-        "pinned_block",
-        "active_skills_block",
-        "available_skills_block",
-    )
+    return _render_block_order_helper(prompt_mode)
 
 
 def _dedupe_text_lines(lines: Iterable[str], *, limit: int) -> list[str]:
@@ -2259,11 +2217,7 @@ def _current_plan_step_goal(state: dict[str, Any]) -> str:
 
 
 def _units_to_char_budget(units: int, *, budget: ContextBudget) -> int:
-    multiplier = max(1, int(budget.chars_per_token))
-    char_budget = max(0, int(units) * multiplier)
-    if units > 0 and budget.token_budget_mode == "tokenizer_first":
-        char_budget += max(16, multiplier * 2)
-    return char_budget
+    return _units_to_char_budget_helper(units, budget=budget)
 
 
 def trim_tool_observation(
@@ -2496,53 +2450,7 @@ def _truncate_bulleted_block(text: str, *, max_chars: int) -> str:
 
 
 def _render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
-    if prompt_mode == PromptMode.SYNTHESIZE:
-        return (
-            "system_instructions",
-            "constraints_block",
-            "findings_block",
-            "memory_block",
-            "pinned_block",
-            "summary_block",
-            "active_skills_block",
-            "available_skills_block",
-            "artifact_block",
-        )
-    if prompt_mode == PromptMode.BRANCH_REVIEW:
-        return (
-            "system_instructions",
-            "findings_block",
-            "artifact_block",
-            "constraints_block",
-            "pinned_block",
-            "memory_block",
-            "summary_block",
-            "active_skills_block",
-            "available_skills_block",
-        )
-    if prompt_mode == PromptMode.EXECUTE:
-        return (
-            "system_instructions",
-            "constraints_block",
-            "pinned_block",
-            "findings_block",
-            "artifact_block",
-            "memory_block",
-            "summary_block",
-            "active_skills_block",
-            "available_skills_block",
-        )
-    return (
-        "system_instructions",
-        "constraints_block",
-        "findings_block",
-        "artifact_block",
-        "memory_block",
-        "summary_block",
-        "pinned_block",
-        "active_skills_block",
-        "available_skills_block",
-    )
+    return _render_block_order_helper(prompt_mode)
 
 
 def _dedupe_ranked_lines(lines: Iterable[str], *, limit: int, key_fn, rank_fn) -> list[str]:

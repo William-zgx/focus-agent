@@ -1,7 +1,5 @@
-import { iterSSEEvents } from "./parser.js";
-import { reduceStreamEvent, createInitialStreamState } from "./reducers.js";
-import { FocusAgentTransport } from "./transport.js";
-export { FocusAgentRequestError } from "./errors.js";
+import { FocusAgentTransport, iterValidatedSSEEvents } from "./transport";
+import { reduceStreamEvent, createInitialStreamState } from "./reducers";
 import type {
   FocusAgentApplyMergeDecisionRequest,
   FocusAgentAgentTeamCreateSessionRequest,
@@ -101,13 +99,25 @@ import type {
   ThreadContextPreviewRequest,
   ThreadContextPreviewResponse,
   FocusAgentToolEvent,
-} from "./types.js";
+} from "./types";
 
 export interface FocusAgentClientOptions {
   baseUrl: string;
   token?: string;
   getToken?: () => string | null | Promise<string | null>;
   fetchImpl?: typeof fetch;
+}
+
+export class FocusAgentRequestError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+
+  constructor(status: number, statusText: string) {
+    super(`FocusAgent request failed: ${status} ${statusText}`);
+    this.name = "FocusAgentRequestError";
+    this.status = status;
+    this.statusText = statusText;
+  }
 }
 
 function appendQueryValue(params: URLSearchParams, key: string, value: unknown): void {
@@ -1155,7 +1165,7 @@ export class FocusAgentClient {
     if (!response.body) {
       throw new Error("FocusAgent stream response did not include a body.");
     }
-    return dedupeAndCanonicalizeAliasEvents(iterSSEEvents(response.body));
+    return dedupeAndCanonicalizeAliasEvents(iterValidatedSSEEvents(response.body));
   }
 
   private async requestJson<T>(path: string, init: RequestInit, auth: boolean): Promise<T> {

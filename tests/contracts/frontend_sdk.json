@@ -543,7 +543,8 @@
       "FocusAgentBranchActionProposal",
       "FocusAgentToolCallEvent",
       "FocusAgentToolEvent",
-      "TurnFailedPayload"
+      "TurnFailedPayload",
+      "looksLikeTextualToolCallArtifact"
     ],
     "apps/web/src/entities/messages/message-transcript.ts": [
       "looksLikeTextualToolCallArtifact"
@@ -605,6 +606,24 @@
       "FocusAgentTrajectoryTurnDetail",
       "FocusAgentTrajectoryTurnSummary"
     ],
+    "apps/web/src/features/trajectory-observability/trajectory-action-rail.tsx": [
+      "FocusAgentTrajectoryStatsRow",
+      "FocusAgentTrajectoryTurnDetail",
+      "FocusAgentTrajectoryTurnSummary"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-detail-panel.tsx": [
+      "FocusAgentTrajectoryTurnDetail"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-sample-explorer.tsx": [
+      "FocusAgentTrajectoryTurnSummary"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-utils.ts": [
+      "FocusAgentRequestError",
+      "FocusAgentTrajectoryStatsRow",
+      "FocusAgentTrajectoryStep",
+      "FocusAgentTrajectoryTurnDetail",
+      "FocusAgentTrajectoryTurnSummary"
+    ],
     "apps/web/src/features/trajectory-observability/use-observability-overview.ts": [
       "FocusAgentObservabilityOverviewRequest",
       "FocusAgentObservabilityOverviewResponse"
@@ -647,11 +666,7 @@
     ],
     "apps/web/src/pages/observability/trajectory-page.tsx": [
       "FocusAgentRequestError",
-      "FocusAgentTrajectoryListRequest",
-      "FocusAgentTrajectoryStatsRow",
-      "FocusAgentTrajectoryStep",
-      "FocusAgentTrajectoryTurnDetail",
-      "FocusAgentTrajectoryTurnSummary"
+      "FocusAgentTrajectoryListRequest"
     ],
     "apps/web/src/pages/thread/thread-page.tsx": [
       "ContextUsageResponse",

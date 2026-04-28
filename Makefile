@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint format format-check check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build web-install web-dev web-check web-build frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint format format-check check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-format frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -43,10 +43,13 @@ help:
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
 		'  make sdk-build         Build frontend SDK' \
+		'  make sdk-validate-transport Run frontend SDK transport validation' \
 		'  make web-install       Install frontend workspace dependencies' \
 		'  make web-dev           Start the React frontend app' \
 		'  make web-check         Run frontend app type-check' \
 		'  make web-build         Build the React frontend app' \
+		'  make web-lint          Run Web Biome lint on the enabled scope' \
+		'  make web-format        Run Web Biome format on the enabled scope' \
 		'  make frontend-check    Run frontend SDK and Web checks' \
 		'  make frontend-build    Build frontend SDK and Web app' \
 		'  make docker-up         Start the Compose service' \
@@ -105,9 +108,9 @@ format: .venv/bin/python
 format-check: .venv/bin/python
 	$(RUFF) format --check .
 
-check: lint test contract-check sdk-check sdk-build web-check web-build
+check: lint test contract-check sdk-check sdk-build sdk-validate-transport web-lint web-format web-check web-build
 
-ci: lint ci-test contract-check sdk-check sdk-build web-check web-build
+ci: lint ci-test contract-check sdk-check sdk-build sdk-validate-transport web-lint web-format web-check web-build
 
 ci-test: .venv/bin/python
 	FOCUS_AGENT_LOCAL_ENV_FILE=$(CI_LOCAL_ENV_FILE) $(PYTEST)
@@ -156,6 +159,10 @@ sdk-check: $(SDK_DIR)/node_modules
 sdk-build: $(SDK_DIR)/node_modules
 	cd $(SDK_DIR) && $(NPM) run build
 
+sdk-validate-transport: $(SDK_DIR)/node_modules
+	cd $(SDK_DIR) && $(NPM) run validate:transport
+	@rm -rf $(SDK_DIR)/dist-validation
+
 node_modules:
 	$(PNPM) install --registry=https://registry.npmjs.org
 
@@ -170,7 +177,13 @@ web-check: node_modules
 web-build: node_modules
 	$(PNPM) web:build
 
-frontend-check: sdk-check web-check
+web-lint: node_modules
+	$(PNPM) --filter @focus-agent/web-app lint
+
+web-format: node_modules
+	$(PNPM) --filter @focus-agent/web-app format
+
+frontend-check: sdk-check sdk-validate-transport web-lint web-format web-check
 
 frontend-build: sdk-build web-build
 

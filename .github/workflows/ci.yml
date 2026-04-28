@@ -82,6 +82,15 @@ jobs:
       - name: Build frontend SDK
         run: pnpm sdk:build
 
+      - name: Validate frontend SDK transport
+        run: pnpm --dir frontend-sdk validate:transport
+
+      - name: Lint web app
+        run: pnpm --filter @focus-agent/web-app lint
+
+      - name: Format web app
+        run: pnpm --filter @focus-agent/web-app format
+
       - name: Check web app
         run: pnpm web:check
 

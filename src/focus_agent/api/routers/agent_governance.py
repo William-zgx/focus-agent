@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from focus_agent.agent_context_engineering import (
-    build_context_engineering_decision,
-    build_context_policy,
-)
+from focus_agent.agent_context_engineering import build_context_engineering_decision, build_context_policy
 from focus_agent.agent_delegation import (
     apply_review_decision,
     build_agent_delegation_plan,
@@ -70,7 +67,7 @@ from ..contracts import (
     AgentToolRouteResponse,
 )
 from ..deps import get_app_runtime, get_current_principal
-from ..route_helpers import (
+from ..route_utils.agent_governance import (
     _agent_delegation_policy_response,
     _agent_model_router_policy_response,
     _agent_role_policy_response,
@@ -78,9 +75,9 @@ from ..route_helpers import (
     _available_tool_names,
     _list_plan_meta_decisions,
     _list_plan_meta_list_items,
-    _maybe_get_trajectory_repository,
     _role_route_decision_items,
 )
+from ..route_utils.trajectory import _maybe_get_trajectory_repository
 
 router = APIRouter()
 

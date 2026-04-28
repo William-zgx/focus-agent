@@ -6,8 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "lint": "biome lint src/entities/messages --only=lint/correctness/noUnusedImports --only=lint/correctness/noUnusedVariables",
-    "format": "biome format src/entities/messages/message-transcript.ts --indent-style=space --line-width=100",
+    "lint": "pnpm dlx @biomejs/biome@2.2.4 lint src/entities src/features/trajectory-observability",
+    "format": "pnpm dlx @biomejs/biome@2.2.4 format --write src/entities src/features/trajectory-observability",
     "smoke:observability": "node ./scripts/observability-smoke.mjs",
     "preview": "vite preview"
   },
@@ -21,7 +21,6 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.13",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

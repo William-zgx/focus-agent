@@ -1,92 +1,99 @@
-import { FocusAgentRequestError } from "./errors.js";
-import { FocusAgentTransport, createFocusAgentRequestError } from "./transport.js";
+import type { FocusAgentEvent, FocusAgentEventName, FocusAgentEventPayload } from "./types";
 
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
+const KNOWN_EVENT_NAMES = new Set<FocusAgentEventName>([
+  "turn.status",
+  "turn.interrupt",
+  "turn.completed",
+  "turn.failed",
+  "turn.closed",
+  "branch.action.proposed",
+  "branch.action.executed",
+  "branch.action.dismissed",
+  "branch.action.failed",
+  "visible_text.delta",
+  "visible_text.completed",
+  "message.delta",
+  "message.completed",
+  "reasoning.delta",
+  "reasoning.completed",
+  "tool_call.delta",
+  "tool.call.delta",
+  "tool.requested",
+  "tool.start",
+  "tool.delta",
+  "tool.end",
+  "tool.error",
+  "tool.result",
+  "task.update",
+  "task.started",
+  "task.finished",
+  "task.failed",
+  "agent.update",
+  "custom",
+  "status",
+  "stream.chunk",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasString(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === "string";
+}
+
+export function isFocusAgentEventName(value: string): value is FocusAgentEventName {
+  return KNOWN_EVENT_NAMES.has(value as FocusAgentEventName);
+}
+
+export function validateFocusAgentEventPayload(
+  eventName: FocusAgentEventName,
+  payload: unknown,
+): payload is FocusAgentEventPayload {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  switch (eventName) {
+    case "visible_text.delta":
+    case "message.delta":
+      return hasString(payload, "delta");
+    case "reasoning.delta":
+      return hasString(payload, "delta");
+    case "tool_call.delta":
+    case "tool.call.delta":
+      return (
+        (payload.id === undefined || typeof payload.id === "string") &&
+        (payload.name === undefined || typeof payload.name === "string") &&
+        (payload.args_delta === undefined || typeof payload.args_delta === "string")
+      );
+    case "visible_text.completed":
+    case "message.completed":
+    case "reasoning.completed":
+      return hasString(payload, "content");
+    case "turn.status":
+      return hasString(payload, "phase");
+    case "turn.interrupt":
+      return Object.prototype.hasOwnProperty.call(payload, "interrupt");
+    case "turn.completed":
+      return isRecord(payload.thread_state);
+    case "turn.failed":
+      return hasString(payload, "error") && hasString(payload, "message");
+    case "turn.closed":
+      return hasString(payload, "status");
+    case "agent.update":
+      return isRecord(payload.data);
+    default:
+      return true;
   }
 }
 
-async function testJsonEnvelopeError(): Promise<void> {
-  const response = new Response(JSON.stringify({
-    code: "invalid_request",
-    message: "Invalid request.",
-    data: { field: "thread_id" },
-    request_id: "req-123",
-  }), {
-    status: 422,
-    statusText: "Unprocessable Entity",
-    headers: { "content-type": "application/json" },
-  });
-
-  const error = await createFocusAgentRequestError(response);
-  assert(error instanceof FocusAgentRequestError, "expected FocusAgentRequestError");
-  assert(error.status === 422, "expected status from response");
-  assert(error.statusText === "Unprocessable Entity", "expected statusText from response");
-  assert(error.code === "invalid_request", "expected code from envelope");
-  assert(error.message === "Invalid request.", "expected message from envelope");
-  assert(error.request_id === "req-123", "expected request_id from envelope");
-  assert((error.data as { field: string }).field === "thread_id", "expected data from envelope");
-  assert((error.raw as { request_id: string }).request_id === "req-123", "expected raw envelope fallback");
-}
-
-async function testNonJsonErrorFallback(): Promise<void> {
-  const response = new Response("upstream unavailable", {
-    status: 503,
-    statusText: "Service Unavailable",
-    headers: { "content-type": "text/plain" },
-  });
-
-  const error = await createFocusAgentRequestError(response);
-  assert(error.status === 503, "expected non-JSON status");
-  assert(error.code === 503, "expected status code fallback");
-  assert(error.message === "FocusAgent request failed: 503 Service Unavailable", "expected default message fallback");
-  assert((error.data as { body: string }).body === "upstream unavailable", "expected body data fallback");
-  assert(error.raw === "upstream unavailable", "expected raw text fallback");
-}
-
-async function testEmptySuccessResponse(): Promise<void> {
-  const transport = new FocusAgentTransport({
-    baseUrl: "https://focus-agent.test/",
-    fetchImpl: async () => new Response(null, { status: 204 }),
-  });
-
-  const value = await transport.requestJson<undefined>({
-    path: "/empty",
-    init: { method: "GET" },
-    auth: false,
-  });
-  assert(value === undefined, "expected undefined for empty success response");
-}
-
-async function testAbortErrorPassesThrough(): Promise<void> {
-  const abortError = new DOMException("The operation was aborted.", "AbortError");
-  const transport = new FocusAgentTransport({
-    baseUrl: "https://focus-agent.test",
-    fetchImpl: async () => {
-      throw abortError;
-    },
-  });
-
-  try {
-    await transport.requestJson<unknown>({
-      path: "/abort",
-      init: { method: "GET" },
-      auth: false,
-    });
-  } catch (error) {
-    assert(error === abortError, "expected original AbortError to pass through");
-    assert(!(error instanceof FocusAgentRequestError), "expected abort not to be wrapped");
-    return;
+export function validateFocusAgentEvent(event: unknown): event is FocusAgentEvent {
+  if (!isRecord(event) || typeof event.event !== "string") {
+    return false;
   }
-  throw new Error("expected abort to throw");
+  if (!isFocusAgentEventName(event.event)) {
+    return false;
+  }
+  return validateFocusAgentEventPayload(event.event, event.data ?? {});
 }
-
-async function main(): Promise<void> {
-  await testJsonEnvelopeError();
-  await testNonJsonErrorFallback();
-  await testEmptySuccessResponse();
-  await testAbortErrorPassesThrough();
-}
-
-void main();

@@ -14,26 +14,29 @@ from focus_agent.services.chat import ChatService, ChatServicePorts
 security = HTTPBearer(auto_error=False)
 
 
-def _ensure_app_services(request: Request) -> tuple[AppRuntime, ChatService]:
+def _ensure_app_runtime(request: Request) -> AppRuntime:
     runtime = getattr(request.app.state, "runtime", None)
-    chat_service = getattr(request.app.state, "chat_service", None)
     if runtime is None:
         runtime = create_runtime(Settings.from_env())
         request.app.state.runtime = runtime
-    if chat_service is None:
-        chat_service = ChatService(ChatServicePorts.from_runtime(runtime))
-        request.app.state.chat_service = chat_service
-    return runtime, chat_service
-
-
-def get_app_runtime(request: Request) -> AppRuntime:
-    runtime, _ = _ensure_app_services(request)
     return runtime
 
 
-def get_chat_service(request: Request) -> ChatService:
-    _, chat_service = _ensure_app_services(request)
+def _ensure_chat_service(request: Request) -> ChatService:
+    runtime = _ensure_app_runtime(request)
+    chat_service = getattr(request.app.state, "chat_service", None)
+    if chat_service is None:
+        chat_service = ChatService(ChatServicePorts.from_runtime(runtime))
+        request.app.state.chat_service = chat_service
     return chat_service
+
+
+def get_app_runtime(request: Request) -> AppRuntime:
+    return _ensure_app_runtime(request)
+
+
+def get_chat_service(request: Request) -> ChatService:
+    return _ensure_chat_service(request)
 
 
 def _principal_from_credentials(

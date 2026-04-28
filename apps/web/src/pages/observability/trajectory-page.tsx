@@ -1,10 +1,6 @@
 import {
   FocusAgentRequestError,
   type FocusAgentTrajectoryListRequest,
-  type FocusAgentTrajectoryStatsRow,
-  type FocusAgentTrajectoryStep,
-  type FocusAgentTrajectoryTurnDetail,
-  type FocusAgentTrajectoryTurnSummary,
 } from "@focus-agent/web-sdk";
 import { useRouterState } from "@tanstack/react-router";
 import {
@@ -17,758 +13,55 @@ import {
 } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
-import { TrajectoryActionPanel } from "@/features/trajectory-observability/trajectory-action-panel";
+import { TrajectoryActionRail } from "@/features/trajectory-observability/trajectory-action-rail";
+import { TrajectoryDetailPanel } from "@/features/trajectory-observability/trajectory-detail-panel";
+import { TrajectoryFiltersPanel } from "@/features/trajectory-observability/trajectory-filters-panel";
 import { TrajectoryOverviewDashboard } from "@/features/trajectory-observability/trajectory-overview-dashboard";
+import { TrajectorySampleExplorer } from "@/features/trajectory-observability/trajectory-sample-explorer";
+import {
+  TrajectoryEmptyState,
+  TrajectoryInlineError,
+} from "@/features/trajectory-observability/trajectory-states";
 import { TrajectoryWorkbenchHeader } from "@/features/trajectory-observability/trajectory-workbench-header";
+import {
+  type ActionRailSection,
+  type EvidenceMode,
+  type PresetMode,
+  type ReviewSummary,
+  type SortMode,
+  type StatusMode,
+  buildCorrelationSignals,
+  buildFilterChips,
+  buildSelectedSignals,
+  compactDetailQuestion,
+  compactId,
+  compactSnippet,
+  describeTrajectoryError,
+  extractStructuredSummary,
+  findCorrelationSignalValue,
+  formatBranchRoleLabel,
+  formatDateTime,
+  formatDuration,
+  formatMetric,
+  formatPercent,
+  formatSceneLabel,
+  normalizeStatusFilter,
+  orderTrajectoryItems,
+  parseNonNegativeNumber,
+  ratio,
+  readInitialSearchParam,
+  readSearchFlag,
+  readSearchParam,
+  readSearchSort,
+  readSearchState,
+  readSearchStatus,
+  shouldExpandFiltersFromSearch,
+  topStatsRows,
+  topToolRows,
+} from "@/features/trajectory-observability/trajectory-utils";
 import { useObservabilityOverview } from "@/features/trajectory-observability/use-observability-overview";
 import { useTrajectoryDetail } from "@/features/trajectory-observability/use-trajectory-detail";
 import { useTrajectoryList } from "@/features/trajectory-observability/use-trajectory-list";
-
-type SortMode = "newest" | "latency" | "tool_calls";
-type StatusMode = "all" | "failed" | "succeeded";
-type PresetMode = "failures" | "fallback" | "latency" | "all";
-type FilterChip = {
-  id: string;
-  labelZh: string;
-  labelEn: string;
-  clear: () => void;
-};
-type CorrelationSignal = {
-  id: string;
-  labelZh: string;
-  labelEn: string;
-  value: string;
-  tone?: "neutral" | "accent";
-};
-type EvidenceMode = "timeline" | "zero_step" | "missing_detail";
-type ReviewSummary = {
-  headline: string;
-  lead: string;
-  status: string;
-  createdAt: string;
-  evidenceLabel: string;
-  stats: Array<{
-    id: string;
-    labelZh: string;
-    labelEn: string;
-    value: string;
-  }>;
-};
-type ActionRailSection = {
-  id: string;
-  titleZh: string;
-  titleEn: string;
-  captionZh: string;
-  captionEn: string;
-  count?: string;
-};
-type ActionRailSections = ActionRailSection[];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getSearchParams(search?: unknown) {
-  if (search instanceof URLSearchParams) {
-    return new URLSearchParams(search);
-  }
-  if (typeof search === "string") {
-    return new URLSearchParams(search);
-  }
-  if (isRecord(search)) {
-    const params = new URLSearchParams();
-    Object.entries(search).forEach(([key, rawValue]) => {
-      if (rawValue === undefined || rawValue === null) return;
-      if (Array.isArray(rawValue)) {
-        rawValue.forEach((item) => {
-          if (item === undefined || item === null) return;
-          params.append(key, String(item));
-        });
-        return;
-      }
-      params.set(key, String(rawValue));
-    });
-    return params;
-  }
-  if (typeof window === "undefined") {
-    return new URLSearchParams();
-  }
-  return new URLSearchParams(window.location.search);
-}
-
-function readSearchParam(key: string, search?: unknown) {
-  return getSearchParams(search).get(key) ?? "";
-}
-
-function readInitialSearchParam(key: string, search?: unknown) {
-  return readSearchParam(key, search);
-}
-
-function readSearchFlag(key: string, fallback = false, search?: unknown) {
-  const value = readSearchParam(key, search);
-  if (!value) return fallback;
-  return value === "1" || value === "true";
-}
-
-function readSearchStatus(search?: unknown): StatusMode {
-  const value = readSearchParam("status", search);
-  if (value === "all" || value === "failed" || value === "succeeded")
-    return value;
-  return "all";
-}
-
-function readSearchSort(search?: unknown): SortMode {
-  const value = readSearchParam("sort", search);
-  if (value === "newest" || value === "latency" || value === "tool_calls")
-    return value;
-  return "newest";
-}
-
-function readSearchState(search?: unknown) {
-  return {
-    statusFilter: readSearchStatus(search),
-    toolFilter: readSearchParam("tool", search),
-    threadFilter: readSearchParam("thread", search),
-    requestFilter: readSearchParam("request", search),
-    traceFilter: readSearchParam("trace", search),
-    modelFilter: readSearchParam("model", search),
-    minLatency: readSearchParam("minLatency", search),
-    fallbackOnly: readSearchFlag("fallbackOnly", false, search),
-    hasErrorOnly: readSearchFlag("hasErrorOnly", false, search),
-    sortMode: readSearchSort(search),
-    selectedTurnId: readSearchParam("turn", search),
-  };
-}
-
-function shouldExpandFiltersFromSearch(search?: unknown) {
-  const state = readSearchState(search);
-  return (
-    Boolean(state.toolFilter) ||
-    Boolean(state.threadFilter) ||
-    Boolean(state.requestFilter) ||
-    Boolean(state.traceFilter) ||
-    Boolean(state.modelFilter) ||
-    Boolean(state.minLatency) ||
-    state.fallbackOnly ||
-    state.hasErrorOnly ||
-    state.statusFilter !== "all" ||
-    state.sortMode !== "newest"
-  );
-}
-
-function parseNonNegativeNumber(value: string) {
-  const text = value.trim();
-  if (!text) return undefined;
-  const parsed = Number(text);
-  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
-  return parsed;
-}
-
-function describeTrajectoryError(error: unknown, isChineseUi: boolean) {
-  if (error instanceof FocusAgentRequestError) {
-    if (error.status === 503) {
-      return isChineseUi
-        ? "当前环境还没有启用 Trajectory observability 后端。请先配置 Postgres trajectory 存储，或在支持该能力的环境里打开复盘台。"
-        : "Trajectory observability is not available in this environment yet. Configure the Postgres-backed trajectory store, or open this page in an environment where observability is enabled.";
-    }
-    if (error.status === 401 || error.status === 403) {
-      return isChineseUi
-        ? "当前账号没有访问复盘台数据的权限。请先确认登录状态和 Bearer Token。"
-        : "Your current account cannot access trajectory data. Check the active login session and bearer token first.";
-    }
-    return isChineseUi
-      ? `复盘台数据请求失败（${error.status} ${error.statusText}）。`
-      : `Trajectory request failed (${error.status} ${error.statusText}).`;
-  }
-  return isChineseUi
-    ? "复盘台数据加载失败，请稍后重试。"
-    : "Failed to load trajectory data. Please retry in a moment.";
-}
-
-function formatDateTime(
-  value?: string | null,
-  locale: "zh-CN" | "en-US" = "en-US",
-) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsed);
-}
-
-function formatMetric(value: number | undefined, digits = 0) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—";
-  return Intl.NumberFormat(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits,
-  }).format(value);
-}
-
-function formatPercent(value: number | undefined) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—";
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatDuration(value?: number | null) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—";
-  if (value >= 1000) {
-    return `${formatMetric(value / 1000, 2)}s`;
-  }
-  return `${formatMetric(value, 0)}ms`;
-}
-
-function compactId(value?: string | null) {
-  const text = String(value || "").trim();
-  if (!text) return "—";
-  if (text.length <= 18) return text;
-  return `${text.slice(0, 8)}…${text.slice(-6)}`;
-}
-
-function compactQuestion(value?: string | null) {
-  const text = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return "—";
-  if (text.length <= 54) return text;
-  return `${text.slice(0, 54)}…`;
-}
-
-function compactDetailQuestion(value?: string | null) {
-  const text = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return "—";
-  if (text.length <= 160) return text;
-  return `${text.slice(0, 160)}…`;
-}
-
-function extractStructuredSummary(value?: string | null) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const matches = [
-    ...text.matchAll(/reasoning_content['"]?\s*:\s*['"]([^'"]+)['"]/g),
-  ]
-    .map((item) => item[1]?.trim() || "")
-    .filter(Boolean);
-  if (matches.length) {
-    const deduped = [...new Set(matches)];
-    const joined = deduped.join("");
-    return joined.length > 260 ? `${joined.slice(0, 260)}…` : joined;
-  }
-  return text.length > 260 ? `${text.slice(0, 260)}…` : text;
-}
-
-function stepObservationPreview(value?: string | null) {
-  const text = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return "—";
-  if (text.length <= 140) return text;
-  return `${text.slice(0, 140)}…`;
-}
-
-function compactSnippet(value?: string | null, max = 88) {
-  const text = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return "";
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
-}
-
-function stringifyMetadataValue(value: unknown) {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean")
-    return String(value);
-  try {
-    const text = JSON.stringify(value);
-    if (!text) return "";
-    return text.length > 120 ? `${text.slice(0, 120)}…` : text;
-  } catch {
-    return "";
-  }
-}
-
-function findNestedMetadataValue(
-  source: unknown,
-  aliases: readonly string[],
-  options?: { depth?: number; seen?: WeakSet<object> },
-): string {
-  const depth = options?.depth ?? 0;
-  if (depth > 4) return "";
-  if (Array.isArray(source)) {
-    for (const item of source) {
-      const match = findNestedMetadataValue(item, aliases, {
-        depth: depth + 1,
-        seen: options?.seen,
-      });
-      if (match) return match;
-    }
-    return "";
-  }
-  if (!isRecord(source)) return "";
-  const seen = options?.seen ?? new WeakSet<object>();
-  if (seen.has(source)) return "";
-  seen.add(source);
-
-  for (const alias of aliases) {
-    if (alias in source) {
-      const match = stringifyMetadataValue(source[alias]);
-      if (match) return match;
-    }
-  }
-
-  for (const value of Object.values(source)) {
-    const match = findNestedMetadataValue(value, aliases, {
-      depth: depth + 1,
-      seen,
-    });
-    if (match) return match;
-  }
-  return "";
-}
-
-function findMetadataAcrossSources(
-  sources: unknown[],
-  aliases: readonly string[],
-) {
-  for (const source of sources) {
-    const match = findNestedMetadataValue(source, aliases);
-    if (match) return match;
-  }
-  return "";
-}
-
-function normalizeStatusFilter(value: StatusMode): string[] | undefined {
-  if (value === "all") return undefined;
-  return [value];
-}
-
-function statusTone(status?: string | null) {
-  if (status === "failed") return "danger";
-  if (status === "succeeded") return "success";
-  return "neutral";
-}
-
-function severityClass(step: FocusAgentTrajectoryStep) {
-  if (step.error) return "is-danger";
-  if (step.fallback_used) return "is-warning";
-  if (step.cache_hit) return "is-success";
-  return "";
-}
-
-const BRANCH_ROLE_LABELS: Record<string, { zh: string; en: string }> = {
-  main: { zh: "主线", en: "Main" },
-  explore_alternatives: { zh: "备选方案", en: "Alternative path" },
-  deep_dive: { zh: "深入分析", en: "Deep dive" },
-  execute: { zh: "执行", en: "Execution" },
-  verify: { zh: "验证", en: "Verification" },
-  writeup: { zh: "整理", en: "Writeup" },
-};
-
-const SCENE_LABELS: Record<string, { zh: string; en: string }> = {
-  long_dialog_research: { zh: "长对话研究", en: "Long dialog research" },
-  technical_deep_dive: { zh: "技术深挖", en: "Technical deep dive" },
-};
-
-function humanizeKey(value?: string | null) {
-  const text = String(value || "").trim();
-  if (!text) return "—";
-  return text.replace(/[_-]+/g, " ");
-}
-
-function labelFromMap(
-  value: string | null | undefined,
-  map: Record<string, { zh: string; en: string }>,
-  isChineseUi: boolean,
-) {
-  const normalized = String(value || "").trim();
-  if (!normalized) return "—";
-  const mapped = map[normalized];
-  if (mapped) {
-    return isChineseUi ? mapped.zh : mapped.en;
-  }
-  return humanizeKey(normalized);
-}
-
-function formatBranchRoleLabel(
-  value: string | null | undefined,
-  isChineseUi: boolean,
-) {
-  return labelFromMap(value, BRANCH_ROLE_LABELS, isChineseUi);
-}
-
-function formatSceneLabel(
-  value: string | null | undefined,
-  isChineseUi: boolean,
-) {
-  return labelFromMap(value, SCENE_LABELS, isChineseUi);
-}
-
-function getDominantTool(trajectory: FocusAgentTrajectoryStep[]) {
-  const counts = new Map<string, number>();
-  trajectory.forEach((step) => {
-    counts.set(step.tool, (counts.get(step.tool) ?? 0) + 1);
-  });
-  return (
-    [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ??
-    "—"
-  );
-}
-
-function getLongestStep(trajectory: FocusAgentTrajectoryStep[]) {
-  if (!trajectory.length) return null;
-  return trajectory.reduce((current, next) =>
-    (next.duration_ms ?? 0) > (current.duration_ms ?? 0) ? next : current,
-  );
-}
-
-function buildFilterChips(args: {
-  statusFilter: StatusMode;
-  toolFilter: string;
-  threadFilter: string;
-  requestFilter: string;
-  traceFilter: string;
-  modelFilter: string;
-  minLatency: string;
-  fallbackOnly: boolean;
-  hasErrorOnly: boolean;
-  sortMode: SortMode;
-  clearStatus: () => void;
-  clearTool: () => void;
-  clearThread: () => void;
-  clearRequest: () => void;
-  clearTrace: () => void;
-  clearModel: () => void;
-  clearLatency: () => void;
-  clearFallback: () => void;
-  clearErrorOnly: () => void;
-  clearSort: () => void;
-}) {
-  const chips: FilterChip[] = [];
-  if (args.statusFilter !== "all") {
-    chips.push({
-      id: "status",
-      labelZh: `状态 · ${args.statusFilter === "failed" ? "失败" : "成功"}`,
-      labelEn: `Status · ${args.statusFilter === "failed" ? "Failed" : "Succeeded"}`,
-      clear: args.clearStatus,
-    });
-  }
-  if (args.toolFilter.trim()) {
-    chips.push({
-      id: "tool",
-      labelZh: `工具 · ${args.toolFilter.trim()}`,
-      labelEn: `Tool · ${args.toolFilter.trim()}`,
-      clear: args.clearTool,
-    });
-  }
-  if (args.threadFilter.trim()) {
-    chips.push({
-      id: "thread",
-      labelZh: `线程 · ${compactId(args.threadFilter.trim())}`,
-      labelEn: `Thread · ${compactId(args.threadFilter.trim())}`,
-      clear: args.clearThread,
-    });
-  }
-  if (args.requestFilter.trim()) {
-    chips.push({
-      id: "request",
-      labelZh: `Request · ${compactId(args.requestFilter.trim())}`,
-      labelEn: `Request · ${compactId(args.requestFilter.trim())}`,
-      clear: args.clearRequest,
-    });
-  }
-  if (args.traceFilter.trim()) {
-    chips.push({
-      id: "trace",
-      labelZh: `Trace · ${compactId(args.traceFilter.trim())}`,
-      labelEn: `Trace · ${compactId(args.traceFilter.trim())}`,
-      clear: args.clearTrace,
-    });
-  }
-  if (args.modelFilter.trim()) {
-    chips.push({
-      id: "model",
-      labelZh: `模型 · ${args.modelFilter.trim()}`,
-      labelEn: `Model · ${args.modelFilter.trim()}`,
-      clear: args.clearModel,
-    });
-  }
-  if (args.minLatency.trim()) {
-    chips.push({
-      id: "latency",
-      labelZh: `延迟 ≥ ${args.minLatency.trim()}ms`,
-      labelEn: `Latency ≥ ${args.minLatency.trim()}ms`,
-      clear: args.clearLatency,
-    });
-  }
-  if (args.fallbackOnly) {
-    chips.push({
-      id: "fallback",
-      labelZh: "仅看 fallback",
-      labelEn: "Fallback only",
-      clear: args.clearFallback,
-    });
-  }
-  if (args.hasErrorOnly) {
-    chips.push({
-      id: "error",
-      labelZh: "仅看错误",
-      labelEn: "Errors only",
-      clear: args.clearErrorOnly,
-    });
-  }
-  if (args.sortMode !== "newest") {
-    chips.push({
-      id: "sort",
-      labelZh: `排序 · ${args.sortMode === "latency" ? "延迟" : "工具数"}`,
-      labelEn: `Sort · ${args.sortMode === "latency" ? "Latency" : "Tool calls"}`,
-      clear: args.clearSort,
-    });
-  }
-  return chips;
-}
-
-function topToolRows(byTool: FocusAgentTrajectoryStatsRow[] | undefined) {
-  return [...(byTool ?? [])]
-    .sort((left, right) => (right.turn_count ?? 0) - (left.turn_count ?? 0))
-    .slice(0, 4);
-}
-
-function topStatsRows(
-  rows: FocusAgentTrajectoryStatsRow[] | undefined,
-  limit = 4,
-) {
-  return [...(rows ?? [])]
-    .sort((left, right) => {
-      const leftCount = left.turn_count ?? left.step_count ?? 0;
-      const rightCount = right.turn_count ?? right.step_count ?? 0;
-      return rightCount - leftCount;
-    })
-    .slice(0, limit);
-}
-
-function ratio(numerator?: number, denominator?: number) {
-  if (
-    typeof numerator !== "number" ||
-    typeof denominator !== "number" ||
-    denominator <= 0
-  )
-    return undefined;
-  return numerator / denominator;
-}
-
-function findStepRuntimeSignal(
-  step: FocusAgentTrajectoryStep,
-  aliases: readonly string[],
-) {
-  return findNestedMetadataValue(step.runtime, aliases);
-}
-
-function buildSelectedSignals(selected: FocusAgentTrajectoryTurnDetail | null) {
-  if (!selected) {
-    return {
-      errorSteps: 0,
-      fallbackSteps: 0,
-      cacheSteps: 0,
-      parallelSteps: 0,
-      dominantTool: "—",
-      longestStep: null as FocusAgentTrajectoryStep | null,
-    };
-  }
-  const errorSteps = selected.trajectory.filter((step) =>
-    Boolean(step.error),
-  ).length;
-  const fallbackSteps = selected.trajectory.filter(
-    (step) => step.fallback_used,
-  ).length;
-  const cacheSteps = selected.trajectory.filter(
-    (step) => step.cache_hit,
-  ).length;
-  const parallelSteps = selected.trajectory.filter((step) =>
-    Boolean(step.parallel_batch_size),
-  ).length;
-  return {
-    errorSteps,
-    fallbackSteps,
-    cacheSteps,
-    parallelSteps,
-    dominantTool: getDominantTool(selected.trajectory),
-    longestStep: getLongestStep(selected.trajectory),
-  };
-}
-
-function buildTurnSummary(
-  item: FocusAgentTrajectoryTurnSummary,
-  isChineseUi: boolean,
-) {
-  const errorText = compactSnippet(item?.error);
-  if (errorText) {
-    return isChineseUi ? `错误 · ${errorText}` : `Error · ${errorText}`;
-  }
-  const summaryText = compactSnippet(extractStructuredSummary(item?.answer));
-  if (summaryText) return summaryText;
-  return isChineseUi
-    ? `${formatSceneLabel(item?.scene, true)} · ${item?.branch_role ? formatBranchRoleLabel(item.branch_role, true) : "未标记角色"}`
-    : `${formatSceneLabel(item?.scene, false)} · ${item?.branch_role ? formatBranchRoleLabel(item.branch_role, false) : "No branch role"}`;
-}
-
-function buildCorrelationSignals(
-  selected: FocusAgentTrajectoryTurnDetail | null,
-): CorrelationSignal[] {
-  if (!selected) return [];
-
-  const runtimeSources = selected.trajectory.map((step) => step.runtime);
-  const metadataSources = [
-    selected.plan_meta,
-    selected.metrics,
-    selected.reflection,
-    ...runtimeSources,
-  ];
-  const requestId =
-    selected.request_id ||
-    findMetadataAcrossSources(metadataSources, ["request_id", "requestId"]);
-  const traceId =
-    selected.trace_id ||
-    findMetadataAcrossSources(metadataSources, ["trace_id", "traceId"]);
-  const spanId =
-    selected.root_span_id ||
-    findMetadataAcrossSources(metadataSources, [
-      "span_id",
-      "spanId",
-      "root_span_id",
-      "rootSpanId",
-    ]);
-  const environment =
-    selected.environment ||
-    findMetadataAcrossSources(metadataSources, ["environment", "env"]);
-  const deployment =
-    selected.deployment ||
-    findMetadataAcrossSources(metadataSources, [
-      "deployment",
-      "deployment_name",
-    ]);
-  const appVersion =
-    selected.app_version ||
-    findMetadataAcrossSources(metadataSources, [
-      "app_version",
-      "appVersion",
-      "version",
-    ]);
-
-  return [
-    {
-      id: "turn",
-      labelZh: "Turn ID",
-      labelEn: "Turn ID",
-      value: selected.id,
-      tone: "accent",
-    },
-    {
-      id: "thread",
-      labelZh: "线程",
-      labelEn: "Thread",
-      value: selected.thread_id,
-    },
-    {
-      id: "root",
-      labelZh: "根线程",
-      labelEn: "Root thread",
-      value: selected.root_thread_id,
-    },
-    ...(selected.parent_thread_id
-      ? [
-          {
-            id: "parent",
-            labelZh: "父线程",
-            labelEn: "Parent thread",
-            value: selected.parent_thread_id,
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(selected.branch_id
-      ? [
-          {
-            id: "branch",
-            labelZh: "分支 ID",
-            labelEn: "Branch ID",
-            value: selected.branch_id,
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(requestId
-      ? [
-          {
-            id: "request",
-            labelZh: "Request ID",
-            labelEn: "Request ID",
-            value: requestId,
-            tone: "accent",
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(traceId
-      ? [
-          {
-            id: "trace",
-            labelZh: "Trace ID",
-            labelEn: "Trace ID",
-            value: traceId,
-            tone: "accent",
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(spanId
-      ? [
-          {
-            id: "span",
-            labelZh: "Span ID",
-            labelEn: "Span ID",
-            value: spanId,
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(environment
-      ? [
-          {
-            id: "env",
-            labelZh: "环境",
-            labelEn: "Environment",
-            value: environment,
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(deployment
-      ? [
-          {
-            id: "deployment",
-            labelZh: "部署",
-            labelEn: "Deployment",
-            value: deployment,
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-    ...(appVersion
-      ? [
-          {
-            id: "version",
-            labelZh: "版本",
-            labelEn: "App version",
-            value: appVersion,
-          } satisfies CorrelationSignal,
-        ]
-      : []),
-  ];
-}
-
-function findCorrelationSignalValue(signals: CorrelationSignal[], id: string) {
-  return signals.find((signal) => signal.id === id)?.value ?? "";
-}
 
 export function TrajectoryPage() {
   const { isChineseUi } = useShellUi();
@@ -913,22 +206,10 @@ export function TrajectoryPage() {
   });
   const statsData = overviewData;
 
-  const orderedItems = useMemo(() => {
-    const items = [...(listData?.items ?? [])];
-    if (sortMode === "latency") {
-      items.sort(
-        (left, right) => (right.latency_ms ?? 0) - (left.latency_ms ?? 0),
-      );
-      return items;
-    }
-    if (sortMode === "tool_calls") {
-      items.sort(
-        (left, right) => (right.tool_calls ?? 0) - (left.tool_calls ?? 0),
-      );
-      return items;
-    }
-    return items;
-  }, [listData?.items, sortMode]);
+  const orderedItems = useMemo(
+    () => orderTrajectoryItems(listData?.items, sortMode),
+    [listData?.items, sortMode],
+  );
   const orderedItemIds = useMemo(
     () => new Set(orderedItems.map((item) => item.id)),
     [orderedItems],
@@ -1495,7 +776,7 @@ export function TrajectoryPage() {
       : isChineseUi
         ? "等待选择样本"
         : "Waiting for a selected turn";
-  const actionRailSections = useMemo<ActionRailSections>(
+  const actionRailSections = useMemo<ActionRailSection[]>(
     () => [
       {
         id: "anchors",
@@ -1614,14 +895,6 @@ export function TrajectoryPage() {
     void copyText(commandSnippet);
   }
 
-  const [
-    anchorsSection,
-    pivotsSection,
-    toolsSection,
-    quickSection,
-    actionsSection,
-  ] = actionRailSections;
-
   return (
     <div
       className={`fa-observability-layout ${isOverviewRoute ? "is-overview-route" : "is-workbench-route"}`.trim()}
@@ -1662,923 +935,110 @@ export function TrajectoryPage() {
       ) : (
         <section className="fa-trajectory-workbench-shell">
           <aside className="fa-trajectory-workbench-column is-explorer">
-            <div className="fa-trajectory-workbench-panel-head">
-              <div className="fa-trajectory-workbench-panel-copy">
-                <p>{isChineseUi ? "先选样本" : "Sample queue"}</p>
-                <h2>{isChineseUi ? "高密度样本队列" : "High-density sample queue"}</h2>
-                <span>
-                  {isChineseUi
-                    ? "把筛选和空态都收在左栏里，尽量提高同屏可见的样本数。"
-                    : "Keep filters and list-state handling inside the left rail to maximize visible samples."}
-                </span>
-              </div>
-              <strong>{isListLoading ? "…" : formatMetric(matchCount, 0)}</strong>
-            </div>
-
-            <div className="fa-trajectory-workbench-explorer-bar">
-              <div className="fa-observability-presets">
-                <button
-                  className="fa-observability-preset"
-                  onClick={() => applyPreset("failures")}
-                  type="button"
-                >
-                  {isChineseUi ? "最近失败" : "Failures"}
-                </button>
-                <button
-                  className="fa-observability-preset"
-                  onClick={() => applyPreset("fallback")}
-                  type="button"
-                >
-                  {isChineseUi ? "Fallback" : "Fallback"}
-                </button>
-                <button
-                  className="fa-observability-preset"
-                  onClick={() => applyPreset("latency")}
-                  type="button"
-                >
-                  {isChineseUi ? "高延迟" : "Latency"}
-                </button>
-                <button
-                  className="fa-observability-preset"
-                  onClick={() => applyPreset("all")}
-                  type="button"
-                >
-                  {isChineseUi ? "全部" : "All"}
-                </button>
-              </div>
-
-              <div className="fa-observability-active-filters">
-                {filterChips.length ? (
-                  filterChips.map((chip) => (
-                    <button
-                      key={chip.id}
-                      className="fa-observability-filter-chip"
-                      onClick={chip.clear}
-                      type="button"
-                    >
-                      <span>{isChineseUi ? chip.labelZh : chip.labelEn}</span>
-                      <strong>×</strong>
-                    </button>
-                  ))
-                ) : (
-                  <span className="fa-observability-filter-chip is-empty">
-                    {isChineseUi
-                      ? "当前没有附加过滤器"
-                      : "No extra filters active"}
-                  </span>
-                )}
-              </div>
-
-              <div className="fa-observability-filter-drawer">
-                <button
-                  aria-expanded={filtersExpanded}
-                  className="fa-observability-filter-toggle"
-                  onClick={() => setFiltersExpanded((current) => !current)}
-                  type="button"
-                >
-                  {filtersExpanded
-                    ? isChineseUi
-                      ? "收起高级筛选"
-                      : "Hide advanced filters"
-                    : isChineseUi
-                      ? "展开高级筛选"
-                      : "Show advanced filters"}
-                </button>
-                {filtersExpanded ? (
-                  <div className="fa-observability-filter-shell">
-                    <div className="fa-observability-filters is-compact">
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "状态" : "Status"}</span>
-                        <select
-                          value={statusFilter}
-                          onChange={(event) =>
-                            setStatusFilter(event.target.value as StatusMode)
-                          }
-                        >
-                          <option value="failed">
-                            {isChineseUi ? "失败" : "Failed"}
-                          </option>
-                          <option value="all">
-                            {isChineseUi ? "全部" : "All"}
-                          </option>
-                          <option value="succeeded">
-                            {isChineseUi ? "成功" : "Succeeded"}
-                          </option>
-                        </select>
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "工具" : "Tool"}</span>
-                        <input
-                          value={toolFilter}
-                          onChange={(event) => setToolFilter(event.target.value)}
-                          placeholder="web_search"
-                        />
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "线程" : "Thread"}</span>
-                        <input
-                          value={threadFilter}
-                          onChange={(event) => setThreadFilter(event.target.value)}
-                          placeholder="thread-…"
-                        />
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "Request" : "Request"}</span>
-                        <input
-                          value={requestFilter}
-                          onChange={(event) => setRequestFilter(event.target.value)}
-                          placeholder="req-…"
-                        />
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "Trace" : "Trace"}</span>
-                        <input
-                          value={traceFilter}
-                          onChange={(event) => setTraceFilter(event.target.value)}
-                          placeholder="trace-…"
-                        />
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "模型" : "Model"}</span>
-                        <input
-                          value={modelFilter}
-                          onChange={(event) => setModelFilter(event.target.value)}
-                          placeholder="openai:gpt-4.1-mini"
-                        />
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "最小延迟" : "Min latency"}</span>
-                        <input
-                          aria-invalid={hasInvalidLatency}
-                          value={minLatency}
-                          onChange={(event) => setMinLatency(event.target.value)}
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          placeholder="500"
-                        />
-                      </label>
-                      <label className="fa-observability-filter">
-                        <span>{isChineseUi ? "排序" : "Sort"}</span>
-                        <select
-                          value={sortMode}
-                          onChange={(event) =>
-                            setSortMode(event.target.value as SortMode)
-                          }
-                        >
-                          <option value="newest">
-                            {isChineseUi ? "最近" : "Newest"}
-                          </option>
-                          <option value="latency">
-                            {isChineseUi ? "延迟" : "Latency"}
-                          </option>
-                          <option value="tool_calls">
-                            {isChineseUi ? "工具数" : "Tool calls"}
-                          </option>
-                        </select>
-                      </label>
-                      <label className="fa-observability-toggle">
-                        <input
-                          checked={fallbackOnly}
-                          onChange={(event) =>
-                            setFallbackOnly(event.target.checked)
-                          }
-                          type="checkbox"
-                        />
-                        <span>
-                          {isChineseUi ? "仅看 fallback" : "Fallback only"}
-                        </span>
-                      </label>
-                      <label className="fa-observability-toggle">
-                        <input
-                          checked={hasErrorOnly}
-                          onChange={(event) =>
-                            setHasErrorOnly(event.target.checked)
-                          }
-                          type="checkbox"
-                        />
-                        <span>{isChineseUi ? "仅看错误" : "Errors only"}</span>
-                      </label>
-                    </div>
-
-                    <div className="fa-observability-command-bar">
-                      {hasInvalidLatency ? (
-                        <span className="fa-observability-filter-hint is-warning">
-                          {isChineseUi
-                            ? "最小延迟需要是非负数字。"
-                            : "Min latency must be a non-negative number."}
-                        </span>
-                      ) : null}
-                      <button
-                        className="fa-chat-toolbar-button"
-                        onClick={resetFilters}
-                        type="button"
-                      >
-                        {isChineseUi ? "恢复默认" : "Reset"}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="fa-trajectory-workbench-batch-toolbar">
-              <div>
-                <span>{isChineseUi ? "批量治理选择" : "Batch governance selection"}</span>
-                <strong>
-                  {isChineseUi
-                    ? `${selectedBatchTurnIds.length} 条已勾选`
-                    : `${selectedBatchTurnIds.length} selected`}
-                </strong>
-              </div>
-              <div className="fa-observability-command-bar">
-                <button
-                  className="fa-chat-toolbar-button"
-                  disabled={!orderedItems.length}
-                  onClick={selectVisibleBatch}
-                  type="button"
-                >
-                  {isChineseUi ? "勾选当前页" : "Select visible"}
-                </button>
-                <button
-                  className="fa-chat-toolbar-button"
-                  disabled={!orderedItems.some((item) => item.status !== "succeeded" || item.error)}
-                  onClick={selectVisibleFailuresBatch}
-                  type="button"
-                >
-                  {isChineseUi ? "仅勾选失败" : "Select failures"}
-                </button>
-                <button
-                  className="fa-chat-toolbar-button"
-                  disabled={!selectedBatchTurnIds.length}
-                  onClick={clearBatchSelection}
-                  type="button"
-                >
-                  {isChineseUi ? "清空" : "Clear"}
-                </button>
-              </div>
-            </div>
-
-            <div className="fa-trajectory-workbench-sample-list">
-              {orderedItems.map((item) => (
-                <div
-                  key={item.id}
-                  className={`fa-trajectory-workbench-sample-row ${selectedBatchIdSet.has(item.id) ? "is-batch-selected" : ""}`.trim()}
-                >
-                  <label className="fa-trajectory-workbench-batch-checkbox">
-                    <input
-                      checked={selectedBatchIdSet.has(item.id)}
-                      onChange={() => toggleBatchSelection(item.id)}
-                      type="checkbox"
-                    />
-                    <span>{isChineseUi ? "批量" : "Batch"}</span>
-                  </label>
-                  <button
-                    className={`fa-trajectory-workbench-sample-card ${selectedTurnId === item.id ? "is-selected" : ""}`.trim()}
-                    onClick={() => setSelectedTurnId(item.id)}
-                    type="button"
-                  >
-                  <div className="fa-trajectory-workbench-sample-top">
-                    <span
-                      className={`fa-observability-pill is-${statusTone(item.status)}`}
-                    >
-                      {item.status}
-                    </span>
-                    <span>{formatDateTime(item.created_at, locale)}</span>
-                  </div>
-                  <strong>
-                    {compactQuestion(item.user_message || item.task_brief || item.id)}
-                  </strong>
-                  <p className="fa-trajectory-workbench-sample-summary">
-                    {buildTurnSummary(item, isChineseUi)}
-                  </p>
-                  <div className="fa-trajectory-workbench-sample-anchors">
-                    <span>{`Req ${compactId(item.request_id)}`}</span>
-                    <span>{`Trace ${compactId(item.trace_id)}`}</span>
-                  </div>
-                  <div className="fa-trajectory-workbench-sample-anchors">
-                    <span>{compactId(item.thread_id)}</span>
-                    <span>{item.selected_model || "—"}</span>
-                  </div>
-                  <div className="fa-trajectory-workbench-sample-metrics">
-                    <span>{formatDuration(item.latency_ms)}</span>
-                    <span>{`${item.tool_calls} ${isChineseUi ? "工具" : "tools"}`}</span>
-                    <span>{`${item.fallback_uses} fallback`}</span>
-                  </div>
-                  </button>
-                </div>
-              ))}
-
+            <TrajectorySampleExplorer
+              isChineseUi={isChineseUi}
+              isListLoading={isListLoading}
+              items={orderedItems}
+              locale={locale}
+              matchCount={matchCount}
+              onClearBatchSelection={clearBatchSelection}
+              onSelectTurn={setSelectedTurnId}
+              onSelectVisibleBatch={selectVisibleBatch}
+              onSelectVisibleFailuresBatch={selectVisibleFailuresBatch}
+              onToggleBatchSelection={toggleBatchSelection}
+              selectedBatchIdSet={selectedBatchIdSet}
+              selectedBatchTurnIds={selectedBatchTurnIds}
+              selectedTurnId={selectedTurnId}
+            >
               {!isListLoading && !orderedItems.length ? (
-                <div className="fa-observability-empty">
-                  <p>
-                    {isChineseUi
-                      ? "当前筛选下没有匹配的复盘样本。"
-                      : "No trajectory turns match the current filters."}
-                  </p>
-                  <div className="fa-observability-command-bar">
-                    <button
-                      className="fa-chat-toolbar-button"
-                      onClick={() => applyPreset("all")}
-                      type="button"
-                    >
-                      {isChineseUi ? "查看全部样本" : "View all turns"}
-                    </button>
-                    <button
-                      className="fa-chat-toolbar-button"
-                      onClick={resetFilters}
-                      type="button"
-                    >
-                      {isChineseUi ? "清空过滤器" : "Clear filters"}
-                    </button>
-                  </div>
-                </div>
+                <TrajectoryEmptyState
+                  isChineseUi={isChineseUi}
+                  kind="no-results"
+                  onApplyAllPreset={() => applyPreset("all")}
+                  onResetFilters={resetFilters}
+                />
               ) : null}
-
               {listError ? (
-                <div
-                  className={`fa-inline-notice ${listError instanceof FocusAgentRequestError && listError.status === 503 ? "is-warning" : "is-danger"}`.trim()}
-                >
-                  {listErrorMessage}
-                </div>
+                <TrajectoryInlineError
+                  isWarning={
+                    listError instanceof FocusAgentRequestError &&
+                    listError.status === 503
+                  }
+                  message={listErrorMessage}
+                />
               ) : null}
-            </div>
+            </TrajectorySampleExplorer>
+
+            <TrajectoryFiltersPanel
+              fallbackOnly={fallbackOnly}
+              filterChips={filterChips}
+              filtersExpanded={filtersExpanded}
+              hasErrorOnly={hasErrorOnly}
+              hasInvalidLatency={hasInvalidLatency}
+              isChineseUi={isChineseUi}
+              minLatency={minLatency}
+              modelFilter={modelFilter}
+              onApplyPreset={applyPreset}
+              onResetFilters={resetFilters}
+              requestFilter={requestFilter}
+              setFallbackOnly={setFallbackOnly}
+              setFiltersExpanded={setFiltersExpanded}
+              setHasErrorOnly={setHasErrorOnly}
+              setMinLatency={setMinLatency}
+              setModelFilter={setModelFilter}
+              setRequestFilter={setRequestFilter}
+              setSortMode={setSortMode}
+              setStatusFilter={setStatusFilter}
+              setThreadFilter={setThreadFilter}
+              setToolFilter={setToolFilter}
+              setTraceFilter={setTraceFilter}
+              sortMode={sortMode}
+              statusFilter={statusFilter}
+              threadFilter={threadFilter}
+              toolFilter={toolFilter}
+              traceFilter={traceFilter}
+            />
           </aside>
 
           <section
             className="fa-trajectory-workbench-column is-canvas"
             ref={detailPanelRef}
           >
-            {!selectedTurnId ? (
-              <div className="fa-observability-empty">
-                {isChineseUi
-                  ? "先从左侧样本队列里选一条 case。"
-                  : "Pick a case from the sample queue first."}
-              </div>
-            ) : isDetailLoading ? (
-              <div className="fa-inline-notice">
-                {isChineseUi ? "正在加载 turn 详情..." : "Loading turn detail..."}
-              </div>
-            ) : selected ? (
-              <>
-                {reviewSummary ? (
-                  <article className="fa-trajectory-workbench-summary-card">
-                    <div className="fa-trajectory-workbench-summary-top">
-                      <div className="fa-trajectory-workbench-summary-copy">
-                        <p>{isChineseUi ? "结论摘要" : "Review summary"}</p>
-                        <h2>{reviewSummary.headline}</h2>
-                        <span>{reviewSummary.lead}</span>
-                      </div>
-                      <div className="fa-trajectory-workbench-summary-side">
-                        <span
-                          className={`fa-observability-pill is-${statusTone(reviewSummary.status)}`}
-                        >
-                          {reviewSummary.status}
-                        </span>
-                        <span>{reviewSummary.createdAt}</span>
-                        <strong>{reviewSummary.evidenceLabel}</strong>
-                      </div>
-                    </div>
-                    <div className="fa-trajectory-workbench-summary-grid">
-                      {reviewSummary.stats.map((item) => (
-                        <div
-                          key={item.id}
-                          className="fa-trajectory-workbench-summary-metric"
-                        >
-                          <span>{isChineseUi ? item.labelZh : item.labelEn}</span>
-                          <strong>{item.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </article>
-                ) : null}
-
-                <article className="fa-trajectory-workbench-evidence-panel">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? "证据主区" : "Evidence stage"}</p>
-                      <h3>
-                        {evidenceMode === "timeline"
-                          ? isChineseUi
-                            ? "按时间线读执行证据"
-                            : "Read the execution evidence as a timeline"
-                          : evidenceMode === "zero_step"
-                            ? isChineseUi
-                              ? "零步骤证据视图"
-                              : "Zero-step evidence view"
-                            : isChineseUi
-                              ? "详情缺失"
-                              : "Missing detail"}
-                      </h3>
-                    </div>
-                    <span>
-                      {evidenceMode === "timeline"
-                        ? isChineseUi
-                          ? `${selected.trajectory.length} 步 · ${selectedSignals.parallelSteps} 个并行批次`
-                          : `${selected.trajectory.length} steps · ${selectedSignals.parallelSteps} parallel batches`
-                        : isChineseUi
-                          ? "没有可展开的 timeline"
-                          : "No timeline is available"}
-                    </span>
-                  </div>
-
-                  {selected.error ? (
-                    <div className="fa-inline-notice is-danger">
-                      {selected.error}
-                    </div>
-                  ) : null}
-
-                  {evidenceMode === "timeline" ? (
-                    <div className="fa-observability-step-timeline">
-                      {selected.trajectory.map((step, index) => {
-                        const runtimeProvider = findStepRuntimeSignal(step, [
-                          "provider",
-                          "backend",
-                        ]);
-                        const runtimeModel = findStepRuntimeSignal(step, [
-                          "model",
-                          "selected_model",
-                        ]);
-                        const runtimeRequest = findStepRuntimeSignal(step, [
-                          "request_id",
-                          "requestId",
-                        ]);
-                        const runtimeTrace = findStepRuntimeSignal(step, [
-                          "trace_id",
-                          "traceId",
-                          "span_id",
-                          "spanId",
-                        ]);
-
-                        return (
-                          <div
-                            key={`${step.tool}-${index}`}
-                            className={`fa-observability-step-row ${severityClass(step)}`.trim()}
-                          >
-                            <div className="fa-observability-step-index">
-                              {index + 1}
-                            </div>
-                            <div className="fa-observability-step-body">
-                              <div className="fa-observability-step-header">
-                                <strong>{step.tool}</strong>
-                                <span>{formatDuration(step.duration_ms)}</span>
-                              </div>
-                              <div className="fa-observability-step-tags">
-                                {step.cache_hit ? (
-                                  <span className="fa-observability-pill is-success">
-                                    cache
-                                  </span>
-                                ) : null}
-                                {step.fallback_used ? (
-                                  <span className="fa-observability-pill is-warning">
-                                    fallback
-                                  </span>
-                                ) : null}
-                                {step.error ? (
-                                  <span className="fa-observability-pill is-danger">
-                                    error
-                                  </span>
-                                ) : null}
-                                {step.fallback_group ? (
-                                  <span className="fa-observability-pill is-neutral">{`group ${step.fallback_group}`}</span>
-                                ) : null}
-                                {step.parallel_batch_size ? (
-                                  <span className="fa-observability-pill is-neutral">{`parallel ${step.parallel_batch_size}`}</span>
-                                ) : null}
-                                {runtimeRequest ? (
-                                  <span className="fa-observability-pill is-neutral">
-                                    request
-                                  </span>
-                                ) : null}
-                                {runtimeTrace ? (
-                                  <span className="fa-observability-pill is-neutral">
-                                    trace
-                                  </span>
-                                ) : null}
-                              </div>
-                              {step.runtime ? (
-                                <div className="fa-observability-step-runtime">
-                                  {runtimeProvider ? (
-                                    <span>{`Provider · ${runtimeProvider}`}</span>
-                                  ) : null}
-                                  {runtimeModel ? (
-                                    <span>{`Model · ${runtimeModel}`}</span>
-                                  ) : null}
-                                  {runtimeRequest ? (
-                                    <span>{`Request · ${compactId(runtimeRequest)}`}</span>
-                                  ) : null}
-                                  {runtimeTrace ? (
-                                    <span>{`Trace · ${compactId(runtimeTrace)}`}</span>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                              <p className="fa-observability-step-preview">
-                                {stepObservationPreview(
-                                  step.observation || step.error || "—",
-                                )}
-                              </p>
-                              <details className="fa-observability-raw-toggle">
-                                <summary>
-                                  {isChineseUi
-                                    ? "查看完整观察"
-                                    : "View full observation"}
-                                </summary>
-                                <pre>{step.observation || step.error || "—"}</pre>
-                              </details>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : evidenceMode === "zero_step" ? (
-                    <div className="fa-trajectory-workbench-zero-step">
-                      <div className="fa-inline-notice">
-                        {isChineseUi
-                          ? "这条样本没有记录到 trajectory steps，不再保留空白 timeline。改为直接展示可用证据。"
-                          : "This turn has no recorded trajectory steps, so the workbench switches to a compact evidence view instead of an empty timeline."}
-                      </div>
-                      <div className="fa-trajectory-workbench-zero-step-grid">
-                        <div className="fa-observability-detail-block">
-                          <h3>{isChineseUi ? "可用信号" : "Available signals"}</h3>
-                          <div className="fa-observability-status-strip">
-                            <div>
-                              <span>{isChineseUi ? "延迟" : "Latency"}</span>
-                              <strong>{formatDuration(selected.latency_ms)}</strong>
-                            </div>
-                            <div>
-                              <span>{isChineseUi ? "工具调用" : "Tool calls"}</span>
-                              <strong>{formatMetric(selected.tool_calls, 0)}</strong>
-                            </div>
-                            <div>
-                              <span>{isChineseUi ? "关联锚点" : "Anchors"}</span>
-                              <strong>{formatMetric(correlationCoverage, 0)}</strong>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="fa-observability-detail-block">
-                          <h3>
-                            {selected.error
-                              ? isChineseUi
-                                ? "残留输出 / 错误上下文"
-                                : "Residual output / error context"
-                              : isChineseUi
-                                ? "输出快照"
-                                : "Output snapshot"}
-                          </h3>
-                          <p>{resultSummary || compactSnippet(selected.answer, 360) || "—"}</p>
-                          <details className="fa-observability-raw-toggle">
-                            <summary>
-                              {isChineseUi ? "查看原始结果" : "View raw output"}
-                            </summary>
-                            <pre>
-                              {JSON.stringify(
-                                {
-                                  answer: selected.answer,
-                                  error: selected.error,
-                                },
-                                null,
-                                2,
-                              )}
-                            </pre>
-                          </details>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="fa-observability-empty">
-                      {isChineseUi
-                        ? "当前样本的详情暂时不可用。"
-                        : "This turn detail is temporarily unavailable."}
-                    </div>
-                  )}
-                </article>
-
-                <div className="fa-trajectory-workbench-story-grid">
-                  <article className="fa-trajectory-workbench-story-card">
-                    <div className="fa-trajectory-workbench-section-head">
-                      <div>
-                        <p>{isChineseUi ? "输入叙事" : "Input narrative"}</p>
-                        <h3>
-                          {isChineseUi ? "用户是怎么把问题带进来的" : "How the user brought the task in"}
-                        </h3>
-                      </div>
-                    </div>
-                    <p>
-                      {compactDetailQuestion(
-                        selected.user_message || selected.task_brief || "—",
-                      )}
-                    </p>
-                    <div className="fa-observability-inline-chip-row">
-                      <span className="fa-observability-pill is-neutral">
-                        {formatSceneLabel(selected.scene, isChineseUi)}
-                      </span>
-                      {selected.branch_role ? (
-                        <span className="fa-observability-pill is-neutral">
-                          {formatBranchRoleLabel(selected.branch_role, isChineseUi)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <details className="fa-observability-raw-toggle">
-                      <summary>
-                        {isChineseUi ? "查看原始输入" : "View raw input"}
-                      </summary>
-                      <pre>{selected.user_message || selected.task_brief || "—"}</pre>
-                    </details>
-                  </article>
-
-                  <article className="fa-trajectory-workbench-story-card">
-                    <div className="fa-trajectory-workbench-section-head">
-                      <div>
-                        <p>{isChineseUi ? "输出叙事" : "Output narrative"}</p>
-                        <h3>
-                          {selected.error
-                            ? isChineseUi
-                              ? "错误优先"
-                              : "Error-first readout"
-                            : isChineseUi
-                              ? "关键输出"
-                              : "Key output"}
-                        </h3>
-                      </div>
-                    </div>
-                    <p>{resultSummary || compactSnippet(selected.answer, 560) || "—"}</p>
-                    {selected.error ? (
-                      <div className="fa-inline-notice is-danger">
-                        {selected.error}
-                      </div>
-                    ) : null}
-                    <details className="fa-observability-raw-toggle">
-                      <summary>
-                        {isChineseUi ? "查看原始结果" : "View raw payload"}
-                      </summary>
-                      <pre>
-                        {JSON.stringify(
-                          {
-                            answer: selected.answer,
-                            error: selected.error,
-                          },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </details>
-                  </article>
-                </div>
-
-                <article className="fa-trajectory-workbench-context-panel">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? "补充上下文" : "Supplemental context"}</p>
-                      <h3>
-                        {isChineseUi
-                          ? "把运行画像和原始元数据收敛在一处"
-                          : "Keep the runtime profile and raw metadata together"}
-                      </h3>
-                    </div>
-                  </div>
-                  <div className="fa-trajectory-workbench-context-grid">
-                    {supplementalContext.map((item) => (
-                      <div
-                        key={item.id}
-                        className="fa-observability-meta-item"
-                      >
-                        <span>{isChineseUi ? item.labelZh : item.labelEn}</span>
-                        <strong>{item.value}</strong>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="fa-trajectory-workbench-raw-stack">
-                    {selected.plan_meta ? (
-                      <details className="fa-observability-raw-toggle">
-                        <summary>
-                          {isChineseUi ? "查看 plan meta" : "View plan meta"}
-                        </summary>
-                        <pre>{JSON.stringify(selected.plan_meta, null, 2)}</pre>
-                      </details>
-                    ) : null}
-                    {selected.reflection ? (
-                      <details className="fa-observability-raw-toggle">
-                        <summary>
-                          {isChineseUi ? "查看 reflection" : "View reflection"}
-                        </summary>
-                        <pre>{JSON.stringify(selected.reflection, null, 2)}</pre>
-                      </details>
-                    ) : null}
-                    {selected.metrics ? (
-                      <details className="fa-observability-raw-toggle">
-                        <summary>
-                          {isChineseUi ? "查看 metrics" : "View metrics"}
-                        </summary>
-                        <pre>{JSON.stringify(selected.metrics, null, 2)}</pre>
-                      </details>
-                    ) : null}
-                  </div>
-                </article>
-              </>
-            ) : (
-              <div className="fa-observability-empty">
-                {isChineseUi
-                  ? "当前样本不存在或详情尚未可用。"
-                  : "This trajectory turn is unavailable."}
-              </div>
-            )}
+            <TrajectoryDetailPanel
+              correlationCoverage={correlationCoverage}
+              evidenceMode={evidenceMode}
+              isChineseUi={isChineseUi}
+              isDetailLoading={isDetailLoading}
+              resultSummary={resultSummary}
+              reviewSummary={reviewSummary}
+              selected={selected}
+              selectedSignals={selectedSignals}
+              selectedTurnId={selectedTurnId}
+              supplementalContext={supplementalContext}
+            />
           </section>
 
           <aside className="fa-trajectory-workbench-column is-rail">
-            {selected ? (
-              <div className="fa-trajectory-workbench-rail">
-                <section className="fa-trajectory-workbench-rail-section">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? anchorsSection.titleZh : anchorsSection.titleEn}</p>
-                      <h3>
-                        {isChineseUi
-                          ? "交接和 deep link 用到的锚点"
-                          : "Anchors for handoff and deep links"}
-                      </h3>
-                      <span>{isChineseUi ? anchorsSection.captionZh : anchorsSection.captionEn}</span>
-                    </div>
-                    {anchorsSection.count ? <strong>{anchorsSection.count}</strong> : null}
-                  </div>
-                  <div className="fa-observability-correlation-list">
-                    {correlationSignals.map((signal) => (
-                      <div
-                        key={signal.id}
-                        className="fa-observability-correlation-item"
-                      >
-                        <div>
-                          <span>{isChineseUi ? signal.labelZh : signal.labelEn}</span>
-                          <strong className={signal.tone === "accent" ? "is-accent" : ""}>
-                            {signal.value}
-                          </strong>
-                        </div>
-                        <button
-                          className="fa-chat-toolbar-button"
-                          onClick={() => copyText(signal.value)}
-                          type="button"
-                        >
-                          {isChineseUi ? "复制" : "Copy"}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  {correlationCoverage === 0 ? (
-                    <div className="fa-inline-notice">
-                      {isChineseUi
-                        ? "当前样本还没有显式 request / trace / span 字段，页面会继续从 metadata 里自动探测。"
-                        : "This turn does not expose explicit request/trace/span fields yet, so the page keeps probing metadata."}
-                    </div>
-                  ) : null}
-                </section>
-
-                <section className="fa-trajectory-workbench-rail-section">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? pivotsSection.titleZh : pivotsSection.titleEn}</p>
-                      <h3>
-                        {isChineseUi ? "Pivot 动作与范围信号" : "Pivot actions and scope signals"}
-                      </h3>
-                      <span>{isChineseUi ? pivotsSection.captionZh : pivotsSection.captionEn}</span>
-                    </div>
-                  </div>
-                  <div className="fa-observability-pivot-grid">
-                    {pivotActions.map((action) => (
-                      <button
-                        key={`rail-${action.id}`}
-                        className={`fa-observability-pivot-button ${action.disabled ? "is-disabled" : ""}`.trim()}
-                        disabled={action.disabled}
-                        onClick={action.action}
-                        type="button"
-                      >
-                        <strong>{action.label}</strong>
-                        <span>{compactSnippet(action.caption, 72) || "—"}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="fa-observability-status-strip">
-                    <div>
-                      <span>{isChineseUi ? "失败数" : "Failed turns"}</span>
-                      <strong>
-                        {isStatsLoading
-                          ? "…"
-                          : formatMetric(statsOverview?.non_succeeded_count, 0)}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>{isChineseUi ? "Fallback 总数" : "Fallback uses"}</span>
-                      <strong>
-                        {isStatsLoading
-                          ? "…"
-                          : formatMetric(statsOverview?.total_fallback_uses, 0)}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>{isChineseUi ? "Cache Hits" : "Cache hits"}</span>
-                      <strong>
-                        {isStatsLoading
-                          ? "…"
-                          : formatMetric(statsOverview?.total_cache_hits, 0)}
-                      </strong>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="fa-trajectory-workbench-rail-section">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? toolsSection.titleZh : toolsSection.titleEn}</p>
-                      <h3>{isChineseUi ? "热点工具" : "Hot tools"}</h3>
-                      <span>{isChineseUi ? toolsSection.captionZh : toolsSection.captionEn}</span>
-                    </div>
-                    {toolsSection.count ? <strong>{toolsSection.count}</strong> : null}
-                  </div>
-                  {hottestTools.length ? (
-                    <div className="fa-observability-tool-list">
-                      {hottestTools.map((tool) => (
-                        <button
-                          key={tool.key}
-                          className={`fa-observability-tool-row ${toolFilter.trim() === String(tool.key ?? "") ? "is-active" : ""}`}
-                          onClick={() => setToolFilter(String(tool.key ?? ""))}
-                          type="button"
-                        >
-                          <div>
-                            <strong>{tool.key}</strong>
-                            <span>
-                              {isChineseUi
-                                ? `${formatMetric(tool.turn_count, 0)} 条样本`
-                                : `${formatMetric(tool.turn_count, 0)} turns`}
-                            </span>
-                          </div>
-                          <span>{formatDuration(tool.avg_duration_ms)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="fa-observability-empty is-compact">
-                      {isChineseUi
-                        ? "暂无工具分布数据。"
-                        : "Tool distribution is not available yet."}
-                    </div>
-                  )}
-                </section>
-
-                <section className="fa-trajectory-workbench-rail-section">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? quickSection.titleZh : quickSection.titleEn}</p>
-                      <h3>{isChineseUi ? "快捷动作" : "Quick actions"}</h3>
-                      <span>{isChineseUi ? quickSection.captionZh : quickSection.captionEn}</span>
-                    </div>
-                  </div>
-                  <div className="fa-observability-command-bar">
-                    <button
-                      className="fa-chat-toolbar-button"
-                      onClick={handleCopyLink}
-                      type="button"
-                    >
-                      {isChineseUi ? "复制链接" : "Copy link"}
-                    </button>
-                    {commandSnippet ? (
-                      <button
-                        className="fa-chat-toolbar-button"
-                        onClick={handleCopyCommand}
-                        type="button"
-                      >
-                        {isChineseUi ? "复制 CLI 命令" : "Copy CLI command"}
-                      </button>
-                    ) : null}
-                    <button
-                      className="fa-chat-toolbar-button"
-                      onClick={downloadSelectedRecord}
-                      type="button"
-                    >
-                      {isChineseUi ? "下载 JSON" : "Download JSON"}
-                    </button>
-                  </div>
-                </section>
-
-                <section className="fa-trajectory-workbench-rail-section is-action-panel">
-                  <div className="fa-trajectory-workbench-section-head">
-                    <div>
-                      <p>{isChineseUi ? actionsSection.titleZh : actionsSection.titleEn}</p>
-                      <h3>{isChineseUi ? "复盘动作" : "Replay actions"}</h3>
-                      <span>{isChineseUi ? actionsSection.captionZh : actionsSection.captionEn}</span>
-                    </div>
-                  </div>
-                  <TrajectoryActionPanel
-                    batchItems={selectedBatchItems}
-                    isChineseUi={isChineseUi}
-                    onClearBatchSelection={clearBatchSelection}
-                    selected={selected}
-                  />
-                </section>
-              </div>
-            ) : (
-              <div className="fa-observability-empty">
-                {isChineseUi
-                  ? "选择样本后，这里会常驻显示关联锚点、热点工具和 Replay 动作。"
-                  : "Select a turn to keep the anchors, hotspots, and replay actions resident in this rail."}
-              </div>
-            )}
+            <TrajectoryActionRail
+              actionRailSections={actionRailSections}
+              batchItems={selectedBatchItems}
+              commandSnippet={commandSnippet}
+              correlationCoverage={correlationCoverage}
+              correlationSignals={correlationSignals}
+              hottestTools={hottestTools}
+              isChineseUi={isChineseUi}
+              isStatsLoading={isStatsLoading}
+              onClearBatchSelection={clearBatchSelection}
+              onCopyCommand={handleCopyCommand}
+              onCopyLink={handleCopyLink}
+              onCopyText={(value) => void copyText(value)}
+              onDownloadSelectedRecord={downloadSelectedRecord}
+              onSetToolFilter={setToolFilter}
+              pivotActions={pivotActions}
+              selected={selected}
+              statsOverview={statsOverview}
+              toolFilter={toolFilter}
+            />
           </aside>
         </section>
       )}

@@ -99,7 +99,11 @@ def run_provider_eval_gate(
     if not command:
         raise ValueError("provider eval command is required when credentials are present")
 
-    completed = subprocess.run(tuple(command), check=False)
+    command_to_run = list(command)
+    if command_to_run[0] == "python":
+        command_to_run[0] = sys.executable
+
+    completed = subprocess.run(tuple(command_to_run), check=False)
     status = "passed" if completed.returncode == 0 else "failed"
     _write_gate_report(
         gate_report_json,

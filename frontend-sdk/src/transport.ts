@@ -1,4 +1,7 @@
 import { FocusAgentRequestError } from "./errors.js";
+import { iterSSEEvents } from "./parser.js";
+import type { FocusAgentEvent } from "./types.js";
+import { validateFocusAgentEvent } from "./transport.validation.js";
 
 export interface FocusAgentTransportOptions {
   baseUrl: string;
@@ -159,4 +162,34 @@ export class FocusAgentTransport {
     }
     return JSON.parse(rawText) as T;
   }
+}
+
+export class FocusAgentTransportValidationError extends Error {
+  readonly rawEvent: unknown;
+
+  constructor(message: string, rawEvent: unknown) {
+    super(message);
+    this.name = "FocusAgentTransportValidationError";
+    this.rawEvent = rawEvent;
+  }
+}
+
+export async function* validateTransportEvents(
+  stream: AsyncIterable<FocusAgentEvent>,
+): AsyncGenerator<FocusAgentEvent, void, unknown> {
+  for await (const event of stream) {
+    if (!validateFocusAgentEvent(event)) {
+      throw new FocusAgentTransportValidationError(
+        `Invalid FocusAgent transport event: ${String((event as { event?: unknown }).event ?? "unknown")}`,
+        event,
+      );
+    }
+    yield event;
+  }
+}
+
+export function iterValidatedSSEEvents(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<FocusAgentEvent, void, unknown> {
+  return validateTransportEvents(iterSSEEvents(stream));
 }

@@ -10,11 +10,11 @@ from focus_agent.observability.trajectory_actions import (
 )
 
 from .errors import register_exception_handlers
-from .lifespan import app_lifespan
 from .middleware import configure_middleware
-from .route_utils import (
-    aggregate_token_usage_from_turns as _aggregate_token_usage_from_turns,
-    annotate_branch_tree_token_usage as _annotate_branch_tree_token_usage,
+from .route_utils.lifespan import app_lifespan
+from .route_utils.token_usage import (
+    _aggregate_token_usage_from_turns,
+    _annotate_branch_tree_token_usage,
 )
 from .routers import (
     agent_governance,

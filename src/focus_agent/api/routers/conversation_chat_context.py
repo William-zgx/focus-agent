@@ -25,13 +25,9 @@ from ..contracts import (
     UpdateConversationRequest,
 )
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
-from ..route_helpers import (
-    _conversation_response,
-    _event_stream_response,
-    _list_or_bootstrap_conversations,
-    _normalize_token_usage,
-    _token_usage_for_root_thread,
-)
+from ..route_utils.conversations import _conversation_response, _list_or_bootstrap_conversations
+from ..route_utils.streaming import _event_stream_response
+from ..route_utils.token_usage import _normalize_token_usage, _token_usage_for_root_thread
 
 router = APIRouter()
 

@@ -4,9 +4,7 @@
     "outDir": "dist-validation",
     "rootDir": "src",
     "declaration": false,
-    "noEmit": false,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext"
+    "noEmit": false
   },
   "include": [
     "src/errors.ts",

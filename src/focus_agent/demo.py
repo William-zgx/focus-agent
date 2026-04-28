@@ -7,6 +7,7 @@ from .core.branching import BranchRole, MergeDecision
 from .core.request_context import RequestContext
 from .config import load_local_env_file
 from .engine.runtime import create_runtime
+from .services.chat import ChatService
 
 
 load_local_env_file()
@@ -15,8 +16,6 @@ load_local_env_file()
 def cmd_run(args) -> None:
     runtime = create_runtime()
     try:
-        from .chat_service import ChatService
-
         service = ChatService(runtime)
         payload = service.send_message(thread_id=args.thread_id, user_id=args.user_id, message=args.message)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -27,8 +26,6 @@ def cmd_run(args) -> None:
 def cmd_resume(args) -> None:
     runtime = create_runtime()
     try:
-        from .chat_service import ChatService
-
         service = ChatService(runtime)
         payload = service.resume(thread_id=args.thread_id, user_id=args.user_id, resume=args.resume)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
