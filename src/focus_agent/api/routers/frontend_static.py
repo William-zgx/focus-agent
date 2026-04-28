@@ -1,7 +1,17 @@
 from __future__ import annotations
 
-# ruff: noqa: F403, F405
-from ..route_helpers import *
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+from focus_agent.config import Settings
+from focus_agent.web.frontend_app import (
+    resolve_frontend_dev_server_url,
+    resolve_frontend_dist_dir,
+)
+
+from ..route_helpers import _frontend_dev_redirect, _render_frontend_or_raise
+
 
 def register_frontend_routes(app: FastAPI, *, settings: Settings) -> None:
     frontend_dist_dir = resolve_frontend_dist_dir(settings)

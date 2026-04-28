@@ -116,17 +116,26 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     ).read_text()
     assert "let sendSucceeded = false;" in stream_hook_text
     assert "sendSucceeded = !nextState.failed && !controller.signal.aborted;" in stream_hook_text
-    assert "failed: {" in stream_hook_text
+    stream_errors_text = (
+        web_root / "src" / "features" / "thread-stream" / "use-thread-stream-errors.ts"
+    ).read_text()
+    stream_cache_text = (
+        web_root / "src" / "features" / "thread-stream" / "use-thread-stream-cache.ts"
+    ).read_text()
+    stream_registry_text = (
+        web_root / "src" / "features" / "thread-stream" / "use-stream-request-registry.ts"
+    ).read_text()
+    assert "failed: {" in stream_errors_text
     assert "resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted)" in stream_hook_text
     assert "pendingUserMessage: cleanup.clearPendingUserMessage" in stream_hook_text
     assert 'event.event === "turn.completed"' in stream_hook_text
-    assert "queryClient.setQueryData(" in stream_hook_text
-    assert "queryKeys.thread(requestThreadId)" in stream_hook_text
-    assert "void Promise.allSettled([" in stream_hook_text
-    assert 'error.name === "AbortError")' in stream_hook_text
+    assert "queryClient.setQueryData(" in stream_cache_text
+    assert "queryKeys.thread(threadId)" in stream_cache_text
+    assert "Promise.allSettled([" in stream_cache_text
+    assert 'error.name === "AbortError"' in stream_errors_text
     assert "sendSucceeded = false;" in stream_hook_text
     assert "client.sendTurn(" not in stream_hook_text
-    assert 'activeRequestIdsRef.current.get(requestThreadId) !== requestId' in stream_hook_text
+    assert "isCurrentStreamRequest" in stream_registry_text
 
     sdk_root = root / "frontend-sdk" / "src"
     sdk_index_text = (sdk_root / "index.ts").read_text()

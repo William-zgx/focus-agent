@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from uuid import uuid4
@@ -13,6 +14,7 @@ from starlette.types import ASGIApp
 
 from focus_agent.config import Settings
 from focus_agent.security.rate_limit import SlidingWindowRateLimiter
+from focus_agent.security.tokens import AuthError, decode_access_token
 
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -57,16 +59,27 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         *,
         default_limit: int,
         chat_limit: int,
+        settings: Settings,
     ) -> None:
         super().__init__(app)
         self._default_limit = default_limit
         self._chat_limit = chat_limit
+        self._settings = settings
         self._limiter = SlidingWindowRateLimiter(window_seconds=60.0)
 
     def _identity(self, request: Request) -> str:
         auth_header = request.headers.get("authorization") or ""
         if auth_header.lower().startswith("bearer "):
-            return f"bearer:{auth_header[7:]}"
+            token = auth_header[7:].strip()
+            if token:
+                try:
+                    principal = decode_access_token(token, settings=self._settings)
+                except AuthError:
+                    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+                    return f"bearer-digest:{digest}"
+                if principal.tenant_id:
+                    return f"principal:{principal.tenant_id}:{principal.user_id}"
+                return f"principal:{principal.user_id}"
         client = request.client
         return f"ip:{client.host}" if client else "anonymous"
 
@@ -121,6 +134,7 @@ def configure_middleware(app: FastAPI, *, settings: Settings) -> None:
             RateLimitMiddleware,
             default_limit=settings.rate_limit_per_minute,
             chat_limit=settings.rate_limit_chat_per_minute,
+            settings=settings,
         )
 
     app.add_middleware(RequestIdMiddleware)

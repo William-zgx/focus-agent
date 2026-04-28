@@ -571,9 +571,21 @@
       "ContextUsageResponse",
       "FocusAgentModelOption"
     ],
-    "apps/web/src/features/thread-stream/use-thread-stream.ts": [
+    "apps/web/src/features/thread-stream/stream-entry-state.ts": [
       "FocusAgentStreamState",
-      "ThreadStateResponse",
+      "createInitialStreamState"
+    ],
+    "apps/web/src/features/thread-stream/use-thread-stream-cache.ts": [
+      "QueryClient } from \"@tanstack/react-query\";\nimport type { ThreadStateResponse"
+    ],
+    "apps/web/src/features/thread-stream/use-thread-stream-errors.ts": [
+      "createInitialStreamState"
+    ],
+    "apps/web/src/features/thread-stream/use-thread-stream-navigation.ts": [
+      "BranchActionPayload",
+      "FocusAgentBranchActionNavigation"
+    ],
+    "apps/web/src/features/thread-stream/use-thread-stream.ts": [
       "createInitialStreamState",
       "reduceStreamEvent"
     ],

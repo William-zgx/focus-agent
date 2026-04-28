@@ -186,3 +186,46 @@ def test_release_gate_main_dry_run_uses_cli_options(tmp_path: Path) -> None:
     assert report["commands"][0]["status"] == "dry-run"
     assert report["summary"]["dry-run"] == 1
     assert report["summary"]["skipped"] == len(release_gate.RELEASE_GATE_COMMANDS) - 1
+
+
+def test_release_gate_deployment_binding_fails_closed_in_production(tmp_path: Path) -> None:
+    env = {
+        "DRY_RUN": "false",
+        "APPROVAL_STATUS": "pending",
+        "DEPLOYMENT_BINDING_JSON": str(tmp_path / "deployment-binding.json"),
+    }
+
+    payload = release_gate.validate_deployment_binding(
+        env=env,
+        deployment_binding_json=tmp_path / "deployment-binding.json",
+    )
+
+    assert payload["summary"]["status"] == "failed"
+    assert "base_url" in payload["summary"]["missing"]
+    assert "stream_events" in payload["summary"]["missing"]
+    assert payload["summary"]["invalid"] == ["approval_status"]
+
+
+def test_release_gate_deployment_binding_allows_dry_run_defaults(tmp_path: Path) -> None:
+    payload = release_gate.validate_deployment_binding(
+        env={"DRY_RUN": "true", "GITHUB_RUN_ID": "123"},
+        deployment_binding_json=tmp_path / "deployment-binding.json",
+    )
+    approval = {item["key"]: item for item in payload["bindings"]}
+
+    assert payload["summary"]["status"] == "passed"
+    assert approval["approval_id"]["value"] == "gha-dry-run-123"
+    assert approval["approval_status"]["value"] == "approved"
+
+
+def test_release_gate_deployment_binding_cli_writes_report(tmp_path: Path, monkeypatch) -> None:
+    report_json = tmp_path / "deployment-binding.json"
+    monkeypatch.setenv("DRY_RUN", "true")
+    monkeypatch.setenv("GITHUB_RUN_ID", "456")
+
+    exit_code = release_gate.main(["deployment-binding", "--output", str(report_json)])
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["summary"]["status"] == "passed"
+    assert payload["meta"]["suite"] == "deployment_binding"

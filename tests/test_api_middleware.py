@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
+from focus_agent.api.deps import require_roles, require_scopes
 from focus_agent.api.main import create_app
-from focus_agent.api.middleware import REQUEST_ID_HEADER
+from focus_agent.api.middleware import RateLimitMiddleware, REQUEST_ID_HEADER
+from focus_agent.config import Settings
 from focus_agent.security.rate_limit import SlidingWindowRateLimiter
+from focus_agent.security.tokens import Principal, create_access_token
 
 
 def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -95,6 +100,126 @@ def test_cors_headers_applied_when_origin_configured(
     assert (
         response.headers.get("access-control-allow-origin") == "http://localhost:5173"
     )
+
+
+def _auth_app(settings: Settings) -> FastAPI:
+    app = FastAPI()
+    app.state.runtime = SimpleNamespace(settings=settings)
+
+    @app.get("/scope-required")
+    def scope_required(
+        principal: Principal = Depends(require_scopes("chat:write")),
+    ) -> dict[str, str]:
+        return {"user_id": principal.user_id}
+
+    @app.get("/role-required")
+    def role_required(
+        principal: Principal = Depends(require_roles("admin")),
+    ) -> dict[str, str]:
+        return {"user_id": principal.user_id}
+
+    return app
+
+
+def _token(
+    settings: Settings,
+    *,
+    user_id: str,
+    tenant_id: str | None = None,
+    scopes: list[str] | None = None,
+) -> str:
+    return create_access_token(
+        settings=settings,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        scopes=scopes or [],
+    )
+
+
+async def _noop_app(scope, receive, send) -> None:
+    del scope, receive, send
+
+
+def _identity_for(
+    settings: Settings,
+    authorization: str | None,
+    *,
+    host: str = "203.0.113.10",
+) -> str:
+    middleware = RateLimitMiddleware(
+        _noop_app,
+        default_limit=1,
+        chat_limit=1,
+        settings=settings,
+    )
+    headers = {"authorization": authorization} if authorization is not None else {}
+    request = SimpleNamespace(headers=headers, client=SimpleNamespace(host=host))
+    return middleware._identity(request)
+
+
+def test_rate_limit_identity_does_not_leak_bearer_token() -> None:
+    settings = Settings(auth_jwt_secret="rate-secret", auth_jwt_issuer="focus-agent-test")
+    token = _token(settings, user_id="user-1", tenant_id="tenant-a")
+
+    identity = _identity_for(settings, f"Bearer {token}")
+
+    assert identity == "principal:tenant-a:user-1"
+    assert token not in identity
+
+
+def test_rate_limit_identity_uses_valid_principal_user_without_tenant() -> None:
+    settings = Settings(auth_jwt_secret="rate-secret", auth_jwt_issuer="focus-agent-test")
+    token = _token(settings, user_id="user-1")
+
+    assert _identity_for(settings, f"Bearer {token}") == "principal:user-1"
+
+
+def test_rate_limit_identity_uses_digest_for_invalid_bearer_token() -> None:
+    settings = Settings(auth_jwt_secret="rate-secret", auth_jwt_issuer="focus-agent-test")
+    token = "not-a-valid-token"
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+
+    identity = _identity_for(settings, f"Bearer {token}")
+
+    assert identity == f"bearer-digest:{digest}"
+    assert token not in identity
+
+
+def test_rate_limit_identity_uses_client_host_without_bearer_token() -> None:
+    settings = Settings(auth_jwt_secret="rate-secret", auth_jwt_issuer="focus-agent-test")
+
+    assert _identity_for(settings, None, host="198.51.100.7") == "ip:198.51.100.7"
+
+
+def test_scope_and_role_dependencies_return_403_when_claims_missing() -> None:
+    settings = Settings(auth_jwt_secret="authz-secret", auth_jwt_issuer="focus-agent-test")
+    client = TestClient(_auth_app(settings))
+    headers = {"Authorization": f"Bearer {_token(settings, user_id='user-1')}"}
+
+    scope_response = client.get("/scope-required", headers=headers)
+    role_response = client.get("/role-required", headers=headers)
+
+    assert scope_response.status_code == 403
+    assert "Missing required scope" in scope_response.json()["detail"]
+    assert role_response.status_code == 403
+    assert "Missing required role" in role_response.json()["detail"]
+
+
+def test_auth_disabled_development_mode_allows_required_dependencies_without_token() -> None:
+    settings = Settings(
+        auth_enabled=False,
+        auth_jwt_secret="authz-secret",
+        auth_jwt_issuer="focus-agent-test",
+    )
+    client = TestClient(_auth_app(settings))
+
+    scope_response = client.get("/scope-required")
+    role_response = client.get("/role-required")
+
+    assert scope_response.status_code == 200
+    assert scope_response.json() == {"user_id": "anonymous"}
+    assert role_response.status_code == 200
+    assert role_response.json() == {"user_id": "anonymous"}
 
 
 def test_rate_limiter_blocks_after_threshold() -> None:

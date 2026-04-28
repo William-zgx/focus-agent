@@ -2,6 +2,19 @@ name: Nightly Regression
 
 on:
   workflow_dispatch:
+    inputs:
+      trajectory_input_json:
+        description: "Optional trajectory export JSON/JSONL path for replay entrypoint testing."
+        required: false
+        type: string
+      replay_report_json:
+        description: "Optional replay report JSON path included in nightly aggregation."
+        required: false
+        type: string
+      alert_report_json:
+        description: "Optional alert report JSON path included in nightly aggregation."
+        required: false
+        type: string
   schedule:
     - cron: "17 19 * * *"
 
@@ -41,7 +54,28 @@ jobs:
             nightly-regression-history-
 
       - name: Build memory/context nightly report
-        run: make nightly-regression
+        env:
+          TRAJECTORY_INPUT_JSON: ${{ inputs.trajectory_input_json }}
+          REPLAY_REPORT_JSON: ${{ inputs.replay_report_json || 'reports/nightly/trajectory-replay.json' }}
+          ALERT_REPORT_JSON: ${{ inputs.alert_report_json }}
+        run: |
+          extra_args=()
+          if [ -n "$TRAJECTORY_INPUT_JSON" ]; then
+            uv run python -m tests.eval replay \
+              --from "$TRAJECTORY_INPUT_JSON" \
+              --trajectory-input \
+              --run \
+              --concurrency 1 \
+              --report-json "$REPLAY_REPORT_JSON" \
+              --report-jsonl reports/nightly/trajectory-replay.jsonl
+            extra_args+=(--replay-json "$REPLAY_REPORT_JSON")
+          elif [ -n "$REPLAY_REPORT_JSON" ] && [ -f "$REPLAY_REPORT_JSON" ]; then
+            extra_args+=(--replay-json "$REPLAY_REPORT_JSON")
+          fi
+          if [ -n "$ALERT_REPORT_JSON" ]; then
+            extra_args+=(--alert-json "$ALERT_REPORT_JSON")
+          fi
+          make nightly-regression NIGHTLY_REGRESSION_ARGS="${extra_args[*]}"
 
       - name: Build Agent governance quality report
         run: make agent-governance-report
@@ -66,5 +100,6 @@ jobs:
             reports/nightly/
             reports/agent-governance/
             reports/release-gate/memory-context-*.json
+            reports/nightly/trajectory-replay*.json*
           retention-days: 30
           if-no-files-found: ignore

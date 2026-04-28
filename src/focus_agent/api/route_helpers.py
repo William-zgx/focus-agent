@@ -158,7 +158,14 @@ from .contracts import (
     UpdateBranchNameRequest,
     UpdateConversationRequest,
 )
-from .deps import get_app_runtime, get_chat_service, get_current_principal
+from .deps import (
+    get_app_runtime,
+    get_chat_service,
+    get_current_principal,
+    get_optional_principal,
+    require_roles,
+    require_scopes,
+)
 from .errors import register_exception_handlers
 from .middleware import configure_middleware
 from focus_agent.model_registry import build_model_catalog

@@ -53,7 +53,8 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert "FOCUS_AGENT_DATABASE_URI" in compose_text
     assert "pg_isready" in compose_text
     assert "FOCUS_AGENT_PIP_INDEX_URL" in compose_text
-    assert "/healthz" in compose_text
+    assert "/readyz" in compose_text
+    assert "/healthz" not in compose_text
 
     compose_prod_text = (root / "compose.prod.yaml").read_text(encoding="utf-8")
     assert "FOCUS_AGENT_IMAGE" in compose_prod_text
@@ -61,7 +62,8 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}" in compose_prod_text
     assert "ANTHROPIC_API_KEY:" in compose_prod_text
     assert "OPENAI_API_KEY:" in compose_prod_text
-    assert "TAVILY_API_KEY:" in compose_prod_text
+    assert "/readyz" in compose_prod_text
+    assert "/healthz" not in compose_prod_text
     assert "postgres:" not in compose_prod_text
 
 

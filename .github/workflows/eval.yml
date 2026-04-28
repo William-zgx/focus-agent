@@ -50,18 +50,21 @@ jobs:
       - name: Run provider-backed smoke eval
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROVIDER_EVAL_MISSING_KEY_POLICY: ${{ github.event_name == 'pull_request' && 'skip' || vars.PROVIDER_EVAL_MISSING_KEY_POLICY || 'fail' }}
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "OPENAI_API_KEY is not configured; skipping provider-backed smoke eval."
-            exit 0
-          fi
           mkdir -p reports
-          uv run python -m tests.eval \
-            --suite smoke \
-            --concurrency 1 \
-            --report-json reports/eval-smoke.json \
-            --report-jsonl reports/eval-smoke.jsonl \
-            --report-html reports/eval-smoke.html
+          uv run python scripts/eval_provider_gate.py \
+            --key-env OPENAI_API_KEY \
+            --missing-policy-env PROVIDER_EVAL_MISSING_KEY_POLICY \
+            --gate-report-json reports/eval-provider-gate.json \
+            --annotation-title "Provider-backed smoke eval skipped" \
+            -- \
+            uv run python -m tests.eval \
+              --suite smoke \
+              --concurrency 1 \
+              --report-json reports/eval-smoke.json \
+              --report-jsonl reports/eval-smoke.jsonl \
+              --report-html reports/eval-smoke.html
 
       - name: Upload eval reports
         if: always()

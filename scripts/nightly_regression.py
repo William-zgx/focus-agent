@@ -20,6 +20,8 @@ DEFAULT_REPORT_JSON = Path("reports/nightly/latest.json")
 DEFAULT_HISTORY_DIR = Path("reports/nightly/history")
 DEFAULT_MEMORY_EVAL_JSON = Path("reports/release-gate/memory-context-eval.json")
 DEFAULT_MEMORY_TREND_JSON = Path("reports/release-gate/memory-context-trend.json")
+DEFAULT_REPLAY_JSON = Path("reports/nightly/trajectory-replay.json")
+DEFAULT_ALERT_JSON = Path("reports/nightly/alerts.json")
 DELTA_NUMERIC_SUMMARY_KEYS = (
     "alert_count",
     "failed_replay_cases",
@@ -312,6 +314,10 @@ def _alert_summary(path: str | Path) -> dict[str, Any]:
     }
 
 
+def _existing_default_artifacts(*paths: Path) -> list[Path]:
+    return [path for path in paths if _resolve(path).exists()]
+
+
 def _build_memory_review(
     *,
     candidate_jsonl: Sequence[str | Path],
@@ -363,8 +369,8 @@ def build_nightly_report(
     previous_report_json: str | Path | None = None,
     history_json: Sequence[str | Path] = (),
     history_dir: str | Path | None = DEFAULT_HISTORY_DIR,
-    replay_json: Sequence[str | Path] = (),
-    alert_json: Sequence[str | Path] = (),
+    replay_json: Sequence[str | Path] | None = None,
+    alert_json: Sequence[str | Path] | None = None,
     candidate_review_jsonl: Sequence[str | Path] = (),
     candidate_approve_id: Sequence[str] = (),
     candidate_reject_id: Sequence[str] = (),
@@ -374,8 +380,18 @@ def build_nightly_report(
 ) -> dict[str, Any]:
     memory_eval = _artifact_summary(memory_eval_json, kind="memory_eval")
     memory_trend = _trend_summary(memory_trend_json)
-    replay = [_replay_summary(path) for path in replay_json]
-    alerts = [_alert_summary(path) for path in alert_json]
+    replay_inputs = (
+        _existing_default_artifacts(DEFAULT_REPLAY_JSON)
+        if replay_json is None
+        else list(replay_json)
+    )
+    alert_inputs = (
+        _existing_default_artifacts(DEFAULT_ALERT_JSON)
+        if alert_json is None
+        else list(alert_json)
+    )
+    replay = [_replay_summary(path) for path in replay_inputs]
+    alerts = [_alert_summary(path) for path in alert_inputs]
     memory_review = _build_memory_review(
         candidate_jsonl=candidate_review_jsonl,
         approved_ids=candidate_approve_id,
@@ -446,6 +462,40 @@ def build_nightly_report(
             ),
             "artifact": str(_resolve(memory_trend_json)),
             "status": "available" if memory_trend.get("status") != "missing" else "missing",
+        },
+        {
+            "label": "trajectory-replay",
+            "command": _command_text(
+                (
+                    "uv",
+                    "run",
+                    "python",
+                    "-m",
+                    "tests.eval",
+                    "replay",
+                    "--trajectory-input",
+                    "--run",
+                    "--report-json",
+                    str(replay_inputs[0] if replay_inputs else DEFAULT_REPLAY_JSON),
+                )
+            ),
+            "artifact": [str(_resolve(path)) for path in (replay_inputs or [DEFAULT_REPLAY_JSON])],
+            "status": "available" if replay_inputs else "not_configured",
+        },
+        {
+            "label": "nightly-alerts",
+            "command": _command_text(
+                (
+                    "uv",
+                    "run",
+                    "python",
+                    "scripts/nightly_regression.py",
+                    "--alert-json",
+                    str(alert_inputs[0] if alert_inputs else DEFAULT_ALERT_JSON),
+                )
+            ),
+            "artifact": [str(_resolve(path)) for path in (alert_inputs or [DEFAULT_ALERT_JSON])],
+            "status": "available" if alert_inputs else "not_configured",
         },
     ]
     summary = {

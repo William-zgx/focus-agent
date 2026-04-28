@@ -1,7 +1,29 @@
 from __future__ import annotations
 
-# ruff: noqa: F403, F405
-from ..route_helpers import *
+from fastapi import APIRouter, Depends
+
+from focus_agent.core.agent_team import AgentTeamMergeBundle
+from focus_agent.engine.runtime import AppRuntime
+from focus_agent.security.tokens import Principal
+
+from ..contracts import (
+    AgentTeamDispatchResponse,
+    AgentTeamMergeBundleResponse,
+    AgentTeamMergeDecisionResponse,
+    AgentTeamSessionListResponse,
+    AgentTeamSessionResponse,
+    AgentTeamTaskListResponse,
+    AgentTeamTaskOutputResponse,
+    AgentTeamTaskResponse,
+    ApplyAgentTeamMergeDecisionRequest,
+    CreateAgentTeamSessionRequest,
+    CreateAgentTeamTaskRequest,
+    DispatchAgentTeamSessionRequest,
+    RecordAgentTeamTaskOutputRequest,
+    UpdateAgentTeamTaskRequest,
+)
+from ..deps import get_app_runtime, get_current_principal
+from ..route_helpers import _agent_team_error, _agent_team_service_or_503
 
 router = APIRouter()
 
@@ -201,8 +223,6 @@ def apply_agent_team_merge_decision(
     session = service.get_session(session_id, user_id=principal.user_id)
     merge_bundle = None
     if session.latest_merge_bundle:
-        from focus_agent.core.agent_team import AgentTeamMergeBundle
-
         merge_bundle = AgentTeamMergeBundle.model_validate(session.latest_merge_bundle)
     return AgentTeamMergeDecisionResponse(
         decision=decision,

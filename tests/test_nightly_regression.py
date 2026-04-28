@@ -275,3 +275,54 @@ def test_nightly_write_appends_latest_summary_to_history(tmp_path: Path) -> None
     assert next_report["baseline_status"] == "available"
     assert next_report["history"]["source_count"] == 1
     assert next_report["delta"]["numeric"]["alert_count"] == {"current": 0, "delta": 0, "previous": 0}
+
+
+def test_nightly_report_auto_discovers_default_replay_and_alert_entrypoints(tmp_path: Path, monkeypatch) -> None:
+    memory_eval, memory_trend = _write_passing_memory_artifacts(tmp_path)
+    default_replay = tmp_path / "reports" / "nightly" / "trajectory-replay.json"
+    default_alerts = tmp_path / "reports" / "nightly" / "alerts.json"
+    default_replay.parent.mkdir(parents=True)
+    _write_json(
+        default_replay,
+        {
+            "meta": {"suite": "trajectory_replay"},
+            "summary": {"total": 1, "failed": 0},
+            "results": [{"case_id": "case-ok", "passed": True}],
+        },
+    )
+    _write_json(default_alerts, {"status": "ok", "alerts": []})
+    monkeypatch.setattr(nightly_regression, "DEFAULT_REPLAY_JSON", Path("reports/nightly/trajectory-replay.json"))
+    monkeypatch.setattr(nightly_regression, "DEFAULT_ALERT_JSON", Path("reports/nightly/alerts.json"))
+    monkeypatch.setattr(nightly_regression, "REPO_ROOT", tmp_path)
+
+    report = nightly_regression.build_nightly_report(
+        memory_eval_json=memory_eval,
+        memory_trend_json=memory_trend,
+        history_dir=tmp_path / "history",
+    )
+    commands = {command["label"]: command for command in report["commands"]}
+
+    assert report["summary"]["status"] == "passed"
+    assert report["artifacts"]["replay"][0]["path"] == str(default_replay)
+    assert report["artifacts"]["alerts"][0]["path"] == str(default_alerts)
+    assert commands["trajectory-replay"]["status"] == "available"
+    assert commands["nightly-alerts"]["status"] == "available"
+
+
+def test_nightly_report_keeps_replay_and_alert_entrypoints_not_configured_when_absent(tmp_path: Path) -> None:
+    memory_eval, memory_trend = _write_passing_memory_artifacts(tmp_path)
+
+    report = nightly_regression.build_nightly_report(
+        memory_eval_json=memory_eval,
+        memory_trend_json=memory_trend,
+        replay_json=None,
+        alert_json=None,
+        history_dir=tmp_path / "history",
+    )
+    commands = {command["label"]: command for command in report["commands"]}
+
+    assert report["summary"]["status"] == "passed"
+    assert report["artifacts"]["replay"] == []
+    assert report["artifacts"]["alerts"] == []
+    assert commands["trajectory-replay"]["status"] == "not_configured"
+    assert commands["nightly-alerts"]["status"] == "not_configured"
