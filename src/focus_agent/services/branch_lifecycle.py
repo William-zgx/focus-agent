@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import logging
 import uuid
 
 from ..core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
 from ..core.types import ConversationRecord
+
+
+logger = logging.getLogger("focus_agent.branches")
 
 
 class BranchLifecycleCoordinator:
@@ -227,7 +231,14 @@ class BranchLifecycleCoordinator:
                 as_node='bootstrap_turn',
             )
             return updated_record
-        except Exception:
+        except (KeyError, PermissionError):
+            raise
+        except Exception:  # noqa: BLE001 - first-turn metadata refresh is best-effort
+            logger.warning(
+                "failed to refresh branch metadata after first turn",
+                extra={"child_thread_id": child_thread_id},
+                exc_info=True,
+            )
             return None
 
     def rename_branch(
@@ -280,7 +291,14 @@ class BranchLifecycleCoordinator:
                 title=next_title,
                 title_pending_ai=False,
             )
-        except Exception:
+        except (KeyError, PermissionError):
+            raise
+        except Exception:  # noqa: BLE001 - first-turn title refresh is best-effort
+            logger.warning(
+                "failed to refresh conversation title after first turn",
+                extra={"root_thread_id": root_thread_id},
+                exc_info=True,
+            )
             return None
 
     def set_conversation_archive_state(

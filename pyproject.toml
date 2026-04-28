@@ -47,3 +47,26 @@ focus_agent = ["skills/builtin/*/SKILL.md"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# Keep the first Python quality gate intentionally narrow so it does not force a
+# repository-wide cleanup. Import sorting (I), line-length (E501), warnings (W),
+# modernization (UP), naming (N), annotations (ANN), and complexity (C90/PLR)
+# can be enabled after the existing backlog is fixed in smaller batches.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = [
+  # Existing code intentionally strips a small set of punctuation characters.
+  "B005",
+  # FastAPI and CLI defaults use call expressions in dependency/default values.
+  "B008",
+  # Existing code uses getattr defensively for external/dynamic records.
+  "B009",
+  # Existing provider glue zips sequences whose lengths are owned upstream.
+  "B905",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true

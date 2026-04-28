@@ -543,7 +543,9 @@
       "FocusAgentBranchActionProposal",
       "FocusAgentToolCallEvent",
       "FocusAgentToolEvent",
-      "TurnFailedPayload",
+      "TurnFailedPayload"
+    ],
+    "apps/web/src/entities/messages/message-transcript.ts": [
       "looksLikeTextualToolCallArtifact"
     ],
     "apps/web/src/features/branch-tree/branch-tree-panel.tsx": [

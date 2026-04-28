@@ -1,3 +1,5 @@
+import logging
+
 from langchain.messages import AIMessage, HumanMessage
 
 from focus_agent.services.branches import BranchService
@@ -133,3 +135,49 @@ def test_ai_branch_role_is_classified_from_first_turn_context():
     assert role == BranchRole.EXECUTE
     assert fake_model.seen_messages is not None
     assert "return exactly one role id" in fake_model.seen_messages[0].content.lower()
+
+
+def test_branch_role_model_failure_logs_and_falls_back(caplog):
+    service = object.__new__(BranchService)
+
+    class FailingModel:
+        def invoke(self, _messages):
+            raise RuntimeError("classifier unavailable")
+
+    service.proposal_model = FailingModel()
+
+    with caplog.at_level(logging.WARNING, logger="focus_agent.branches"):
+        role = service._classify_branch_role(
+            thread_values={
+                "messages": [HumanMessage(content="Please test and verify the branch behavior.")],
+                "rolling_summary": "",
+                "active_skill_ids": [],
+                "prompt_mode": "",
+            },
+            current_role=BranchRole.EXPLORE_ALTERNATIVES,
+        )
+
+    assert role == BranchRole.VERIFY
+    assert "failed to classify branch role with helper model" in caplog.text
+
+
+def test_branch_name_model_failure_logs_and_falls_back(caplog):
+    service = object.__new__(BranchService)
+
+    class FailingModel:
+        def invoke(self, _messages):
+            raise RuntimeError("name generator unavailable")
+
+    service.proposal_model = FailingModel()
+
+    with caplog.at_level(logging.WARNING, logger="focus_agent.branches"):
+        branch_name = service._generate_branch_name(
+            thread_values={
+                "messages": [HumanMessage(content="Please investigate merge review failure handling.")],
+                "rolling_summary": "",
+            },
+            branch_role=BranchRole.DEEP_DIVE,
+        )
+
+    assert branch_name
+    assert "failed to generate branch name with helper model" in caplog.text

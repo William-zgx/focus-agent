@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build web-install web-dev web-check web-build frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint format format-check check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build web-install web-dev web-check web-build frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -28,6 +28,8 @@ help:
 		'  make dev               Start the API server with API_RELOAD=1' \
 		'  make test              Run pytest' \
 		'  make lint              Run ruff check .' \
+		'  make format            Run ruff format .' \
+		'  make format-check      Check ruff formatting without writing changes' \
 		'  make check             Run lint + test + contract-check + SDK/Web checks' \
 		'  make ci                Run local CI parity checks' \
 		'  make ci-test           Run pytest without repo-local env bootstrap' \
@@ -96,6 +98,12 @@ test: .venv/bin/python
 
 lint: .venv/bin/python
 	$(RUFF) check .
+
+format: .venv/bin/python
+	$(RUFF) format .
+
+format-check: .venv/bin/python
+	$(RUFF) format --check .
 
 check: lint test contract-check sdk-check sdk-build web-check web-build
 

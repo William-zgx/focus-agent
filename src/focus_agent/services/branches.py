@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 
@@ -28,6 +29,9 @@ from ..config import Settings
 from .branch_lifecycle import BranchLifecycleCoordinator
 from .branch_merge import BranchMergeCoordinator
 from .branch_tree import BranchTreeCoordinator
+
+
+logger = logging.getLogger("focus_agent.branches")
 
 
 class BranchService:
@@ -728,8 +732,8 @@ class BranchService:
                 )
                 if candidate is not None:
                     return candidate
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001 - helper model failures fall back to deterministic role inference
+                logger.warning("failed to classify branch role with helper model", exc_info=True)
         return self._fallback_branch_role(thread_values=thread_values, current_role=current_role)
 
     def _generate_branch_name(self, *, thread_values: dict, branch_role: BranchRole) -> str:
@@ -760,8 +764,8 @@ class BranchService:
                 candidate = self._message_content_to_text(getattr(response, "content", response))
                 if candidate:
                     return self._sanitize_branch_name(candidate, branch_role=branch_role)
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001 - helper model failures fall back to deterministic naming
+                logger.warning("failed to generate branch name with helper model", exc_info=True)
         return self._fallback_branch_name(seed_text or context, branch_role, language=language)
 
     def _resolve_branch_name(
@@ -804,7 +808,7 @@ class BranchService:
             return str(root_thread_id)
         try:
             record = self.repo.get_by_child_thread_id(parent_thread_id)
-        except Exception:
+        except KeyError:
             return parent_thread_id
         return record.root_thread_id
 
@@ -814,23 +818,27 @@ class BranchService:
             return int(meta.get('branch_depth') or 0)
         try:
             record = self.repo.get_by_child_thread_id(parent_thread_id)
-        except Exception:
+        except KeyError:
             return 0
         return record.branch_depth
 
     def _derive_parent_branch_status(self, parent_thread_id: str, parent_state: dict) -> BranchStatus | None:
         try:
             record = self.repo.get_by_child_thread_id(parent_thread_id)
+        except KeyError:
+            record = None
+        if record is not None:
             return record.branch_status
-        except Exception:
-            pass
         meta = parent_state.get('branch_meta') or {}
         raw_status = meta.get('branch_status')
         if raw_status is not None:
             try:
                 return BranchStatus(str(raw_status))
             except ValueError:
-                pass
+                logger.warning(
+                    "invalid branch_status in parent state",
+                    extra={"parent_thread_id": parent_thread_id, "branch_status": raw_status},
+                )
         return None
 
     def _max_branch_depth(self) -> int:
@@ -911,7 +919,7 @@ class BranchService:
     def _ensure_parent_thread_access(self, *, parent_thread_id: str, user_id: str) -> None:
         try:
             self.repo.get_by_child_thread_id(parent_thread_id)
-        except Exception:
+        except KeyError:
             self._ensure_root_thread_access(root_thread_id=parent_thread_id, user_id=user_id)
             return
         self.repo.assert_thread_owner(thread_id=parent_thread_id, owner_user_id=user_id)

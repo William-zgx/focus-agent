@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -255,7 +257,7 @@ def test_prepare_merge_proposal_persists_findings_and_proposal(monkeypatch):
     assert child_updates[-1][1]["branch_meta"]["branch_status"] == "awaiting_merge_review"
 
 
-def test_prepare_merge_proposal_reverts_status_when_generation_fails(monkeypatch):
+def test_prepare_merge_proposal_reverts_status_when_generation_fails(monkeypatch, caplog):
     record = _make_record()
     service = object.__new__(BranchService)
     service.repo = FakeRepo([record])
@@ -269,9 +271,11 @@ def test_prepare_merge_proposal_reverts_status_when_generation_fails(monkeypatch
 
     monkeypatch.setattr("focus_agent.services.branches.generate_merge_proposal", _boom)
 
-    with pytest.raises(RuntimeError, match="proposal failed"):
-        service.prepare_merge_proposal(child_thread_id=record.child_thread_id, user_id="user-1")
+    with caplog.at_level(logging.WARNING, logger="focus_agent.branches"):
+        with pytest.raises(RuntimeError, match="proposal failed"):
+            service.prepare_merge_proposal(child_thread_id=record.child_thread_id, user_id="user-1")
 
+    assert "failed to prepare merge proposal; reverting branch status" in caplog.text
     assert service.repo.get(record.branch_id).branch_status == BranchStatus.ACTIVE
     child_updates = [update for update in service.graph.updates if update[0] == record.child_thread_id]
     assert child_updates[0][1]["branch_meta"]["branch_status"] == "preparing_merge_review"

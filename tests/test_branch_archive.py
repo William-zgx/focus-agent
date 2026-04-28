@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -344,3 +346,51 @@ def test_refresh_branch_name_after_first_turn_updates_repo_and_clears_pending_fl
     assert service.repo.get("b-child-rename").branch_name == "Retry Loop Hotfix"
     assert service.graph.last_update["branch_meta"]["branch_name"] == "Retry Loop Hotfix"
     assert service.graph.last_update["branch_meta"]["branch_name_pending_ai"] is False
+
+
+def test_refresh_branch_metadata_preserves_access_errors():
+    child = _record(
+        branch_id="b-child-access",
+        parent_thread_id="root-1",
+        child_thread_id="child-access",
+        branch_name="Access Branch",
+        branch_depth=1,
+    )
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([child])
+    service.graph = FakeGraph({"branch_meta": {"branch_name_pending_ai": True}})
+    service.proposal_model = None
+
+    with pytest.raises(PermissionError):
+        service.refresh_branch_metadata_after_first_turn(
+            child_thread_id="child-access",
+            user_id="other-user",
+        )
+
+
+def test_refresh_branch_metadata_logs_best_effort_failures(caplog):
+    child = _record(
+        branch_id="b-child-fail",
+        parent_thread_id="root-1",
+        child_thread_id="child-fail",
+        branch_name="Fail Branch",
+        branch_depth=1,
+    )
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([child])
+    service.graph = FakeGraph({"branch_meta": {"branch_name_pending_ai": True}})
+    service.proposal_model = None
+
+    def _boom(_config):
+        raise RuntimeError("graph unavailable")
+
+    service.graph.get_state = _boom
+
+    with caplog.at_level(logging.WARNING, logger="focus_agent.branches"):
+        result = service.refresh_branch_metadata_after_first_turn(
+            child_thread_id="child-fail",
+            user_id="user-1",
+        )
+
+    assert result is None
+    assert "failed to refresh branch metadata after first turn" in caplog.text

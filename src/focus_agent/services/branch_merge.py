@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import logging
 
 from langchain.messages import SystemMessage
 
@@ -14,6 +15,9 @@ from ..core.branching import (
 )
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem
+
+
+logger = logging.getLogger("focus_agent.branches")
 
 
 class BranchMergeCoordinator:
@@ -70,7 +74,12 @@ class BranchMergeCoordinator:
                 as_node='summarize_turn',
             )
             return proposal
-        except Exception:
+        except Exception:  # noqa: BLE001 - revert transient status before surfacing proposal errors
+            logger.warning(
+                "failed to prepare merge proposal; reverting branch status",
+                extra={"branch_id": branch_record.branch_id, "child_thread_id": child_thread_id},
+                exc_info=True,
+            )
             svc.repo.update_status(branch_record.branch_id, BranchStatus.ACTIVE)
             reverted_record = svc.repo.get(branch_record.branch_id)
             svc.graph.update_state(
