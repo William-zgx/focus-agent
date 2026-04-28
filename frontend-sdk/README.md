@@ -35,11 +35,15 @@ This SDK packages those concerns into a small, typed client layer.
 ## Package Layout
 
 - `src/client.ts` - typed HTTP and SSE client
+- `src/transport.ts` - shared HTTP/SSE transport, token resolution, `fetchImpl`, and abort handling
+- `src/errors.ts` - structured request error type
 - `src/types.ts` - request, response, event, branch, and stream state types
 - `src/parser.ts` - low-level SSE frame parsing and event decoding
 - `src/reducers.ts` - stream state helpers for UI state accumulation
 - `src/guards.ts` - convenient event type guards
+- `src/transport.validation.ts` - compile-time and runtime validation checks for the transport surface
 - `src/index.ts` - public exports
+- `tsconfig.validation.json` - validation-only TypeScript project for transport checks
 
 ## Install And Build
 
@@ -50,6 +54,7 @@ cd frontend-sdk
 npm install
 npm run check
 npm run build
+npm run validate:transport
 ```
 
 Requirements:
@@ -233,6 +238,7 @@ cd frontend-sdk
 npm install
 npm run check
 npm run build
+npm run validate:transport
 ```
 
 From the repository root:
@@ -241,10 +247,14 @@ From the repository root:
 make sdk-install
 make sdk-check
 make sdk-build
+make contract-check
 ```
+
+`npm run validate:transport` uses `tsconfig.validation.json` and `src/transport.validation.ts` to exercise the transport surface outside the production build project.
 
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
 - Branch, conversation, merge proposal, imported-conclusion, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
+- `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.

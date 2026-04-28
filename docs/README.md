@@ -1,6 +1,6 @@
 # Focus Agent 文档索引
 
-更新时间：2026-04-26
+更新时间：2026-04-28
 
 这份索引是 `docs/` 的唯一导航入口。根目录 README 保持轻量；更完整的说明集中到这里，并按使用场景分组。
 
@@ -9,11 +9,14 @@ flowchart LR
     README["Root README"] --> Quick["Quick Start"]
     README --> Docs["Docs Index"]
     Docs --> Understand["Understand System"]
+    Docs --> Develop["Develop and Validate"]
     Docs --> Topics["Core Topics"]
     Docs --> Ops["Operations"]
     Understand --> Architecture["Architecture"]
     Understand --> Roadmap["Roadmap"]
     Understand --> MultiAgent["Multi-Agent Collaboration"]
+    Develop --> DevGuide["Development Guide"]
+    Develop --> SDK["Frontend SDK"]
     Topics --> Governance["Agent Governance"]
     Topics --> ContextWindow["Context Window"]
     Topics --> Memory["Memory"]
@@ -21,6 +24,7 @@ flowchart LR
     Ops --> Docker["Docker Deployment"]
     Ops --> Observability["Observability Runbook"]
     Ops --> Release["Release Checklist"]
+    Ops --> CIGate["CI Release Gate"]
 ```
 
 ## 快速使用
@@ -35,6 +39,11 @@ flowchart LR
 - [roadmap.md](roadmap.md)：当前基线、下一阶段重点和仍在推进的方向。
 - [multi-agent-collaboration.md](multi-agent-collaboration.md)：P4-P7 多 Agent 协同开发分工、契约门禁、发布 gate、observability 与 Auth/Memory 质量闭环。
 
+## 开发验证
+
+- [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：本地开发命令、质量门禁、验证矩阵和常见工作流。
+- [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport 和 SDK 验证方式。
+
 ## 核心专题
 
 - [agent-role-routing.md](agent-role-routing.md)：Agent Governance、role routing、tool routing、delegation、context、task ledger、critic gate 和 eval gate。
@@ -47,7 +56,8 @@ flowchart LR
 
 - [docker-deployment.md](docker-deployment.md)：本地 Docker 联调、生产/预发模板、外部 PostgreSQL 和迁移边界。
 - [observability-runbook.md](observability-runbook.md)：overview、trajectory workbench、request/trace pivot、replay 和 promote 操作手册。
-- [release-checklist.md](release-checklist.md)：发布前检查清单。
+- [release-checklist.md](release-checklist.md)：发布前人工检查清单、阻断口径和证据包要求。
+- [ci/github-actions-release-gate.md](ci/github-actions-release-gate.md)：GitHub Actions、Buildkite 和通用 CI 的 release gate provider 绑定、approval metadata、artifact retention 和 evidence upload 说明。
 
 ## 配置示例
 
@@ -59,5 +69,8 @@ flowchart LR
 
 - 同一主题只保留一个 canonical 文档，其他文档只做摘要和跳转。
 - 根目录 README 只做轻入口，不承载长篇操作说明。
-- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Memory、Tool / Skill、Docker 和 Observability 文档。
+- `docs/README.md` 是 `docs/` 的唯一导航入口；新增文档应先确认归属分组和 canonical 位置。
+- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Memory、Tool / Skill、Docker、Observability 和 SDK 文档。
+- `development.md` / `development.zh-CN.md` 讲本地开发与验证命令；release provider 细节放到 `ci/github-actions-release-gate.md`。
+- `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 阶段性方案、执行记录和草稿不要长期堆在 `docs/`，应放到 issue、PR 或项目管理工具。

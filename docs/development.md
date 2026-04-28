@@ -31,9 +31,14 @@ make serve
 make serve-dev
 make serve-prod
 make web-dev
+make web-check
 make web-build
+make frontend-check
+make frontend-build
 make sdk-check
 make sdk-build
+make format
+make format-check
 make ci-test
 make ci
 make ui-smoke
@@ -67,6 +72,12 @@ Recommended validation ladder:
 make ci
 ```
 
+`make ci` runs Python lint, CI-style pytest, API/SDK contract snapshots, frontend SDK check/build, and Web check/build. For Python formatting-only review, run:
+
+```bash
+make format-check
+```
+
 2. If backend routes, stream events, or frontend SDK usage changed:
 
 ```bash
@@ -80,19 +91,24 @@ imports under `apps/web/src`. If a route or SDK/E2E contract drift is
 intentional, update snapshots with `uv run python scripts/check_contracts.py
 --update` and include the snapshot diff in review.
 
-3. If the frontend SDK implementation changed:
+3. If the frontend SDK implementation changed, especially `src/client.ts`, `src/transport.ts`, `src/parser.ts`, `src/reducers.ts`, `src/guards.ts`, or transport validation files:
 
 ```bash
 make sdk-check
 make sdk-build
+cd frontend-sdk && npm run validate:transport
 ```
 
 4. If the Web App changed:
 
 ```bash
+pnpm --filter @focus-agent/web-app lint
+pnpm --filter @focus-agent/web-app format
 make web-check
 make web-build
 ```
+
+The Web lint/format scripts are intentionally scoped to the message transcript area today; `make web-check` and `make web-build` remain the full app type/build gates.
 
 5. If browser-level chat, branch tree, or merge-review flows changed:
 
@@ -117,7 +133,21 @@ pnpm --dir apps/web smoke:observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-8. If Auth / Access Model, token lifecycle, or ownership semantics changed:
+8. If repository behavior changed, especially AgentTeam repository session/task/output semantics:
+
+```bash
+uv run pytest tests/test_agent_team_repository_contract.py
+```
+
+SQLite cases run locally by default. Postgres cases run when `DATABASE_URI` is set and otherwise skip only the Postgres backend.
+
+9. If ChatService, runtime assembly, or config/runtime directory boundaries changed:
+
+```bash
+uv run pytest tests/test_chat_service.py tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
+```
+
+10. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
 ```bash
 uv run pytest tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
@@ -128,7 +158,7 @@ This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated
 tokens, production demo-token blocking, and the rule that `tenant_id` and
 `scope` are claim metadata rather than thread ownership keys.
 
-9. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
+11. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
 
 ```bash
 uv run pytest tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
@@ -139,7 +169,7 @@ make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318
 make agent-governance-report
 ```
 
-10. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+12. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

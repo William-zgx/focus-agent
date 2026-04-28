@@ -106,11 +106,19 @@ Persistence
 
 ## 4. App Runtime
 
-`src/focus_agent/engine/runtime.py` 中的 `create_runtime()` 是后端运行态装配点。它根据 `Settings` 创建：
+`src/focus_agent/engine/runtime.py` 中的 `create_runtime()` 是后端运行态装配点。它先调用 `ensure_runtime_directories(settings)` 创建运行时目录，再按小型 factory 组装运行态：
+
+- `RuntimePersistence`：`checkpointer`、`store`、branch repository、trajectory recorder、artifact metadata repository。
+- `RuntimeMemoryComponents`：`memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`。
+- `RuntimeRegistries`：`skill_registry`、`tool_registry`。
+- `RuntimeServices`：`branch_service`、`agent_team_service`。
+
+这些结构由 `_create_runtime_persistence()`、`_create_memory_components()`、`_create_runtime_registries()`、`_create_runtime_graph()` 和 `_create_runtime_services()` 分段创建，最后汇总为 `AppRuntime`。`AppRuntime` 仍保留稳定字段：
 
 - `graph`：LangGraph 编译后的 Agent 执行图。
 - `repo`：conversation / branch / thread access repository。
 - `branch_service`：fork、merge 和 branch tree 业务服务。
+- `agent_team_service`：Agent Team session / task / output 业务服务。
 - `checkpointer`：LangGraph checkpoint persistence。
 - `store`：LangGraph store，用于 memory。
 - `memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`。
@@ -119,7 +127,7 @@ Persistence
 - `artifact_metadata_repository`。
 - `otel_runtime`。
 
-当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence；否则选择 local fallback persistence。
+当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence；否则选择 local fallback persistence。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
 
 ## 5. API Surface
 
@@ -139,6 +147,13 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
 
 API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业务流程在 services、runtime、repositories 和 graph nodes。
+
+`src/focus_agent/api/deps.py` 是 API dependency 的 canonical 入口：
+
+- `get_current_principal()` 强制 bearer token，并在 auth disabled 时返回 anonymous principal。
+- `get_optional_principal()` 用于允许匿名读取或渐进鉴权的路由。
+- `require_scopes()` / `require_roles()` 为路由级 scope / role enforcement 提供 dependency helper。
+- `get_chat_service()` 通过 `ChatServicePorts.from_runtime(runtime)` 创建 `ChatService`，避免 ChatService 直接依赖完整 runtime 对象。
 
 ## 6. Chat Turn 数据流
 
@@ -184,7 +199,7 @@ POST /v1/chat/turns/stream
   -> trajectory record
 ```
 
-`ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。
+`ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。服务本身依赖 `ChatServicePorts` 窄端口，当前端口只暴露 settings、graph、repo、branch service、skill registry、trajectory recorder 和 checkpointer；调用方仍可从 `AppRuntime` 适配出 ports，但 chat 编排逻辑不再直接绑定完整 runtime。
 
 ## 7. LangGraph 主路径
 
@@ -345,6 +360,10 @@ Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、c
 
 直接运行 `.venv/bin/focus-agent-api` 不会启动托管数据库。历史 `.focus_agent` 状态需要通过 `focus-agent-migrate-local-state` 显式迁移。
 
+### 13.4 Repository contract tests
+
+Repository behavior is guarded by both implementation-specific tests and shared contract tests. `tests/test_agent_team_repository_contract.py` runs the same AgentTeam repository contract against SQLite by default and against Postgres when `DATABASE_URI` is available; missing Postgres configuration skips only the Postgres cases. This keeps local fallback and Postgres primary semantics aligned for session, task, task output, ordering, upsert, and missing-record behavior.
+
 ## 14. Frontend 与 SDK
 
 前端和 SDK 共享 API contract：Web App 不绕过 SDK 直接拼 response shape，SDK 也负责把流式事件规整成前端可消费的状态更新。边界如下：
@@ -381,7 +400,9 @@ shared/                   config, query keys, SDK provider, UI, styles
 - `/app/observability/trajectory`
 - `/app/agent/governance`
 
-`frontend-sdk` 提供 typed client、types、guards、stream parser 和 reducers。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+
+Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 负责 transcript item 构建、internal content filtering、tool activity summary/detail 等纯逻辑。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 `message-transcript.ts`，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
 
 ## 15. 安全边界
 
@@ -457,16 +478,33 @@ make lint
 make ci-test
 ```
 
+Python formatting：
+
+```bash
+make format-check
+```
+
+完整本地 CI parity：
+
+```bash
+make ci
+```
+
+`make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build 和 Web check/build。
+
 影响 SDK：
 
 ```bash
 make sdk-check
 make sdk-build
+make contract-check
 ```
 
 影响 Web：
 
 ```bash
+pnpm --filter @focus-agent/web-app lint
+pnpm --filter @focus-agent/web-app format
 make web-check
 make web-build
 ```
@@ -504,6 +542,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 ## 21. 文件导航
 
 - API：`src/focus_agent/api/main.py`
+- API deps：`src/focus_agent/api/deps.py`
 - Contracts：`src/focus_agent/api/contracts.py`
 - Runtime：`src/focus_agent/engine/runtime.py`
 - Graph builder：`src/focus_agent/engine/graph_builder.py`
@@ -512,5 +551,8 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Branch service：`src/focus_agent/services/branches.py`
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
+- AgentTeam repository contract tests：`tests/test_agent_team_repository_contract.py`
 - Web App：`apps/web/src/`
+- Web message transcript：`apps/web/src/entities/messages/message-transcript.ts`
 - SDK：`frontend-sdk/src/`
+- SDK transport：`frontend-sdk/src/transport.ts`

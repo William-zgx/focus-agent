@@ -31,9 +31,14 @@ make serve
 make serve-dev
 make serve-prod
 make web-dev
+make web-check
 make web-build
+make frontend-check
+make frontend-build
 make sdk-check
 make sdk-build
+make format
+make format-check
 make ci-test
 make ci
 make ui-smoke
@@ -67,21 +72,41 @@ make ui-smoke-observability
 make ci
 ```
 
-2. 如果改动影响前端 SDK：
+`make ci` 会运行 Python lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build 和 Web check/build。只检查 Python 格式时可跑：
+
+```bash
+make format-check
+```
+
+2. 如果改动影响后端路由、stream 事件或 Web App 对 frontend SDK 的使用：
+
+```bash
+make contract-check
+uv run pytest tests/test_contract_checks.py
+```
+
+`make contract-check` 会比较 FastAPI route snapshot、frontend SDK public surface、SDK package barrel exports，以及 Web App 在 `apps/web/src` 下对 `@focus-agent/web-sdk` 的 imports。如果 route 或 SDK/E2E contract 漂移是预期行为，请用 `uv run python scripts/check_contracts.py --update` 更新 snapshot，并在 review 中包含 snapshot diff。
+
+3. 如果改动影响 frontend SDK 实现，尤其是 `src/client.ts`、`src/transport.ts`、`src/parser.ts`、`src/reducers.ts`、`src/guards.ts` 或 transport validation 文件：
 
 ```bash
 make sdk-check
 make sdk-build
+cd frontend-sdk && npm run validate:transport
 ```
 
-3. 如果改动影响 Web App：
+4. 如果改动影响 Web App：
 
 ```bash
+pnpm --filter @focus-agent/web-app lint
+pnpm --filter @focus-agent/web-app format
 make web-check
 make web-build
 ```
 
-4. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
+Web lint/format 脚本目前有意只覆盖 message transcript 区域；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
+
+5. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 
 ```bash
 make ui-smoke
@@ -89,7 +114,7 @@ make ui-smoke
 uv run python scripts/ui_smoke_test.py
 ```
 
-5. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
+6. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
 ```bash
 make ui-smoke-observability
@@ -98,13 +123,27 @@ uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
 ```
 
-6. 如果改动影响 trajectory observability contract：
+7. 如果改动影响 trajectory observability contract：
 
 ```bash
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-7. 如果改动影响 Agent 角色路由、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+8. 如果改动影响 repository 行为，尤其是 AgentTeam repository session/task/output 语义：
+
+```bash
+uv run pytest tests/test_agent_team_repository_contract.py
+```
+
+SQLite 用例默认本地运行。设置 `DATABASE_URI` 时会同时运行 Postgres 用例；否则只 skip Postgres backend。
+
+9. 如果改动影响 ChatService、runtime 装配或 config/runtime 目录边界：
+
+```bash
+uv run pytest tests/test_chat_service.py tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
+```
+
+10. 如果改动影响 Agent 角色路由、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

@@ -1,6 +1,8 @@
 # GitHub Actions Release Gate
 
-This document binds the Focus Agent release gate and release evidence pack to CI providers. The same commands work in GitHub Actions, Buildkite, or any generic CI runner; the provider-specific layer is responsible for artifact upload, approval metadata, and retention.
+This document is the canonical CI provider binding for the Focus Agent release gate and release evidence pack. It covers GitHub Actions, Buildkite, and generic CI runners; the provider-specific layer is responsible for artifact upload, approval metadata, and retention.
+
+For the human release readiness checklist and blocking criteria, see [../release-checklist.md](../release-checklist.md).
 
 ## Required Outputs
 
