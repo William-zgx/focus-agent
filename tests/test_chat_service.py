@@ -7,7 +7,7 @@ import pytest
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from focus_agent.services.chat import ChatService, ConcurrentTurnError
+from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
 from focus_agent.services.branch_actions import is_branch_action_request
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
@@ -167,6 +167,18 @@ def test_stream_message_raises_permission_error_before_streaming(tmp_path: Path)
 
     with pytest.raises(PermissionError):
         chat.stream_message(thread_id="root-1", user_id="other-user", message="hello")
+
+
+def test_chat_service_accepts_narrow_ports(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    ports = ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=repo)
+    chat = ChatService(ports)
+
+    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+
+    assert payload["thread_id"] == "root-1"
+    assert chat.ports is ports
 
 
 def test_send_message_creates_pending_branch_action_without_forking(tmp_path: Path):
@@ -1293,7 +1305,7 @@ def test_trajectory_recorder_failure_does_not_fail_turn(tmp_path: Path):
 
 
 def test_serialize_message_keeps_usage_metadata():
-    service = ChatService(SimpleNamespace())
+    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
 
     payload = service._serialize_message(
         AIMessage(

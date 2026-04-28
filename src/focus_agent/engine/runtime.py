@@ -27,6 +27,35 @@ logger = logging.getLogger("focus_agent.runtime")
 
 
 @dataclass(slots=True)
+class RuntimePersistence:
+    checkpointer: object
+    store: object
+    repo: BranchRepository
+    trajectory_recorder: object | None
+    artifact_metadata_repository: object | None
+
+
+@dataclass(slots=True)
+class RuntimeMemoryComponents:
+    memory_policy: MemoryPolicy
+    memory_retriever: MemoryRetriever
+    memory_writer: MemoryWriter
+    memory_extractor: MemoryExtractor
+
+
+@dataclass(slots=True)
+class RuntimeRegistries:
+    skill_registry: SkillRegistry
+    tool_registry: ToolRegistry
+
+
+@dataclass(slots=True)
+class RuntimeServices:
+    branch_service: BranchService
+    agent_team_service: AgentTeamService
+
+
+@dataclass(slots=True)
 class AppRuntime:
     settings: Settings
     graph: object
@@ -61,6 +90,50 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     otel_runtime = initialize_otel_runtime(settings)
     exit_stack.callback(otel_runtime.shutdown)
 
+    persistence = _create_runtime_persistence(settings=settings, exit_stack=exit_stack)
+    memory = _create_memory_components(persistence.store)
+    registries = _create_runtime_registries(settings=settings, persistence=persistence)
+    graph = _create_runtime_graph(
+        settings=settings,
+        persistence=persistence,
+        memory=memory,
+        registries=registries,
+    )
+    services = _create_runtime_services(
+        settings=settings,
+        graph=graph,
+        repo=persistence.repo,
+        store=persistence.store,
+        memory_writer=memory.memory_writer,
+    )
+
+    return AppRuntime(
+        settings=settings,
+        graph=graph,
+        repo=persistence.repo,
+        branch_service=services.branch_service,
+        agent_team_service=services.agent_team_service,
+        checkpointer=persistence.checkpointer,
+        store=persistence.store,
+        store_namespace_selector=conversation_namespace_for_context,
+        memory_policy=memory.memory_policy,
+        memory_retriever=memory.memory_retriever,
+        memory_writer=memory.memory_writer,
+        memory_extractor=memory.memory_extractor,
+        skill_registry=registries.skill_registry,
+        tool_registry=registries.tool_registry,
+        trajectory_recorder=persistence.trajectory_recorder,
+        artifact_metadata_repository=persistence.artifact_metadata_repository,
+        otel_runtime=otel_runtime,
+        _exit_stack=exit_stack,
+    )
+
+
+def _create_runtime_persistence(
+    *,
+    settings: Settings,
+    exit_stack: ExitStack,
+) -> RuntimePersistence:
     if settings.database_uri:
         logger.info("Runtime persistence backend selected: postgres-primary")
         checkpointer, store, repo, trajectory_recorder, artifact_metadata_repository = (
@@ -75,29 +148,72 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
             _create_local_fallback_persistence(settings)
         )
 
+    return RuntimePersistence(
+        checkpointer=checkpointer,
+        store=store,
+        repo=repo,
+        trajectory_recorder=trajectory_recorder,
+        artifact_metadata_repository=artifact_metadata_repository,
+    )
+
+
+def _create_memory_components(store: object) -> RuntimeMemoryComponents:
     memory_policy = MemoryPolicy()
     memory_retriever = MemoryRetriever(store=store, policy=memory_policy)
     memory_writer = MemoryWriter(store=store, policy=memory_policy)
     memory_extractor = MemoryExtractor()
+    return RuntimeMemoryComponents(
+        memory_policy=memory_policy,
+        memory_retriever=memory_retriever,
+        memory_writer=memory_writer,
+        memory_extractor=memory_extractor,
+    )
+
+
+def _create_runtime_registries(
+    *,
+    settings: Settings,
+    persistence: RuntimePersistence,
+) -> RuntimeRegistries:
     skill_registry = SkillRegistry.from_settings(settings)
     tool_registry = _build_tool_registry_compat(
         settings=settings,
         skill_registry=skill_registry,
-        store=store,
-        checkpointer=checkpointer,
-        artifact_metadata_repository=artifact_metadata_repository,
+        store=persistence.store,
+        checkpointer=persistence.checkpointer,
+        artifact_metadata_repository=persistence.artifact_metadata_repository,
     )
-    graph = build_graph(
+    return RuntimeRegistries(skill_registry=skill_registry, tool_registry=tool_registry)
+
+
+def _create_runtime_graph(
+    *,
+    settings: Settings,
+    persistence: RuntimePersistence,
+    memory: RuntimeMemoryComponents,
+    registries: RuntimeRegistries,
+) -> object:
+    return build_graph(
         settings=settings,
-        checkpointer=checkpointer,
-        store=store,
-        memory_retriever=memory_retriever,
-        memory_policy=memory_policy,
-        memory_writer=memory_writer,
-        memory_extractor=memory_extractor,
-        skill_registry=skill_registry,
-        tool_registry=tool_registry,
+        checkpointer=persistence.checkpointer,
+        store=persistence.store,
+        memory_retriever=memory.memory_retriever,
+        memory_policy=memory.memory_policy,
+        memory_writer=memory.memory_writer,
+        memory_extractor=memory.memory_extractor,
+        skill_registry=registries.skill_registry,
+        tool_registry=registries.tool_registry,
     )
+
+
+def _create_runtime_services(
+    *,
+    settings: Settings,
+    graph: object,
+    repo: BranchRepository,
+    store: object,
+    memory_writer: MemoryWriter,
+) -> RuntimeServices:
     branch_service = BranchService(
         settings=settings,
         graph=graph,
@@ -109,29 +225,10 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         branch_service=branch_service,
         repository=_create_agent_team_repository(settings),
     )
-
-    return AppRuntime(
-        settings=settings,
-        graph=graph,
-        repo=repo,
+    return RuntimeServices(
         branch_service=branch_service,
         agent_team_service=agent_team_service,
-        checkpointer=checkpointer,
-        store=store,
-        store_namespace_selector=conversation_namespace_for_context,
-        memory_policy=memory_policy,
-        memory_retriever=memory_retriever,
-        memory_writer=memory_writer,
-        memory_extractor=memory_extractor,
-        skill_registry=skill_registry,
-        tool_registry=tool_registry,
-        trajectory_recorder=trajectory_recorder,
-        artifact_metadata_repository=artifact_metadata_repository,
-        otel_runtime=otel_runtime,
-        _exit_stack=exit_stack,
     )
-
-
 def _create_postgres_primary_persistence(
     *,
     settings: Settings,

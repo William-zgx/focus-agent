@@ -9,7 +9,7 @@ from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.engine.runtime import create_runtime
 from focus_agent.security.tokens import AuthError, Principal, decode_access_token
-from focus_agent.services.chat import ChatService
+from focus_agent.services.chat import ChatService, ChatServicePorts
 
 security = HTTPBearer(auto_error=False)
 
@@ -21,7 +21,7 @@ def _ensure_app_services(request: Request) -> tuple[AppRuntime, ChatService]:
         runtime = create_runtime(Settings.from_env())
         request.app.state.runtime = runtime
     if chat_service is None:
-        chat_service = ChatService(runtime)
+        chat_service = ChatService(ChatServicePorts.from_runtime(runtime))
         request.app.state.chat_service = chat_service
     return runtime, chat_service
 

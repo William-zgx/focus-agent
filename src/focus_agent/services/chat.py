@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import logging
 import threading
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Protocol
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -14,11 +15,11 @@ from langgraph.types import Command
 from pydantic import BaseModel
 from pydantic import ValidationError
 
+from ..config import Settings
 from ..context_usage import build_context_usage
 from ..core.branching import BranchActionKind, BranchActionNavigation, BranchMeta, BranchStatus
 from ..core.request_context import RequestContext
 from ..core.state import normalize_agent_state
-from ..engine.runtime import AppRuntime
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 from ..observability.tracing import (
     TraceCorrelation,
@@ -66,13 +67,103 @@ _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
 _TOOL_RESULT_FALLBACK_VISIBLE_PREFIX = "我先根据已拿到的工具结果给出一个保守整理："
 
 
+class ChatGraph(Protocol):
+    def get_state(self, config: dict[str, Any]) -> Any: ...
+
+    def invoke(
+        self,
+        payload: Any,
+        *,
+        config: dict[str, Any],
+        context: RequestContext,
+        version: str,
+    ) -> Any: ...
+
+    def stream(
+        self,
+        payload: Any,
+        *,
+        config: dict[str, Any],
+        context: RequestContext,
+        stream_mode: list[str],
+        version: str,
+    ) -> Any: ...
+
+    def astream(
+        self,
+        payload: Any,
+        *,
+        config: dict[str, Any],
+        context: RequestContext,
+        stream_mode: list[str],
+        version: str,
+    ) -> Any: ...
+
+
+class ChatRepository(Protocol):
+    def get_by_child_thread_id(self, child_thread_id: str) -> Any: ...
+
+    def get_thread_owner(self, *, thread_id: str) -> Any: ...
+
+    def ensure_thread_owner(self, *, thread_id: str, root_thread_id: str, owner_user_id: str) -> None: ...
+
+    def assert_thread_owner(self, *, thread_id: str, owner_user_id: str) -> None: ...
+
+
+class ChatBranchService(Protocol):
+    def fork_branch(
+        self,
+        *,
+        parent_thread_id: str,
+        user_id: str,
+        branch_name: str,
+        branch_role: Any,
+    ) -> Any: ...
+
+
+class ChatSkillRegistry(Protocol):
+    def select_for_message(
+        self,
+        message: str,
+        *,
+        explicit_hints: tuple[str, ...],
+    ) -> SkillSelection: ...
+
+
+class ChatTrajectoryRecorder(Protocol):
+    def record_turn(self, record: Any) -> None: ...
+
+
+@dataclass(slots=True)
+class ChatServicePorts:
+    settings: Settings
+    graph: ChatGraph
+    repo: ChatRepository
+    branch_service: ChatBranchService | None = None
+    skill_registry: ChatSkillRegistry | None = None
+    trajectory_recorder: ChatTrajectoryRecorder | None = None
+    checkpointer: object | None = None
+
+    @classmethod
+    def from_runtime(cls, runtime: Any) -> ChatServicePorts:
+        return cls(
+            settings=runtime.settings,
+            graph=runtime.graph,
+            repo=runtime.repo,
+            branch_service=getattr(runtime, 'branch_service', None),
+            skill_registry=getattr(runtime, 'skill_registry', None),
+            trajectory_recorder=getattr(runtime, 'trajectory_recorder', None),
+            checkpointer=getattr(runtime, 'checkpointer', None),
+        )
+
+
 class ChatService:
     _THREAD_STATE_MESSAGE_LIMIT = 200
     _CONTEXT_COMPACTION_SUMMARY_CHARS = 2600
     _CONTEXT_COMPACTION_RECENT_MESSAGES = 8
 
-    def __init__(self, runtime: AppRuntime):
-        self.runtime = runtime
+    def __init__(self, ports: ChatServicePorts | Any):
+        self.ports = ports if isinstance(ports, ChatServicePorts) else ChatServicePorts.from_runtime(ports)
         self._active_turns: set[str] = set()
         self._active_turns_lock = threading.Lock()
 
@@ -119,7 +210,7 @@ class ChatService:
 
     def _safe_snapshot(self, thread_id: str):
         try:
-            return self.runtime.graph.get_state({'configurable': {'thread_id': thread_id}})
+            return self.ports.graph.get_state({'configurable': {'thread_id': thread_id}})
         except Exception:
             return None
 
@@ -193,9 +284,9 @@ class ChatService:
             payload['rolling_summary'] = updated_summary
             values = {**values, 'rolling_summary': updated_summary}
 
-        if payload and hasattr(self.runtime.graph, 'update_state'):
+        if payload and hasattr(self.ports.graph, 'update_state'):
             try:
-                self.runtime.graph.update_state(
+                self.ports.graph.update_state(
                     {'configurable': {'thread_id': thread_id}},
                     payload,
                     as_node='bootstrap_turn',
@@ -207,7 +298,7 @@ class ChatService:
 
     def _branch_meta_from_repo(self, thread_id: str) -> BranchMeta | None:
         try:
-            record = self.runtime.repo.get_by_child_thread_id(thread_id)
+            record = self.ports.repo.get_by_child_thread_id(thread_id)
         except Exception:
             return None
         return BranchMeta(
@@ -276,15 +367,15 @@ class ChatService:
         return context, branch_meta, values
 
     def _ensure_access(self, *, thread_id: str, user_id: str, context: RequestContext) -> None:
-        owner = self.runtime.repo.get_thread_owner(thread_id=thread_id)
+        owner = self.ports.repo.get_thread_owner(thread_id=thread_id)
         if owner is None:
-            self.runtime.repo.ensure_thread_owner(
+            self.ports.repo.ensure_thread_owner(
                 thread_id=thread_id,
                 root_thread_id=context.root_thread_id,
                 owner_user_id=user_id,
             )
         else:
-            self.runtime.repo.assert_thread_owner(thread_id=thread_id, owner_user_id=user_id)
+            self.ports.repo.assert_thread_owner(thread_id=thread_id, owner_user_id=user_id)
 
     @staticmethod
     def _ensure_thread_writable(branch_meta: BranchMeta | None) -> None:
@@ -293,7 +384,7 @@ class ChatService:
 
     def _context_usage_payload(self, values: dict[str, Any], *, draft_message: str | None = None) -> dict[str, Any]:
         try:
-            selected_model = str(values.get("selected_model") or self.runtime.settings.model)
+            selected_model = str(values.get("selected_model") or self.ports.settings.model)
             return build_context_usage(
                 values,
                 draft_message=draft_message,
@@ -389,7 +480,7 @@ class ChatService:
             "rolling_summary": summary,
             "context_compaction": compact_meta,
         }
-        self.runtime.graph.update_state(
+        self.ports.graph.update_state(
             {"configurable": {"thread_id": thread_id}},
             update,
             as_node="context_compaction",
@@ -398,8 +489,8 @@ class ChatService:
 
     def _context_compaction_threshold(self, trigger: str) -> float:
         if trigger == "auto_post_turn":
-            return float(getattr(self.runtime.settings, "context_auto_compaction_post_turn_ratio", 0.85))
-        return float(getattr(self.runtime.settings, "context_auto_compaction_pre_send_ratio", 0.92))
+            return float(getattr(self.ports.settings, "context_auto_compaction_post_turn_ratio", 0.85))
+        return float(getattr(self.ports.settings, "context_auto_compaction_pre_send_ratio", 0.92))
 
     def _auto_compact_context_before_turn(
         self,
@@ -408,7 +499,7 @@ class ChatService:
         values: dict[str, Any],
         draft_message: str | None,
     ) -> dict[str, Any] | None:
-        if not bool(getattr(self.runtime.settings, "context_auto_compaction_enabled", True)):
+        if not bool(getattr(self.ports.settings, "context_auto_compaction_enabled", True)):
             return None
         try:
             return self._compact_thread_context_locked(
@@ -425,7 +516,7 @@ class ChatService:
     def _schedule_post_turn_context_compaction(self, *, thread_id: str, user_id: str, kind: str) -> None:
         if kind != "chat.turn":
             return
-        if not bool(getattr(self.runtime.settings, "context_auto_compaction_enabled", True)):
+        if not bool(getattr(self.ports.settings, "context_auto_compaction_enabled", True)):
             return
 
         def schedule_compact_later(*, delay: float, attempt: int) -> None:
@@ -547,7 +638,7 @@ class ChatService:
         values = self._safe_get_values(thread_id)
         messages = values.get('messages', [])
         branch_actions = serialize_branch_actions(normalize_branch_actions(values.get('branch_actions')))
-        selected_model = str(values.get('selected_model') or self.runtime.settings.model)
+        selected_model = str(values.get('selected_model') or self.ports.settings.model)
         selected_thinking_mode = self._effective_thinking_mode(
             model_id=selected_model,
             thinking_mode=values.get('selected_thinking_mode'),
@@ -569,7 +660,7 @@ class ChatService:
             'interrupts': [getattr(item, 'value', item) for item in interrupts],
             'branch_actions': branch_actions,
             'trace': build_invoke_config(
-                settings=self.runtime.settings,
+                settings=self.ports.settings,
                 thread_id=thread_id,
                 user_id=user_id,
                 root_thread_id=context.root_thread_id,
@@ -580,7 +671,7 @@ class ChatService:
         }
 
     def _effective_thinking_mode(self, *, model_id: str, thinking_mode: Any) -> str:
-        settings = getattr(self.runtime, 'settings', None)
+        settings = getattr(self.ports, 'settings', None)
         if not supports_thinking_mode(model_id, settings=settings):
             return ''
         normalized = str(thinking_mode or '').strip().lower()
@@ -602,7 +693,7 @@ class ChatService:
             "focus_agent.thread_id": thread_id,
             "focus_agent.root_thread_id": root_thread_id,
             "focus_agent.user_id": user_id,
-            "service.name": getattr(self.runtime.settings, "tracing_service_name", "focus-agent"),
+            "service.name": getattr(self.ports.settings, "tracing_service_name", "focus-agent"),
         }
         if branch_meta is not None:
             attributes.update(
@@ -644,12 +735,12 @@ class ChatService:
                 draft_message=draft_message,
             )
             trace_correlation = build_trace_correlation(
-                settings=self.runtime.settings,
+                settings=self.ports.settings,
                 request_id=request_id,
             )
             with start_trace_span(
                 name=run_name,
-                settings=self.runtime.settings,
+                settings=self.ports.settings,
                 trace_correlation=trace_correlation,
                 span_id=trace_correlation.root_span_id,
                 attributes=self._turn_span_attributes(
@@ -661,7 +752,7 @@ class ChatService:
                 ),
             ):
                 config = build_invoke_config(
-                    settings=self.runtime.settings,
+                    settings=self.ports.settings,
                     thread_id=thread_id,
                     user_id=user_id,
                     root_thread_id=context.root_thread_id,
@@ -669,7 +760,7 @@ class ChatService:
                     trace_correlation=trace_correlation,
                     run_name=run_name,
                 )
-                result = self.runtime.graph.invoke(
+                result = self.ports.graph.invoke(
                     payload,
                     config=config,
                     context=context,
@@ -758,7 +849,7 @@ class ChatService:
             message=message,
             explicit_skill_hints=skill_hints,
         )
-        selected_model = model or self.runtime.settings.model
+        selected_model = model or self.ports.settings.model
         payload: dict[str, Any] = {
             'messages': [HumanMessage(content=message)],
             'task_brief': selection.stripped_message or message,
@@ -795,7 +886,7 @@ class ChatService:
         context, branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
         self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
         trace_correlation = build_trace_correlation(
-            settings=self.runtime.settings,
+            settings=self.ports.settings,
             request_id=request_id,
         )
         return self._response_payload(
@@ -836,7 +927,7 @@ class ChatService:
             update["branch_action_audit"] = [*audit, audit_event]
         if messages:
             update["messages"] = messages
-        update_state = getattr(self.runtime.graph, "update_state", None)
+        update_state = getattr(self.ports.graph, "update_state", None)
         if not callable(update_state):
             raise RuntimeError("Conversation graph does not support branch action state updates.")
         update_state(
@@ -931,7 +1022,9 @@ class ChatService:
         navigation: BranchActionNavigation | None = None
         try:
             if action.kind in {BranchActionKind.FORK_SIBLING_BRANCH, BranchActionKind.FORK_CHILD_BRANCH}:
-                branch_record = self.runtime.branch_service.fork_branch(
+                if self.ports.branch_service is None:
+                    raise RuntimeError("Branch actions require a branch service.")
+                branch_record = self.ports.branch_service.fork_branch(
                     parent_thread_id=action.target_parent_thread_id,
                     user_id=user_id,
                     branch_name=action.suggested_branch_name,
@@ -995,7 +1088,7 @@ class ChatService:
             context=latest_context,
             branch_meta=latest_branch_meta,
             interrupts=self._safe_get_interrupts(thread_id),
-            trace_correlation=build_trace_correlation(settings=self.runtime.settings, request_id=request_id),
+            trace_correlation=build_trace_correlation(settings=self.ports.settings, request_id=request_id),
         )
         return {
             "kind": "executed",
@@ -1222,7 +1315,7 @@ class ChatService:
         message: str,
         explicit_skill_hints: tuple[str, ...],
     ) -> SkillSelection:
-        registry = getattr(self.runtime, 'skill_registry', None)
+        registry = getattr(self.ports, 'skill_registry', None)
         if registry is None:
             return SkillSelection(
                 skill_ids=tuple(str(item) for item in explicit_skill_hints),
@@ -1271,7 +1364,7 @@ class ChatService:
         branch_meta: BranchMeta | None,
         kind: str,
     ) -> None:
-        branch_service = getattr(self.runtime, 'branch_service', None)
+        branch_service = getattr(self.ports, 'branch_service', None)
         if branch_service is None:
             return
         if kind != 'chat.turn':
@@ -1325,7 +1418,7 @@ class ChatService:
         answer: str | None = None,
         error: str | None = None,
     ) -> None:
-        recorder = getattr(self.runtime, 'trajectory_recorder', None)
+        recorder = getattr(self.ports, 'trajectory_recorder', None)
         if recorder is None:
             return
         record_turn = getattr(recorder, 'record_turn', None)
@@ -1348,9 +1441,9 @@ class ChatService:
                 input_messages=input_messages,
                 answer=answer,
                 error=error,
-                observation_max_chars=self.runtime.settings.trajectory_observation_max_chars,
-                answer_max_chars=self.runtime.settings.trajectory_answer_max_chars,
-                hash_user_id=self.runtime.settings.trajectory_hash_user_id,
+                observation_max_chars=self.ports.settings.trajectory_observation_max_chars,
+                answer_max_chars=self.ports.settings.trajectory_answer_max_chars,
+                hash_user_id=self.ports.settings.trajectory_hash_user_id,
             )
             record_turn(record)
         except Exception:  # noqa: BLE001
@@ -1371,7 +1464,7 @@ class ChatService:
     ) -> AsyncIterator[dict[str, Any] | None]:
         with start_trace_span(
             name=run_name,
-            settings=self.runtime.settings,
+            settings=self.ports.settings,
             trace_correlation=trace_correlation,
             span_id=trace_correlation.root_span_id if trace_correlation is not None else None,
             attributes=self._turn_span_attributes(
@@ -1391,7 +1484,7 @@ class ChatService:
                     yield chunk
                 return
 
-            stream = self.runtime.graph.astream(
+            stream = self.ports.graph.astream(
                 payload,
                 config=config,
                 context=context,
@@ -1399,7 +1492,7 @@ class ChatService:
                 version='v2',
             )
             stream_iter = stream.__aiter__()
-            heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
+            heartbeat_interval = max(float(self.ports.settings.sse_heartbeat_seconds), 0.0)
             pending_next: asyncio.Task[Any] | None = None
 
             try:
@@ -1428,7 +1521,7 @@ class ChatService:
                         await aclose()
 
     def _checkpointer_lacks_async_support(self) -> bool:
-        checkpointer = getattr(self.runtime, 'checkpointer', None)
+        checkpointer = getattr(self.ports, 'checkpointer', None)
         if checkpointer is None:
             return False
         return type(checkpointer).aget_tuple is BaseCheckpointSaver.aget_tuple
@@ -1449,7 +1542,7 @@ class ChatService:
         config: dict[str, Any],
         context: RequestContext,
     ) -> AsyncIterator[dict[str, Any] | None]:
-        stream = self.runtime.graph.stream(
+        stream = self.ports.graph.stream(
             payload,
             config=config,
             context=context,
@@ -1457,7 +1550,7 @@ class ChatService:
             version='v2',
         )
         stream_iter = iter(stream)
-        heartbeat_interval = max(float(self.runtime.settings.sse_heartbeat_seconds), 0.0)
+        heartbeat_interval = max(float(self.ports.settings.sse_heartbeat_seconds), 0.0)
         pending_next: asyncio.Task[Any] | None = None
 
         try:
@@ -1517,11 +1610,11 @@ class ChatService:
             self._acquire_thread_turn(thread_id=thread_id)
             turn_acquired = True
             trace_correlation = build_trace_correlation(
-                settings=self.runtime.settings,
+                settings=self.ports.settings,
                 request_id=request_id,
             )
             config = build_invoke_config(
-                settings=self.runtime.settings,
+                settings=self.ports.settings,
                 thread_id=thread_id,
                 user_id=user_id,
                 root_thread_id=context.root_thread_id,
@@ -1537,9 +1630,9 @@ class ChatService:
             draft_message = self._draft_message_from_payload(payload)
             usage_before = self._context_usage_payload(initial_values, draft_message=draft_message)
             if (
-                bool(getattr(self.runtime.settings, "context_auto_compaction_enabled", True))
+                bool(getattr(self.ports.settings, "context_auto_compaction_enabled", True))
                 and float(usage_before.get("used_ratio") or 0)
-                >= float(getattr(self.runtime.settings, "context_auto_compaction_pre_send_ratio", 0.92))
+                >= float(getattr(self.ports.settings, "context_auto_compaction_pre_send_ratio", 0.92))
             ):
                 yield self._sse_frame(
                     event='context.compaction.started',
@@ -1812,7 +1905,7 @@ class ChatService:
             message=message,
             explicit_skill_hints=skill_hints,
         )
-        selected_model = model or self.runtime.settings.model
+        selected_model = model or self.ports.settings.model
         payload: dict[str, Any] = {
             'messages': [HumanMessage(content=message)],
             'task_brief': selection.stripped_message or message,
@@ -1866,3 +1959,10 @@ class ChatService:
 
 class ConcurrentTurnError(RuntimeError):
     """Raised when a thread already has an in-flight turn."""
+
+
+__all__ = [
+    "ChatService",
+    "ChatServicePorts",
+    "ConcurrentTurnError",
+]
