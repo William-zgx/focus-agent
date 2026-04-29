@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from focus_agent.agent_roles import AgentRole
+
 
 class AgentTeamSessionStatus(str, Enum):
     PLANNING = "planning"
@@ -25,6 +27,23 @@ class AgentTeamTaskRole(str, Enum):
     REVIEWER = "reviewer"
     VERIFIER = "verifier"
     WRITER = "writer"
+
+
+_AGENT_TEAM_TASK_ROLE_TO_AGENT_ROLE: dict[AgentTeamTaskRole, AgentRole] = {
+    AgentTeamTaskRole.PLANNER: AgentRole.PLANNER,
+    AgentTeamTaskRole.ARCHITECT: AgentRole.ORCHESTRATOR,
+    AgentTeamTaskRole.BACKEND_EXECUTOR: AgentRole.EXECUTOR,
+    AgentTeamTaskRole.FRONTEND_EXECUTOR: AgentRole.EXECUTOR,
+    AgentTeamTaskRole.TEST_ENGINEER: AgentRole.CRITIC,
+    AgentTeamTaskRole.REVIEWER: AgentRole.CRITIC,
+    AgentTeamTaskRole.VERIFIER: AgentRole.CRITIC,
+    AgentTeamTaskRole.WRITER: AgentRole.EXECUTOR,
+}
+
+
+def agent_role_for_team_task_role(role: AgentTeamTaskRole | str) -> AgentRole:
+    """Map Workbench task roles to governed execution roles."""
+    return _AGENT_TEAM_TASK_ROLE_TO_AGENT_ROLE[AgentTeamTaskRole(role)]
 
 
 class AgentTeamTaskStatus(str, Enum):
@@ -77,6 +96,10 @@ class AgentTeamTask(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     status: AgentTeamTaskStatus = AgentTeamTaskStatus.PENDING
     output_artifact_ids: list[str] = Field(default_factory=list)
+    agent_run_id: str | None = None
+    delegated_task_id: str | None = None
+    artifact_ids: list[str] = Field(default_factory=list)
+    execution_status: str | None = None
     changed_files: list[str] = Field(default_factory=list)
     verification_summary: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
@@ -105,6 +128,7 @@ class AgentTeamMergeBundle(BaseModel):
     key_findings: list[str] = Field(default_factory=list)
     changed_files: list[str] = Field(default_factory=list)
     test_evidence: list[str] = Field(default_factory=list)
+    execution_evidence: list[dict[str, Any]] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     risk_items: list[str] = Field(default_factory=list)
     recommended_next_action: AgentTeamRecommendedAction = AgentTeamRecommendedAction.REQUEST_CHANGES
@@ -132,4 +156,5 @@ __all__ = [
     "AgentTeamTaskOutput",
     "AgentTeamTaskRole",
     "AgentTeamTaskStatus",
+    "agent_role_for_team_task_role",
 ]

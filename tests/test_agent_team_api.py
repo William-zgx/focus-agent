@@ -47,7 +47,12 @@ def test_agent_team_api_session_task_output_merge_flow(monkeypatch: pytest.Monke
         json={"role": "backend_executor", "goal": "Implement backend", "create_branch": False},
     )
     assert task_response.status_code == 200
-    task_id = task_response.json()["task"]["task_id"]
+    task_payload = task_response.json()["task"]
+    assert task_payload["agent_run_id"] is None
+    assert task_payload["delegated_task_id"] is None
+    assert task_payload["artifact_ids"] == []
+    assert task_payload["execution_status"] is None
+    task_id = task_payload["task_id"]
 
     output_response = client.post(
         f"/v1/agent-team/tasks/{task_id}/outputs",
@@ -72,6 +77,7 @@ def test_agent_team_api_session_task_output_merge_flow(monkeypatch: pytest.Monke
     bundle = bundle_response.json()["bundle"]
     assert bundle["accepted_tasks"] == [task_id]
     assert bundle["recommended_next_action"] == "merge"
+    assert bundle["execution_evidence"] == []
 
     decision_response = client.post(
         f"/v1/agent-team/sessions/{session_id}/merge",

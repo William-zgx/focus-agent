@@ -13,6 +13,7 @@ from .model_registry import canonical_model_id
 
 
 AgentRunStatus = Literal["planned", "running", "completed", "failed", "skipped", "needs_review"]
+DelegationExecutionMode = Literal["observe", "fake", "inline", "background"]
 AgentDecisionKind = Literal["route", "delegate", "retry", "deny", "approve", "reject"]
 AgentFailureType = Literal[
     "planning_gap",
@@ -42,6 +43,13 @@ class AgentTask(StateModel):
     memory_scope: str = "thread"
     budget: AgentBudget = Field(default_factory=AgentBudget)
     acceptance_criteria: list[str] = Field(default_factory=list)
+    max_turns: int = Field(default=1, ge=0)
+    timeout_seconds: int = Field(default=30, ge=0)
+    max_depth: int = Field(default=1, ge=-1)
+    requires_workspace_write: bool = False
+    requires_network: bool = False
+    context_refs: list[dict[str, Any]] = Field(default_factory=list)
+    run_isolation_key: str = ""
 
 
 class AgentArtifact(StateModel):
@@ -64,6 +72,7 @@ class AgentRun(StateModel):
     cost: float = 0.0
     artifacts: list[AgentArtifact] = Field(default_factory=list)
     error: str | None = None
+    execution_mode: DelegationExecutionMode = "observe"
 
 
 class AgentDecision(StateModel):
@@ -78,6 +87,7 @@ class AgentDecision(StateModel):
 class AgentDelegationPlan(StateModel):
     enabled: bool = False
     enforce: bool = False
+    execution_mode: DelegationExecutionMode = "observe"
     source: str = "disabled"
     route_reason: str = ""
     max_parallel_runs: int = 1
@@ -152,16 +162,20 @@ def build_agent_delegation_plan(
     ).model_dump(mode="json")
     route_decisions = _route_decisions(route_plan)
     resolver = RoleModelResolver(settings)
-    now = _utc_now()
     tasks: list[AgentTask] = []
     runs: list[AgentRun] = []
     decisions: list[AgentDecision] = []
     enforce = bool(getattr(settings, "agent_delegation_enforce", False))
+    execution_mode = _normalize_execution_mode(
+        getattr(settings, "agent_delegation_execution_mode", "observe")
+    )
 
     for index, raw in enumerate(route_decisions):
         role = normalize_agent_role(str(raw.get("role") or AgentRole.EXECUTOR.value))
         task_id = f"task-{index + 1}-{role.value}"
-        governance = raw.get("tool_governance") if isinstance(raw.get("tool_governance"), dict) else {}
+        governance = (
+            raw.get("tool_governance") if isinstance(raw.get("tool_governance"), dict) else {}
+        )
         task = AgentTask(
             task_id=task_id,
             parent_task_id=None if role == AgentRole.ORCHESTRATOR else "task-1-orchestrator",
@@ -174,10 +188,29 @@ def build_agent_delegation_plan(
             allowed_tools=[str(item) for item in governance.get("allowed_tools") or []],
             memory_scope="branch_local" if role == AgentRole.MEMORY_CURATOR else "thread",
             budget=_budget_for_role(role),
-            acceptance_criteria=[str(raw.get("rationale") or "Role output is traceable and reviewable.")],
+            acceptance_criteria=[
+                str(raw.get("rationale") or "Role output is traceable and reviewable.")
+            ],
+            max_turns=_max_turns_for_role(role),
+            timeout_seconds=_timeout_for_role(role),
+            max_depth=1,
+            requires_workspace_write=bool(governance.get("allow_workspace_write", False)),
+            requires_network=bool(governance.get("allow_network", False)),
+            context_refs=[
+                dict(item) for item in raw.get("context_refs") or [] if isinstance(item, dict)
+            ],
+            run_isolation_key=str(raw.get("run_isolation_key") or f"role:{role.value}"),
         )
         tasks.append(task)
-        status: AgentRunStatus = "completed" if enforce else "planned"
+        status: AgentRunStatus = "planned"
+        run_artifacts = [
+            AgentArtifact(
+                artifact_id=f"artifact-{task_id}",
+                kind="decision",
+                title=f"{role.value} delegation plan",
+                summary=str(raw.get("rationale") or ""),
+            )
+        ]
         runs.append(
             AgentRun(
                 run_id=f"run-{task_id}",
@@ -185,16 +218,8 @@ def build_agent_delegation_plan(
                 role=role,
                 status=status,
                 model_id=str(raw.get("model_id") or resolver.resolve(role)),
-                started_at=now if enforce else None,
-                finished_at=now if enforce else None,
-                artifacts=[
-                    AgentArtifact(
-                        artifact_id=f"artifact-{task_id}",
-                        kind="decision",
-                        title=f"{role.value} delegation {'run' if enforce else 'plan'}",
-                        summary=str(raw.get("rationale") or ""),
-                    )
-                ],
+                artifacts=run_artifacts,
+                execution_mode=execution_mode,
             )
         )
         decisions.append(
@@ -204,20 +229,30 @@ def build_agent_delegation_plan(
                 role=role,
                 task_id=task_id,
                 rationale=str(raw.get("rationale") or "Delegated from role route plan."),
-                payload={"run_isolation_key": raw.get("run_isolation_key"), "depends_on": raw.get("depends_on") or []},
+                payload={
+                    "run_isolation_key": task.run_isolation_key,
+                    "depends_on": raw.get("depends_on") or [],
+                },
             )
         )
 
     return AgentDelegationPlan(
         enabled=True,
         enforce=enforce,
+        execution_mode=execution_mode,
         source="delegation_runtime",
         route_reason=str(route_plan.get("route_reason") or "Delegation runtime built role tasks."),
-        max_parallel_runs=max(1, int(route_plan.get("max_parallel_runs") or getattr(settings, "agent_role_max_parallel_runs", 1))),
+        max_parallel_runs=max(
+            1,
+            int(
+                route_plan.get("max_parallel_runs")
+                or getattr(settings, "agent_role_max_parallel_runs", 1)
+            ),
+        ),
         tasks=tasks,
         runs=runs,
         decisions=decisions,
-        legacy_execution_unchanged=not enforce,
+        legacy_execution_unchanged=execution_mode == "observe",
     )
 
 
@@ -237,7 +272,9 @@ def build_model_route_decision(
     mode = "enforce" if mode == "enforce" else "observe"
     resolver = RoleModelResolver(settings)
     recommended = resolver.resolve(role_value, fallback_model=current)
-    reason = _model_route_reason(role_value, task_text=task_text, tool_risk=tool_risk, context_size=context_size)
+    reason = _model_route_reason(
+        role_value, task_text=task_text, tool_risk=tool_risk, context_size=context_size
+    )
     effective = recommended if enabled and mode == "enforce" else current
     return ModelRouteDecision(
         enabled=enabled,
@@ -267,10 +304,14 @@ def build_failure_records(
             AgentFailureRecord(
                 failure_id=f"failure-{uuid4().hex[:12]}",
                 failure_type="tool_denied",
-                failed_role=normalize_agent_role(str(route_plan.get("role") or AgentRole.EXECUTOR.value)),
+                failed_role=normalize_agent_role(
+                    str(route_plan.get("role") or AgentRole.EXECUTOR.value)
+                ),
                 failed_task_id=_first_task_id(delegation_plan),
                 tool_route_plan=route_plan,
-                model_id=(model_route_decision or {}).get("effective_model") if isinstance(model_route_decision, dict) else None,
+                model_id=(model_route_decision or {}).get("effective_model")
+                if isinstance(model_route_decision, dict)
+                else None,
                 trajectory_id=trajectory_id,
                 message=f"Tool Router denied {len(denied_tools)} tool(s).",
             )
@@ -282,7 +323,9 @@ def build_failure_records(
                     AgentFailureRecord(
                         failure_id=f"failure-{uuid4().hex[:12]}",
                         failure_type="critic_rejected",
-                        failed_role=normalize_agent_role(str(raw.get("role") or AgentRole.CRITIC.value)),
+                        failed_role=normalize_agent_role(
+                            str(raw.get("role") or AgentRole.CRITIC.value)
+                        ),
                         failed_task_id=raw.get("task_id"),
                         tool_route_plan=route_plan,
                         model_id=raw.get("model_id"),
@@ -311,8 +354,15 @@ def build_self_repair_preview(
                 "initial_state": {"agent_failure_records": [failure.model_dump(mode="json")]},
             },
             "expected": {
-                "answer_contains_any": [failure.failure_type, failure.failed_role.value, "retry", "denied"],
-                "must_not_call_tools": ["web_search", "web_fetch"] if failure.failure_type == "tool_denied" else [],
+                "answer_contains_any": [
+                    failure.failure_type,
+                    failure.failed_role.value,
+                    "retry",
+                    "denied",
+                ],
+                "must_not_call_tools": ["web_search", "web_fetch"]
+                if failure.failure_type == "tool_denied"
+                else [],
             },
             "judge": {"rule": True, "llm": {"enabled": False}},
         }
@@ -356,12 +406,18 @@ def build_review_queue(
             )
         )
     model_decision = model_route_decision if isinstance(model_route_decision, dict) else {}
-    if model_decision.get("enabled") and model_decision.get("mode") == "enforce" and model_decision.get("selected_model") != model_decision.get("effective_model"):
+    if (
+        model_decision.get("enabled")
+        and model_decision.get("mode") == "enforce"
+        and model_decision.get("selected_model") != model_decision.get("effective_model")
+    ):
         items.append(
             AgentReviewItem(
                 item_id=f"review-{uuid4().hex[:12]}",
                 item_type="model_router_enforce_override",
-                role=normalize_agent_role(str(model_decision.get("role") or AgentRole.EXECUTOR.value)),
+                role=normalize_agent_role(
+                    str(model_decision.get("role") or AgentRole.EXECUTOR.value)
+                ),
                 summary="Model Router changed the effective model under enforce mode.",
                 payload=model_decision,
             )
@@ -372,7 +428,9 @@ def build_review_queue(
                 AgentReviewItem(
                     item_id=f"review-{uuid4().hex[:12]}",
                     item_type="critic_rejected_continue_request",
-                    role=normalize_agent_role(str(raw.get("failed_role") or AgentRole.CRITIC.value)),
+                    role=normalize_agent_role(
+                        str(raw.get("failed_role") or AgentRole.CRITIC.value)
+                    ),
                     task_id=raw.get("failed_task_id"),
                     summary=str(raw.get("message") or "Critic rejected a delegated run."),
                     payload=dict(raw),
@@ -403,7 +461,31 @@ def _budget_for_role(role: AgentRole) -> AgentBudget:
     return AgentBudget(max_llm_calls=2, max_tool_calls=5)
 
 
-def _model_route_reason(role: AgentRole, *, task_text: str, tool_risk: str, context_size: int) -> str:
+def _max_turns_for_role(role: AgentRole) -> int:
+    if role == AgentRole.ORCHESTRATOR:
+        return 1
+    if role == AgentRole.EXECUTOR:
+        return 3
+    return 2
+
+
+def _timeout_for_role(role: AgentRole) -> int:
+    if role == AgentRole.EXECUTOR:
+        return 120
+    if role == AgentRole.CRITIC:
+        return 60
+    return 30
+
+
+def _normalize_execution_mode(value: Any) -> DelegationExecutionMode:
+    from .agent_execution import normalize_delegation_execution_mode
+
+    return normalize_delegation_execution_mode(str(value or "observe"))
+
+
+def _model_route_reason(
+    role: AgentRole, *, task_text: str, tool_risk: str, context_size: int
+) -> str:
     if role == AgentRole.CRITIC:
         return "Critic can start with a lower-cost reviewer model and escalate on low confidence."
     if role == AgentRole.PLANNER:
@@ -449,6 +531,7 @@ __all__ = [
     "AgentRun",
     "AgentSelfRepairPreview",
     "AgentTask",
+    "DelegationExecutionMode",
     "ModelRouteDecision",
     "apply_review_decision",
     "build_agent_delegation_plan",

@@ -957,6 +957,10 @@ export interface FocusAgentAgentTeamTask {
   dependencies: string[];
   status: FocusAgentAgentTeamTaskStatus;
   output_artifact_ids: string[];
+  agent_run_id?: string | null;
+  delegated_task_id?: string | null;
+  artifact_ids: string[];
+  execution_status?: string | null;
   changed_files: string[];
   verification_summary?: string | null;
   risk_notes: string[];
@@ -983,6 +987,7 @@ export interface FocusAgentAgentTeamMergeBundle {
   key_findings: string[];
   changed_files: string[];
   test_evidence: string[];
+  execution_evidence: Record<string, unknown>[];
   open_questions: string[];
   risk_items: string[];
   recommended_next_action: FocusAgentAgentTeamMergeNextAction;
@@ -1282,13 +1287,3 @@ export interface FocusAgentStreamState {
   isClosed: boolean;
   failed?: TurnFailedPayload;
 }
-
-export * from "./types/agent-governance";
-export * from "./types/agent-team";
-export * from "./types/auth";
-export * from "./types/branch";
-export * from "./types/chat";
-export * from "./types/conversation";
-export * from "./types/models";
-export * from "./types/observability";
-export * from "./types/stream";

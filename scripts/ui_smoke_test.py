@@ -148,7 +148,9 @@ class CdpWebSocket:
     def send(self, method: str, params: dict[str, object] | None = None) -> dict[str, object]:
         self._next_id += 1
         message_id = self._next_id
-        body = json.dumps({"id": message_id, "method": method, "params": params or {}}).encode("utf-8")
+        body = json.dumps({"id": message_id, "method": method, "params": params or {}}).encode(
+            "utf-8"
+        )
         mask = os.urandom(4)
         header = bytearray([0x81])
         length = len(body)
@@ -307,18 +309,35 @@ def build_smoke_expression(message: str) -> str:
   }}, 5000, 'send button enabled');
   clickButton(...sendLabels);
   await waitFor(() => latestUserBubbleText().includes(smokeMessage), 10000, 'user message render');
-  const finalText = await waitFor(() => {{
-    const text = latestAssistantBubbleText();
-    const hasAssistantReply =
-      text &&
-      text !== 'Focus Agent' &&
-      !text.includes('<｜DSML｜') &&
-      !text.includes('function_calls');
-    if (hasAssistantReply) {{
-      return text;
+  const stableAssistantBubbleText = async () => {{
+    let previous = '';
+    let stableSince = 0;
+    const started = Date.now();
+    while (Date.now() - started < 120000) {{
+      const text = latestAssistantBubbleText();
+      const hasAssistantReply =
+        text &&
+        text !== 'Focus Agent' &&
+        !text.includes('<｜DSML｜') &&
+        !text.includes('function_calls');
+      const sendButton = findButton(...sendLabels);
+      const sendReady = Boolean(sendButton && !sendButton.disabled);
+      if (hasAssistantReply && sendReady) {{
+        if (text === previous) {{
+          stableSince += 250;
+          if (stableSince >= 1000) return text;
+        }} else {{
+          previous = text;
+          stableSince = 0;
+        }}
+      }} else {{
+        stableSince = 0;
+      }}
+      await sleep(250);
     }}
-    return '';
-  }}, 90000, 'assistant natural-language response');
+    throw new Error('Timed out waiting for stable assistant natural-language response');
+  }};
+  const finalText = await stableAssistantBubbleText();
   result.lastResponseText = finalText;
   await waitFor(() => {{
     const button = findEnabledButton(...newBranchLabels);
@@ -462,9 +481,7 @@ window.addEventListener("unhandledrejection", (event) => {
             )
 
             raw_value = (
-                response.get("result", {})
-                if isinstance(response.get("result"), dict)
-                else {}
+                response.get("result", {}) if isinstance(response.get("result"), dict) else {}
             )
             payload = raw_value.get("value", "")
             if not isinstance(payload, str) or not payload.strip():
@@ -473,7 +490,9 @@ window.addEventListener("unhandledrejection", (event) => {
                     diagnostics = collect_browser_diagnostics(client)
                 except Exception as exc:  # noqa: BLE001
                     diagnostics = {"diagnostic_error": str(exc)}
-                raise RuntimeError(f"Unexpected smoke-test payload: {response!r}; diagnostics={diagnostics!r}")
+                raise RuntimeError(
+                    f"Unexpected smoke-test payload: {response!r}; diagnostics={diagnostics!r}"
+                )
 
             result = json.loads(payload)
             if result.get("__error"):
@@ -495,12 +514,24 @@ window.addEventListener("unhandledrejection", (event) => {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a real-browser UI smoke test against the local Focus Agent app.")
+    parser = argparse.ArgumentParser(
+        description="Run a real-browser UI smoke test against the local Focus Agent app."
+    )
     parser.add_argument("--app-url", default=DEFAULT_APP_URL, help="App URL to open in Chrome.")
-    parser.add_argument("--health-url", default=DEFAULT_HEALTH_URL, help="Health endpoint to verify before launching Chrome.")
+    parser.add_argument(
+        "--health-url",
+        default=DEFAULT_HEALTH_URL,
+        help="Health endpoint to verify before launching Chrome.",
+    )
     parser.add_argument("--chrome-path", default=None, help="Path to the Chrome executable.")
-    parser.add_argument("--message", default=DEFAULT_MESSAGE, help="Chat message to send during the smoke test.")
-    parser.add_argument("--keep-open", action="store_true", help="Keep the dedicated Chrome window open after the smoke test.")
+    parser.add_argument(
+        "--message", default=DEFAULT_MESSAGE, help="Chat message to send during the smoke test."
+    )
+    parser.add_argument(
+        "--keep-open",
+        action="store_true",
+        help="Keep the dedicated Chrome window open after the smoke test.",
+    )
     return parser.parse_args()
 
 

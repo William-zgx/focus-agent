@@ -8,7 +8,7 @@ from .dedupe import (
     merge_duplicate_records,
     user_preference_topic,
 )
-from .assembler import build_memory_blocks, render_memory_block
+from .assembler import build_memory_blocks, render_memory_block, sanitize_memory_text
 from .curator import (
     MemoryCurator,
     MemoryCuratorDecision,
@@ -64,6 +64,7 @@ __all__ = [
     "merge_duplicate_records",
     "persist_imported_conclusion",
     "render_memory_block",
+    "sanitize_memory_text",
     "score_memory_hit",
     "score_memory_importance",
     "user_preference_topic",

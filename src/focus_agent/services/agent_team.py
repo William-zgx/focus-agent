@@ -18,7 +18,10 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.core.branching import BranchRole
-from focus_agent.repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
+from focus_agent.repositories.agent_team_repository import (
+    AgentTeamRepository,
+    InMemoryAgentTeamRepository,
+)
 from focus_agent.services.branches import BranchService
 
 
@@ -48,7 +51,9 @@ _ROLE_TO_BRANCH_ROLE: dict[AgentTeamTaskRole, BranchRole] = {
     AgentTeamTaskRole.WRITER: BranchRole.WRITEUP,
 }
 
-_DEFAULT_DISPATCH_TASKS: tuple[tuple[AgentTeamTaskRole, str, tuple[str, ...], tuple[AgentTeamTaskRole, ...]], ...] = (
+_DEFAULT_DISPATCH_TASKS: tuple[
+    tuple[AgentTeamTaskRole, str, tuple[str, ...], tuple[AgentTeamTaskRole, ...]], ...
+] = (
     (
         AgentTeamTaskRole.PLANNER,
         "Plan the work, clarify boundaries, and produce the implementation checklist.",
@@ -64,7 +69,11 @@ _DEFAULT_DISPATCH_TASKS: tuple[tuple[AgentTeamTaskRole, str, tuple[str, ...], tu
     (
         AgentTeamTaskRole.FRONTEND_EXECUTOR,
         "Implement the SDK and Web workbench controls for the orchestration flow.",
-        ("frontend-sdk/**", "apps/web/src/features/agent-team/**", "apps/web/src/pages/agent-team/**"),
+        (
+            "frontend-sdk/**",
+            "apps/web/src/features/agent-team/**",
+            "apps/web/src/pages/agent-team/**",
+        ),
         (AgentTeamTaskRole.PLANNER,),
     ),
     (
@@ -204,6 +213,10 @@ class AgentTeamService:
         changed_files: list[str] | None = None,
         verification_summary: str | None = None,
         risk_notes: list[str] | None = None,
+        agent_run_id: str | None = None,
+        delegated_task_id: str | None = None,
+        artifact_ids: list[str] | None = None,
+        execution_status: str | None = None,
     ) -> AgentTeamTask:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
@@ -216,6 +229,14 @@ class AgentTeamService:
                 updates["verification_summary"] = verification_summary
             if risk_notes is not None:
                 updates["risk_notes"] = _dedupe([*task.risk_notes, *risk_notes])
+            if agent_run_id is not None:
+                updates["agent_run_id"] = agent_run_id
+            if delegated_task_id is not None:
+                updates["delegated_task_id"] = delegated_task_id
+            if artifact_ids is not None:
+                updates["artifact_ids"] = _dedupe([*task.artifact_ids, *artifact_ids])
+            if execution_status is not None:
+                updates["execution_status"] = execution_status
             updated = task.model_copy(update=updates)
             self.repository.save_task(updated)
             self._refresh_session_status(updated.session_id)
@@ -268,7 +289,9 @@ class AgentTeamService:
             self._touch_session(updated.session_id)
         return output
 
-    def list_task_outputs(self, *, task_id: str, user_id: str | None = None) -> list[AgentTeamTaskOutput]:
+    def list_task_outputs(
+        self, *, task_id: str, user_id: str | None = None
+    ) -> list[AgentTeamTaskOutput]:
         self.get_task(task_id, user_id=user_id)
         with self._lock:
             return self.repository.list_task_outputs(task_id=task_id)
@@ -323,7 +346,11 @@ class AgentTeamService:
     def prepare_merge_bundle(self, *, session_id: str, user_id: str) -> AgentTeamMergeBundle:
         session = self.get_session(session_id, user_id=user_id)
         tasks = self.list_tasks(session_id=session_id, user_id=user_id)
-        outputs = [output for task in tasks for output in self.repository.list_task_outputs(task_id=task.task_id)]
+        outputs = [
+            output
+            for task in tasks
+            for output in self.repository.list_task_outputs(task_id=task.task_id)
+        ]
         accepted = [task.task_id for task in tasks if task.status == AgentTeamTaskStatus.DONE]
         rejected = [
             task.task_id
@@ -336,16 +363,25 @@ class AgentTeamService:
             for task in tasks
             if task.status in {AgentTeamTaskStatus.PENDING, AgentTeamTaskStatus.RUNNING}
         ]
-        risk_items = _dedupe([note for task in tasks for note in task.risk_notes] + [note for output in outputs for note in output.risk_notes])
+        risk_items = _dedupe(
+            [note for task in tasks for note in task.risk_notes]
+            + [note for output in outputs for note in output.risk_notes]
+        )
         test_evidence = _dedupe(
             [task.verification_summary or "" for task in tasks]
             + [evidence for output in outputs for evidence in output.test_evidence]
         )
         key_findings = _dedupe(output.summary for output in outputs if output.summary)
-        changed_files = _dedupe([path for task in tasks for path in task.changed_files] + [path for output in outputs for path in output.changed_files])
+        changed_files = _dedupe(
+            [path for task in tasks for path in task.changed_files]
+            + [path for output in outputs for path in output.changed_files]
+        )
         open_questions = _dedupe(
             [f"{task.role.value}: {self._compact_task_goal(task.goal)}" for task in blocked]
-            + [f"Pending {task.role.value}: {self._compact_task_goal(task.goal)}" for task in pending]
+            + [
+                f"Pending {task.role.value}: {self._compact_task_goal(task.goal)}"
+                for task in pending
+            ]
         )
         recommended = self._recommended_action(
             accepted_count=len(accepted),
@@ -362,6 +398,7 @@ class AgentTeamService:
             key_findings=key_findings,
             changed_files=changed_files,
             test_evidence=test_evidence,
+            execution_evidence=self._execution_evidence(tasks, outputs),
             open_questions=open_questions,
             risk_items=risk_items,
             recommended_next_action=recommended,
@@ -392,7 +429,9 @@ class AgentTeamService:
         session = self.get_session(session_id, user_id=user_id)
         bundle_payload = dict(session.latest_merge_bundle or {})
         resolved_action = AgentTeamRecommendedAction(
-            action or bundle_payload.get("recommended_next_action") or AgentTeamRecommendedAction.MERGE
+            action
+            or bundle_payload.get("recommended_next_action")
+            or AgentTeamRecommendedAction.MERGE
         )
         decision = AgentTeamMergeDecision(
             decision_id=str(uuid4()),
@@ -400,11 +439,23 @@ class AgentTeamService:
             approved=approved,
             action=resolved_action,
             rationale=rationale,
-            accepted_tasks=list(accepted_tasks if accepted_tasks is not None else bundle_payload.get("accepted_tasks") or []),
-            rejected_tasks=list(rejected_tasks if rejected_tasks is not None else bundle_payload.get("rejected_tasks") or []),
+            accepted_tasks=list(
+                accepted_tasks
+                if accepted_tasks is not None
+                else bundle_payload.get("accepted_tasks") or []
+            ),
+            rejected_tasks=list(
+                rejected_tasks
+                if rejected_tasks is not None
+                else bundle_payload.get("rejected_tasks") or []
+            ),
             created_at=_now(),
         )
-        next_status = AgentTeamSessionStatus.COMPLETED if approved and resolved_action == AgentTeamRecommendedAction.MERGE else AgentTeamSessionStatus.AWAITING_REVIEW
+        next_status = (
+            AgentTeamSessionStatus.COMPLETED
+            if approved and resolved_action == AgentTeamRecommendedAction.MERGE
+            else AgentTeamSessionStatus.AWAITING_REVIEW
+        )
         if resolved_action == AgentTeamRecommendedAction.DISCARD:
             next_status = AgentTeamSessionStatus.CANCELLED
         with self._lock:
@@ -462,7 +513,70 @@ class AgentTeamService:
         return AgentTeamRecommendedAction.MERGE
 
     @staticmethod
-    def _bundle_summary(*, session: AgentTeamSession, tasks: list[AgentTeamTask], key_findings: list[str]) -> str:
+    def _execution_evidence(
+        tasks: list[AgentTeamTask],
+        outputs: list[AgentTeamTaskOutput],
+    ) -> list[dict[str, object]]:
+        evidence: list[dict[str, object]] = []
+        seen: set[tuple[str, str, str, str, tuple[str, ...]]] = set()
+
+        def append_item(item: dict[str, object]) -> None:
+            artifact_ids = _dedupe(str(value) for value in item.get("artifact_ids", []) or [])
+            canonical: dict[str, object] = {"task_id": str(item.get("task_id") or "")}
+            role = str(item.get("role") or "").strip()
+            if role:
+                canonical["role"] = role
+            for field in ("agent_run_id", "delegated_task_id", "execution_status"):
+                value = str(item.get(field) or "").strip()
+                if value:
+                    canonical[field] = value
+            if artifact_ids:
+                canonical["artifact_ids"] = artifact_ids
+            key = (
+                str(canonical.get("task_id") or ""),
+                str(canonical.get("agent_run_id") or ""),
+                str(canonical.get("delegated_task_id") or ""),
+                str(canonical.get("execution_status") or ""),
+                tuple(artifact_ids),
+            )
+            if key not in seen and any(key[1:]):
+                seen.add(key)
+                evidence.append(canonical)
+
+        for task in tasks:
+            append_item(
+                {
+                    "task_id": task.task_id,
+                    "role": task.role.value,
+                    "agent_run_id": task.agent_run_id,
+                    "delegated_task_id": task.delegated_task_id,
+                    "artifact_ids": task.artifact_ids,
+                    "execution_status": task.execution_status,
+                }
+            )
+
+        for output in outputs:
+            execution_metadata = output.metadata.get("execution")
+            if not isinstance(execution_metadata, dict):
+                execution_metadata = {
+                    key: output.metadata[key]
+                    for key in (
+                        "agent_run_id",
+                        "delegated_task_id",
+                        "artifact_ids",
+                        "execution_status",
+                    )
+                    if key in output.metadata
+                }
+            if execution_metadata:
+                append_item({"task_id": output.task_id, **execution_metadata})
+
+        return evidence
+
+    @staticmethod
+    def _bundle_summary(
+        *, session: AgentTeamSession, tasks: list[AgentTeamTask], key_findings: list[str]
+    ) -> str:
         done = len([task for task in tasks if task.status == AgentTeamTaskStatus.DONE])
         total = len(tasks)
         headline = f"{session.title}: {done}/{total} tasks ready for merge."
@@ -470,7 +584,9 @@ class AgentTeamService:
             return f"{headline} Top finding: {key_findings[0]}"
         return headline
 
-    def _touch_session(self, session_id: str, *, status: AgentTeamSessionStatus | None = None) -> None:
+    def _touch_session(
+        self, session_id: str, *, status: AgentTeamSessionStatus | None = None
+    ) -> None:
         session = self.repository.get_session(session_id)
         self.repository.save_session(
             session.model_copy(update={"status": status or session.status, "updated_at": _now()})
@@ -485,7 +601,10 @@ class AgentTeamService:
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
         elif any(task.status == AgentTeamTaskStatus.FAILED for task in tasks):
             self._touch_session(session_id, status=AgentTeamSessionStatus.FAILED)
-        elif all(task.status in {AgentTeamTaskStatus.DONE, AgentTeamTaskStatus.CANCELLED} for task in tasks):
+        elif all(
+            task.status in {AgentTeamTaskStatus.DONE, AgentTeamTaskStatus.CANCELLED}
+            for task in tasks
+        ):
             self._touch_session(session_id, status=AgentTeamSessionStatus.AWAITING_REVIEW)
         else:
             self._touch_session(session_id)

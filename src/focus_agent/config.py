@@ -86,6 +86,12 @@ def _normalize_optional_string(value: object) -> str | None:
     return text or None
 
 
+def _normalize_agent_delegation_execution_mode(value: object) -> str:
+    from .agent_execution import normalize_delegation_execution_mode
+
+    return normalize_delegation_execution_mode(str(value or "observe"))
+
+
 def _coerce_bool(value: object) -> bool | None:
     if isinstance(value, bool):
         return value
@@ -97,6 +103,10 @@ def _coerce_bool(value: object) -> bool | None:
     if text in {"0", "false", "no", "off"}:
         return False
     return None
+
+
+def _env_bool(env: MutableMapping[str, str], name: str, *, default: bool) -> bool:
+    return env.get(name, "true" if default else "false").lower() in {"1", "true", "yes", "on"}
 
 
 def _b64url_decode_string(raw: str) -> str | None:
@@ -117,9 +127,7 @@ def _coerce_auth_jwt_key(raw: object, *, default_kid: str | None = None) -> Auth
 
     kid = _normalize_optional_string(raw.get("kid") or raw.get("id") or default_kid)
     secret = _normalize_optional_string(
-        raw.get("secret")
-        or raw.get("value")
-        or raw.get("shared_secret")
+        raw.get("secret") or raw.get("value") or raw.get("shared_secret")
     )
     if secret is None:
         jwk_secret = _normalize_optional_string(raw.get("k"))
@@ -207,7 +215,9 @@ def _auth_jwt_keys_from_env(env: MutableMapping[str, str]) -> tuple[AuthJwtKey, 
     return _dedupe_auth_jwt_keys(keys)
 
 
-def _configured_single_auth_secret(settings: "Settings", env: MutableMapping[str, str]) -> str | None:
+def _configured_single_auth_secret(
+    settings: "Settings", env: MutableMapping[str, str]
+) -> str | None:
     if _normalize_optional_string(env.get("AUTH_JWT_SECRET")) is None:
         return None
     return _normalize_optional_string(settings.auth_jwt_secret)
@@ -276,7 +286,9 @@ def _validate_non_development_security(settings: "Settings", env: MutableMapping
     if not settings.cors_allowed_origins:
         failures.append("CORS_ALLOWED_ORIGINS must be explicitly set")
     if "*" in settings.cors_allowed_origins and settings.cors_allow_credentials:
-        failures.append("CORS_ALLOW_CREDENTIALS must be false when CORS_ALLOWED_ORIGINS contains '*'")
+        failures.append(
+            "CORS_ALLOW_CREDENTIALS must be false when CORS_ALLOWED_ORIGINS contains '*'"
+        )
     if failures:
         raise ValueError(
             "Unsafe security configuration for non-development environment "
@@ -364,9 +376,7 @@ def load_local_env_file(
 ) -> dict[str, str]:
     target_env = environ if environ is not None else os.environ
     resolved = Path(
-        path
-        or target_env.get("FOCUS_AGENT_LOCAL_ENV_FILE")
-        or DEFAULT_LOCAL_ENV_FILE
+        path or target_env.get("FOCUS_AGENT_LOCAL_ENV_FILE") or DEFAULT_LOCAL_ENV_FILE
     ).expanduser()
     if not resolved.exists():
         return {}
@@ -591,7 +601,9 @@ class ModelCatalogConfig:
 @dataclass(frozen=True, slots=True)
 class ToolCatalogConfig:
     current_utc_time: CurrentUtcTimeToolConfig = field(default_factory=CurrentUtcTimeToolConfig)
-    write_text_artifact: WriteTextArtifactToolConfig = field(default_factory=WriteTextArtifactToolConfig)
+    write_text_artifact: WriteTextArtifactToolConfig = field(
+        default_factory=WriteTextArtifactToolConfig
+    )
     artifact_list: ArtifactListToolConfig = field(default_factory=ArtifactListToolConfig)
     artifact_read: ArtifactReadToolConfig = field(default_factory=ArtifactReadToolConfig)
     artifact_update: ArtifactUpdateToolConfig = field(default_factory=ArtifactUpdateToolConfig)
@@ -606,7 +618,9 @@ class ToolCatalogConfig:
     memory_save: MemorySaveToolConfig = field(default_factory=MemorySaveToolConfig)
     memory_search: MemorySearchToolConfig = field(default_factory=MemorySearchToolConfig)
     memory_forget: MemoryForgetToolConfig = field(default_factory=MemoryForgetToolConfig)
-    conversation_summary: ConversationSummaryToolConfig = field(default_factory=ConversationSummaryToolConfig)
+    conversation_summary: ConversationSummaryToolConfig = field(
+        default_factory=ConversationSummaryToolConfig
+    )
     skills_list: SkillsListToolConfig = field(default_factory=SkillsListToolConfig)
     skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
@@ -702,9 +716,7 @@ def load_model_catalog_document(
 ) -> ModelCatalogConfig:
     target_env = environ if environ is not None else os.environ
     resolved = Path(
-        path
-        or target_env.get("FOCUS_AGENT_MODEL_CATALOG_DOC")
-        or DEFAULT_MODEL_CATALOG_DOC
+        path or target_env.get("FOCUS_AGENT_MODEL_CATALOG_DOC") or DEFAULT_MODEL_CATALOG_DOC
     ).expanduser()
     if not resolved.exists():
         return ModelCatalogConfig()
@@ -783,9 +795,7 @@ def load_tool_catalog_document(
 ) -> ToolCatalogConfig:
     target_env = environ if environ is not None else os.environ
     resolved = Path(
-        path
-        or target_env.get("FOCUS_AGENT_TOOL_CATALOG_DOC")
-        or DEFAULT_TOOL_CATALOG_DOC
+        path or target_env.get("FOCUS_AGENT_TOOL_CATALOG_DOC") or DEFAULT_TOOL_CATALOG_DOC
     ).expanduser()
     if not resolved.exists():
         return ToolCatalogConfig()
@@ -880,6 +890,7 @@ class Settings:
     agent_tool_router_enforce: bool = True
     agent_delegation_enabled: bool = False
     agent_delegation_enforce: bool = False
+    agent_delegation_execution_mode: str = "observe"
     agent_model_router_enabled: bool = False
     agent_model_router_mode: str = "observe"
     agent_self_repair_enabled: bool = False
@@ -949,12 +960,10 @@ class Settings:
             artifact_dir=env.get("ARTIFACT_DIR", defaults.artifact_dir),
             api_host=env.get("API_HOST", defaults.api_host),
             api_port=int(env.get("API_PORT", str(defaults.api_port))),
-            api_reload=env.get("API_RELOAD", "false").lower() in {"1", "true", "yes", "on"},
+            api_reload=_env_bool(env, "API_RELOAD", default=defaults.api_reload),
             app_version=env.get("APP_VERSION", defaults.app_version),
             app_environment=(
-                env.get("APP_ENVIRONMENT")
-                or env.get("ENVIRONMENT")
-                or defaults.app_environment
+                env.get("APP_ENVIRONMENT") or env.get("ENVIRONMENT") or defaults.app_environment
             ),
             deployment_name=env.get("DEPLOYMENT_NAME") or defaults.deployment_name,
             tracing_enabled=(
@@ -969,7 +978,8 @@ class Settings:
             ),
             otel_traces_exporters=otel_traces_exporters,
             otel_exporter_otlp_endpoint=env.get("OTEL_EXPORTER_OTLP_ENDPOINT") or None,
-            otel_exporter_otlp_traces_endpoint=env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or None,
+            otel_exporter_otlp_traces_endpoint=env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+            or None,
             otel_exporter_otlp_headers=(
                 env.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
                 or env.get("OTEL_EXPORTER_OTLP_HEADERS")
@@ -991,9 +1001,10 @@ class Settings:
             ),
             web_app_dist_dir=env.get("WEB_APP_DIST_DIR") or None,
             web_app_dev_server_url=env.get("WEB_APP_DEV_SERVER_URL") or None,
-            auth_enabled=env.get("AUTH_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
-            auth_demo_tokens_enabled=env.get("AUTH_DEMO_TOKENS_ENABLED", "true").lower()
-            in {"1", "true", "yes", "on"},
+            auth_enabled=_env_bool(env, "AUTH_ENABLED", default=defaults.auth_enabled),
+            auth_demo_tokens_enabled=_env_bool(
+                env, "AUTH_DEMO_TOKENS_ENABLED", default=defaults.auth_demo_tokens_enabled
+            ),
             auth_jwt_secret=env.get("AUTH_JWT_SECRET", defaults.auth_jwt_secret),
             auth_jwt_key_id=(
                 env.get("AUTH_JWT_KEY_ID")
@@ -1013,10 +1024,12 @@ class Settings:
                 env.get("SSE_HEARTBEAT_SECONDS", str(defaults.sse_heartbeat_seconds))
             ),
             cors_allowed_origins=_split_csv(env.get("CORS_ALLOWED_ORIGINS")),
-            cors_allow_credentials=env.get("CORS_ALLOW_CREDENTIALS", "true").lower()
-            in {"1", "true", "yes", "on"},
-            rate_limit_enabled=env.get("RATE_LIMIT_ENABLED", "false").lower()
-            in {"1", "true", "yes", "on"},
+            cors_allow_credentials=_env_bool(
+                env, "CORS_ALLOW_CREDENTIALS", default=defaults.cors_allow_credentials
+            ),
+            rate_limit_enabled=_env_bool(
+                env, "RATE_LIMIT_ENABLED", default=defaults.rate_limit_enabled
+            ),
             rate_limit_per_minute=int(
                 env.get("RATE_LIMIT_PER_MINUTE", str(defaults.rate_limit_per_minute))
             ),
@@ -1032,10 +1045,9 @@ class Settings:
                 else defaults.skill_directories
             ),
             workspace_root=env.get("WORKSPACE_ROOT", defaults.workspace_root),
-            plan_act_reflect_enabled=env.get(
-                "PLAN_ACT_REFLECT_ENABLED",
-                "true" if defaults.plan_act_reflect_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
+            plan_act_reflect_enabled=_env_bool(
+                env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
+            ),
             plan_scenes=(
                 _split_csv(env.get("PLAN_SCENES"))
                 if env.get("PLAN_SCENES") is not None
@@ -1044,16 +1056,12 @@ class Settings:
             plan_task_brief_min_chars=int(
                 env.get("PLAN_TASK_BRIEF_MIN_CHARS", str(defaults.plan_task_brief_min_chars))
             ),
-            plan_max_replans=int(
-                env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))
+            plan_max_replans=int(env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))),
+            agent_role_routing_enabled=_env_bool(
+                env, "AGENT_ROLE_ROUTING_ENABLED", default=defaults.agent_role_routing_enabled
             ),
-            agent_role_routing_enabled=env.get(
-                "AGENT_ROLE_ROUTING_ENABLED",
-                "true" if defaults.agent_role_routing_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
             agent_role_orchestrator_model=(
-                env.get("AGENT_ROLE_ORCHESTRATOR_MODEL")
-                or defaults.agent_role_orchestrator_model
+                env.get("AGENT_ROLE_ORCHESTRATOR_MODEL") or defaults.agent_role_orchestrator_model
             ),
             agent_role_planner_model=(
                 env.get("AGENT_ROLE_PLANNER_MODEL") or defaults.agent_role_planner_model
@@ -1079,63 +1087,67 @@ class Settings:
                     )
                 ),
             ),
-            agent_memory_curator_enabled=env.get(
-                "AGENT_MEMORY_CURATOR_ENABLED",
-                "true" if defaults.agent_memory_curator_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_memory_auto_promote_on_merge=env.get(
+            agent_memory_curator_enabled=_env_bool(
+                env, "AGENT_MEMORY_CURATOR_ENABLED", default=defaults.agent_memory_curator_enabled
+            ),
+            agent_memory_auto_promote_on_merge=_env_bool(
+                env,
                 "AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE",
-                "true" if defaults.agent_memory_auto_promote_on_merge else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_tool_router_enabled=env.get(
-                "AGENT_TOOL_ROUTER_ENABLED",
-                "true" if defaults.agent_tool_router_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_tool_router_enforce=env.get(
-                "AGENT_TOOL_ROUTER_ENFORCE",
-                "true" if defaults.agent_tool_router_enforce else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_delegation_enabled=env.get(
-                "AGENT_DELEGATION_ENABLED",
-                "true" if defaults.agent_delegation_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_delegation_enforce=env.get(
-                "AGENT_DELEGATION_ENFORCE",
-                "true" if defaults.agent_delegation_enforce else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_model_router_enabled=env.get(
-                "AGENT_MODEL_ROUTER_ENABLED",
-                "true" if defaults.agent_model_router_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
+                default=defaults.agent_memory_auto_promote_on_merge,
+            ),
+            agent_tool_router_enabled=_env_bool(
+                env, "AGENT_TOOL_ROUTER_ENABLED", default=defaults.agent_tool_router_enabled
+            ),
+            agent_tool_router_enforce=_env_bool(
+                env, "AGENT_TOOL_ROUTER_ENFORCE", default=defaults.agent_tool_router_enforce
+            ),
+            agent_delegation_enabled=_env_bool(
+                env, "AGENT_DELEGATION_ENABLED", default=defaults.agent_delegation_enabled
+            ),
+            agent_delegation_enforce=_env_bool(
+                env, "AGENT_DELEGATION_ENFORCE", default=defaults.agent_delegation_enforce
+            ),
+            agent_delegation_execution_mode=_normalize_agent_delegation_execution_mode(
+                env.get(
+                    "AGENT_DELEGATION_EXECUTION_MODE",
+                    defaults.agent_delegation_execution_mode,
+                )
+            ),
+            agent_model_router_enabled=_env_bool(
+                env, "AGENT_MODEL_ROUTER_ENABLED", default=defaults.agent_model_router_enabled
+            ),
             agent_model_router_mode=(
                 "enforce"
                 if str(env.get("AGENT_MODEL_ROUTER_MODE", defaults.agent_model_router_mode)).lower()
                 == "enforce"
                 else "observe"
             ),
-            agent_self_repair_enabled=env.get(
-                "AGENT_SELF_REPAIR_ENABLED",
-                "true" if defaults.agent_self_repair_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_review_queue_enabled=env.get(
-                "AGENT_REVIEW_QUEUE_ENABLED",
-                "true" if defaults.agent_review_queue_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_context_engineering_v2_enabled=env.get(
+            agent_self_repair_enabled=_env_bool(
+                env, "AGENT_SELF_REPAIR_ENABLED", default=defaults.agent_self_repair_enabled
+            ),
+            agent_review_queue_enabled=_env_bool(
+                env, "AGENT_REVIEW_QUEUE_ENABLED", default=defaults.agent_review_queue_enabled
+            ),
+            agent_context_engineering_v2_enabled=_env_bool(
+                env,
                 "AGENT_CONTEXT_ENGINEERING_V2_ENABLED",
-                "true" if defaults.agent_context_engineering_v2_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_context_artifactize_long_observations=env.get(
+                default=defaults.agent_context_engineering_v2_enabled,
+            ),
+            agent_context_artifactize_long_observations=_env_bool(
+                env,
                 "AGENT_CONTEXT_ARTIFACTIZE_LONG_OBSERVATIONS",
-                "true" if defaults.agent_context_artifactize_long_observations else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_context_role_views_enabled=env.get(
+                default=defaults.agent_context_artifactize_long_observations,
+            ),
+            agent_context_role_views_enabled=_env_bool(
+                env,
                 "AGENT_CONTEXT_ROLE_VIEWS_ENABLED",
-                "true" if defaults.agent_context_role_views_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
+                default=defaults.agent_context_role_views_enabled,
+            ),
             agent_context_tokenizer_mode=(
                 "tokenizer_first"
-                if str(env.get("AGENT_CONTEXT_TOKENIZER_MODE", defaults.agent_context_tokenizer_mode)).lower()
+                if str(
+                    env.get("AGENT_CONTEXT_TOKENIZER_MODE", defaults.agent_context_tokenizer_mode)
+                ).lower()
                 == "tokenizer_first"
                 else "chars_fallback"
             ),
@@ -1148,10 +1160,11 @@ class Settings:
                     )
                 ),
             ),
-            context_auto_compaction_enabled=env.get(
+            context_auto_compaction_enabled=_env_bool(
+                env,
                 "CONTEXT_AUTO_COMPACTION_ENABLED",
-                "true" if defaults.context_auto_compaction_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
+                default=defaults.context_auto_compaction_enabled,
+            ),
             context_auto_compaction_pre_send_ratio=float(
                 env.get(
                     "CONTEXT_AUTO_COMPACTION_PRE_SEND_RATIO",
@@ -1164,22 +1177,20 @@ class Settings:
                     str(defaults.context_auto_compaction_post_turn_ratio),
                 )
             ),
-            agent_task_ledger_enabled=env.get(
-                "AGENT_TASK_LEDGER_ENABLED",
-                "true" if defaults.agent_task_ledger_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_artifact_synthesis_enabled=env.get(
+            agent_task_ledger_enabled=_env_bool(
+                env, "AGENT_TASK_LEDGER_ENABLED", default=defaults.agent_task_ledger_enabled
+            ),
+            agent_artifact_synthesis_enabled=_env_bool(
+                env,
                 "AGENT_ARTIFACT_SYNTHESIS_ENABLED",
-                "true" if defaults.agent_artifact_synthesis_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_critic_gate_enabled=env.get(
-                "AGENT_CRITIC_GATE_ENABLED",
-                "true" if defaults.agent_critic_gate_enabled else "false",
-            ).lower() in {"1", "true", "yes", "on"},
-            agent_critic_gate_enforce=env.get(
-                "AGENT_CRITIC_GATE_ENFORCE",
-                "true" if defaults.agent_critic_gate_enforce else "false",
-            ).lower() in {"1", "true", "yes", "on"},
+                default=defaults.agent_artifact_synthesis_enabled,
+            ),
+            agent_critic_gate_enabled=_env_bool(
+                env, "AGENT_CRITIC_GATE_ENABLED", default=defaults.agent_critic_gate_enabled
+            ),
+            agent_critic_gate_enforce=_env_bool(
+                env, "AGENT_CRITIC_GATE_ENFORCE", default=defaults.agent_critic_gate_enforce
+            ),
             trajectory_enabled=(
                 bool(database_uri) if trajectory_enabled is None else trajectory_enabled
             ),
@@ -1195,10 +1206,9 @@ class Settings:
                     str(defaults.trajectory_answer_max_chars),
                 )
             ),
-            trajectory_hash_user_id=env.get(
-                "TRAJECTORY_HASH_USER_ID",
-                "true" if defaults.trajectory_hash_user_id else "false",
-            ).lower() in {"1", "true", "yes", "on"},
+            trajectory_hash_user_id=_env_bool(
+                env, "TRAJECTORY_HASH_USER_ID", default=defaults.trajectory_hash_user_id
+            ),
         )
         _validate_non_development_security(instance, env)
         return instance

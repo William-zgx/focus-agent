@@ -49,6 +49,10 @@ export interface AgentTeamTask {
   dependencies?: string[];
   status: AgentTeamTaskStatus | string;
   output_artifact_ids?: string[];
+  agent_run_id?: string | null;
+  delegated_task_id?: string | null;
+  artifact_ids?: string[];
+  execution_status?: string | null;
   changed_files?: string[];
   verification_summary?: string | null;
   risk_notes?: string[];
@@ -71,6 +75,7 @@ export interface AgentTeamMergeBundle {
   key_findings?: string[];
   changed_files?: string[];
   test_evidence?: string[];
+  execution_evidence?: Record<string, unknown>[];
   open_questions?: string[];
   risk_items?: string[];
   recommended_next_action?: "merge" | "request_changes" | "split_followup" | "discard" | string;

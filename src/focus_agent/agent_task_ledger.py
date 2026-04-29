@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from pydantic import Field
 
+from .agent_delegation import AgentArtifact
 from .agent_roles import AgentRole, normalize_agent_role
 from .config import Settings
 from .core.types import StateModel
@@ -25,6 +26,18 @@ DelegatedArtifactKind = Literal[
 ]
 DelegatedArtifactStatus = Literal["draft", "accepted", "rejected", "needs_review"]
 CriticVerdict = Literal["pass", "reject", "retry", "needs_review", "skipped"]
+_DELEGATED_ARTIFACT_KINDS = frozenset(
+    {
+        "plan",
+        "patch_summary",
+        "evidence",
+        "critic_verdict",
+        "memory_candidate",
+        "tool_route_evidence",
+        "context_ref",
+        "final_synthesis",
+    }
+)
 
 
 class AgentTaskNode(StateModel):
@@ -158,18 +171,29 @@ def build_delegated_artifacts(
     for task in ledger_model.tasks:
         run = runs_by_task.get(task.task_id, {})
         kind = _artifact_kind_for_role(task.role)
-        status: DelegatedArtifactStatus = "accepted" if str(run.get("status") or "") == "completed" else "draft"
+        status = _artifact_status_for_run(run)
+        produced_artifacts = [
+            AgentArtifact.model_validate(item).model_dump(mode="json")
+            for item in run.get("artifacts") or []
+            if isinstance(item, dict)
+        ]
+        produced = produced_artifacts[0] if produced_artifacts else {}
+        produced_kind = str(produced.get("kind") or "")
+        if produced_kind not in _DELEGATED_ARTIFACT_KINDS:
+            produced_kind = kind
         artifact = DelegatedArtifact(
-            artifact_id=f"artifact-{task.task_id}-{kind}",
+            artifact_id=str(produced.get("artifact_id") or f"artifact-{task.task_id}-{kind}"),
             task_id=task.task_id,
             role=task.role,
-            kind=kind,
-            title=f"{task.role.value} {kind.replace('_', ' ')}",
-            summary=str(run.get("artifacts", [{}])[0].get("summary") if isinstance(run.get("artifacts"), list) and run.get("artifacts") else task.goal),
+            kind=produced_kind,
+            title=str(produced.get("title") or f"{task.role.value} {kind.replace('_', ' ')}"),
+            summary=str(produced.get("summary") or task.goal),
             payload={
                 "goal": task.goal,
                 "acceptance_criteria": task.acceptance_criteria,
                 "run": run,
+                "executor_artifacts": produced_artifacts,
+                **({"executor_payload": produced.get("payload")} if isinstance(produced.get("payload"), dict) else {}),
             },
             status=status,
         )
@@ -329,6 +353,17 @@ def apply_critic_retry_tasks(
 
 def _normalize_artifacts(artifacts: Iterable[dict[str, Any] | DelegatedArtifact]) -> list[DelegatedArtifact]:
     return [item if isinstance(item, DelegatedArtifact) else DelegatedArtifact.model_validate(item) for item in artifacts]
+
+
+def _artifact_status_for_run(run: dict[str, Any]) -> DelegatedArtifactStatus:
+    status = str(run.get("status") or "").strip().lower()
+    if status == "completed":
+        return "accepted"
+    if status == "needs_review":
+        return "needs_review"
+    if status == "failed":
+        return "rejected"
+    return "draft"
 
 
 def _artifact_kind_for_role(role: AgentRole) -> DelegatedArtifactKind:

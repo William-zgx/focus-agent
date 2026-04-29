@@ -8,7 +8,7 @@ import hashlib
 import json
 from threading import Thread
 import time
-from typing import Any
+from typing import Any, Literal
 
 from langchain.messages import ToolMessage
 from langgraph.config import get_stream_writer
@@ -34,6 +34,16 @@ class ToolExecutionResult:
     index: int
     message: ToolMessage
     cache_hit: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ToolParallelClassification:
+    mode: Literal["parallel_safe", "serialized_side_effect", "serialized_runtime"]
+    reason: str
+
+    @property
+    def can_run_in_parallel(self) -> bool:
+        return self.mode == "parallel_safe"
 
 
 @dataclass(slots=True)
@@ -86,6 +96,24 @@ class ToolParameterValidationError(ValueError):
         super().__init__(f"Tool '{tool_name}' parameter validation failed: {error}")
 
 
+def classify_tool_parallel_execution(runtime: ToolRuntimeMeta) -> ToolParallelClassification:
+    if runtime.side_effect:
+        kind = runtime.side_effect_kind or "side_effect"
+        return ToolParallelClassification(
+            mode="serialized_side_effect",
+            reason=f"Tool has side effects ({kind}) and must be serialized.",
+        )
+    if runtime.parallel_safe:
+        return ToolParallelClassification(
+            mode="parallel_safe",
+            reason="Tool metadata marks it parallel-safe and read-only.",
+        )
+    return ToolParallelClassification(
+        mode="serialized_runtime",
+        reason="Tool metadata does not mark it parallel-safe.",
+    )
+
+
 def execute_tool_calls(
     tool_calls: list[ToolExecutionInput],
     *,
@@ -99,7 +127,8 @@ def execute_tool_calls(
     completed: list[ToolExecutionResult] = []
 
     for item in tool_calls:
-        if item.runtime.parallel_safe and not item.runtime.side_effect:
+        classification = classify_tool_parallel_execution(item.runtime)
+        if classification.can_run_in_parallel:
             pending_parallel.append(item)
             continue
         if pending_parallel:

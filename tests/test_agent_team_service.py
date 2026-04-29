@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from focus_agent.core.agent_team import AgentTeamSessionStatus, AgentTeamTaskRole, AgentTeamTaskStatus
+from focus_agent.agent_roles import AgentRole
+from focus_agent.core.agent_team import (
+    AgentTeamSessionStatus,
+    AgentTeamTask,
+    AgentTeamTaskRole,
+    AgentTeamTaskStatus,
+    agent_role_for_team_task_role,
+)
 from focus_agent.core.branching import BranchRole
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
@@ -40,6 +47,86 @@ def test_agent_team_service_creates_task_branch_with_role_mapping() -> None:
     assert branch_service.calls[0]["parent_thread_id"] == "root-1"
     assert branch_service.calls[0]["branch_role"] == BranchRole.EXECUTE
     assert service.get_session(session.session_id, user_id="user-1").status == "running"
+
+
+def test_agent_team_task_role_mapping_matches_governance_roles() -> None:
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.PLANNER) == AgentRole.PLANNER
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.ARCHITECT) == AgentRole.ORCHESTRATOR
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.BACKEND_EXECUTOR) == AgentRole.EXECUTOR
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.FRONTEND_EXECUTOR) == AgentRole.EXECUTOR
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.TEST_ENGINEER) == AgentRole.CRITIC
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.REVIEWER) == AgentRole.CRITIC
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.VERIFIER) == AgentRole.CRITIC
+    assert agent_role_for_team_task_role(AgentTeamTaskRole.WRITER) == AgentRole.EXECUTOR
+    assert agent_role_for_team_task_role("backend_executor") == AgentRole.EXECUTOR
+
+
+def test_agent_team_task_execution_links_are_optional_for_old_payloads() -> None:
+    task = AgentTeamTask.model_validate(
+        {
+            "task_id": "task-1",
+            "session_id": "session-1",
+            "role": "backend_executor",
+            "goal": "Old task payload",
+            "created_at": "2026-04-28T00:00:00+00:00",
+            "updated_at": "2026-04-28T00:00:00+00:00",
+        }
+    )
+
+    assert task.agent_run_id is None
+    assert task.delegated_task_id is None
+    assert task.artifact_ids == []
+    assert task.execution_status is None
+
+
+def test_agent_team_merge_bundle_includes_execution_evidence() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Build MVP")
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        goal="Implement backend",
+        create_branch=False,
+    )
+
+    service.update_task(
+        task_id=task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.DONE,
+        agent_run_id="run-1",
+        delegated_task_id="delegated-task-1",
+        artifact_ids=["execution-artifact-1"],
+        execution_status="completed",
+    )
+    service.record_task_output(
+        task_id=task.task_id,
+        user_id="user-1",
+        artifact_id="output-artifact-1",
+        summary="Backend execution completed with artifacts.",
+        metadata={
+            "execution": {
+                "agent_run_id": "run-1",
+                "delegated_task_id": "delegated-task-1",
+                "artifact_ids": ["execution-artifact-1"],
+                "execution_status": "completed",
+            }
+        },
+    )
+
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.recommended_next_action == "merge"
+    assert bundle.execution_evidence == [
+        {
+            "task_id": task.task_id,
+            "role": "backend_executor",
+            "agent_run_id": "run-1",
+            "delegated_task_id": "delegated-task-1",
+            "artifact_ids": ["execution-artifact-1"],
+            "execution_status": "completed",
+        }
+    ]
 
 
 def test_agent_team_service_records_outputs_and_prepares_merge_bundle() -> None:
@@ -94,6 +181,14 @@ def test_agent_team_service_persists_workbench_state_across_instances(tmp_path) 
         goal="Persist backend state",
         create_branch=False,
     )
+    first.update_task(
+        task_id=task.task_id,
+        user_id="user-1",
+        agent_run_id="run-1",
+        delegated_task_id="delegated-task-1",
+        artifact_ids=["execution-artifact-1"],
+        execution_status="completed",
+    )
     first.record_task_output(
         task_id=task.task_id,
         user_id="user-1",
@@ -119,7 +214,9 @@ def test_agent_team_service_persists_workbench_state_across_instances(tmp_path) 
         repository=SQLiteAgentTeamRepository(str(db_path)),
     )
 
-    assert [item.session_id for item in second.list_sessions(user_id="user-1")] == [session.session_id]
+    assert [item.session_id for item in second.list_sessions(user_id="user-1")] == [
+        session.session_id
+    ]
     restored_session = second.get_session(session.session_id, user_id="user-1")
     assert restored_session.status == "completed"
     assert restored_session.latest_merge_bundle is not None
@@ -128,7 +225,22 @@ def test_agent_team_service_persists_workbench_state_across_instances(tmp_path) 
     ]
     assert restored_session.merge_decision is not None
     assert restored_session.merge_decision["accepted_tasks"] == [task.task_id]
-    assert second.list_tasks(session_id=session.session_id, user_id="user-1")[0].task_id == task.task_id
+    restored_task = second.list_tasks(session_id=session.session_id, user_id="user-1")[0]
+    assert restored_task.task_id == task.task_id
+    assert restored_task.agent_run_id == "run-1"
+    assert restored_task.delegated_task_id == "delegated-task-1"
+    assert restored_task.artifact_ids == ["execution-artifact-1"]
+    assert restored_task.execution_status == "completed"
+    assert restored_session.latest_merge_bundle["execution_evidence"] == [
+        {
+            "task_id": task.task_id,
+            "role": "backend_executor",
+            "agent_run_id": "run-1",
+            "delegated_task_id": "delegated-task-1",
+            "artifact_ids": ["execution-artifact-1"],
+            "execution_status": "completed",
+        }
+    ]
     outputs = second.list_task_outputs(task_id=task.task_id, user_id="user-1")
     assert outputs[0].summary == "Persistence survives service recreation."
     assert outputs[0].metadata == {"source": "unit-test"}
@@ -140,7 +252,9 @@ def test_agent_team_service_persists_default_dispatch_bundle_across_instances(tm
         branch_service=None,
         repository=SQLiteAgentTeamRepository(str(db_path)),
     )
-    session = first.create_session(root_thread_id="root-1", user_id="user-1", goal="Persist dispatch bundle")
+    session = first.create_session(
+        root_thread_id="root-1", user_id="user-1", goal="Persist dispatch bundle"
+    )
 
     dispatched_session, tasks = first.dispatch_default_tasks(
         session_id=session.session_id,
@@ -180,7 +294,9 @@ def test_agent_team_service_persists_default_dispatch_bundle_across_instances(tm
 
 def test_agent_team_service_dispatches_default_task_set_without_recursive_agents() -> None:
     service = AgentTeamService(branch_service=None)
-    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Ship Agent Team Workbench")
+    session = service.create_session(
+        root_thread_id="root-1", user_id="user-1", goal="Ship Agent Team Workbench"
+    )
 
     dispatched_session, tasks = service.dispatch_default_tasks(
         session_id=session.session_id,

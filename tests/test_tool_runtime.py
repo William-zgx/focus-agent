@@ -4,9 +4,30 @@ from concurrent.futures import CancelledError as FutureCancelledError
 
 from langchain.tools import tool
 
-from focus_agent.capabilities.tool_runtime import ToolExecutionInput, ToolResultCacheStore, execute_tool_calls
+from focus_agent.capabilities.tool_runtime import (
+    ToolExecutionInput,
+    ToolResultCacheStore,
+    classify_tool_parallel_execution,
+    execute_tool_calls,
+)
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.core.types import ContextBudget
+
+
+def test_tool_runtime_classifies_parallel_execution_safely():
+    parallel = classify_tool_parallel_execution(ToolRuntimeMeta(parallel_safe=True))
+    side_effect = classify_tool_parallel_execution(
+        ToolRuntimeMeta(parallel_safe=True, side_effect=True, side_effect_kind="workspace_write")
+    )
+    default = classify_tool_parallel_execution(ToolRuntimeMeta())
+
+    assert parallel.can_run_in_parallel is True
+    assert parallel.mode == "parallel_safe"
+    assert side_effect.can_run_in_parallel is False
+    assert side_effect.mode == "serialized_side_effect"
+    assert "workspace_write" in side_effect.reason
+    assert default.can_run_in_parallel is False
+    assert default.mode == "serialized_runtime"
 
 
 def test_tool_runtime_uses_fallback_handler_when_primary_tool_fails():

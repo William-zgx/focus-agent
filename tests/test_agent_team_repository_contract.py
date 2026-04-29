@@ -280,3 +280,28 @@ def test_agent_team_repository_contract_missing_records_raise_key_error(
 
     assert repo.list_tasks(session_id="missing-session") == []
     assert repo.list_task_outputs(task_id="missing-task") == []
+
+
+def test_agent_team_repository_contract_round_trips_execution_links(
+    agent_team_repo_factory: RepositoryFactory,
+) -> None:
+    repo = agent_team_repo_factory()
+    session = _session(session_id="session-execution-links")
+    task = _task(task_id="task-execution-links", session_id=session.session_id).model_copy(
+        update={
+            "status": AgentTeamTaskStatus.RUNNING,
+            "agent_run_id": "run-1",
+            "delegated_task_id": "delegated-task-1",
+            "artifact_ids": ["artifact-1"],
+            "execution_status": "completed",
+        }
+    )
+
+    repo.create_session(session)
+    repo.create_task(task)
+
+    loaded = repo.get_task(task.task_id)
+    assert loaded.agent_run_id == "run-1"
+    assert loaded.delegated_task_id == "delegated-task-1"
+    assert loaded.artifact_ids == ["artifact-1"]
+    assert loaded.execution_status == "completed"

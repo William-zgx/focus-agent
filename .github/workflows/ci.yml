@@ -31,7 +31,7 @@ jobs:
         run: ruff check .
 
       - name: Run pytest
-        run: pytest
+        run: FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env pytest
 
   contracts:
     name: Contract check

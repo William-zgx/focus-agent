@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test lint format format-check check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-format frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service lint import-sort-check format format-check check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-format frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -27,7 +27,10 @@ help:
 		'  make api               Start the API server' \
 		'  make dev               Start the API server with API_RELOAD=1' \
 		'  make test              Run pytest' \
+		'  make test-graph-builder Run graph builder tests' \
+		'  make test-chat-service Run chat service tests' \
 		'  make lint              Run ruff check .' \
+		'  make import-sort-check Run Ruff import sorting check' \
 		'  make format            Run ruff format .' \
 		'  make format-check      Check ruff formatting without writing changes' \
 		'  make check             Run lint + test + contract-check + SDK/Web checks' \
@@ -99,8 +102,17 @@ dev: .venv/bin/python
 test: .venv/bin/python
 	$(PYTEST)
 
+test-graph-builder: .venv/bin/python
+	$(PYTEST) tests/test_graph_builder.py
+
+test-chat-service: .venv/bin/python
+	$(PYTEST) tests/test_chat_service.py
+
 lint: .venv/bin/python
 	$(RUFF) check .
+
+import-sort-check: .venv/bin/python
+	$(RUFF) check --select I .
 
 format: .venv/bin/python
 	$(RUFF) format .

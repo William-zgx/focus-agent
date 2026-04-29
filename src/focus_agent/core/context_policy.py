@@ -22,7 +22,9 @@ _LINE_CONFIDENCE_RE = re.compile(r"\(confidence\s+([0-9.]+)\)", re.IGNORECASE)
 _LINE_EVIDENCE_RE = re.compile(r"\[evidence:\s*([^\]]+)\]", re.IGNORECASE)
 _LINE_SOURCE_PREFIX_RE = re.compile(r"^\[[^\]]+\]\s*")
 _ARTIFACT_URI_RE = re.compile(r"\(([^()\s]+)\)\s*$")
-_ARTIFACT_LINE_RE = re.compile(r"^(?P<title>.+?)\s\[(?P<kind>[^\[\]]+)\](?:\s\((?P<uri>[^()]+)\))?$")
+_ARTIFACT_LINE_RE = re.compile(
+    r"^(?P<title>.+?)\s\[(?P<kind>[^\[\]]+)\](?:\s\((?P<uri>[^()]+)\))?$"
+)
 
 
 @dataclass(slots=True)
@@ -96,11 +98,7 @@ class ContextSlice:
             "artifact_block": self.artifact_block,
         }
         ordered_keys = _render_block_order(self.prompt_mode)
-        return "\n\n".join(
-            section_map[key]
-            for key in ordered_keys
-            if section_map.get(key)
-        )
+        return "\n\n".join(section_map[key] for key in ordered_keys if section_map.get(key))
 
 
 def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSlice:
@@ -121,14 +119,10 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     if not memory_block:
         memory_block = _render_lines("Retrieved long-term memories", memory_lines)
     active_skills_block = str(
-        state.get("_active_skills_block")
-        or normalized.get("active_skills_block")
-        or ""
+        state.get("_active_skills_block") or normalized.get("active_skills_block") or ""
     ).strip()
     available_skills_block = str(
-        state.get("_available_skills_block")
-        or normalized.get("available_skills_block")
-        or ""
+        state.get("_available_skills_block") or normalized.get("available_skills_block") or ""
     ).strip()
     scene = str(state.get("_scene") or "long_dialog_research")
 
@@ -150,7 +144,11 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     legacy_imported_lines = _coerce_legacy_imported_lines(normalized.get("merge_queue", []))
 
     local_finding_lines: list[str] = []
-    if is_branch and prompt_mode in {PromptMode.EXPLORE, PromptMode.EXECUTE, PromptMode.BRANCH_REVIEW}:
+    if is_branch and prompt_mode in {
+        PromptMode.EXPLORE,
+        PromptMode.EXECUTE,
+        PromptMode.BRANCH_REVIEW,
+    }:
         local_finding_lines = _coerce_local_finding_lines(
             normalized.get("branch_local_findings", []),
             limit=budget.findings_limit,
@@ -162,8 +160,12 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
         include_local=is_branch and prompt_mode != PromptMode.SYNTHESIZE,
     )
 
-    imported_lines = _dedupe_finding_lines(imported_lines + legacy_imported_lines, limit=budget.findings_limit)
-    local_finding_lines = _dedupe_preferring_reference(imported_lines, local_finding_lines, limit=budget.findings_limit)
+    imported_lines = _dedupe_finding_lines(
+        imported_lines + legacy_imported_lines, limit=budget.findings_limit
+    )
+    local_finding_lines = _dedupe_preferring_reference(
+        imported_lines, local_finding_lines, limit=budget.findings_limit
+    )
     artifact_lines = _dedupe_artifact_lines(artifact_lines, limit=budget.artifact_limit)
 
     system_instructions = "\n\n".join(
@@ -181,10 +183,18 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
 
     findings_sections: list[str] = []
     if imported_lines:
-        findings_sections.append(_render_lines("Imported findings already approved into this thread", imported_lines))
+        findings_sections.append(
+            _render_lines("Imported findings already approved into this thread", imported_lines)
+        )
     if local_finding_lines:
-        findings_sections.append(_render_lines("Local branch findings pending upstream review", local_finding_lines))
-    findings_block = "## Findings\n" + "\n".join(findings_sections) if findings_sections else _render_lines("Findings", [])
+        findings_sections.append(
+            _render_lines("Local branch findings pending upstream review", local_finding_lines)
+        )
+    findings_block = (
+        "## Findings\n" + "\n".join(findings_sections)
+        if findings_sections
+        else _render_lines("Findings", [])
+    )
 
     return ContextSlice(
         prompt_mode=prompt_mode,
@@ -229,7 +239,9 @@ def apply_prompt_budget_guard(
     preserves the current user turn and active constraints first, and only removes
     lower-priority context blocks or older dialogue turns.
     """
-    guarded = [_trim_message_tool_observation(message, budget=budget) for message in prompt_messages]
+    guarded = [
+        _trim_message_tool_observation(message, budget=budget) for message in prompt_messages
+    ]
     if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
         return guarded
 
@@ -335,10 +347,6 @@ def _prompt_char_count(messages: list[AnyMessage]) -> int:
     return sum(len(_text_for_budget(message)) for message in messages)
 
 
-def _prompt_budget_count(messages: list[AnyMessage], *, budget: ContextBudget) -> int:
-    return sum(_message_budget_units(message, budget=budget) for message in messages)
-
-
 def _message_budget_units(message: AnyMessage, *, budget: ContextBudget) -> int:
     return _estimate_text_tokens(
         _text_for_budget(message),
@@ -346,10 +354,6 @@ def _message_budget_units(message: AnyMessage, *, budget: ContextBudget) -> int:
         tokenizer_id=budget.tokenizer_id,
         tokenizer_first=budget.token_budget_mode == "tokenizer_first",
     )
-
-
-def _units_to_char_budget(units: int, *, budget: ContextBudget) -> int:
-    return max(0, int(units) * max(1, int(budget.chars_per_token)))
 
 
 def _tool_observation_budget_mode(budget: ContextBudget) -> str:
@@ -382,46 +386,9 @@ def _tool_observation_within_budget(
         return False
     if not enforce_token_budget:
         return True
-    return _tool_observation_budget_units(text, budget=budget) <= budget.tool_observation_token_limit
-
-
-def _fit_tool_observation_to_budget(text: str, *, budget: ContextBudget, max_chars: int) -> str:
-    try:
-        structured_payload = json.loads(text)
-    except json.JSONDecodeError:
-        structured_payload = None
-
-    def _candidate_for_limit(limit: int) -> str:
-        if structured_payload is not None:
-            return _truncate_json_payload(structured_payload, max_chars=limit)
-        return _truncate_text(text, max_chars=limit)
-
-    candidate = _candidate_for_limit(max_chars)
-    if _tool_observation_within_budget(
-        candidate,
-        budget=budget,
-        max_chars=max_chars,
-        enforce_token_budget=True,
-    ):
-        return candidate
-
-    low = 1
-    high = min(len(text), max_chars)
-    best = candidate[:1]
-    while low <= high:
-        mid = (low + high) // 2
-        probe = _candidate_for_limit(mid)
-        if _tool_observation_within_budget(
-            probe,
-            budget=budget,
-            max_chars=max_chars,
-            enforce_token_budget=True,
-        ):
-            best = probe
-            low = mid + 1
-        else:
-            high = mid - 1
-    return best
+    return (
+        _tool_observation_budget_units(text, budget=budget) <= budget.tool_observation_token_limit
+    )
 
 
 def _estimate_text_tokens(
@@ -477,7 +444,11 @@ def _text_for_budget(value: Any) -> str:
     if isinstance(value, list):
         return json.dumps(value, ensure_ascii=False, default=str)
     content = getattr(value, "content", value)
-    text = json.dumps(content, ensure_ascii=False, default=str) if isinstance(content, list) else str(content or "")
+    text = (
+        json.dumps(content, ensure_ascii=False, default=str)
+        if isinstance(content, list)
+        else str(content or "")
+    )
     tool_calls = getattr(value, "tool_calls", None)
     if tool_calls:
         text += "\n" + json.dumps(tool_calls, ensure_ascii=False, default=str)
@@ -490,27 +461,6 @@ def _copy_message_with_content(message: AnyMessage, content: str) -> AnyMessage:
     return type(message)(content=content)
 
 
-def _trim_message_tool_observation(message: AnyMessage, *, budget: ContextBudget) -> AnyMessage:
-    if not isinstance(message, ToolMessage):
-        return message
-    prompt_observation = _prompt_observation_for_tool_message(message)
-    source_content = prompt_observation or str(message.content)
-    trimmed = trim_tool_observation(
-        source_content,
-        tool_name=_tool_name_for_tool_message(message),
-        tool_call_id=str(getattr(message, "tool_call_id", "") or ""),
-        budget=budget,
-        artifactize_for_prompt=True,
-        force_artifactize=_tool_message_was_runtime_compacted(
-            message,
-            max_chars=_tool_observation_char_limit(budget),
-        ),
-    )
-    if trimmed == message.content:
-        return message
-    return _copy_message_with_content(message, trimmed)
-
-
 def _first_main_system_index(messages: list[AnyMessage]) -> int | None:
     for index, message in enumerate(messages):
         if isinstance(message, SystemMessage):
@@ -519,7 +469,9 @@ def _first_main_system_index(messages: list[AnyMessage]) -> int | None:
 
 
 def _mandatory_prompt_indices(messages: list[AnyMessage]) -> set[int]:
-    indices = {index for index, message in enumerate(messages) if isinstance(message, SystemMessage)}
+    indices = {
+        index for index, message in enumerate(messages) if isinstance(message, SystemMessage)
+    }
     latest_human = _latest_human_index(messages)
     if latest_human is not None:
         indices.add(latest_human)
@@ -566,12 +518,17 @@ def _trim_system_text_by_blocks(
     selected: set[int] = set()
     omitted = False
     used = 0
-    unit_budget = max(0, int(target_units)) if target_units is not None and budget is not None else None
+    unit_budget = (
+        max(0, int(target_units)) if target_units is not None and budget is not None else None
+    )
     used_units = 0
 
     for priority in range(0, 6):
         for index, block in enumerate(blocks):
-            if index in selected or _context_block_priority(block, index=index, prompt_mode=prompt_mode) != priority:
+            if (
+                index in selected
+                or _context_block_priority(block, index=index, prompt_mode=prompt_mode) != priority
+            ):
                 continue
             extra = len(block) + (2 if selected else 0)
             extra_units = (
@@ -633,113 +590,6 @@ def _prompt_mode_from_blocks(blocks: list[str]) -> PromptMode:
     return PromptMode.EXPLORE
 
 
-def _context_block_priority(block: str, *, index: int, prompt_mode: PromptMode) -> int:
-    header = _context_block_header(block)
-    if header == "empty":
-        return 5
-    if index == 0:
-        return 2
-    ordering = _block_priority_map(prompt_mode)
-    return ordering.get(header, 5)
-
-
-def _context_block_header(block: str) -> str:
-    lowered = block.lower()
-    if lowered.endswith("(none)"):
-        return "empty"
-    if lowered.startswith("## constraints and goals") or lowered.startswith("## 当前计划"):
-        return "constraints"
-    if lowered.startswith("## pinned facts"):
-        return "pinned"
-    if lowered.startswith("## imported findings already approved into this thread"):
-        return "imported_findings"
-    if lowered.startswith("## local branch findings pending upstream review"):
-        return "branch_findings"
-    if lowered.startswith("## findings"):
-        return "findings"
-    if lowered.startswith("## artifacts in scope"):
-        return "artifacts"
-    if lowered.startswith("## prompt mode"):
-        return "prompt_mode"
-    if lowered.startswith("## branch scope"):
-        return "branch_scope"
-    if lowered.startswith("## scene"):
-        return "scene"
-    if lowered.startswith("## skill system"):
-        return "skill_system"
-    if lowered.startswith("## active skills"):
-        return "active_skills"
-    if lowered.startswith("## rolling summary"):
-        return "summary"
-    if lowered.startswith("## retrieved long-term memories"):
-        return "memory"
-    if lowered.startswith("## available skills"):
-        return "available_skills"
-    return "other"
-
-
-def _block_priority_map(prompt_mode: PromptMode) -> dict[str, int]:
-    base = {
-        "constraints": 1,
-        "findings": 2,
-        "pinned": 2,
-        "imported_findings": 2,
-        "branch_findings": 3,
-        "artifacts": 3,
-        "scene": 4,
-        "prompt_mode": 4,
-        "branch_scope": 4,
-        "skill_system": 4,
-        "active_skills": 4,
-        "summary": 5,
-        "memory": 5,
-        "available_skills": 5,
-        "other": 5,
-    }
-    if prompt_mode == PromptMode.SYNTHESIZE:
-        return {
-            **base,
-            "imported_findings": 1,
-            "findings": 1,
-            "constraints": 1,
-            "memory": 2,
-            "pinned": 2,
-            "summary": 4,
-            "branch_findings": 5,
-            "artifacts": 5,
-        }
-    if prompt_mode == PromptMode.BRANCH_REVIEW:
-        return {
-            **base,
-            "branch_findings": 1,
-            "artifacts": 1,
-            "imported_findings": 2,
-            "findings": 1,
-            "constraints": 2,
-            "memory": 4,
-        }
-    if prompt_mode == PromptMode.EXECUTE:
-        return {
-            **base,
-            "constraints": 1,
-            "pinned": 1,
-            "findings": 2,
-            "imported_findings": 2,
-            "memory": 3,
-            "branch_findings": 3,
-            "artifacts": 3,
-        }
-    return {
-        **base,
-        "constraints": 1,
-        "findings": 2,
-        "branch_findings": 2,
-        "imported_findings": 2,
-        "memory": 3,
-        "summary": 4,
-    }
-
-
 def _truncate_context_block(text: str, *, max_chars: int) -> str:
     structured = _truncate_bulleted_block(text, max_chars=max_chars)
     if structured:
@@ -750,53 +600,6 @@ def _truncate_context_block(text: str, *, max_chars: int) -> str:
 def _minimum_truncation_budget(text: str) -> int:
     first_line = text.splitlines()[0].strip() if text.splitlines() else ""
     return max(36, min(96, len(first_line) + 8))
-
-
-def _truncate_bulleted_block(text: str, *, max_chars: int) -> str:
-    lines = [line.rstrip() for line in text.splitlines()]
-    if len(lines) < 2 or not lines[0].startswith("## "):
-        return ""
-
-    header = lines[0].strip()
-    bullets = [line.strip() for line in lines[1:] if line.strip()]
-    if not bullets or not any(line.startswith("- ") for line in bullets):
-        return ""
-
-    kept_lines = [header]
-    used = len(header)
-    omitted_bullets: list[str] = []
-
-    for bullet in bullets:
-        extra = len(bullet) + 1
-        if used + extra > max_chars:
-            omitted_bullets.append(bullet)
-            continue
-        kept_lines.append(bullet)
-        used += extra
-
-    if len(kept_lines) == 1:
-        remaining = max_chars - used - 1
-        if remaining >= 18:
-            kept_lines.append(omitted_bullets[0][:remaining].rstrip())
-            return "\n".join(kept_lines)
-        omitted_note = f"- ...[{len(bullets)} omitted]"
-        if len(header) + 1 + len(omitted_note) <= max_chars:
-            return "\n".join([header, omitted_note])
-        if len(header) <= max_chars:
-            return header
-        return _truncate_block(header, max_chars=max_chars)
-
-    rendered = "\n".join(kept_lines)
-    if omitted_bullets:
-        remaining = max_chars - len(rendered) - 1
-        if remaining >= 18:
-            partial = omitted_bullets[0][:remaining].rstrip()
-            if partial:
-                return rendered + "\n" + partial
-        note = f"\n- ...[{len(omitted_bullets)} more omitted]"
-        if len(rendered) + len(note) <= max_chars:
-            rendered += note
-    return rendered
 
 
 def _truncate_block(text: str, *, max_chars: int) -> str:
@@ -827,7 +630,9 @@ def _truncate_text(text: str, *, max_chars: int) -> str:
     return text[:head].rstrip() + marker + text[-tail:].lstrip()
 
 
-def _shrink_tool_messages_to_fit(messages: list[AnyMessage], *, budget: ContextBudget) -> list[AnyMessage]:
+def _shrink_tool_messages_to_fit(
+    messages: list[AnyMessage], *, budget: ContextBudget
+) -> list[AnyMessage]:
     guarded = list(messages)
     for index in range(len(guarded) - 1, -1, -1):
         if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
@@ -853,7 +658,9 @@ def _shrink_tool_messages_to_fit(messages: list[AnyMessage], *, budget: ContextB
     return guarded
 
 
-def _hard_limit_prompt_messages(messages: list[AnyMessage], *, budget: ContextBudget) -> list[AnyMessage]:
+def _hard_limit_prompt_messages(
+    messages: list[AnyMessage], *, budget: ContextBudget
+) -> list[AnyMessage]:
     guarded = list(messages)
     latest_human = _latest_human_index(guarded)
     ordered_indices = [
@@ -929,7 +736,9 @@ def _compact_structured_observation(
             "truncated_by_context_policy": True,
         }
         if artifactize_for_prompt:
-            compact["artifact_ref"] = _tool_observation_ref(tool_name=tool_name, tool_call_id=tool_call_id)
+            compact["artifact_ref"] = _tool_observation_ref(
+                tool_name=tool_name, tool_call_id=tool_call_id
+            )
             refs = _collect_artifact_like_refs(payload)
             if refs:
                 compact["refs"] = refs[:6]
@@ -984,7 +793,9 @@ def _compact_structured_observation(
         )
 
     if "content" in payload:
-        compact["content"] = _trim_numbered_content(str(payload.get("content") or ""), max_chars=max_chars // 2)
+        compact["content"] = _trim_numbered_content(
+            str(payload.get("content") or ""), max_chars=max_chars // 2
+        )
     if "diff" in payload:
         compact["diff"] = _trim_diff(str(payload.get("diff") or ""), max_chars=max_chars // 2)
 
@@ -1002,7 +813,9 @@ def _compact_structured_observation(
         artifactize_for_prompt=artifactize_for_prompt,
     )
     if artifactize_for_prompt:
-        compact["artifact_ref"] = _tool_observation_ref(tool_name=tool_name, tool_call_id=tool_call_id)
+        compact["artifact_ref"] = _tool_observation_ref(
+            tool_name=tool_name, tool_call_id=tool_call_id
+        )
         refs = _collect_artifact_like_refs(payload)
         if refs:
             compact["refs"] = refs[:6]
@@ -1025,7 +838,9 @@ def _compact_result_list(
             if artifactize_for_prompt and ref:
                 compact["ref"] = ref
                 compact_results.append(compact)
-                rendered = json.dumps(compact_results, ensure_ascii=False, separators=(",", ":"), default=str)
+                rendered = json.dumps(
+                    compact_results, ensure_ascii=False, separators=(",", ":"), default=str
+                )
                 if len(rendered) >= max_chars // 2:
                     break
                 continue
@@ -1111,74 +926,6 @@ def _structured_tool_summary(
     if artifactize_for_prompt:
         return "Structured tool output was compressed into an artifact-like prompt reference."
     return "Structured tool output was compressed for prompt budgeting."
-
-
-def _structured_tool_reference(
-    payload: dict[str, Any],
-    *,
-    tool_name: str,
-    max_chars: int,
-    artifactize_for_prompt: bool,
-) -> str:
-    details: list[str] = []
-    if tool_name == "search_code":
-        query = str(payload.get("query") or "").strip()
-        if query:
-            details.append(f"query={query}")
-        results = payload.get("results")
-        if isinstance(results, list):
-            details.append(f"hits={len(results)}")
-    elif tool_name == "read_file":
-        path = str(payload.get("path") or "").strip()
-        if path:
-            details.append(f"path={path}")
-        start_line = payload.get("start_line")
-        end_line = payload.get("end_line")
-        if start_line is not None and end_line is not None:
-            details.append(f"lines={start_line}-{end_line}")
-        total_lines = payload.get("total_lines")
-        if total_lines is not None:
-            details.append(f"total_lines={total_lines}")
-        sample_line = _first_nonempty_line(str(payload.get("content") or ""))
-        if sample_line:
-            details.append(f"sample={_collapse_inline(sample_line)[:120]}")
-    else:
-        for key in ("path", "url", "title", "query"):
-            value = str(payload.get(key) or "").strip()
-            if value:
-                details.append(f"{key}={value}")
-    if artifactize_for_prompt:
-        refs = _collect_artifact_like_refs(payload)
-        if refs:
-            details[:0] = [f"refs={', '.join(refs[:4])}"]
-    if not details:
-        details.append("original observation omitted from prompt body")
-    return _truncate_text("; ".join(details), max_chars=max_chars)
-
-
-def _format_textual_tool_reference(
-    text: str,
-    *,
-    tool_name: str,
-    tool_call_id: str,
-    max_chars: int,
-    reference_chars: int,
-) -> str:
-    collapsed = " ".join(text.split())
-    summary = f"{tool_name or 'tool'} trimmed."
-    reference_budget = max(18, min(max_chars // 3, reference_chars, 36))
-    reference = _truncate_text(collapsed, max_chars=reference_budget)
-    rendered = {
-        "summary": summary,
-        "reference": reference,
-        "truncated_by_context_policy": True,
-        "original_chars": len(text),
-    }
-    if tool_call_id or tool_name in {"search_code", "read_file"}:
-        rendered["tool"] = tool_name
-    if tool_call_id:
-        rendered["artifact_ref"] = _tool_observation_ref(tool_name=tool_name, tool_call_id=tool_call_id)
-    return json.dumps(rendered, ensure_ascii=False, separators=(",", ":"))
 
 
 def _truncate_json_payload(payload: Any, *, max_chars: int) -> str:
@@ -1320,7 +1067,9 @@ def _shrink_json_result_list(results: list[Any], *, max_chars: int) -> list[Any]
             compact_results.append(compact_item)
         else:
             compact_results.append(_collapse_inline(str(result))[:120])
-        rendered = json.dumps(compact_results, ensure_ascii=False, separators=(",", ":"), default=str)
+        rendered = json.dumps(
+            compact_results, ensure_ascii=False, separators=(",", ":"), default=str
+        )
         if len(rendered) > max_chars:
             if len(compact_results) == 1 and isinstance(result, dict):
                 slim_item: dict[str, Any] = {}
@@ -1330,7 +1079,9 @@ def _shrink_json_result_list(results: list[Any], *, max_chars: int) -> list[Any]
                     else:
                         slim_item[key] = value
                 compact_results[0] = slim_item
-                rendered = json.dumps(compact_results, ensure_ascii=False, separators=(",", ":"), default=str)
+                rendered = json.dumps(
+                    compact_results, ensure_ascii=False, separators=(",", ":"), default=str
+                )
                 if len(rendered) <= max_chars:
                     continue
             compact_results.pop()
@@ -1515,88 +1266,15 @@ def _finding_to_line(value: Any) -> str:
     return str(value)
 
 
-def _render_block_order(prompt_mode: PromptMode) -> list[str]:
-    if prompt_mode == PromptMode.SYNTHESIZE:
-        return [
-            "system_instructions",
-            "active_skills_block",
-            "memory_block",
-            "pinned_block",
-            "constraints_block",
-            "findings_block",
-            "summary_block",
-            "available_skills_block",
-            "artifact_block",
-        ]
-    return [
-        "system_instructions",
-        "active_skills_block",
-        "available_skills_block",
-        "memory_block",
-        "summary_block",
-        "pinned_block",
-        "constraints_block",
-        "findings_block",
-        "artifact_block",
-    ]
-
-
-def _current_plan_step_goal(state: dict[str, Any]) -> str:
-    plan = state.get("plan")
-    current_step_id = str(state.get("current_step_id") or "").strip()
-    if not current_step_id or plan is None:
-        return ""
-    for step in getattr(plan, "steps", []) or []:
-        if str(getattr(step, "id", "")) == current_step_id:
-            return str(getattr(step, "goal", "") or "").strip()
-    if isinstance(plan, dict):
-        for step in list(plan.get("steps", []) or []):
-            if str(step.get("id") or "") == current_step_id:
-                return str(step.get("goal") or "").strip()
-    return ""
-
-
-def _dedupe_text_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    if limit <= 0:
-        return []
-
-    deduped: dict[str, _PromptTextCandidate] = {}
-    for index, value in enumerate(lines):
-        line = str(value or "").strip()
-        if not line:
-            continue
-        candidate = _text_candidate(line, recency_order=index)
-        current = deduped.get(candidate.dedupe_key)
-        if current is None or _text_candidate_preference(candidate) > _text_candidate_preference(current):
-            deduped[candidate.dedupe_key] = candidate
-
-    selected = sorted(deduped.values(), key=_text_candidate_preference, reverse=True)
-    return [item.line for item in selected[:limit]]
-
-
-def _dedupe_preferring_reference(reference_lines: Iterable[str], candidate_lines: Iterable[str], *, limit: int) -> list[str]:
-    if limit <= 0:
-        return []
-
-    reference_keys = {
-        _text_candidate(str(line or "").strip(), recency_order=index).dedupe_key
-        for index, line in enumerate(reference_lines)
-        if str(line or "").strip()
-    }
-    filtered = [
-        str(line or "").strip()
-        for line in candidate_lines
-        if str(line or "").strip()
-        and _text_candidate(str(line or "").strip(), recency_order=0).dedupe_key not in reference_keys
-    ]
-    return _dedupe_text_lines(filtered, limit=limit)
-
-
 def _text_candidate(line: str, *, recency_order: int) -> _PromptTextCandidate:
     stripped = line.strip()
     source_stripped = _LINE_SOURCE_PREFIX_RE.sub("", stripped)
     artifact_key = _artifact_dedupe_key(source_stripped)
-    dedupe_key = artifact_key or _normalize_for_dedupe(_strip_line_metadata(source_stripped)) or _normalize_for_dedupe(stripped)
+    dedupe_key = (
+        artifact_key
+        or _normalize_for_dedupe(_strip_line_metadata(source_stripped))
+        or _normalize_for_dedupe(stripped)
+    )
     return _PromptTextCandidate(
         line=stripped,
         dedupe_key=dedupe_key or f"line:{recency_order}",
@@ -1738,7 +1416,9 @@ def _skill_system_block(*, has_available_skills: bool, has_active_skills: bool) 
     if has_active_skills:
         lines.append("- Active skills are attached below and should shape the current turn.")
     if has_available_skills:
-        lines.append("- Available skill prefixes are listed below for future turns and explicit activation.")
+        lines.append(
+            "- Available skill prefixes are listed below for future turns and explicit activation."
+        )
     return "\n".join(lines)
 
 
@@ -1746,124 +1426,6 @@ def _render_lines(title: str, lines: list[str]) -> str:
     if not lines:
         return f"## {title}\n(none)"
     return "## " + title + "\n" + "\n".join(f"- {line}" for line in lines)
-
-
-def _render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
-    shared_tail = ("available_skills_block",)
-    if prompt_mode == PromptMode.EXECUTE:
-        return (
-            "system_instructions",
-            "active_skills_block",
-            "constraints_block",
-            "findings_block",
-            "artifact_block",
-            "pinned_block",
-            "memory_block",
-            "summary_block",
-            *shared_tail,
-        )
-    if prompt_mode == PromptMode.SYNTHESIZE:
-        return (
-            "system_instructions",
-            "constraints_block",
-            "findings_block",
-            "pinned_block",
-            "memory_block",
-            "summary_block",
-            "active_skills_block",
-            "artifact_block",
-            *shared_tail,
-        )
-    if prompt_mode == PromptMode.BRANCH_REVIEW:
-        return (
-            "system_instructions",
-            "findings_block",
-            "artifact_block",
-            "constraints_block",
-            "pinned_block",
-            "memory_block",
-            "summary_block",
-            "active_skills_block",
-            *shared_tail,
-        )
-    return (
-        "system_instructions",
-        "active_skills_block",
-        "memory_block",
-        "constraints_block",
-        "pinned_block",
-        "findings_block",
-        "summary_block",
-        "artifact_block",
-        *shared_tail,
-    )
-
-
-def _dedupe_text_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    if limit <= 0:
-        return []
-
-    kept: list[str] = []
-    seen: set[str] = set()
-    for raw in reversed([str(line).strip() for line in lines if str(line).strip()]):
-        key = _text_line_dedupe_key(raw)
-        if key in seen:
-            continue
-        seen.add(key)
-        kept.append(raw)
-        if len(kept) >= limit:
-            break
-    kept.reverse()
-    return kept
-
-
-def _dedupe_finding_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_finding_line_dedupe_key, rank_fn=_finding_line_rank)
-
-
-def _dedupe_memory_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_memory_line_dedupe_key, rank_fn=_memory_line_rank)
-
-
-def _dedupe_artifact_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_artifact_line_dedupe_key, rank_fn=_artifact_line_rank)
-
-
-def _dedupe_preferring_reference(
-    reference_lines: Iterable[str],
-    candidate_lines: Iterable[str],
-    *,
-    limit: int,
-) -> list[str]:
-    if limit <= 0:
-        return []
-    reference_keys = {_finding_line_dedupe_key(line) for line in reference_lines if str(line).strip()}
-    filtered = [
-        str(line).strip()
-        for line in candidate_lines
-        if str(line).strip() and _finding_line_dedupe_key(str(line)) not in reference_keys
-    ]
-    return _dedupe_finding_lines(filtered, limit=limit)
-
-
-def _current_plan_step_goal(state: dict[str, Any]) -> str:
-    plan = state.get("plan")
-    if plan is None:
-        return ""
-    steps = getattr(plan, "steps", None)
-    if steps is None and isinstance(plan, dict):
-        steps = plan.get("steps")
-    if not isinstance(steps, list):
-        return ""
-    for step in steps:
-        done = getattr(step, "done", None)
-        goal = getattr(step, "goal", None)
-        if isinstance(step, dict):
-            done = step.get("done", done)
-            goal = step.get("goal", goal)
-        if not done and goal:
-            return str(goal).strip()
-    return ""
 
 
 def _context_block_header(block: str) -> str:
@@ -1928,11 +1490,26 @@ def _block_priority_map(prompt_mode: PromptMode) -> dict[str, int]:
         "available_skills": 5,
     }
     if prompt_mode == PromptMode.SYNTHESIZE:
-        return {**base, "constraints": 0, "imported_findings": 0, "findings": 0, "pinned": 1, "memory": 2, "summary": 4}
+        return {
+            **base,
+            "constraints": 0,
+            "imported_findings": 0,
+            "findings": 0,
+            "pinned": 1,
+            "memory": 2,
+            "summary": 4,
+        }
     if prompt_mode == PromptMode.BRANCH_REVIEW:
         return {**base, "branch_findings": 0, "findings": 0, "artifacts": 1, "constraints": 2}
     if prompt_mode == PromptMode.EXECUTE:
-        return {**base, "constraints": 0, "pinned": 1, "imported_findings": 1, "findings": 1, "artifacts": 2}
+        return {
+            **base,
+            "constraints": 0,
+            "pinned": 1,
+            "imported_findings": 1,
+            "findings": 1,
+            "artifacts": 2,
+        }
     return {**base, "constraints": 0, "findings": 1, "branch_findings": 1, "imported_findings": 1}
 
 
@@ -1950,7 +1527,9 @@ def _system_message_budget_units(text: str, *, budget: ContextBudget) -> int:
     blocks = _split_context_blocks(text)
     if not blocks:
         return _message_budget_units(SystemMessage(content=text), budget=budget)
-    return sum(_message_budget_units(SystemMessage(content=block), budget=budget) for block in blocks)
+    return sum(
+        _message_budget_units(SystemMessage(content=block), budget=budget) for block in blocks
+    )
 
 
 def _trim_message_tool_observation(message: AnyMessage, *, budget: ContextBudget) -> AnyMessage:
@@ -1990,183 +1569,6 @@ def _trim_message_tool_observation(message: AnyMessage, *, budget: ContextBudget
     return _copy_message_with_content(message, trimmed)
 
 
-def _truncate_bulleted_block(text: str, *, max_chars: int) -> str:
-    lines = [line.rstrip() for line in text.splitlines()]
-    if len(lines) < 2 or not lines[0].startswith("## "):
-        return ""
-
-    header = lines[0].strip()
-    bullets = [line.strip() for line in lines[1:] if line.strip()]
-    if not bullets or not any(line.startswith("- ") for line in bullets):
-        return ""
-
-    prioritized_bullets = list(bullets)
-    if header.casefold().startswith("## constraints and goals") and len(bullets) > 1:
-        prioritized_bullets = [bullets[0], bullets[-1], *bullets[1:-1]]
-
-    kept_lines = [header]
-    used = len(header)
-    omitted_count = 0
-    for bullet in prioritized_bullets:
-        extra = len(bullet) + 1
-        if used + extra > max_chars:
-            omitted_count += 1
-            continue
-        kept_lines.append(bullet)
-        used += extra
-
-    if len(kept_lines) == 1:
-        omitted_note = f"- ...[{len(bullets)} omitted]"
-        if len(header) + 1 + len(omitted_note) <= max_chars:
-            return "\n".join([header, omitted_note])
-        return header if len(header) <= max_chars else _truncate_block(header, max_chars=max_chars)
-
-    rendered = "\n".join(kept_lines)
-    if omitted_count:
-        note = f"\n- ...[{omitted_count} more omitted]"
-        if len(rendered) + len(note) <= max_chars:
-            rendered += note
-    return rendered
-
-
-def _artifact_line_dedupe_key(line: str) -> str:
-    text = str(line).strip()
-    match = _ARTIFACT_LINE_RE.match(text)
-    if match:
-        title = str(match.group("title") or "").strip()
-        kind = str(match.group("kind") or "").strip()
-        return _text_line_dedupe_key(f"{title} [{kind}]")
-    normalized = _ARTIFACT_URI_RE.sub("", text)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized.casefold()
-
-
-def _text_line_dedupe_key(line: str) -> str:
-    return " ".join(str(line).split()).casefold()
-
-
-def _dedupe_ranked_lines(
-    lines: Iterable[str],
-    *,
-    limit: int,
-    key_fn,
-    rank_fn,
-) -> list[str]:
-    if limit <= 0:
-        return []
-
-    selected: dict[str, tuple[tuple[Any, ...], str]] = {}
-    for recency_order, raw in enumerate(str(line).strip() for line in lines if str(line).strip()):
-        key = key_fn(raw)
-        rank = (*rank_fn(raw), recency_order)
-        current = selected.get(key)
-        if current is None or rank > current[0]:
-            selected[key] = (rank, raw)
-
-    ordered = sorted(selected.values(), key=lambda item: item[0], reverse=True)
-    return [line for _, line in ordered[:limit]][::-1]
-
-
-def _finding_line_dedupe_key(line: str) -> str:
-    normalized = _LINE_SOURCE_PREFIX_RE.sub("", str(line).strip())
-    normalized = _LINE_EVIDENCE_RE.sub("", normalized)
-    normalized = _LINE_CONFIDENCE_RE.sub("", normalized)
-    normalized = _LINE_SCORE_RE.sub("", normalized)
-    return _text_line_dedupe_key(normalized)
-
-
-def _memory_line_dedupe_key(line: str) -> str:
-    normalized = _LINE_SOURCE_PREFIX_RE.sub("", str(line).strip())
-    normalized = _LINE_SCORE_RE.sub("", normalized)
-    return _text_line_dedupe_key(normalized)
-
-
-def _artifact_line_dedupe_key(line: str) -> str:
-    normalized = _ARTIFACT_URI_RE.sub("", str(line).strip()).strip()
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized.casefold()
-
-
-def _finding_line_rank(line: str) -> tuple[int, float, int, int]:
-    text = str(line)
-    promoted = 1 if "main-doc" in text or "imported" in text or text.startswith("[root_thread") else 0
-    confidence = _extract_numeric(_LINE_CONFIDENCE_RE, text)
-    evidence_count = len(_LINE_EVIDENCE_RE.findall(text))
-    return promoted, confidence, evidence_count, len(text)
-
-
-def _memory_line_rank(line: str) -> tuple[int, float, int]:
-    text = str(line)
-    promoted = 1 if "root_thread/imported_conclusion" in text else 0
-    score = _extract_numeric(_LINE_SCORE_RE, text)
-    return promoted, score, len(text)
-
-
-def _artifact_line_rank(line: str) -> tuple[int, int, int]:
-    text = str(line)
-    has_uri = 1 if _ARTIFACT_URI_RE.search(text) else 0
-    return has_uri, len(text), 0
-
-
-def _extract_numeric(pattern: re.Pattern[str], text: str) -> float:
-    match = pattern.search(text)
-    if match is None:
-        return 0.0
-    try:
-        return float(match.group(1))
-    except (IndexError, ValueError):
-        return 0.0
-
-
-def _first_nonempty_line(text: str) -> str:
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return ""
-
-
-def _render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
-    return _render_block_order_helper(prompt_mode)
-
-
-def _dedupe_text_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    if limit <= 0:
-        return []
-
-    selected: dict[str, tuple[tuple[float, ...], str]] = {}
-    for recency_order, raw in enumerate(lines):
-        line = str(raw or "").strip()
-        if not line:
-            continue
-        key = _semantic_line_key(line) or f"line:{recency_order}"
-        rank = (*_line_preference(line), float(recency_order))
-        current = selected.get(key)
-        if current is None or rank > current[0]:
-            selected[key] = (rank, line)
-
-    ordered = sorted(selected.values(), key=lambda item: item[0], reverse=True)
-    return [line for _, line in ordered[:limit]]
-
-
-def _dedupe_preferring_reference(
-    preferred_lines: Iterable[str],
-    candidate_lines: Iterable[str],
-    *,
-    limit: int,
-) -> list[str]:
-    if limit <= 0:
-        return []
-    preferred_keys = {_semantic_line_key(line) for line in preferred_lines if str(line or "").strip()}
-    filtered = [
-        str(line or "").strip()
-        for line in candidate_lines
-        if str(line or "").strip()
-        and _semantic_line_key(str(line or "").strip()) not in preferred_keys
-    ]
-    return _dedupe_text_lines(filtered, limit=limit)
-
-
 def _semantic_line_key(line: str) -> str:
     normalized = _LINE_SOURCE_PREFIX_RE.sub("", str(line or "").strip())
     artifact_key = _artifact_dedupe_key(normalized)
@@ -2184,36 +1586,21 @@ def _line_preference(line: str) -> tuple[float, ...]:
     evidence_match = _LINE_EVIDENCE_RE.search(line)
     evidence_count = 0
     if evidence_match:
-        evidence_count = len([item.strip() for item in evidence_match.group(1).split(",") if item.strip()])
+        evidence_count = len(
+            [item.strip() for item in evidence_match.group(1).split(",") if item.strip()]
+        )
     return (
-        1.0 if "approved" in lowered or "主线" in lowered or "root_thread/imported_conclusion" in lowered else 0.0,
+        1.0
+        if "approved" in lowered
+        or "主线" in lowered
+        or "root_thread/imported_conclusion" in lowered
+        else 0.0,
         _extract_numeric(_LINE_CONFIDENCE_RE, line),
         float(evidence_count),
         _extract_numeric(_LINE_SCORE_RE, line),
         1.0 if _ARTIFACT_URI_RE.search(line) else 0.0,
         float(len(line)),
     )
-
-
-def _current_plan_step_goal(state: dict[str, Any]) -> str:
-    plan = state.get("plan")
-    current_step_id = str(state.get("current_step_id") or "").strip()
-    if not current_step_id or plan is None:
-        return ""
-    steps = getattr(plan, "steps", None)
-    if steps is None and isinstance(plan, dict):
-        steps = plan.get("steps")
-    if not isinstance(steps, list):
-        return ""
-    for step in steps:
-        step_id = getattr(step, "id", None)
-        step_goal = getattr(step, "goal", None)
-        if isinstance(step, dict):
-            step_id = step.get("id", step_id)
-            step_goal = step.get("goal", step_goal)
-        if str(step_id or "") == current_step_id:
-            return str(step_goal or "").strip()
-    return ""
 
 
 def _units_to_char_budget(units: int, *, budget: ContextBudget) -> int:
@@ -2246,7 +1633,12 @@ def trim_tool_observation(
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        if not artifactize_for_prompt and budget is None and max_chars is not None and not tool_name:
+        if (
+            not artifactize_for_prompt
+            and budget is None
+            and max_chars is not None
+            and not tool_name
+        ):
             return _truncate_text(text, max_chars=limit)
         rendered = _format_textual_tool_reference(
             text,
@@ -2356,7 +1748,9 @@ def _format_textual_tool_reference(
     if tool_call_id or tool_name in {"search_code", "read_file"}:
         payload["tool"] = tool_name or "tool"
     if tool_call_id:
-        payload["artifact_ref"] = _tool_observation_ref(tool_name=tool_name, tool_call_id=tool_call_id)
+        payload["artifact_ref"] = _tool_observation_ref(
+            tool_name=tool_name, tool_call_id=tool_call_id
+        )
     payload = {key: value for key, value in payload.items() if value is not None}
     return _truncate_json_payload(payload, max_chars=max_chars)
 
@@ -2388,7 +1782,11 @@ def _structured_tool_reference(
         if total_lines is not None:
             details.append(f"total_lines={total_lines}")
         sample_line = next(
-            (line.strip() for line in str(payload.get("content") or "").splitlines() if line.strip()),
+            (
+                line.strip()
+                for line in str(payload.get("content") or "").splitlines()
+                if line.strip()
+            ),
             "",
         )
         if sample_line:
@@ -2526,25 +1924,37 @@ def _extract_numeric(pattern: re.Pattern[str], text: str) -> float:
 
 
 def _dedupe_text_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_text_line_dedupe_key, rank_fn=lambda line: (len(line),))
+    return _dedupe_ranked_lines(
+        lines, limit=limit, key_fn=_text_line_dedupe_key, rank_fn=lambda line: (len(line),)
+    )
 
 
 def _dedupe_finding_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_finding_line_dedupe_key, rank_fn=_finding_line_rank)
+    return _dedupe_ranked_lines(
+        lines, limit=limit, key_fn=_finding_line_dedupe_key, rank_fn=_finding_line_rank
+    )
 
 
 def _dedupe_memory_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_memory_line_dedupe_key, rank_fn=_memory_line_rank)
+    return _dedupe_ranked_lines(
+        lines, limit=limit, key_fn=_memory_line_dedupe_key, rank_fn=_memory_line_rank
+    )
 
 
 def _dedupe_artifact_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(lines, limit=limit, key_fn=_artifact_line_dedupe_key, rank_fn=_artifact_line_rank)
+    return _dedupe_ranked_lines(
+        lines, limit=limit, key_fn=_artifact_line_dedupe_key, rank_fn=_artifact_line_rank
+    )
 
 
-def _dedupe_preferring_reference(reference_lines: Iterable[str], candidate_lines: Iterable[str], *, limit: int) -> list[str]:
+def _dedupe_preferring_reference(
+    reference_lines: Iterable[str], candidate_lines: Iterable[str], *, limit: int
+) -> list[str]:
     if limit <= 0:
         return []
-    reference_keys = {_finding_line_dedupe_key(line) for line in reference_lines if str(line).strip()}
+    reference_keys = {
+        _finding_line_dedupe_key(line) for line in reference_lines if str(line).strip()
+    }
     filtered = [
         str(line).strip()
         for line in candidate_lines

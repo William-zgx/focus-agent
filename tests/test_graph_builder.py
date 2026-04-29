@@ -9,18 +9,236 @@ from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
 from focus_agent.engine.graph_builder import (
     _classify_turn_tool_policy,
+    _canonicalize_tool_call_args,
     _count_tool_call_rounds_since_latest_human,
     _ensure_reasoning_content_for_tool_call_history,
     _fallback_answer_from_tool_results,
     _live_web_research_should_start_with_search,
     _looks_like_textual_tool_call_artifact,
     _messages_for_model,
+    _repair_and_dedupe_tool_calls,
     _repair_tool_free_answer_response,
     _should_force_tool_free_answer,
     _tool_policy_note,
     _tools_for_policy,
     build_graph,
 )
+
+
+def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="done")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    graph = build_graph(
+        settings=Settings(
+            plan_act_reflect_enabled=False,
+            agent_role_routing_enabled=True,
+            agent_delegation_enabled=True,
+            agent_delegation_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=()),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    delegation = result.value["agent_delegation_plan"]
+    assert delegation["execution_mode"] == "observe"
+    assert all(run["status"] == "planned" for run in delegation["runs"])
+    assert delegation["run_results"] == []
+
+
+def test_graph_delegation_fake_mode_updates_runs_and_artifacts(monkeypatch):
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="done")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    graph = build_graph(
+        settings=Settings(
+            plan_act_reflect_enabled=False,
+            agent_role_routing_enabled=True,
+            agent_delegation_enabled=True,
+            agent_delegation_execution_mode="fake",
+            agent_task_ledger_enabled=True,
+            agent_artifact_synthesis_enabled=True,
+        ),
+        tool_registry=ToolRegistry(tools=()),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    delegation = result.value["agent_delegation_plan"]
+    artifacts = result.value["delegated_artifacts"]
+    synthesis = result.value["artifact_synthesis_result"]
+
+    assert delegation["execution_mode"] == "fake"
+    assert any(run["status"] == "completed" for run in delegation["runs"])
+    assert any("fake delegated result" in artifact["title"] for artifact in artifacts)
+    assert synthesis["accepted_artifact_ids"]
+
+
+def test_graph_delegation_inline_mode_merges_completed_runs_and_artifacts(monkeypatch):
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="inline graph delegated result")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    graph = build_graph(
+        settings=Settings(
+            plan_act_reflect_enabled=False,
+            agent_role_routing_enabled=True,
+            agent_delegation_enabled=True,
+            agent_delegation_execution_mode="inline",
+            agent_task_ledger_enabled=True,
+            agent_artifact_synthesis_enabled=True,
+        ),
+        tool_registry=ToolRegistry(tools=()),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    delegation = result.value["agent_delegation_plan"]
+    artifacts = result.value["delegated_artifacts"]
+
+    assert delegation["execution_mode"] == "inline"
+    assert delegation["run_results"]
+    assert any(run["status"] == "completed" for run in delegation["runs"])
+    assert not any(run["status"] == "skipped" for run in delegation["runs"])
+    assert not any("not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"])
+    assert any("inline graph delegated result" in artifact["summary"] for artifact in artifacts)
+
+
+def test_graph_delegation_background_mode_merges_completed_runs_and_artifacts(monkeypatch):
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="background graph delegated result")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    graph = build_graph(
+        settings=Settings(
+            plan_act_reflect_enabled=False,
+            agent_role_routing_enabled=True,
+            agent_delegation_enabled=True,
+            agent_delegation_execution_mode="background",
+            agent_role_max_parallel_runs=2,
+            agent_task_ledger_enabled=True,
+            agent_artifact_synthesis_enabled=True,
+        ),
+        tool_registry=ToolRegistry(tools=()),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    delegation = result.value["agent_delegation_plan"]
+    artifacts = result.value["delegated_artifacts"]
+
+    assert delegation["execution_mode"] == "background"
+    assert delegation["run_results"]
+    assert any(run["status"] == "completed" for run in delegation["runs"])
+    assert not any(run["status"] == "skipped" for run in delegation["runs"])
+    assert not any("not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"])
+    assert any("background graph delegated result" in artifact["summary"] for artifact in artifacts)
+
+def test_tool_call_repair_canonicalizes_args_and_dedupes_identical_calls():
+    assert _canonicalize_tool_call_args('{"query":"focus"}') == {"query": "focus"}
+    assert _canonicalize_tool_call_args("not-json") == {"_raw_args": "not-json"}
+
+    message = AIMessage(
+        content="",
+        tool_calls=[
+            {"id": "call-a", "name": "search_code", "args": {"query": "focus"}},
+            {"id": "call-b", "name": "search_code", "args": {"query": "focus"}},
+            {"id": "call-c", "name": "read_file", "args": {"path": "src/app.py"}},
+        ],
+    )
+
+    repaired = _repair_and_dedupe_tool_calls(message)
+
+    assert isinstance(repaired, AIMessage)
+    assert [call["id"] for call in repaired.tool_calls] == ["call-a", "call-c"]
+    assert [call["name"] for call in repaired.tool_calls] == ["search_code", "read_file"]
 
 
 def test_execution_policy_note_guards_branch_action_claims():

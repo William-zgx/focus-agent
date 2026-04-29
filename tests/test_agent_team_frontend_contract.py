@@ -159,6 +159,23 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         {"latest_merge_bundle", "merge_decision"},
     )
 
+    _assert_interface_has_fields(
+        _interface_body(sdk_types, "FocusAgentAgentTeamTask"),
+        {"agent_run_id", "delegated_task_id", "artifact_ids", "execution_status"},
+    )
+    _assert_interface_has_fields(
+        _interface_body(web_types, "AgentTeamTask"),
+        {"agent_run_id", "delegated_task_id", "artifact_ids", "execution_status"},
+    )
+    _assert_interface_has_fields(
+        _interface_body(sdk_types, "FocusAgentAgentTeamMergeBundle"),
+        {"execution_evidence"},
+    )
+    _assert_interface_has_fields(
+        _interface_body(web_types, "AgentTeamMergeBundle"),
+        {"execution_evidence"},
+    )
+
     assert set(AgentTeamSessionListResponse.model_fields) == {"sessions", "items", "count"}
     assert set(AgentTeamTaskListResponse.model_fields) == {"tasks", "items", "count"}
     assert set(AgentTeamMergeBundleResponse.model_fields) == {"bundle"}

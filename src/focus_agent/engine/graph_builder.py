@@ -10,6 +10,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
+from .model_factory import GraphModelFactory
+from ..agent_execution import (
+    SubagentRegistry,
+    executor_for_mode,
+    run_delegated_tasks,
+)
 from ..agent_roles import build_role_route_plan
 from ..agent_delegation import (
     build_agent_delegation_plan,
@@ -51,24 +57,7 @@ from ..memory import (
     MemoryWriter,
     render_memory_block,
 )
-from ..model_registry import create_chat_model
-from .graph_messages import (
-    collect_tool_names_since_latest_human as _graph_messages_collect_tool_names_since_latest_human,
-    collapse_unanswered_trailing_humans as _graph_messages_collapse_unanswered_trailing_humans,
-    count_tool_call_rounds_since_latest_human as _graph_messages_count_tool_call_rounds_since_latest_human,
-    ensure_reasoning_content_for_tool_call_history as _graph_messages_ensure_reasoning_content_for_tool_call_history,
-    find_trailing_tool_span_start as _graph_messages_find_trailing_tool_span_start,
-    has_tool_calls as _graph_messages_has_tool_calls,
-    latest_final_ai_text as _graph_messages_latest_final_ai_text,
-    latest_human_message_text as _graph_messages_latest_human_message_text,
-    latest_turn_messages as _graph_messages_latest_turn_messages,
-    message_text as _graph_messages_message_text,
-    messages_for_model as _graph_messages_messages_for_model,
-    sanitize_assistant_tool_call_message as _graph_messages_sanitize_assistant_tool_call_message,
-    should_force_tool_free_answer as _graph_messages_should_force_tool_free_answer,
-    stringify_message_block as _graph_messages_stringify_message_block,
-    thinking_mode_requires_reasoning_content as _graph_messages_thinking_mode_requires_reasoning_content,
-)
+from ..model_registry import create_chat_model, default_thinking_enabled, supports_thinking_mode
 from ..skills import SkillRegistry
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
@@ -85,9 +74,7 @@ _WORKSPACE_TOOL_NOTE = (
     "For symbol, function, tool, definition, usage, or location lookups, prefer search_code first with the "
     "most specific query. Use list_files first only when the user asks to browse or enumerate files."
 )
-_LIVE_WEB_TOOL_NOTE = (
-    "This turn may use live web/time tools when needed. Do not inspect local project files unless the user asks."
-)
+_LIVE_WEB_TOOL_NOTE = "This turn may use live web/time tools when needed. Do not inspect local project files unless the user asks."
 _BRANCH_ACTION_GUARD_NOTE = (
     "Branch management is executed only through structured Branch Action confirmations. "
     "If the user asks to switch, fork, open, archive, or merge branches, do not claim the branch was created, "
@@ -136,6 +123,19 @@ _WORKSPACE_TOOL_NAMES = frozenset(
     }
 )
 _LIVE_WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch", "current_utc_time"})
+_REASONING_MESSAGE_BLOCK_TYPES = frozenset(
+    {
+        "reasoning",
+        "reasoning_delta",
+        "reasoning_content",
+        "reasoningcontent",
+        "thinking",
+        "thinking_delta",
+    }
+)
+_TOOL_MESSAGE_BLOCK_TYPES = frozenset(
+    {"tool_call", "tool_call_chunk", "server_tool_call", "server_tool_call_chunk"}
+)
 
 _NO_TOOL_INTENT_MARKERS = (
     "不要联网",
@@ -333,42 +333,146 @@ _EXECUTION_INTENT_MARKERS = (
 
 
 def _has_tool_calls(message: Any) -> bool:
-    return _graph_messages_has_tool_calls(message)
+    return bool(getattr(message, "tool_calls", None))
 
 
 def _find_trailing_tool_span_start(messages: list[Any]) -> int | None:
-    return _graph_messages_find_trailing_tool_span_start(messages)
+    if not messages:
+        return None
+
+    index = len(messages) - 1
+    while index >= 0 and isinstance(messages[index], ToolMessage):
+        index -= 1
+
+    if index < 0:
+        return None
+    if _has_tool_calls(messages[index]):
+        return index
+    return None
 
 
 def _collapse_unanswered_trailing_humans(messages: list[Any]) -> list[Any]:
-    return _graph_messages_collapse_unanswered_trailing_humans(messages)
+    if len(messages) < 2:
+        return messages
+
+    tail_start = len(messages)
+    index = len(messages) - 1
+    while index >= 0 and isinstance(messages[index], HumanMessage):
+        tail_start = index
+        index -= 1
+
+    trailing_human_count = len(messages) - tail_start
+    if trailing_human_count <= 1:
+        return messages
+    return [*messages[:tail_start], messages[-1]]
 
 
 def _messages_for_model(state: AgentState) -> list[Any]:
-    return _graph_messages_messages_for_model(state)
+    recent_messages = list(state.get("recent_messages") or [])
+    messages = list(state.get("messages", []) or [])
+    trailing_tool_span_start = _find_trailing_tool_span_start(messages)
+    if trailing_tool_span_start is None:
+        selected = _collapse_unanswered_trailing_humans(recent_messages or messages)
+    else:
+        selected = _collapse_unanswered_trailing_humans(
+            [*recent_messages, *messages[trailing_tool_span_start:]]
+        )
+    return [_sanitize_assistant_tool_call_message(message) for message in selected]
 
 
 def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
-    return _graph_messages_count_tool_call_rounds_since_latest_human(messages)
+    rounds = 0
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None):
+            rounds += 1
+    return rounds
 
 
 def _should_force_tool_free_answer(messages: list[Any]) -> bool:
-    return _graph_messages_should_force_tool_free_answer(
-        messages,
-        max_rounds=_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS,
-    )
+    if not messages or not isinstance(messages[-1], ToolMessage):
+        return False
+    return _count_tool_call_rounds_since_latest_human(messages) >= _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS
 
 
 def _message_text(message: Any) -> str:
-    return _graph_messages_message_text(message)
+    content = getattr(message, "content", "")
+    if isinstance(content, list):
+        return json.dumps(content, ensure_ascii=False)
+    return str(content)
 
 
 def _stringify_message_block(value: Any) -> str:
-    return _graph_messages_stringify_message_block(value)
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        return "".join(_stringify_message_block(item) for item in value)
+    if isinstance(value, dict):
+        for key in (
+            "text",
+            "content",
+            "value",
+            "reasoning_content",
+            "reasoningcontent",
+            "reasoning",
+            "summary",
+        ):
+            if value.get(key) is not None:
+                return _stringify_message_block(value[key])
+        return ""
+    return str(value)
 
 
 def _sanitize_assistant_tool_call_message(message: Any) -> Any:
-    return _graph_messages_sanitize_assistant_tool_call_message(message)
+    if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
+        return message
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return message
+
+    visible_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            if block.strip():
+                visible_parts.append(block)
+            continue
+        if not isinstance(block, dict):
+            text = _stringify_message_block(block).strip()
+            if text:
+                visible_parts.append(text)
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        if block_type in _REASONING_MESSAGE_BLOCK_TYPES:
+            text = _stringify_message_block(block).strip()
+            if text:
+                reasoning_parts.append(text)
+            continue
+        if block_type in _TOOL_MESSAGE_BLOCK_TYPES:
+            continue
+        text = _stringify_message_block(block).strip()
+        if text:
+            visible_parts.append(text)
+
+    additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
+    if reasoning_parts and not additional_kwargs.get("reasoning_content"):
+        additional_kwargs["reasoning_content"] = "".join(reasoning_parts)
+
+    return AIMessage(
+        content="".join(visible_parts).strip(),
+        additional_kwargs=additional_kwargs,
+        response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
+        name=getattr(message, "name", None),
+        id=getattr(message, "id", None),
+        tool_calls=list(getattr(message, "tool_calls", []) or []),
+        invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
+        usage_metadata=getattr(message, "usage_metadata", None),
+    )
 
 
 def _thinking_mode_requires_reasoning_content(
@@ -377,11 +481,12 @@ def _thinking_mode_requires_reasoning_content(
     thinking_mode: str,
     settings: Settings,
 ) -> bool:
-    return _graph_messages_thinking_mode_requires_reasoning_content(
-        model_id=model_id,
-        thinking_mode=thinking_mode,
-        settings=settings,
-    )
+    normalized = str(thinking_mode or "").strip().lower()
+    if normalized == "disabled":
+        return False
+    if normalized == "enabled":
+        return supports_thinking_mode(model_id, settings=settings)
+    return default_thinking_enabled(model_id, settings=settings)
 
 
 def _ensure_reasoning_content_for_tool_call_history(
@@ -391,12 +496,40 @@ def _ensure_reasoning_content_for_tool_call_history(
     thinking_mode: str,
     settings: Settings,
 ) -> list[Any]:
-    return _graph_messages_ensure_reasoning_content_for_tool_call_history(
-        messages,
+    if not _thinking_mode_requires_reasoning_content(
         model_id=model_id,
         thinking_mode=thinking_mode,
         settings=settings,
-    )
+    ):
+        return messages
+
+    fixed: list[Any] = []
+    for message in messages:
+        if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
+            fixed.append(message)
+            continue
+
+        additional_kwargs = dict(getattr(message, "additional_kwargs", {}) or {})
+        if _stringify_message_block(additional_kwargs.get("reasoning_content")).strip():
+            fixed.append(message)
+            continue
+
+        additional_kwargs["reasoning_content"] = (
+            "Tool-call reasoning was preserved for the provider protocol."
+        )
+        fixed.append(
+            AIMessage(
+                content=getattr(message, "content", ""),
+                additional_kwargs=additional_kwargs,
+                response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
+                name=getattr(message, "name", None),
+                id=getattr(message, "id", None),
+                tool_calls=list(getattr(message, "tool_calls", []) or []),
+                invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
+                usage_metadata=getattr(message, "usage_metadata", None),
+            )
+        )
+    return fixed
 
 
 def _known_tool_names(available_tools: list[Any] | tuple[Any, ...] | None = None) -> set[str]:
@@ -405,6 +538,74 @@ def _known_tool_names(available_tools: list[Any] | tuple[Any, ...] | None = None
         for tool in available_tools or []
         if str(getattr(tool, "name", "")).strip()
     }
+
+
+def _canonicalize_tool_call_args(args: Any) -> dict[str, Any]:
+    if isinstance(args, dict):
+        return dict(args)
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except json.JSONDecodeError:
+            return {"_raw_args": args}
+        if isinstance(parsed, dict):
+            return parsed
+        return {"_raw_args": parsed}
+    if args is None:
+        return {}
+    return {"_raw_args": args}
+
+
+def _tool_call_signature(tool_call: dict[str, Any]) -> str:
+    args_json = json.dumps(
+        _canonicalize_tool_call_args(tool_call.get("args")),
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+    return f"{str(tool_call.get('name') or '').strip()}:{args_json}"
+
+
+def _repair_and_dedupe_tool_calls(message: Any) -> Any:
+    if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
+        return message
+
+    repaired_calls: list[dict[str, Any]] = []
+    seen_signatures: set[str] = set()
+    changed = False
+    for index, raw_call in enumerate(getattr(message, "tool_calls", []) or []):
+        if not isinstance(raw_call, dict):
+            changed = True
+            continue
+        name = str(raw_call.get("name") or "").strip()
+        if not name:
+            changed = True
+            continue
+        args = _canonicalize_tool_call_args(raw_call.get("args"))
+        call_id = str(raw_call.get("id") or "").strip() or f"repaired-tool-call-{index + 1}"
+        repaired = {"id": call_id, "name": name, "args": args}
+        signature = _tool_call_signature(repaired)
+        if signature in seen_signatures:
+            changed = True
+            continue
+        seen_signatures.add(signature)
+        if repaired != raw_call:
+            changed = True
+        repaired_calls.append(repaired)
+
+    if not changed:
+        return message
+
+    return AIMessage(
+        content=getattr(message, "content", ""),
+        additional_kwargs=dict(getattr(message, "additional_kwargs", {}) or {}),
+        response_metadata=dict(getattr(message, "response_metadata", {}) or {}),
+        name=getattr(message, "name", None),
+        id=getattr(message, "id", None),
+        tool_calls=repaired_calls,
+        invalid_tool_calls=list(getattr(message, "invalid_tool_calls", []) or []),
+        usage_metadata=getattr(message, "usage_metadata", None),
+    )
 
 
 def _looks_like_textual_tool_call_artifact(
@@ -419,11 +620,17 @@ def _looks_like_textual_tool_call_artifact(
 
 
 def _latest_human_message_text(messages: list[Any]) -> str:
-    return _graph_messages_latest_human_message_text(messages)
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return _message_text(message)
+    return ""
 
 
 def _latest_final_ai_text(messages: list[Any]) -> str:
-    return _graph_messages_latest_final_ai_text(messages)
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
+            return _message_text(message)
+    return ""
 
 
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
@@ -457,9 +664,8 @@ def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = 
     if policy == "workspace_lookup":
         allowed_names = _WORKSPACE_TOOL_NAMES
         normalized = " ".join(latest_user.strip().split())
-        if (
-            _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS)
-            and not _contains_any(normalized, _FILE_BROWSE_INTENT_MARKERS)
+        if _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS) and not _contains_any(
+            normalized, _FILE_BROWSE_INTENT_MARKERS
         ):
             allowed_names = frozenset({"search_code", "read_file"})
         return [tool for tool in tools if getattr(tool, "name", "") in allowed_names]
@@ -468,7 +674,9 @@ def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = 
     return list(tools)
 
 
-def _workspace_lookup_should_start_with_search(text: str, messages: list[Any], tools: list[Any]) -> bool:
+def _workspace_lookup_should_start_with_search(
+    text: str, messages: list[Any], tools: list[Any]
+) -> bool:
     normalized = " ".join(text.strip().split())
     if not normalized:
         return False
@@ -482,7 +690,9 @@ def _workspace_lookup_should_start_with_search(text: str, messages: list[Any], t
     )
 
 
-def _live_web_research_should_start_with_search(text: str, messages: list[Any], tools: list[Any]) -> bool:
+def _live_web_research_should_start_with_search(
+    text: str, messages: list[Any], tools: list[Any]
+) -> bool:
     normalized = " ".join(text.strip().split())
     if not normalized:
         return False
@@ -539,7 +749,10 @@ def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
 
 
 def _latest_turn_messages(messages: list[Any]) -> list[Any]:
-    return _graph_messages_latest_turn_messages(messages)
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return messages[index:]
+    return messages
 
 
 def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -591,7 +804,9 @@ def _tool_observation_summary(payload: Any, raw: str) -> str:
             if isinstance(result, dict):
                 title = str(result.get("title") or "").strip()
                 url = str(result.get("url") or result.get("ref") or "").strip()
-                content = str(result.get("content") or result.get("snippet") or result.get("line") or "").strip()
+                content = str(
+                    result.get("content") or result.get("snippet") or result.get("line") or ""
+                ).strip()
                 return _truncate_inline(" ".join(part for part in (title, url, content) if part))
     return _truncate_inline(raw)
 
@@ -667,7 +882,9 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
                         url = str(result.get("url") or "").strip()
                         ref = str(result.get("ref") or "").strip()
                         content = str(result.get("content") or result.get("snippet") or "").strip()
-                        result_summary = " ".join(part for part in [title, url or ref, content] if part)
+                        result_summary = " ".join(
+                            part for part in [title, url or ref, content] if part
+                        )
                         if result_summary:
                             snippets.append(f"- {_truncate_inline(result_summary)}")
             path = payload.get("path")
@@ -690,7 +907,9 @@ def _tool_result_synthesis_prompt(source_messages: list[Any]) -> list[Any]:
     digest = "\n".join(snippets[:12]) or _TOOL_CALL_REPAIR_FALLBACK_TEXT
     return [
         SystemMessage(content=_TOOL_RESULT_SYNTHESIS_NOTE),
-        HumanMessage(content=f"用户问题：{latest_user}\n\n本轮工具轨迹与工具结果：\n{digest}\n\n请直接给出最终答复。"),
+        HumanMessage(
+            content=f"用户问题：{latest_user}\n\n本轮工具轨迹与工具结果：\n{digest}\n\n请直接给出最终答复。"
+        ),
     ]
 
 
@@ -921,9 +1140,7 @@ def _format_plan_block(plan: Plan, current_step_id: str) -> str:
         if step.note:
             line += f"  // {step.note}"
         lines.append(line)
-    lines.append(
-        "完成当前步骤后，如仍需工具请继续调用；若已可给出最终答复，直接用自然语言回答。"
-    )
+    lines.append("完成当前步骤后，如仍需工具请继续调用；若已可给出最终答复，直接用自然语言回答。")
     return "\n".join(lines)
 
 
@@ -996,7 +1213,17 @@ def _parse_reflection_json(text: str) -> ReflectionVerdict | None:
 
 
 def _collect_tool_names_since_latest_human(messages: list[Any]) -> list[str]:
-    return _graph_messages_collect_tool_names_since_latest_human(messages)
+    names: list[str] = []
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, AIMessage):
+            for call in getattr(message, "tool_calls", None) or []:
+                name = call.get("name") if isinstance(call, dict) else None
+                if name:
+                    names.append(str(name))
+    names.reverse()
+    return names
 
 
 def _resolve_prompt_mode(state: AgentState) -> PromptMode:
@@ -1035,50 +1262,31 @@ def build_graph(
     tools = list(effective_tool_registry.tools)
     tools_by_name = effective_tool_registry.by_name
     tool_runtime_by_name = effective_tool_registry.runtime_by_name
-    effective_memory_policy = memory_policy or getattr(memory_retriever, "policy", None) or MemoryPolicy()
-    effective_memory_retriever = memory_retriever or MemoryRetriever(store=store, policy=effective_memory_policy)
-    effective_memory_writer = memory_writer or MemoryWriter(store=store, policy=effective_memory_policy)
+    effective_memory_policy = (
+        memory_policy or getattr(memory_retriever, "policy", None) or MemoryPolicy()
+    )
+    effective_memory_retriever = memory_retriever or MemoryRetriever(
+        store=store, policy=effective_memory_policy
+    )
+    effective_memory_writer = memory_writer or MemoryWriter(
+        store=store, policy=effective_memory_policy
+    )
     effective_memory_extractor = memory_extractor or MemoryExtractor()
-    base_model_cache: dict[str, Any] = {}
-    model_cache: dict[str, Any] = {}
-    model_with_tools_cache: dict[str, Any] = {}
+    model_factory = GraphModelFactory(settings=settings, chat_model_factory=create_chat_model)
     tool_result_cache = ToolResultCacheStore()
 
-    def base_model_for(model_id: str, thinking_mode: str):
-        cache_key = f"{model_id}|{thinking_mode or ''}"
-        cached = base_model_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        model = create_chat_model(
-            model_id,
-            temperature=settings.temperature,
-            thinking_mode=thinking_mode or None,
-            settings=settings,
-        )
-        base_model_cache[cache_key] = model
-        return model
-
     def model_for(model_id: str, thinking_mode: str):
-        cache_key = f"{model_id}|{thinking_mode or ''}"
-        cached = model_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        model = base_model_for(model_id, thinking_mode).with_config({"run_name": "focus_agent_model"})
-        model_cache[cache_key] = model
-        return model
+        return model_factory.model_for(model_id, thinking_mode)
 
-    def model_with_tools_for(model_id: str, thinking_mode: str, available_tools: list[Any] | None = None):
-        selected_tools = list(tools if available_tools is None else available_tools)
-        tool_key = ",".join(sorted(str(getattr(tool, "name", "")) for tool in selected_tools))
-        cache_key = f"{model_id}|{thinking_mode or ''}|{tool_key}"
-        cached = model_with_tools_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        bound = base_model_for(model_id, thinking_mode).bind_tools(selected_tools).with_config(
-            {"run_name": "focus_agent_model"}
+    def model_with_tools_for(
+        model_id: str, thinking_mode: str, available_tools: list[Any] | None = None
+    ):
+        return model_factory.model_with_tools_for(
+            model_id,
+            thinking_mode,
+            default_tools=tools,
+            available_tools=available_tools,
         )
-        model_with_tools_cache[cache_key] = bound
-        return bound
 
     def bootstrap_turn(state: AgentState) -> dict[str, Any]:
         return {"llm_calls": state.get("llm_calls", 0)}
@@ -1205,10 +1413,37 @@ def build_graph(
                 role_route_plan=state.get("role_route_plan"),
                 available_tool_names=available_tool_names,
                 tool_policy=tool_policy,
-            ).model_dump(mode="json")
-            updates["agent_delegation_plan"] = delegation_plan
-            updates["agent_runs"] = list(delegation_plan.get("runs") or [])
-            meta["agent_delegation_plan"] = delegation_plan
+            )
+            execution_mode = str(delegation_plan.execution_mode)
+            executor = executor_for_mode(
+                delegation_plan.execution_mode,
+                model_factory=create_chat_model,
+                settings=settings,
+            )
+            run_results = run_delegated_tasks(
+                tasks=list(delegation_plan.tasks),
+                registry=SubagentRegistry.from_settings(
+                    settings,
+                    context_refs=list(state.get("context_artifact_refs") or []),
+                ),
+                executor=executor,
+                max_parallel_runs=delegation_plan.max_parallel_runs,
+            )
+            if run_results:
+                results_by_task = {result.task_id: result for result in run_results}
+                merged_runs = [
+                    results_by_task.get(run.task_id, None).to_agent_run()
+                    if run.task_id in results_by_task
+                    else run
+                    for run in delegation_plan.runs
+                ]
+                delegation_plan = delegation_plan.model_copy(update={"runs": merged_runs})
+            delegation_dump = delegation_plan.model_dump(mode="json")
+            delegation_dump["run_results"] = [item.model_dump(mode="json") for item in run_results]
+            updates["agent_delegation_plan"] = delegation_dump
+            updates["agent_runs"] = list(delegation_dump.get("runs") or [])
+            meta["agent_delegation_plan"] = delegation_dump
+            meta["agent_delegation_execution_mode"] = execution_mode
         if settings.agent_model_router_enabled:
             role = infer_tool_router_role(state.get("role_route_plan"))
             decision = build_model_route_decision(
@@ -1222,9 +1457,13 @@ def build_graph(
             updates["model_route_decision"] = decision
             meta["model_route_decision"] = decision
             if decision.get("enabled") and decision.get("mode") == "enforce":
-                updates["selected_model"] = str(decision.get("effective_model") or state.get("selected_model") or settings.model)
+                updates["selected_model"] = str(
+                    decision.get("effective_model") or state.get("selected_model") or settings.model
+                )
         if settings.agent_task_ledger_enabled:
-            delegation_plan = updates.get("agent_delegation_plan") or state.get("agent_delegation_plan") or {}
+            delegation_plan = (
+                updates.get("agent_delegation_plan") or state.get("agent_delegation_plan") or {}
+            )
             ledger = build_agent_task_ledger(
                 settings=settings,
                 delegation_plan=delegation_plan,
@@ -1296,7 +1535,9 @@ def build_graph(
             selected_model = str(model_route_decision.get("effective_model"))
         else:
             selected_model = str(state.get("selected_model") or settings.model)
-        task_brief = str(state.get("task_brief") or _latest_human_message_text(state.get("messages", [])))
+        task_brief = str(
+            state.get("task_brief") or _latest_human_message_text(state.get("messages", []))
+        )
         tool_names = [t.name for t in tools][:20]
         prior_reflection = state.get("reflection")
         replan_count = 0
@@ -1307,8 +1548,8 @@ def build_graph(
         system = SystemMessage(
             content=(
                 "你是一个任务规划器。阅读用户请求，输出一个紧凑、可验证的执行计划。"
-                "必须返回 JSON，字段为 {\"steps\": [{\"id\": \"s1\", \"goal\": \"...\", "
-                "\"expected_tools\": [\"tool_name\"]}], \"success_criteria\": \"...\"}。"
+                '必须返回 JSON，字段为 {"steps": [{"id": "s1", "goal": "...", '
+                '"expected_tools": ["tool_name"]}], "success_criteria": "..."}。'
                 "要求：2-5 步；success_criteria 必须客观可判断（禁止写‘充分’‘合理’这类模糊词）；"
                 "只规划不执行；不要返回其它字段。"
             )
@@ -1322,7 +1563,9 @@ def build_graph(
         try:
             response = model_for(selected_model, "").invoke([system, user])
             raw_text = _message_text(response)
-            plan = _parse_plan_json(raw_text, created_at_call=state.get("llm_calls", 0), replan_count=replan_count)
+            plan = _parse_plan_json(
+                raw_text, created_at_call=state.get("llm_calls", 0), replan_count=replan_count
+            )
         except Exception:  # noqa: BLE001
             plan = None
 
@@ -1370,12 +1613,14 @@ def build_graph(
 
         selected_model = str(state.get("selected_model") or settings.model)
         last_ai = _latest_final_ai_text(state.get("messages", []))
-        trajectory_tools = _collect_tool_names_since_latest_human(list(state.get("messages", []) or []))
+        trajectory_tools = _collect_tool_names_since_latest_human(
+            list(state.get("messages", []) or [])
+        )
 
         system = SystemMessage(
             content=(
                 "你是一个严格的计划审计员。判断最终答复是否满足 success_criteria。"
-                "必须返回 JSON: {\"status\": \"done\"|\"replan\", \"reasoning\": \"...\", \"missing\": [\"...\"]}。"
+                '必须返回 JSON: {"status": "done"|"replan", "reasoning": "...", "missing": ["..."]}。'
                 "只在确实存在未覆盖的子目标时选 replan，否则选 done。"
             )
         )
@@ -1395,7 +1640,9 @@ def build_graph(
             verdict = None
 
         if verdict is None:
-            verdict = ReflectionVerdict(status="done", reasoning="reflect parse failed; defaulting done")
+            verdict = ReflectionVerdict(
+                status="done", reasoning="reflect parse failed; defaulting done"
+            )
 
         meta = {
             **(state.get("plan_meta") or {}),
@@ -1405,7 +1652,9 @@ def build_graph(
             meta["replan_requested"] = True
             meta["replanned"] = True
         else:
-            verdict = ReflectionVerdict(status="done", reasoning=verdict.reasoning, missing=verdict.missing)
+            verdict = ReflectionVerdict(
+                status="done", reasoning=verdict.reasoning, missing=verdict.missing
+            )
             meta["replan_requested"] = False
         return {
             "reflection": verdict,
@@ -1443,9 +1692,7 @@ def build_graph(
             if settings.agent_tool_router_enforce:
                 allowed = set(tool_route_plan.allowed_tools)
                 available_tools = [
-                    tool
-                    for tool in available_tools
-                    if str(getattr(tool, "name", "")) in allowed
+                    tool for tool in available_tools if str(getattr(tool, "name", "")) in allowed
                 ]
         known_names = _known_tool_names(available_tools)
         tool_protocol_repair_count = 0
@@ -1458,7 +1705,11 @@ def build_graph(
                 assembled = f"{assembled}\n\n{plan_block}".strip()
         prompt_messages = [SystemMessage(content=assembled), *messages]
         if policy_note:
-            prompt_messages = [prompt_messages[0], SystemMessage(content=policy_note), *prompt_messages[1:]]
+            prompt_messages = [
+                prompt_messages[0],
+                SystemMessage(content=policy_note),
+                *prompt_messages[1:],
+            ]
         prompt_messages = apply_prompt_budget_guard(prompt_messages, budget=context_budget)
         prompt_messages = _ensure_reasoning_content_for_tool_call_history(
             prompt_messages,
@@ -1569,6 +1820,7 @@ def build_graph(
                 model_for=model_for,
                 model_with_tools_for=model_with_tools_for,
             )
+        response = _repair_and_dedupe_tool_calls(response)
         updates: dict[str, Any] = {
             "messages": [response],
             "llm_calls": state.get("llm_calls", 0) + 1,
@@ -1599,7 +1851,9 @@ def build_graph(
                         memory_curator_decision=state.get("memory_curator_decision"),
                         tool_route_plan=dumped,
                         model_route_decision=state.get("model_route_decision"),
-                        agent_failure_records=updates.get("agent_failure_records") or state.get("agent_failure_records") or [],
+                        agent_failure_records=updates.get("agent_failure_records")
+                        or state.get("agent_failure_records")
+                        or [],
                     )
                 ]
                 updates["agent_review_queue"] = review_items
@@ -1634,7 +1888,9 @@ def build_graph(
         root_thread_id = runtime.context.root_thread_id
         if runtime.context.branch_id and not branch_id:
             branch_id = runtime.context.branch_id
-        turn_index = sum(1 for message in state.get("messages", []) if isinstance(message, HumanMessage))
+        turn_index = sum(
+            1 for message in state.get("messages", []) if isinstance(message, HumanMessage)
+        )
         turn_scope_key = build_cache_scope_key(
             scope="turn",
             root_thread_id=root_thread_id,
@@ -1645,34 +1901,59 @@ def build_graph(
         cache_scope_keys: dict[int, str] = {}
         invalidation_scope_keys = [
             turn_scope_key,
-            build_cache_scope_key(scope="thread", root_thread_id=root_thread_id, branch_id=branch_id),
-            build_cache_scope_key(scope="branch", root_thread_id=root_thread_id, branch_id=branch_id),
+            build_cache_scope_key(
+                scope="thread", root_thread_id=root_thread_id, branch_id=branch_id
+            ),
+            build_cache_scope_key(
+                scope="branch", root_thread_id=root_thread_id, branch_id=branch_id
+            ),
         ]
         messages_by_index: dict[int, ToolMessage] = {}
+        seen_tool_call_signatures: set[str] = set()
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
-            tool_name = str(tool_call["name"])
+            tool_name = str(tool_call.get("name") or "").strip()
+            tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
+            tool_args = _canonicalize_tool_call_args(tool_call.get("args"))
+            if not tool_name:
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name="unknown_tool",
+                    args=tool_args,
+                    error="Malformed tool call: missing tool name",
+                    runtime_info={"malformed_tool_call": True},
+                )
+                continue
+            signature = _tool_call_signature({"name": tool_name, "args": tool_args})
+            if signature in seen_tool_call_signatures:
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=f"Duplicate tool call suppressed: {tool_name}",
+                    runtime_info={"duplicate_tool_call_suppressed": True},
+                )
+                continue
+            seen_tool_call_signatures.add(signature)
             route_plan = state.get("tool_route_plan") or {}
-            denied_tools = set(route_plan.get("denied_tools") or []) if isinstance(route_plan, dict) else set()
+            denied_tools = (
+                set(route_plan.get("denied_tools") or []) if isinstance(route_plan, dict) else set()
+            )
             if tool_name in denied_tools and bool(route_plan.get("enforce", True)):
-                messages_by_index[index] = (
-                    build_tool_error_message(
-                        tool_call_id=str(tool_call["id"]),
-                        tool_name=tool_name,
-                        args=dict(tool_call.get("args") or {}),
-                        error=f"Forbidden tool by Tool Router policy: {tool_name}",
-                        runtime_info={"forbidden_by_tool_router": True},
-                    )
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=f"Forbidden tool by Tool Router policy: {tool_name}",
+                    runtime_info={"forbidden_by_tool_router": True},
                 )
                 continue
             tool = tools_by_name.get(tool_name)
             if tool is None:
-                messages_by_index[index] = (
-                    build_tool_error_message(
-                        tool_call_id=str(tool_call["id"]),
-                        tool_name=tool_name,
-                        args=dict(tool_call.get("args") or {}),
-                        error=f"Unknown tool: {tool_name}",
-                    )
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=f"Unknown tool: {tool_name}",
                 )
                 continue
             runtime_meta = tool_runtime_by_name.get(tool_name)
@@ -1681,9 +1962,9 @@ def build_graph(
             execution_inputs.append(
                 ToolExecutionInput(
                     index=index,
-                    tool_call_id=str(tool_call["id"]),
+                    tool_call_id=tool_call_id,
                     tool_name=tool_name,
-                    args=dict(tool_call.get("args") or {}),
+                    args=tool_args,
                     tool=tool,
                     runtime=runtime_meta,
                 )
@@ -1726,11 +2007,21 @@ def build_graph(
         if not _should_extract_memories(state):
             return {
                 "memory_write_requests": [],
-                "memory_write_result": {"prepared": 0, "written": [], "merged": [], "skipped": [], "failed": []},
+                "memory_write_result": {
+                    "prepared": 0,
+                    "written": [],
+                    "merged": [],
+                    "skipped": [],
+                    "failed": [],
+                },
             }
-        extraction = effective_memory_extractor.extract_from_turn(context=runtime.context, state=dict(state))
+        extraction = effective_memory_extractor.extract_from_turn(
+            context=runtime.context, state=dict(state)
+        )
         return {
-            "memory_write_requests": [record.model_dump(mode="json") for record in extraction.records],
+            "memory_write_requests": [
+                record.model_dump(mode="json") for record in extraction.records
+            ],
             "memory_write_result": {
                 "prepared": len(extraction.records),
                 "written": [],

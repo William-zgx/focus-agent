@@ -118,6 +118,10 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
         role=AgentTeamTaskRole.BACKEND_EXECUTOR,
         goal="Implement repository",
         status=AgentTeamTaskStatus.RUNNING,
+        agent_run_id="run-task-1",
+        delegated_task_id="delegated-task-1",
+        artifact_ids=["artifact-task-1"],
+        execution_status="completed",
         changed_files=["src/focus_agent/repositories/postgres_agent_team_repository.py"],
         created_at="2026-04-25T10:01:00+00:00",
         updated_at="2026-04-25T10:01:00+00:00",
@@ -152,9 +156,14 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
         "recommended_next_action": "split_followup",
     }
     assert [item.session_id for item in repo.list_sessions(user_id="user-1")] == ["session-1"]
-    assert repo.get_task("task-1").changed_files == [
+    restored_task = repo.get_task("task-1")
+    assert restored_task.changed_files == [
         "src/focus_agent/repositories/postgres_agent_team_repository.py"
     ]
+    assert restored_task.agent_run_id == "run-task-1"
+    assert restored_task.delegated_task_id == "delegated-task-1"
+    assert restored_task.artifact_ids == ["artifact-task-1"]
+    assert restored_task.execution_status == "completed"
     assert [item.task_id for item in repo.list_tasks(session_id="session-1")] == ["task-1"]
     assert repo.list_task_outputs(task_id="task-1")[0].test_evidence == [
         "pytest tests/test_postgres_agent_team_repository.py"

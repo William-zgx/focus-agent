@@ -4254,6 +4254,13 @@
           },
           "type": "array"
         },
+        "execution_evidence": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
         "key_findings": {
           "items": {
             "type": "string"
@@ -4509,6 +4516,22 @@
     },
     "AgentTeamTask": {
       "properties": {
+        "agent_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "branch_id": {
           "anyOf": [
             {
@@ -4538,11 +4561,31 @@
         "created_at": {
           "type": "string"
         },
+        "delegated_task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "dependencies": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "execution_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "goal": {
           "type": "string"

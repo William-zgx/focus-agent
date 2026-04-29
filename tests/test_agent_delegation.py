@@ -1,4 +1,12 @@
+from __future__ import annotations
+
+from threading import Lock
+import time
+
+from langchain.messages import AIMessage
+
 from focus_agent.agent_delegation import (
+    AgentTask,
     apply_review_decision,
     build_agent_delegation_plan,
     build_failure_records,
@@ -6,8 +14,56 @@ from focus_agent.agent_delegation import (
     build_review_queue,
     build_self_repair_preview,
 )
-from focus_agent.agent_roles import build_role_route_plan
+from focus_agent.agent_execution import (
+    FakeDelegatedRunExecutor,
+    SubagentRegistry,
+    executor_for_mode,
+    run_delegated_tasks,
+)
+from focus_agent.agent_roles import AgentRole, build_role_route_plan
 from focus_agent.config import Settings
+
+class RecordingFakeModel:
+    def __init__(self, content: str = "delegated artifact", *, error: Exception | None = None, delay: float = 0.0):
+        self.content = content
+        self.error = error
+        self.delay = delay
+        self.calls: list[list[object]] = []
+        self.active_calls = 0
+        self.max_active_calls = 0
+        self._lock = Lock()
+
+    def invoke(self, messages):
+        with self._lock:
+            self.calls.append(list(messages))
+            self.active_calls += 1
+            self.max_active_calls = max(self.max_active_calls, self.active_calls)
+        try:
+            if self.delay:
+                time.sleep(self.delay)
+            if self.error is not None:
+                raise self.error
+            return AIMessage(content=self.content)
+        finally:
+            with self._lock:
+                self.active_calls -= 1
+
+    def with_config(self, _config):
+        return self
+
+    def bind_tools(self, _tools):
+        return self
+
+
+def _delegated_task(task_id: str, *, role: AgentRole = AgentRole.EXECUTOR) -> AgentTask:
+    return AgentTask(
+        task_id=task_id,
+        role=role,
+        goal=f"Goal for {task_id}",
+        allowed_tools=["search_code"],
+        acceptance_criteria=["return a traceable artifact"],
+        run_isolation_key=f"role:{role.value}:{task_id}",
+    )
 
 
 def test_delegation_default_off_keeps_legacy_execution_safe():
@@ -42,8 +98,137 @@ def test_delegation_builds_role_tasks_when_enabled():
     assert "orchestrator" in roles
     assert "planner" in roles
     assert "executor" in roles
-    assert all(run.status == "completed" for run in plan.runs)
-    assert plan.legacy_execution_unchanged is False
+    assert all(run.status == "planned" for run in plan.runs)
+    assert plan.legacy_execution_unchanged is True
+
+
+def test_delegation_contract_fields_and_observe_mode_do_not_complete_runs():
+    settings = Settings(
+        agent_role_routing_enabled=True,
+        agent_delegation_enabled=True,
+        agent_delegation_enforce=True,
+    )
+    plan = build_agent_delegation_plan(
+        settings=settings,
+        task_text="Implement and verify the runtime.",
+        available_tool_names=["search_code", "write_text_artifact"],
+        tool_policy="execution",
+    )
+
+    executor_task = next(task for task in plan.tasks if task.role == AgentRole.EXECUTOR)
+
+    assert plan.execution_mode == "observe"
+    assert all(run.status == "planned" for run in plan.runs)
+    assert executor_task.max_turns >= 1
+    assert executor_task.timeout_seconds > 0
+    assert executor_task.max_depth >= 0
+    assert executor_task.run_isolation_key == "role:executor"
+    assert executor_task.requires_workspace_write is True
+
+
+def test_fake_delegated_executor_produces_completion_result_and_artifact():
+    settings = Settings(agent_delegation_execution_mode="fake")
+    task = AgentTask(
+        task_id="task-1-executor",
+        role=AgentRole.EXECUTOR,
+        goal="Produce deterministic delegated evidence.",
+        allowed_tools=["search_code"],
+        acceptance_criteria=["evidence is traceable"],
+        run_isolation_key="role:executor",
+    )
+
+    results = run_delegated_tasks(
+        tasks=[task],
+        registry=SubagentRegistry.from_settings(settings),
+        executor=FakeDelegatedRunExecutor(),
+    )
+
+    assert len(results) == 1
+    assert results[0].status == "completed"
+    assert results[0].artifacts[0].summary.startswith("Fake delegated executor run completed")
+    assert results[0].to_agent_run().status == "completed"
+
+
+def test_fake_delegated_executor_blocks_exhausted_budget_before_completion():
+    settings = Settings(agent_delegation_execution_mode="fake")
+    task = AgentTask(
+        task_id="task-1-executor",
+        role=AgentRole.EXECUTOR,
+        goal="This should be blocked.",
+        max_turns=0,
+    )
+
+    results = run_delegated_tasks(
+        tasks=[task],
+        registry=SubagentRegistry.from_settings(settings),
+        executor=FakeDelegatedRunExecutor(),
+    )
+
+    assert results[0].status == "needs_review"
+    assert "max_turns budget is exhausted" in str(results[0].error)
+    assert results[0].artifacts == []
+
+def test_inline_and_background_execution_modes_are_not_stubbed():
+    inline = executor_for_mode("inline")
+    background = executor_for_mode("background")
+
+    assert inline is not None
+    assert background is not None
+    assert type(inline).__name__ != "StubDelegatedRunExecutor"
+    assert type(background).__name__ != "StubDelegatedRunExecutor"
+
+
+def test_inline_executor_invokes_injected_model_and_returns_completed_artifact():
+    model = RecordingFakeModel("inline delegated result")
+    executor = executor_for_mode("inline", model=model)
+
+    results = run_delegated_tasks(
+        tasks=[_delegated_task("task-inline")],
+        registry=SubagentRegistry.from_settings(Settings(agent_delegation_execution_mode="inline")),
+        executor=executor,
+    )
+
+    assert len(model.calls) == 1
+    assert results[0].status == "completed"
+    assert results[0].execution_mode == "inline"
+    assert results[0].artifacts
+    assert results[0].artifacts[0].summary == "inline delegated result"
+
+
+def test_inline_executor_model_exception_becomes_failed_run_result():
+    model = RecordingFakeModel(error=RuntimeError("model exploded"))
+    executor = executor_for_mode("inline", model=model)
+
+    results = run_delegated_tasks(
+        tasks=[_delegated_task("task-inline-fail")],
+        registry=SubagentRegistry.from_settings(Settings(agent_delegation_execution_mode="inline")),
+        executor=executor,
+    )
+
+    assert len(model.calls) == 1
+    assert results[0].status == "failed"
+    assert results[0].execution_mode == "inline"
+    assert "model exploded" in str(results[0].error)
+    assert results[0].artifacts == []
+
+
+def test_background_executor_runs_all_tasks_with_bounded_workers_and_preserves_order():
+    model = RecordingFakeModel("background delegated result", delay=0.02)
+    executor = executor_for_mode("background", model=model, max_workers=2)
+    tasks = [_delegated_task(f"task-background-{index}") for index in range(4)]
+
+    results = run_delegated_tasks(
+        tasks=tasks,
+        registry=SubagentRegistry.from_settings(Settings(agent_delegation_execution_mode="background")),
+        executor=executor,
+        max_parallel_runs=2,
+    )
+
+    assert [result.task_id for result in results] == [task.task_id for task in tasks]
+    assert all(result.status == "completed" for result in results)
+    assert all(result.execution_mode == "background" for result in results)
+    assert len(model.calls) == len(tasks)
+    assert 1 < model.max_active_calls <= 2
 
 
 def test_model_router_observe_and_enforce_modes():
