@@ -43,6 +43,8 @@ make ci-test
 make ci
 make ui-smoke
 make ui-smoke-observability
+make test-graph-builder
+make test-chat-service
 ```
 
 ## 常见开发流
@@ -112,7 +114,12 @@ Web lint/format 脚本目前有意只覆盖 message transcript 区域；`make we
 make ui-smoke
 # 或直接跑底层 browser smoke：
 uv run python scripts/ui_smoke_test.py
+# 调试后端托管静态页面或本地关闭鉴权时：
+AUTH_ENABLED=false WEB_APP_DEV_SERVER_URL= API_PORT=8001 ./scripts/run-api.sh
+uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --health-url http://127.0.0.1:8001/healthz --message '最近一周华钰矿业这只A股股票的表现怎么样？请联网查询并用中文简要说明。'
 ```
+
+浏览器 smoke 会等待流式回复结束且文本稳定后再读取结果。涉及复杂工具调用时不要只用默认 OK 消息，应增加真实问题，以捕捉 `tool_call.delta` payload 等 transport 校验回归。
 
 6. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
@@ -140,10 +147,13 @@ SQLite 用例默认本地运行。设置 `DATABASE_URI` 时会同时运行 Postg
 9. 如果改动影响 ChatService、runtime 装配或 config/runtime 目录边界：
 
 ```bash
-uv run pytest tests/test_chat_service.py tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
+make test-chat-service
+uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
 ```
 
-10. 如果改动影响 Agent 角色路由、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+ChatService 已按 branch action、streaming、thread state、serialization、trajectory 和 execution helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
+
+10. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
@@ -154,10 +164,11 @@ uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 ```
 
-工作区查询回归还应覆盖 local-first 工具路径：
+工作区查询和 graph builder 回归还应覆盖 local-first 工具路径：
 
 ```bash
-uv run pytest tests/test_graph_builder.py::test_graph_forces_search_code_for_workspace_definition_lookup tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
+make test-graph-builder
+uv run pytest tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
@@ -172,7 +183,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_chat_service.py
 ```
 
-`make ci-test` 会把 `FOCUS_AGENT_LOCAL_ENV_FILE` 指向一个不存在的文件再跑 pytest，更接近 GitHub Actions，也避免本机 `.focus_agent/local.env` 里的配置掩盖测试环境缺口。
+`make ci-test` 会把 `FOCUS_AGENT_LOCAL_ENV_FILE` 指向一个不存在的文件再跑 pytest，更接近 GitHub Actions，也避免本机 `.focus_agent/local.env` 里的配置掩盖测试环境缺口。隐私/脱敏测试不要断言过短数字片段（例如区号），应检查完整手机号或密钥片段，避免时间戳造成误报。
 
 ## 相关文档
 

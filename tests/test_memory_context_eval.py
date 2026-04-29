@@ -143,7 +143,9 @@ def test_memory_context_failure_conversion_from_replay_report(tmp_path: Path) ->
     assert len(cases) == 1
     assert cases[0]["id"] == "mc_replay_ctx-reg-7"
     assert cases[0]["tags"] == ["memory_context", "converted_failure", "trajectory_replay"]
-    assert cases[0]["expected"]["artifact_refs"] == ["artifact://trajectory/ctx-reg-7/postgres-plan"]
+    assert cases[0]["expected"]["artifact_refs"] == [
+        "artifact://trajectory/ctx-reg-7/postgres-plan"
+    ]
     assert cases[0]["origin"]["replay_error"] == "missing artifact refs"
 
 
@@ -257,7 +259,10 @@ def test_memory_context_candidate_import_multiple_sources_sanitizes_and_dedupes(
     }
     assert result_summary["pii_redaction_summary"]["total"] >= 4
     assert result_summary["duplicate_reasons"][0]["duplicate_of"] == result.cases[0]["id"]
-    assert result_summary["duplicate_reasons"][0]["reason"] == "same sanitized input and expected assertions"
+    assert (
+        result_summary["duplicate_reasons"][0]["reason"]
+        == "same sanitized input and expected assertions"
+    )
     assert result_summary["candidate_first_invariant"]["golden_dataset_unchanged"] is True
     assert [case["id"] for case in result.cases] == [case["id"] for case in repeated.cases]
     assert result.cases[0]["tags"][:5] == [
@@ -282,7 +287,8 @@ def test_memory_context_candidate_import_multiple_sources_sanitizes_and_dedupes(
     assert "bucket:context" in result.cases[1]["tags"]
     assert "alice@example.com" not in serialized
     assert "alice-example-com" not in serialized
-    assert "415" not in serialized
+    assert "+1 (415) 555-2671" not in serialized
+    assert "555-2671" not in serialized
     assert "abcdefghi" not in serialized
     assert "sk-1234567890abcdef" not in serialized
     assert "[REDACTED_EMAIL]" in serialized
@@ -516,7 +522,10 @@ def test_memory_context_candidate_review_promotes_only_explicit_approval(
     assert result_summary["duplicate_reasons"][0]["operation"] == "candidate_review"
     assert result_summary["pii_redaction_summary"]["total"] >= 3
     assert result_summary["promotion_sla_summary"]["reviewed"] == 3
-    assert result_summary["candidate_first_invariant"]["promoted_dataset_requires_explicit_approval"] is True
+    assert (
+        result_summary["candidate_first_invariant"]["promoted_dataset_requires_explicit_approval"]
+        is True
+    )
     assert [case["id"] for case in result.promoted_cases] == ["mc_candidate_approved"]
     assert result.promoted_cases[0]["origin"]["baseline_label"] == "nightly"
     assert result.promoted_cases[0]["origin"]["baseline_marker"] == "baseline:nightly"

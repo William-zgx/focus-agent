@@ -1,6 +1,6 @@
 # Focus Agent 文档索引
 
-更新时间：2026-04-28
+更新时间：2026-04-29
 
 这份索引是 `docs/` 的唯一导航入口。根目录 README 保持轻量；更完整的说明集中到这里，并按使用场景分组。
 
@@ -31,18 +31,18 @@ flowchart LR
 
 - [../README.md](../README.md) / [../README.zh-CN.md](../README.zh-CN.md)：项目介绍、最短启动路径和核心入口。
 - [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md)：本地初始化、repo-local PostgreSQL、Vite 开发模式和本地鉴权。
-- [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：日常开发命令、验证矩阵和常见工作流。
+- [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：日常开发命令、验证矩阵、真实浏览器 smoke 和常见工作流。
 
 ## 理解系统
 
-- [architecture.md](architecture.md)：整体架构、核心请求链路、持久化边界、前端/SDK、部署和验证总览。
+- [architecture.md](architecture.md)：整体架构、核心请求链路、拆分后的服务/工具/图边界、持久化边界、前端/SDK、部署和验证总览。
 - [roadmap.md](roadmap.md)：当前基线、下一阶段重点和仍在推进的方向。
 - [multi-agent-collaboration.md](multi-agent-collaboration.md)：P4-P7 多 Agent 协同开发分工、契约门禁、发布 gate、observability 与 Auth/Memory 质量闭环。
 
 ## 开发验证
 
 - [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：本地开发命令、质量门禁、验证矩阵和常见工作流。
-- [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport 和 SDK 验证方式。
+- [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport validation 和 SDK 验证方式。
 
 ## 核心专题
 

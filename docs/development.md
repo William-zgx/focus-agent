@@ -43,6 +43,8 @@ make ci-test
 make ci
 make ui-smoke
 make ui-smoke-observability
+make test-graph-builder
+make test-chat-service
 ```
 
 ## Common Flows
@@ -116,7 +118,12 @@ The Web lint/format scripts are intentionally scoped to the message transcript a
 make ui-smoke
 # or run the underlying browser smoke directly:
 uv run python scripts/ui_smoke_test.py
+# for backend-served static app or auth-disabled local debugging:
+AUTH_ENABLED=false WEB_APP_DEV_SERVER_URL= API_PORT=8001 ./scripts/run-api.sh
+uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --health-url http://127.0.0.1:8001/healthz --message '最近一周华钰矿业这只A股股票的表现怎么样？请联网查询并用中文简要说明。'
 ```
+
+The browser smoke waits for the assistant response to stabilize after streaming and should be used for complex tool-use prompts, not only the default short OK response. This catches transport validation regressions such as malformed `tool_call.delta` payloads.
 
 6. If observability pages or seeded trajectory browser flows changed:
 
@@ -144,8 +151,11 @@ SQLite cases run locally by default. Postgres cases run when `DATABASE_URI` is s
 9. If ChatService, runtime assembly, or config/runtime directory boundaries changed:
 
 ```bash
-uv run pytest tests/test_chat_service.py tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
+make test-chat-service
+uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
 ```
+
+ChatService is intentionally split across branch actions, streaming, thread-state helpers, serialization, trajectory, and execution helpers. Keep behavior changes covered by service tests and browser smoke rather than relying only on import-level checks.
 
 10. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
@@ -169,7 +179,7 @@ make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318
 make agent-governance-report
 ```
 
-12. If Agent role routing, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+12. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
@@ -180,10 +190,11 @@ uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 ```
 
-Workspace lookup regressions should also cover the local-first tool path:
+Workspace lookup and graph-builder regressions should also cover the local-first tool path:
 
 ```bash
-uv run pytest tests/test_graph_builder.py::test_graph_forces_search_code_for_workspace_definition_lookup tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
+make test-graph-builder
+uv run pytest tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
@@ -198,7 +209,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_chat_service.py
 ```
 
-`make ci-test` runs pytest with `FOCUS_AGENT_LOCAL_ENV_FILE` pointed at a missing file, which mirrors GitHub Actions more closely and prevents repo-local `.focus_agent/local.env` secrets from masking setup gaps.
+`make ci-test` runs pytest with `FOCUS_AGENT_LOCAL_ENV_FILE` pointed at a missing file, which mirrors GitHub Actions more closely and prevents repo-local `.focus_agent/local.env` secrets from masking setup gaps. If a privacy/redaction assertion checks for short numeric fragments, prefer full secret/phone substrings so timestamps cannot cause false failures.
 
 ## Related Docs
 

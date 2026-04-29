@@ -109,7 +109,22 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
   -d '{"user_id": "researcher-1"}'
 ```
 
-## 7. Next Docs
+
+## 7. Browser Smoke Testing
+
+The default `make ui-smoke` target expects the app URL from `scripts/ui_smoke_test.py`, which is usually the Vite dev URL. When you want to test the backend-served static bundle or disable auth for local debugging, start the API explicitly and pass the app URL:
+
+```bash
+AUTH_ENABLED=false WEB_APP_DEV_SERVER_URL= API_PORT=8001 ./scripts/run-api.sh
+uv run python scripts/ui_smoke_test.py \
+  --app-url http://127.0.0.1:8001/app/ \
+  --health-url http://127.0.0.1:8001/healthz \
+  --message '最近一周华钰矿业这只A股股票的表现怎么样？请联网查询并用中文简要说明。'
+```
+
+Use a real, tool-using prompt when changing streaming, transport validation, or web search behavior. The smoke script waits for the streamed assistant response to stabilize before asserting the final text.
+
+## 8. Next Docs
 
 - [Observability Runbook](observability-runbook.md)
 - [Development Guide](development.md)

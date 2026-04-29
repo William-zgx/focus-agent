@@ -75,7 +75,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Docs Index](docs/README.md)
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
-- [Architecture](docs/architecture.md)
+- [Architecture and module map](docs/architecture.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)
 - [Current Context Window](docs/context-window.md)

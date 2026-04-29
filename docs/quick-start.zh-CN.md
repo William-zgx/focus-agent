@@ -108,7 +108,22 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
   -d '{"user_id": "researcher-1"}'
 ```
 
-## 7. 下一步文档
+
+## 7. 浏览器 Smoke 测试
+
+`make ui-smoke` 默认使用 `scripts/ui_smoke_test.py` 中配置的 app URL，通常对应 Vite dev server。当你想验证后端托管的静态 bundle，或本地调试时临时关闭鉴权，可以显式启动 API 并传入页面地址：
+
+```bash
+AUTH_ENABLED=false WEB_APP_DEV_SERVER_URL= API_PORT=8001 ./scripts/run-api.sh
+uv run python scripts/ui_smoke_test.py \
+  --app-url http://127.0.0.1:8001/app/ \
+  --health-url http://127.0.0.1:8001/healthz \
+  --message '最近一周华钰矿业这只A股股票的表现怎么样？请联网查询并用中文简要说明。'
+```
+
+如果改动涉及 streaming、transport validation 或 web search，不要只用默认 OK 消息；应使用真实工具调用问题。Smoke 脚本会等待流式 assistant 回复稳定后再断言最终文本。
+
+## 8. 下一步文档
 
 - [Observability Runbook](observability-runbook.md)
 - [开发指南](development.zh-CN.md)

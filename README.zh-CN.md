@@ -75,7 +75,7 @@ docker compose up --build
 - [文档索引](docs/README.md)
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
-- [架构说明](docs/architecture.md)
+- [架构说明与模块导航](docs/architecture.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)
 - [当前上下文窗口](docs/context-window.md)
