@@ -34,6 +34,25 @@ DEFAULT_TEXTUAL_TOOL_NAMES = frozenset(
 )
 
 _BRACKET_TOOL_MARKER_RE = re.compile(r"(?m)^\s*\[([A-Za-z_][\w.-]*)\]\s*")
+_INTERNAL_PROCESS_NARRATION_RE = re.compile(
+    r"(?ims)(?:^|[\n。；;:：])\s*"
+    r"(?:我(?:来|先)?(?:帮你|为你)?(?:查询|获取|搜索|查找)|"
+    r"先(?:获取|查询|搜索|抓取)|让我(?:先|再)?(?:尝试|查询|搜索|获取|访问|抓取)|"
+    r"现在让我|接下来我(?:会|将)?尝试|我(?:会|将|再)?尝试(?:通过)?)"
+    r"(?=.{0,160}(?:搜索|查询|访问|获取|抓取|页面|数据|行情|日线|东方财富|数据源|"
+    r"web_fetch|web_search|tool|fetch|search|browse|计算))"
+)
+_INTERNAL_SEARCH_RESULT_NARRATION_RE = re.compile(
+    r"(?ims)(?:我已经|我已)(?:从|在).{0,12}搜索结果.{0,80}(?:获取|拿到|掌握|整理)"
+)
+_INTERNAL_CONTINUATION_LOOP_RE = re.compile(
+    r"(?ims)(?=.{0,260}(?:获取|查询|搜索|执行|处理|分析|计划|数据|网页|页面|行情))"
+    r"(?:如果(?:你)?(?:没有|无)(?:进一步|额外|其他|特别|新的?)?(?:指示|要求|需求|回复)|"
+    r"如无(?:其他|额外|特别|新的?)?(?:要求|指示)|"
+    r"当前(?:继续|正在)(?:执行|处理|获取|分析)|"
+    r"我将(?:默认)?继续(?:执行|推进|处理)|"
+    r"请确认是否继续|如果没有回复|请稍候|正在(?:获取|查询|处理|分析)(?:数据)?)"
+)
 
 
 def _normalized_tool_names(known_tool_names: Iterable[str] | None = None) -> set[str]:
@@ -55,4 +74,11 @@ def looks_like_textual_tool_call_artifact(
         return True
 
     tool_names = _normalized_tool_names(known_tool_names)
-    return any(match.group(1).lower() in tool_names for match in _BRACKET_TOOL_MARKER_RE.finditer(lowered))
+    if any(match.group(1).lower() in tool_names for match in _BRACKET_TOOL_MARKER_RE.finditer(lowered)):
+        return True
+
+    return bool(
+        _INTERNAL_PROCESS_NARRATION_RE.search(lowered)
+        or _INTERNAL_SEARCH_RESULT_NARRATION_RE.search(lowered)
+        or _INTERNAL_CONTINUATION_LOOP_RE.search(lowered)
+    )

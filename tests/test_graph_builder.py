@@ -734,8 +734,22 @@ def test_detects_textual_tool_call_artifacts():
         AIMessage(content="[custom_lookup] lookup next"),
         known_tool_names={"custom_lookup"},
     )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(content="让我尝试获取更详细的日线数据：\n\n我已经从搜索结果中获取到了关键信息。")
+    )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(
+            content=(
+                "我来帮你查询华钰矿业（601020）近一周的行情数据。"
+                "先获取详细的历史交易数据。让我查询东方财富网的具体行情页面。"
+                "如果没有新指示，我将默认继续执行。请确认是否继续。"
+            )
+        )
+    )
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="[背景] 北京今天晴。"))
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="北京今天晴，最高气温25℃。"))
+    assert not _looks_like_textual_tool_call_artifact(AIMessage(content="我尝试过几种投资方法，最终更偏向长期持有。"))
+    assert not _looks_like_textual_tool_call_artifact(AIMessage(content="我来帮你分析这份报告：结论是现金流改善。"))
 
 
 def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
@@ -1332,6 +1346,72 @@ def test_graph_repairs_kimi_bracket_tool_marker_after_tool_results(monkeypatch):
     final_answer = result.value["messages"][-1].content
     assert "[web_fetch]" not in final_answer
     assert "沪指本周先震荡后回稳" in final_answer
+    assert result.value["plan_meta"]["tool_protocol_repair_count"] == 1
+    assert result.value["plan_meta"]["tool_protocol_repair_reason"] == "textual_tool_marker"
+
+
+def test_graph_repairs_internal_search_narration_after_tool_results(monkeypatch):
+    class FakeRunnable:
+        def __init__(self, owner, *, allow_tools: bool):
+            self.owner = owner
+            self.allow_tools = allow_tools
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append({"allow_tools": self.allow_tools, "messages": list(prompt_messages)})
+            has_tool_result = any(isinstance(message, ToolMessage) for message in prompt_messages)
+            has_repair_note = any(
+                isinstance(message, SystemMessage) and "internal process narration" in message.content
+                for message in prompt_messages
+            )
+            if has_tool_result and not has_repair_note:
+                return AIMessage(
+                    content=(
+                        "我来帮你查询华钰矿业（601020）近一周的行情数据。"
+                        "先获取详细的历史交易数据。让我查询东方财富网的具体行情页面。"
+                        "如果没有新指示，我将默认继续执行。请确认是否继续。"
+                    )
+                )
+            return AIMessage(content="华钰矿业近一周上涨明显；逐日收盘价仍需以交易所或行情源校验。")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self, allow_tools=True)
+
+        def with_config(self, _config):
+            return FakeRunnable(self, allow_tools=False)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return '{"answer":"4月22日华钰矿业报33.89元，近5日上涨17.48%。"}'
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下A股华钰矿业近一周的股价波动，并且对其进行分析。")],
+            "selected_model": "moonshot:kimi-k2.6",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+    assert "我来帮你查询" not in final_answer
+    assert "请确认是否继续" not in final_answer
+    assert "华钰矿业近一周上涨明显" in final_answer
     assert result.value["plan_meta"]["tool_protocol_repair_count"] == 1
     assert result.value["plan_meta"]["tool_protocol_repair_reason"] == "textual_tool_marker"
 

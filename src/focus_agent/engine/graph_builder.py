@@ -84,10 +84,12 @@ _BRANCH_ACTION_GUARD_NOTE = (
 _TOOL_CALL_PROTOCOL_REPAIR_NOTE = (
     "If you need a tool, emit a real tool call through the tool-calling interface. "
     "Do not write DSML tags, XML, or function-call payloads into the assistant text. "
+    "Do not narrate search, fetch, browse, retry, or calculation attempts as assistant text. "
     "If no tool is needed, answer directly in natural language."
 )
 _TOOL_CALL_MARKUP_REPAIR_NOTE = (
     "Do not emit tool-call markup, XML, JSON function-call payloads, or DSML tags. "
+    "Do not include internal process narration about searching, fetching, browsing, retrying, or calculating. "
     "Write only the final user-facing answer in natural language."
 )
 _TOOL_CALL_LAST_RESORT_NOTE = (

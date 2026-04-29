@@ -196,8 +196,21 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
   } = loadSdkStreamFunctions();
 
   assert.equal(looksLikeTextualToolCallArtifact("[web_fetch] 尝试获取沪指数据，请稍等。"), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact("让我尝试获取更详细的日线数据：我已经从搜索结果中获取到了关键信息。"),
+    true,
+  );
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      "我来帮你查询华钰矿业（601020）近一周的行情数据。先获取详细的历史交易数据。让我查询东方财富网的具体行情页面。如果没有新指示，我将默认继续执行。请确认是否继续。",
+    ),
+    true,
+  );
   assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
+  assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
   assert.equal(safeVisibleText("[web_search] searching"), "");
+  assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
+  assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
 
   const withArtifactDelta = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -216,6 +229,15 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withPlainDelta.visibleText, "沪指本周震荡回稳。");
+
+  const withInternalProcessDelta = reduceStreamEvent(withPlainDelta, {
+    event: "visible_text.delta",
+    data: {
+      delta: "我来帮你查询华钰矿业（601020）近一周的行情数据。请确认是否继续。",
+      channel: "visible_text",
+    },
+  });
+  assert.equal(withInternalProcessDelta.visibleText, "沪指本周震荡回稳。");
 
   const withArtifactCompleted = reduceStreamEvent(withPlainDelta, {
     event: "message.completed",
