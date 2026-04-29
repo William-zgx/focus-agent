@@ -120,6 +120,16 @@ export function AgentTeamIcon(props: ToolbarIconProps) {
   );
 }
 
+export function SessionExitIcon(props: ToolbarIconProps) {
+  return (
+    <ToolbarIcon {...props}>
+      <path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10" />
+      <path d="M13 8.2 16.8 12 13 15.8" />
+      <path d="M8.5 12h8" />
+    </ToolbarIcon>
+  );
+}
+
 export function TokenUsageIcon(props: ToolbarIconProps) {
   return (
     <ToolbarIcon {...props}>

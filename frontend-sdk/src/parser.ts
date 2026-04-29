@@ -12,15 +12,25 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
   const frames: ParsedSSEFrame[] = [];
 
   for (const rawChunk of chunks) {
+    if (!rawChunk.trim()) {
+      continue;
+    }
     const lines = rawChunk.split(/\n/);
     let event = "message";
     const dataLines: string[] = [];
+    let hasEventLine = false;
+    let hasDataLine = false;
     for (const line of lines) {
       if (line.startsWith("event:")) {
         event = line.slice(6).trim();
+        hasEventLine = true;
       } else if (line.startsWith("data:")) {
         dataLines.push(line.slice(5).trimStart());
+        hasDataLine = true;
       }
+    }
+    if (!hasEventLine && !hasDataLine) {
+      continue;
     }
     frames.push({ event, data: dataLines.join("\n"), raw: rawChunk });
   }

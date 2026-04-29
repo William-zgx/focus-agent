@@ -22,6 +22,11 @@ interface ErrorEnvelope {
   request_id?: string | null;
 }
 
+interface ErrorDetailEnvelope {
+  code?: string | number;
+  message?: string;
+}
+
 const JSON_CONTENT_TYPE_PATTERN = /(^|[+\-/])json($|[;\s])/i;
 
 function isAbortError(error: unknown): boolean {
@@ -56,10 +61,16 @@ function stringOrNull(value: unknown): string | null | undefined {
 
 function parseErrorEnvelope(raw: unknown): ErrorEnvelope {
   if (!isRecord(raw)) return {};
+  const detail = isRecord(raw.detail) ? (raw.detail as ErrorDetailEnvelope) : undefined;
   return {
-    code: stringOrNumber(raw.code),
-    message: typeof raw.message === "string" ? raw.message : undefined,
-    data: "data" in raw ? raw.data : undefined,
+    code: stringOrNumber(detail?.code) ?? stringOrNumber(raw.code),
+    message:
+      typeof raw.message === "string"
+        ? raw.message
+        : typeof detail?.message === "string"
+          ? detail.message
+          : undefined,
+    data: "detail" in raw ? raw.detail : "data" in raw ? raw.data : undefined,
     request_id: stringOrNull(raw.request_id),
   };
 }
@@ -142,6 +153,7 @@ export class FocusAgentTransport {
     try {
       response = await this.fetchImpl(`${this.baseUrl}${request.path}`, {
         ...request.init,
+        credentials: request.init.credentials ?? "include",
         headers,
       });
     } catch (error) {

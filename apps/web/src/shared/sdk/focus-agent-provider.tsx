@@ -1,7 +1,10 @@
 import {
   FocusAgentClient,
   FocusAgentRequestError,
+  type FocusAgentAuthResponse,
+  type FocusAgentLoginRequest,
   type FocusAgentPrincipalResponse,
+  type FocusAgentRegisterRequest,
 } from "@focus-agent/web-sdk";
 import {
   createContext,
@@ -20,14 +23,46 @@ const TOKEN_STORAGE_KEY = "focus-agent-token";
 interface FocusAgentContextValue {
   client: FocusAgentClient;
   principal: FocusAgentPrincipalResponse | null;
+  isAdmin: boolean;
   ready: boolean;
   authError: string | null;
   authHint: "demo_token_disabled" | "manual_token" | null;
+  authenticateWithDemoUser: () => Promise<boolean>;
+  authenticateWithPassword: (request: FocusAgentLoginRequest) => Promise<boolean>;
   authenticateWithToken: (token: string) => Promise<boolean>;
+  registerWithPassword: (request: FocusAgentRegisterRequest) => Promise<boolean>;
+  refreshPrincipal: () => Promise<boolean>;
+  logout: () => Promise<void>;
   clearStoredToken: () => void;
 }
 
 const FocusAgentContext = createContext<FocusAgentContextValue | null>(null);
+
+function isUnauthorized(error: unknown): boolean {
+  return error instanceof FocusAgentRequestError && (error.status === 401 || error.status === 403);
+}
+
+function authErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof FocusAgentRequestError && error.status === 401) {
+    return "The supplied credentials are invalid or expired.";
+  }
+
+  if (error instanceof FocusAgentRequestError) {
+    if (typeof error.data === "object" && error.data !== null && "message" in error.data) {
+      const nested = error.data as { message?: unknown };
+      if (typeof nested.message === "string") {
+        return nested.message;
+      }
+    }
+    if (error.code) {
+      const code = String(error.code);
+      if (code) {
+        return code;
+      }
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
 export function FocusAgentProvider({ children }: PropsWithChildren) {
   const client = useMemo(
@@ -42,78 +77,77 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authHint, setAuthHint] = useState<"demo_token_disabled" | "manual_token" | null>(null);
   const authAttemptRef = useRef(0);
+  const isAdmin = useMemo(() => {
+    if (!principal) return false;
+    return Boolean(
+      principal.is_admin ||
+        principal.roles?.includes("admin") ||
+        principal.user?.roles.includes("admin"),
+    );
+  }, [principal]);
+
+  function persistToken(token: string | null | undefined) {
+    const nextToken = token?.trim();
+    if (nextToken) {
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+      client.setToken(nextToken);
+      return;
+    }
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    client.setToken(undefined);
+  }
+
+  async function resolvePrincipalFromAuthResponse(response?: FocusAgentAuthResponse): Promise<FocusAgentPrincipalResponse> {
+    if (response?.access_token) {
+      persistToken(response.access_token);
+    }
+    if (response?.principal) {
+      return response.principal;
+    }
+    return client.getPrincipal();
+  }
+
+  async function acceptAuthenticatedResponse(
+    authAttemptId: number,
+    response?: FocusAgentAuthResponse,
+  ): Promise<boolean> {
+    const nextPrincipal = await resolvePrincipalFromAuthResponse(response);
+    if (authAttemptRef.current !== authAttemptId) return false;
+    setPrincipal(nextPrincipal);
+    setAuthError(null);
+    setAuthHint(null);
+    setReady(true);
+    return true;
+  }
+
+  async function refreshPrincipal(): Promise<boolean> {
+    const authAttemptId = ++authAttemptRef.current;
+    try {
+      const nextPrincipal = await client.getPrincipal();
+      if (authAttemptRef.current !== authAttemptId) return false;
+      setPrincipal(nextPrincipal);
+      setAuthError(null);
+      setAuthHint(null);
+      setReady(true);
+      return true;
+    } catch (error: unknown) {
+      if (authAttemptRef.current === authAttemptId) {
+        setPrincipal(null);
+        setAuthError(isUnauthorized(error) ? null : authErrorMessage(error, "Failed to refresh the current session."));
+        setAuthHint("manual_token");
+        setReady(true);
+      }
+      return false;
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
 
-    function clearStoredToken() {
-      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-      client.setToken(undefined);
-    }
-
-    async function authenticateStoredToken(
-      token: string,
-      { persist }: { persist: boolean },
-    ): Promise<boolean> {
-      const authAttemptId = ++authAttemptRef.current;
-      const nextToken = token.trim();
-      if (!nextToken) {
-        clearStoredToken();
-        if (!cancelled && authAttemptRef.current === authAttemptId) {
-          setPrincipal(null);
-          setAuthError("Missing bearer token.");
-          setAuthHint("manual_token");
-        }
-        return false;
-      }
-      client.setToken(nextToken);
-      try {
-        const nextPrincipal = await client.getPrincipal();
-        if (cancelled || authAttemptRef.current != authAttemptId) return false;
-        if (persist) {
-          window.localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-        }
-        setPrincipal(nextPrincipal);
-        setAuthError(null);
-        setAuthHint(null);
-        return true;
-      } catch (error: unknown) {
-        clearStoredToken();
-        if (!cancelled && authAttemptRef.current === authAttemptId) {
-          setPrincipal(null);
-          setAuthError(
-            error instanceof FocusAgentRequestError && error.status === 401
-                ? "Bearer token is invalid or expired."
-                : error instanceof Error
-                  ? error.message
-                  : "Failed to authenticate with bearer token.",
-          );
-          setAuthHint("manual_token");
-        }
-        return false;
-      }
-    }
-
-    async function issueDemoToken() {
-      const token = await client.createDemoToken({
-        user_id: appEnv.demoUserId,
-        tenant_id: appEnv.demoTenantId,
-        scopes: ["chat", "branches"],
-      });
-      if (cancelled) return null;
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, token.access_token);
-      client.setToken(token.access_token);
-      return token.access_token;
-    }
-
     async function bootstrap() {
       const savedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY);
-      if (savedToken) {
-        const authenticated = await authenticateStoredToken(savedToken, { persist: true });
-        if (authenticated) {
-          setReady(true);
-          return;
-        }
+      if (savedToken?.trim()) {
+        client.setToken(savedToken.trim());
       }
 
       try {
@@ -121,49 +155,45 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
         if (cancelled) return;
         setPrincipal(nextPrincipal);
         setAuthError(null);
+        setAuthHint(null);
         setReady(true);
         return;
       } catch (error: unknown) {
-        const status = error instanceof FocusAgentRequestError ? error.status : null;
-        if (status !== 401 && status !== 403) {
+        if (!isUnauthorized(error)) {
           throw error;
         }
       }
 
       try {
-        const token = await issueDemoToken();
-        if (!token || cancelled) return;
-        const authenticated = await authenticateStoredToken(token, { persist: true });
-        if (!cancelled) {
-          setReady(true);
-        }
+        const response = await client.refresh();
+        const nextPrincipal = await resolvePrincipalFromAuthResponse(response);
+        if (cancelled) return;
+        setPrincipal(nextPrincipal);
+        setAuthError(null);
+        setAuthHint(null);
+        setReady(true);
+        return;
       } catch (error: unknown) {
-        clearStoredToken();
-        if (!cancelled) {
-          setPrincipal(null);
-          setAuthError(
-            error instanceof FocusAgentRequestError && error.status === 404
-              ? "Demo token bootstrap is disabled. Provide an existing bearer token to continue."
-              : error instanceof Error
-                ? error.message
-                : "Failed to bootstrap Focus Agent auth.",
-          );
-          setAuthHint(
-            error instanceof FocusAgentRequestError && error.status === 404
-              ? "demo_token_disabled"
-              : "manual_token",
-          );
-          setReady(true);
+        if (!isUnauthorized(error)) {
+          throw error;
         }
+      }
+
+      if (!cancelled) {
+        persistToken(null);
+        setPrincipal(null);
+        setAuthError(null);
+        setAuthHint("manual_token");
+        setReady(true);
       }
     }
 
     void bootstrap().catch((error: unknown) => {
       console.error("Failed to bootstrap Focus Agent auth", error);
       if (!cancelled) {
-        clearStoredToken();
+        persistToken(null);
         setPrincipal(null);
-        setAuthError(error instanceof Error ? error.message : "Failed to bootstrap Focus Agent auth.");
+        setAuthError(authErrorMessage(error, "Failed to bootstrap Focus Agent auth."));
         setAuthHint("manual_token");
         setReady(true);
       }
@@ -178,8 +208,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
     const authAttemptId = ++authAttemptRef.current;
     const nextToken = token.trim();
     if (!nextToken) {
-      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-      client.setToken(undefined);
+      persistToken(null);
       if (authAttemptRef.current === authAttemptId) {
         setPrincipal(null);
         setAuthError("Missing bearer token.");
@@ -187,30 +216,14 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
       }
       return false;
     }
-    client.setToken(nextToken);
+    persistToken(nextToken);
     try {
-      const nextPrincipal = await client.getPrincipal();
-      if (authAttemptRef.current != authAttemptId) {
-        return false;
-      }
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-      setPrincipal(nextPrincipal);
-      setAuthError(null);
-      setAuthHint(null);
-      setReady(true);
-      return true;
+      return await acceptAuthenticatedResponse(authAttemptId);
     } catch (error: unknown) {
-      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-      client.setToken(undefined);
+      persistToken(null);
       if (authAttemptRef.current === authAttemptId) {
         setPrincipal(null);
-        setAuthError(
-          error instanceof FocusAgentRequestError && error.status === 401
-            ? "Bearer token is invalid or expired."
-            : error instanceof Error
-              ? error.message
-              : "Failed to authenticate with bearer token.",
-        );
+        setAuthError(authErrorMessage(error, "Failed to authenticate with bearer token."));
         setAuthHint("manual_token");
         setReady(true);
       }
@@ -218,10 +231,91 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function authenticateWithPassword(request: FocusAgentLoginRequest): Promise<boolean> {
+    const authAttemptId = ++authAttemptRef.current;
+    try {
+      const response = await client.login(request);
+      return await acceptAuthenticatedResponse(authAttemptId, response);
+    } catch (error: unknown) {
+      persistToken(null);
+      if (authAttemptRef.current === authAttemptId) {
+        setPrincipal(null);
+        setAuthError(authErrorMessage(error, "Failed to sign in."));
+        setAuthHint("manual_token");
+        setReady(true);
+      }
+      return false;
+    }
+  }
+
+  async function registerWithPassword(request: FocusAgentRegisterRequest): Promise<boolean> {
+    const authAttemptId = ++authAttemptRef.current;
+    try {
+      const response = await client.register(request);
+      return await acceptAuthenticatedResponse(authAttemptId, response);
+    } catch (error: unknown) {
+      persistToken(null);
+      if (authAttemptRef.current === authAttemptId) {
+        setPrincipal(null);
+        setAuthError(authErrorMessage(error, "Failed to register."));
+        setAuthHint("manual_token");
+        setReady(true);
+      }
+      return false;
+    }
+  }
+
+  async function authenticateWithDemoUser(): Promise<boolean> {
+    const authAttemptId = ++authAttemptRef.current;
+    try {
+      const token = await client.createDemoToken({
+        user_id: appEnv.demoUserId,
+        tenant_id: appEnv.demoTenantId,
+        scopes: ["chat", "branches"],
+      });
+      if (authAttemptRef.current !== authAttemptId) {
+        return false;
+      }
+      return authenticateWithToken(token.access_token);
+    } catch (error: unknown) {
+      persistToken(null);
+      if (authAttemptRef.current === authAttemptId) {
+        setPrincipal(null);
+        setAuthError(
+          error instanceof FocusAgentRequestError && error.status === 404
+            ? "Demo token bootstrap is disabled. Provide an existing bearer token to continue."
+            : authErrorMessage(error, "Failed to create a demo token."),
+        );
+        setAuthHint(
+          error instanceof FocusAgentRequestError && error.status === 404
+            ? "demo_token_disabled"
+            : "manual_token",
+        );
+        setReady(true);
+      }
+      return false;
+    }
+  }
+
+  async function logout() {
+    authAttemptRef.current += 1;
+    try {
+      await client.logout();
+    } catch (error: unknown) {
+      if (!isUnauthorized(error)) {
+        console.warn("Failed to close Focus Agent session", error);
+      }
+    }
+    persistToken(null);
+    setPrincipal(null);
+    setAuthError(null);
+    setAuthHint("manual_token");
+    setReady(true);
+  }
+
   function clearStoredTokenAndReset() {
     authAttemptRef.current += 1;
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-    client.setToken(undefined);
+    persistToken(null);
     setPrincipal(null);
     setAuthError(null);
     setAuthHint(null);
@@ -232,10 +326,16 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
       value={{
         client,
         principal,
+        isAdmin,
         ready,
         authError,
         authHint,
+        authenticateWithDemoUser,
+        authenticateWithPassword,
         authenticateWithToken,
+        registerWithPassword,
+        refreshPrincipal,
+        logout,
         clearStoredToken: clearStoredTokenAndReset,
       }}
     >

@@ -85,6 +85,484 @@
     },
     {
       "method": "GET",
+      "operation_id": "list_audit_events_v1_admin_audit_events_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "actor_user_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "resource_type",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "resource_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "decision",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/audit-events",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AuditEventListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_users_v1_admin_users_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "role",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "tenant_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "query",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_user_v1_admin_users_post",
+      "parameters": [],
+      "path": "/v1/admin/users",
+      "request": {
+        "$ref": "#/components/schemas/CreateUserRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_user_v1_admin_users__user_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_user_v1_admin_users__user_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateUserRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "reset_user_password_v1_admin_users__user_id__password_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}/password",
+      "request": {
+        "$ref": "#/components/schemas/AdminResetPasswordRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "operation_id": "update_user_roles_v1_admin_users__user_id__roles_put",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}/roles",
+      "request": {
+        "$ref": "#/components/schemas/UpdateUserRolesRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_user_sessions_v1_admin_users__user_id__sessions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "include_revoked",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}/sessions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserSessionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "revoke_user_session_v1_admin_users__user_id__sessions_revoke_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}/sessions/revoke",
+      "request": {
+        "$ref": "#/components/schemas/RevokeUserSessionRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserSessionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "update_user_status_v1_admin_users__user_id__status_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "user_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/users/{user_id}/status",
+      "request": {
+        "$ref": "#/components/schemas/UpdateUserStatusRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "list_agent_team_sessions_v1_agent_team_sessions_get",
       "parameters": [],
       "path": "/v1/agent-team/sessions",
@@ -1153,6 +1631,23 @@
     },
     {
       "method": "POST",
+      "operation_id": "change_password_v1_auth_change_password_post",
+      "parameters": [],
+      "path": "/v1/auth/change-password",
+      "request": {
+        "$ref": "#/components/schemas/AuthChangePasswordRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
       "operation_id": "issue_demo_token_v1_auth_demo_token_post",
       "parameters": [],
       "path": "/v1/auth/demo-token",
@@ -1169,6 +1664,43 @@
       }
     },
     {
+      "method": "POST",
+      "operation_id": "login_v1_auth_login_post",
+      "parameters": [],
+      "path": "/v1/auth/login",
+      "request": {
+        "$ref": "#/components/schemas/AuthLoginRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AuthTokenResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "logout_v1_auth_logout_post",
+      "parameters": [],
+      "path": "/v1/auth/logout",
+      "request": {
+        "$ref": "#/components/schemas/AuthLogoutRequest"
+      },
+      "responses": {
+        "200": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
       "method": "GET",
       "operation_id": "get_me_v1_auth_me_get",
       "parameters": [],
@@ -1177,6 +1709,80 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/PrincipalResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "refresh_v1_auth_refresh_post",
+      "parameters": [],
+      "path": "/v1/auth/refresh",
+      "request": {
+        "$ref": "#/components/schemas/AuthRefreshRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AuthTokenResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "register_v1_auth_register_post",
+      "parameters": [],
+      "path": "/v1/auth/register",
+      "request": {
+        "$ref": "#/components/schemas/AuthRegisterRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/AuthTokenResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_my_sessions_v1_auth_sessions_get",
+      "parameters": [],
+      "path": "/v1/auth/sessions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserSessionListResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "revoke_my_session_v1_auth_sessions__session_id__revoke_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/auth/sessions/{session_id}/revoke",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/UserSessionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
         }
       }
     },
@@ -3216,6 +3822,21 @@
     }
   ],
   "schemas": {
+    "AdminResetPasswordRequest": {
+      "properties": {
+        "new_password": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "new_password",
+        "reason"
+      ],
+      "type": "object"
+    },
     "AgentArtifactListResponse": {
       "properties": {
         "count": {
@@ -4988,6 +5609,226 @@
       },
       "type": "object"
     },
+    "AuditEventListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AuditEventResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AuditEventResponse": {
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "decision": {
+          "default": "success",
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource_type": {
+          "type": "string"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "event_id",
+        "action",
+        "resource_type",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AuthChangePasswordRequest": {
+      "properties": {
+        "current_password": {
+          "type": "string"
+        },
+        "new_password": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "current_password",
+        "new_password"
+      ],
+      "type": "object"
+    },
+    "AuthLoginRequest": {
+      "properties": {
+        "password": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "type": "object"
+    },
+    "AuthLogoutRequest": {
+      "properties": {
+        "refresh_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AuthRefreshRequest": {
+      "properties": {
+        "refresh_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AuthRegisterRequest": {
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "password": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "type": "object"
+    },
+    "AuthTokenResponse": {
+      "properties": {
+        "access_token": {
+          "type": "string"
+        },
+        "expires_in_seconds": {
+          "type": "integer"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "refresh_token": {
+          "type": "string"
+        },
+        "token_type": {
+          "default": "bearer",
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/components/schemas/UserResponse"
+        }
+      },
+      "required": [
+        "access_token",
+        "expires_in_seconds",
+        "issuer",
+        "refresh_token",
+        "user"
+      ],
+      "type": "object"
+    },
     "BranchActionExecuteResponse": {
       "properties": {
         "branch_action": {
@@ -5697,6 +6538,77 @@
       },
       "type": "object"
     },
+    "CreateUserRequest": {
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "default": "active",
+          "enum": [
+            "active",
+            "disabled",
+            "invited",
+            "deleted"
+          ],
+          "type": "string"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "type": "object"
+    },
     "DemoTokenRequest": {
       "properties": {
         "scopes": {
@@ -6087,6 +6999,22 @@
           "default": true,
           "type": "boolean"
         },
+        "is_admin": {
+          "default": false,
+          "type": "boolean"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "scopes": {
           "items": {
             "type": "string"
@@ -6097,6 +7025,16 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/UserResponse"
             },
             {
               "type": "null"
@@ -6191,6 +7129,27 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "RevokeUserSessionRequest": {
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
       "type": "object"
     },
     "RuntimeComponentStatusResponse": {
@@ -8489,6 +9448,336 @@
       },
       "required": [
         "title"
+      ],
+      "type": "object"
+    },
+    "UpdateUserRequest": {
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UpdateUserRolesRequest": {
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UpdateUserStatusRequest": {
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "disabled",
+            "invited",
+            "deleted"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "UserListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/UserResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "UserResponse": {
+      "properties": {
+        "auth_provider": {
+          "default": "local",
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_login_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "password_updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "default": "active",
+          "enum": [
+            "active",
+            "disabled",
+            "invited",
+            "deleted"
+          ],
+          "type": "string"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "UserSessionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/UserSessionResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UserSessionResponse": {
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "current": {
+          "default": false,
+          "type": "boolean"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "ip_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "user_id",
+        "created_at",
+        "updated_at",
+        "expires_at"
       ],
       "type": "object"
     },

@@ -5,7 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 def ensure_app_postgres_schema(database_uri: str) -> None:
@@ -234,7 +234,147 @@ def _run_migration_v2(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v3(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_users (
+            user_id TEXT PRIMARY KEY,
+            display_name TEXT,
+            email TEXT,
+            tenant_id TEXT,
+            status TEXT NOT NULL,
+            roles_json JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            last_seen_at TIMESTAMPTZ,
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_admin_audit_events (
+            event_id TEXT PRIMARY KEY,
+            actor_user_id TEXT,
+            tenant_id TEXT,
+            action TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT,
+            decision TEXT NOT NULL,
+            reason TEXT,
+            request_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL,
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_users_tenant_status
+        ON focus_users(tenant_id, status)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_users_status_created
+        ON focus_users(status, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_users_email
+        ON focus_users(email)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_users_roles
+        ON focus_users USING GIN (roles_json)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_admin_audit_actor_created
+        ON focus_admin_audit_events(actor_user_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_admin_audit_resource_created
+        ON focus_admin_audit_events(resource_type, resource_id, created_at DESC)
+        """
+    )
+
+
+def _run_migration_v4(execute: Callable[..., object]) -> None:
+    execute("ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS username TEXT")
+    execute("ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS password_hash TEXT")
+    execute(
+        "ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'local'"
+    )
+    execute("ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS external_subject TEXT")
+    execute(
+        "ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS failed_login_count INT NOT NULL DEFAULT 0"
+    )
+    execute("ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ")
+    execute("ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ")
+    execute("ALTER TABLE focus_users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ")
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_users_username
+        ON focus_users(LOWER(username))
+        WHERE username IS NOT NULL
+        """
+    )
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_users_external_subject
+        ON focus_users(auth_provider, external_subject)
+        WHERE external_subject IS NOT NULL
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_user_sessions (
+            session_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES focus_users(user_id) ON DELETE CASCADE,
+            refresh_token_hash TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            revoked_at TIMESTAMPTZ,
+            last_seen_at TIMESTAMPTZ,
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        "ALTER TABLE focus_user_sessions ADD COLUMN IF NOT EXISTS refresh_token_hash TEXT NOT NULL DEFAULT ''"
+    )
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_user_sessions_refresh_token_hash
+        ON focus_user_sessions(refresh_token_hash)
+        WHERE refresh_token_hash <> ''
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_user_sessions_user_created
+        ON focus_user_sessions(user_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_user_sessions_user_revoked
+        ON focus_user_sessions(user_id, revoked_at)
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (1, _run_migration_v1),
     (2, _run_migration_v2),
+    (3, _run_migration_v3),
+    (4, _run_migration_v4),
 )

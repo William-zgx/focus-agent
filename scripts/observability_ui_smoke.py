@@ -18,6 +18,7 @@ from focus_agent.repositories.postgres_trajectory_repository import PostgresTraj
 from ui_smoke_test import (
     CdpWebSocket,
     collect_browser_diagnostics,
+    create_demo_access_token,
     create_page_target,
     ensure_health,
     pick_free_port,
@@ -333,9 +334,20 @@ def _run_expression(client: CdpWebSocket, expression: str) -> dict[str, object]:
     return json.loads(payload)
 
 
-def _instrument_browser(client: CdpWebSocket) -> None:
+def _instrument_browser(client: CdpWebSocket, *, demo_access_token: str | None = None) -> None:
     client.send("Page.enable")
     client.send("Runtime.enable")
+    if demo_access_token:
+        client.send(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": (
+                    "try { window.localStorage.setItem("
+                    f"'focus-agent-token', {json.dumps(demo_access_token)}"
+                    "); } catch {}"
+                ),
+            },
+        )
     client.send(
         "Page.addScriptToEvaluateOnNewDocument",
         {
@@ -583,6 +595,7 @@ def run_observability_ui_smoke_test(
     try:
         database_uri = _resolve_database_uri(database_uri)
         seed = seed_observability_records(database_uri, scenario=scenario)
+        demo_access_token = create_demo_access_token(health_url)
         request_query = urllib_parse.urlencode({"request": seed["request_id"]})
         overview_url = f"{app_base_url.rstrip('/')}/observability/overview?{request_query}"
         turn_ids = dict(seed.get("turn_ids") or {})
@@ -612,7 +625,7 @@ def run_observability_ui_smoke_test(
 
             client = CdpWebSocket(websocket_url)
             try:
-                _instrument_browser(client)
+                _instrument_browser(client, demo_access_token=demo_access_token)
                 _wait_for_page_load(client, overview_url)
                 overview = _run_expression(client, build_overview_expression(seed))
                 trajectory: dict[str, object] = {}

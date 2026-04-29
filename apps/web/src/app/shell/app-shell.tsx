@@ -28,7 +28,7 @@ import {
 } from "@/app/shell/shell-ui-context";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { FocusAgentBrand } from "@/shared/ui/focus-agent-brand";
-import { AgentTeamIcon } from "@/shared/ui/toolbar-icons";
+import { AgentTeamIcon, SessionExitIcon } from "@/shared/ui/toolbar-icons";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 const SIDEBAR_COLLAPSED_KEY = "fa:sidebar-collapsed";
@@ -174,7 +174,7 @@ function cycleOptionValue<T extends string>(
 }
 
 export function AppShell({ children }: PropsWithChildren) {
-  const { principal } = useFocusAgent();
+  const { isAdmin, logout, principal } = useFocusAgent();
   const navigate = useNavigate();
   const { conversationId, threadId, isReviewRoute, isTrajectoryRoute } = useRouterState({
     select: (state) => {
@@ -188,6 +188,7 @@ export function AppShell({ children }: PropsWithChildren) {
         isTrajectoryRoute:
           state.location.pathname.includes("/observability/") ||
           state.location.pathname.includes("/agent-team") ||
+          state.location.pathname.includes("/admin/") ||
           state.location.pathname.includes("/agent/roles") ||
           state.location.pathname.includes("/agent/governance"),
       };
@@ -922,6 +923,37 @@ export function AppShell({ children }: PropsWithChildren) {
                   </span>
                   <span className="fa-toolbar-text">Team</span>
                 </Link>
+                {isAdmin ? (
+                  <Link
+                    aria-label={isChineseUi ? "打开管理员用户管理" : "Open admin user management"}
+                    className="fa-chat-toolbar-button"
+                    {...tooltipProps(isChineseUi ? "管理后台：用户与审计" : "Admin: users and audit")}
+                    to="/admin/users"
+                  >
+                    <span className="fa-toolbar-icon" aria-hidden="true">
+                      <AgentTeamIcon />
+                    </span>
+                    <span className="fa-toolbar-text">Admin</span>
+                  </Link>
+                ) : null}
+                {principal ? (
+                  <button
+                    aria-label={isChineseUi ? "退出登录" : "Sign out"}
+                    className="fa-chat-toolbar-button"
+                    {...tooltipProps(isChineseUi ? "退出登录" : "Sign out")}
+                    onBlur={handleTooltipHide}
+                    onClick={() => void logout()}
+                    onFocus={handleTooltipShow}
+                    onMouseEnter={handleTooltipShow}
+                    onMouseLeave={handleTooltipHide}
+                    type="button"
+                  >
+                    <span className="fa-toolbar-icon" aria-hidden="true">
+                      <SessionExitIcon />
+                    </span>
+                    <span className="fa-toolbar-text">{isChineseUi ? "退出" : "Exit"}</span>
+                  </button>
+                ) : null}
               </div>
             </div>
             {shellStatus && shellStatus.display !== "chat-floating" ? (

@@ -154,7 +154,7 @@ def submit_merge_decision(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ApplyMergeDecisionResponse(imported=imported)
 
-@router.get('/v1/branches/tree/{root_thread_id}', response_model=BranchTreeResponse)
+@router.get('/v1/branches/tree/{root_thread_id:path}', response_model=BranchTreeResponse)
 def get_branch_tree_view(
     root_thread_id: str,
     runtime: AppRuntime = Depends(get_app_runtime),

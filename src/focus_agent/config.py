@@ -861,6 +861,12 @@ class Settings:
     auth_jwt_issuer: str = "focus-agent"
     auth_jwt_audience: str | None = None
     auth_access_token_ttl_seconds: int = 8 * 60 * 60
+    auth_bootstrap_admin_user_ids: tuple[str, ...] = ()
+    auth_access_cookie_name: str = "focus_agent_access"
+    auth_refresh_cookie_name: str = "focus_agent_refresh"
+    auth_refresh_token_ttl_seconds: int = 7 * 24 * 60 * 60
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
     sse_heartbeat_seconds: float = 1.5
     cors_allowed_origins: tuple[str, ...] = ()
     cors_allow_credentials: bool = True
@@ -1019,6 +1025,29 @@ class Settings:
                     "AUTH_ACCESS_TOKEN_TTL_SECONDS",
                     str(defaults.auth_access_token_ttl_seconds),
                 )
+            ),
+            auth_bootstrap_admin_user_ids=(
+                _split_csv(env.get("AUTH_BOOTSTRAP_ADMIN_USER_IDS"))
+                if env.get("AUTH_BOOTSTRAP_ADMIN_USER_IDS") is not None
+                else defaults.auth_bootstrap_admin_user_ids
+            ),
+            auth_access_cookie_name=env.get(
+                "AUTH_ACCESS_COOKIE_NAME", defaults.auth_access_cookie_name
+            ),
+            auth_refresh_cookie_name=env.get(
+                "AUTH_REFRESH_COOKIE_NAME", defaults.auth_refresh_cookie_name
+            ),
+            auth_refresh_token_ttl_seconds=int(
+                env.get(
+                    "AUTH_REFRESH_TOKEN_TTL_SECONDS",
+                    str(defaults.auth_refresh_token_ttl_seconds),
+                )
+            ),
+            auth_cookie_secure=_env_bool(
+                env, "AUTH_COOKIE_SECURE", default=defaults.auth_cookie_secure
+            ),
+            auth_cookie_samesite=env.get(
+                "AUTH_COOKIE_SAMESITE", defaults.auth_cookie_samesite
             ),
             sse_heartbeat_seconds=float(
                 env.get("SSE_HEARTBEAT_SECONDS", str(defaults.sse_heartbeat_seconds))

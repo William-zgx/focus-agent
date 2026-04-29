@@ -238,6 +238,161 @@ export interface FocusAgentResumeRequest {
   resume: unknown;
 }
 
+export type FocusAgentUserStatus = "active" | "disabled" | "invited" | "deleted";
+
+export interface FocusAgentUser {
+  user_id: string;
+  username?: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  tenant_id?: string | null;
+  status: FocusAgentUserStatus | string;
+  roles: string[];
+  auth_provider?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_seen_at?: string | null;
+  last_login_at?: string | null;
+  password_updated_at?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface FocusAgentUserListRequest {
+  status?: string | string[] | null;
+  role?: string | string[] | null;
+  tenant_id?: string | null;
+  query?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface FocusAgentUserListResponse {
+  items: FocusAgentUser[];
+  count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FocusAgentCreateUserRequest {
+  user_id: string;
+  username?: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  tenant_id?: string | null;
+  status?: FocusAgentUserStatus | string | null;
+  roles?: string[];
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentUpdateUserRequest {
+  username?: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  tenant_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentUpdateUserStatusRequest {
+  status: FocusAgentUserStatus | string;
+  reason?: string | null;
+}
+
+export interface FocusAgentUpdateUserRolesRequest {
+  roles: string[];
+  reason?: string | null;
+}
+
+export interface FocusAgentAuditEvent {
+  event_id: string;
+  actor_user_id?: string | null;
+  tenant_id?: string | null;
+  action: string;
+  resource_type: string;
+  resource_id?: string | null;
+  decision: string;
+  reason?: string | null;
+  metadata: Record<string, unknown>;
+  request_id?: string | null;
+  created_at?: string | null;
+}
+
+export interface FocusAgentAuditEventListRequest {
+  actor_user_id?: string | null;
+  resource_type?: string | null;
+  resource_id?: string | null;
+  decision?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface FocusAgentAuditEventListResponse {
+  items: FocusAgentAuditEvent[];
+  count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FocusAgentRegisterRequest {
+  username: string;
+  password: string;
+  display_name?: string | null;
+  tenant_id?: string | null;
+}
+
+export interface FocusAgentLoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface FocusAgentRefreshRequest {
+  refresh_token?: string | null;
+}
+
+export interface FocusAgentChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface FocusAgentSession {
+  session_id: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  revoked_at?: string | null;
+  last_seen_at?: string | null;
+  user_agent?: string | null;
+  ip_address?: string | null;
+  metadata: Record<string, unknown>;
+  current?: boolean;
+}
+
+export interface FocusAgentSessionListResponse {
+  items: FocusAgentSession[];
+  count: number;
+}
+
+export interface FocusAgentRevokeUserSessionRequest {
+  session_id: string;
+  reason?: string | null;
+}
+
+export interface FocusAgentAdminResetPasswordRequest {
+  new_password: string;
+  reason: string;
+}
+
+export interface FocusAgentAuthResponse {
+  access_token: string;
+  token_type?: "bearer" | string;
+  refresh_token: string;
+  expires_in_seconds: number;
+  issuer: string;
+  principal?: FocusAgentPrincipalResponse | null;
+  user?: FocusAgentUser | null;
+  session?: FocusAgentSession | null;
+}
+
 export interface FocusAgentDemoTokenRequest {
   user_id?: string;
   tenant_id?: string | null;
@@ -256,6 +411,10 @@ export interface FocusAgentPrincipalResponse {
   tenant_id?: string | null;
   scopes: string[];
   auth_enabled: boolean;
+  user?: FocusAgentUser | null;
+  roles?: string[];
+  permissions?: string[];
+  is_admin?: boolean;
 }
 
 export interface FocusAgentModelOption {

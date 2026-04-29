@@ -6,19 +6,37 @@ import {
   createRoute,
   createRouter,
   useNavigate,
+  useSearch,
+  useRouterState,
 } from "@tanstack/react-router";
-import { type FormEvent, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { AgentTeamWorkbenchPage } from "@/pages/agent-team/team-workbench-page";
+import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
+import { AdminUserDetailPage } from "@/pages/admin/admin-user-detail-page";
+import { AdminUsersPage } from "@/pages/admin/admin-users-page";
+import { AccountProfilePage } from "@/pages/account/profile-page";
+import { AccountSecurityPage } from "@/pages/account/security-page";
+import { AccountSessionsPage } from "@/pages/account/sessions-page";
+import { LoginPage } from "@/pages/auth/login-page";
+import { RegisterPage } from "@/pages/auth/register-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
+import { normalizeAuthReturnTo } from "@/pages/auth/return-to";
 
 function RootLayout() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+
+  if (isAuthRoute) {
+    return <Outlet />;
+  }
+
   return (
     <AppShell>
       <Outlet />
@@ -85,92 +103,57 @@ function HomePage() {
   );
 }
 
-function AuthBootstrapPage() {
-  const { authError, authHint, authenticateWithToken, clearStoredToken } = useFocusAgent();
-  const [token, setToken] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const showsDisabledDemoTokenHint = authHint === "demo_token_disabled";
-  const isChineseUi =
-    typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
+function AuthGate({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const { principal, ready } = useFocusAgent();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const search = useRouterState({ select: (state) => state.location.searchStr });
+  const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+  const returnTo = isAuthRoute ? "/" : normalizeAuthReturnTo(`${pathname}${search}`);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token.trim() || submitting) return;
-    setSubmitting(true);
-    try {
-      await authenticateWithToken(token);
-    } finally {
-      setSubmitting(false);
+  useEffect(() => {
+    if (ready && !principal && !isAuthRoute) {
+      void navigate({
+        to: "/auth/login",
+        search: { return_to: returnTo },
+        replace: true,
+      });
     }
+  }, [isAuthRoute, navigate, principal, ready, returnTo]);
+
+  if (!ready || !principal) {
+    return (
+      <div className="fa-route-state">
+        <div className="fa-route-state-card">Redirecting to sign in...</div>
+      </div>
+    );
   }
+
+  return <>{children}</>;
+}
+
+function protect(component: ReactNode) {
+  return function ProtectedRouteComponent() {
+    return <AuthGate>{component}</AuthGate>;
+  };
+}
+
+function AuthIndexRedirect() {
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false });
+  const returnTo = useMemo(() => normalizeAuthReturnTo((search as { return_to?: unknown }).return_to), [search]);
+
+  useEffect(() => {
+    void navigate({
+      to: "/auth/login",
+      search: { return_to: returnTo },
+      replace: true,
+    });
+  }, [navigate, returnTo]);
 
   return (
     <div className="fa-route-state">
-      <div className="fa-route-state-card fa-auth-bootstrap-card">
-        <p className="fa-route-state-title">
-          {isChineseUi ? "需要提供访问令牌" : "Bearer Token Required"}
-        </p>
-        <p className="fa-auth-bootstrap-copy">
-          {showsDisabledDemoTokenHint
-            ? isChineseUi
-              ? "当前部署未开启 demo token 自举。请输入已有的 Bearer Token 以继续访问内置 Web App。"
-              : "This deployment does not allow demo-token bootstrap. Provide an existing bearer token to continue using the bundled Web App."
-            : isChineseUi
-              ? "当前会话暂时无法自动完成认证。你可以粘贴已有的 Bearer Token 继续，或稍后重试。"
-              : "Automatic authentication is currently unavailable. Paste an existing bearer token to continue, or retry in a moment."}
-        </p>
-        {authError ? (
-          <div className="fa-inline-notice is-danger">
-            {isChineseUi ? `认证失败：${authError}` : `Authentication failed: ${authError}`}
-          </div>
-        ) : null}
-        <form className="fa-auth-bootstrap-form" onSubmit={handleSubmit}>
-          <label className="fa-auth-bootstrap-label" htmlFor="fa-auth-token">
-            {isChineseUi ? "Bearer Token" : "Bearer Token"}
-          </label>
-          <textarea
-            id="fa-auth-token"
-            className="fa-auth-bootstrap-input"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder={
-              isChineseUi
-                ? "粘贴已有 access token"
-                : "Paste an existing access token"
-            }
-            rows={4}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-          />
-          <div className="fa-auth-bootstrap-actions">
-            <button
-              className="fa-auth-bootstrap-button is-primary"
-              disabled={submitting || !token.trim()}
-              type="submit"
-            >
-              {submitting
-                ? isChineseUi
-                  ? "验证中..."
-                  : "Verifying..."
-                : isChineseUi
-                  ? "使用此令牌继续"
-                  : "Continue With Token"}
-            </button>
-            <button
-              className="fa-auth-bootstrap-button"
-              disabled={submitting}
-              onClick={() => {
-                setToken("");
-                clearStoredToken();
-              }}
-              type="button"
-            >
-              {isChineseUi ? "清除本地令牌" : "Clear Saved Token"}
-            </button>
-          </div>
-        </form>
-      </div>
+      <div className="fa-route-state-card">正在进入登录页...</div>
     </div>
   );
 }
@@ -183,55 +166,109 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: HomePage,
+  component: protect(<HomePage />),
 });
 
 const threadRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/c/$conversationId/t/$threadId",
-  component: ThreadPage,
+  component: protect(<ThreadPage />),
 });
 
 const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/c/$conversationId/t/$threadId/review",
-  component: ThreadPage,
+  component: protect(<ThreadPage />),
 });
 
 const trajectoryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/observability/trajectory",
-  component: TrajectoryPage,
+  component: protect(<TrajectoryPage />),
 });
 
 const observabilityOverviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/observability/overview",
-  component: TrajectoryPage,
+  component: protect(<TrajectoryPage />),
 });
 
 const agentRoleConsoleRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/agent/roles",
-  component: AgentRoleConsolePage,
+  component: protect(<AgentRoleConsolePage />),
 });
 
 const agentGovernanceConsoleRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/agent/governance",
-  component: AgentRoleConsolePage,
+  component: protect(<AgentRoleConsolePage />),
 });
 
 const agentTeamRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/agent-team",
-  component: AgentTeamWorkbenchPage,
+  component: protect(<AgentTeamWorkbenchPage />),
 });
 
 const agentTeamSessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/agent-team/$sessionId",
-  component: AgentTeamWorkbenchPage,
+  component: protect(<AgentTeamWorkbenchPage />),
+});
+
+const adminUsersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/users",
+  component: protect(<AdminUsersPage />),
+});
+
+const adminUserDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/users/$userId",
+  component: protect(<AdminUserDetailPage />),
+});
+
+const adminAuditEventsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/audit-events",
+  component: protect(<AdminAuditEventsPage />),
+});
+
+const authRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth",
+  component: AuthIndexRedirect,
+});
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/login",
+  component: LoginPage,
+});
+
+const registerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/register",
+  component: RegisterPage,
+});
+
+const accountProfileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account/profile",
+  component: protect(<AccountProfilePage />),
+});
+
+const accountSecurityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account/security",
+  component: protect(<AccountSecurityPage />),
+});
+
+const accountSessionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account/sessions",
+  component: protect(<AccountSessionsPage />),
 });
 
 const routeTree = rootRoute.addChildren([
@@ -244,6 +281,15 @@ const routeTree = rootRoute.addChildren([
   agentGovernanceConsoleRoute,
   agentTeamRoute,
   agentTeamSessionRoute,
+  adminUsersRoute,
+  adminUserDetailRoute,
+  adminAuditEventsRoute,
+  authRoute,
+  loginRoute,
+  registerRoute,
+  accountProfileRoute,
+  accountSecurityRoute,
+  accountSessionsRoute,
 ]);
 
 const router = createRouter({
@@ -276,9 +322,5 @@ export function AppRouter() {
     );
   }
 
-  if (!principal) {
-    return <AuthBootstrapPage />;
-  }
-
-  return <RouterProvider router={router} context={{ isAuthenticated: true }} />;
+  return <RouterProvider router={router} context={{ isAuthenticated: Boolean(principal) }} />;
 }

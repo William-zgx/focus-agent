@@ -43,10 +43,14 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "AgentRoleConsolePage" in router_text
     assert 'path: "/agent/roles"' in router_text
     assert 'path: "/agent/governance"' in router_text
+    assert 'path: "/auth"' in router_text
+    assert 'path: "/auth/login"' in router_text
+    assert 'path: "/auth/register"' in router_text
+    assert "LoginPage" in router_text
+    assert 'to: "/auth/login"' in router_text
+    assert "AuthGate" in router_text
     assert "AppShell" in router_text
     assert 'basepath: "/app"' in router_text
-    assert "Bearer Token Required" in router_text
-    assert "Continue With Token" in router_text
 
     vite_text = (web_root / "vite.config.ts").read_text()
     assert 'base: "/app/"' in vite_text
@@ -60,7 +64,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "createDemoToken" in provider_text
     assert "getPrincipal" in provider_text
     assert "FocusAgentRequestError" in provider_text
-    assert "clearStoredToken()" in provider_text
+    assert "clearStoredTokenAndReset" in provider_text
     assert "authHint" in provider_text
     assert "error.status === 401" in provider_text
     assert "authenticateWithToken" in provider_text
@@ -89,6 +93,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     styles_text = (web_root / "src" / "shared" / "styles" / "app.css").read_text()
     assert ".fa-auth-bootstrap-card" in styles_text
     assert ".fa-auth-bootstrap-input" in styles_text
+    assert ".fa-auth-hub" in styles_text
 
     agent_console_text = (web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx").read_text()
     assert "Delegation Runs" in agent_console_text

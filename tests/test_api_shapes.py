@@ -523,9 +523,9 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     route_paths = {route.path for route in app.routes}
 
     assert "/v1/conversations" in route_paths
-    assert "/v1/conversations/{root_thread_id}" in route_paths
-    assert "/v1/conversations/{root_thread_id}/archive" in route_paths
-    assert "/v1/conversations/{root_thread_id}/activate" in route_paths
+    assert "/v1/conversations/{root_thread_id:path}" in route_paths
+    assert "/v1/conversations/{root_thread_id:path}/archive" in route_paths
+    assert "/v1/conversations/{root_thread_id:path}/activate" in route_paths
     assert "/readyz" in route_paths
     assert "/metrics" in route_paths
     assert "/v1/agent/roles/policy" in route_paths

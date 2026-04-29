@@ -1,5 +1,6 @@
 export const queryKeys = {
   principal: ["principal"] as const,
+  mySessions: ["my-sessions"] as const,
   models: ["models"] as const,
   conversations: ["conversations"] as const,
   thread: (threadId: string) => ["thread", threadId] as const,
@@ -29,4 +30,10 @@ export const queryKeys = {
   agentCriticVerdicts: (limit: number) => ["agent-critic-verdicts", limit] as const,
   agentTeamSessions: (filtersKey: string) => ["agent-team-sessions", filtersKey] as const,
   agentTeamSession: (sessionId: string) => ["agent-team-session", sessionId] as const,
+  adminUsersRoot: ["admin-users"] as const,
+  adminUsers: (filtersKey: string) => ["admin-users", filtersKey] as const,
+  adminUser: (userId: string) => ["admin-user", userId] as const,
+  adminUserSessions: (userId: string) => ["admin-user-sessions", userId] as const,
+  adminAuditEventsRoot: ["admin-audit-events"] as const,
+  adminAuditEvents: (filtersKey: string) => ["admin-audit-events", filtersKey] as const,
 };

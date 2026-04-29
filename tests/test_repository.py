@@ -19,6 +19,9 @@ class _FakeArtifactMetadataCursor:
         if normalized.startswith("CREATE TABLE") or normalized.startswith("CREATE INDEX") or normalized.startswith("CREATE UNIQUE INDEX"):
             self._rows = []
             return
+        if normalized.startswith("ALTER TABLE"):
+            self._rows = []
+            return
         if normalized.startswith("SELECT version FROM focus_schema_migrations"):
             self._rows = []
             return

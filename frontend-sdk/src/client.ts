@@ -19,11 +19,17 @@ import type {
   FocusAgentAgentTeamTask,
   FocusAgentAgentTeamTaskListResponse,
   FocusAgentAgentTeamUpdateTaskRequest,
+  FocusAgentAuditEventListRequest,
+  FocusAgentAuditEventListResponse,
+  FocusAgentAdminResetPasswordRequest,
+  FocusAgentAuthResponse,
   FocusAgentApplyMergeDecisionResponse,
   FocusAgentBranchActionExecuteResponse,
   FocusAgentBranchRecord,
+  FocusAgentChangePasswordRequest,
   FocusAgentConversationListResponse,
   FocusAgentConversationSummary,
+  FocusAgentCreateUserRequest,
   FocusAgentCreateConversationRequest,
   FocusAgentCapabilityListResponse,
   FocusAgentArtifactListResponse,
@@ -56,7 +62,11 @@ import type {
   FocusAgentObservabilityOverviewRequest,
   FocusAgentObservabilityOverviewResponse,
   FocusAgentPrincipalResponse,
+  FocusAgentLoginRequest,
   FocusAgentRenameBranchRequest,
+  FocusAgentRefreshRequest,
+  FocusAgentRegisterRequest,
+  FocusAgentRevokeUserSessionRequest,
   FocusAgentRoleDecisionListResponse,
   FocusAgentRoleDryRunRequest,
   FocusAgentRoleDryRunResponse,
@@ -74,11 +84,16 @@ import type {
   FocusAgentTaskLedgerPolicyResponse,
   FocusAgentTaskLedgerRunListResponse,
   FocusAgentUpdateConversationRequest,
+  FocusAgentUpdateUserRequest,
+  FocusAgentUpdateUserRolesRequest,
+  FocusAgentUpdateUserStatusRequest,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
   FocusAgentTokenResponse,
   FocusAgentTurnRequest,
   FocusAgentResumeRequest,
+  FocusAgentSession,
+  FocusAgentSessionListResponse,
   FocusAgentTrajectoryBatchPromotionPreviewRequest,
   FocusAgentTrajectoryBatchPromotionPreviewResponse,
   FocusAgentTrajectoryBatchReplayCompareRequest,
@@ -92,6 +107,9 @@ import type {
   FocusAgentTrajectoryReplayResponse,
   FocusAgentTrajectoryStatsRequest,
   FocusAgentTrajectoryStatsResponse,
+  FocusAgentUser,
+  FocusAgentUserListRequest,
+  FocusAgentUserListResponse,
   BranchTreeResponse,
   ThreadStateResponse,
   ThreadContextCompactRequest,
@@ -108,17 +126,7 @@ export interface FocusAgentClientOptions {
   fetchImpl?: typeof fetch;
 }
 
-export class FocusAgentRequestError extends Error {
-  readonly status: number;
-  readonly statusText: string;
-
-  constructor(status: number, statusText: string) {
-    super(`FocusAgent request failed: ${status} ${statusText}`);
-    this.name = "FocusAgentRequestError";
-    this.status = status;
-    this.statusText = statusText;
-  }
-}
+export { FocusAgentRequestError } from "./errors";
 
 function appendQueryValue(params: URLSearchParams, key: string, value: unknown): void {
   if (value === undefined || value === null) {
@@ -194,6 +202,37 @@ function buildAgentTeamQueryString(
   return query ? `?${query}` : "";
 }
 
+function buildAdminUserQueryString(request: FocusAgentUserListRequest = {}): string {
+  const params = new URLSearchParams();
+  appendQueryValue(params, "status", request.status);
+  appendQueryValue(params, "role", request.role);
+  appendQueryValue(params, "tenant_id", request.tenant_id);
+  appendQueryValue(params, "query", request.query);
+  appendQueryValue(params, "limit", request.limit);
+  appendQueryValue(params, "offset", request.offset);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function buildAuditEventQueryString(request: FocusAgentAuditEventListRequest = {}): string {
+  const params = new URLSearchParams();
+  appendQueryValue(params, "actor_user_id", request.actor_user_id);
+  appendQueryValue(params, "resource_type", request.resource_type);
+  appendQueryValue(params, "resource_id", request.resource_id);
+  appendQueryValue(params, "decision", request.decision);
+  appendQueryValue(params, "limit", request.limit);
+  appendQueryValue(params, "offset", request.offset);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function unwrapUserResponse(response: FocusAgentUser | { user?: FocusAgentUser | null }): FocusAgentUser {
+  if ("user" in response && response.user) {
+    return response.user;
+  }
+  return response as FocusAgentUser;
+}
+
 function canonicalizeAliasEvent(event: FocusAgentEvent): FocusAgentEvent {
   switch (event.event) {
     case "message.delta":
@@ -266,6 +305,112 @@ export class FocusAgentClient {
     this.token = token;
   }
 
+  async register(request: FocusAgentRegisterRequest): Promise<FocusAgentAuthResponse> {
+    return this.requestJson<FocusAgentAuthResponse>("/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, false);
+  }
+
+  async login(request: FocusAgentLoginRequest): Promise<FocusAgentAuthResponse> {
+    return this.requestJson<FocusAgentAuthResponse>("/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, false);
+  }
+
+  async logout(): Promise<void> {
+    await this.requestJson<void>("/v1/auth/logout", {
+      method: "POST",
+      headers: {},
+    }, true);
+    this.setToken(undefined);
+  }
+
+  async refresh(request: FocusAgentRefreshRequest = {}): Promise<FocusAgentAuthResponse> {
+    return this.requestJson<FocusAgentAuthResponse>("/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async changePassword(request: FocusAgentChangePasswordRequest): Promise<void> {
+    await this.requestJson<void>("/v1/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }, true);
+  }
+
+  async listMySessions(): Promise<FocusAgentSessionListResponse> {
+    const response = await this.requestJson<FocusAgentSessionListResponse & { sessions?: FocusAgentSession[] }>(
+      "/v1/auth/sessions",
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+    const items = response.items ?? response.sessions ?? [];
+    return { items, count: response.count ?? items.length };
+  }
+
+  async revokeSession(sessionId: string): Promise<FocusAgentSession | void> {
+    return this.requestJson<FocusAgentSession | void>(
+      `/v1/auth/sessions/${encodeURIComponent(sessionId)}/revoke`,
+      {
+        method: "POST",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async listUserSessions(userId: string): Promise<FocusAgentSessionListResponse> {
+    return this.requestJson<FocusAgentSessionListResponse>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/sessions`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async revokeUserSession(
+    userId: string,
+    request: FocusAgentRevokeUserSessionRequest,
+  ): Promise<FocusAgentSession> {
+    return this.requestJson<FocusAgentSession>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/sessions/revoke`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+  }
+
+  async resetUserPassword(
+    userId: string,
+    request: FocusAgentAdminResetPasswordRequest,
+  ): Promise<FocusAgentUser> {
+    const response = await this.requestJson<FocusAgentUser | { user?: FocusAgentUser | null }>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/password`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return unwrapUserResponse(response);
+  }
+
   async createDemoToken(request: FocusAgentDemoTokenRequest = {}): Promise<FocusAgentTokenResponse> {
     return this.requestJson<FocusAgentTokenResponse>("/v1/auth/demo-token", {
       method: "POST",
@@ -279,6 +424,103 @@ export class FocusAgentClient {
       method: "GET",
       headers: {},
     }, true);
+  }
+
+  async listUsers(request: FocusAgentUserListRequest = {}): Promise<FocusAgentUserListResponse> {
+    return this.requestJson<FocusAgentUserListResponse>(
+      `/v1/admin/users${buildAdminUserQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+  }
+
+  async createUser(request: FocusAgentCreateUserRequest): Promise<FocusAgentUser> {
+    const response = await this.requestJson<FocusAgentUser | { user?: FocusAgentUser | null }>(
+      "/v1/admin/users",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return unwrapUserResponse(response);
+  }
+
+  async getUser(userId: string): Promise<FocusAgentUser> {
+    const response = await this.requestJson<FocusAgentUser | { user?: FocusAgentUser | null }>(
+      `/v1/admin/users/${encodeURIComponent(userId)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
+    return unwrapUserResponse(response);
+  }
+
+  async updateUser(
+    userId: string,
+    request: FocusAgentUpdateUserRequest,
+  ): Promise<FocusAgentUser> {
+    const response = await this.requestJson<FocusAgentUser | { user?: FocusAgentUser | null }>(
+      `/v1/admin/users/${encodeURIComponent(userId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return unwrapUserResponse(response);
+  }
+
+  async updateUserStatus(
+    userId: string,
+    request: FocusAgentUpdateUserStatusRequest,
+  ): Promise<FocusAgentUser> {
+    const response = await this.requestJson<FocusAgentUser | { user?: FocusAgentUser | null }>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/status`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return unwrapUserResponse(response);
+  }
+
+  async updateUserRoles(
+    userId: string,
+    request: FocusAgentUpdateUserRolesRequest,
+  ): Promise<FocusAgentUser> {
+    const response = await this.requestJson<FocusAgentUser | { user?: FocusAgentUser | null }>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/roles`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+      true,
+    );
+    return unwrapUserResponse(response);
+  }
+
+  async listAuditEvents(
+    request: FocusAgentAuditEventListRequest = {},
+  ): Promise<FocusAgentAuditEventListResponse> {
+    return this.requestJson<FocusAgentAuditEventListResponse>(
+      `/v1/admin/audit-events${buildAuditEventQueryString(request)}`,
+      {
+        method: "GET",
+        headers: {},
+      },
+      true,
+    );
   }
 
   async listModels(): Promise<FocusAgentModelsResponse> {

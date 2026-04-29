@@ -19,6 +19,7 @@ from .route_utils.token_usage import (
 from .routers import (
     agent_governance,
     agent_team,
+    admin_users,
     auth_models,
     branches_merge,
     conversation_chat_context,
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(health_metrics.router)
     register_frontend_routes(app, settings=settings)
     app.include_router(auth_models.router)
+    app.include_router(admin_users.router)
     app.include_router(agent_team.router)
     app.include_router(agent_governance.router)
     app.include_router(observability.router)

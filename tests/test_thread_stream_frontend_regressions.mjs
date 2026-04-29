@@ -76,6 +76,23 @@ function loadFunctions(relativePath, functionNames) {
   return context.module.exports;
 }
 
+function loadModule(relativePath) {
+  const sourceText = readFileSync(path.join(repoRoot, relativePath), "utf8");
+  const transpiled = ts.transpileModule(sourceText, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const moduleExports = {};
+  const context = {
+    exports: moduleExports,
+    module: { exports: moduleExports },
+  };
+  vm.runInNewContext(transpiled, context);
+  return context.module.exports;
+}
+
 function loadSdkStreamFunctions() {
   const toolProtocolSource = readFileSync(
     path.join(repoRoot, "frontend-sdk/src/toolProtocol.ts"),
@@ -113,17 +130,19 @@ test("request cleanup clears the optimistic user message after failed sends", ()
     createThreadStreamEntry,
     nextThreadEntryMap,
     patchThreadEntry,
-    resolveStreamRequestCleanup,
     resolveThinkingModeForRequest,
   } = loadFunctions(
-    "apps/web/src/features/thread-stream/use-thread-stream.ts",
+    "apps/web/src/features/thread-stream/stream-entry-state.ts",
     [
-      "resolveStreamRequestCleanup",
       "resolveThinkingModeForRequest",
       "createThreadStreamEntry",
       "nextThreadEntryMap",
       "patchThreadEntry",
     ],
+  );
+  const { resolveStreamRequestCleanup } = loadFunctions(
+    "apps/web/src/features/thread-stream/use-thread-stream-errors.ts",
+    ["resolveStreamRequestCleanup"],
   );
 
   assert.equal(
@@ -243,6 +262,18 @@ test("stream reducer tracks branch action lifecycle events", () => {
   assert.equal(executed.branchActions.length, 1);
   assert.equal(executed.branchActions[0].status, "executed");
   assert.equal(executed.branchActions[0].navigation.thread_id, "child-2");
+});
+
+test("SSE parser ignores trailing blank frames after stream completion", () => {
+  const { parseSSEFrames } = loadModule("frontend-sdk/src/parser.ts");
+
+  const parsed = parseSSEFrames(
+    'event: visible_text.completed\ndata: {"content":"done"}\n\n\n\n',
+  );
+
+  assert.equal(parsed.frames.length, 1);
+  assert.equal(parsed.frames[0].event, "visible_text.completed");
+  assert.equal(parseSSEFrames("\n\n").frames.length, 0);
 });
 
 test("message list does not render trailing tool output as a fake assistant reply", () => {

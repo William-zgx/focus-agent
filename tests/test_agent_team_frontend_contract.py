@@ -75,7 +75,7 @@ def test_agent_team_route_is_registered_in_frontend_router():
 
     assert 'path: "/agent-team"' in router_text
     assert 'path: "/agent-team/$sessionId"' in router_text
-    assert "component: AgentTeamWorkbenchPage" in router_text
+    assert "component: protect(<AgentTeamWorkbenchPage />)" in router_text
     assert "agentTeamRoute" in router_text
     assert "agentTeamSessionRoute" in router_text
 

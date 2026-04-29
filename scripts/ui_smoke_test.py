@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 from urllib import parse as urllib_parse
+from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 
@@ -32,10 +33,41 @@ def _http_request_json(url: str, *, method: str) -> object:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _http_post_json(url: str, payload: dict[str, object]) -> object:
+    req = urllib_request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def ensure_health(url: str) -> None:
     payload = _http_get_json(url)
     if not isinstance(payload, dict) or payload.get("status") != "ok":
         raise RuntimeError(f"Health check failed: {payload!r}")
+
+
+def create_demo_access_token(health_url: str) -> str | None:
+    token_url = urllib_parse.urljoin(health_url, "/v1/auth/demo-token")
+    try:
+        payload = _http_post_json(
+            token_url,
+            {
+                "user_id": "ui-smoke",
+                "tenant_id": "ui-smoke",
+                "scopes": ["chat", "branches"],
+            },
+        )
+    except urllib_error.HTTPError as exc:
+        if exc.code in {401, 403, 404}:
+            return None
+        raise
+    if isinstance(payload, dict) and isinstance(payload.get("access_token"), str):
+        return str(payload["access_token"])
+    return None
 
 
 def resolve_chrome_path(explicit: str | None) -> str:
@@ -266,9 +298,16 @@ def build_smoke_expression(message: str) -> str:
   const newConversationLabels = ['New', 'New conversation', '新建', '新建对话'];
   const newBranchLabels = ['Fork branch', 'New branch', '新建分支', '创建分支'];
   const sendLabels = ['Send', 'Send message', '发送', '发送消息'];
+  const demoLoginLabels = ['Demo 登录'];
   const failedConversationLabels = ['Failed to load conversations.', '加载对话失败。'];
   const loadingConversationLabels = ['Loading conversations...', '正在加载对话...'];
   const mergeFormLabels = ['Summary', '摘要'];
+  const isLoginPage = () =>
+    includesAny(bodyText(), ['账号登录', '使用用户名与密码完成身份确认']) &&
+    findButton(...demoLoginLabels);
+  if (isLoginPage()) {{
+    throw new Error('Smoke test reached the login page before demo authentication was available.');
+  }}
   await waitFor(() => findButton(...newConversationLabels), 20000, 'conversation sidebar');
   result.title = document.title;
   result.url = location.href;
@@ -392,6 +431,7 @@ def run_ui_smoke_test(
     keep_open: bool,
 ) -> dict[str, object]:
     ensure_health(health_url)
+    demo_access_token = create_demo_access_token(health_url)
     port = pick_free_port()
     temp_dir = tempfile.TemporaryDirectory(prefix="focus-agent-ui-smoke-")
     chrome_process = subprocess.Popen(  # noqa: S603
@@ -420,6 +460,17 @@ def run_ui_smoke_test(
         try:
             client.send("Page.enable")
             client.send("Runtime.enable")
+            if demo_access_token:
+                client.send(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {
+                        "source": (
+                            "try { window.localStorage.setItem("
+                            f"'focus-agent-token', {json.dumps(demo_access_token)}"
+                            "); } catch {}"
+                        ),
+                    },
+                )
             client.send(
                 "Page.addScriptToEvaluateOnNewDocument",
                 {

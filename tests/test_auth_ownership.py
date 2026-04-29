@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from focus_agent.api.main import create_app
 from focus_agent.config import Settings
-from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus, BranchTreeNode
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.security.ownership import (
     OwnershipAuditEvent,
@@ -120,14 +120,13 @@ class _OwnershipBranchService:
 
     def get_branch_tree(self, *, root_thread_id: str, user_id: str):
         self._assert_owner(user_id)
-        return {
-            "thread_id": root_thread_id,
-            "root_thread_id": root_thread_id,
-            "branch_name": "main",
-            "branch_role": "main",
-            "branch_status": "active",
-            "children": [],
-        }
+        return BranchTreeNode(
+            thread_id=root_thread_id,
+            root_thread_id=root_thread_id,
+            branch_name="main",
+            branch_role=BranchRole.MAIN,
+            branch_status=BranchStatus.ACTIVE,
+        )
 
     def list_archived_branches(self, *, root_thread_id: str, user_id: str):
         del root_thread_id
@@ -529,6 +528,35 @@ def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata
         body = response.json()
         assert body["code"] == 403
         assert "User intruder-1 cannot access thread root-1." in body["message"]
+
+
+def test_thread_routes_accept_encoded_slashes_for_existing_user_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings = _build_client(monkeypatch, tmp_path)
+    owner_headers = _auth_header(settings, user_id="owner-1")
+    encoded_thread_id = "root%2Flegacy-main"
+
+    thread = client.get(f"/v1/threads/{encoded_thread_id}", headers=owner_headers)
+    preview = client.post(
+        f"/v1/threads/{encoded_thread_id}/context/preview",
+        headers=owner_headers,
+        json={"draft_message": "hello"},
+    )
+    branch_action = client.post(
+        f"/v1/threads/{encoded_thread_id}/branch-actions/branch-action-1/execute",
+        headers=owner_headers,
+        json={},
+    )
+    tree = client.get(f"/v1/branches/tree/{encoded_thread_id}", headers=owner_headers)
+
+    assert thread.status_code == 200
+    assert thread.json()["thread_id"] == "root/legacy-main"
+    assert preview.status_code == 200
+    assert branch_action.status_code == 200
+    assert branch_action.json()["thread_state"]["thread_id"] == "root/legacy-main"
+    assert tree.status_code == 200
+    assert tree.json()["root"]["root_thread_id"] == "root/legacy-main"
 
 
 def test_demo_token_endpoint_is_disabled_for_production_style_settings(

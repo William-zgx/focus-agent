@@ -6,8 +6,11 @@ from .branch_repository import BranchRepository
 from .postgres_branch_repository import PostgresBranchRepository
 from .postgres_schema import ensure_app_postgres_schema
 from .postgres_trajectory_repository import PostgresTrajectoryRepository
+from .postgres_user_repository import PostgresUserRepository
 from .sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from .sqlite_branch_repository import SQLiteBranchRepository
+from .sqlite_user_repository import SQLiteUserRepository
+from .user_repository import InMemoryUserRepository, UserRepository
 
 if TYPE_CHECKING:
     from .postgres_agent_team_repository import PostgresAgentTeamRepository
@@ -26,10 +29,14 @@ __all__ = [
     "ArtifactMetadataRepository",
     "BranchRepository",
     "InMemoryAgentTeamRepository",
+    "InMemoryUserRepository",
     "PostgresAgentTeamRepository",
     "PostgresBranchRepository",
     "PostgresTrajectoryRepository",
+    "PostgresUserRepository",
     "SQLiteAgentTeamRepository",
     "SQLiteBranchRepository",
+    "SQLiteUserRepository",
+    "UserRepository",
     "ensure_app_postgres_schema",
 ]

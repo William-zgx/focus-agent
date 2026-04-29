@@ -16,8 +16,11 @@ from ..repositories.agent_team_repository import AgentTeamRepository
 from ..repositories.branch_repository import BranchRepository
 from ..repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from ..repositories.sqlite_branch_repository import SQLiteBranchRepository
+from ..repositories.sqlite_user_repository import SQLiteUserRepository
+from ..repositories.user_repository import UserRepository
 from ..services.agent_team import AgentTeamService
 from ..services.branches import BranchService
+from ..services.users import UserService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
 from ..core.request_context import RequestContext
@@ -31,6 +34,7 @@ class RuntimePersistence:
     checkpointer: object
     store: object
     repo: BranchRepository
+    user_repository: UserRepository
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
 
@@ -53,6 +57,7 @@ class RuntimeRegistries:
 class RuntimeServices:
     branch_service: BranchService
     agent_team_service: AgentTeamService
+    user_service: UserService
 
 
 @dataclass(slots=True)
@@ -60,8 +65,10 @@ class AppRuntime:
     settings: Settings
     graph: object
     repo: BranchRepository
+    user_repository: UserRepository
     branch_service: BranchService
     agent_team_service: AgentTeamService
+    user_service: UserService
     checkpointer: object
     store: object
     store_namespace_selector: Callable[[RequestContext], tuple[str, ...]]
@@ -103,6 +110,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         settings=settings,
         graph=graph,
         repo=persistence.repo,
+        user_repository=persistence.user_repository,
         store=persistence.store,
         memory_writer=memory.memory_writer,
     )
@@ -111,8 +119,10 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         settings=settings,
         graph=graph,
         repo=persistence.repo,
+        user_repository=persistence.user_repository,
         branch_service=services.branch_service,
         agent_team_service=services.agent_team_service,
+        user_service=services.user_service,
         checkpointer=persistence.checkpointer,
         store=persistence.store,
         store_namespace_selector=conversation_namespace_for_context,
@@ -136,7 +146,7 @@ def _create_runtime_persistence(
 ) -> RuntimePersistence:
     if settings.database_uri:
         logger.info("Runtime persistence backend selected: postgres-primary")
-        checkpointer, store, repo, trajectory_recorder, artifact_metadata_repository = (
+        checkpointer, store, repo, user_repository, trajectory_recorder, artifact_metadata_repository = (
             _create_postgres_primary_persistence(
                 settings=settings,
                 exit_stack=exit_stack,
@@ -144,7 +154,7 @@ def _create_runtime_persistence(
         )
     else:
         logger.info("Runtime persistence backend selected: local-fallback")
-        checkpointer, store, repo, trajectory_recorder, artifact_metadata_repository = (
+        checkpointer, store, repo, user_repository, trajectory_recorder, artifact_metadata_repository = (
             _create_local_fallback_persistence(settings)
         )
 
@@ -152,6 +162,7 @@ def _create_runtime_persistence(
         checkpointer=checkpointer,
         store=store,
         repo=repo,
+        user_repository=user_repository,
         trajectory_recorder=trajectory_recorder,
         artifact_metadata_repository=artifact_metadata_repository,
     )
@@ -211,6 +222,7 @@ def _create_runtime_services(
     settings: Settings,
     graph: object,
     repo: BranchRepository,
+    user_repository: UserRepository,
     store: object,
     memory_writer: MemoryWriter,
 ) -> RuntimeServices:
@@ -225,20 +237,28 @@ def _create_runtime_services(
         branch_service=branch_service,
         repository=_create_agent_team_repository(settings),
     )
+    user_service = UserService(
+        user_repository,
+        auth_enabled=settings.auth_enabled,
+    )
     return RuntimeServices(
         branch_service=branch_service,
         agent_team_service=agent_team_service,
+        user_service=user_service,
     )
+
+
 def _create_postgres_primary_persistence(
     *,
     settings: Settings,
     exit_stack: ExitStack,
-) -> tuple[object, object, BranchRepository, object | None, object]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, object]:
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
 
     from ..repositories.artifact_metadata_repository import ArtifactMetadataRepository
     from ..repositories.postgres_branch_repository import PostgresBranchRepository
+    from ..repositories.postgres_user_repository import PostgresUserRepository
 
     assert settings.database_uri is not None
 
@@ -249,6 +269,8 @@ def _create_postgres_primary_persistence(
 
     repo = PostgresBranchRepository(settings.database_uri)
     _setup_component_if_available(repo)
+    user_repository = PostgresUserRepository(settings.database_uri)
+    _setup_component_if_available(user_repository)
 
     artifact_metadata_repository = ArtifactMetadataRepository(settings.database_uri)
     _setup_component_if_available(artifact_metadata_repository)
@@ -265,12 +287,12 @@ def _create_postgres_primary_persistence(
         else:
             trajectory_recorder = candidate
 
-    return checkpointer, store, repo, trajectory_recorder, artifact_metadata_repository
+    return checkpointer, store, repo, user_repository, trajectory_recorder, artifact_metadata_repository
 
 
 def _create_local_fallback_persistence(
     settings: Settings,
-) -> tuple[object, object, BranchRepository, object | None, object | None]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None]:
     persistence_dir = Path(settings.branch_db_path).expanduser().parent
     checkpoint_path = (
         Path(settings.local_checkpoint_path).expanduser()
@@ -285,7 +307,8 @@ def _create_local_fallback_persistence(
     checkpointer = PersistentInMemorySaver(checkpoint_path)
     store = PersistentInMemoryStore(store_path)
     repo = SQLiteBranchRepository(settings.branch_db_path)
-    return checkpointer, store, repo, None, None
+    user_repository = SQLiteUserRepository(settings.branch_db_path)
+    return checkpointer, store, repo, user_repository, None, None
 
 
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:

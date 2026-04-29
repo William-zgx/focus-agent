@@ -74,7 +74,7 @@ def create_conversation(
     )
     return _conversation_response(record.model_copy(update={"token_usage": _normalize_token_usage()}))
 
-@router.patch('/v1/conversations/{root_thread_id}', response_model=ConversationSummaryResponse)
+@router.patch('/v1/conversations/{root_thread_id:path}', response_model=ConversationSummaryResponse)
 def update_conversation(
     root_thread_id: str,
     payload: UpdateConversationRequest,
@@ -103,7 +103,7 @@ def update_conversation(
         )
     )
 
-@router.post('/v1/conversations/{root_thread_id}/archive', response_model=ConversationSummaryResponse)
+@router.post('/v1/conversations/{root_thread_id:path}/archive', response_model=ConversationSummaryResponse)
 def archive_conversation(
     root_thread_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -126,7 +126,7 @@ def archive_conversation(
         )
     )
 
-@router.post('/v1/conversations/{root_thread_id}/activate', response_model=ConversationSummaryResponse)
+@router.post('/v1/conversations/{root_thread_id:path}/activate', response_model=ConversationSummaryResponse)
 def activate_conversation(
     root_thread_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -231,7 +231,7 @@ def stream_resumed_chat_turn(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return _event_stream_response(stream)
 
-@router.get('/v1/threads/{thread_id}', response_model=ThreadStateResponse)
+@router.get('/v1/threads/{thread_id:path}', response_model=ThreadStateResponse)
 def get_thread_snapshot(
     thread_id: str,
     request: Request,
@@ -248,7 +248,7 @@ def get_thread_snapshot(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return ThreadStateResponse.model_validate(result)
 
-@router.post('/v1/threads/{thread_id}/branch-actions/{action_id}/execute', response_model=BranchActionExecuteResponse)
+@router.post('/v1/threads/{thread_id:path}/branch-actions/{action_id}/execute', response_model=BranchActionExecuteResponse)
 def execute_thread_branch_action(
     thread_id: str,
     action_id: str,
@@ -273,7 +273,7 @@ def execute_thread_branch_action(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return BranchActionExecuteResponse.model_validate(result)
 
-@router.post('/v1/threads/{thread_id}/branch-actions/{action_id}/dismiss', response_model=ThreadStateResponse)
+@router.post('/v1/threads/{thread_id:path}/branch-actions/{action_id}/dismiss', response_model=ThreadStateResponse)
 def dismiss_thread_branch_action(
     thread_id: str,
     action_id: str,
@@ -296,7 +296,7 @@ def dismiss_thread_branch_action(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ThreadStateResponse.model_validate(result)
 
-@router.post('/v1/threads/{thread_id}/context/preview', response_model=ThreadContextPreviewResponse)
+@router.post('/v1/threads/{thread_id:path}/context/preview', response_model=ThreadContextPreviewResponse)
 def preview_thread_context(
     thread_id: str,
     payload: ThreadContextPreviewRequest,
@@ -313,7 +313,7 @@ def preview_thread_context(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return ThreadContextPreviewResponse.model_validate(result)
 
-@router.post('/v1/threads/{thread_id}/context/compact', response_model=ThreadContextCompactResponse)
+@router.post('/v1/threads/{thread_id:path}/context/compact', response_model=ThreadContextCompactResponse)
 def compact_thread_context(
     thread_id: str,
     payload: ThreadContextCompactRequest,
