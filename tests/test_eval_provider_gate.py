@@ -6,6 +6,14 @@ from pathlib import Path
 from scripts import eval_provider_gate
 
 
+def test_eval_workflow_skips_missing_provider_key_by_default() -> None:
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "eval.yml"
+    text = workflow.read_text(encoding="utf-8")
+
+    assert "vars.PROVIDER_EVAL_MISSING_KEY_POLICY || 'skip'" in text
+    assert "github.event_name == 'pull_request' && 'skip'" in text
+
+
 def test_provider_eval_gate_skips_missing_key_with_annotation(tmp_path: Path, capsys) -> None:
     report_json = tmp_path / "gate.json"
 
