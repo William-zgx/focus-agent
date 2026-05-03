@@ -54,7 +54,7 @@ Then open:
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-For the full local startup flow, managed repo-local PostgreSQL behavior, Vite dev mode, and local auth examples, see [docs/quick-start.md](docs/quick-start.md).
+For the full local startup flow, managed repo-local PostgreSQL behavior, Vite dev mode, and local auth examples, see [docs/quick-start.md](docs/quick-start.md). The built-in auth page supports username/password, Demo login, and Bearer Token login; account switching is logout followed by another login method.
 
 ## Container Deployment
 

@@ -23,7 +23,7 @@ This SDK packages those concerns into a small, typed client layer.
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
-- Trajectory observability helpers for overview/list/detail/stats/replay/promote and batch governance preview flows
+- Trajectory observability helpers for overview/list/detail/stats/replay/promote plus batch promote-preview and replay-compare flows
 - Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
@@ -51,12 +51,13 @@ This SDK packages those concerns into a small, typed client layer.
 This package currently lives inside the main repository and is built locally:
 
 ```bash
-cd frontend-sdk
-npm install
-npm run check
-npm run build
-npm run validate:transport
+pnpm install --registry=https://registry.npmjs.org
+make sdk-check
+make sdk-build
+cd frontend-sdk && npm run validate:transport
 ```
+
+When working only inside `frontend-sdk/`, `npm install`, `npm run check`, and `npm run build` are still valid package-local commands. Repository changes should prefer the root `make sdk-*` targets so the same checks run as CI and release gates.
 
 Requirements:
 
@@ -260,6 +261,6 @@ make contract-check
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch, conversation, merge proposal, imported-conclusion, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
+- Branch, conversation, merge proposal, imported-conclusion, Agent Team, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
 - `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.

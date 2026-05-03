@@ -1,10 +1,10 @@
 import {
 	FocusAgentRequestError,
-	safeVisibleText,
 	type FocusAgentTrajectoryStatsRow,
 	type FocusAgentTrajectoryStep,
 	type FocusAgentTrajectoryTurnDetail,
 	type FocusAgentTrajectoryTurnSummary,
+	safeVisibleText,
 } from "@focus-agent/web-sdk";
 
 export type SortMode = "newest" | "latency" | "tool_calls";

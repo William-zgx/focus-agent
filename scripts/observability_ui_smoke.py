@@ -355,8 +355,13 @@ def _instrument_browser(client: CdpWebSocket, *, demo_access_token: str | None =
 window.__faFetches = [];
 window.__faErrors = [];
 const __faFetch = window.fetch.bind(window);
+const __faFetchUrl = (input) => {
+  if (typeof input === "string") return input;
+  if (input && typeof input.url === "string") return input.url;
+  return String(input);
+};
 window.fetch = async (...args) => {
-  const url = String(args[0]);
+  const url = __faFetchUrl(args[0]);
   const init = args[1] || {};
   window.__faFetches.push({ stage: "start", url, method: init.method || "GET" });
   try {
@@ -395,7 +400,40 @@ window.addEventListener("unhandledrejection", (event) => {
 
 def _wait_for_page_load(client: CdpWebSocket, url: str) -> None:
     client.send("Page.navigate", {"url": url})
-    time.sleep(1.5)
+    deadline = time.time() + 30
+    last_state: object = None
+    while time.time() < deadline:
+        try:
+            response = client.send(
+                "Runtime.evaluate",
+                {
+                    "expression": """
+JSON.stringify({
+  href: location.href,
+  readyState: document.readyState,
+  hasBody: Boolean(document.body),
+})
+""",
+                    "awaitPromise": True,
+                    "returnByValue": True,
+                },
+            )
+            raw_result = response.get("result", {}) if isinstance(response.get("result"), dict) else {}
+            payload = raw_result.get("value")
+            if isinstance(payload, str) and payload.strip():
+                state = json.loads(payload)
+                last_state = state
+                if (
+                    isinstance(state, dict)
+                    and state.get("href") == url
+                    and state.get("readyState") in {"interactive", "complete"}
+                    and state.get("hasBody")
+                ):
+                    return
+        except Exception as exc:  # noqa: BLE001 - navigation can briefly destroy the execution context.
+            last_state = str(exc)
+        time.sleep(0.2)
+    raise RuntimeError(f"Timed out waiting for page load at {url}: {last_state!r}")
 
 
 def build_overview_expression(seed: dict[str, str]) -> str:
@@ -415,6 +453,15 @@ def build_overview_expression(seed: dict[str, str]) -> str:
   }};
   const bodyText = () => document.body?.innerText || '';
   const fetches = () => window.__faFetches || [];
+  const hasFetch = (pathname) =>
+    fetches().some((item) => {{
+      if (item.stage !== 'end' || !item.ok) return false;
+      try {{
+        return new URL(String(item.url), location.origin).pathname === pathname;
+      }} catch {{
+        return String(item.url).includes(pathname);
+      }}
+    }});
   await waitFor(
     () =>
       bodyText().includes('Trajectory operations overview') ||
@@ -424,7 +471,7 @@ def build_overview_expression(seed: dict[str, str]) -> str:
   );
   await waitFor(
     () =>
-      fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes('/v1/observability/overview')),
+      hasFetch('/v1/observability/overview'),
     30000,
     'overview fetch'
   );
@@ -464,6 +511,15 @@ def build_trajectory_expression(seed: dict[str, object], *, evidence_state: str,
   }};
   const bodyText = () => document.body?.innerText || '';
   const fetches = () => window.__faFetches || [];
+  const hasFetch = (pathname) =>
+    fetches().some((item) => {{
+      if (item.stage !== 'end' || !item.ok) return false;
+      try {{
+        return new URL(String(item.url), location.origin).pathname === pathname;
+      }} catch {{
+        return String(item.url).includes(pathname);
+      }}
+    }});
   await waitFor(
     () =>
       bodyText().includes('High-density sample queue') ||
@@ -473,19 +529,28 @@ def build_trajectory_expression(seed: dict[str, object], *, evidence_state: str,
   );
   await waitFor(
     () =>
-      fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes('/v1/observability/trajectory?')),
+      hasFetch('/v1/observability/trajectory'),
     40000,
     'trajectory list fetch'
   );
   await waitFor(
     () =>
-      fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes('/v1/observability/overview')),
+      hasFetch('/v1/observability/overview'),
     40000,
     'observability overview fetch'
   );
   await waitFor(
     () =>
-      fetches().some((item) => item.stage === 'end' && item.ok && String(item.url).includes('/v1/observability/trajectory/')),
+      hasFetch('/v1/observability/trajectory/' + encodeURIComponent(seed.primary_turn_id)) ||
+      fetches().some((item) => {{
+        if (item.stage !== 'end' || !item.ok) return false;
+        try {{
+          const pathname = new URL(String(item.url), location.origin).pathname;
+          return /^\/v1\/observability\/trajectory\/[^/]+$/.test(pathname);
+        }} catch {{
+          return String(item.url).includes('/v1/observability/trajectory/');
+        }}
+      }}),
     40000,
     'trajectory detail fetch'
   );

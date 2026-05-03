@@ -54,7 +54,7 @@ make api
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
+更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。内置登录页支持用户名密码、Demo 登录和 Bearer Token 登录；账号切换就是先退出再选择另一种登录方式。
 
 ## 容器化部署
 

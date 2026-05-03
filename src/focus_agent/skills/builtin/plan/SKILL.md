@@ -12,3 +12,4 @@ prompt_mode: explore
 - Break the work into concrete phases with clear ordering and success criteria.
 - Call out the risky or high-uncertainty steps so the user can make decisions earlier.
 - Keep the plan actionable: someone should be able to execute it directly from your output.
+- Use this for lightweight planning that does not need a saved artifact; use `writing-plans` when the user needs an implementation plan with exact files, commands, and persistent artifacts.

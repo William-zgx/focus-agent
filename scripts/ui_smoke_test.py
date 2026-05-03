@@ -298,6 +298,7 @@ def build_smoke_expression(message: str) -> str:
   const newConversationLabels = ['New', 'New conversation', '新建', '新建对话'];
   const newBranchLabels = ['Fork branch', 'New branch', '新建分支', '创建分支'];
   const sendLabels = ['Send', 'Send message', '发送', '发送消息'];
+  const stopLabels = ['Stop generation', '停止生成'];
   const demoLoginLabels = ['Demo 登录'];
   const failedConversationLabels = ['Failed to load conversations.', '加载对话失败。'];
   const loadingConversationLabels = ['Loading conversations...', '正在加载对话...'];
@@ -352,6 +353,11 @@ def build_smoke_expression(message: str) -> str:
     let previous = '';
     let stableSince = 0;
     const started = Date.now();
+    const isStreamingUiActive = () =>
+      Boolean(findButton(...stopLabels)) ||
+      Boolean(document.querySelector('.fa-composer-shell.is-streaming')) ||
+      Boolean(document.querySelector('.fa-agent-run-bubble')) ||
+      Boolean(document.querySelector('.fa-message-role.is-streaming'));
     while (Date.now() - started < 120000) {{
       const text = latestAssistantBubbleText();
       const hasAssistantReply =
@@ -359,9 +365,7 @@ def build_smoke_expression(message: str) -> str:
         text !== 'Focus Agent' &&
         !text.includes('<｜DSML｜') &&
         !text.includes('function_calls');
-      const sendButton = findButton(...sendLabels);
-      const sendReady = Boolean(sendButton && !sendButton.disabled);
-      if (hasAssistantReply && sendReady) {{
+      if (hasAssistantReply && !isStreamingUiActive()) {{
         if (text === previous) {{
           stableSince += 250;
           if (stableSince >= 1000) return text;

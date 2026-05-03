@@ -125,6 +125,8 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 
 The browser smoke waits for the assistant response to stabilize after streaming and should be used for complex tool-use prompts, not only the default short OK response. This catches transport validation regressions such as malformed `tool_call.delta` payloads.
 
+`scripts/ui_smoke_test.py` does not start the API or Vite dev server. Before running it with defaults, make sure `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:5173/app/` are already reachable. If you point it at the backend-served static app, run `make web-build` first.
+
 6. If observability pages or seeded trajectory browser flows changed:
 
 ```bash
@@ -133,6 +135,8 @@ make ui-smoke-observability
 uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
 ```
+
+`scripts/observability_ui_smoke.py` can auto-start the local API through `./scripts/run-api.sh` when the health probe fails; pass `--no-start-api` when you want to require an already running API. It still needs Chrome and either `DATABASE_URI` or the managed local Postgres runtime file. `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements, but does not replace, the real-browser smoke.
 
 7. If trajectory observability contracts changed:
 
@@ -160,13 +164,21 @@ ChatService is intentionally split across branch actions, streaming, thread-stat
 10. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
 ```bash
-uv run pytest tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
+uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
 uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
 ```
 
 This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated
-tokens, production demo-token blocking, and the rule that `tenant_id` and
-`scope` are claim metadata rather than thread ownership keys.
+tokens, production demo-token blocking, registration/password rules, refresh-session logout, admin role safeguards, and the rule that `tenant_id` and `scope` are claim metadata rather than thread ownership keys.
+
+When the Web login surface, account shell, admin route protection, or token storage changes, also run a real-browser auth flow against the local app:
+
+- Visit a protected page such as `/app/admin/users` while signed out and confirm the redirect to `/app/auth/login?return_to=...`.
+- Use `Demo 登录` and confirm the app returns to the protected target.
+- Sign out from the sidebar account control and confirm the login page is visible again.
+- Generate a local `/v1/auth/demo-token`, use the `使用 Bearer Token` panel, and confirm the sidebar account changes.
+- After registration or admin password reset, confirm username/password login still reaches the same `return_to` target.
+- Switch back by signing out and logging in with a different method. The app has no separate account switcher; switching is logout followed by another login.
 
 11. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
 

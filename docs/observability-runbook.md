@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-04-26
+Updated: 2026-05-03
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -291,9 +291,21 @@ The release-health helper turns readiness, trajectory, and replay signals into d
 
 Memory/context quality probes use the same signal shape for deterministic checks such as required markers, forbidden stale markers, and maximum rendered context size.
 
+Before relying on release-health summaries, keep the browser observability smoke green:
+
+```bash
+uv run python scripts/observability_ui_smoke.py --scenario all
+pnpm --dir apps/web smoke:observability
+```
+
+The browser smoke seeds representative success, failed, zero-step, and missing-detail turns, opens `/app/observability/overview`, then follows request/turn deep links into `/app/observability/trajectory`. It records completed fetch request URLs and verifies endpoint pathnames for overview, list, and detail calls, which catches route wiring regressions without depending on fragile query-string text.
+
 The release gate runs the helper after the smoke and observability eval suites have written JSON reports:
 
 ```bash
+uv run python scripts/agent_governance_report.py \
+  --report-json reports/agent-governance/latest.json
+
 uv run python scripts/release_health_check.py \
   --mode local \
   --ready-url http://127.0.0.1:8000/readyz \
@@ -302,6 +314,7 @@ uv run python scripts/release_health_check.py \
   --eval-report-json reports/release-gate/eval-smoke.json \
   --eval-report-json reports/release-gate/eval-observability.json \
   --eval-report-json reports/release-gate/memory-context-eval.json \
+  --governance-report-json reports/agent-governance/latest.json \
   --report-json reports/release-gate/release-health.json
 ```
 
@@ -412,7 +425,9 @@ uv run python -m tests.eval --suite smoke --concurrency 1 --fail-if-regression
 uv run python -m tests.eval --suite observability --concurrency 1
 ```
 
-`make ui-smoke-observability` remains the short local target. For release verification, prefer the explicit browser smoke command with `--scenario all` so overview, trajectory, replay, and promotion surfaces are exercised under one scenario set.
+`make ui-smoke-observability` remains the short local target. For release verification, prefer the explicit browser smoke command with `--scenario all` so overview and trajectory evidence states are exercised under one scenario set. The smoke asserts replay/promote controls and exercises promotion for the success seed.
+
+`pnpm --dir apps/web smoke:observability` is a source-level route and wiring check. It complements the real-browser smoke; it does not launch a browser or call the API.
 
 If your local `.venv` cannot import `psycopg` because `libpq` is missing, use the focused test workaround already documented in [architecture.md](architecture.md).
 

@@ -1,5 +1,5 @@
 import type { FocusAgentTrajectoryTurnDetail } from "@focus-agent/web-sdk";
-
+import { TrajectoryEmptyState } from "./trajectory-states";
 import type { EvidenceMode, ReviewSummary } from "./trajectory-utils";
 import {
 	compactDetailQuestion,
@@ -13,7 +13,6 @@ import {
 	statusTone,
 	stepObservationPreview,
 } from "./trajectory-utils";
-import { TrajectoryEmptyState } from "./trajectory-states";
 
 type SupplementalContextItem = {
 	id: string;

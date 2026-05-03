@@ -121,6 +121,8 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 
 浏览器 smoke 会等待流式回复结束且文本稳定后再读取结果。涉及复杂工具调用时不要只用默认 OK 消息，应增加真实问题，以捕捉 `tool_call.delta` payload 等 transport 校验回归。
 
+`scripts/ui_smoke_test.py` 不会启动 API 或 Vite dev server。按默认参数运行前，请先确认 `http://127.0.0.1:8000/healthz` 和 `http://127.0.0.1:5173/app/` 已可访问。如果指向后端托管的静态 app，请先跑 `make web-build`。
+
 6. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
 ```bash
@@ -129,6 +131,8 @@ make ui-smoke-observability
 uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
 ```
+
+`scripts/observability_ui_smoke.py` 在 health probe 失败时会尝试通过 `./scripts/run-api.sh` 自动启动本地 API；如果要强制使用已运行的 API，请加 `--no-start-api`。它仍然需要 Chrome，以及 `DATABASE_URI` 或托管本地 Postgres 的 runtime file。`pnpm --dir apps/web smoke:observability` 是源码级路由和 wiring 检查，会补充真实浏览器 smoke，但不能替代它。
 
 7. 如果改动影响 trajectory observability contract：
 
@@ -153,7 +157,36 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_do
 
 ChatService 已按 branch action、streaming、thread state、serialization、trajectory 和 execution helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
 
-10. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+10. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
+
+```bash
+uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
+uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
+```
+
+这组 focused suite 覆盖 HS256 issuer/audience/TTL、过期或轮换 token、生产环境禁用 demo token、注册/密码规则、refresh session 退出、admin 角色保护，以及 `tenant_id` 和 `scope` 只是 claim metadata 而不是 thread ownership key 的边界。
+
+如果改动触及 Web 登录页、账号侧栏、管理员路由保护或 token 存储，还要用真实浏览器跑一遍主流程：
+
+- 未登录访问 `/app/admin/users` 等受保护页面，确认跳转到 `/app/auth/login?return_to=...`。
+- 点击 `Demo 登录`，确认登录后回到原受保护页面。
+- 从左侧栏账号区域 `退出登录`，确认重新看到登录页。
+- 调用本地 `/v1/auth/demo-token` 生成 token，通过 `使用 Bearer Token` 面板登录，确认侧栏账号已切换。
+- 注册或 admin reset password 后，确认用户名密码登录仍能回到同一个 `return_to` 目标页面。
+- 需要切回其他账号时先退出再重新登录。当前没有独立切换器，账号切换就是 logout 后选择另一种登录方式。
+
+11. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
+
+```bash
+uv run pytest tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+make nightly-regression
+make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
+make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
+make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
+make agent-governance-report
+```
+
+12. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

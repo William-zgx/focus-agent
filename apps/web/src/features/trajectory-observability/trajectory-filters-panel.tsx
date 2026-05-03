@@ -1,5 +1,4 @@
-import type { SortMode, StatusMode } from "./trajectory-utils";
-import type { FilterChip } from "./trajectory-utils";
+import type { FilterChip, SortMode, StatusMode } from "./trajectory-utils";
 
 type FiltersPanelProps = {
 	fallbackOnly: boolean;

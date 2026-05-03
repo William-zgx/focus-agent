@@ -1,8 +1,10 @@
-# Agent Team Workbench 技术方案
+# Agent Team Workbench 操作与实现手册
 
-更新时间：2026-04-25
+更新时间：2026-05-03
 
-本文定义 Focus Agent 的 Multi-Agent Development Mode：把一次复杂开发任务拆成多个 Agent 工作分支，让每个 Agent 在隔离上下文中产出计划、代码、测试、审查与验证证据，最后通过受控 merge review 汇总回主线。
+本文记录 Focus Agent 当前的 Multi-Agent Development Mode：把一次复杂开发任务拆成多个 Agent 工作分支，让每个 Agent 在隔离上下文中产出计划、代码、测试、审查与验证证据，最后通过受控 merge review 汇总回主线。
+
+当前已落地的入口包括 `/app/agent-team` Web 工作台、`/v1/agent-team/*` API、frontend SDK 的 Agent Team client 方法、Postgres/SQLite repository，以及默认 task dispatch。本文不再作为历史方案草稿保存；新改动应把这里当作当前操作和验证手册维护。
 
 ## 1. 产品目标
 
@@ -48,11 +50,11 @@ Agent 分支里的探索、失败尝试和临时推理默认不进入主线。�
 
 ### 2.4 先做受控并行，不做无限自治
 
-MVP 阶段先支持固定角色、固定任务列表、人工可见的 merge bundle。暂不支持 Agent 无限递归 spawn、自动冲突解决或无人值守提交。
+当前版本支持固定角色、固定任务列表、人工可见的 merge bundle。暂不支持 Agent 无限递归 spawn、自动冲突解决或无人值守提交。
 
 ### 2.5 治理与自治先观察后执行
 
-Agent Team Workbench 可以展示 Agent Governance / Autonomy 的建议，但 MVP 不把这些建议直接升级成高风险动作：
+Agent Team Workbench 可以展示 Agent Governance / Autonomy 的建议，但当前版本不把这些建议直接升级成高风险动作：
 
 - skill selection 只输出推荐 skills 和可用 `skills_list` / `skill_view` evidence。
 - branch suggestion 只输出 role/run isolation key，作为创建分支或分配 worker 的建议。
@@ -221,7 +223,7 @@ class OwnershipAuditDashboard:
 
 ## 5. Backend 设计
 
-新增模块：
+核心模块：
 
 ```text
 src/focus_agent/core/agent_team.py
@@ -238,12 +240,13 @@ src/focus_agent/services/agent_team.py
 - 应用 team merge decision
 - 汇总 ownership audit report，用于 Dashboard 展示 deny reason 和 deny trend
 
-建议 API：
+当前 API：
 
 ```text
 POST  /v1/agent-team/sessions
 GET   /v1/agent-team/sessions
 GET   /v1/agent-team/sessions/{session_id}
+POST  /v1/agent-team/sessions/{session_id}/dispatch
 POST  /v1/agent-team/sessions/{session_id}/tasks
 GET   /v1/agent-team/sessions/{session_id}/tasks
 GET   /v1/agent-team/tasks/{task_id}
@@ -323,19 +326,19 @@ apps/web/src/pages/agent-team/team-workbench-page.tsx
 | verifier | `verify` | 验证链、证据、merge readiness |
 | writer | `writeup` | 文档、release notes、handoff |
 
-## 8. MVP 范围
+## 8. 当前能力与边界
 
-MVP 支持：
+当前支持：
 
 1. 创建 team session。
-2. 创建多个 AgentTeamTask。
-3. 每个 task 可自动 fork 出 branch。
-4. UI 展示 task board。
+2. 通过 `/dispatch` 创建默认任务组，或手动创建多个 AgentTeamTask。
+3. dispatch 可按请求创建协作分支；默认任务组覆盖 planning、backend、frontend、testing、review 和 verification。
+4. UI 展示 session、task board、task detail、artifact/risk/verification 和 merge bundle。
 5. task 可记录 artifact、changed files、verification summary、risk notes。
 6. 生成 team merge bundle。
-7. 用户选择 accepted / rejected tasks。
+7. 用户记录 accepted / rejected tasks 的 merge decision。
 
-暂不支持：
+当前仍不支持：
 
 - 真正后台并发执行 Agent。
 - 自动 git worktree 隔离。
@@ -408,6 +411,6 @@ Dashboard 侧只需要读取 `summary.status`、`summary.quality_attention` 和 
 | --- | --- |
 | 多 Agent 写同一文件冲突 | 按 write scope 拆分，leader 最后集成共享文件 |
 | branch-local finding 污染主线 | 默认只写 branch-local，merge bundle accepted 后才 promotion |
-| UI 复杂度过高 | MVP 只做 task board + detail + merge bundle |
-| 自动执行过早复杂化 | v0 做编排和可视化，v1 再做调度 |
+| UI 复杂度过高 | 保持 task board、detail、artifact/risk/verification 和 merge bundle 的固定信息架构 |
+| 自动执行过早复杂化 | 当前只做默认 dispatch 和可视化，递归调度、冲突解决和无人值守提交继续留在显式执行路径之外 |
 | 评测不足 | 新增 `agent_team` eval suite 和 branch hygiene cases |

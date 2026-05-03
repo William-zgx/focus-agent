@@ -101,7 +101,14 @@ In that mode:
 
 ## 6. Local Auth
 
-For local development, you can create a demo token:
+The built-in app routes unauthenticated users to `/app/auth/login` and preserves the protected target in `return_to`. In local development, the fastest browser path is:
+
+1. Open `http://127.0.0.1:5173/app/` in Vite mode or `http://127.0.0.1:8000/app/` for the backend-served bundle.
+2. Click `Demo 登录` to bootstrap the default local demo user and return to the requested app route.
+3. Use the account control in the left sidebar to sign out.
+4. To switch accounts, sign out first, then log in again with username/password, `Demo 登录`, or the Bearer Token panel.
+
+For token-oriented testing, create a local demo access token:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
@@ -109,6 +116,17 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
   -d '{"user_id": "researcher-1"}'
 ```
 
+Paste the returned `access_token` into the login page's `使用 Bearer Token` panel and submit with `继续`. The `清空` action removes the locally stored token. Password registration creates a persistent local account, so reserve it for tests that explicitly need username/password behavior.
+
+Registration and test-account notes:
+
+- Usernames are trimmed and lowercased before uniqueness checks.
+- Passwords must be at least 8 characters and include both letters and numbers.
+- Self-registration creates an active `member`, not an admin.
+- `AUTH_DEMO_TOKENS_ENABLED=true` is the local default; non-development deployments must disable demo tokens.
+- In local/development mode, the first non-anonymous user can bootstrap as admin. You can also use `AUTH_BOOTSTRAP_ADMIN_USER_IDS` for explicit local admin IDs. Production database deployments should configure admin users deliberately.
+- Admin user creation in `/app/admin/users` creates the user record; reset that user's password before testing username/password login.
+- Logout clears the Web app's stored token, clears auth cookies, and revokes the refresh session. Access tokens and demo tokens are stateless, so a copied token remains usable until expiry or key rotation.
 
 ## 7. Browser Smoke Testing
 

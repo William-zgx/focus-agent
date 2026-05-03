@@ -100,7 +100,14 @@ WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app
 
 ## 6. 本地鉴权
 
-本地开发可先创建 demo token：
+内置 `/app` 会把未登录用户引导到 `/app/auth/login`，并通过 `return_to` 保留原本要访问的受保护页面。本地开发最快的浏览器路径是：
+
+1. Vite 模式打开 `http://127.0.0.1:5173/app/`，或打开后端托管 bundle 的 `http://127.0.0.1:8000/app/`。
+2. 点击 `Demo 登录` 创建默认本地 demo 用户，并回到原目标页面。
+3. 用左侧栏账号区域的 `退出登录` 回到未登录态。
+4. 切换账号时先退出，再用用户名密码、`Demo 登录` 或 Bearer Token 面板重新登录。
+
+如果要测试 token 登录，可先创建本地 demo access token：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
@@ -108,6 +115,17 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
   -d '{"user_id": "researcher-1"}'
 ```
 
+把返回的 `access_token` 粘贴到登录页 `使用 Bearer Token` 面板，并点击 `继续`。`清空` 会移除本地保存的 token。注册用户名密码会创建持久化本地账号，只在明确需要验证账号密码流程时使用。
+
+注册和测试账号注意点：
+
+- 用户名会先 trim 并转小写，再做唯一性校验。
+- 密码至少 8 位，并且必须同时包含字母和数字。
+- 自助注册会创建 active `member`，不会自动成为 admin。
+- `AUTH_DEMO_TOKENS_ENABLED=true` 是本地默认值；非开发部署必须关闭 demo token。
+- 本地/开发模式下，首个非匿名用户可以 bootstrap 为 admin。也可以用 `AUTH_BOOTSTRAP_ADMIN_USER_IDS` 显式指定本地 admin ID。生产数据库部署应显式配置管理员。
+- 在 `/app/admin/users` 创建用户只会创建用户记录；验证用户名密码登录前，需要先为该用户 reset password。
+- 退出登录会清掉 Web App 本地 token、清掉 auth cookie，并撤销 refresh session。Access token 和 demo token 是无状态 token，已经复制出去的 token 在过期或密钥轮换前仍可再次粘贴使用。
 
 ## 7. 浏览器 Smoke 测试
 

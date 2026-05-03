@@ -43,9 +43,7 @@ export function TrajectoryWorkbenchHeader({
 					<p>{subtitle}</p>
 				</div>
 				<nav
-					aria-label={
-						isChineseUi ? "诊断视图" : "Diagnostics views"
-					}
+					aria-label={isChineseUi ? "诊断视图" : "Diagnostics views"}
 					className="fa-trajectory-workbench-tabs fa-observability-route-tabs"
 				>
 					<Link

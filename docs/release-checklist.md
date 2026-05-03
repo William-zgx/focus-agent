@@ -33,7 +33,7 @@ flowchart LR
 - Confirm the documented API routes still exist and match current behavior
 - Confirm SSE event names and payload expectations are still accurate
 - Confirm branch lifecycle behavior is still reflected correctly in docs
-- Confirm auth behavior and ownership rules are documented accurately
+- Confirm auth behavior, ownership rules, protected-route `return_to`, logout, and account switching are documented accurately
 - Confirm the frontend SDK examples still match the live contract
 - Confirm trajectory observability docs match the live API, CLI, and `/app/observability/trajectory` console
 - Confirm trajectory failure promotion preview and batch replay workflow still match the API and eval CLI
@@ -72,7 +72,7 @@ For a fast API/SDK compatibility check before the full gate, run:
 make contract-check
 ```
 
-The orchestrated command plan is:
+The orchestrated command plan mirrors `scripts/release_gate.py`. Full local runs assume the API and Vite app are reachable at the default smoke URLs (`http://127.0.0.1:8000/healthz` and `http://127.0.0.1:5173/app/`); use `RELEASE_GATE_ARGS="--dry-run"` or scoped `--only` checks when those services are not available. `make contract-check` remains a fast preflight outside the full gate.
 
 ```bash
 make lint
@@ -87,10 +87,14 @@ uv run python scripts/ui_smoke_test.py
 uv run python -m tests.eval --suite smoke --concurrency 1 --report-json reports/release-gate/eval-smoke.json
 uv run python -m tests.eval --suite observability --concurrency 1 --report-json reports/release-gate/eval-observability.json
 uv run python scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
-uv run python scripts/release_health_check.py --mode local --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/memory-context-eval.json --report-json reports/release-gate/release-health.json
+uv run python scripts/agent_governance_report.py --report-json reports/agent-governance/latest.json
+uv run python scripts/release_health_check.py --mode local --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/memory-context-eval.json --governance-report-json reports/agent-governance/latest.json --report-json reports/release-gate/release-health.json
 ```
 
-- `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target.
+- `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
+- Auth UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, sidebar logout, Bearer Token login, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
+- `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
+- `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
 - `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, Agent governance quality, baseline eval reports, and current eval JSON reports into release-blocking health signals. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real `--readyz-json` or `--ready-url`, `--trajectory-stats-json` or `--trajectory-stats-url`, `--replay-comparisons-json`, `--eval-report-json`, `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json` inputs. Missing required inputs fail closed with exit code 1; dry-run smoke / ops / OTel reports are rejected in production unless the caller explicitly uses the deterministic evidence-pack escape hatch `--allow-dry-run-reports`.
 - `make release-evidence` builds the production evidence pack. Use it for production release review after collecting real deployment signals; the manifest is written to `reports/release-gate/<release-id>/manifest.json` and includes artifact hashes, artifact summary, failure summary, retention metadata, approval metadata, storage verification metadata, release-health summary, and missing-required-artifact checks. Production packs require an explicit `--release-id`, approved deployment-platform `--approval-status approved` with `--approval-id`, plus readyz, trajectory stats, replay comparison, eval report, baseline eval report, production smoke, Postgres ops, OTel smoke, and governance report artifacts. Add `--storage-dir` when the release job should copy the evidence pack to a retained artifact location; the manifest records whether the stored manifest and summary matched local hashes.
@@ -148,7 +152,6 @@ uv run python scripts/memory_context_eval.py \
 The import / review commands record candidate age, source explanation, duplicate reasons, PII redaction summaries, and promotion SLA metadata. They never update `tests/eval/datasets/memory_context_quality.jsonl` directly. Treat the promoted JSONL as a human-reviewed patch source.
 
 - API/router, tool split, state-slice, and branch-service refactors must keep their focused compatibility tests green before the full gate.
-- 2026-04-26 P0-P3 multi-agent engineering gate completed: security config, API/router split, default tool split, state slice helpers, branch-service facade split, SDK/Web checks, UI smoke, observability smoke, and eval smoke all passed.
 - If deployment or persistence changed, run the targeted Postgres / containerization tests referenced in `docs/architecture.md`
 - If production trajectory failures were promoted, replay the exported slice before tagging:
 
@@ -171,6 +174,9 @@ uv run python -m tests.eval replay \
 
 - Review authentication defaults
 - Review token creation and validation behavior
+- Review registration policy, password strength rules, and whether self-registration is acceptable for the release environment
+- Review bootstrap admin IDs, local implicit-admin behavior, persisted admin roles, and the last-active-admin guard
+- Review logout semantics: refresh sessions and cookies are revoked, while stateless copied access tokens remain valid until expiry or key rotation
 - Review thread ownership enforcement paths
 - Review any filesystem write locations used by tools or examples
 - Review dependency versions and known advisories

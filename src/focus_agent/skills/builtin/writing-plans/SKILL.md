@@ -11,6 +11,8 @@ prompt_mode: explore
 
 Write plans that another engineer could execute without guessing.
 
+Use this when the plan itself is a durable implementation artifact with exact files, commands, and validation steps. For lightweight sequencing that should stay in the conversation, use `plan`.
+
 ## Workflow
 
 1. Restate the objective, assumptions, and constraints.

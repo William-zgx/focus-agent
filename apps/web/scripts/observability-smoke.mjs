@@ -26,7 +26,9 @@ const expectations = [
   },
   {
     name: "diagnostics shell covers all observability routes",
-    pass: files.shell.includes('includes("/observability/")'),
+    pass:
+      files.shell.includes('pathname === "/observability/overview"') &&
+      files.shell.includes('pathname === "/observability/trajectory"'),
   },
   {
     name: "request filter is wired into query params and API filters",
