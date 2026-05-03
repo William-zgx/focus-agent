@@ -29,8 +29,15 @@ Use `Plan -> Execute -> Verify -> Learn`.
 
 ## Delegation And Parallel Work
 
-- Run independent read-only discovery and verification tasks concurrently when the tooling supports it.
-- Delegate work only when allowed by higher-priority instructions and when the task is concrete, bounded, and independent.
+- Before executing any non-trivial task, first ask: can this be split into independent investigation, implementation, review, or verification slices?
+- Prefer a multi-agent workflow whenever the task can be split, the active runtime supports it, and higher-priority instructions allow subagents.
+- Treat tasks as strong multi-agent candidates when they involve multiple files or modules, investigation plus implementation, frontend or browser verification, review or regression testing, conflict resolution, docs plus code, or long-running validation.
+- When the user explicitly asks for multi-agent work, multiple agents, delegation, subagents, or concurrent agent execution, use subagents where practical and safe.
+- Keep the lead agent responsible for planning, user alignment, shared state, integration, conflict resolution, final verification, and the final response.
+- Delegate only concrete, bounded, independent slices with clear ownership and expected output. Prefer read-only exploration, isolated implementation areas, review, and verification slices.
+- Do not delegate tightly coupled critical-path work, ambiguous product decisions, or overlapping write scopes that would create coordination risk.
+- If subagents are unavailable, not explicitly authorized, or blocked by higher-priority instructions, fall back to concurrent local tool calls for independent read-only discovery and verification.
+- If a non-trivial task does not use subagents, state the reason briefly in the final response, such as higher-priority policy, missing tool support, task size, unsafe coupling, overlapping write scope, or lack of explicit authorization.
 - Synchronize at critical steps so shared state, assumptions, and outputs stay consistent.
 
 ## Code Quality
