@@ -237,37 +237,6 @@ function EmptyList({ children }: { children: string }) {
   return <div className="fa-agent-team-empty">{children}</div>;
 }
 
-function AgentTeamRouteTabs({ isChineseUi }: { isChineseUi: boolean }) {
-  return (
-    <nav
-      aria-label={isChineseUi ? "Agent 工作台导航" : "Agent workbench navigation"}
-      className="fa-trajectory-workbench-tabs fa-observability-route-tabs"
-    >
-      <Link
-        className="fa-trajectory-workbench-tab fa-observability-route-tab"
-        to="/observability/overview"
-        {...tooltipProps(isChineseUi ? "查看趋势、热点和全局健康状态" : "View trends, hotspots, and global health")}
-      >
-        <span>{isChineseUi ? "诊断" : "Health"}</span>
-      </Link>
-      <Link
-        className="fa-trajectory-workbench-tab fa-observability-route-tab"
-        to="/agent/governance"
-        {...tooltipProps(isChineseUi ? "查看记忆、工具和模型路由治理" : "View memory, tools, and routing governance")}
-      >
-        <span>{isChineseUi ? "治理" : "Governance"}</span>
-      </Link>
-      <Link
-        className="fa-trajectory-workbench-tab fa-observability-route-tab is-active"
-        to="/agent-team"
-        {...tooltipProps(isChineseUi ? "多 Agent 分工协作工作台" : "Multi-agent collaboration workbench")}
-      >
-        <span>{isChineseUi ? "协作" : "Team"}</span>
-      </Link>
-    </nav>
-  );
-}
-
 function FieldList({ items }: { items?: string[] }) {
   if (!items?.length) return <EmptyList>—</EmptyList>;
   return (
@@ -451,27 +420,28 @@ function CreateSessionPanel() {
     : "Choose the source conversation, write the collaboration goal, and create a workspace that can fork agent branches.";
 
   return (
-    <div className="fa-agent-team-layout is-create">
+    <div className="fa-agent-team-layout fa-agent-team-workspace-shell is-create">
       <section className="fa-header-card fa-agent-team-compact-header">
         <div className="fa-chat-header-top">
           <div className="fa-chat-header-copy">
             <div className="fa-agent-team-title-block">
-              <span className="fa-observability-kicker">Agent Team</span>
-              <h1>{isChineseUi ? "从当前对话创建协作空间" : "Create a workspace from a conversation"}</h1>
+              <span className="fa-observability-kicker">
+                {isChineseUi ? "Agent Team · 并发开发控制台" : "Agent Team · Concurrent development"}
+              </span>
+              <h1>{isChineseUi ? "创建并发开发工作台" : "Create a concurrent development workspace"}</h1>
               <p {...tooltipProps(createHelp)}>
-                {isChineseUi ? "把一个对话目标拆给多个 Agent 分支执行。" : "Split one conversation goal across agent branches."}
+                {isChineseUi
+                  ? "从来源对话派生多个 Agent 分支，并行推进开发任务。"
+                  : "Fork source-conversation context into agent lanes that work in parallel."}
               </p>
             </div>
-          </div>
-          <div className="fa-chat-header-right-actions">
-            <AgentTeamRouteTabs isChineseUi={isChineseUi} />
           </div>
         </div>
       </section>
 
       <WorkflowGuide compact />
 
-      <div className="fa-agent-team-create-grid">
+      <div className="fa-agent-team-create-grid fa-agent-team-stage">
         <form className="fa-agent-team-panel fa-agent-team-create-form" onSubmit={handleSubmit}>
           <div className="fa-agent-team-panel-header">
             <div>
@@ -929,8 +899,8 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
   const defaultTasksReady = DEFAULT_TASK_ROLES.every((role) => taskRoles.has(role));
   const displayTitle = session.title && session.title !== session.goal ? session.title : titleFromGoal(session.goal);
   const sessionHeaderHelp = isChineseUi
-    ? "这是从原对话派生出的协作空间：生成任务、进入分支执行、汇总证据并准备合并。"
-    : "This workspace is derived from the source conversation: create tasks, work in branches, collect evidence, and prepare merge.";
+    ? "这是从来源对话派生出的并发开发控制台：生成任务、进入分支执行、汇总证据并准备合并。"
+    : "This concurrent development console is derived from the source conversation: create tasks, work in branches, collect evidence, and prepare merge.";
   const nextStep = !tasks.length
     ? {
         label: isChineseUi ? "先生成默认任务，系统会创建 6 条协作分支" : "Create default tasks to add six collaboration branches",
@@ -967,13 +937,19 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
             };
 
   return (
-    <div className="fa-agent-team-layout">
+    <div className="fa-agent-team-layout fa-agent-team-workspace-shell">
       <section className="fa-header-card fa-agent-team-compact-header">
         <div className="fa-chat-header-top">
           <div className="fa-chat-header-copy">
             <div className="fa-agent-team-title-block">
-              <span className="fa-observability-kicker">Agent Team</span>
-              <h1 {...tooltipProps(session.goal)}>{displayTitle || session.session_id}</h1>
+              <span className="fa-observability-kicker">
+                {isChineseUi ? "Agent Team · 并发开发控制台" : "Agent Team · Concurrent development"}
+              </span>
+              <h1 {...tooltipProps(session.goal)}>
+                {isChineseUi
+                  ? `并发开发工作台：${displayTitle || session.session_id}`
+                  : `Concurrent development: ${displayTitle || session.session_id}`}
+              </h1>
               <p {...tooltipProps(sessionHeaderHelp)}>{nextStep.label}</p>
             </div>
           </div>
@@ -985,7 +961,7 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
               to="/c/$conversationId/t/$threadId"
               {...tooltipProps(isChineseUi ? "返回来源对话" : "Back to source conversation")}
             >
-              {isChineseUi ? "返回对话" : "Back"}
+              {isChineseUi ? "返回对话" : "Source"}
             </Link>
             <button
               className="fa-chat-toolbar-button"
@@ -1019,7 +995,6 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
                 hasBundle: Boolean(activeBundle),
               })}
             </button>
-            <AgentTeamRouteTabs isChineseUi={isChineseUi} />
           </div>
         </div>
       </section>
@@ -1049,7 +1024,7 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
         </div>
       </div>
 
-      <div className="fa-agent-team-workbench-grid">
+      <div className="fa-agent-team-workbench-grid fa-agent-team-stage">
         <section className="fa-agent-team-panel">
           <div className="fa-agent-team-panel-header">
             <div>

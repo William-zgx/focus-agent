@@ -321,8 +321,10 @@ select {
 }
 
 .fa-sidebar-panel {
+  container-name: fa-sidebar;
+  container-type: inline-size;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   border-radius: 30px;
   overflow: hidden;
 }
@@ -337,6 +339,78 @@ select {
 .fa-sidebar-brand {
   display: grid;
   gap: 12px;
+}
+
+.fa-sidebar-global-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--fa-panel-1) 58%, transparent);
+}
+
+.fa-sidebar-nav-link {
+  min-width: 0;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 4px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in srgb, var(--fa-text-muted) 84%, var(--fa-text) 16%);
+  font-size: 0.64rem;
+  font-weight: 750;
+  line-height: 1.1;
+  text-decoration: none;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.fa-sidebar-nav-link:hover,
+.fa-sidebar-nav-link.is-active {
+  border-color: color-mix(in srgb, var(--fa-accent) 22%, var(--fa-border-subtle) 70%);
+  background: color-mix(in srgb, var(--fa-panel-3) 74%, var(--fa-accent) 8%);
+  color: var(--fa-text);
+}
+
+.fa-sidebar-nav-link.is-active {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 12%, transparent),
+    0 3px 8px color-mix(in srgb, var(--fa-accent-primary-glow) 8%, transparent);
+}
+
+.fa-sidebar-nav-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-sidebar-nav-link span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fa-sidebar-nav-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fa-sidebar-nav-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .fa-sidebar-brand-row {
@@ -1220,6 +1294,14 @@ select {
 
 .fa-admin-header {
   min-height: auto;
+}
+
+.fa-admin-workspace-header {
+  border-radius: 24px;
+}
+
+.fa-admin-workspace-heading h1 {
+  letter-spacing: 0;
 }
 
 .fa-admin-eyebrow {
@@ -3322,6 +3404,267 @@ select {
   padding: 18px;
 }
 
+.fa-sidebar-panel.is-global-shell .fa-sidebar-scroll {
+  padding: 14px;
+}
+
+.fa-workspace-sidebar {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.fa-workspace-sidebar-heading {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 78%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--fa-panel-2) 48%, transparent);
+}
+
+.fa-workspace-sidebar-heading span {
+  color: var(--fa-text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.fa-workspace-sidebar-heading strong {
+  color: var(--fa-text);
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.fa-workspace-sidebar-heading p {
+  margin: 0;
+  color: var(--fa-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.fa-workspace-sidebar-list {
+  display: grid;
+  gap: 7px;
+}
+
+.fa-workspace-sidebar-item {
+  min-height: 30px;
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 62%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--fa-panel-1) 48%, transparent);
+  color: color-mix(in srgb, var(--fa-text-muted) 84%, var(--fa-text) 16%);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.fa-workspace-sidebar-item:hover,
+.fa-workspace-sidebar-item:focus-visible,
+.fa-workspace-sidebar-item.is-active {
+  border-color: color-mix(in srgb, var(--fa-accent) 30%, var(--fa-border-subtle) 70%);
+  background: color-mix(in srgb, var(--fa-panel-3) 62%, var(--fa-accent) 8%);
+  color: var(--fa-text);
+}
+
+.fa-workspace-sidebar-item:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent) 48%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-workspace-sidebar-item span {
+  color: inherit;
+}
+
+.fa-workspace-sidebar-item strong {
+  color: color-mix(in srgb, var(--fa-text-muted) 84%, var(--fa-text) 16%);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.fa-workspace-sidebar-item.is-active strong,
+.fa-workspace-sidebar-item:hover strong,
+.fa-workspace-sidebar-item:focus-visible strong {
+  color: color-mix(in srgb, var(--fa-text-muted) 60%, var(--fa-text) 40%);
+}
+
+.fa-sidebar-dock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--fa-border-subtle) 62%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--fa-panel-2) 22%, transparent),
+      color-mix(in srgb, var(--fa-panel-1) 48%, transparent)
+    );
+}
+
+.fa-sidebar-account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 9px 14px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--fa-border-subtle) 58%, transparent);
+  background: color-mix(in srgb, var(--fa-panel-1) 36%, transparent);
+}
+
+.fa-sidebar-dock .fa-sidebar-account {
+  min-width: 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-copy em {
+  display: none;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-avatar {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fa-panel-3) 30%, transparent);
+  color: color-mix(in srgb, var(--fa-text-muted) 78%, var(--fa-text) 22%);
+  font-size: 0.68rem;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-copy {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-copy strong {
+  color: color-mix(in srgb, var(--fa-text-muted) 86%, var(--fa-text) 14%);
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.fa-sidebar-account-avatar {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 54%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--fa-panel-3) 36%, transparent);
+  color: color-mix(in srgb, var(--fa-text-muted) 76%, var(--fa-text) 24%);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.fa-sidebar-account-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.fa-sidebar-account-copy em {
+  color: var(--fa-text-muted);
+  font-size: 0.68rem;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.fa-sidebar-account-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fa-text);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fa-sidebar-account-exit {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in srgb, var(--fa-text-muted) 80%, transparent);
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.fa-sidebar-account-exit:hover {
+  border-color: color-mix(in srgb, var(--fa-danger) 22%, var(--fa-border) 58%);
+  background: color-mix(in srgb, var(--fa-panel-3) 68%, var(--fa-danger) 6%);
+  color: color-mix(in srgb, var(--fa-danger) 42%, var(--fa-text) 58%);
+}
+
+.fa-sidebar-account-exit:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-danger) 48%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-sidebar-account-exit svg {
+  width: 16px;
+  height: 16px;
+}
+
+@container fa-sidebar (max-width: 420px) {
+  .fa-sidebar-dock .fa-sidebar-nav-link {
+    gap: 0;
+    min-height: 28px;
+    min-width: 28px;
+    padding: 5px 0;
+  }
+
+  .fa-sidebar-dock .fa-sidebar-nav-link span:last-child {
+    width: 0;
+    max-width: 0;
+    opacity: 0;
+  }
+
+  .fa-sidebar-dock .fa-sidebar-nav-icon,
+  .fa-sidebar-dock .fa-sidebar-nav-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .fa-sidebar-dock .fa-sidebar-account-copy {
+    display: none;
+  }
+}
+
 .fa-panel-resizer {
   position: relative;
   z-index: 3;
@@ -3387,6 +3730,54 @@ body.fa-is-resizing {
   padding: 18px;
   gap: 16px;
   overflow: hidden;
+}
+
+.fa-chat-panel.is-workspace-shell {
+  grid-template-rows: minmax(0, 1fr);
+  padding-top: 54px;
+}
+
+.fa-workspace-sidebar-toggle {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 8;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fa-panel-1) 76%, transparent);
+  color: color-mix(in srgb, var(--fa-text-muted) 86%, var(--fa-text) 14%);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 780;
+  line-height: 1;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.fa-workspace-sidebar-toggle:hover,
+.fa-workspace-sidebar-toggle:focus-visible,
+.fa-workspace-sidebar-toggle.is-sidebar-collapsed {
+  border-color: color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border-subtle) 72%);
+  background: color-mix(in srgb, var(--fa-panel-3) 72%, var(--fa-accent) 8%);
+  color: var(--fa-text);
+}
+
+.fa-workspace-sidebar-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fa-accent) 52%, transparent);
+  outline-offset: 2px;
+}
+
+.fa-workspace-sidebar-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 
 .fa-header-card,
@@ -3778,13 +4169,16 @@ body.fa-is-resizing {
   display: flex;
 }
 
-.fa-chat-main-body.is-diagnostics-route {
+.fa-chat-main-body.is-agent-workbench-route,
+.fa-chat-main-body.is-agent-team-route,
+.fa-chat-main-body.is-admin-route {
   overflow: hidden;
 }
 
-.fa-chat-main-body.is-diagnostics-route > .fa-observability-layout,
-.fa-chat-main-body.is-diagnostics-route > .fa-agent-team-layout,
-.fa-chat-main-body.is-diagnostics-route > .fa-admin-layout {
+.fa-chat-main-body.is-agent-workbench-route > .fa-observability-layout,
+.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
+.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout,
+.fa-chat-main-body.is-admin-route > .fa-admin-layout {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -3795,7 +4189,8 @@ body.fa-is-resizing {
   scrollbar-gutter: stable;
 }
 
-.fa-chat-main-body.is-diagnostics-route > .fa-agent-team-layout.is-create {
+.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout.is-create,
+.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout.is-create {
   flex: 0 0 auto;
   height: auto;
 }
@@ -10837,20 +11232,11 @@ body.fa-is-resizing {
 .fa-conversation-icon-button,
 .fa-conversation-token-trigger,
 .fa-chat-header-actions.is-compact [data-compact-button="true"],
-.fa-chat-header-actions.is-compact .fa-focus-branches-button,
-.fa-agent-team-shortcut {
+.fa-chat-header-actions.is-compact .fa-focus-branches-button {
   width: 34px;
   min-width: 34px;
   height: 34px;
   padding: 0;
-}
-
-.fa-agent-team-shortcut {
-  justify-content: center;
-}
-
-.fa-agent-team-shortcut .fa-toolbar-text {
-  display: none;
 }
 
 .fa-toolbar-icon,
@@ -10933,10 +11319,6 @@ body.fa-is-resizing {
 .fa-agent-team-hero {
   min-height: auto;
   padding: 16px 18px;
-}
-
-.fa-agent-team-shortcut {
-  text-decoration: none;
 }
 
 .fa-agent-team-hero .fa-observability-hero-copy {
@@ -11469,6 +11851,14 @@ body.fa-is-resizing {
   overflow: hidden;
 }
 
+.fa-agent-team-workspace-shell {
+  min-height: 100%;
+}
+
+.fa-agent-team-stage {
+  min-width: 0;
+}
+
 .fa-agent-team-hero {
   border: 1px solid var(--fa-border-subtle);
   border-radius: 24px;
@@ -11841,5 +12231,73 @@ body.fa-is-resizing {
 
   .fa-agent-team-guide.is-compact {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fa-app-shell.is-sidebar-collapsed.is-agent-workbench-shell,
+.fa-app-shell.is-sidebar-collapsed.is-admin-shell {
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
+}
+
+@media (max-width: 900px) {
+  .fa-app-shell,
+  .fa-app-shell.is-agent-workbench-shell,
+  .fa-app-shell.is-admin-shell,
+  .fa-app-shell.is-sidebar-collapsed.is-agent-workbench-shell,
+  .fa-app-shell.is-sidebar-collapsed.is-admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+  }
+
+  .fa-app-shell:not(.is-sidebar-collapsed)::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 24;
+    background: color-mix(in srgb, #05070d 56%, transparent);
+  }
+
+  .fa-sidebar-panel,
+  .fa-sidebar-panel.is-global-shell {
+    position: fixed;
+    inset: 12px auto 12px 12px;
+    z-index: 30;
+    width: min(86vw, 320px);
+    max-width: calc(100vw - 24px);
+    display: grid;
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+    transition:
+      opacity 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  .fa-app-shell.is-sidebar-collapsed .fa-sidebar-panel {
+    display: grid;
+    transform: translateX(calc(-100% - 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .fa-panel-resizer {
+    display: none;
+  }
+
+  .fa-chat-panel.is-workspace-shell {
+    padding-top: 50px;
+  }
+
+  .fa-workspace-sidebar-toggle {
+    top: 12px;
+    left: 12px;
+    min-width: 32px;
+    justify-content: center;
+    padding: 7px;
+  }
+
+  .fa-workspace-sidebar-toggle span {
+    display: none;
   }
 }

@@ -3,7 +3,6 @@ import type { PropsWithChildren, ReactNode } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
-import { SessionExitIcon } from "@/shared/ui/toolbar-icons";
 
 type AdminRouteKey = "users" | "audit";
 
@@ -76,13 +75,14 @@ export function AdminPageHeading({
   side?: ReactNode;
 }) {
   const { isChineseUi } = useShellUi();
-  const { logout } = useFocusAgent();
 
   return (
-    <section className="fa-trajectory-workbench-header fa-admin-header">
+    <section className="fa-trajectory-workbench-header fa-admin-header fa-admin-workspace-header">
       <div className="fa-trajectory-workbench-header-copy">
-        <div className="fa-trajectory-workbench-heading">
-          <p className="fa-admin-eyebrow">{isChineseUi ? "管理后台" : "Admin Console"}</p>
+        <div className="fa-trajectory-workbench-heading fa-admin-workspace-heading">
+          <p className="fa-admin-eyebrow">
+            {isChineseUi ? "系统管理 / 治理" : "System Administration / Governance"}
+          </p>
           <h1>{title}</h1>
           <p>{summary}</p>
         </div>
@@ -90,16 +90,6 @@ export function AdminPageHeading({
       </div>
       <div className="fa-trajectory-workbench-header-side">
         {side}
-        <button
-          className="fa-admin-row-link fa-admin-session-button"
-          onClick={() => void logout()}
-          type="button"
-        >
-          <span className="fa-toolbar-icon" aria-hidden="true">
-            <SessionExitIcon />
-          </span>
-          <span>{isChineseUi ? "退出登录" : "Sign out"}</span>
-        </button>
       </div>
     </section>
   );

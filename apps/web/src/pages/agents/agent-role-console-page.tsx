@@ -23,7 +23,6 @@ import {
   type FocusAgentToolRouteDecisionListResponse,
   type FocusAgentToolRouteResponse,
 } from "@focus-agent/web-sdk";
-import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
@@ -338,23 +337,6 @@ export function AgentRoleConsolePage() {
               ? "查看角色路由、Memory Curator 分支语义保护，以及 Skill Scout / Tool Router 的能力注册表与实际决策。"
               : "Inspect role routing, Memory Curator branch semantics, and Skill Scout / Tool Router capability decisions."}
           </p>
-          <nav
-            aria-label={isChineseUi ? "诊断页面" : "Diagnostics views"}
-            className="fa-trajectory-workbench-tabs fa-observability-route-tabs"
-          >
-            <Link className="fa-trajectory-workbench-tab fa-observability-route-tab" to="/observability/overview">
-              <span>{isChineseUi ? "全局诊断" : "Global health"}</span>
-              <strong>{isChineseUi ? "趋势 / 热点" : "Trends / hotspots"}</strong>
-            </Link>
-            <Link className="fa-trajectory-workbench-tab fa-observability-route-tab" to="/observability/trajectory">
-              <span>{isChineseUi ? "单条复盘" : "Single-turn review"}</span>
-              <strong>{isChineseUi ? "样本 / 证据" : "Samples / evidence"}</strong>
-            </Link>
-            <Link className="fa-trajectory-workbench-tab fa-observability-route-tab is-active" to="/agent/governance">
-              <span>{isChineseUi ? "Agent 治理" : "Agent governance"}</span>
-              <strong>{isChineseUi ? "记忆 / 工具 / 路由" : "Memory / tools / routing"}</strong>
-            </Link>
-          </nav>
         </div>
         <div className="fa-observability-hero-grid fa-agent-role-policy-grid">
           <div className="fa-observability-stat-card">

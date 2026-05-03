@@ -84,19 +84,126 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "threadId: rootThreadId" in conversation_toolbar_text
 
     app_shell_text = (web_root / "src" / "app" / "shell" / "app-shell.tsx").read_text()
+    assert 'type ShellMode = "admin" | "agent-workbench" | "chat"' in app_shell_text
+    assert "function isAgentWorkbenchPath" in app_shell_text
+    assert "function resolveShellMode" in app_shell_text
+    assert "function SidebarToggleIcon" in app_shell_text
     assert 'new URLSearchParams(window.location.search).get("lang")' in app_shell_text
-    assert 'state.location.pathname.includes("/agent/roles")' in app_shell_text
-    assert 'state.location.pathname.includes("/agent/governance")' in app_shell_text
+    assert "stored === null && window.innerWidth <= 900" in app_shell_text
+    assert 'state.location.pathname.includes("/agent-team")' not in app_shell_text
+    assert 'state.location.pathname.includes("/admin/")' not in app_shell_text
     assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
     assert 'window.localStorage.getItem(LANGUAGE_KEY)' in app_shell_text
+    assert 'className="fa-sidebar-global-nav"' in app_shell_text
+    assert 'className="fa-sidebar-dock"' in app_shell_text
+    assert 'className="fa-sidebar-account"' in app_shell_text
+    assert 'className="fa-sidebar-account-avatar"' in app_shell_text
+    assert "已登录" not in app_shell_text
+    assert "lastChatTarget" in app_shell_text
+    assert "lastAgentTeamTarget" in app_shell_text
+    assert "lastAdminTarget" in app_shell_text
+    assert "rootThreadSearch" in app_shell_text
+    assert 'pathname === "/observability/overview"' in app_shell_text
+    assert 'pathname === "/observability/trajectory"' in app_shell_text
+    assert 'pathname === "/agent/governance"' in app_shell_text
+    assert 'pathname === "/agent/roles"' in app_shell_text
+    assert "isDiagnosticsRoute" not in app_shell_text
+    assert "const chatNavLabel" in app_shell_text
+    assert "const agentTeamNavLabel" in app_shell_text
+    assert "const adminNavLabel" in app_shell_text
+    assert "const sidebarToggleLabel" in app_shell_text
+    assert "const currentAccountLabel" in app_shell_text
+    assert "const currentAccountTooltip" in app_shell_text
+    assert "aria-label={currentAccountTooltip}" in app_shell_text
+    assert "tooltipProps(currentAccountTooltip)" in app_shell_text
+    assert "aria-label={chatNavLabel}" in app_shell_text
+    assert "aria-label={agentTeamNavLabel}" in app_shell_text
+    assert "aria-label={adminNavLabel}" in app_shell_text
+    assert "tooltipProps(adminNavLabel)" in app_shell_text
+    assert 'to="/agent-team/$sessionId"' in app_shell_text
+    assert "agentTeamRootThreadId" in app_shell_text
+    assert 'is-${shellMode}-shell' in app_shell_text
+    assert "fa-workspace-sidebar-toggle" in app_shell_text
+    assert '"fa-workspace-sidebar"' in app_shell_text
+    assert "isChatShell ? (" in app_shell_text
+    assert 'to="/agent-team"' in app_shell_text
+    assert 'to="/observability/overview"' in app_shell_text
+    assert 'to="/agent/governance"' in app_shell_text
+    assert 'to="/admin/users"' in app_shell_text
+    assert 'to="/admin/audit-events"' in app_shell_text
+    assert 'to="/admin/users/$userId"' in app_shell_text
+    global_navigation_text = app_shell_text.split(
+        "const globalNavigation = (",
+        maxsplit=1,
+    )[1].split("async function createBranch", maxsplit=1)[0]
+    assert "{isAdmin ? (" not in global_navigation_text
+    assert "AdminAccessGate" not in global_navigation_text
+    sidebar_copy_text = app_shell_text.split(
+        'className="fa-sidebar-copy"',
+        maxsplit=1,
+    )[1].split('className="fa-sidebar-scroll"', maxsplit=1)[0]
+    assert "fa-sidebar-global-nav" not in sidebar_copy_text
+    chat_header_actions_text = app_shell_text.split(
+        'className="fa-chat-header-right-actions"',
+        maxsplit=1,
+    )[1].split("{shellStatus &&", maxsplit=1)[0]
+    assert 'to="/agent-team"' not in chat_header_actions_text
+    assert 'to="/admin/users"' not in chat_header_actions_text
+    assert "SessionExitIcon" not in chat_header_actions_text
 
     styles_text = (web_root / "src" / "shared" / "styles" / "app.css").read_text()
     assert ".fa-auth-bootstrap-card" in styles_text
     assert ".fa-auth-bootstrap-input" in styles_text
     assert ".fa-auth-hub" in styles_text
+    assert ".fa-sidebar-global-nav" in styles_text
+    assert "container-name: fa-sidebar;" in styles_text
+    assert "@container fa-sidebar (max-width: 420px)" in styles_text
+    assert "flex-wrap: nowrap;" in styles_text
+    assert "grid-template-columns: auto minmax(0, 1fr);" in styles_text
+    assert "font-size: 0.64rem;" in styles_text
+    assert ".fa-sidebar-dock .fa-sidebar-nav-link span:last-child" in styles_text
+    assert ".fa-sidebar-dock .fa-sidebar-account-avatar" in styles_text
+    assert ".fa-sidebar-dock .fa-sidebar-account-copy em" in styles_text
+    assert ".fa-sidebar-dock .fa-sidebar-account-copy strong" in styles_text
+    assert "justify-content: flex-end;" in styles_text
+    assert ".fa-workspace-sidebar-toggle" in styles_text
+    assert ".fa-app-shell.is-sidebar-collapsed.is-agent-workbench-shell" in styles_text
+    assert ".fa-app-shell:not(.is-sidebar-collapsed)::before" in styles_text
+    assert ".fa-sidebar-panel.is-global-shell" in styles_text
+    assert ".fa-workspace-sidebar-toggle span" in styles_text
+    assert ".fa-workspace-sidebar-item" in styles_text
+    assert ".fa-chat-main-body.is-agent-workbench-route > .fa-observability-layout" in styles_text
+    assert ".fa-sidebar-dock" in styles_text
+    assert ".fa-sidebar-account" in styles_text
+    assert ".fa-sidebar-account-avatar" in styles_text
+    assert ".fa-workspace-sidebar" in styles_text
+    assert ".fa-chat-panel.is-workspace-shell" in styles_text
+    assert ".fa-agent-team-workspace-shell" in styles_text
+    assert ".fa-admin-workspace-header" in styles_text
+
+    agent_team_text = (
+        web_root / "src" / "features" / "agent-team" / "agent-team-workbench.tsx"
+    ).read_text()
+    assert "fa-agent-team-workspace-shell" in agent_team_text
+    assert "fa-agent-team-stage" in agent_team_text
+    assert "并发开发控制台" in agent_team_text
+    assert "AgentTeamRouteTabs" not in agent_team_text
+
+    admin_chrome_text = (web_root / "src" / "pages" / "admin" / "admin-page-chrome.tsx").read_text()
+    admin_heading_text = admin_chrome_text.split("export function AdminPageHeading", maxsplit=1)[1].split(
+        "export function AdminErrorMessage",
+        maxsplit=1,
+    )[0]
+    assert "SessionExitIcon" not in admin_chrome_text
+    assert "logout" not in admin_heading_text
+    assert "退出登录" not in admin_heading_text
+    assert "fa-admin-workspace-header" in admin_heading_text
+    assert "系统管理 / 治理" in admin_heading_text
 
     agent_console_text = (web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx").read_text()
     assert "Delegation Runs" in agent_console_text
+    assert 'to="/observability/overview"' not in agent_console_text
+    assert 'to="/agent/governance"' not in agent_console_text
     assert "Model Router" in agent_console_text
     assert "Self Repair" in agent_console_text
     assert "Review Queue" in agent_console_text

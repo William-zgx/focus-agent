@@ -44,7 +44,7 @@ export function TrajectoryWorkbenchHeader({
 				</div>
 				<nav
 					aria-label={
-						isChineseUi ? "Observability 页面" : "Observability views"
+						isChineseUi ? "诊断视图" : "Diagnostics views"
 					}
 					className="fa-trajectory-workbench-tabs fa-observability-route-tabs"
 				>
@@ -66,15 +66,6 @@ export function TrajectoryWorkbenchHeader({
 							{isChineseUi
 								? "样本 / 证据 / 动作"
 								: "Samples / evidence / actions"}
-						</strong>
-					</Link>
-					<Link
-						className="fa-trajectory-workbench-tab fa-observability-route-tab"
-						to="/agent/governance"
-					>
-						<span>{isChineseUi ? "Agent 治理" : "Agent governance"}</span>
-						<strong>
-							{isChineseUi ? "记忆 / 工具 / 路由" : "Memory / tools / routing"}
 						</strong>
 					</Link>
 				</nav>

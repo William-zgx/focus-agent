@@ -28,7 +28,12 @@ import {
 } from "@/app/shell/shell-ui-context";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { FocusAgentBrand } from "@/shared/ui/focus-agent-brand";
-import { AgentTeamIcon, SessionExitIcon } from "@/shared/ui/toolbar-icons";
+import {
+  AdminConsoleIcon,
+  AgentTeamIcon,
+  ChatBubbleIcon,
+  SessionExitIcon,
+} from "@/shared/ui/toolbar-icons";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 const SIDEBAR_COLLAPSED_KEY = "fa:sidebar-collapsed";
@@ -63,6 +68,50 @@ const COLOR_OPTIONS = [
   { value: "sunset", labelZh: "暮光", labelEn: "Sunset" },
   { value: "graphite", labelZh: "石墨", labelEn: "Graphite" },
 ] as const;
+
+type ChatNavTarget = {
+  conversationId: string;
+  threadId: string;
+};
+
+type AgentTeamNavTarget = {
+  rootThreadId?: string;
+  sessionId?: string;
+};
+
+type AdminNavTarget =
+  | { page: "audit" }
+  | { page: "user"; userId: string }
+  | { page: "users" };
+
+type ShellMode = "admin" | "agent-workbench" | "chat";
+
+function isAgentWorkbenchPath(pathname: string) {
+  return (
+    pathname === "/agent-team" ||
+    pathname.startsWith("/agent-team/") ||
+    pathname === "/observability/overview" ||
+    pathname === "/observability/trajectory" ||
+    pathname === "/agent/governance" ||
+    pathname === "/agent/roles"
+  );
+}
+
+function isAdminPath(pathname: string) {
+  return (
+    pathname === "/admin/users" ||
+    pathname.startsWith("/admin/users/") ||
+    pathname === "/admin/audit-events" ||
+    pathname.startsWith("/account/")
+  );
+}
+
+function resolveShellMode(pathname: string): ShellMode {
+  if (pathname === "/" || pathname.startsWith("/c/")) return "chat";
+  if (isAgentWorkbenchPath(pathname)) return "agent-workbench";
+  if (isAdminPath(pathname)) return "admin";
+  return "chat";
+}
 
 function getSidebarAvailableWidth() {
   if (typeof window === "undefined") {
@@ -108,6 +157,22 @@ function getSidebarDefaultWidth() {
   }
 
   return clampSidebarWidth(Math.floor(getSidebarAvailableWidth() * SIDEBAR_DEFAULT_RATIO));
+}
+
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="4.15" y="4" width="2.2" height="12" rx="1.1" fill="currentColor" opacity="0.96" />
+      <path
+        d={
+          collapsed
+            ? "M8.4 6.45v7.1c0 .42.49.64.8.35l3.8-3.55a.48.48 0 0 0 0-.7L9.2 6.1c-.31-.29-.8-.07-.8.35Z"
+            : "M12.85 6.1 9.05 9.65a.48.48 0 0 0 0 .7l3.8 3.55c.31.29.8.07.8-.35V6.45c0-.42-.49-.64-.8-.35Z"
+        }
+        fill="currentColor"
+      />
+    </svg>
+  );
 }
 
 function renderThemeIcon(value: ThemePreference) {
@@ -174,26 +239,38 @@ function cycleOptionValue<T extends string>(
 }
 
 export function AppShell({ children }: PropsWithChildren) {
-  const { isAdmin, logout, principal } = useFocusAgent();
+  const { logout, principal } = useFocusAgent();
   const navigate = useNavigate();
-  const { conversationId, threadId, isReviewRoute, isTrajectoryRoute } = useRouterState({
+  const {
+    conversationId,
+    threadId,
+    isReviewRoute,
+    pathname,
+    rootThreadSearch,
+    sessionId,
+    userId,
+  } = useRouterState({
     select: (state) => {
       const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
-        Record<"conversationId" | "threadId", string>
+        Record<"conversationId" | "sessionId" | "threadId" | "userId", string>
       >;
+      const routeSearch = (state.location.search ?? {}) as Partial<Record<string, unknown>>;
+      const rootThreadSearch =
+        typeof routeSearch.root_thread_id === "string" ? routeSearch.root_thread_id : "";
       return {
         conversationId: String(routeParams.conversationId ?? ""),
         threadId: String(routeParams.threadId ?? ""),
         isReviewRoute: state.location.pathname.endsWith("/review"),
-        isTrajectoryRoute:
-          state.location.pathname.includes("/observability/") ||
-          state.location.pathname.includes("/agent-team") ||
-          state.location.pathname.includes("/admin/") ||
-          state.location.pathname.includes("/agent/roles") ||
-          state.location.pathname.includes("/agent/governance"),
+        pathname: state.location.pathname,
+        rootThreadSearch,
+        sessionId: String(routeParams.sessionId ?? ""),
+        userId: String(routeParams.userId ?? ""),
       };
     },
   });
+  const [lastChatTarget, setLastChatTarget] = useState<ChatNavTarget | null>(null);
+  const [lastAgentTeamTarget, setLastAgentTeamTarget] = useState<AgentTeamNavTarget | null>(null);
+  const [lastAdminTarget, setLastAdminTarget] = useState<AdminNavTarget | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => getSidebarDefaultWidth());
   const [isResizing, setIsResizing] = useState(false);
@@ -230,8 +307,12 @@ export function AppShell({ children }: PropsWithChildren) {
     threadId,
   });
   const isChineseUi = languagePreference === "zh";
-  const isDiagnosticsRoute = isTrajectoryRoute;
-  const shellSidebarCollapsed = sidebarCollapsed || isDiagnosticsRoute;
+  const shellMode = resolveShellMode(pathname);
+  const isChatShell = shellMode === "chat";
+  const isAgentWorkbenchShell = shellMode === "agent-workbench";
+  const isAdminShell = shellMode === "admin";
+  const isWorkspaceShell = isAgentWorkbenchShell || isAdminShell;
+  const shellSidebarCollapsed = sidebarCollapsed;
   const activeThreadIsMergedBranch = activeThreadState?.branch_meta?.branch_status === "merged";
   const currentMergeProposalState = threadId ? mergeProposalGeneration[threadId] : null;
   const currentPreparingMergeProposal =
@@ -255,6 +336,39 @@ export function AppShell({ children }: PropsWithChildren) {
               (isChineseUi ? "生成结论失败，请重新生成" : "Failed to generate conclusion. Please regenerate."),
           }
         : null;
+  const principalName =
+    principal?.user?.display_name ||
+    principal?.user?.username ||
+    principal?.user_id ||
+    (isChineseUi ? "当前账号" : "Current account");
+  const principalInitial = Array.from(principalName.trim())[0] || (isChineseUi ? "账" : "A");
+  const currentAccountLabel = isChineseUi ? "当前" : "Me";
+  const currentAccountTooltip = isChineseUi
+    ? `当前账号：${principalName}`
+    : `Current account: ${principalName}`;
+  const isChatRoute = pathname === "/" || pathname.startsWith("/c/");
+  const isAgentTeamRoute = pathname === "/agent-team" || pathname.startsWith("/agent-team/");
+  const isObservabilityRoute =
+    pathname === "/observability/overview" || pathname === "/observability/trajectory";
+  const isAgentGovernanceRoute = pathname === "/agent/governance" || pathname === "/agent/roles";
+  const isAdminRoute =
+    pathname === "/admin/users" ||
+    pathname.startsWith("/admin/users/") ||
+    pathname === "/admin/audit-events";
+  const activeAgentWorkbenchModule = isAgentTeamRoute
+    ? "team"
+    : isAgentGovernanceRoute
+      ? "governance"
+      : isObservabilityRoute
+        ? "diagnostics"
+        : "team";
+  const chatNavTarget =
+    conversationId && threadId ? { conversationId, threadId } : lastChatTarget;
+  const agentTeamRootThreadId =
+    isChatRoute && conversationId
+      ? conversationId
+      : lastAgentTeamTarget?.rootThreadId || lastChatTarget?.conversationId || "";
+  const adminNavTarget = lastAdminTarget ?? { page: "users" as const };
 
   useEffect(() => {
     const urlLanguage = new URLSearchParams(window.location.search).get("lang");
@@ -262,7 +376,7 @@ export function AppShell({ children }: PropsWithChildren) {
       setLanguagePreference(urlLanguage);
     }
     const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-    if (stored === "1") {
+    if (stored === "1" || (stored === null && window.innerWidth <= 900)) {
       setSidebarCollapsed(true);
     }
     const rawWidth = Number.parseInt(window.localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? "", 10);
@@ -293,6 +407,46 @@ export function AppShell({ children }: PropsWithChildren) {
       setColorPreference(savedColor);
     }
   }, []);
+
+  useEffect(() => {
+    if (!conversationId || !threadId) return;
+    setLastChatTarget((current) =>
+      current?.conversationId === conversationId && current.threadId === threadId
+        ? current
+        : { conversationId, threadId },
+    );
+  }, [conversationId, threadId]);
+
+  useEffect(() => {
+    if (!isAgentTeamRoute) return;
+    const nextTarget: AgentTeamNavTarget = {
+      rootThreadId: rootThreadSearch || undefined,
+      sessionId: sessionId || undefined,
+    };
+    setLastAgentTeamTarget((current) =>
+      current &&
+      current.rootThreadId === nextTarget.rootThreadId &&
+      current.sessionId === nextTarget.sessionId
+        ? current
+        : nextTarget,
+    );
+  }, [isAgentTeamRoute, rootThreadSearch, sessionId]);
+
+  useEffect(() => {
+    if (!isAdminRoute) return;
+    const nextTarget: AdminNavTarget = pathname.includes("/admin/audit-events")
+      ? { page: "audit" }
+      : userId
+        ? { page: "user", userId }
+        : { page: "users" };
+    setLastAdminTarget((current) => {
+      if (!current || current.page !== nextTarget.page) return nextTarget;
+      if (current.page === "user" && nextTarget.page === "user") {
+        return current.userId === nextTarget.userId ? current : nextTarget;
+      }
+      return current;
+    });
+  }, [isAdminRoute, pathname, userId]);
 
   useEffect(() => {
     return () => {
@@ -587,6 +741,114 @@ export function AppShell({ children }: PropsWithChildren) {
   const selectedLanguageLabel = isChineseUi ? selectedLanguage.labelZh : selectedLanguage.labelEn;
   const selectedThemeLabel = isChineseUi ? selectedTheme.labelZh : selectedTheme.labelEn;
   const selectedColorLabel = isChineseUi ? selectedColor.labelZh : selectedColor.labelEn;
+  const chatNavLabel = isChineseUi ? "对话" : "Chat";
+  const agentTeamNavLabel = "Agent Team";
+  const adminNavLabel = isChineseUi ? "管理后台" : "Admin";
+  const sidebarToggleLabel = sidebarCollapsed
+    ? isChineseUi
+      ? "展开侧栏"
+      : "Show sidebar"
+    : isChineseUi
+      ? "收起侧栏"
+      : "Collapse sidebar";
+  const globalNavigation = (
+    <nav
+      aria-label={isChineseUi ? "全局导航" : "Global navigation"}
+      className="fa-sidebar-global-nav"
+    >
+      {chatNavTarget ? (
+        <Link
+          aria-label={chatNavLabel}
+          className={`fa-sidebar-nav-link ${isChatRoute ? "is-active" : ""}`.trim()}
+          params={chatNavTarget}
+          {...tooltipProps(chatNavLabel)}
+          to="/c/$conversationId/t/$threadId"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <ChatBubbleIcon />
+          </span>
+          <span>{chatNavLabel}</span>
+        </Link>
+      ) : (
+        <Link
+          aria-label={chatNavLabel}
+          className={`fa-sidebar-nav-link ${isChatRoute ? "is-active" : ""}`.trim()}
+          {...tooltipProps(chatNavLabel)}
+          to="/"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <ChatBubbleIcon />
+          </span>
+          <span>{chatNavLabel}</span>
+        </Link>
+      )}
+      {lastAgentTeamTarget?.sessionId && !isChatRoute ? (
+        <Link
+          aria-label={agentTeamNavLabel}
+          className={`fa-sidebar-nav-link ${isAgentWorkbenchShell ? "is-active" : ""}`.trim()}
+          params={{ sessionId: lastAgentTeamTarget.sessionId }}
+          {...tooltipProps(agentTeamNavLabel)}
+          to="/agent-team/$sessionId"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <AgentTeamIcon />
+          </span>
+          <span>{agentTeamNavLabel}</span>
+        </Link>
+      ) : (
+        <Link
+          aria-label={agentTeamNavLabel}
+          className={`fa-sidebar-nav-link ${isAgentWorkbenchShell ? "is-active" : ""}`.trim()}
+          search={agentTeamRootThreadId ? { root_thread_id: agentTeamRootThreadId } : undefined}
+          {...tooltipProps(agentTeamNavLabel)}
+          to="/agent-team"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <AgentTeamIcon />
+          </span>
+          <span>{agentTeamNavLabel}</span>
+        </Link>
+      )}
+      {adminNavTarget.page === "audit" ? (
+        <Link
+          aria-label={adminNavLabel}
+          className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
+          {...tooltipProps(adminNavLabel)}
+          to="/admin/audit-events"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <AdminConsoleIcon />
+          </span>
+          <span>{adminNavLabel}</span>
+        </Link>
+      ) : adminNavTarget.page === "user" ? (
+        <Link
+          aria-label={adminNavLabel}
+          className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
+          params={{ userId: adminNavTarget.userId }}
+          {...tooltipProps(adminNavLabel)}
+          to="/admin/users/$userId"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <AdminConsoleIcon />
+          </span>
+          <span>{adminNavLabel}</span>
+        </Link>
+      ) : (
+        <Link
+          aria-label={adminNavLabel}
+          className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
+          {...tooltipProps(adminNavLabel)}
+          to="/admin/users"
+        >
+          <span className="fa-sidebar-nav-icon" aria-hidden="true">
+            <AdminConsoleIcon />
+          </span>
+          <span>{adminNavLabel}</span>
+        </Link>
+      )}
+    </nav>
+  );
 
   async function createBranch(options?: { parentThreadId?: string }) {
     const parentThreadId = options?.parentThreadId ?? threadId ?? null;
@@ -747,10 +1009,10 @@ export function AppShell({ children }: PropsWithChildren) {
       }}
     >
       <div
-        className={`fa-app-shell ${shellSidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
+        className={`fa-app-shell is-${shellMode}-shell ${shellSidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
         style={shellStyle}
       >
-        {!isDiagnosticsRoute ? <aside className="fa-sidebar-panel">
+        <aside className={`fa-sidebar-panel ${isWorkspaceShell ? "is-global-shell" : ""}`.trim()}>
           <div className="fa-sidebar-copy">
             <div className="fa-sidebar-brand">
               <div className="fa-sidebar-brand-row">
@@ -843,23 +1105,125 @@ export function AppShell({ children }: PropsWithChildren) {
                   type="button"
                   aria-label={isChineseUi ? "收起侧栏" : "Collapse sidebar"}
                 >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <rect x="4.15" y="4" width="2.2" height="12" rx="1.1" fill="currentColor" opacity="0.96" />
-                    <path
-                      d="M12.85 6.1 9.05 9.65a.48.48 0 0 0 0 .7l3.8 3.55c.31.29.8.07.8-.35V6.45c0-.42-.49-.64-.8-.35Z"
-                      fill="currentColor"
-                    />
-                  </svg>
+                  <SidebarToggleIcon collapsed={false} />
                 </button>
               </div>
             </div>
           </div>
           <div className="fa-sidebar-scroll">
-            <BranchTreePanel />
+            {isChatShell ? (
+              <BranchTreePanel />
+            ) : (
+              <div className="fa-workspace-sidebar">
+                <div className="fa-workspace-sidebar-heading">
+                  <span>{isChineseUi ? "工作区" : "Workspace"}</span>
+                  <strong>
+                    {isAgentWorkbenchShell
+                      ? isChineseUi
+                        ? "Agent Workbench"
+                        : "Agent Workbench"
+                      : isChineseUi
+                        ? "系统管理"
+                        : "Administration"}
+                  </strong>
+                  <p>
+                    {isAgentWorkbenchShell
+                      ? isChineseUi
+                        ? "统一进入协作、诊断和治理，不再切到全屏孤岛。"
+                        : "One shell for collaboration, diagnostics, and governance."
+                      : isChineseUi
+                        ? "管理账号、权限与审计记录。"
+                        : "Manage accounts, permissions, and audit records."}
+                  </p>
+                </div>
+                <div className="fa-workspace-sidebar-list" aria-label={isChineseUi ? "工作区导航" : "Workspace navigation"}>
+                  {isAgentWorkbenchShell ? (
+                    <>
+                      <Link
+                        className={`fa-workspace-sidebar-item ${
+                          activeAgentWorkbenchModule === "team" ? "is-active" : ""
+                        }`.trim()}
+                        search={agentTeamRootThreadId ? { root_thread_id: agentTeamRootThreadId } : undefined}
+                        to="/agent-team"
+                      >
+                        <span>{isChineseUi ? "协作" : "Team"}</span>
+                        <strong>{isChineseUi ? "并发任务与会话" : "Tasks and sessions"}</strong>
+                      </Link>
+                      <Link
+                        className={`fa-workspace-sidebar-item ${
+                          activeAgentWorkbenchModule === "diagnostics" ? "is-active" : ""
+                        }`.trim()}
+                        to="/observability/overview"
+                      >
+                        <span>{isChineseUi ? "诊断" : "Diagnostics"}</span>
+                        <strong>{isChineseUi ? "Trajectory 健康与复盘" : "Health and review"}</strong>
+                      </Link>
+                      <Link
+                        className={`fa-workspace-sidebar-item ${
+                          activeAgentWorkbenchModule === "governance" ? "is-active" : ""
+                        }`.trim()}
+                        to="/agent/governance"
+                      >
+                        <span>{isChineseUi ? "治理" : "Governance"}</span>
+                        <strong>{isChineseUi ? "记忆 / 工具 / 路由" : "Memory / tools / routing"}</strong>
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        className={`fa-workspace-sidebar-item ${pathname.startsWith("/admin/users") ? "is-active" : ""}`.trim()}
+                        to="/admin/users"
+                      >
+                        <span>{isChineseUi ? "用户与角色" : "Users and roles"}</span>
+                        <strong>{isChineseUi ? "账号与权限" : "Accounts and access"}</strong>
+                      </Link>
+                      <Link
+                        className={`fa-workspace-sidebar-item ${pathname === "/admin/audit-events" ? "is-active" : ""}`.trim()}
+                        to="/admin/audit-events"
+                      >
+                        <span>{isChineseUi ? "审计事件" : "Audit events"}</span>
+                        <strong>{isChineseUi ? "登录与操作记录" : "Login and action records"}</strong>
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        </aside> : null}
+          <div className="fa-sidebar-dock">
+            {globalNavigation}
+            {principal ? (
+              <div
+                aria-label={currentAccountTooltip}
+                className="fa-sidebar-account"
+                role="group"
+                {...tooltipProps(currentAccountTooltip)}
+              >
+                <span className="fa-sidebar-account-avatar" aria-hidden="true">
+                  {principalInitial}
+                </span>
+                <div className="fa-sidebar-account-copy">
+                  <strong>{currentAccountLabel}</strong>
+                </div>
+                <button
+                  aria-label={isChineseUi ? "退出登录" : "Sign out"}
+                  className="fa-sidebar-account-exit"
+                  {...tooltipProps(isChineseUi ? "退出登录" : "Sign out")}
+                  onBlur={handleTooltipHide}
+                  onClick={() => void logout()}
+                  onFocus={handleTooltipShow}
+                  onMouseEnter={handleTooltipShow}
+                  onMouseLeave={handleTooltipHide}
+                  type="button"
+                >
+                  <SessionExitIcon />
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </aside>
 
-        {!isDiagnosticsRoute ? <div
+        <div
           className="fa-panel-resizer"
           {...tooltipProps(isChineseUi ? "拖动调整左右栏宽度" : "Drag to resize panels")}
           onBlur={handleTooltipHide}
@@ -872,38 +1236,41 @@ export function AppShell({ children }: PropsWithChildren) {
           aria-label={isChineseUi ? "调整面板宽度" : "Resize panels"}
           aria-orientation="vertical"
           tabIndex={0}
-        /> : null}
+        />
 
-        <main className="fa-chat-panel">
-          {!isDiagnosticsRoute ? <section className="fa-header-card">
+        <main className={`fa-chat-panel ${isWorkspaceShell ? "is-workspace-shell" : "is-chat-shell"}`}>
+          {isWorkspaceShell ? (
+            <button
+              aria-label={sidebarToggleLabel}
+              className={`fa-workspace-sidebar-toggle ${
+                sidebarCollapsed ? "is-sidebar-collapsed" : ""
+              }`.trim()}
+              {...tooltipProps(sidebarToggleLabel)}
+              onBlur={handleTooltipHide}
+              onClick={toggleSidebar}
+              onFocus={handleTooltipShow}
+              onMouseEnter={handleTooltipShow}
+              onMouseLeave={handleTooltipHide}
+              type="button"
+            >
+              <SidebarToggleIcon collapsed={sidebarCollapsed} />
+              <span>{sidebarToggleLabel}</span>
+            </button>
+          ) : null}
+
+          {isChatShell ? <section className="fa-header-card">
             <div className="fa-chat-header-top">
               <div className="fa-chat-header-copy">
                 <button
                   className={`fa-chat-logo-toggle ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
-                  {...tooltipProps(
-                    sidebarCollapsed
-                      ? isChineseUi
-                        ? "展开侧栏"
-                        : "Show sidebar"
-                      : isChineseUi
-                        ? "收起侧栏"
-                        : "Collapse sidebar",
-                  )}
+                  {...tooltipProps(sidebarToggleLabel)}
                   onBlur={handleTooltipHide}
                   onFocus={handleTooltipShow}
                   onMouseEnter={handleTooltipShow}
                   onMouseLeave={handleTooltipHide}
                   onClick={toggleSidebar}
                   type="button"
-                  aria-label={
-                    sidebarCollapsed
-                      ? isChineseUi
-                        ? "展开侧栏"
-                        : "Show sidebar"
-                      : isChineseUi
-                        ? "收起侧栏"
-                        : "Collapse sidebar"
-                  }
+                  aria-label={sidebarToggleLabel}
                 >
                   <FocusAgentBrand compact />
                 </button>
@@ -911,49 +1278,6 @@ export function AppShell({ children }: PropsWithChildren) {
               </div>
               <div className="fa-chat-header-right-actions">
                 <ThreadHeaderActions onRequestOpenSidebar={() => setSidebarCollapsed(false)} />
-                <Link
-                  aria-label={isChineseUi ? "打开 Agent Team 多 Agent 协作" : "Open Agent Team"}
-                  className="fa-chat-toolbar-button fa-agent-team-shortcut"
-                  {...tooltipProps(isChineseUi ? "Agent Team：多 Agent 协作" : "Agent Team: multi-agent collaboration")}
-                  search={conversationId ? { root_thread_id: conversationId } : undefined}
-                  to="/agent-team"
-                >
-                  <span className="fa-toolbar-icon" aria-hidden="true">
-                    <AgentTeamIcon />
-                  </span>
-                  <span className="fa-toolbar-text">Team</span>
-                </Link>
-                {isAdmin ? (
-                  <Link
-                    aria-label={isChineseUi ? "打开管理员用户管理" : "Open admin user management"}
-                    className="fa-chat-toolbar-button"
-                    {...tooltipProps(isChineseUi ? "管理后台：用户与审计" : "Admin: users and audit")}
-                    to="/admin/users"
-                  >
-                    <span className="fa-toolbar-icon" aria-hidden="true">
-                      <AgentTeamIcon />
-                    </span>
-                    <span className="fa-toolbar-text">Admin</span>
-                  </Link>
-                ) : null}
-                {principal ? (
-                  <button
-                    aria-label={isChineseUi ? "退出登录" : "Sign out"}
-                    className="fa-chat-toolbar-button"
-                    {...tooltipProps(isChineseUi ? "退出登录" : "Sign out")}
-                    onBlur={handleTooltipHide}
-                    onClick={() => void logout()}
-                    onFocus={handleTooltipShow}
-                    onMouseEnter={handleTooltipShow}
-                    onMouseLeave={handleTooltipHide}
-                    type="button"
-                  >
-                    <span className="fa-toolbar-icon" aria-hidden="true">
-                      <SessionExitIcon />
-                    </span>
-                    <span className="fa-toolbar-text">{isChineseUi ? "退出" : "Exit"}</span>
-                  </button>
-                ) : null}
               </div>
             </div>
             {shellStatus && shellStatus.display !== "chat-floating" ? (
@@ -971,7 +1295,13 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className={`fa-shell-status-float is-${shellStatus.tone}`}>{shellStatus.text}</div>
           ) : null}
 
-          <div className={`fa-chat-main-body ${isDiagnosticsRoute ? "is-diagnostics-route" : ""}`}>
+          <div
+            className={`fa-chat-main-body ${
+              isAgentWorkbenchShell ? "is-agent-workbench-route" : ""
+            } ${isAgentTeamRoute ? "is-agent-team-route" : ""} ${
+              isAdminShell ? "is-admin-route" : ""
+            }`.trim()}
+          >
             {children}
           </div>
         </main>

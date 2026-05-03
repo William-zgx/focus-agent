@@ -120,6 +120,26 @@ export function AgentTeamIcon(props: ToolbarIconProps) {
   );
 }
 
+export function ChatBubbleIcon(props: ToolbarIconProps) {
+  return (
+    <ToolbarIcon {...props}>
+      <path d="M5.5 5.5h13v8.8a2 2 0 0 1-2 2H10l-4 3v-3H5.5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2Z" />
+      <path d="M7.5 9.2h7" />
+      <path d="M7.5 12.4h4.8" />
+    </ToolbarIcon>
+  );
+}
+
+export function AdminConsoleIcon(props: ToolbarIconProps) {
+  return (
+    <ToolbarIcon {...props}>
+      <path d="M12 3.5 18 6v5.2c0 3.6-2.3 6.9-6 9.1-3.7-2.2-6-5.5-6-9.1V6l6-2.5Z" />
+      <path d="M9 11.5h6" />
+      <path d="M12 8.5v6" />
+    </ToolbarIcon>
+  );
+}
+
 export function SessionExitIcon(props: ToolbarIconProps) {
   return (
     <ToolbarIcon {...props}>
