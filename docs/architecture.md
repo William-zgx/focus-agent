@@ -1,10 +1,12 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-04-29
+更新时间：2026-05-03
 
 本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
 - Agent governance：[agent-role-routing.md](agent-role-routing.md)
+- Agent Team Workbench：[agent-team-workbench.md](agent-team-workbench.md)
+- Context Window：[context-window.md](context-window.md)
 - Memory：[memory-system.md](memory-system.md)
 - Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
 - Docker / Compose：[docker-deployment.md](docker-deployment.md)
@@ -31,7 +33,7 @@ Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式
 当前整体形态：
 
 - Backend：FastAPI + LangGraph + LangChain + Pydantic
-- Frontend：React 19 + Vite + TanStack Router + TanStack Query + Zustand
+- Frontend：React 19 + Vite + TanStack Router + TanStack Query
 - SDK：`frontend-sdk` typed browser / Node client
 - Persistence：Postgres primary persistence；local fallback persistence；filesystem artifact bodies
 - Observability：request id、readiness、metrics、trajectory、replay、promote、release-health
@@ -372,7 +374,7 @@ Repository behavior is guarded by both implementation-specific tests and shared 
 ```mermaid
 flowchart LR
     User["User"] --> Web["React Web App"]
-    Web --> ClientState["React Query and Zustand"]
+    Web --> ClientState["React Query and local component state"]
     ClientState --> SDK["frontend-sdk client"]
     SDK --> API["FastAPI API"]
     API --> Contracts["Pydantic contracts"]
@@ -550,7 +552,6 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Runtime：`src/focus_agent/engine/runtime.py`
 - Graph builder：`src/focus_agent/engine/graph_builder.py`
 - Graph model factory：`src/focus_agent/engine/model_factory.py`
-- Graph message helpers：`src/focus_agent/engine/graph_messages.py`
 - State：`src/focus_agent/core/state.py`
 - Chat service orchestration：`src/focus_agent/services/chat.py`
 - Chat streaming helpers：`src/focus_agent/services/chat_streaming.py`

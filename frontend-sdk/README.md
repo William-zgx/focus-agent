@@ -38,6 +38,7 @@ This SDK packages those concerns into a small, typed client layer.
 - `src/transport.ts` - shared HTTP/SSE transport, token resolution, `fetchImpl`, and abort handling
 - `src/errors.ts` - structured request error type
 - `src/types.ts` - request, response, event, branch, and stream state types
+- `src/toolProtocol.ts` - shared filtering for textual tool-call and internal process artifacts
 - `src/parser.ts` - low-level SSE frame parsing and event decoding
 - `src/reducers.ts` - stream state helpers for UI state accumulation
 - `src/guards.ts` - convenient event type guards
@@ -104,17 +105,21 @@ console.log(finalState.visibleText);
 
 `FocusAgentClient` currently exposes these main methods:
 
-- `createDemoToken()` - request a local development token
-- `getPrincipal()` - inspect the authenticated principal
+- `register()`, `login()`, `logout()`, `refresh()`, and `changePassword()` - manage authenticated user sessions
+- `createDemoToken()` and `getPrincipal()` - request a local development token and inspect the authenticated principal
+- `listMySessions()` and `revokeSession()` - inspect or revoke the current user's sessions
+- `listUsers()`, `createUser()`, `getUser()`, `updateUser()`, `updateUserStatus()`, `updateUserRoles()`, `listUserSessions()`, `revokeUserSession()`, `resetUserPassword()`, and `listAuditEvents()` - administer users, sessions, passwords, and audit events
 - `listModels()` - fetch the current model catalog
 - `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, and `listAgentRoleDecisions()` - inspect role routing policy, preview orchestrator decisions, and review persisted role_route_plan records
 - `listAgentCapabilities()`, `routeAgentTools()`, `listAgentToolRouteDecisions()`, `getAgentMemoryCuratorPolicy()`, `evaluateAgentMemoryCurator()`, and `listAgentMemoryCuratorDecisions()` - inspect governance capabilities, tool routing, and memory curator decisions
 - `getAgentDelegationPolicy()`, `planAgentDelegation()`, `listAgentDelegationRuns()`, `getAgentModelRouterPolicy()`, `routeAgentModel()`, `listAgentModelRouterDecisions()`, `listAgentSelfRepairFailures()`, `previewAgentSelfRepairPromotion()`, `listAgentReviewQueue()`, `approveAgentReviewQueueItem()`, and `rejectAgentReviewQueueItem()` - inspect delegated role runs, model routing, failure candidates, and human-review queue items
 - `getAgentContextPolicy()`, `previewAgentContext()`, `listAgentContextDecisions()`, and `listAgentContextArtifacts()` - inspect Context Engineering v2 budget decisions, compression previews, and artifact refs
 - `getAgentTaskLedgerPolicy()`, `planAgentTaskLedger()`, `listAgentTaskLedgerRuns()`, `listAgentArtifacts()`, `synthesizeAgentArtifacts()`, `listAgentCriticVerdicts()`, and `evaluateAgentCriticGate()` - inspect task ledger runs, delegated artifacts, synthesis previews, and critic gate verdicts
+- `createAgentTeamSession()`, `listAgentTeamSessions()`, `getAgentTeamSession()`, `dispatchAgentTeamSession()`, `createAgentTeamTask()`, `listAgentTeamTasks()`, `getAgentTeamTaskStatus()`, `updateAgentTeamTask()`, `recordAgentTeamTaskOutput()`, `prepareAgentTeamMergeBundle()`, and `recordAgentTeamMergeDecision()` - manage Agent Team sessions, tasks, outputs, and merge decisions
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app, including optional `context_usage`
 - `previewThreadContext()` and `compactThreadContext()` - estimate the current thread context window with an optional draft message, or trigger non-destructive compaction for the active branch
+- `executeBranchAction()` and `dismissBranchAction()` - accept or dismiss proposed branch actions
 - `getBranchTree()` - fetch the branch tree rooted at a conversation
 - `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
 - `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows

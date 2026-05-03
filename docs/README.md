@@ -1,6 +1,6 @@
 # Focus Agent 文档索引
 
-更新时间：2026-04-29
+更新时间：2026-05-03
 
 这份索引是 `docs/` 的唯一导航入口。根目录 README 保持轻量；更完整的说明集中到这里，并按使用场景分组。
 
@@ -14,10 +14,10 @@ flowchart LR
     Docs --> Ops["Operations"]
     Understand --> Architecture["Architecture"]
     Understand --> Roadmap["Roadmap"]
-    Understand --> MultiAgent["Multi-Agent Collaboration"]
     Develop --> DevGuide["Development Guide"]
     Develop --> SDK["Frontend SDK"]
     Topics --> Governance["Agent Governance"]
+    Topics --> AgentTeam["Agent Team Workbench"]
     Topics --> ContextWindow["Context Window"]
     Topics --> Memory["Memory"]
     Topics --> Tools["Tool / Skill"]
@@ -37,7 +37,6 @@ flowchart LR
 
 - [architecture.md](architecture.md)：整体架构、核心请求链路、拆分后的服务/工具/图边界、持久化边界、前端/SDK、部署和验证总览。
 - [roadmap.md](roadmap.md)：当前基线、下一阶段重点和仍在推进的方向。
-- [multi-agent-collaboration.md](multi-agent-collaboration.md)：P4-P7 多 Agent 协同开发分工、契约门禁、发布 gate、observability 与 Auth/Memory 质量闭环。
 
 ## 开发验证
 
@@ -70,7 +69,7 @@ flowchart LR
 - 同一主题只保留一个 canonical 文档，其他文档只做摘要和跳转。
 - 根目录 README 只做轻入口，不承载长篇操作说明。
 - `docs/README.md` 是 `docs/` 的唯一导航入口；新增文档应先确认归属分组和 canonical 位置。
-- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Memory、Tool / Skill、Docker、Observability 和 SDK 文档。
+- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Agent Team、Context Window、Memory、Tool / Skill、Docker、Observability 和 SDK 文档。
 - `development.md` / `development.zh-CN.md` 讲本地开发与验证命令；release provider 细节放到 `ci/github-actions-release-gate.md`。
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 阶段性方案、执行记录和草稿不要长期堆在 `docs/`，应放到 issue、PR 或项目管理工具。
