@@ -199,15 +199,18 @@ def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():
 
     thread_page_text = (web_root / "pages" / "thread" / "thread-page.tsx").read_text()
     message_list_text = (web_root / "entities" / "messages" / "message-list.tsx").read_text()
+    message_transcript_text = (
+        web_root / "entities" / "messages" / "message-transcript.ts"
+    ).read_text()
     styles_text = (web_root / "shared" / "styles" / "app.css").read_text()
 
     assert "assistantMessage={data?.assistant_message}" in thread_page_text
     assert "buildTranscriptItems(messages, assistantMessage)" in message_list_text
-    assert "looksLikeInternalToolMarkup" in message_list_text
-    assert "looksLikeTextualToolCallArtifact" in message_list_text
-    assert 'kind: "tool-activity"' in message_list_text
+    assert "looksLikeInternalToolMarkup" in message_transcript_text
+    assert "looksLikeTextualToolCallArtifact" in message_transcript_text
+    assert 'kind: "tool-activity"' in message_transcript_text
     assert 'className="fa-tool-activity-card"' in message_list_text
-    assert 'id: `${lastItem.id}-summary`' not in message_list_text
+    assert 'id: `${lastItem.id}-summary`' not in message_transcript_text
     assert ".fa-tool-activity-card" in styles_text
     assert ".fa-tool-activity-summary" in styles_text
 

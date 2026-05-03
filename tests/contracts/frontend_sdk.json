@@ -617,8 +617,7 @@
       "FocusAgentBranchActionProposal",
       "FocusAgentToolCallEvent",
       "FocusAgentToolEvent",
-      "TurnFailedPayload",
-      "looksLikeTextualToolCallArtifact"
+      "TurnFailedPayload"
     ],
     "apps/web/src/entities/messages/message-transcript.ts": [
       "looksLikeTextualToolCallArtifact"
@@ -658,9 +657,6 @@
       "FocusAgentMergeProposal",
       "MergeMode",
       "MergeTarget"
-    ],
-    "apps/web/src/features/models/model-status.tsx": [
-      "FocusAgentModelOption"
     ],
     "apps/web/src/features/thread-stream/message-composer.tsx": [
       "ContextUsageResponse",
@@ -714,7 +710,8 @@
       "FocusAgentTrajectoryStatsRow",
       "FocusAgentTrajectoryStep",
       "FocusAgentTrajectoryTurnDetail",
-      "FocusAgentTrajectoryTurnSummary"
+      "FocusAgentTrajectoryTurnSummary",
+      "safeVisibleText"
     ],
     "apps/web/src/features/trajectory-observability/use-observability-overview.ts": [
       "FocusAgentObservabilityOverviewRequest",
@@ -726,10 +723,6 @@
     "apps/web/src/features/trajectory-observability/use-trajectory-list.ts": [
       "FocusAgentTrajectoryListRequest",
       "FocusAgentTrajectoryListResponse"
-    ],
-    "apps/web/src/features/trajectory-observability/use-trajectory-stats.ts": [
-      "FocusAgentTrajectoryStatsRequest",
-      "FocusAgentTrajectoryStatsResponse"
     ],
     "apps/web/src/pages/admin/admin-users-page.tsx": [
       "FocusAgentCreateUserRequest",

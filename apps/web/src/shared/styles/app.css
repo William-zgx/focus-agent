@@ -3772,20 +3772,6 @@ body.fa-is-resizing {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
 
-.fa-model-pill {
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--fa-border-strong);
-  background: linear-gradient(
-    180deg,
-    rgba(99, 102, 241, 0.18),
-    rgba(139, 92, 246, 0.12)
-  );
-  box-shadow: 0 0 24px rgba(99, 102, 241, 0.18);
-  color: #eef2ff;
-  font-size: 12px;
-}
-
 .fa-chat-main-body {
   min-height: 0;
   min-width: 0;

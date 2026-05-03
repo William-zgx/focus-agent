@@ -25,7 +25,8 @@ const DEFAULT_TEXTUAL_TOOL_NAMES = new Set([
   "write_text_artifact",
 ]);
 
-const BRACKET_TOOL_MARKER_RE = /^\s*\[([A-Za-z_][\w.-]*)\]\s*/gm;
+const BRACKET_TOOL_MARKER_RE =
+  /(?:^|[\s"'*_`>])\[([A-Za-z_][\w.-]*)\](?=$|[\s"'*_`<:：).,，。-])/gm;
 const INTERNAL_PROCESS_NARRATION_RE =
   /(?:^|[\n。；;:：])\s*(?:我(?:来|先)?(?:帮你|为你)?(?:查询|获取|搜索|查找)|先(?:获取|查询|搜索|抓取)|让我(?:先|再)?(?:尝试|查询|搜索|获取|访问|抓取)|现在让我|接下来我(?:会|将)?尝试|我(?:会|将|再)?尝试(?:通过)?)(?=.{0,160}(?:搜索|查询|访问|获取|抓取|页面|数据|行情|日线|东方财富|数据源|web_fetch|web_search|tool|fetch|search|browse|计算))/ims;
 const INTERNAL_SEARCH_RESULT_NARRATION_RE =

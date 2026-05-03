@@ -125,10 +125,91 @@ function loadSdkStreamFunctions() {
   return context.module.exports;
 }
 
+function loadMessageTranscriptFunctions() {
+	const sourceText = readFileSync(
+		path.join(repoRoot, "apps/web/src/entities/messages/message-transcript.ts"),
+		"utf8",
+  );
+  const functionNames = [
+    "normalizeMessageType",
+    "normalizeText",
+    "looksLikeInternalToolMarkup",
+    "looksLikeToolPlanningPayload",
+    "shouldHideStreamingInternalContent",
+    "totalTokensFromUsageMetadata",
+    "truncateText",
+    "parseJsonValue",
+    "extractToolSummaryCandidate",
+    "summarizeToolResult",
+		"formatToolDetailContent",
+		"uniqueToolNames",
+		"visibleAssistantIndexesToHide",
+		"buildTranscriptItems",
+	];
+  const snippet = functionNames.map((name) => extractFunction(sourceText, name)).join("\n\n");
+  const transpiled = ts.transpileModule(
+    `function looksLikeTextualToolCallArtifact(value) { return String(value ?? "").includes("<tool_call"); }\n\n${snippet}`,
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    },
+  ).outputText;
+  const context = {
+    exports: {},
+    module: { exports: {} },
+  };
+	vm.runInNewContext(`${transpiled}\nmodule.exports = { buildTranscriptItems };`, context);
+	return context.module.exports;
+}
+
+function loadTrajectoryUtilityFunctions() {
+	const sourceText = readFileSync(
+		path.join(
+			repoRoot,
+			"apps/web/src/features/trajectory-observability/trajectory-utils.ts",
+		),
+		"utf8",
+	);
+	const functionNames = [
+		"visiblePreviewText",
+		"extractStructuredSummary",
+		"compactSnippet",
+	];
+	const snippet = functionNames
+		.map((name) => extractFunction(sourceText, name))
+		.join("\n\n");
+	const transpiled = ts.transpileModule(
+		`function safeVisibleText(value) {
+			const text = String(value ?? "");
+			return text.includes("<｜DSML｜") || text.includes("invoke name=") || text.includes("[web_fetch]")
+				? ""
+				: text;
+		}
+		${snippet}`,
+		{
+			compilerOptions: {
+				module: ts.ModuleKind.CommonJS,
+				target: ts.ScriptTarget.ES2022,
+			},
+		},
+	).outputText;
+	const context = {
+		exports: {},
+		module: { exports: {} },
+	};
+	vm.runInNewContext(
+		`${transpiled}\nmodule.exports = { extractStructuredSummary, compactSnippet };`,
+		context,
+	);
+	return context.module.exports;
+}
+
 test("request cleanup clears the optimistic user message after failed sends", () => {
-  const {
-    createThreadStreamEntry,
-    nextThreadEntryMap,
+	const {
+		createThreadStreamEntry,
+		nextThreadEntryMap,
     patchThreadEntry,
     resolveThinkingModeForRequest,
   } = loadFunctions(
@@ -206,11 +287,12 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     ),
     true,
   );
-  assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
-  assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
-  assert.equal(safeVisibleText("[web_search] searching"), "");
-  assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
-  assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
+	assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
+	assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
+	assert.equal(safeVisibleText("[web_search] searching"), "");
+	assert.equal(safeVisibleText("**[web_fetch]** 尝试通过东方财富API获取数据。"), "");
+	assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
+	assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
 
   const withArtifactDelta = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -300,7 +382,7 @@ test("SSE parser ignores trailing blank frames after stream completion", () => {
 
 test("message list does not render trailing tool output as a fake assistant reply", () => {
   const sourceText = readFileSync(
-    path.join(repoRoot, "apps/web/src/entities/messages/message-list.tsx"),
+    path.join(repoRoot, "apps/web/src/entities/messages/message-transcript.ts"),
     "utf8",
   );
 
@@ -308,11 +390,100 @@ test("message list does not render trailing tool output as a fake assistant repl
   assert.equal(sourceText.includes("lastItem.id}-summary"), false);
 });
 
+test("message transcript fallback does not duplicate a visible assistant reply", () => {
+  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+  const items = buildTranscriptItems(
+    [
+      { id: "user-1", type: "human", content: "Analyze this." },
+      { id: "assistant-1", type: "ai", content: "Persisted answer." },
+    ],
+    "Different assistant_message fallback.",
+  );
+
+  const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
+  assert.equal(assistantItems.length, 1);
+  assert.equal(assistantItems[0].content, "Persisted answer.");
+});
+
+test("message transcript fallback remains available before assistant persistence", () => {
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+	const items = buildTranscriptItems(
+		[{ id: "user-1", type: "human", content: "Analyze this." }],
+		"Streaming answer.",
+	);
+
+  const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
+	assert.equal(assistantItems.length, 1);
+	assert.equal(assistantItems[0].content, "Streaming answer.");
+});
+
+test("message transcript shows only the latest visible assistant answer per turn", () => {
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+	const items = buildTranscriptItems(
+		[
+			{ id: "user-1", type: "human", content: "Analyze the market." },
+			{
+				id: "tool-call-1",
+				type: "ai",
+				content: "",
+				tool_calls: [{ name: "web_search", args: { query: "market" } }],
+			},
+			{
+				id: "tool-result-1",
+				type: "tool",
+				name: "web_search",
+				content: '{"answer":"partial"}',
+			},
+			{ id: "assistant-draft", type: "ai", content: "First reflected draft." },
+			{
+				id: "tool-call-2",
+				type: "ai",
+				content: "",
+				tool_calls: [{ name: "web_search", args: { query: "follow up" } }],
+			},
+			{
+				id: "tool-result-2",
+				type: "tool",
+				name: "web_search",
+				content: '{"answer":"final evidence"}',
+			},
+			{ id: "assistant-final", type: "ai", content: "Final answer." },
+		],
+		"Final answer.",
+	);
+
+	const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
+	const toolItems = items.filter((item) => item.kind === "tool-activity");
+	assert.equal(assistantItems.length, 1);
+	assert.equal(assistantItems[0].content, "Final answer.");
+	assert.equal(toolItems.length, 2);
+});
+
+test("trajectory previews hide internal tool and reasoning artifacts", () => {
+	const { compactSnippet, extractStructuredSummary } =
+		loadTrajectoryUtilityFunctions();
+
+	assert.equal(
+		compactSnippet('<｜DSML｜invoke name="web_fetch">hidden</｜DSML｜invoke>'),
+		"",
+	);
+	assert.equal(
+		extractStructuredSummary(
+			'{"reasoning_content":"internal thinking","content":"final answer"}',
+		),
+		"",
+	);
+	assert.equal(compactSnippet("Final user-visible answer.", 120), "Final user-visible answer.");
+});
+
 test("thinking-capable model selection preserves unset backend-default semantics until the user toggles it", () => {
-  const {
-    effectiveThinkingModeForModel,
-    nextThinkingModeForModelSelection,
-    thinkingOptionMetaLabel,
+	const {
+	effectiveThinkingModeForModel,
+	nextThinkingModeForModelSelection,
+	thinkingOptionMetaLabel,
     thinkingModeRequestValueForModel,
   } = loadFunctions("apps/web/src/features/thread-stream/message-composer.tsx", [
     "normalizeThinkingMode",

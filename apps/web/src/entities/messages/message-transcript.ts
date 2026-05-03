@@ -203,12 +203,61 @@ function uniqueToolNames(toolNames: string[]) {
 	];
 }
 
+function visibleAssistantIndexesToHide(
+	messages: Array<Record<string, unknown>>,
+) {
+	const hidden = new Set<number>();
+	let visibleIndexesInTurn: number[] = [];
+
+	function closeTurn() {
+		for (const index of visibleIndexesInTurn.slice(0, -1)) {
+			hidden.add(index);
+		}
+		visibleIndexesInTurn = [];
+	}
+
+	for (let index = 0; index < messages.length; index += 1) {
+		const message = messages[index] ?? {};
+		const type = normalizeMessageType(message.type);
+
+		if (type === "human") {
+			closeTurn();
+			continue;
+		}
+
+		const toolCalls = Array.isArray(message.tool_calls)
+			? (message.tool_calls as Array<Record<string, unknown>>)
+			: [];
+		const content = String(message.content ?? "");
+		if (
+			type === "ai" &&
+			toolCalls.length === 0 &&
+			normalizeText(content) &&
+			!shouldHideStreamingInternalContent(content)
+		) {
+			visibleIndexesInTurn.push(index);
+		}
+	}
+
+	closeTurn();
+	return hidden;
+}
+
 export function buildTranscriptItems(
 	messages: Array<Record<string, unknown>>,
 	assistantMessage?: string | null,
 ): TranscriptItem[] {
 	const items: TranscriptItem[] = [];
 	let pendingToolActivity: ToolActivityItem | null = null;
+	let latestHumanIndex = -1;
+	let hasVisibleAssistantAfterLatestHuman = false;
+	const hiddenVisibleAssistantIndexes = visibleAssistantIndexesToHide(messages);
+
+	for (let index = 0; index < messages.length; index += 1) {
+		if (normalizeMessageType(messages[index]?.type) === "human") {
+			latestHumanIndex = index;
+		}
+	}
 
 	function flushToolActivity() {
 		if (!pendingToolActivity) {
@@ -285,8 +334,11 @@ export function buildTranscriptItems(
 		) {
 			continue;
 		}
+		if (type === "ai" && hiddenVisibleAssistantIndexes.has(index)) {
+			continue;
+		}
 
-		items.push({
+		const item = {
 			kind: "message",
 			id: messageId,
 			type: type || "message",
@@ -295,7 +347,11 @@ export function buildTranscriptItems(
 				type === "ai"
 					? totalTokensFromUsageMetadata(message.usage_metadata)
 					: 0,
-		});
+		} as const;
+		items.push(item);
+		if (type === "ai" && index > latestHumanIndex) {
+			hasVisibleAssistantAfterLatestHuman = true;
+		}
 	}
 
 	flushToolActivity();
@@ -314,6 +370,7 @@ export function buildTranscriptItems(
 	if (
 		normalizedAssistantMessage &&
 		!hasVisibleAssistantMessage &&
+		!hasVisibleAssistantAfterLatestHuman &&
 		!shouldHideAssistantFallback
 	) {
 		items.push({

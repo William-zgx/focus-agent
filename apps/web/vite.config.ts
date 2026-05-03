@@ -31,9 +31,6 @@ export default defineConfig({
           ) {
             return "query";
           }
-          if (id.includes("zustand")) {
-            return "state";
-          }
           return undefined;
         },
       },

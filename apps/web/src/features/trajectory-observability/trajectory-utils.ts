@@ -1,5 +1,6 @@
 import {
 	FocusAgentRequestError,
+	safeVisibleText,
 	type FocusAgentTrajectoryStatsRow,
 	type FocusAgentTrajectoryStep,
 	type FocusAgentTrajectoryTurnDetail,
@@ -233,35 +234,29 @@ export function compactDetailQuestion(value?: string | null) {
 	return `${text.slice(0, 160)}…`;
 }
 
+function visiblePreviewText(value?: string | null) {
+	const text = safeVisibleText(String(value || ""))
+		.replace(/\s+/g, " ")
+		.trim();
+	if (!text || /\breasoning_content\b/i.test(text)) return "";
+	return text;
+}
+
 export function extractStructuredSummary(value?: string | null) {
-	const text = String(value || "").trim();
+	const text = visiblePreviewText(value);
 	if (!text) return "";
-	const matches = [
-		...text.matchAll(/reasoning_content['"]?\s*:\s*['"]([^'"]+)['"]/g),
-	]
-		.map((item) => item[1]?.trim() || "")
-		.filter(Boolean);
-	if (matches.length) {
-		const deduped = [...new Set(matches)];
-		const joined = deduped.join("");
-		return joined.length > 260 ? `${joined.slice(0, 260)}…` : joined;
-	}
 	return text.length > 260 ? `${text.slice(0, 260)}…` : text;
 }
 
 export function stepObservationPreview(value?: string | null) {
-	const text = String(value || "")
-		.replace(/\s+/g, " ")
-		.trim();
+	const text = visiblePreviewText(value);
 	if (!text) return "—";
 	if (text.length <= 140) return text;
 	return `${text.slice(0, 140)}…`;
 }
 
 export function compactSnippet(value?: string | null, max = 88) {
-	const text = String(value || "")
-		.replace(/\s+/g, " ")
-		.trim();
+	const text = visiblePreviewText(value);
 	if (!text) return "";
 	if (text.length <= max) return text;
 	return `${text.slice(0, max)}…`;

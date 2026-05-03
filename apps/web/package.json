@@ -17,8 +17,7 @@
     "@tanstack/react-query-devtools": "^5.0.0",
     "@tanstack/react-router": "^1.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zustand": "^5.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
