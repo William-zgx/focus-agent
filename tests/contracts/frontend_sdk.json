@@ -637,7 +637,7 @@
       "FocusAgentToolEvent",
       "TurnFailedPayload"
     ],
-    "apps/web/src/entities/messages/message-transcript.ts": [
+    "apps/web/src/entities/messages/message-transcript-visibility.ts": [
       "looksLikeTextualToolCallArtifact"
     ],
     "apps/web/src/features/admin-users/admin-user-utils.ts": [

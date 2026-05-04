@@ -122,3 +122,14 @@ def test_sdk_type_alias_scan_keeps_object_members_after_semicolons() -> None:
 
     assert "data: FocusAgentEventPayloadMap[K];" in declaration
     assert "raw?: string;" in declaration
+
+
+def test_sdk_contract_scans_split_type_modules_not_barrel() -> None:
+    current = check_contracts.build_sdk_contract()
+    barrel_text = check_contracts.SDK_TYPES_PATH.read_text(encoding="utf-8")
+
+    assert "FocusAgentEvent" in current["exported_type_declarations"]
+    assert "FocusAgentAgentTeamSession" in current["exported_type_declarations"]
+    assert "export * from \"./types/stream.js\";" in barrel_text
+    assert "export interface FocusAgentEvent" not in barrel_text
+    assert "export type FocusAgentEventName" not in barrel_text

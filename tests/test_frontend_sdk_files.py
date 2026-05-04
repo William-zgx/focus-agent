@@ -1,6 +1,19 @@
 from pathlib import Path
 
 
+def _sdk_client_text(root: Path) -> str:
+    sources = [(root / 'src' / 'client.ts').read_text()]
+    sources.extend(path.read_text() for path in sorted((root / 'src' / 'client').glob('*.ts')))
+    return '\n'.join(sources)
+
+
+def _sdk_types_text(root: Path) -> str:
+    return '\n'.join(
+        path.read_text()
+        for path in sorted((root / 'src' / 'types').glob('*.ts'))
+    )
+
+
 def test_frontend_sdk_files_exist_and_export_core_surfaces():
     root = Path(__file__).resolve().parents[1] / 'frontend-sdk'
     required = [
@@ -19,7 +32,12 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     for path in required:
         assert path.exists(), f'missing {path}'
 
-    types_text = (root / 'src' / 'types.ts').read_text()
+    types_barrel_text = (root / 'src' / 'types.ts').read_text()
+    assert 'export * from "./types/stream.js";' in types_barrel_text
+    assert 'export interface FocusAgentEvent' not in types_barrel_text
+    assert 'export type FocusAgentEventName' not in types_barrel_text
+
+    types_text = _sdk_types_text(root)
     assert 'visible_text.delta' in types_text
     assert 'reasoning.delta' in types_text
     assert 'tool_call.delta' in types_text
@@ -57,7 +75,7 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'FocusAgentBranchActionExecuteResponse' in types_text
     assert 'branch.action.executed' in types_text
 
-    client_text = (root / 'src' / 'client.ts').read_text()
+    client_text = _sdk_client_text(root)
     assert 'class FocusAgentClient' in client_text
     assert 'FocusAgentRequestError' in client_text
     assert 'FocusAgentTransport' in client_text

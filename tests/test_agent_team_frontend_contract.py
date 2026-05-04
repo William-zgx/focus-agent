@@ -26,6 +26,22 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _sdk_client_text() -> str:
+    sources = [_read(SDK_ROOT / "src" / "client.ts")]
+    sources.extend(
+        _read(path)
+        for path in sorted((SDK_ROOT / "src" / "client").glob("*.ts"))
+    )
+    return "\n".join(sources)
+
+
+def _sdk_types_text() -> str:
+    return "\n".join(
+        _read(path)
+        for path in sorted((SDK_ROOT / "src" / "types").glob("*.ts"))
+    )
+
+
 def _interface_body(text: str, name: str) -> str:
     match = re.search(rf"export interface {re.escape(name)} \{{(?P<body>.*?)\n\}}", text, re.S)
     assert match, f"missing TypeScript interface {name}"
@@ -81,7 +97,7 @@ def test_agent_team_route_is_registered_in_frontend_router():
 
 
 def test_agent_team_sdk_methods_match_backend_endpoints():
-    client_text = _read(SDK_ROOT / "src" / "client.ts")
+    client_text = _sdk_client_text()
 
     expected_methods = {
         "createAgentTeamSession": "/v1/agent-team/sessions",
@@ -103,7 +119,7 @@ def test_agent_team_sdk_methods_match_backend_endpoints():
 
 
 def test_agent_team_sdk_and_web_contracts_share_api_shape():
-    sdk_types = _read(SDK_ROOT / "src" / "types.ts")
+    sdk_types = _sdk_types_text()
     web_types = _read(WEB_ROOT / "src" / "features" / "agent-team" / "types.ts")
 
     session_request_fields = set(CreateAgentTeamSessionRequest.model_fields)
@@ -189,11 +205,11 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         "prepareAgentTeamMergeBundle",
     ]:
         assert method in _interface_body(web_types, "AgentTeamClientContract")
-        assert method in _read(SDK_ROOT / "src" / "client.ts")
+        assert method in _sdk_client_text()
 
 
 def test_agent_team_role_and_status_unions_match_sdk_and_web_contracts():
-    sdk_types = _read(SDK_ROOT / "src" / "types.ts")
+    sdk_types = _sdk_types_text()
     web_types = _read(WEB_ROOT / "src" / "features" / "agent-team" / "types.ts")
 
     for literal in [

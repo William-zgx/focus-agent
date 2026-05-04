@@ -16,7 +16,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 API_SNAPSHOT_PATH = REPO_ROOT / "tests" / "contracts" / "api_routes.json"
 SDK_SNAPSHOT_PATH = REPO_ROOT / "tests" / "contracts" / "frontend_sdk.json"
 SDK_CLIENT_PATH = REPO_ROOT / "frontend-sdk" / "src" / "client.ts"
+SDK_CLIENT_MODULE_DIR = REPO_ROOT / "frontend-sdk" / "src" / "client"
 SDK_TYPES_PATH = REPO_ROOT / "frontend-sdk" / "src" / "types.ts"
+SDK_TYPES_DIR = REPO_ROOT / "frontend-sdk" / "src" / "types"
 SDK_REDUCERS_PATH = REPO_ROOT / "frontend-sdk" / "src" / "reducers.ts"
 SDK_INDEX_PATH = REPO_ROOT / "frontend-sdk" / "src" / "index.ts"
 WEB_SRC_PATH = REPO_ROOT / "apps" / "web" / "src"
@@ -277,6 +279,58 @@ def _public_method_signatures(client_body: str) -> dict[str, str]:
     return dict(sorted(signatures.items()))
 
 
+def _sdk_client_sources() -> list[str]:
+    sources = [SDK_CLIENT_PATH.read_text(encoding="utf-8")]
+    if SDK_CLIENT_MODULE_DIR.exists():
+        for path in sorted(SDK_CLIENT_MODULE_DIR.glob("*.ts")):
+            sources.append(path.read_text(encoding="utf-8"))
+    return sources
+
+
+def _sdk_type_sources() -> list[str]:
+    if not SDK_TYPES_DIR.exists():
+        return [SDK_TYPES_PATH.read_text(encoding="utf-8")]
+    sources = [
+        path.read_text(encoding="utf-8")
+        for path in sorted(SDK_TYPES_DIR.glob("*.ts"))
+    ]
+    if not sources:
+        raise FileNotFoundError(f"no TypeScript type sources found in {SDK_TYPES_DIR}")
+    return sources
+
+
+def _strip_endpoint_this_parameter(params: str) -> str:
+    if re.fullmatch(r"\s*this\s*:\s*FocusAgentEndpointContext\s*", params):
+        return ""
+    if params.startswith("this:"):
+        return re.sub(
+            r"^this\s*:\s*FocusAgentEndpointContext\s*,\s*",
+            "",
+            params,
+            count=1,
+        )
+    return re.sub(
+        r"^(\s*)this\s*:\s*FocusAgentEndpointContext\s*,",
+        r"\1",
+        params,
+        count=1,
+    )
+
+
+def _endpoint_method_signatures(source: str) -> dict[str, str]:
+    signatures: dict[str, str] = {}
+    pattern = re.compile(
+        r"^async\s+function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*?)\)\s*:\s*([^{]+)\{",
+        flags=re.MULTILINE,
+    )
+    for match in pattern.finditer(source):
+        name = match.group(1)
+        params = _strip_endpoint_this_parameter(match.group(2))
+        signature = f"async {name}({params}): {match.group(3).strip()}"
+        signatures[name] = _normalize_ts_declaration(signature)
+    return dict(sorted(signatures.items()))
+
+
 def _sdk_package_exports(index_source: str) -> list[str]:
     return sorted(set(re.findall(r'export\s+\*\s+from\s+"([^"]+)"', index_source)))
 
@@ -311,12 +365,15 @@ def _scan_web_sdk_imports(root: Path = WEB_SRC_PATH) -> dict[str, list[str]]:
 
 
 def build_sdk_contract() -> dict[str, Any]:
-    client_source = SDK_CLIENT_PATH.read_text(encoding="utf-8")
-    types_source = SDK_TYPES_PATH.read_text(encoding="utf-8")
+    client_sources = _sdk_client_sources()
+    client_source = client_sources[0]
+    types_source = "\n".join(_sdk_type_sources())
     reducers_source = SDK_REDUCERS_PATH.read_text(encoding="utf-8")
     index_source = SDK_INDEX_PATH.read_text(encoding="utf-8")
     client_body = _class_body(client_source, "FocusAgentClient")
-    method_signatures = _public_method_signatures(client_body)
+    method_signatures = _public_method_signatures(client_body) | _endpoint_method_signatures(
+        "\n".join(client_sources[1:]),
+    )
     type_declarations = _scan_type_exports(types_source) | _scan_braced_exports(
         types_source,
         "interface",

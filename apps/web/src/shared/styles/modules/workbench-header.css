@@ -1,0 +1,302 @@
+/* Workbench header integration. */
+.fa-chat-header-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.fa-chat-header-copy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: auto;
+  flex: 0 0 auto;
+  max-width: none;
+}
+
+.fa-toolbar-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.fa-conversation-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 108px;
+  max-width: min(150px, 16vw);
+  flex: 0 1 140px;
+}
+
+.fa-conversation-switcher::after {
+  right: 14px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-right-width: 1.8px;
+  border-bottom-width: 1.8px;
+  transform: translateY(-60%) rotate(45deg);
+  color: color-mix(in srgb, var(--fa-text) 64%, transparent);
+}
+
+.fa-conversation-select {
+  min-width: 0;
+  padding: 10px 40px 10px 14px;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  box-shadow: 0 10px 24px rgba(4, 10, 22, 0.08);
+  cursor: pointer;
+}
+
+.fa-conversation-select:hover {
+  box-shadow: 0 14px 28px rgba(4, 10, 22, 0.12);
+  transform: translateY(-1px);
+}
+
+.fa-conversation-select:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+  box-shadow: none;
+}
+
+.fa-chat-header-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-left: auto;
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--fa-accent) 24%,
+      var(--fa-border) 76%
+    )
+    transparent;
+}
+
+.fa-chat-header-actions::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
+}
+
+.fa-chat-header-primary-actions,
+.fa-chat-header-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: max-content;
+}
+
+.fa-chat-toolbar-pill,
+.fa-chat-toolbar-button {
+  flex: 0 0 auto;
+}
+
+.fa-chat-header-actions.is-compact [data-compact-button="true"] {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  border-radius: 14px;
+}
+
+.fa-chat-header-actions.is-compact
+  [data-compact-button="true"]
+  .fa-toolbar-text,
+.fa-chat-header-actions.is-compact .fa-focus-branches-button .fa-toolbar-text {
+  display: none;
+}
+
+.fa-chat-header-actions.is-compact .fa-focus-branches-button {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  gap: 0;
+}
+
+.fa-toolbar-icon {
+  color: color-mix(in srgb, var(--fa-text) 74%, var(--fa-text-muted) 26%);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.fa-chat-header-actions.is-compact
+  [data-compact-button="true"]
+  .fa-toolbar-icon {
+  color: color-mix(in srgb, var(--fa-text) 82%, var(--fa-text-muted) 18%);
+}
+
+.fa-toolbar-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fa-composer-footer-row {
+  width: clamp(168px, 18vw, 186px);
+  min-height: 34px;
+}
+
+.fa-composer-model-row {
+  order: 1;
+}
+
+.fa-composer-actions-row {
+  order: 2;
+}
+
+.fa-composer-model-shell {
+  min-width: 118px;
+  max-width: 156px;
+}
+
+.fa-composer-model-trigger {
+  min-height: 34px;
+  padding: 0 10px 0 6px;
+}
+
+.fa-composer-model-trigger-copy {
+  gap: 4px;
+}
+
+.fa-composer-model-trigger-label {
+  font-size: 10px;
+}
+
+.fa-composer-model-trigger-provider {
+  display: none;
+}
+
+.fa-composer-model-thinking-toggle {
+  flex: 0 0 auto;
+}
+
+.fa-thinking-toggle {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+@media (max-width: 1220px) {
+  .fa-toolbar-note {
+      display: none;
+    }
+}
+
+.fa-brand-mark {
+  border: 1px solid color-mix(in srgb, var(--fa-border) 74%, transparent);
+  background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
+  box-shadow: 0 12px 24px rgba(4, 10, 22, 0.14);
+}
+
+.fa-chat-logo-toggle.is-sidebar-collapsed .fa-brand-mark {
+  background: color-mix(in srgb, var(--fa-panel-3) 70%, var(--fa-accent) 16%);
+  border-color: color-mix(in srgb, var(--fa-accent) 32%, var(--fa-border) 68%);
+}
+
+:root[data-theme="light"] .fa-brand-mark {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(241, 244, 252, 0.96)
+  );
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow:
+    0 10px 22px rgba(55, 68, 106, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.fa-composer-shell.fa-composer-input-shell {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.fa-composer-footer-row {
+  width: clamp(252px, 24vw, 304px);
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+
+.fa-composer-model-row {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.fa-composer-model-controls {
+  gap: 5px;
+  min-width: 0;
+}
+
+.fa-composer-model-anchor {
+  min-width: 0;
+}
+
+.fa-composer-model-shell {
+  min-width: 124px;
+  max-width: 172px;
+  flex: 1 1 auto;
+}
+
+.fa-composer-model-trigger {
+  width: 100%;
+}
+
+.fa-composer-model-trigger-copy {
+  min-width: 0;
+}
+
+.fa-composer-model-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fa-composer-model-thinking-toggle {
+  min-width: 0;
+}
+
+.fa-thinking-toggle {
+  min-width: 92px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.fa-composer-actions-row {
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+@media (max-width: 1180px) {
+  .fa-composer-footer-row {
+      width: clamp(228px, 27vw, 276px);
+    }
+
+  .fa-composer-model-shell {
+      min-width: 110px;
+      max-width: 146px;
+    }
+
+  .fa-thinking-toggle {
+      min-width: 84px;
+      font-size: 10px;
+      padding: 0 10px;
+    }
+}

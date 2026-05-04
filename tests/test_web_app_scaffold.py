@@ -365,9 +365,11 @@ def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():
         web_root / "entities" / "messages" / "message-list.tsx",
         web_root / "entities" / "messages" / "message-list-tool-activity-card.tsx",
     )
-    message_transcript_text = (
-        web_root / "entities" / "messages" / "message-transcript.ts"
-    ).read_text()
+    message_transcript_text = _join_text(
+        web_root / "entities" / "messages" / "message-transcript.ts",
+        web_root / "entities" / "messages" / "message-transcript-builder.ts",
+        web_root / "entities" / "messages" / "message-transcript-visibility.ts",
+    )
     styles_text = _web_styles(root / "apps" / "web")
 
     assert "assistantMessage={data?.assistant_message}" in thread_page_text

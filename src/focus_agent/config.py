@@ -1,824 +1,62 @@
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass, field
-import json
 import os
 from pathlib import Path
-import re
-import tomllib
-from typing import Any, Callable, MutableMapping, TypeVar
 
-
-DEFAULT_LOCAL_ENV_FILE = ".focus_agent/local.env"
-DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
-DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
-DEFAULT_AUTH_JWT_SECRET = "focus-agent-dev-secret"
-_INSECURE_AUTH_JWT_SECRETS = {
+from .config_parts.auth import (
     DEFAULT_AUTH_JWT_SECRET,
-    "change-me-before-sharing",
-    "change-me-in-shared-env",
-}
-_DEVELOPMENT_ENVIRONMENT_NAMES = {"dev", "development", "local", "test", "testing", "ci"}
-_ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
-_ToolConfigT = TypeVar("_ToolConfigT")
-
-
-@dataclass(frozen=True, slots=True)
-class AuthJwtKey:
-    kid: str
-    secret: str
-    active: bool = True
-
-
-def _normalize_config_value(raw: str) -> str:
-    value = raw.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-        return value[1:-1]
-    return value
-
-
-def _split_csv(value: str | None) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    return tuple(part.strip() for part in value.split(",") if part.strip())
-
-
-def _split_key_value_csv(value: str | None) -> dict[str, str]:
-    if value is None:
-        return {}
-    pairs: dict[str, str] = {}
-    for raw_part in value.split(","):
-        part = raw_part.strip()
-        if not part or "=" not in part:
-            continue
-        key, raw_value = part.split("=", 1)
-        key = key.strip()
-        resolved_value = raw_value.strip()
-        if key and resolved_value:
-            pairs[key] = resolved_value
-    return pairs
-
-
-def _parse_key_value_json_or_csv(value: str | None) -> dict[str, str]:
-    if value is None:
-        return {}
-    text = value.strip()
-    if not text:
-        return {}
-    if text.startswith("{"):
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            return {}
-        if not isinstance(payload, dict):
-            return {}
-        return {
-            str(key).strip(): str(item).strip()
-            for key, item in payload.items()
-            if str(key).strip() and str(item).strip()
-        }
-    return _split_key_value_csv(text)
-
-
-def _normalize_optional_string(value: object) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
-def _normalize_agent_delegation_execution_mode(value: object) -> str:
-    from .agent_execution import normalize_delegation_execution_mode
-
-    return normalize_delegation_execution_mode(str(value or "observe"))
-
-
-def _coerce_bool(value: object) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return True
-    if text in {"0", "false", "no", "off"}:
-        return False
-    return None
-
-
-def _env_bool(env: MutableMapping[str, str], name: str, *, default: bool) -> bool:
-    return env.get(name, "true" if default else "false").lower() in {"1", "true", "yes", "on"}
-
-
-def _b64url_decode_string(raw: str) -> str | None:
-    try:
-        decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
-        return decoded.decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
-        return None
-
-
-def _coerce_auth_jwt_key(raw: object, *, default_kid: str | None = None) -> AuthJwtKey | None:
-    if not isinstance(raw, dict):
-        secret = _normalize_optional_string(raw)
-        kid = _normalize_optional_string(default_kid)
-        if kid is None or secret is None:
-            return None
-        return AuthJwtKey(kid=kid, secret=secret)
-
-    kid = _normalize_optional_string(raw.get("kid") or raw.get("id") or default_kid)
-    secret = _normalize_optional_string(
-        raw.get("secret") or raw.get("value") or raw.get("shared_secret")
-    )
-    if secret is None:
-        jwk_secret = _normalize_optional_string(raw.get("k"))
-        if jwk_secret is not None:
-            secret = _b64url_decode_string(jwk_secret) or jwk_secret
-    if kid is None or secret is None:
-        return None
-
-    active = _coerce_bool(raw.get("active"))
-    if active is None:
-        status = (_normalize_optional_string(raw.get("status")) or "active").lower()
-        active = status not in {"disabled", "inactive", "retired", "revoked"}
-    return AuthJwtKey(kid=kid, secret=secret, active=active)
-
-
-def _dedupe_auth_jwt_keys(keys: list[AuthJwtKey]) -> tuple[AuthJwtKey, ...]:
-    deduped: dict[str, AuthJwtKey] = {}
-    for key in keys:
-        deduped[key.kid] = key
-    return tuple(deduped.values())
-
-
-def _parse_auth_jwt_key_object(raw: object) -> tuple[AuthJwtKey, ...]:
-    keys: list[AuthJwtKey] = []
-    if isinstance(raw, list):
-        for item in raw:
-            key = _coerce_auth_jwt_key(item)
-            if key is not None:
-                keys.append(key)
-        return _dedupe_auth_jwt_keys(keys)
-
-    if not isinstance(raw, dict):
-        return ()
-
-    jwks_keys = raw.get("keys")
-    if isinstance(jwks_keys, list):
-        for item in jwks_keys:
-            key = _coerce_auth_jwt_key(item)
-            if key is not None:
-                keys.append(key)
-
-    for kid, value in raw.items():
-        if kid in {"keys", "current_kid", "currentKid"}:
-            continue
-        key = _coerce_auth_jwt_key(value, default_kid=str(kid))
-        if key is not None:
-            keys.append(key)
-
-    return _dedupe_auth_jwt_keys(keys)
-
-
-def _parse_auth_jwt_keys(raw: object) -> tuple[AuthJwtKey, ...]:
-    text = _normalize_optional_string(raw)
-    if text is None:
-        return ()
-
-    if text[0] in "[{":
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError("AUTH_JWT_KEYS must be valid JSON or kid=secret CSV.") from exc
-        return _parse_auth_jwt_key_object(parsed)
-
-    keys: list[AuthJwtKey] = []
-    for item in text.split(","):
-        part = item.strip()
-        if not part:
-            continue
-        if "=" in part:
-            kid, secret = part.split("=", 1)
-        elif ":" in part:
-            kid, secret = part.split(":", 1)
-        else:
-            continue
-        key = _coerce_auth_jwt_key(secret, default_kid=kid)
-        if key is not None:
-            keys.append(key)
-    return _dedupe_auth_jwt_keys(keys)
-
-
-def _auth_jwt_keys_from_env(env: MutableMapping[str, str]) -> tuple[AuthJwtKey, ...]:
-    keys: list[AuthJwtKey] = []
-    for env_key in ("AUTH_JWT_KEYS", "AUTH_JWT_SECRETS", "AUTH_JWT_JWKS"):
-        keys.extend(_parse_auth_jwt_keys(env.get(env_key)))
-    return _dedupe_auth_jwt_keys(keys)
-
-
-def _configured_single_auth_secret(
-    settings: "Settings", env: MutableMapping[str, str]
-) -> str | None:
-    if _normalize_optional_string(env.get("AUTH_JWT_SECRET")) is None:
-        return None
-    return _normalize_optional_string(settings.auth_jwt_secret)
-
-
-def _current_auth_jwt_secret(settings: "Settings", env: MutableMapping[str, str]) -> str | None:
-    if settings.auth_jwt_key_id:
-        for key in settings.auth_jwt_keys:
-            if key.active and key.kid == settings.auth_jwt_key_id:
-                return key.secret
-        return _configured_single_auth_secret(settings, env)
-
-    for key in settings.auth_jwt_keys:
-        if key.active:
-            return key.secret
-    return _configured_single_auth_secret(settings, env)
-
-
-def _non_development_environment_sources(env: MutableMapping[str, str]) -> tuple[str, ...]:
-    sources: list[str] = []
-    for key in ("APP_ENVIRONMENT", "ENVIRONMENT"):
-        value = _normalize_optional_string(env.get(key))
-        if value is None:
-            continue
-        if value.lower() not in _DEVELOPMENT_ENVIRONMENT_NAMES:
-            sources.append(f"{key}={value}")
-    return tuple(sources)
-
-
-def _validate_non_development_security(settings: "Settings", env: MutableMapping[str, str]) -> None:
-    environment_sources = _non_development_environment_sources(env)
-    if not environment_sources:
-        return
-
-    failures: list[str] = []
-    jwt_secret = _normalize_optional_string(env.get("AUTH_JWT_SECRET"))
-    current_secret = _current_auth_jwt_secret(settings, env)
-    if jwt_secret in _INSECURE_AUTH_JWT_SECRETS:
-        failures.append("AUTH_JWT_SECRET must not use a development or demo default")
-    elif current_secret is None:
-        failures.append("AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key")
-    elif current_secret in _INSECURE_AUTH_JWT_SECRETS:
-        failures.append("AUTH_JWT_KEYS must not use a development or demo default")
-    if (
-        settings.auth_jwt_key_id
-        and settings.auth_jwt_keys
-        and not any(
-            key.active and key.kid == settings.auth_jwt_key_id for key in settings.auth_jwt_keys
-        )
-    ):
-        failures.append("AUTH_JWT_KEY_ID must match an active AUTH_JWT_KEYS entry")
-    if not _normalize_optional_string(settings.auth_jwt_issuer):
-        failures.append("AUTH_JWT_ISSUER must be set")
-    if settings.auth_access_token_ttl_seconds <= 0:
-        failures.append("AUTH_ACCESS_TOKEN_TTL_SECONDS must be greater than 0")
-    if not settings.auth_enabled:
-        failures.append("AUTH_ENABLED must be true")
-    if settings.auth_demo_tokens_enabled:
-        failures.append("AUTH_DEMO_TOKENS_ENABLED must be false")
-    if not settings.rate_limit_enabled:
-        failures.append("RATE_LIMIT_ENABLED must be true")
-    if settings.rate_limit_per_minute <= 0:
-        failures.append("RATE_LIMIT_PER_MINUTE must be greater than 0")
-    if settings.rate_limit_chat_per_minute <= 0:
-        failures.append("RATE_LIMIT_CHAT_PER_MINUTE must be greater than 0")
-    if not settings.cors_allowed_origins:
-        failures.append("CORS_ALLOWED_ORIGINS must be explicitly set")
-    if "*" in settings.cors_allowed_origins and settings.cors_allow_credentials:
-        failures.append(
-            "CORS_ALLOW_CREDENTIALS must be false when CORS_ALLOWED_ORIGINS contains '*'"
-        )
-    if failures:
-        raise ValueError(
-            "Unsafe security configuration for non-development environment "
-            f"({', '.join(environment_sources)}): {'; '.join(failures)}"
-        )
+    AuthJwtKey,
+    _validate_non_development_security,
+)
+from .config_parts.auth_settings import load_auth_config
+from .config_parts.catalogs import (
+    DEFAULT_MODEL_CATALOG_DOC,
+    DEFAULT_TOOL_CATALOG_DOC,
+    ProviderConfig,
+    ConfiguredModel,
+    WebSearchConfig,
+    CurrentUtcTimeToolConfig,
+    WriteTextArtifactToolConfig,
+    ArtifactListToolConfig,
+    ArtifactReadToolConfig,
+    ArtifactUpdateToolConfig,
+    ListFilesToolConfig,
+    ReadFileToolConfig,
+    SearchCodeToolConfig,
+    CodebaseStatsToolConfig,
+    GitStatusToolConfig,
+    GitDiffToolConfig,
+    GitLogToolConfig,
+    WebFetchToolConfig,
+    MemorySaveToolConfig,
+    MemorySearchToolConfig,
+    MemoryForgetToolConfig,
+    ConversationSummaryToolConfig,
+    SkillsListToolConfig,
+    SkillViewToolConfig,
+    ModelCatalogConfig,
+    ToolCatalogConfig,
+    ToolCatalogSectionSpec,
+    load_model_catalog_document,
+    load_tool_catalog_document,
+)
+from .config_parts.common import (
+    DEFAULT_LOCAL_ENV_FILE,
+    load_local_env_file,
+)
+from .config_parts.agent import load_agent_config
+from .config_parts.context import load_context_config
+from .config_parts.observability import load_observability_config
+from .config_parts.runtime import load_runtime_config
+from .config_parts.server import load_server_config
+from .config_parts.trajectory import load_trajectory_config
 
 
 def ensure_runtime_directories(settings: "Settings") -> None:
     """Create directories required by runtime persistence and artifacts."""
     Path(settings.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
     Path(settings.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)
-
-
-def _split_listish(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return _split_csv(value)
-    if isinstance(value, (list, tuple)):
-        return tuple(str(item).strip() for item in value if str(item).strip())
-    return ()
-
-
-def _copy_toml_value(value: object) -> object:
-    if isinstance(value, dict):
-        return {str(key): _copy_toml_value(nested) for key, nested in value.items()}
-    if isinstance(value, list):
-        return [_copy_toml_value(item) for item in value]
-    return value
-
-
-def _copy_toml_mapping(value: object) -> dict[str, object]:
-    if not isinstance(value, dict):
-        return {}
-    return {str(key): _copy_toml_value(nested) for key, nested in value.items()}
-
-
-def _tool_enabled(raw: object, default: bool = True) -> bool:
-    coerced = _coerce_bool(raw)
-    return default if coerced is None else coerced
-
-
-def _tool_label(raw: object, default: str) -> str:
-    return _normalize_optional_string(raw) or default
-
-
-def _tool_description(raw: object, default: str) -> str:
-    return _normalize_optional_string(raw) or default
-
-
-def _load_basic_tool_config(
-    raw_section: object,
-    defaults: _ToolConfigT,
-    *,
-    int_fields: tuple[str, ...] = (),
-    optional_string_fields: tuple[str, ...] = (),
-) -> _ToolConfigT:
-    if not isinstance(raw_section, dict):
-        return defaults
-
-    values: dict[str, object] = {}
-    for field_name in defaults.__dataclass_fields__:
-        default_value = getattr(defaults, field_name)
-        raw_value = raw_section.get(field_name)
-        if field_name == "enabled":
-            values[field_name] = _tool_enabled(raw_value, default_value)
-        elif field_name == "label":
-            values[field_name] = _tool_label(raw_value, default_value)
-        elif field_name == "description":
-            values[field_name] = _tool_description(raw_value, default_value)
-        elif field_name in int_fields:
-            values[field_name] = int(raw_section.get(field_name, default_value))
-        elif field_name in optional_string_fields:
-            values[field_name] = _normalize_optional_string(raw_value) or default_value
-        else:
-            values[field_name] = default_value
-
-    return type(defaults)(**values)
-
-
-def load_local_env_file(
-    path: str | Path | None = None,
-    *,
-    environ: MutableMapping[str, str] | None = None,
-) -> dict[str, str]:
-    target_env = environ if environ is not None else os.environ
-    resolved = Path(
-        path or target_env.get("FOCUS_AGENT_LOCAL_ENV_FILE") or DEFAULT_LOCAL_ENV_FILE
-    ).expanduser()
-    if not resolved.exists():
-        return {}
-
-    loaded: dict[str, str] = {}
-    for raw_line in resolved.read_text(encoding="utf-8").splitlines():
-        match = _ENV_ASSIGNMENT_RE.match(raw_line.strip())
-        if not match:
-            continue
-        key, raw_value = match.groups()
-        value = _normalize_config_value(raw_value)
-        loaded[key] = value
-        target_env.setdefault(key, value)
-    return loaded
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderConfig:
-    id: str
-    label: str | None = None
-    backend_provider: str | None = None
-    aliases: tuple[str, ...] = ()
-    base_url_env: str | None = None
-    base_url_default: str | None = None
-    api_key_env: str | None = None
-    api_key_default: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ConfiguredModel:
-    id: str
-    label: str | None = None
-    supports_thinking: bool | None = None
-    default_thinking_enabled: bool | None = None
-    request_kwargs: dict[str, object] = field(default_factory=dict)
-    thinking_enabled_request_kwargs: dict[str, object] = field(default_factory=dict)
-    thinking_disabled_request_kwargs: dict[str, object] = field(default_factory=dict)
-    thinking_disabled_model_name: str | None = None
-    reasoning_effort: str | None = None
-    no_temperature: bool | None = None
-    thinking_enable_extra_body_type: str | None = None
-    thinking_disable_extra_body_type: str | None = None
-    thinking_disable_switch_model: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class WebSearchConfig:
-    enabled: bool = True
-    label: str = "Web Search"
-    description: str = "Search the live web with Tavily first and DuckDuckGo as a fallback."
-    provider: str = "auto"
-    fallback_provider: str | None = "duckduckgo"
-    api_key_env: str | None = "TAVILY_API_KEY"
-    api_key_default: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class CurrentUtcTimeToolConfig:
-    enabled: bool = True
-    label: str = "Current UTC Time"
-    description: str = "Return the current UTC timestamp in ISO-8601 format."
-
-
-@dataclass(frozen=True, slots=True)
-class WriteTextArtifactToolConfig:
-    enabled: bool = True
-    label: str = "Write Text Artifact"
-    description: str = "Write a text artifact to disk and return its location."
-
-
-@dataclass(frozen=True, slots=True)
-class ArtifactListToolConfig:
-    enabled: bool = True
-    label: str = "Artifact List"
-    description: str = "List text artifacts saved in the configured artifact directory."
-    default_max_results: int = 50
-    max_results_cap: int = 200
-
-
-@dataclass(frozen=True, slots=True)
-class ArtifactReadToolConfig:
-    enabled: bool = True
-    label: str = "Artifact Read"
-    description: str = "Read a saved text artifact by filename or artifact id."
-    max_chars: int = 50000
-
-
-@dataclass(frozen=True, slots=True)
-class ArtifactUpdateToolConfig:
-    enabled: bool = True
-    label: str = "Artifact Update"
-    description: str = "Replace, append to, or prepend content in an existing text artifact."
-
-
-@dataclass(frozen=True, slots=True)
-class ListFilesToolConfig:
-    enabled: bool = True
-    label: str = "List Files"
-    description: str = "List workspace files under a directory using a glob-like pattern."
-    default_max_results: int = 200
-    max_results_cap: int = 500
-
-
-@dataclass(frozen=True, slots=True)
-class ReadFileToolConfig:
-    enabled: bool = True
-    label: str = "Read File"
-    description: str = "Read a UTF-8 text file from the workspace with line numbers."
-    default_end_line: int = 200
-    max_lines: int = 400
-    max_chars: int = 50000
-
-
-@dataclass(frozen=True, slots=True)
-class SearchCodeToolConfig:
-    enabled: bool = True
-    label: str = "Search Code"
-    description: str = "Search for matching text in workspace files and return matching lines."
-    default_max_results: int = 30
-    max_results_cap: int = 100
-
-
-@dataclass(frozen=True, slots=True)
-class CodebaseStatsToolConfig:
-    enabled: bool = True
-    label: str = "Codebase Stats"
-    description: str = "Summarize file counts and line counts for the current workspace."
-    default_max_files: int = 5000
-    max_files_cap: int = 10000
-
-
-@dataclass(frozen=True, slots=True)
-class GitStatusToolConfig:
-    enabled: bool = True
-    label: str = "Git Status"
-    description: str = "Inspect the current repository status from the workspace root."
-
-
-@dataclass(frozen=True, slots=True)
-class GitDiffToolConfig:
-    enabled: bool = True
-    label: str = "Git Diff"
-    description: str = "Return a git diff for the workspace, optionally narrowed to one path."
-    default_context_lines: int = 3
-    max_context_lines: int = 20
-    max_diff_chars: int = 20000
-
-
-@dataclass(frozen=True, slots=True)
-class GitLogToolConfig:
-    enabled: bool = True
-    label: str = "Git Log"
-    description: str = "Return recent commits from the current repository."
-    default_limit: int = 10
-    max_limit: int = 50
-
-
-@dataclass(frozen=True, slots=True)
-class WebFetchToolConfig:
-    enabled: bool = True
-    label: str = "Web Fetch"
-    description: str = "Fetch and extract readable text from a user-provided HTTP or HTTPS URL."
-    default_max_chars: int = 12000
-    max_chars_cap: int = 50000
-
-
-@dataclass(frozen=True, slots=True)
-class MemorySaveToolConfig:
-    enabled: bool = True
-    label: str = "Memory Save"
-    description: str = "Save an explicit durable memory such as a user preference or project fact."
-
-
-@dataclass(frozen=True, slots=True)
-class MemorySearchToolConfig:
-    enabled: bool = True
-    label: str = "Memory Search"
-    description: str = "Search durable memories by query across the default memory namespaces."
-    default_limit: int = 5
-    max_limit: int = 20
-
-
-@dataclass(frozen=True, slots=True)
-class MemoryForgetToolConfig:
-    enabled: bool = True
-    label: str = "Memory Forget"
-    description: str = "Delete a saved memory by id from an explicit or default memory namespace."
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationSummaryToolConfig:
-    enabled: bool = True
-    label: str = "Conversation Summary"
-    description: str = "Return the latest saved rolling summary and recent messages for a thread."
-    default_recent_messages: int = 8
-    max_recent_messages: int = 30
-
-
-@dataclass(frozen=True, slots=True)
-class SkillsListToolConfig:
-    enabled: bool = True
-    label: str = "Skills List"
-    description: str = "List bundled and local skills with their descriptions and trigger prefixes."
-
-
-@dataclass(frozen=True, slots=True)
-class SkillViewToolConfig:
-    enabled: bool = True
-    label: str = "Skill View"
-    description: str = "Load the full instructions for a named skill."
-
-
-@dataclass(frozen=True, slots=True)
-class ModelCatalogConfig:
-    default_model: str | None = None
-    helper_model: str | None = None
-    model_choices: tuple[str, ...] = ()
-    providers: tuple[ProviderConfig, ...] = ()
-    models: tuple[ConfiguredModel, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class ToolCatalogConfig:
-    current_utc_time: CurrentUtcTimeToolConfig = field(default_factory=CurrentUtcTimeToolConfig)
-    write_text_artifact: WriteTextArtifactToolConfig = field(
-        default_factory=WriteTextArtifactToolConfig
-    )
-    artifact_list: ArtifactListToolConfig = field(default_factory=ArtifactListToolConfig)
-    artifact_read: ArtifactReadToolConfig = field(default_factory=ArtifactReadToolConfig)
-    artifact_update: ArtifactUpdateToolConfig = field(default_factory=ArtifactUpdateToolConfig)
-    list_files: ListFilesToolConfig = field(default_factory=ListFilesToolConfig)
-    read_file: ReadFileToolConfig = field(default_factory=ReadFileToolConfig)
-    search_code: SearchCodeToolConfig = field(default_factory=SearchCodeToolConfig)
-    codebase_stats: CodebaseStatsToolConfig = field(default_factory=CodebaseStatsToolConfig)
-    git_status: GitStatusToolConfig = field(default_factory=GitStatusToolConfig)
-    git_diff: GitDiffToolConfig = field(default_factory=GitDiffToolConfig)
-    git_log: GitLogToolConfig = field(default_factory=GitLogToolConfig)
-    web_fetch: WebFetchToolConfig = field(default_factory=WebFetchToolConfig)
-    memory_save: MemorySaveToolConfig = field(default_factory=MemorySaveToolConfig)
-    memory_search: MemorySearchToolConfig = field(default_factory=MemorySearchToolConfig)
-    memory_forget: MemoryForgetToolConfig = field(default_factory=MemoryForgetToolConfig)
-    conversation_summary: ConversationSummaryToolConfig = field(
-        default_factory=ConversationSummaryToolConfig
-    )
-    skills_list: SkillsListToolConfig = field(default_factory=SkillsListToolConfig)
-    skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
-    web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
-    section_order: tuple[str, ...] = ()
-
-    @property
-    def section_names(self) -> tuple[str, ...]:
-        return tuple(
-            dict.fromkeys(
-                [
-                    *self.section_order,
-                    *tuple(_TOOL_CATALOG_SPECS),
-                ]
-            )
-        )
-
-    @property
-    def by_name(self) -> dict[str, Any]:
-        return {section_name: getattr(self, section_name) for section_name in self.section_names}
-
-
-@dataclass(frozen=True, slots=True)
-class ToolCatalogSectionSpec:
-    defaults_factory: Callable[[], Any]
-    int_fields: tuple[str, ...] = ()
-    optional_string_fields: tuple[str, ...] = ()
-
-
-_TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
-    "current_utc_time": ToolCatalogSectionSpec(CurrentUtcTimeToolConfig),
-    "write_text_artifact": ToolCatalogSectionSpec(WriteTextArtifactToolConfig),
-    "artifact_list": ToolCatalogSectionSpec(
-        ArtifactListToolConfig,
-        int_fields=("default_max_results", "max_results_cap"),
-    ),
-    "artifact_read": ToolCatalogSectionSpec(
-        ArtifactReadToolConfig,
-        int_fields=("max_chars",),
-    ),
-    "artifact_update": ToolCatalogSectionSpec(ArtifactUpdateToolConfig),
-    "list_files": ToolCatalogSectionSpec(
-        ListFilesToolConfig,
-        int_fields=("default_max_results", "max_results_cap"),
-    ),
-    "read_file": ToolCatalogSectionSpec(
-        ReadFileToolConfig,
-        int_fields=("default_end_line", "max_lines", "max_chars"),
-    ),
-    "search_code": ToolCatalogSectionSpec(
-        SearchCodeToolConfig,
-        int_fields=("default_max_results", "max_results_cap"),
-    ),
-    "codebase_stats": ToolCatalogSectionSpec(
-        CodebaseStatsToolConfig,
-        int_fields=("default_max_files", "max_files_cap"),
-    ),
-    "git_status": ToolCatalogSectionSpec(GitStatusToolConfig),
-    "git_diff": ToolCatalogSectionSpec(
-        GitDiffToolConfig,
-        int_fields=("default_context_lines", "max_context_lines", "max_diff_chars"),
-    ),
-    "git_log": ToolCatalogSectionSpec(
-        GitLogToolConfig,
-        int_fields=("default_limit", "max_limit"),
-    ),
-    "web_fetch": ToolCatalogSectionSpec(
-        WebFetchToolConfig,
-        int_fields=("default_max_chars", "max_chars_cap"),
-    ),
-    "memory_save": ToolCatalogSectionSpec(MemorySaveToolConfig),
-    "memory_search": ToolCatalogSectionSpec(
-        MemorySearchToolConfig,
-        int_fields=("default_limit", "max_limit"),
-    ),
-    "memory_forget": ToolCatalogSectionSpec(MemoryForgetToolConfig),
-    "conversation_summary": ToolCatalogSectionSpec(
-        ConversationSummaryToolConfig,
-        int_fields=("default_recent_messages", "max_recent_messages"),
-    ),
-    "skills_list": ToolCatalogSectionSpec(SkillsListToolConfig),
-    "skill_view": ToolCatalogSectionSpec(SkillViewToolConfig),
-    "web_search": ToolCatalogSectionSpec(
-        WebSearchConfig,
-        optional_string_fields=("provider", "fallback_provider", "api_key_env", "api_key_default"),
-    ),
-}
-
-
-def load_model_catalog_document(
-    path: str | Path | None = None,
-    *,
-    environ: MutableMapping[str, str] | None = None,
-) -> ModelCatalogConfig:
-    target_env = environ if environ is not None else os.environ
-    resolved = Path(
-        path or target_env.get("FOCUS_AGENT_MODEL_CATALOG_DOC") or DEFAULT_MODEL_CATALOG_DOC
-    ).expanduser()
-    if not resolved.exists():
-        return ModelCatalogConfig()
-
-    raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
-    provider_entries: list[ProviderConfig] = []
-    for item in raw.get("providers", []) or []:
-        if not isinstance(item, dict):
-            continue
-        provider_id = _normalize_optional_string(item.get("id"))
-        if provider_id is None:
-            continue
-        provider_entries.append(
-            ProviderConfig(
-                id=provider_id.lower(),
-                label=_normalize_optional_string(item.get("label")),
-                backend_provider=_normalize_optional_string(item.get("backend_provider")),
-                aliases=tuple(alias.lower() for alias in _split_listish(item.get("aliases"))),
-                base_url_env=_normalize_optional_string(item.get("base_url_env")),
-                base_url_default=_normalize_optional_string(item.get("base_url_default")),
-                api_key_env=_normalize_optional_string(item.get("api_key_env")),
-                api_key_default=_normalize_optional_string(item.get("api_key_default")),
-            )
-        )
-
-    model_entries: list[ConfiguredModel] = []
-    for item in raw.get("models", []) or []:
-        if not isinstance(item, dict):
-            continue
-        model_id = _normalize_optional_string(item.get("id"))
-        if model_id is None:
-            continue
-        model_entries.append(
-            ConfiguredModel(
-                id=model_id,
-                label=_normalize_optional_string(item.get("label")),
-                supports_thinking=_coerce_bool(item.get("supports_thinking")),
-                default_thinking_enabled=_coerce_bool(item.get("default_thinking_enabled")),
-                request_kwargs=_copy_toml_mapping(item.get("request_kwargs")),
-                thinking_enabled_request_kwargs=_copy_toml_mapping(
-                    item.get("thinking_enabled_request_kwargs")
-                ),
-                thinking_disabled_request_kwargs=_copy_toml_mapping(
-                    item.get("thinking_disabled_request_kwargs")
-                ),
-                thinking_disabled_model_name=_normalize_optional_string(
-                    item.get("thinking_disabled_model_name")
-                ),
-                reasoning_effort=_normalize_optional_string(item.get("reasoning_effort")),
-                no_temperature=_coerce_bool(item.get("no_temperature")),
-                thinking_enable_extra_body_type=_normalize_optional_string(
-                    item.get("thinking_enable_extra_body_type")
-                ),
-                thinking_disable_extra_body_type=_normalize_optional_string(
-                    item.get("thinking_disable_extra_body_type")
-                ),
-                thinking_disable_switch_model=_normalize_optional_string(
-                    item.get("thinking_disable_switch_model")
-                ),
-            )
-        )
-
-    return ModelCatalogConfig(
-        default_model=_normalize_optional_string(raw.get("default_model")),
-        helper_model=_normalize_optional_string(raw.get("helper_model")),
-        model_choices=_split_listish(raw.get("model_choices")),
-        providers=tuple(provider_entries),
-        models=tuple(model_entries),
-    )
-
-
-def load_tool_catalog_document(
-    path: str | Path | None = None,
-    *,
-    environ: MutableMapping[str, str] | None = None,
-) -> ToolCatalogConfig:
-    target_env = environ if environ is not None else os.environ
-    resolved = Path(
-        path or target_env.get("FOCUS_AGENT_TOOL_CATALOG_DOC") or DEFAULT_TOOL_CATALOG_DOC
-    ).expanduser()
-    if not resolved.exists():
-        return ToolCatalogConfig()
-
-    raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
-    ordered_section_names = tuple(
-        dict.fromkeys(
-            [
-                *(section_name for section_name in raw if section_name in _TOOL_CATALOG_SPECS),
-                *tuple(_TOOL_CATALOG_SPECS),
-            ]
-        )
-    )
-    loaded_sections = {
-        section_name: _load_basic_tool_config(
-            raw.get(section_name),
-            spec.defaults_factory(),
-            int_fields=spec.int_fields,
-            optional_string_fields=spec.optional_string_fields,
-        )
-        for section_name, spec in _TOOL_CATALOG_SPECS.items()
-    }
-    return ToolCatalogConfig(section_order=ordered_section_names, **loaded_sections)
 
 
 @dataclass(slots=True)
@@ -935,309 +173,63 @@ class Settings:
             environ=env,
         )
         defaults = cls()
-        database_uri = env.get("DATABASE_URI") or None
-        langgraph_api_url = env.get("LANGGRAPH_API_URL") or None
-        trajectory_enabled = _coerce_bool(env.get("TRAJECTORY_ENABLED"))
-        otel_traces_exporters = (
-            _split_csv(env.get("OTEL_TRACES_EXPORTER"))
-            if env.get("OTEL_TRACES_EXPORTER") is not None
-            else (
-                ("otlp",)
-                if (
-                    env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-                    or env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
-                )
-                else defaults.otel_traces_exporters
-            )
-        )
-        instance = cls(
-            model=env.get("MODEL") or model_catalog.default_model or defaults.model,
-            helper_model=env.get("HELPER_MODEL") or model_catalog.helper_model or None,
-            model_choices=model_catalog.model_choices or defaults.model_choices,
+        values = load_runtime_config(
+            env,
+            defaults,
             model_catalog=model_catalog,
             tool_catalog=tool_catalog,
-            web_search=tool_catalog.web_search,
-            resolved_env=dict(env),
-            temperature=float(env.get("TEMPERATURE", str(defaults.temperature))),
-            database_uri=database_uri,
-            langgraph_api_url=langgraph_api_url,
-            langsmith_project=env.get("LANGSMITH_PROJECT", defaults.langsmith_project),
-            branch_db_path=env.get("BRANCH_DB_PATH", defaults.branch_db_path),
-            artifact_dir=env.get("ARTIFACT_DIR", defaults.artifact_dir),
-            api_host=env.get("API_HOST", defaults.api_host),
-            api_port=int(env.get("API_PORT", str(defaults.api_port))),
-            api_reload=_env_bool(env, "API_RELOAD", default=defaults.api_reload),
-            app_version=env.get("APP_VERSION", defaults.app_version),
-            app_environment=(
-                env.get("APP_ENVIRONMENT") or env.get("ENVIRONMENT") or defaults.app_environment
-            ),
-            deployment_name=env.get("DEPLOYMENT_NAME") or defaults.deployment_name,
-            tracing_enabled=(
-                _coerce_bool(env.get("FOCUS_AGENT_TRACING_ENABLED"))
-                if env.get("FOCUS_AGENT_TRACING_ENABLED") is not None
-                else _coerce_bool(env.get("OTEL_TRACING_ENABLED")) or defaults.tracing_enabled
-            ),
-            tracing_service_name=(
-                env.get("OTEL_SERVICE_NAME")
-                or env.get("FOCUS_AGENT_TRACING_SERVICE_NAME")
-                or defaults.tracing_service_name
-            ),
-            otel_traces_exporters=otel_traces_exporters,
-            otel_exporter_otlp_endpoint=env.get("OTEL_EXPORTER_OTLP_ENDPOINT") or None,
-            otel_exporter_otlp_traces_endpoint=env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-            or None,
-            otel_exporter_otlp_headers=(
-                env.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
-                or env.get("OTEL_EXPORTER_OTLP_HEADERS")
-                or None
-            ),
-            otel_exporter_otlp_protocol=(
-                env.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
-                or env.get("OTEL_EXPORTER_OTLP_PROTOCOL")
-                or defaults.otel_exporter_otlp_protocol
-            ),
-            otel_exporter_otlp_timeout_ms=int(
-                env.get(
-                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
-                    env.get(
-                        "OTEL_EXPORTER_OTLP_TIMEOUT",
-                        str(defaults.otel_exporter_otlp_timeout_ms),
-                    ),
-                )
-            ),
-            web_app_dist_dir=env.get("WEB_APP_DIST_DIR") or None,
-            web_app_dev_server_url=env.get("WEB_APP_DEV_SERVER_URL") or None,
-            auth_enabled=_env_bool(env, "AUTH_ENABLED", default=defaults.auth_enabled),
-            auth_demo_tokens_enabled=_env_bool(
-                env, "AUTH_DEMO_TOKENS_ENABLED", default=defaults.auth_demo_tokens_enabled
-            ),
-            auth_jwt_secret=env.get("AUTH_JWT_SECRET", defaults.auth_jwt_secret),
-            auth_jwt_key_id=(
-                env.get("AUTH_JWT_KEY_ID")
-                or env.get("AUTH_JWT_CURRENT_KID")
-                or defaults.auth_jwt_key_id
-            ),
-            auth_jwt_keys=_auth_jwt_keys_from_env(env),
-            auth_jwt_issuer=env.get("AUTH_JWT_ISSUER", defaults.auth_jwt_issuer),
-            auth_jwt_audience=env.get("AUTH_JWT_AUDIENCE") or defaults.auth_jwt_audience,
-            auth_access_token_ttl_seconds=int(
-                env.get(
-                    "AUTH_ACCESS_TOKEN_TTL_SECONDS",
-                    str(defaults.auth_access_token_ttl_seconds),
-                )
-            ),
-            auth_bootstrap_admin_user_ids=(
-                _split_csv(env.get("AUTH_BOOTSTRAP_ADMIN_USER_IDS"))
-                if env.get("AUTH_BOOTSTRAP_ADMIN_USER_IDS") is not None
-                else defaults.auth_bootstrap_admin_user_ids
-            ),
-            auth_access_cookie_name=env.get(
-                "AUTH_ACCESS_COOKIE_NAME", defaults.auth_access_cookie_name
-            ),
-            auth_refresh_cookie_name=env.get(
-                "AUTH_REFRESH_COOKIE_NAME", defaults.auth_refresh_cookie_name
-            ),
-            auth_refresh_token_ttl_seconds=int(
-                env.get(
-                    "AUTH_REFRESH_TOKEN_TTL_SECONDS",
-                    str(defaults.auth_refresh_token_ttl_seconds),
-                )
-            ),
-            auth_cookie_secure=_env_bool(
-                env, "AUTH_COOKIE_SECURE", default=defaults.auth_cookie_secure
-            ),
-            auth_cookie_samesite=env.get(
-                "AUTH_COOKIE_SAMESITE", defaults.auth_cookie_samesite
-            ),
-            sse_heartbeat_seconds=float(
-                env.get("SSE_HEARTBEAT_SECONDS", str(defaults.sse_heartbeat_seconds))
-            ),
-            cors_allowed_origins=_split_csv(env.get("CORS_ALLOWED_ORIGINS")),
-            cors_allow_credentials=_env_bool(
-                env, "CORS_ALLOW_CREDENTIALS", default=defaults.cors_allow_credentials
-            ),
-            rate_limit_enabled=_env_bool(
-                env, "RATE_LIMIT_ENABLED", default=defaults.rate_limit_enabled
-            ),
-            rate_limit_per_minute=int(
-                env.get("RATE_LIMIT_PER_MINUTE", str(defaults.rate_limit_per_minute))
-            ),
-            rate_limit_chat_per_minute=int(
-                env.get("RATE_LIMIT_CHAT_PER_MINUTE", str(defaults.rate_limit_chat_per_minute))
-            ),
-            local_checkpoint_path=env.get("LOCAL_CHECKPOINT_PATH") or None,
-            local_store_path=env.get("LOCAL_STORE_PATH") or None,
-            branch_max_depth=int(env.get("BRANCH_MAX_DEPTH", str(defaults.branch_max_depth))),
-            skill_directories=(
-                _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))
-                if env.get("FOCUS_AGENT_SKILLS_DIRS") is not None
-                else defaults.skill_directories
-            ),
-            workspace_root=env.get("WORKSPACE_ROOT", defaults.workspace_root),
-            plan_act_reflect_enabled=_env_bool(
-                env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
-            ),
-            plan_scenes=(
-                _split_csv(env.get("PLAN_SCENES"))
-                if env.get("PLAN_SCENES") is not None
-                else defaults.plan_scenes
-            ),
-            plan_task_brief_min_chars=int(
-                env.get("PLAN_TASK_BRIEF_MIN_CHARS", str(defaults.plan_task_brief_min_chars))
-            ),
-            plan_max_replans=int(env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))),
-            agent_role_routing_enabled=_env_bool(
-                env, "AGENT_ROLE_ROUTING_ENABLED", default=defaults.agent_role_routing_enabled
-            ),
-            agent_role_orchestrator_model=(
-                env.get("AGENT_ROLE_ORCHESTRATOR_MODEL") or defaults.agent_role_orchestrator_model
-            ),
-            agent_role_planner_model=(
-                env.get("AGENT_ROLE_PLANNER_MODEL") or defaults.agent_role_planner_model
-            ),
-            agent_role_executor_model=(
-                env.get("AGENT_ROLE_EXECUTOR_MODEL") or defaults.agent_role_executor_model
-            ),
-            agent_role_critic_model=(
-                env.get("AGENT_ROLE_CRITIC_MODEL") or defaults.agent_role_critic_model
-            ),
-            agent_role_memory_model=(
-                env.get("AGENT_ROLE_MEMORY_MODEL") or defaults.agent_role_memory_model
-            ),
-            agent_role_skill_model=(
-                env.get("AGENT_ROLE_SKILL_MODEL") or defaults.agent_role_skill_model
-            ),
-            agent_role_max_parallel_runs=max(
-                1,
-                int(
-                    env.get(
-                        "AGENT_ROLE_MAX_PARALLEL_RUNS",
-                        str(defaults.agent_role_max_parallel_runs),
-                    )
-                ),
-            ),
-            agent_memory_curator_enabled=_env_bool(
-                env, "AGENT_MEMORY_CURATOR_ENABLED", default=defaults.agent_memory_curator_enabled
-            ),
-            agent_memory_auto_promote_on_merge=_env_bool(
-                env,
-                "AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE",
-                default=defaults.agent_memory_auto_promote_on_merge,
-            ),
-            agent_tool_router_enabled=_env_bool(
-                env, "AGENT_TOOL_ROUTER_ENABLED", default=defaults.agent_tool_router_enabled
-            ),
-            agent_tool_router_enforce=_env_bool(
-                env, "AGENT_TOOL_ROUTER_ENFORCE", default=defaults.agent_tool_router_enforce
-            ),
-            agent_delegation_enabled=_env_bool(
-                env, "AGENT_DELEGATION_ENABLED", default=defaults.agent_delegation_enabled
-            ),
-            agent_delegation_enforce=_env_bool(
-                env, "AGENT_DELEGATION_ENFORCE", default=defaults.agent_delegation_enforce
-            ),
-            agent_delegation_execution_mode=_normalize_agent_delegation_execution_mode(
-                env.get(
-                    "AGENT_DELEGATION_EXECUTION_MODE",
-                    defaults.agent_delegation_execution_mode,
-                )
-            ),
-            agent_model_router_enabled=_env_bool(
-                env, "AGENT_MODEL_ROUTER_ENABLED", default=defaults.agent_model_router_enabled
-            ),
-            agent_model_router_mode=(
-                "enforce"
-                if str(env.get("AGENT_MODEL_ROUTER_MODE", defaults.agent_model_router_mode)).lower()
-                == "enforce"
-                else "observe"
-            ),
-            agent_self_repair_enabled=_env_bool(
-                env, "AGENT_SELF_REPAIR_ENABLED", default=defaults.agent_self_repair_enabled
-            ),
-            agent_review_queue_enabled=_env_bool(
-                env, "AGENT_REVIEW_QUEUE_ENABLED", default=defaults.agent_review_queue_enabled
-            ),
-            agent_context_engineering_v2_enabled=_env_bool(
-                env,
-                "AGENT_CONTEXT_ENGINEERING_V2_ENABLED",
-                default=defaults.agent_context_engineering_v2_enabled,
-            ),
-            agent_context_artifactize_long_observations=_env_bool(
-                env,
-                "AGENT_CONTEXT_ARTIFACTIZE_LONG_OBSERVATIONS",
-                default=defaults.agent_context_artifactize_long_observations,
-            ),
-            agent_context_role_views_enabled=_env_bool(
-                env,
-                "AGENT_CONTEXT_ROLE_VIEWS_ENABLED",
-                default=defaults.agent_context_role_views_enabled,
-            ),
-            agent_context_tokenizer_mode=(
-                "tokenizer_first"
-                if str(
-                    env.get("AGENT_CONTEXT_TOKENIZER_MODE", defaults.agent_context_tokenizer_mode)
-                ).lower()
-                == "tokenizer_first"
-                else "chars_fallback"
-            ),
-            agent_context_artifact_min_chars=max(
-                1,
-                int(
-                    env.get(
-                        "AGENT_CONTEXT_ARTIFACT_MIN_CHARS",
-                        str(defaults.agent_context_artifact_min_chars),
-                    )
-                ),
-            ),
-            context_auto_compaction_enabled=_env_bool(
-                env,
-                "CONTEXT_AUTO_COMPACTION_ENABLED",
-                default=defaults.context_auto_compaction_enabled,
-            ),
-            context_auto_compaction_pre_send_ratio=float(
-                env.get(
-                    "CONTEXT_AUTO_COMPACTION_PRE_SEND_RATIO",
-                    str(defaults.context_auto_compaction_pre_send_ratio),
-                )
-            ),
-            context_auto_compaction_post_turn_ratio=float(
-                env.get(
-                    "CONTEXT_AUTO_COMPACTION_POST_TURN_RATIO",
-                    str(defaults.context_auto_compaction_post_turn_ratio),
-                )
-            ),
-            agent_task_ledger_enabled=_env_bool(
-                env, "AGENT_TASK_LEDGER_ENABLED", default=defaults.agent_task_ledger_enabled
-            ),
-            agent_artifact_synthesis_enabled=_env_bool(
-                env,
-                "AGENT_ARTIFACT_SYNTHESIS_ENABLED",
-                default=defaults.agent_artifact_synthesis_enabled,
-            ),
-            agent_critic_gate_enabled=_env_bool(
-                env, "AGENT_CRITIC_GATE_ENABLED", default=defaults.agent_critic_gate_enabled
-            ),
-            agent_critic_gate_enforce=_env_bool(
-                env, "AGENT_CRITIC_GATE_ENFORCE", default=defaults.agent_critic_gate_enforce
-            ),
-            trajectory_enabled=(
-                bool(database_uri) if trajectory_enabled is None else trajectory_enabled
-            ),
-            trajectory_observation_max_chars=int(
-                env.get(
-                    "TRAJECTORY_OBSERVATION_MAX_CHARS",
-                    str(defaults.trajectory_observation_max_chars),
-                )
-            ),
-            trajectory_answer_max_chars=int(
-                env.get(
-                    "TRAJECTORY_ANSWER_MAX_CHARS",
-                    str(defaults.trajectory_answer_max_chars),
-                )
-            ),
-            trajectory_hash_user_id=_env_bool(
-                env, "TRAJECTORY_HASH_USER_ID", default=defaults.trajectory_hash_user_id
-            ),
         )
+        values.update(load_observability_config(env, defaults))
+        values.update(load_server_config(env, defaults))
+        values.update(load_auth_config(env, defaults))
+        values.update(load_agent_config(env, defaults))
+        values.update(load_context_config(env, defaults))
+        values.update(
+            load_trajectory_config(
+                env,
+                defaults,
+                database_uri=values["database_uri"],
+            )
+        )
+        instance = cls(**values)
         _validate_non_development_security(instance, env)
         return instance
+
+
+__all__ = [
+    "DEFAULT_LOCAL_ENV_FILE",
+    "DEFAULT_AUTH_JWT_SECRET",
+    "DEFAULT_MODEL_CATALOG_DOC",
+    "DEFAULT_TOOL_CATALOG_DOC",
+    "ProviderConfig",
+    "ConfiguredModel",
+    "WebSearchConfig",
+    "CurrentUtcTimeToolConfig",
+    "WriteTextArtifactToolConfig",
+    "ArtifactListToolConfig",
+    "ArtifactReadToolConfig",
+    "ArtifactUpdateToolConfig",
+    "ListFilesToolConfig",
+    "ReadFileToolConfig",
+    "SearchCodeToolConfig",
+    "CodebaseStatsToolConfig",
+    "GitStatusToolConfig",
+    "GitDiffToolConfig",
+    "GitLogToolConfig",
+    "WebFetchToolConfig",
+    "MemorySaveToolConfig",
+    "MemorySearchToolConfig",
+    "MemoryForgetToolConfig",
+    "ConversationSummaryToolConfig",
+    "SkillsListToolConfig",
+    "SkillViewToolConfig",
+    "ModelCatalogConfig",
+    "ToolCatalogConfig",
+    "ToolCatalogSectionSpec",
+    "load_model_catalog_document",
+    "load_tool_catalog_document",
+    "AuthJwtKey",
+    "Settings",
+    "ensure_runtime_directories",
+    "load_local_env_file",
+]

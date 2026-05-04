@@ -29,7 +29,10 @@ const files = {
     resolve(root, "src/features/trajectory-observability/use-observability-overview.ts"),
     "utf8",
   ),
-  sdkClient: readFileSync(resolve(root, "../../frontend-sdk/src/client.ts"), "utf8"),
+  sdkObservabilityClient: readFileSync(
+    resolve(root, "../../frontend-sdk/src/client/observability.ts"),
+    "utf8",
+  ),
 };
 
 const applyPresetStart = files.trajectoryWorkbenchState.indexOf(
@@ -94,7 +97,7 @@ const expectations = [
     pass:
       files.page.includes("useObservabilityOverview") &&
       files.overviewHook.includes("getObservabilityOverview") &&
-      files.sdkClient.includes("async getObservabilityOverview"),
+      files.sdkObservabilityClient.includes("async function getObservabilityOverview"),
   },
   {
     name: "route tabs are styled for overview/workbench switching",

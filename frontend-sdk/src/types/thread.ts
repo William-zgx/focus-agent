@@ -1,0 +1,76 @@
+import type { ContextUsageResponse, FocusAgentTokenUsageSummary } from "./common.js";
+import type {
+  BranchMeta,
+  FocusAgentBranchActionNavigation,
+  FocusAgentBranchActionProposal,
+  FocusAgentBranchRecord,
+  FocusAgentImportedConclusion,
+  FocusAgentMergeProposal,
+} from "./branch.js";
+
+export interface FocusAgentConversationSummary {
+  root_thread_id: string;
+  title: string;
+  is_archived: boolean;
+  archived_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  token_usage?: FocusAgentTokenUsageSummary;
+}
+
+export interface FocusAgentConversationListResponse {
+  conversations: FocusAgentConversationSummary[];
+}
+
+export interface FocusAgentCreateConversationRequest {
+  title?: string | null;
+}
+
+export interface FocusAgentUpdateConversationRequest {
+  title: string;
+}
+
+export interface ThreadContextPreviewRequest {
+  draft_message?: string | null;
+}
+
+export interface ThreadContextPreviewResponse {
+  context_usage: ContextUsageResponse;
+}
+
+export type ThreadContextCompactTrigger =
+  | "manual"
+  | "auto_pre_send"
+  | "auto_post_turn";
+
+export interface ThreadContextCompactRequest {
+  trigger?: ThreadContextCompactTrigger;
+}
+
+export interface ThreadStateResponse {
+  thread_id: string;
+  root_thread_id: string;
+  assistant_message?: string | null;
+  rolling_summary: string;
+  selected_model: string;
+  selected_thinking_mode: string;
+  branch_meta?: BranchMeta | null;
+  merge_proposal?: FocusAgentMergeProposal | null;
+  merge_decision?: Record<string, unknown> | null;
+  merge_queue: FocusAgentImportedConclusion[];
+  active_skill_ids: string[];
+  messages: Array<Record<string, unknown>>;
+  interrupts: unknown[];
+  branch_actions: FocusAgentBranchActionProposal[];
+  trace: Record<string, unknown>;
+  context_usage?: ContextUsageResponse | null;
+}
+
+export interface ThreadContextCompactResponse extends ThreadStateResponse {}
+
+export interface FocusAgentBranchActionExecuteResponse {
+  thread_state: ThreadStateResponse;
+  branch_action: FocusAgentBranchActionProposal;
+  branch_record?: FocusAgentBranchRecord | null;
+  navigation?: FocusAgentBranchActionNavigation | null;
+}
