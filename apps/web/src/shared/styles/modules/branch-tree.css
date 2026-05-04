@@ -576,52 +576,6 @@
   padding: 8px 9px;
 }
 
-@media (max-width: 1280px) {
-  .fa-app-shell {
-    grid-template-columns:
-      minmax(240px, var(--fa-sidebar-width, 300px))
-      12px minmax(0, 1fr);
-  }
-
-  .fa-thread-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  .fa-app-shell {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 12px;
-  }
-
-  .fa-sidebar-panel,
-  .fa-panel-resizer {
-    display: none;
-  }
-
-  .fa-chat-panel {
-    padding: 12px;
-  }
-
-  .fa-chat-header-top,
-  .fa-thread-toolbar,
-  .fa-composer-footer-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .fa-conversation-switcher,
-  .fa-composer-model-shell {
-    max-width: none;
-    min-width: 0;
-    flex-basis: auto;
-  }
-
-  .fa-message-stack {
-    max-width: 100%;
-  }
-}
-
 .fa-tree-legend {
   gap: 6px;
 }

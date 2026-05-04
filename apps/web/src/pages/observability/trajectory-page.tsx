@@ -1,6 +1,6 @@
 import { FocusAgentRequestError } from "@focus-agent/web-sdk";
 import { useRouterState } from "@tanstack/react-router";
-import { startTransition, useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { TrajectoryActionRail } from "@/features/trajectory-observability/trajectory-action-rail";
@@ -19,6 +19,7 @@ import { useTrajectoryList } from "@/features/trajectory-observability/use-traje
 import { useTrajectoryBatchSelection } from "@/pages/observability/use-trajectory-batch-selection";
 import { useTrajectoryPageActions } from "@/pages/observability/use-trajectory-page-actions";
 import { useTrajectoryPageModel } from "@/pages/observability/use-trajectory-page-model";
+import { useTrajectoryPageSelectionEffects } from "@/pages/observability/use-trajectory-page-selection-effects";
 import { useTrajectoryWorkbenchState } from "@/pages/observability/use-trajectory-workbench-state";
 import { useTrajectoryUrlSync } from "@/pages/observability/use-trajectory-url-sync";
 
@@ -137,25 +138,14 @@ export function TrajectoryPage() {
     toggleBatchSelection,
   } = useTrajectoryBatchSelection(orderedItems);
 
-  useEffect(() => {
-    if (!orderedItems.length) {
-      if (isListLoading || listError) {
-        return;
-      }
-      setSelectedTurnId("");
-      return;
-    }
-    if (orderedItems.some((item) => item.id === selectedTurnId)) return;
-    startTransition(() => {
-      setSelectedTurnId(orderedItems[0].id);
-    });
-  }, [
+  useTrajectoryPageSelectionEffects({
+    detailPanelRef,
     isListLoading,
     listError,
     orderedItems,
     selectedTurnId,
     setSelectedTurnId,
-  ]);
+  });
 
   useTrajectoryUrlSync({
     fallbackOnly,
@@ -171,11 +161,6 @@ export function TrajectoryPage() {
     toolFilter,
     traceFilter,
   });
-
-  useEffect(() => {
-    void selectedTurnId;
-    detailPanelRef.current?.scrollTo({ top: 0, behavior: "auto" });
-  }, [selectedTurnId]);
 
   const {
     actionRailSections,

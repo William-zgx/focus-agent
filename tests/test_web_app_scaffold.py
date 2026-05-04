@@ -224,7 +224,10 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     agent_console_text = _join_text(
         web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx",
         web_root / "src" / "pages" / "agents" / "agent-role-console-hooks.ts",
+        web_root / "src" / "pages" / "agents" / "agent-role-console-policy-panels.tsx",
+        web_root / "src" / "pages" / "agents" / "agent-role-console-preview-panels.tsx",
         web_root / "src" / "pages" / "agents" / "agent-role-console-trajectory-panels.tsx",
+        web_root / "src" / "pages" / "agents" / "agent-role-console-view-model.ts",
     )
     assert "Delegation Runs" in agent_console_text
     assert 'to="/observability/overview"' not in agent_console_text
@@ -289,7 +292,10 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web" / "src"
 
-    thread_page_text = (web_root / "pages" / "thread" / "thread-page.tsx").read_text()
+    thread_page_text = _join_text(
+        web_root / "pages" / "thread" / "thread-page.tsx",
+        web_root / "pages" / "thread" / "thread-page-content.tsx",
+    )
     composer_text = _join_text(
         web_root / "features" / "thread-stream" / "message-composer.tsx",
         web_root / "features" / "thread-stream" / "message-composer-helpers.ts",
@@ -302,7 +308,11 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
         web_root / "entities" / "messages" / "message-list-branch-action-card.tsx",
         web_root / "entities" / "messages" / "message-list-tool-activity-card.tsx",
     )
-    header_actions_text = (web_root / "features" / "thread" / "thread-header-actions.tsx").read_text()
+    header_actions_text = _join_text(
+        web_root / "features" / "thread" / "thread-header-actions.tsx",
+        web_root / "features" / "thread" / "thread-header-action-buttons.tsx",
+        web_root / "features" / "thread" / "thread-header-action-labels.ts",
+    )
     branch_tree_text = _join_text(
         web_root / "features" / "branch-tree" / "branch-tree-panel.tsx",
         web_root / "features" / "branch-tree" / "branch-tree-graph-toolbar.tsx",
@@ -329,11 +339,12 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "disabled={isReadOnly}" in message_list_text
     assert "Merged branches are read-only" in composer_text
     assert 'const isMergedBranch = branchMeta?.branch_status === "merged";' in header_actions_text
-    assert 'disabled={!threadId || isWorking || isMergedBranch || isCreatingBranch}' in header_actions_text
+    assert "!threadId || isWorking || isMergedBranch || isCreatingBranch" in header_actions_text
     assert "Merged branches cannot create new branches" in header_actions_text
     assert "Merged branches cannot generate or merge conclusions" in header_actions_text
     assert "if (!isReviewRoute && isMergedBranch) return;" in header_actions_text
-    assert "disabled={isWorking || (!isReviewRoute && (isGeneratingConclusion || isMergedBranch))}" in header_actions_text
+    assert "isWorking ||" in header_actions_text
+    assert "(!isReviewRoute && (isGeneratingConclusion || isMergedBranch))" in header_actions_text
     assert 'const isMergedCreateTarget = createBranchTargetNode?.branch_status === "merged";' in branch_tree_text
     assert "createBranchDisabled={isMergedCreateTarget || isCreatingBranch}" in branch_tree_text
     assert "disabled={!canCreateBranch || createBranchDisabled}" in branch_tree_text
@@ -388,9 +399,10 @@ def test_react_web_app_marks_merged_branch_status_in_danger_tone():
 
 def test_conversation_rename_uses_inline_form_not_browser_prompt():
     root = Path(__file__).resolve().parents[1]
-    conversation_toolbar_text = (
-        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
-    ).read_text()
+    conversation_toolbar_text = _join_text(
+        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx",
+        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar-view.tsx",
+    )
     branch_tree_text = _join_text(
         root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx",
         root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-detail-overlay.tsx",
@@ -407,17 +419,17 @@ def test_conversation_rename_uses_inline_form_not_browser_prompt():
 
 def test_conversation_switcher_only_lists_active_conversations():
     root = Path(__file__).resolve().parents[1]
-    conversation_toolbar_text = (
-        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
-    ).read_text()
+    conversation_toolbar_text = _join_text(
+        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx",
+        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar-view.tsx",
+    )
 
     assert "const archivedConversations" not in conversation_toolbar_text
     assert "<optgroup" not in conversation_toolbar_text
     assert "disabled={isLoading || isWorking || activeConversations.length === 0}" in conversation_toolbar_text
-    assert (
-        "activeConversations.find((conversation) => conversation.root_thread_id === conversationId) ??\n"
-        "      activeConversations[0],"
-    ) in conversation_toolbar_text
+    assert "activeConversations.find(" in conversation_toolbar_text
+    assert "conversation.root_thread_id === conversationId" in conversation_toolbar_text
+    assert "?? activeConversations[0]" in conversation_toolbar_text
 
 
 def test_archived_sidebar_sections_are_collapsible_and_compact():

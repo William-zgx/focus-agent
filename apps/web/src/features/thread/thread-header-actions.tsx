@@ -3,342 +3,200 @@ import { useRef, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useBranchActions } from "@/features/branch-tree/use-branch-actions";
-import { useThreadState } from "@/features/thread/use-thread-state";
-import { useThreadHeaderCompact } from "@/features/thread/use-thread-header-compact";
+import { ThreadHeaderActionButtons } from "@/features/thread/thread-header-action-buttons";
 import {
-  BackToMainIcon,
-  BackToParentIcon,
-  BackToThreadIcon,
-  BranchFocusIcon,
-  BranchPlusIcon,
-  ConclusionDraftIcon,
-  ConclusionReadyIcon,
-  RefreshConclusionIcon,
-} from "@/shared/ui/toolbar-icons";
-import { tooltipProps } from "@/shared/ui/tooltip";
+	statusNeedsProposal,
+	threadHeaderActionLabels,
+} from "@/features/thread/thread-header-action-labels";
+import { useThreadHeaderCompact } from "@/features/thread/use-thread-header-compact";
+import { useThreadState } from "@/features/thread/use-thread-state";
 
 interface ThreadHeaderActionsProps {
-  onRequestOpenSidebar?: () => void;
+	onRequestOpenSidebar?: () => void;
 }
 
-function statusNeedsProposal(status?: string) {
-  return !status || (status !== "awaiting_merge_review" && status !== "preparing_merge_review");
-}
+export function ThreadHeaderActions({
+	onRequestOpenSidebar,
+}: ThreadHeaderActionsProps) {
+	const navigate = useNavigate();
+	const { conversationId, threadId, isReviewRoute } = useRouterState({
+		select: (state) => {
+			const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
+				Record<"conversationId" | "threadId", string>
+			>;
+			return {
+				conversationId: String(routeParams.conversationId ?? ""),
+				threadId: String(routeParams.threadId ?? ""),
+				isReviewRoute: state.location.pathname.endsWith("/review"),
+			};
+		},
+	});
+	const { data } = useThreadState(threadId);
+	const branchMeta = data?.branch_meta;
+	const { prepareMergeProposal } = useBranchActions({
+		rootThreadId: conversationId,
+		threadId,
+	});
+	const [isWorking, setIsWorking] = useState(false);
+	const actionsRef = useRef<HTMLDivElement | null>(null);
+	const {
+		createBranch,
+		isCreatingBranch,
+		setShellStatus,
+		isChineseUi,
+		markMergeProposalPreparing,
+		markMergeProposalReady,
+		markMergeProposalFailed,
+		isMergeProposalPreparing,
+		getMergeProposalError,
+	} = useShellUi();
+	const isMergedBranch = branchMeta?.branch_status === "merged";
+	const isGeneratingConclusion =
+		Boolean(threadId) &&
+		(branchMeta?.branch_status === "preparing_merge_review" ||
+			isMergeProposalPreparing(threadId));
+	const hasPreparedConclusion =
+		Boolean(data?.merge_proposal) ||
+		branchMeta?.branch_status === "awaiting_merge_review";
+	const conclusionGenerationError = threadId
+		? getMergeProposalError(threadId)
+		: null;
+	const labels = threadHeaderActionLabels({
+		branchMeta,
+		conclusionGenerationError,
+		hasPreparedConclusion,
+		isChineseUi,
+		isGeneratingConclusion,
+		isMergedBranch,
+		isReviewRoute,
+		threadId,
+	});
 
-function mergedBranchForkDisabledLabel(isChineseUi: boolean) {
-  return isChineseUi ? "已合并分支不能新建分支" : "Merged branches cannot create new branches";
-}
+	function focusBranchPanel() {
+		onRequestOpenSidebar?.();
+		window.requestAnimationFrame(() => {
+			const panel = document.querySelector(".fa-sidebar-panel");
+			if (!(panel instanceof HTMLElement)) return;
+			panel.classList.add("is-spotlight");
+			panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+			window.setTimeout(() => panel.classList.remove("is-spotlight"), 700);
+		});
+	}
 
-function mergedBranchConclusionDisabledLabel(isChineseUi: boolean) {
-  return isChineseUi
-    ? "已合并分支不能生成或合并结论"
-    : "Merged branches cannot generate or merge conclusions";
-}
+	useThreadHeaderCompact(actionsRef, [
+		branchMeta?.branch_id,
+		branchMeta?.branch_name,
+		branchMeta?.parent_thread_id,
+		branchMeta?.branch_status,
+		conversationId,
+		isChineseUi,
+		isReviewRoute,
+		isWorking,
+		threadId,
+	]);
 
-export function ThreadHeaderActions({ onRequestOpenSidebar }: ThreadHeaderActionsProps) {
-  const navigate = useNavigate();
-  const { conversationId, threadId, isReviewRoute } = useRouterState({
-    select: (state) => {
-      const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
-        Record<"conversationId" | "threadId", string>
-      >;
-      return {
-        conversationId: String(routeParams.conversationId ?? ""),
-        threadId: String(routeParams.threadId ?? ""),
-        isReviewRoute: state.location.pathname.endsWith("/review"),
-      };
-    },
-  });
-  const { data } = useThreadState(threadId);
-  const branchMeta = data?.branch_meta;
-  const { prepareMergeProposal } = useBranchActions({
-    rootThreadId: conversationId,
-    threadId,
-  });
-  const [isWorking, setIsWorking] = useState(false);
-  const actionsRef = useRef<HTMLDivElement | null>(null);
-  const {
-    createBranch,
-    isCreatingBranch,
-    setShellStatus,
-    isChineseUi,
-    markMergeProposalPreparing,
-    markMergeProposalReady,
-    markMergeProposalFailed,
-    isMergeProposalPreparing,
-    getMergeProposalError,
-  } = useShellUi();
-  const isMergedBranch = branchMeta?.branch_status === "merged";
-  const isGeneratingConclusion =
-    Boolean(threadId) &&
-    (branchMeta?.branch_status === "preparing_merge_review" ||
-      isMergeProposalPreparing(threadId));
-  const hasPreparedConclusion =
-    Boolean(data?.merge_proposal) || branchMeta?.branch_status === "awaiting_merge_review";
-  const conclusionGenerationError = threadId ? getMergeProposalError(threadId) : null;
-  const defaultNewBranchTooltip = isChineseUi ? "从当前线程创建分支" : "Create a branch from this thread";
-  const newBranchTooltip = isMergedBranch
-    ? mergedBranchForkDisabledLabel(isChineseUi)
-    : defaultNewBranchTooltip;
-  const reviewActionText = isReviewRoute
-    ? isChineseUi
-      ? "回到线程"
-      : "Back to thread"
-    : isMergedBranch
-      ? isChineseUi
-        ? "已合并"
-        : "Merged"
-    : isGeneratingConclusion
-      ? isChineseUi
-        ? "生成结论中"
-        : "Generating conclusion"
-      : hasPreparedConclusion
-        ? isChineseUi
-          ? "合并结论"
-          : "Merge conclusion"
-        : conclusionGenerationError
-          ? isChineseUi
-            ? "重新生成结论"
-            : "Regenerate conclusion"
-        : isChineseUi
-          ? "生成结论"
-          : "Generate conclusion";
-  const reviewActionTooltip = isReviewRoute
-    ? isChineseUi
-      ? "回到当前线程"
-      : "Back to thread"
-    : isMergedBranch
-      ? mergedBranchConclusionDisabledLabel(isChineseUi)
-    : isGeneratingConclusion
-      ? isChineseUi
-        ? "分支结论正在生成"
-        : "Conclusion is being generated"
-      : hasPreparedConclusion
-        ? isChineseUi
-          ? "打开合并结论弹窗"
-          : "Open merge conclusion dialog"
-        : conclusionGenerationError
-          ? isChineseUi
-            ? "上次生成失败，重新生成分支结论"
-            : "The last generation failed. Regenerate the branch conclusion."
-        : isChineseUi
-          ? "异步生成分支结论"
-          : "Generate conclusion asynchronously";
+	async function openReviewRoute(targetThreadId: string) {
+		await navigate({
+			to: "/c/$conversationId/t/$threadId/review",
+			params: {
+				conversationId,
+				threadId: targetThreadId,
+			},
+		});
+	}
 
-  const currentLabel = branchMeta?.branch_name || (threadId ? (isChineseUi ? "主线" : "Main") : isChineseUi ? "未选择" : "No thread");
+	async function openThread(targetThreadId: string) {
+		await navigate({
+			to: "/c/$conversationId/t/$threadId",
+			params: {
+				conversationId,
+				threadId: targetThreadId,
+			},
+		});
+	}
 
-  function focusBranchPanel() {
-    onRequestOpenSidebar?.();
-    window.requestAnimationFrame(() => {
-      const panel = document.querySelector(".fa-sidebar-panel");
-      if (!(panel instanceof HTMLElement)) return;
-      panel.classList.add("is-spotlight");
-      panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      window.setTimeout(() => panel.classList.remove("is-spotlight"), 700);
-    });
-  }
+	async function handleForkBranch() {
+		if (!threadId || isMergedBranch) return;
+		await createBranch({ parentThreadId: threadId });
+	}
 
-  useThreadHeaderCompact(actionsRef, [
-    branchMeta?.branch_id,
-    branchMeta?.branch_name,
-    branchMeta?.parent_thread_id,
-    branchMeta?.branch_status,
-    conversationId,
-    isChineseUi,
-    isReviewRoute,
-    isWorking,
-    threadId,
-  ]);
+	async function handleBackMain() {
+		if (!conversationId) return;
+		await openThread(conversationId);
+	}
 
-  async function openReviewRoute(targetThreadId: string) {
-    await navigate({
-      to: "/c/$conversationId/t/$threadId/review",
-      params: {
-        conversationId,
-        threadId: targetThreadId,
-      },
-    });
-  }
+	async function handleBackParent() {
+		if (!branchMeta?.parent_thread_id) return;
+		await openThread(branchMeta.parent_thread_id);
+	}
 
-  async function openThread(targetThreadId: string) {
-    await navigate({
-      to: "/c/$conversationId/t/$threadId",
-      params: {
-        conversationId,
-        threadId: targetThreadId,
-      },
-    });
-  }
+	async function handleReviewAction() {
+		if (!branchMeta?.branch_id || !threadId) return;
+		if (!isReviewRoute && isMergedBranch) return;
+		setIsWorking(true);
+		let didStartGeneration = false;
+		try {
+			if (isReviewRoute) {
+				await openThread(threadId);
+				setShellStatus(
+					{
+						tone: "success",
+						text: isChineseUi ? "已返回线程" : "Returned to thread",
+					},
+					{ autoClearMs: 2200 },
+				);
+				return;
+			}
+			if (hasPreparedConclusion) {
+				await openReviewRoute(threadId);
+				return;
+			}
+			if (statusNeedsProposal(branchMeta.branch_status)) {
+				didStartGeneration = true;
+				markMergeProposalPreparing(threadId);
+				setShellStatus(null);
+				await prepareMergeProposal(threadId);
+				markMergeProposalReady(threadId);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: isChineseUi
+						? "生成结论失败，请重新生成"
+						: "Failed to generate conclusion. Please regenerate.";
+			if (didStartGeneration) {
+				markMergeProposalFailed(threadId, message);
+			}
+		} finally {
+			setIsWorking(false);
+		}
+	}
 
-  async function handleForkBranch() {
-    if (!threadId || isMergedBranch) return;
-    await createBranch({ parentThreadId: threadId });
-  }
-
-  async function handleBackMain() {
-    if (!conversationId) return;
-    await openThread(conversationId);
-  }
-
-  async function handleBackParent() {
-    if (!branchMeta?.parent_thread_id) return;
-    await openThread(branchMeta.parent_thread_id);
-  }
-
-  async function handleReviewAction() {
-    if (!branchMeta?.branch_id || !threadId) return;
-    if (!isReviewRoute && isMergedBranch) return;
-    setIsWorking(true);
-    let didStartGeneration = false;
-    try {
-      if (isReviewRoute) {
-        await openThread(threadId);
-        setShellStatus(
-          {
-            tone: "success",
-            text: isChineseUi ? "已返回线程" : "Returned to thread",
-          },
-          { autoClearMs: 2200 },
-        );
-        return;
-      }
-      if (hasPreparedConclusion) {
-        await openReviewRoute(threadId);
-        return;
-      }
-      if (statusNeedsProposal(branchMeta.branch_status)) {
-        didStartGeneration = true;
-        markMergeProposalPreparing(threadId);
-        setShellStatus(null);
-        await prepareMergeProposal(threadId);
-        markMergeProposalReady(threadId);
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : isChineseUi
-            ? "生成结论失败，请重新生成"
-            : "Failed to generate conclusion. Please regenerate.";
-      if (didStartGeneration) {
-        markMergeProposalFailed(threadId, message);
-      }
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
-  return (
-    <div ref={actionsRef} className="fa-chat-header-actions">
-      <div className="fa-chat-header-primary-actions">
-        <button
-          className="fa-chat-toolbar-pill fa-focus-branches-button"
-          data-compact-button="true"
-          data-full-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
-          {...tooltipProps(isChineseUi ? "定位左侧分支树" : "Focus branches", {
-            defaultTooltip: isChineseUi ? "定位左侧分支树" : "Focus branches",
-          })}
-          aria-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
-          onClick={focusBranchPanel}
-          type="button"
-        >
-          <span className="fa-toolbar-icon" aria-hidden="true">
-            <BranchFocusIcon />
-          </span>
-          <span className="fa-toolbar-text">
-            {isChineseUi ? "当前分支" : "current"}: {currentLabel}
-          </span>
-        </button>
-
-        <button
-          className="fa-chat-toolbar-button is-primary fa-new-branch-button"
-          data-compact-button="true"
-          data-full-label={isChineseUi ? "新建分支" : "New branch"}
-          {...tooltipProps(newBranchTooltip, {
-            defaultTooltip: defaultNewBranchTooltip,
-          })}
-          aria-label={isChineseUi ? "新建分支" : "New branch"}
-          disabled={!threadId || isWorking || isMergedBranch || isCreatingBranch}
-          onClick={() => void handleForkBranch()}
-          type="button"
-        >
-          <span className="fa-toolbar-icon" aria-hidden="true">
-            <BranchPlusIcon />
-          </span>
-          <span className="fa-toolbar-text">{isChineseUi ? "新建分支" : "New branch"}</span>
-        </button>
-
-        {branchMeta ? (
-          <button
-            className="fa-chat-toolbar-button fa-review-button"
-            data-compact-button="true"
-            data-full-label={reviewActionText}
-            {...tooltipProps(reviewActionTooltip, {
-              defaultTooltip: reviewActionTooltip,
-            })}
-            disabled={isWorking || (!isReviewRoute && (isGeneratingConclusion || isMergedBranch))}
-            onClick={() => void handleReviewAction()}
-            type="button"
-            aria-label={reviewActionText}
-          >
-            <span className="fa-toolbar-icon" aria-hidden="true">
-              {isReviewRoute ? (
-                <BackToThreadIcon />
-              ) : hasPreparedConclusion ? (
-                <ConclusionReadyIcon />
-              ) : conclusionGenerationError ? (
-                <RefreshConclusionIcon />
-              ) : (
-                <ConclusionDraftIcon />
-              )}
-            </span>
-            <span className="fa-toolbar-text">
-              {reviewActionText}
-            </span>
-          </button>
-        ) : null}
-      </div>
-
-      {branchMeta ? (
-        <div className="fa-chat-header-nav">
-          {threadId !== conversationId ? (
-            <button
-              className="fa-chat-toolbar-button fa-back-main-button"
-              data-compact-button="true"
-              data-full-label={isChineseUi ? "回到主线" : "Back to main"}
-              {...tooltipProps(isChineseUi ? "回到主线线程" : "Back to main", {
-                defaultTooltip: isChineseUi ? "回到主线线程" : "Back to main",
-              })}
-              aria-label={isChineseUi ? "回到主线" : "Back to main"}
-              onClick={() => void handleBackMain()}
-              type="button"
-            >
-              <span className="fa-toolbar-icon" aria-hidden="true">
-                <BackToMainIcon />
-              </span>
-              <span className="fa-toolbar-text">{isChineseUi ? "回到主分支" : "Back to main"}</span>
-            </button>
-          ) : null}
-          {branchMeta.parent_thread_id && branchMeta.parent_thread_id !== conversationId ? (
-            <button
-              className="fa-chat-toolbar-button fa-back-parent-button"
-              data-compact-button="true"
-              data-full-label={isChineseUi ? "回到上一层" : "Back one level"}
-              {...tooltipProps(isChineseUi ? "回到父分支线程" : "Back one level", {
-                defaultTooltip: isChineseUi ? "回到父分支线程" : "Back one level",
-              })}
-              aria-label={isChineseUi ? "回到上一层" : "Back one level"}
-              onClick={() => void handleBackParent()}
-              type="button"
-            >
-              <span className="fa-toolbar-icon" aria-hidden="true">
-                <BackToParentIcon />
-              </span>
-              <span className="fa-toolbar-text">{isChineseUi ? "回到上一层" : "Back one level"}</span>
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
+	return (
+		<ThreadHeaderActionButtons
+			actionsRef={actionsRef}
+			branchMeta={branchMeta}
+			conclusionGenerationError={conclusionGenerationError}
+			conversationId={conversationId}
+			currentLabel={labels.currentLabel}
+			defaultNewBranchTooltip={labels.defaultNewBranchTooltip}
+			hasPreparedConclusion={hasPreparedConclusion}
+			isChineseUi={isChineseUi}
+			isCreatingBranch={isCreatingBranch}
+			isGeneratingConclusion={isGeneratingConclusion}
+			isMergedBranch={isMergedBranch}
+			isReviewRoute={isReviewRoute}
+			isWorking={isWorking}
+			newBranchTooltip={labels.newBranchTooltip}
+			onBackMain={() => void handleBackMain()}
+			onBackParent={() => void handleBackParent()}
+			onFocusBranchPanel={focusBranchPanel}
+			onForkBranch={() => void handleForkBranch()}
+			onReviewAction={() => void handleReviewAction()}
+			reviewActionText={labels.reviewActionText}
+			reviewActionTooltip={labels.reviewActionTooltip}
+			threadId={threadId}
+		/>
+	);
 }
