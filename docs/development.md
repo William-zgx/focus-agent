@@ -93,7 +93,7 @@ imports under `apps/web/src`. If a route or SDK/E2E contract drift is
 intentional, update snapshots with `uv run python scripts/check_contracts.py
 --update` and include the snapshot diff in review.
 
-3. If the frontend SDK implementation changed, especially `src/client.ts`, `src/transport.ts`, `src/parser.ts`, `src/reducers.ts`, `src/guards.ts`, or transport validation files:
+3. If the frontend SDK implementation changed, especially `src/client.ts`, `src/client/`, `src/types.ts`, `src/types/`, `src/transport.ts`, `src/parser.ts`, `src/reducers.ts`, `src/toolProtocol.ts`, `src/guards.ts`, or transport validation files:
 
 ```bash
 make sdk-check
@@ -110,7 +110,7 @@ make web-check
 make web-build
 ```
 
-The Web lint/format scripts are intentionally scoped to the message transcript area today; `make web-check` and `make web-build` remain the full app type/build gates.
+The Web lint/format scripts are intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-check` and `make web-build` remain the full app type/build gates.
 
 5. If browser-level chat, branch tree, or merge-review flows changed:
 

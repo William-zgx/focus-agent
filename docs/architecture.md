@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-03
+更新时间：2026-05-05
 
 本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
@@ -94,6 +94,8 @@ Persistence
 | 路径 | 责任 |
 |------|------|
 | `src/focus_agent/api/` | FastAPI app、contracts、contract models、route utils、deps、middleware、errors |
+| `src/focus_agent/config_parts/` | Settings 子域加载、模型/工具 catalog TOML 解析、环境变量与安全校验 |
+| `src/focus_agent/defaults/` | 包内默认配置数据；当前内置模型 provider/model catalog 只维护在 `models.toml` |
 | `src/focus_agent/engine/` | runtime 创建、LangGraph 图 facade、graph node/policy helpers、模型工厂、message helpers、本地 fallback persistence |
 | `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review |
 | `src/focus_agent/services/` | ChatService、BranchService、AgentTeamService 等 API-facing 业务服务；大型服务按 branch action facade、stream lifecycle、thread access、compaction、recording、agent-team session/merge/dispatch 等 helper 拆分 |
@@ -131,7 +133,31 @@ Persistence
 
 当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence；否则选择 local fallback persistence。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
 
-## 5. API Surface
+## 5. 模型 Provider 与 Catalog
+
+模型路径现在收口成一个配置驱动链路：
+
+```mermaid
+flowchart LR
+    Builtin["src/focus_agent/defaults/models.toml"] --> Registry["model_registry"]
+    Local[".focus_agent/models.toml or /data/models.toml"] --> Settings["Settings.model_catalog"]
+    Settings --> Registry
+    Registry --> API["GET /v1/models"]
+    Registry --> Factory["create_chat_model"]
+    API --> Web["Web model selector"]
+    Factory --> Adapter["LangChain model / reasoning-aware OpenAI-compatible adapter"]
+```
+
+边界：
+
+- 包内默认 provider/model 只在 `src/focus_agent/defaults/models.toml` 维护，避免在 Python 里重复写 provider/model tuple。
+- 本地部署通过 `.focus_agent/models.toml` 覆盖；容器部署通过 `/data/models.toml` 覆盖。
+- `Settings` 加载本地 catalog 后由 `model_registry` 合并包内默认与本地配置，并校验 provider id、alias 冲突、重复 model、未知 provider 引用等错误。
+- `/v1/models` 暴露 model id、provider label、thinking capability 和可选 logo metadata；Web model selector 优先使用后端返回的 metadata，不再按 provider 写死文案。
+- OpenAI-compatible 且需要 `reasoning_content` 透传的模型走 `ReasoningAwareChatOpenAI`；`MoonshotChatOpenAI` 仍作为旧导入别名保留。
+- 新增单部署模型时优先改 `.focus_agent/models.toml` 和 `.focus_agent/local.env`；只有要成为所有新环境的内置默认支持时，才改包内 `defaults/models.toml`。
+
+## 6. API Surface
 
 API 路由集中在 `src/focus_agent/api/main.py`：
 
@@ -157,7 +183,7 @@ API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业�
 - `require_scopes()` / `require_roles()` 为路由级 scope / role enforcement 提供 dependency helper。
 - `get_chat_service()` 通过 `ChatServicePorts.from_runtime(runtime)` 创建 `ChatService`，避免 ChatService 直接依赖完整 runtime 对象。
 
-## 6. Chat Turn 数据流
+## 7. Chat Turn 数据流
 
 Chat turn 的关键不是入口数量，而是非流式和流式入口最终都会汇入同一个 graph 执行、状态落盘和 trajectory 记录路径。下图把共享生命周期和分支点压缩在一起：
 
@@ -175,7 +201,7 @@ flowchart TD
     Trace --> Response["Thread response or SSE final event"]
 ```
 
-### 6.1 非流式 turn
+### 7.1 非流式 turn
 
 ```text
 POST /v1/chat/turns
@@ -188,7 +214,7 @@ POST /v1/chat/turns
   -> ThreadStateResponse
 ```
 
-### 6.2 流式 turn
+### 7.2 流式 turn
 
 ```text
 POST /v1/chat/turns/stream
@@ -203,7 +229,7 @@ POST /v1/chat/turns/stream
 
 `ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。服务本身依赖 `ChatServicePorts` 窄端口，当前端口只暴露 settings、graph、repo、branch service、skill registry、trajectory recorder 和 checkpointer；调用方仍可从 `AppRuntime` 适配出 ports，但 chat 编排逻辑不再直接绑定完整 runtime。
 
-## 7. LangGraph 主路径
+## 8. LangGraph 主路径
 
 核心图入口仍是 `src/focus_agent/engine/graph_builder.py`。该文件现在主要负责节点/边注册；节点实现、tool policy、message repair、plan/reflect、memory 与 tool executor 逻辑拆在同目录 `graph_*` 模块中。主路径保留 legacy single-run，同时可插入 governance 记录：
 
@@ -234,7 +260,7 @@ bootstrap_turn
 - `extract_memories` / `write_memories` 是 turn 后记忆写入路径。
 - `maybe_interrupt_for_merge` 对 merge proposal 触发 human review interrupt。
 
-## 8. Agent State
+## 9. Agent State
 
 `src/focus_agent/core/state.py` 定义跨节点状态。主要类别：
 
@@ -252,7 +278,7 @@ bootstrap_turn
 
 内容型状态可以通过 review 后显式 merge；执行策略、prompt surface 和 runtime choice 属于当前 turn，不应自动回流。
 
-## 9. 分支与 Merge-back
+## 10. 分支与 Merge-back
 
 分支业务在 `src/focus_agent/services/branches.py`：
 
@@ -277,7 +303,7 @@ main thread
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
 - imported conclusion 可写入父线程状态，并可进入 memory pipeline。
 
-## 10. Memory 概览
+## 11. Memory 概览
 
 Memory 的 canonical 文档是 [memory-system.md](memory-system.md)。架构层只保留边界：
 
@@ -288,7 +314,7 @@ Memory 的 canonical 文档是 [memory-system.md](memory-system.md)。架构层�
 
 Namespace 由 `src/focus_agent/storage/namespaces.py` 管理，区分 root thread、conversation main、branch local memory 等作用域。
 
-## 11. Tool / Skill 概览
+## 12. Tool / Skill 概览
 
 Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md)。
 
@@ -300,7 +326,7 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - tool router：按 role、tool policy、risk、side effect 过滤工具。
 - skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具。
 
-## 12. Agent Governance 概览
+## 13. Agent Governance 概览
 
 Agent governance 的 canonical 文档是 [agent-role-routing.md](agent-role-routing.md)。
 
@@ -311,7 +337,7 @@ Agent governance 的 canonical 文档是 [agent-role-routing.md](agent-role-rout
 
 当前治理记录包括 role route、tool route、memory curator、delegation、model router、self repair、review queue、context engineering、task ledger、artifact synthesis 和 critic gate。这些记录写入 AgentState 与 trajectory `plan_meta`，供 Web console、eval 和 replay 使用。
 
-## 13. 持久化
+## 14. 持久化
 
 持久化分成三层：生产和容器联调优先使用 Postgres primary persistence，本地裸跑保留 fallback，artifact 正文始终留在文件系统。这个边界避免把大正文塞进数据库，也避免把本地便利路径误当成生产方案：
 
@@ -328,7 +354,7 @@ flowchart TD
     TraceMeta --> Files["Filesystem artifact bodies"]
 ```
 
-### 13.1 Postgres primary persistence
+### 14.1 Postgres primary persistence
 
 配置 `DATABASE_URI` 后，主运行态数据走 Postgres primary persistence：
 
@@ -344,7 +370,7 @@ Agent Team 的 Postgres 表使用 `data_json JSONB NOT NULL` 保存完整 Pydant
 
 Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、checksum、source thread / branch、summary 等字段。
 
-### 13.2 Local fallback persistence
+### 14.2 Local fallback persistence
 
 未配置 `DATABASE_URI` 且直接裸跑 API 二进制时，runtime 使用：
 
@@ -357,17 +383,17 @@ Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、c
 
 这是本地 fallback，不是生产多副本方案。
 
-### 13.3 Managed repo-local PostgreSQL
+### 14.3 Managed repo-local PostgreSQL
 
 本机启动命令（`make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod`）会在未显式设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL，并把生成的运行态环境写入 `.focus_agent/postgres/runtime.env`。
 
 直接运行 `.venv/bin/focus-agent-api` 不会启动托管数据库。历史 `.focus_agent` 状态需要通过 `focus-agent-migrate-local-state` 显式迁移。
 
-### 13.4 Repository contract tests
+### 14.4 Repository contract tests
 
 Repository behavior is guarded by both implementation-specific tests and shared contract tests. `tests/test_agent_team_repository_contract.py` runs the same AgentTeam repository contract against SQLite by default and against Postgres when `DATABASE_URI` is available; missing Postgres configuration skips only the Postgres cases. This keeps local fallback and Postgres primary semantics aligned for session, task, task output, ordering, upsert, and missing-record behavior.
 
-## 14. Frontend 与 SDK
+## 15. Frontend 与 SDK
 
 前端和 SDK 共享 API contract：Web App 不绕过 SDK 直接拼 response shape，SDK 也负责把流式事件规整成前端可消费的状态更新。边界如下：
 
@@ -407,7 +433,7 @@ shared/                   config, query keys, SDK provider, UI, styles
 
 Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
 
-## 15. 安全边界
+## 16. 安全边界
 
 当前安全能力：
 
@@ -421,7 +447,7 @@ Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-
 
 生产部署必须显式设置 `AUTH_JWT_SECRET`，并关闭 demo token。
 
-## 16. Observability 与 Eval
+## 17. Observability 与 Eval
 
 Observability 分三层：
 
@@ -433,7 +459,7 @@ Trajectory API 支持 list、detail、stats、replay、promote、batch promote p
 
 Eval framework 使用 rule judge、LLM judge、trajectory judge，把真实运行中的失败和边界案例沉淀为可执行回归。
 
-## 17. Docker / Compose 部署
+## 18. Docker / Compose 部署
 
 Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 [compose.prod.yaml](../compose.prod.yaml)。详细部署文档见 [docker-deployment.md](docker-deployment.md)。
 
@@ -444,7 +470,7 @@ Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 
 - Dockerfile 使用前端构建阶段和 Python runtime 阶段。
 - `docker/entrypoint.sh` 准备 `/data` 下的默认配置和 fallback 路径。
 
-## 18. 本地开发运行
+## 19. 本地开发运行
 
 推荐完整开发入口：
 
@@ -464,7 +490,7 @@ make web-dev
 
 更完整启动说明见 [quick-start.md](quick-start.md) 和 [development.md](development.md)。
 
-## 19. 当前限制
+## 20. 当前限制
 
 - 进程内限流不适合多副本共享额度。
 - Artifact 正文仍在文件系统，生产多节点需要共享文件系统或对象存储方案。
@@ -472,7 +498,7 @@ make web-dev
 - Context window 已有发送栏用量、手动/自动压缩、工具观察 artifactization 和 128k 默认预算，但 token 估算当前仍以确定性裁剪和近似预算为主。
 - Local fallback persistence 只适合本地，不适合生产多副本。
 
-## 20. 推荐验证
+## 21. 推荐验证
 
 日常后端和文档改动：
 
@@ -544,7 +570,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_chat_service.py
 ```
 
-## 21. 文件导航
+## 22. 文件导航
 
 - API：`src/focus_agent/api/main.py`
 - API deps：`src/focus_agent/api/deps.py`
@@ -554,6 +580,9 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Graph builder facade：`src/focus_agent/engine/graph_builder.py`
 - Graph nodes and policies：`src/focus_agent/engine/graph_*.py`
 - Graph model factory：`src/focus_agent/engine/model_factory.py`
+- Model registry：`src/focus_agent/model_registry.py`
+- Built-in model catalog：`src/focus_agent/defaults/models.toml`
+- OpenAI-compatible reasoning adapter：`src/focus_agent/providers/reasoning_openai.py`
 - State：`src/focus_agent/core/state.py`
 - Chat service orchestration：`src/focus_agent/services/chat.py`
 - Chat streaming lifecycle：`src/focus_agent/services/chat_stream_lifecycle.py`

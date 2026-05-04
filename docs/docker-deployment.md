@@ -1,6 +1,6 @@
 # Docker 部署方案
 
-更新时间：2026-04-24
+更新时间：2026-05-05
 
 这份文档定义当前仓库推荐的 Docker 部署方式。目标是把 **本机开发启动链**、**本地容器联调**、以及 **生产部署** 明确分层，避免把开发便利逻辑和正式部署逻辑混在一起。
 
@@ -59,7 +59,7 @@ flowchart TD
 - [Dockerfile](../Dockerfile)：多阶段构建镜像，前端静态资源打包进运行镜像
 - [compose.yaml](../compose.yaml)：本地 Docker 联调，包含应用与 Postgres
 - [compose.prod.yaml](../compose.prod.yaml)：生产/预发参考模板，应用连接外部 PostgreSQL
-- [docker/entrypoint.sh](../docker/entrypoint.sh)：准备 `/data` 下的默认配置文件并导出运行时路径
+- [docker/entrypoint.sh](../docker/entrypoint.sh)：准备 `/data` 下的默认配置文件并导出运行时路径；首次启动会从 `docs/local.env.example`、`docs/models.example.toml` 和 `docs/tools.example.toml` 拷贝初始 `/data/local.env`、`/data/models.toml`、`/data/tools.toml`
 
 ## 本地 Docker 联调
 

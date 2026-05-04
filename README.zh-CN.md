@@ -45,6 +45,11 @@ pnpm web:build
 make api
 ```
 
+模型和 provider 元数据会先读取包内默认 catalog，也可以通过
+`.focus_agent/models.toml` 做本地覆盖；provider 密钥请放在
+`.focus_agent/local.env`。新增自定义 OpenAI-compatible 模型的路径见
+[docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
+
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`

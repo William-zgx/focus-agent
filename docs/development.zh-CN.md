@@ -89,7 +89,7 @@ uv run pytest tests/test_contract_checks.py
 
 `make contract-check` 会比较 FastAPI route snapshot、frontend SDK public surface、SDK package barrel exports，以及 Web App 在 `apps/web/src` 下对 `@focus-agent/web-sdk` 的 imports。如果 route 或 SDK/E2E contract 漂移是预期行为，请用 `uv run python scripts/check_contracts.py --update` 更新 snapshot，并在 review 中包含 snapshot diff。
 
-3. 如果改动影响 frontend SDK 实现，尤其是 `src/client.ts`、`src/transport.ts`、`src/parser.ts`、`src/reducers.ts`、`src/guards.ts` 或 transport validation 文件：
+3. 如果改动影响 frontend SDK 实现，尤其是 `src/client.ts`、`src/client/`、`src/types.ts`、`src/types/`、`src/transport.ts`、`src/parser.ts`、`src/reducers.ts`、`src/toolProtocol.ts`、`src/guards.ts` 或 transport validation 文件：
 
 ```bash
 make sdk-check
@@ -106,7 +106,7 @@ make web-check
 make web-build
 ```
 
-Web lint/format 脚本目前有意只覆盖 message transcript 区域；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
+Web lint/format 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
 
 5. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 

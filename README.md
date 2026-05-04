@@ -45,6 +45,11 @@ pnpm web:build
 make api
 ```
 
+Model/provider metadata is loaded from the packaged default catalog and can be
+overridden locally through `.focus_agent/models.toml`; keep provider secrets in
+`.focus_agent/local.env`. See [docs/quick-start.md](docs/quick-start.md) for the
+custom OpenAI-compatible model path.
+
 Then open:
 
 - `http://127.0.0.1:8000/app`

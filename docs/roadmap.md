@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-04-26
+更新时间：2026-05-05
 
 这份文档只回答两个问题：
 
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-04-26，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-05-05，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
 - `frontend-sdk` 已覆盖 conversation、branch tree、branch action、merge review、agent governance、observability 等核心 typed client 能力
@@ -34,6 +34,7 @@ flowchart LR
 - 本机启动链已统一到 `make api` / `make dev` / `make serve-dev` / `make serve-prod`，在 `DATABASE_URI` 未显式设置时会自动管理 repo-local PostgreSQL
 - Docker 部署已分层：`compose.yaml` 用于本地 Docker 联调（`focus-agent + postgres`），`compose.prod.yaml` 用于生产/预发模板（外部 PostgreSQL）
 - Agent 主路径已具备评测框架、Plan-Act-Reflect、记忆读写闭环、上下文预算与 Context Engineering v2、工具运行时并行/缓存/降级/参数校验/取消超时/side-effect 串行策略、role/memory/tool/delegation/task-ledger 治理、Postgres trajectory 写入、request/trace correlation、release evidence / release-health 门禁，以及按职责拆分的 Web observability overview / trajectory workbench
+- 模型 provider 路径已收口到 TOML catalog：包内默认数据在 `src/focus_agent/defaults/models.toml`，本地/容器部署通过 `.focus_agent/models.toml` 或 `/data/models.toml` 覆盖，`/v1/models` 向 Web/SDK 暴露 provider label、logo metadata 和 thinking capability；MiMo V2.5 Pro 已作为内置 OpenAI-compatible provider/model 支持
 
 这意味着接下来不再把“前端接管”“基础 Docker 路径”“记忆闭环接图”“Plan-Act-Reflect 起步版”当成主任务，而是围绕这些基线继续收口质量、运维和产品语义。
 
