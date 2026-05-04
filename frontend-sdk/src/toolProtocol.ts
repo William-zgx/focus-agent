@@ -3,6 +3,9 @@ const TEXTUAL_TOOL_ARTIFACT_MARKERS = [
   "invoke name=",
   "<｜dsml｜",
   "<tool_call",
+  "<tool_calls",
+  "</tool_call",
+  "</tool_calls",
   '"tool_name"',
 ];
 
@@ -27,6 +30,10 @@ const DEFAULT_TEXTUAL_TOOL_NAMES = new Set([
 
 const BRACKET_TOOL_MARKER_RE =
   /(?:^|[\s"'*_`>])\[([A-Za-z_][\w.-]*)\](?=$|[\s"'*_`<:：).,，。-])/gm;
+const XMLISH_TOOL_CALL_RE =
+  /(?:^|[\s<])\/?<?function\s*=\s*[a-z_][\w.-]*\s*>|<\s*\/?\s*parameter\s*=|(?:^|[\s<])\/?<?parameter\s*=\s*[\w.-]+\s*>/ims;
+const TOOL_CALL_PREFIX_RE =
+  /^\s*(?:<|<\/|<\/<|f|fu|fun|func|funct|functi|functio|function(?:\s*=\s*[\w.-]*)?|p|pa|par|para|param|parame|paramet|paramete|parameter(?:\s*=\s*[\w.-]*)?)$/i;
 const INTERNAL_PROCESS_NARRATION_RE =
   /(?:^|[\n。；;:：])\s*(?:我(?:来|先)?(?:帮你|为你)?(?:查询|获取|搜索|查找)|先(?:获取|查询|搜索|抓取)|让我(?:先|再)?(?:尝试|查询|搜索|获取|访问|抓取)|现在让我|接下来我(?:会|将)?尝试|我(?:会|将|再)?尝试(?:通过)?)(?=.{0,160}(?:搜索|查询|访问|获取|抓取|页面|数据|行情|日线|东方财富|数据源|web_fetch|web_search|tool|fetch|search|browse|计算))/ims;
 const INTERNAL_SEARCH_RESULT_NARRATION_RE =
@@ -43,6 +50,9 @@ export function looksLikeTextualToolCallArtifact(
     return false;
   }
   if (TEXTUAL_TOOL_ARTIFACT_MARKERS.some((marker) => text.includes(marker))) {
+    return true;
+  }
+  if (XMLISH_TOOL_CALL_RE.test(text)) {
     return true;
   }
 
@@ -70,4 +80,44 @@ export function looksLikeTextualToolCallArtifact(
 export function safeVisibleText(value: unknown): string {
   const text = typeof value === "string" ? value : "";
   return looksLikeTextualToolCallArtifact(text) ? "" : text;
+}
+
+function looksLikePotentialTextualToolCallPrefix(value: unknown): boolean {
+  const text = String(value ?? "").trim();
+  if (!text || text.length > 512) {
+    return false;
+  }
+  return TOOL_CALL_PREFIX_RE.test(text);
+}
+
+export function safeVisibleTextTransition(
+  currentText: string,
+  value: unknown,
+  pendingText = "",
+): { visibleText: string; pendingText: string } {
+  const delta = typeof value === "string" ? value : "";
+  if (!delta) {
+    return { visibleText: currentText, pendingText };
+  }
+
+  const candidatePending = `${pendingText}${delta}`;
+  const candidateVisible = `${currentText}${candidatePending}`;
+  if (
+    looksLikeTextualToolCallArtifact(candidatePending) ||
+    looksLikeTextualToolCallArtifact(candidateVisible)
+  ) {
+    const currentLooksInternal =
+      looksLikeTextualToolCallArtifact(currentText) ||
+      looksLikePotentialTextualToolCallPrefix(currentText);
+    return { visibleText: currentLooksInternal ? "" : currentText, pendingText: "" };
+  }
+
+  if (looksLikePotentialTextualToolCallPrefix(candidatePending)) {
+    return { visibleText: currentText, pendingText: candidatePending };
+  }
+
+  return {
+    visibleText: currentText + safeVisibleText(candidatePending),
+    pendingText: "",
+  };
 }

@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from ..core.branching import BranchMeta
 from ..core.request_context import RequestContext
+from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 from ..observability.tracing import TraceCorrelation, build_invoke_config
 from .branch_actions import normalize_branch_actions, serialize_branch_actions
@@ -13,7 +14,10 @@ from .chat_serialization import thread_state_messages
 def latest_final_ai_text(messages: list[Any], *, message_content_to_text: Callable[[Any], str]) -> str | None:
     for message in reversed(messages):
         if message.__class__.__name__ == "AIMessage" and not getattr(message, 'tool_calls', None):
-            return message_content_to_text(getattr(message, 'content', ''))
+            text = message_content_to_text(getattr(message, 'content', ''))
+            if looks_like_textual_tool_call_artifact(text):
+                continue
+            return text
     return None
 
 

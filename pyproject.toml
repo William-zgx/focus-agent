@@ -42,7 +42,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-focus_agent = ["skills/builtin/*/SKILL.md"]
+focus_agent = ["defaults/*.toml", "skills/builtin/*/SKILL.md"]
 
 [tool.ruff]
 line-length = 100

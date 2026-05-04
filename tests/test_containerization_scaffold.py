@@ -47,6 +47,8 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert "OPENAI_BASE_URL:" in compose_text
     assert "MOONSHOT_API_KEY:" in compose_text
     assert "MOONSHOT_BASE_URL:" in compose_text
+    assert "MIMO_API_KEY:" in compose_text
+    assert "MIMO_BASE_URL:" in compose_text
     assert "OLLAMA_API_KEY:" in compose_text
     assert "OLLAMA_BASE_URL:" in compose_text
     assert "TAVILY_API_KEY:" in compose_text
@@ -62,6 +64,8 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}" in compose_prod_text
     assert "ANTHROPIC_API_KEY:" in compose_prod_text
     assert "OPENAI_API_KEY:" in compose_prod_text
+    assert "MIMO_API_KEY:" in compose_prod_text
+    assert "MIMO_BASE_URL:" in compose_prod_text
     assert "/readyz" in compose_prod_text
     assert "/healthz" not in compose_prod_text
     assert "postgres:" not in compose_prod_text

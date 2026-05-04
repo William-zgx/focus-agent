@@ -20,6 +20,8 @@ class ModelOptionResponse(BaseModel):
     id: str
     provider: str
     provider_label: str
+    provider_logo_slug: str | None = None
+    provider_logo_letter: str | None = None
     name: str
     label: str
     is_default: bool = False

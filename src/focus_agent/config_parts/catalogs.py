@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
+import re
 import tomllib
 from typing import Any, Callable, MutableMapping, TypeVar
 
@@ -12,6 +13,11 @@ from .common import _coerce_bool, _normalize_optional_string, _split_csv
 DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
 _ToolConfigT = TypeVar("_ToolConfigT")
+_PROVIDER_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+
+
+class ModelCatalogValidationError(ValueError):
+    """Raised when model catalog configuration is malformed or ambiguous."""
 
 
 def _split_listish(value: object) -> tuple[str, ...]:
@@ -36,6 +42,65 @@ def _copy_toml_mapping(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         return {}
     return {str(key): _copy_toml_value(nested) for key, nested in value.items()}
+
+
+def _catalog_error(source: str, detail: str) -> ModelCatalogValidationError:
+    return ModelCatalogValidationError(f"{source}: {detail}")
+
+
+def _model_provider_name(model_id: str) -> str:
+    raw = str(model_id or "").strip()
+    provider = raw.split(":", 1)[0] if ":" in raw else "openai"
+    return provider.strip().lower()
+
+
+def _model_name_part(model_id: str) -> str:
+    raw = str(model_id or "").strip()
+    return raw.split(":", 1)[1].strip() if ":" in raw else raw
+
+
+def _canonical_model_key(model_id: str, aliases: dict[str, str]) -> str:
+    provider = aliases.get(_model_provider_name(model_id), _model_provider_name(model_id))
+    return f"{provider}:{_model_name_part(model_id)}"
+
+
+def _validate_provider_id(provider_id: str, *, source: str, location: str) -> None:
+    if not _PROVIDER_ID_PATTERN.fullmatch(provider_id):
+        raise _catalog_error(
+            source,
+            f"{location}.id must match {_PROVIDER_ID_PATTERN.pattern!r}; got {provider_id!r}.",
+        )
+
+
+def _validate_provider_aliases(
+    providers: tuple[ProviderConfig, ...],
+    *,
+    source: str,
+) -> dict[str, str]:
+    provider_ids = {provider.id for provider in providers}
+    alias_owner: dict[str, str] = {}
+    for provider in providers:
+        for alias in provider.aliases:
+            if not _PROVIDER_ID_PATTERN.fullmatch(alias):
+                raise _catalog_error(
+                    source,
+                    f"provider {provider.id!r} alias {alias!r} must match "
+                    f"{_PROVIDER_ID_PATTERN.pattern!r}.",
+                )
+            if alias in provider_ids:
+                raise _catalog_error(
+                    source,
+                    f"provider {provider.id!r} alias {alias!r} conflicts with a provider id.",
+                )
+            previous = alias_owner.get(alias)
+            if previous is not None and previous != provider.id:
+                raise _catalog_error(
+                    source,
+                    f"provider alias {alias!r} is assigned to both {previous!r} and "
+                    f"{provider.id!r}.",
+                )
+            alias_owner[alias] = provider.id
+    return alias_owner
 
 
 def _tool_enabled(raw: object, default: bool = True) -> bool:
@@ -87,6 +152,8 @@ class ProviderConfig:
     label: str | None = None
     backend_provider: str | None = None
     aliases: tuple[str, ...] = ()
+    logo_slug: str | None = None
+    logo_letter: str | None = None
     base_url_env: str | None = None
     base_url_default: str | None = None
     api_key_env: str | None = None
@@ -409,34 +476,56 @@ def load_model_catalog_document(
     if not resolved.exists():
         return ModelCatalogConfig()
 
-    raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
+    return load_model_catalog_toml(resolved.read_text(encoding="utf-8"), source=str(resolved))
+
+
+def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> ModelCatalogConfig:
+    raw = tomllib.loads(content)
     provider_entries: list[ProviderConfig] = []
-    for item in raw.get("providers", []) or []:
+    seen_provider_ids: set[str] = set()
+    for index, item in enumerate(raw.get("providers", []) or []):
         if not isinstance(item, dict):
-            continue
+            raise _catalog_error(source, f"providers[{index}] must be a TOML table.")
         provider_id = _normalize_optional_string(item.get("id"))
         if provider_id is None:
-            continue
+            raise _catalog_error(source, f"providers[{index}].id is required.")
+        provider_id = provider_id.lower()
+        _validate_provider_id(provider_id, source=source, location=f"providers[{index}]")
+        if provider_id in seen_provider_ids:
+            raise _catalog_error(source, f"providers[{index}].id duplicates {provider_id!r}.")
+        seen_provider_ids.add(provider_id)
         provider_entries.append(
             ProviderConfig(
-                id=provider_id.lower(),
+                id=provider_id,
                 label=_normalize_optional_string(item.get("label")),
                 backend_provider=_normalize_optional_string(item.get("backend_provider")),
                 aliases=tuple(alias.lower() for alias in _split_listish(item.get("aliases"))),
+                logo_slug=_normalize_optional_string(item.get("logo_slug")),
+                logo_letter=_normalize_optional_string(item.get("logo_letter")),
                 base_url_env=_normalize_optional_string(item.get("base_url_env")),
                 base_url_default=_normalize_optional_string(item.get("base_url_default")),
                 api_key_env=_normalize_optional_string(item.get("api_key_env")),
                 api_key_default=_normalize_optional_string(item.get("api_key_default")),
             )
         )
+    aliases = _validate_provider_aliases(tuple(provider_entries), source=source)
 
     model_entries: list[ConfiguredModel] = []
-    for item in raw.get("models", []) or []:
+    seen_model_ids: set[str] = set()
+    for index, item in enumerate(raw.get("models", []) or []):
         if not isinstance(item, dict):
-            continue
+            raise _catalog_error(source, f"models[{index}] must be a TOML table.")
         model_id = _normalize_optional_string(item.get("id"))
         if model_id is None:
-            continue
+            raise _catalog_error(source, f"models[{index}].id is required.")
+        provider_name = _model_provider_name(model_id)
+        model_name = _model_name_part(model_id)
+        if not provider_name or not model_name:
+            raise _catalog_error(source, f"models[{index}].id has invalid model id {model_id!r}.")
+        model_key = _canonical_model_key(model_id, aliases)
+        if model_key in seen_model_ids:
+            raise _catalog_error(source, f"models[{index}].id duplicates {model_key!r}.")
+        seen_model_ids.add(model_key)
         model_entries.append(
             ConfiguredModel(
                 id=model_id,

@@ -1,20 +1,10 @@
-default_model = "ollama:qwen2.5:7b"
-helper_model = "openai:gpt-4.1-mini"
-model_choices = [
-  "ollama:qwen2.5:7b",
-  "openai:gpt-4.1-mini",
-  "moonshot:kimi-k2.6",
-  "mimo:mimo-v2.5-pro",
-]
-
 [[providers]]
-id = "openai"
-label = "OpenAI Compatible"
-backend_provider = "openai"
-base_url_env = "OPENAI_BASE_URL"
-api_key_env = "OPENAI_API_KEY"
-logo_slug = "openai"
-logo_letter = "O"
+id = "anthropic"
+label = "Anthropic"
+backend_provider = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+logo_slug = "anthropic"
+logo_letter = "A"
 
 [[providers]]
 id = "moonshot"
@@ -48,6 +38,37 @@ api_key_default = "ollama"
 logo_slug = "ollama"
 logo_letter = "O"
 
+[[providers]]
+id = "openai"
+label = "OpenAI Compatible"
+backend_provider = "openai"
+base_url_env = "OPENAI_BASE_URL"
+api_key_env = "OPENAI_API_KEY"
+logo_slug = "openai"
+logo_letter = "O"
+
+[[models]]
+id = "anthropic:claude-3-5-sonnet-latest"
+label = "Claude 3.5 Sonnet"
+
+[[models]]
+id = "openai:deepseek-chat"
+label = "DeepSeek Chat"
+supports_thinking = true
+default_thinking_enabled = false
+thinking_enable_extra_body_type = "enabled"
+
+[[models]]
+id = "openai:deepseek-reasoner"
+label = "DeepSeek Reasoner"
+supports_thinking = true
+default_thinking_enabled = true
+thinking_disable_switch_model = "deepseek-chat"
+
+[[models]]
+id = "openai:gpt-4.1"
+label = "GPT-4.1"
+
 [[models]]
 id = "openai:gpt-4.1-mini"
 label = "GPT-4.1 Mini"
@@ -65,19 +86,3 @@ id = "mimo:mimo-v2.5-pro"
 label = "MiMo V2.5 Pro"
 supports_thinking = true
 default_thinking_enabled = true
-
-[[models]]
-id = "ollama:qwen2.5:7b"
-label = "Qwen 2.5 7B"
-
-# OpenAI-compatible reasoning models can add provider-specific request payload
-# fields without code changes by using request profiles like this:
-#
-# [[models]]
-# id = "openai:custom-reasoning-pro"
-# label = "Custom Reasoning Pro"
-# supports_thinking = true
-# default_thinking_enabled = true
-# thinking_enabled_request_kwargs = { reasoning_effort = "high", extra_body = { thinking = { type = "enabled" } } }
-# thinking_disabled_request_kwargs = { extra_body = { thinking = { type = "disabled" } } }
-# thinking_disabled_model_name = "custom-chat"

@@ -16,25 +16,27 @@ export function chooseModelLabel(isChineseUi: boolean) {
   return isChineseUi ? "选择模型" : "Choose a model";
 }
 
-export function providerOptionLabel(provider: string, isChineseUi: boolean) {
-  if (provider === "moonshot") return "Moonshot AI";
-  if (provider === "ollama") return "Ollama";
-  if (provider === "anthropic") return "Anthropic";
+export function providerOptionLabel(
+  provider: string,
+  isChineseUi: boolean,
+  providerLabel?: string,
+) {
+  const configuredLabel = String(providerLabel || "").trim();
+  if (configuredLabel) return configuredLabel;
   return isChineseUi ? "OpenAI 兼容" : "OpenAI Compatible";
 }
 
-export function providerLogoSlug(provider: string) {
-  if (provider === "moonshot") return "moonshotai";
-  if (provider === "ollama") return "ollama";
-  if (provider === "anthropic") return "anthropic";
-  return "openai";
+export function providerLogoSlug(providerLogoSlug?: string | null) {
+  return String(providerLogoSlug || "").trim();
 }
 
-export function providerLogoLetter(provider: string) {
-  if (provider === "moonshot") return "K";
-  if (provider === "ollama") return "O";
-  if (provider === "anthropic") return "A";
-  return "O";
+export function providerLogoLetter(provider: string, providerLogoLetter?: string | null) {
+  const configuredLetter = String(providerLogoLetter || "").trim().slice(0, 1);
+  return (
+    configuredLetter.toUpperCase() ||
+    String(provider || "openai").trim().slice(0, 1).toUpperCase() ||
+    "O"
+  );
 }
 
 export function modelDisplayName(model: FocusAgentModelOption | undefined) {

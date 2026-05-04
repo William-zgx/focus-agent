@@ -128,7 +128,7 @@ docker compose logs -f focus-agent postgres
 
 - 未显式设置 `FOCUS_AGENT_DATABASE_URI` 时，Compose 默认连接本文件内的 `postgres` service
 - 如果显式设置 `FOCUS_AGENT_DATABASE_URI`，应用会优先使用该值
-- provider 密钥和 Base URL 默认来自 `/data/local.env`；如果想临时覆盖，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
+- provider 密钥和 Base URL 默认来自 `/data/local.env`，新增 OpenAI-compatible provider 通常只需要在 `/data/models.toml` 和 `/data/local.env` 增加对应配置；如果想临时覆盖内置常用 provider，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`MIMO_API_KEY`、`MIMO_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
 - 如果要在 readiness、metrics 和 trajectory correlation 中标记版本或部署批次，可在 Compose environment 中显式传入 `APP_VERSION`、`APP_ENVIRONMENT` 或 `DEPLOYMENT_NAME`
 - 本地 Docker 路径下建议继续保留 demo token，方便 Web App 直接调试
 

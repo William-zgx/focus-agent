@@ -793,6 +793,68 @@ def test_stream_message_hides_tool_result_fallback_draft_chunks(tmp_path: Path):
     assert not any("保守整理" in frame for frame in visible_frames)
 
 
+def test_stream_message_hides_bare_tool_call_close_tag_from_visible_events(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class BareToolCloseTagGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [],
+                "selected_model": "mimo:mimo-v2.5-pro",
+                "selected_thinking_mode": "enabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del config, context, stream_mode, version
+            human = payload["messages"][-1]
+            self.values = {
+                "messages": [human, AIMessage(content="</tool_call>")],
+                "selected_model": "mimo:mimo-v2.5-pro",
+                "selected_thinking_mode": "enabled",
+            }
+            yield {
+                "type": "messages",
+                "ns": (),
+                "data": (
+                    AIMessageChunk(content="</tool_call>"),
+                    {"langgraph_node": "agent_loop"},
+                ),
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=BareToolCloseTagGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+    visible_frames = [
+        frame
+        for frame in frames
+        if (
+            "event: visible_text.delta" in frame
+            or "event: message.delta" in frame
+            or "event: visible_text.completed" in frame
+            or "event: message.completed" in frame
+        )
+    ]
+
+    assert not any("</tool_call>" in frame for frame in visible_frames)
+    assert any("event: turn.completed" in frame for frame in frames)
+
+
 def test_send_message_rejects_concurrent_turn_on_same_thread(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")

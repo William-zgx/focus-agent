@@ -9,6 +9,9 @@ TEXTUAL_TOOL_ARTIFACT_MARKERS = (
     "invoke name=",
     "<｜dsml｜",
     "<tool_call",
+    "<tool_calls",
+    "</tool_call",
+    "</tool_calls",
     '"tool_name"',
 )
 
@@ -34,6 +37,11 @@ DEFAULT_TEXTUAL_TOOL_NAMES = frozenset(
 )
 
 _BRACKET_TOOL_MARKER_RE = re.compile(r"(?m)^\s*\[([A-Za-z_][\w.-]*)\]\s*")
+_XMLISH_TOOL_CALL_RE = re.compile(
+    r"(?is)(?:^|[\s<])/?<?function\s*=\s*[a-z_][\w.-]*\s*>|"
+    r"<\s*/?\s*parameter\s*=|"
+    r"(?:^|[\s<])/?<?parameter\s*=\s*[\w.-]+\s*>"
+)
 _INTERNAL_PROCESS_NARRATION_RE = re.compile(
     r"(?ims)(?:^|[\n。；;:：])\s*"
     r"(?:我(?:来|先)?(?:帮你|为你)?(?:查询|获取|搜索|查找)|"
@@ -71,6 +79,8 @@ def looks_like_textual_tool_call_artifact(
     if not lowered:
         return False
     if any(marker in lowered for marker in TEXTUAL_TOOL_ARTIFACT_MARKERS):
+        return True
+    if _XMLISH_TOOL_CALL_RE.search(lowered):
         return True
 
     tool_names = _normalized_tool_names(known_tool_names)

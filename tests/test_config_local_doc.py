@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from focus_agent.config import (
+    ModelCatalogValidationError,
     Settings,
     load_local_env_file,
     load_model_catalog_document,
+    load_model_catalog_toml,
     load_tool_catalog_document,
 )
 
@@ -86,6 +88,50 @@ def test_load_model_catalog_document_reads_structured_model_data(tmp_path):
     assert loaded.models[0].thinking_disabled_model_name == "deepseek-chat"
     assert loaded.models[0].reasoning_effort == "high"
     assert loaded.models[0].thinking_disable_switch_model == "deepseek-chat"
+
+
+def test_load_model_catalog_document_rejects_duplicate_provider_aliases():
+    content = "\n".join(
+        [
+            "[[providers]]",
+            'id = "first"',
+            'aliases = ["shared"]',
+            "",
+            "[[providers]]",
+            'id = "second"',
+            'aliases = ["shared"]',
+        ]
+    )
+
+    try:
+        load_model_catalog_toml(content, source="test-models.toml")
+    except ModelCatalogValidationError as exc:
+        assert "test-models.toml" in str(exc)
+        assert "shared" in str(exc)
+        assert "first" in str(exc)
+        assert "second" in str(exc)
+    else:
+        raise AssertionError("expected duplicate alias validation failure")
+
+
+def test_load_model_catalog_document_rejects_duplicate_model_ids():
+    content = "\n".join(
+        [
+            "[[models]]",
+            'id = "openai:gpt-test"',
+            "",
+            "[[models]]",
+            'id = "openai:gpt-test"',
+        ]
+    )
+
+    try:
+        load_model_catalog_toml(content, source="test-models.toml")
+    except ModelCatalogValidationError as exc:
+        assert "test-models.toml" in str(exc)
+        assert "openai:gpt-test" in str(exc)
+    else:
+        raise AssertionError("expected duplicate model validation failure")
 
 
 def test_load_tool_catalog_document_reads_web_search_config(tmp_path):

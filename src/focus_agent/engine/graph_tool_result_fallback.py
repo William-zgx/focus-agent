@@ -6,6 +6,7 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from ..core.state import AgentState
+from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget
 from .graph_tool_history_repair import _message_text
 
@@ -33,7 +34,10 @@ def _latest_human_message_text(messages: list[Any]) -> str:
 def _latest_final_ai_text(messages: list[Any]) -> str:
     for message in reversed(messages):
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
-            return _message_text(message)
+            text = _message_text(message)
+            if looks_like_textual_tool_call_artifact(text):
+                continue
+            return text
     return ""
 
 

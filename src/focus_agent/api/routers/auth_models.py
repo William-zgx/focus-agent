@@ -256,6 +256,8 @@ def list_models(
                 "id": item.id,
                 "provider": item.provider,
                 "provider_label": item.provider_label,
+                "provider_logo_slug": item.provider_logo_slug,
+                "provider_logo_letter": item.provider_logo_letter,
                 "name": item.name,
                 "label": item.label,
                 "is_default": item.is_default,

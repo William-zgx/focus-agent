@@ -6928,6 +6928,26 @@
         "provider_label": {
           "type": "string"
         },
+        "provider_logo_letter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_logo_slug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "supports_thinking": {
           "default": false,
           "type": "boolean"

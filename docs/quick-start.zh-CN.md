@@ -33,6 +33,9 @@ pnpm install --registry=https://registry.npmjs.org
 - `.focus_agent/tools.toml`
 
 Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配置文件里。
+如果只是给某个部署新增 OpenAI-compatible 模型，请在 `.focus_agent/models.toml`
+里增加 provider/model 元数据，并只把密钥和 endpoint 放到 `.focus_agent/local.env`。
+只有当模型需要成为所有新环境的内置默认支持时，才修改 `src/focus_agent/defaults/models.toml`。
 
 ## 2. 启动 API
 

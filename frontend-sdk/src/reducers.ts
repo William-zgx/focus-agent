@@ -4,7 +4,11 @@ import type {
   FocusAgentToolCallEvent,
   FocusAgentToolEvent,
 } from "./types.js";
-import { safeVisibleText } from "./toolProtocol.js";
+import { safeVisibleText, safeVisibleTextTransition } from "./toolProtocol.js";
+
+type InternalFocusAgentStreamState = FocusAgentStreamState & {
+  _visibleTextPending?: string;
+};
 
 export function createInitialStreamState(): FocusAgentStreamState {
   return {
@@ -28,6 +32,40 @@ function upsertBranchAction(
   return { ...state, branchActions: [...existing, action] };
 }
 
+function applyVisibleTextDelta(
+  state: FocusAgentStreamState,
+  value: unknown,
+): FocusAgentStreamState {
+  const internalState = state as InternalFocusAgentStreamState;
+  const next = safeVisibleTextTransition(
+    state.visibleText,
+    value,
+    internalState._visibleTextPending ?? "",
+  );
+  const updated: InternalFocusAgentStreamState = {
+    ...state,
+    visibleText: next.visibleText,
+  };
+  if (next.pendingText) {
+    updated._visibleTextPending = next.pendingText;
+  } else {
+    delete updated._visibleTextPending;
+  }
+  return updated;
+}
+
+function applyVisibleTextCompleted(
+  state: FocusAgentStreamState,
+  value: unknown,
+): FocusAgentStreamState {
+  const updated: InternalFocusAgentStreamState = {
+    ...state,
+    visibleText: typeof value === "string" ? safeVisibleText(value) : state.visibleText,
+  };
+  delete updated._visibleTextPending;
+  return updated;
+}
+
 export function reduceStreamEvent(
   state: FocusAgentStreamState,
   event: FocusAgentEvent,
@@ -35,16 +73,11 @@ export function reduceStreamEvent(
   switch (event.event) {
     case "visible_text.delta":
     case "message.delta": {
-      const delta = safeVisibleText(event.data.delta);
-      return { ...state, visibleText: state.visibleText + delta };
+      return applyVisibleTextDelta(state, event.data.delta);
     }
     case "visible_text.completed":
     case "message.completed": {
-      const content =
-        typeof event.data.content === "string"
-          ? safeVisibleText(event.data.content)
-          : state.visibleText;
-      return { ...state, visibleText: content };
+      return applyVisibleTextCompleted(state, event.data.content);
     }
     case "reasoning.delta": {
       const delta = typeof event.data.delta === "string" ? event.data.delta : "";

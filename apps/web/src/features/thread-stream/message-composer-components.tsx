@@ -14,25 +14,35 @@ import {
 
 export function ProviderLogo({
   provider,
+  providerLabel,
+  providerLogoSlug: configuredLogoSlug,
+  providerLogoLetter: configuredLogoLetter,
   isChineseUi,
 }: {
   provider: string;
+  providerLabel?: string;
+  providerLogoSlug?: string | null;
+  providerLogoLetter?: string | null;
   isChineseUi: boolean;
 }) {
-  const providerLabel = providerOptionLabel(provider, isChineseUi);
+  const label = providerOptionLabel(provider, isChineseUi, providerLabel);
+  const logoSlug = providerLogoSlug(configuredLogoSlug);
+  const logoLetter = providerLogoLetter(provider, configuredLogoLetter);
   return (
     <span className="fa-composer-model-logo-shell" aria-hidden="true">
-      <img
-        className="fa-composer-model-logo"
-        alt={`${providerLabel} logo`}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        src={`https://models.dev/logos/${providerLogoSlug(provider)}.svg`}
-        onError={(event) => {
-          event.currentTarget.style.display = "none";
-        }}
-      />
-      <span className="fa-composer-model-logo-fallback">{providerLogoLetter(provider)}</span>
+      {logoSlug ? (
+        <img
+          className="fa-composer-model-logo"
+          alt={`${label} logo`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          src={`https://models.dev/logos/${logoSlug}.svg`}
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
+      <span className="fa-composer-model-logo-fallback">{logoLetter}</span>
     </span>
   );
 }

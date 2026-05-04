@@ -9,6 +9,7 @@ from langgraph.types import Command
 
 from ..core.branching import BranchMeta
 from ..core.request_context import RequestContext
+from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..engine.runtime import AppRuntime
 from ..observability.tracing import (
     TraceCorrelation,
@@ -94,7 +95,10 @@ class ChatService(
     def _latest_final_ai_text(self, messages: list[Any]) -> str | None:
         for message in reversed(messages):
             if isinstance(message, AIMessage) and not getattr(message, 'tool_calls', None):
-                return self._message_content_to_text(message.content)
+                text = self._message_content_to_text(message.content)
+                if looks_like_textual_tool_call_artifact(text):
+                    continue
+                return text
         return None
 
     def _serialize_message(self, message: Any) -> dict[str, Any]:

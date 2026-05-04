@@ -727,6 +727,7 @@ def test_detects_textual_tool_call_artifacts():
     assert _looks_like_textual_tool_call_artifact(
         AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
     )
+    assert _looks_like_textual_tool_call_artifact(AIMessage(content="</tool_call>"))
     assert _looks_like_textual_tool_call_artifact(
         AIMessage(content="[web_fetch] 尝试获取沪指本周逐日行情数据，请稍等。")
     )
@@ -763,6 +764,14 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
         )
         == "live_web_research"
     )
+    assert (
+        _classify_turn_tool_policy("比亚迪近一年最大涨跌幅是多少？请给出数据来源和计算口径。")
+        == "live_web_research"
+    )
+    assert (
+        _classify_turn_tool_policy("请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")
+        == "live_web_research"
+    )
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
 
 
@@ -785,6 +794,16 @@ def test_live_web_research_starts_stock_queries_with_web_search():
     assert _live_web_research_should_start_with_search(
         "我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？",
         [HumanMessage(content="我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？")],
+        [web_search, current_utc_time],
+    )
+    assert _live_web_research_should_start_with_search(
+        "比亚迪近一年最大涨跌幅是多少？请给出数据来源和计算口径。",
+        [HumanMessage(content="比亚迪近一年最大涨跌幅是多少？请给出数据来源和计算口径。")],
+        [web_search, current_utc_time],
+    )
+    assert _live_web_research_should_start_with_search(
+        "请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。",
+        [HumanMessage(content="请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")],
         [web_search, current_utc_time],
     )
     assert not _live_web_research_should_start_with_search(

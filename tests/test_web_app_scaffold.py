@@ -282,8 +282,8 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     sdk_reducer_text = (sdk_root / "reducers.ts").read_text()
     sdk_tool_protocol_text = (sdk_root / "toolProtocol.ts").read_text()
     assert 'export * from "./toolProtocol";' in sdk_index_text
-    assert "safeVisibleText(event.data.delta)" in sdk_reducer_text
-    assert "safeVisibleText(event.data.content)" in sdk_reducer_text
+    assert "safeVisibleTextTransition(" in sdk_reducer_text
+    assert "safeVisibleText(value)" in sdk_reducer_text
     assert "looksLikeTextualToolCallArtifact" in sdk_tool_protocol_text
     assert "web_fetch" in sdk_tool_protocol_text
 

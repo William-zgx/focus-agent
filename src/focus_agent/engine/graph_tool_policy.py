@@ -132,6 +132,27 @@ _WORKSPACE_INTENT_MARKERS = (
 )
 
 
+_EXPLICIT_WORKSPACE_CONTEXT_MARKERS = (
+    "仓库",
+    "项目",
+    "代码",
+    "文件",
+    "路径",
+    "测试用例",
+    "readme",
+    "repo",
+    "repository",
+    "codebase",
+    "source",
+    "file",
+    "function",
+    "class",
+    "definition",
+    "implementation",
+    "search code",
+)
+
+
 _CODE_SEARCH_TOOL_INTENT_MARKERS = (
     "定义",
     "调用",
@@ -182,6 +203,18 @@ _LIVE_WEB_INTENT_MARKERS = (
     "汇率",
     "股价",
     "股票",
+    "行情",
+    "走势",
+    "波动",
+    "涨跌",
+    "涨跌幅",
+    "涨幅",
+    "跌幅",
+    "收盘价",
+    "开盘价",
+    "最高价",
+    "最低价",
+    "成交量",
     "龙头股",
     "个股",
     "板块",
@@ -191,6 +224,10 @@ _LIVE_WEB_INTENT_MARKERS = (
     "财报",
     "基本面",
     "估值",
+    "近一",
+    "过去",
+    "年内",
+    "今年",
     "browse",
     "web",
     "search",
@@ -225,6 +262,19 @@ _LIVE_WEB_SEARCH_FIRST_MARKERS = (
     "波动",
     "走势",
     "行情",
+    "涨跌",
+    "涨跌幅",
+    "涨幅",
+    "跌幅",
+    "收盘价",
+    "开盘价",
+    "最高价",
+    "最低价",
+    "成交量",
+    "近一",
+    "过去",
+    "年内",
+    "今年",
     "browse",
     "search",
     "latest",
@@ -277,11 +327,20 @@ def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
     if has_no_tool_intent:
         return "direct_answer"
 
+    has_live_web_intent = _contains_any(normalized, _LIVE_WEB_INTENT_MARKERS)
+    has_workspace_intent = _contains_any(normalized, _WORKSPACE_INTENT_MARKERS)
+    has_explicit_workspace_context = _contains_any(
+        normalized,
+        _EXPLICIT_WORKSPACE_CONTEXT_MARKERS,
+    )
+
     if _contains_any(normalized, _EXECUTION_INTENT_MARKERS):
         return "execution"
-    if _contains_any(normalized, _WORKSPACE_INTENT_MARKERS):
+    if has_live_web_intent and (not has_workspace_intent or not has_explicit_workspace_context):
+        return "live_web_research"
+    if has_workspace_intent:
         return "workspace_lookup"
-    if _contains_any(normalized, _LIVE_WEB_INTENT_MARKERS):
+    if has_live_web_intent:
         return "live_web_research"
     if _contains_any(normalized, _CREATIVE_DIRECT_MARKERS):
         return "direct_answer"

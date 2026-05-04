@@ -108,7 +108,13 @@ function loadSdkStreamFunctions() {
     "createInitialStreamState",
     "reduceStreamEvent",
   ];
-  const reducerSnippet = ["createInitialStreamState", "upsertBranchAction", "reduceStreamEvent"]
+  const reducerSnippet = [
+    "createInitialStreamState",
+    "upsertBranchAction",
+    "applyVisibleTextDelta",
+    "applyVisibleTextCompleted",
+    "reduceStreamEvent",
+  ]
     .map((name) => extractFunction(reducersSource, name))
     .join("\n\n");
   const transpiled = ts.transpileModule(`${toolProtocolSource}\n\n${reducerSnippet}`, {
@@ -287,12 +293,17 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     ),
     true,
   );
-	assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
-	assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
-	assert.equal(safeVisibleText("[web_search] searching"), "");
-	assert.equal(safeVisibleText("**[web_fetch]** 尝试通过东方财富API获取数据。"), "");
-	assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
-	assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
+  assert.equal(looksLikeTextualToolCallArtifact("</tool_call>"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("function=web_search>"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("<parameter=query>比亚迪</parameter>"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
+  assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
+  assert.equal(safeVisibleText("</tool_call>"), "");
+  assert.equal(safeVisibleText("function=web_search>"), "");
+  assert.equal(safeVisibleText("[web_search] searching"), "");
+  assert.equal(safeVisibleText("**[web_fetch]** 尝试通过东方财富API获取数据。"), "");
+  assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
+  assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
 
   const withArtifactDelta = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -302,6 +313,40 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withArtifactDelta.visibleText, "");
+
+  let withSplitArtifact = reduceStreamEvent(createInitialStreamState(), {
+    event: "visible_text.delta",
+    data: {
+      delta: "function",
+      channel: "visible_text",
+    },
+  });
+  assert.equal(withSplitArtifact.visibleText, "");
+  withSplitArtifact = reduceStreamEvent(withSplitArtifact, {
+    event: "visible_text.delta",
+    data: {
+      delta:
+        "=web_search>\n<parameter=query>比亚迪 002594 2026年4月 单日涨幅 最大</parameter>",
+      channel: "visible_text",
+    },
+  });
+  assert.equal(withSplitArtifact.visibleText, "");
+
+  let withNaturalFunctionText = reduceStreamEvent(createInitialStreamState(), {
+    event: "visible_text.delta",
+    data: {
+      delta: "function",
+      channel: "visible_text",
+    },
+  });
+  withNaturalFunctionText = reduceStreamEvent(withNaturalFunctionText, {
+    event: "visible_text.delta",
+    data: {
+      delta: " 是 JavaScript 中声明函数的关键字。",
+      channel: "visible_text",
+    },
+  });
+  assert.equal(withNaturalFunctionText.visibleText, "function 是 JavaScript 中声明函数的关键字。");
 
   const withPlainDelta = reduceStreamEvent(withArtifactDelta, {
     event: "visible_text.delta",
@@ -505,6 +550,21 @@ test("thinking-capable model selection preserves unset backend-default semantics
   assert.equal(thinkingOptionMetaLabel(model, "", false), "Thinking available, toggle manually");
   assert.equal(thinkingModeRequestValueForModel(model, ""), "");
   assert.equal(thinkingModeRequestValueForModel(model, "disabled"), "disabled");
+});
+
+test("model provider labels prefer backend catalog metadata over frontend guesses", () => {
+  const { providerLogoLetter, providerLogoSlug, providerOptionLabel } = loadFunctions(
+    "apps/web/src/features/thread-stream/message-composer-helpers.ts",
+    ["providerLogoLetter", "providerLogoSlug", "providerOptionLabel"],
+  );
+
+  assert.equal(providerOptionLabel("mimo", false, "Xiaomi MiMo"), "Xiaomi MiMo");
+  assert.equal(providerOptionLabel("mimo", true, "Xiaomi MiMo"), "Xiaomi MiMo");
+  assert.equal(providerOptionLabel("unlisted", true, ""), "OpenAI 兼容");
+  assert.equal(providerLogoSlug("moonshotai"), "moonshotai");
+  assert.equal(providerLogoSlug(""), "");
+  assert.equal(providerLogoLetter("mimo", "X"), "X");
+  assert.equal(providerLogoLetter("mimo"), "M");
 });
 
 test("context meter formats current context usage separately from token spend", () => {

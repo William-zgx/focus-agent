@@ -55,6 +55,23 @@ def test_extract_visible_text_delta_ignores_textual_tool_call_string_payload():
     assert extract_visible_text_delta(chunk) == ""
 
 
+def test_extract_visible_text_delta_ignores_bare_tool_call_close_tag():
+    chunk = DummyChunk(content="</tool_call>")
+    assert extract_visible_text_delta(chunk) == ""
+
+
+def test_extract_visible_text_delta_ignores_mimo_xmlish_tool_call_payload():
+    chunk = DummyChunk(
+        content=(
+            "function=web_search>\n"
+            "<parameter=query>比亚迪 002594 2026年4月 单日涨幅 最大</parameter>\n"
+            "<parameter=max_results>10</parameter>\n"
+            "</<function=web_search>"
+        )
+    )
+    assert extract_visible_text_delta(chunk) == ""
+
+
 def test_extract_visible_text_delta_ignores_bracket_tool_marker_string_payload():
     chunk = DummyChunk(content="[web_fetch] 尝试获取沪指（000001）本周逐日行情数据，请稍等。")
     assert extract_visible_text_delta(chunk) == ""

@@ -2,6 +2,8 @@ export interface FocusAgentModelOption {
   id: string;
   provider: string;
   provider_label: string;
+  provider_logo_slug?: string | null;
+  provider_logo_letter?: string | null;
   name: string;
   label: string;
   is_default: boolean;

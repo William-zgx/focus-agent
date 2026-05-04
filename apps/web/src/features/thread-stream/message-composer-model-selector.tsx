@@ -44,7 +44,7 @@ export function MessageComposerModelSelector({
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null);
   const groupedModels = useMemo(() => groupByProvider(allModels), [allModels]);
   const activeProviderLabel = activeModel
-    ? providerOptionLabel(activeModel.provider, isChineseUi)
+    ? providerOptionLabel(activeModel.provider, isChineseUi, activeModel.provider_label)
     : chooseModelLabel(isChineseUi);
   const activeModelLabel = activeModel
     ? modelDisplayName(activeModel)
@@ -104,7 +104,13 @@ export function MessageComposerModelSelector({
         type="button"
       >
         <span className="fa-composer-model-trigger-copy">
-          <ProviderLogo provider={activeModel?.provider || "openai"} isChineseUi={isChineseUi} />
+          <ProviderLogo
+            provider={activeModel?.provider || "openai"}
+            providerLabel={activeModel?.provider_label}
+            providerLogoSlug={activeModel?.provider_logo_slug}
+            providerLogoLetter={activeModel?.provider_logo_letter}
+            isChineseUi={isChineseUi}
+          />
           <span className="fa-composer-model-trigger-label">{activeModelLabel}</span>
           <span className="fa-composer-model-trigger-provider">{activeModelProvider}</span>
         </span>
@@ -135,7 +141,7 @@ export function MessageComposerModelSelector({
               groupedModels.map(([provider, models]) => (
                 <div key={provider} className="fa-composer-model-group">
                   <div className="fa-composer-model-group-label">
-                    {providerOptionLabel(provider, isChineseUi)}
+                    {providerOptionLabel(provider, isChineseUi, models[0]?.provider_label)}
                   </div>
                   {models.map((model) => {
                     const optionThinkingMode = effectiveThinkingModeForModel(
@@ -148,23 +154,31 @@ export function MessageComposerModelSelector({
                         className={`fa-composer-model-option ${
                           model.id === modelId ? "is-selected" : ""
                         }`}
-                        onKeyDown={(event) => handleModelOptionKeyDown(event, () => onSelectModel(model.id))}
+                        onKeyDown={(event) =>
+                          handleModelOptionKeyDown(event, () => onSelectModel(model.id))
+                        }
                         onClick={() => onSelectModel(model.id)}
                         role="button"
                         tabIndex={0}
                       >
                         <div className="fa-composer-model-option-leading">
-                          <ProviderLogo provider={model.provider} isChineseUi={isChineseUi} />
+                          <ProviderLogo
+                            provider={model.provider}
+                            providerLabel={model.provider_label}
+                            providerLogoSlug={model.provider_logo_slug}
+                            providerLogoLetter={model.provider_logo_letter}
+                            isChineseUi={isChineseUi}
+                          />
                           <div className="fa-composer-model-option-copy">
                             <div className="fa-composer-model-option-label">
                               {modelDisplayName(model)}
                             </div>
                             <div className="fa-composer-model-option-meta">
-                              {`${providerOptionLabel(model.provider, isChineseUi)} · ${thinkingOptionMetaLabel(
-                                model,
-                                optionThinkingMode,
+                              {`${providerOptionLabel(
+                                model.provider,
                                 isChineseUi,
-                              )}`}
+                                model.provider_label,
+                              )} · ${thinkingOptionMetaLabel(model, optionThinkingMode, isChineseUi)}`}
                             </div>
                           </div>
                         </div>

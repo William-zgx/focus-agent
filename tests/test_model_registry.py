@@ -1,7 +1,14 @@
-from focus_agent.config import ConfiguredModel, ModelCatalogConfig, ProviderConfig, Settings
+from focus_agent.config import (
+    ConfiguredModel,
+    ModelCatalogConfig,
+    ModelCatalogValidationError,
+    ProviderConfig,
+    Settings,
+)
 from focus_agent import model_registry
 from focus_agent.model_registry import build_model_catalog, create_chat_model, resolve_model_config
 from focus_agent.providers.moonshot_openai import MoonshotChatOpenAI
+from focus_agent.providers.reasoning_openai import ReasoningAwareChatOpenAI
 
 
 def test_build_model_catalog_keeps_default_first():
@@ -24,6 +31,13 @@ def test_build_model_catalog_keeps_default_first():
     assert catalog[1].default_thinking_enabled is True
 
 
+def test_builtin_model_catalog_loads_from_packaged_toml():
+    catalog = model_registry._builtin_model_catalog()
+
+    assert any(provider.id == "mimo" for provider in catalog.providers)
+    assert any(model.id == "mimo:mimo-v2.5-pro" for model in catalog.models)
+
+
 def test_resolve_model_config_maps_moonshot_to_openai_backend():
     resolved = resolve_model_config(
         "moonshot:kimi-k2.6",
@@ -37,6 +51,62 @@ def test_resolve_model_config_maps_moonshot_to_openai_backend():
     assert resolved.backend_provider == "openai"
     assert resolved.client_kwargs["base_url"] == "https://api.moonshot.cn/v1"
     assert resolved.client_kwargs["api_key"] == "secret"
+
+
+def test_resolve_model_config_maps_mimo_to_openai_backend():
+    resolved = resolve_model_config(
+        "xiaomi:mimo-v2.5-pro",
+        environ={"MIMO_API_KEY": "secret"},
+    )
+
+    assert resolved.provider == "mimo"
+    assert resolved.backend_provider == "openai"
+    assert resolved.model_name == "mimo-v2.5-pro"
+    assert resolved.client_kwargs["base_url"] == "https://api.xiaomimimo.com/v1"
+    assert resolved.client_kwargs["api_key"] == "secret"
+    assert resolved.request_kwargs == {}
+
+
+def test_build_model_catalog_includes_builtin_mimo_metadata():
+    settings = Settings(
+        model="mimo:mimo-v2.5-pro",
+        model_choices=("moonshot:kimi-k2.6",),
+    )
+
+    catalog = build_model_catalog(settings)
+
+    assert catalog[0].id == "mimo:mimo-v2.5-pro"
+    assert catalog[0].provider == "mimo"
+    assert catalog[0].provider_label == "Xiaomi MiMo"
+    assert catalog[0].label == "MiMo V2.5 Pro · Xiaomi MiMo"
+    assert catalog[0].provider_logo_letter == "M"
+    assert catalog[0].supports_thinking is True
+    assert catalog[0].default_thinking_enabled is True
+
+
+def test_runtime_model_catalog_overrides_builtin_model_metadata():
+    settings = Settings(
+        model="openai:gpt-4.1-mini",
+        model_catalog=ModelCatalogConfig(
+            models=(ConfiguredModel(id="openai:gpt-4.1-mini", label="Local Mini"),),
+        ),
+    )
+
+    catalog = build_model_catalog(settings)
+
+    assert catalog[0].label == "Local Mini · OpenAI Compatible"
+
+
+def test_build_model_catalog_rejects_unknown_provider_reference():
+    settings = Settings(model="missing:model")
+
+    try:
+        build_model_catalog(settings)
+    except ModelCatalogValidationError as exc:
+        assert "missing:model" in str(exc)
+        assert "unknown provider" in str(exc)
+    else:
+        raise AssertionError("expected unknown provider validation failure")
 
 
 def test_resolve_model_config_disables_kimi_thinking_via_extra_body():
@@ -278,6 +348,7 @@ def test_create_chat_model_uses_moonshot_specific_adapter(monkeypatch):
     model = create_chat_model("moonshot:kimi-k2.6", temperature=0.0)
 
     assert isinstance(model, MoonshotChatOpenAI)
+    assert isinstance(model, ReasoningAwareChatOpenAI)
     assert model.model_name == "kimi-k2.6"
     assert model.temperature is None
     assert model.stream_usage is True
@@ -323,7 +394,7 @@ def test_create_chat_model_uses_reasoning_passthrough_for_openai_thinking_model(
         settings=settings,
     )
 
-    assert isinstance(model, MoonshotChatOpenAI)
+    assert isinstance(model, ReasoningAwareChatOpenAI)
     assert model.model_name == "deepseek-v4-pro"
 
 
