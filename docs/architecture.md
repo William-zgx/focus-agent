@@ -93,18 +93,18 @@ Persistence
 
 | 路径 | 责任 |
 |------|------|
-| `src/focus_agent/api/` | FastAPI app、contracts、deps、middleware、errors |
-| `src/focus_agent/engine/` | runtime 创建、LangGraph 图、模型工厂、message helpers、本地 fallback persistence |
-| `src/focus_agent/core/` | state、branching、request context、context policy、merge review |
-| `src/focus_agent/services/` | ChatService、BranchService、AgentTeamService 等 API-facing 业务服务；大型服务按 branch action、streaming、thread state、serialization、trajectory 等 helper 拆分 |
+| `src/focus_agent/api/` | FastAPI app、contracts、contract models、route utils、deps、middleware、errors |
+| `src/focus_agent/engine/` | runtime 创建、LangGraph 图 facade、graph node/policy helpers、模型工厂、message helpers、本地 fallback persistence |
+| `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review |
+| `src/focus_agent/services/` | ChatService、BranchService、AgentTeamService 等 API-facing 业务服务；大型服务按 branch action facade、stream lifecycle、thread access、compaction、recording、agent-team session/merge/dispatch 等 helper 拆分 |
 | `src/focus_agent/repositories/` | Postgres / SQLite repository、schema、trajectory、artifact metadata |
 | `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe |
-| `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime、tool router；default tools 按 workspace、git、web、artifact、memory、conversation 模块拆分 |
+| `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime facade、tool execution/cache/messages/parallel helpers、tool router；default tools 按 workspace、git、web、artifact、memory、conversation 模块拆分 |
 | `src/focus_agent/skills/` | skill registry、skill metadata、skill view rendering |
 | `src/focus_agent/observability/` | trajectory record、actions、tracing facade、OTel runtime |
 | `src/focus_agent/web/` | React build serving 和 Vite dev redirect |
 | `apps/web/src/` | React app shell、pages、features、shared UI |
-| `frontend-sdk/src/` | typed client、types、guards、stream parser、reducers |
+| `frontend-sdk/src/` | typed client facade、domain client modules、type barrels、guards、stream parser、reducers |
 
 ## 4. App Runtime
 
@@ -205,7 +205,7 @@ POST /v1/chat/turns/stream
 
 ## 7. LangGraph 主路径
 
-核心图在 `src/focus_agent/engine/graph_builder.py`。主路径保留 legacy single-run，同时可插入 governance 记录：
+核心图入口仍是 `src/focus_agent/engine/graph_builder.py`。该文件现在主要负责节点/边注册；节点实现、tool policy、message repair、plan/reflect、memory 与 tool executor 逻辑拆在同目录 `graph_*` 模块中。主路径保留 legacy single-run，同时可插入 governance 记录：
 
 ```text
 bootstrap_turn
@@ -403,9 +403,9 @@ shared/                   config, query keys, SDK provider, UI, styles
 - `/app/observability/trajectory`
 - `/app/agent/governance`
 
-`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端 `stream_events.py` 必须发送符合 SDK validator 的 SSE payload，例如 `tool_call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端 `stream_events.py` 必须发送符合 SDK validator 的 SSE payload，例如 `tool_call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
 
-Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 负责 transcript item 构建、internal content filtering、tool activity summary/detail 等纯逻辑。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
+Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
 
 ## 15. 安全边界
 
@@ -548,21 +548,26 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 
 - API：`src/focus_agent/api/main.py`
 - API deps：`src/focus_agent/api/deps.py`
-- Contracts：`src/focus_agent/api/contracts.py`
+- Contracts facade：`src/focus_agent/api/contracts.py`
+- Contract models：`src/focus_agent/api/contract_models/`
 - Runtime：`src/focus_agent/engine/runtime.py`
-- Graph builder：`src/focus_agent/engine/graph_builder.py`
+- Graph builder facade：`src/focus_agent/engine/graph_builder.py`
+- Graph nodes and policies：`src/focus_agent/engine/graph_*.py`
 - Graph model factory：`src/focus_agent/engine/model_factory.py`
 - State：`src/focus_agent/core/state.py`
 - Chat service orchestration：`src/focus_agent/services/chat.py`
-- Chat streaming helpers：`src/focus_agent/services/chat_streaming.py`
-- Chat branch actions：`src/focus_agent/services/chat_branch_actions.py`
+- Chat streaming lifecycle：`src/focus_agent/services/chat_stream_lifecycle.py`
+- Chat branch action facade：`src/focus_agent/services/chat_branch_action_facade.py`
 - Branch service：`src/focus_agent/services/branches.py`
+- Branch naming / memory promotion：`src/focus_agent/services/branch_naming_policy.py`、`src/focus_agent/services/branch_memory_promotion.py`
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
 - AgentTeam repository contract tests：`tests/test_agent_team_repository_contract.py`
 - Web App：`apps/web/src/`
-- Web message transcript：`apps/web/src/entities/messages/message-transcript.ts`
+- Web message transcript facade：`apps/web/src/entities/messages/message-transcript.ts`
+- Web message transcript modules：`apps/web/src/entities/messages/message-transcript-*.ts`
 - Web thread streaming hooks：`apps/web/src/features/thread-stream/`
-- SDK：`frontend-sdk/src/`
+- SDK facade：`frontend-sdk/src/client.ts`、`frontend-sdk/src/types.ts`
+- SDK endpoint/type modules：`frontend-sdk/src/client/`、`frontend-sdk/src/types/`
 - SDK transport：`frontend-sdk/src/transport.ts`
 - Stream event extraction：`src/focus_agent/transport/stream_events.py`

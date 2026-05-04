@@ -191,7 +191,7 @@ Conflict output stays explicit through `needs_review`; the system should not sil
 
 ## 9. Delegation, Model Router, Self Repair, Review Queue
 
-These records live in `src/focus_agent/agent_delegation.py`.
+These records are exposed through the compatibility facade in `src/focus_agent/agent_delegation.py`; the planning, routing, repair, and shared models now live in `src/focus_agent/agent_delegation_*.py`.
 
 Delegation converts route decisions into:
 

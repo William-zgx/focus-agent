@@ -159,7 +159,7 @@ make test-chat-service
 uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
 ```
 
-ChatService is intentionally split across branch actions, streaming, thread-state helpers, serialization, trajectory, and execution helpers. Keep behavior changes covered by service tests and browser smoke rather than relying only on import-level checks.
+ChatService is intentionally split across branch action facade, streaming lifecycle, thread access, compaction, trajectory recording, and turn-error helpers. Keep behavior changes covered by service tests and browser smoke rather than relying only on import-level checks.
 
 10. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 

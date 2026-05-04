@@ -155,7 +155,7 @@ make test-chat-service
 uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
 ```
 
-ChatService 已按 branch action、streaming、thread state、serialization、trajectory 和 execution helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
+ChatService 已按 branch action facade、streaming lifecycle、thread access、compaction、trajectory recording 和 turn-error helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
 
 10. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
 

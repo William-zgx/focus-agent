@@ -130,7 +130,7 @@ flowchart TD
 4. `extract_memories`
 5. `write_memories`
 
-对应入口在 `src/focus_agent/engine/graph_builder.py`。
+对应入口在 `src/focus_agent/engine/graph_builder.py`；该文件负责注册图节点和边，memory 相关节点实现拆在 `src/focus_agent/engine/graph_memory_nodes.py`。
 
 ### 3.1 检索阶段
 
@@ -522,8 +522,10 @@ python scripts/nightly_regression.py \
 如果要继续沿当前设计扩展，优先从下面这些文件入手：
 
 - `src/focus_agent/engine/graph_builder.py`
+- `src/focus_agent/engine/graph_memory_nodes.py`
 - `src/focus_agent/core/state.py`
 - `src/focus_agent/core/context_policy.py`
+- `src/focus_agent/core/context_assembly.py`
 - `src/focus_agent/memory/models.py`
 - `src/focus_agent/memory/retriever.py`
 - `src/focus_agent/memory/policy.py`

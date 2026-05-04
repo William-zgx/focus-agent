@@ -34,10 +34,12 @@ This SDK packages those concerns into a small, typed client layer.
 
 ## Package Layout
 
-- `src/client.ts` - typed HTTP and SSE client
+- `src/client.ts` - `FocusAgentClient` facade and endpoint mixin registration
+- `src/client/` - domain endpoint modules for auth, admin, agent-team, agent-governance, thread/branch, observability, and streaming
 - `src/transport.ts` - shared HTTP/SSE transport, token resolution, `fetchImpl`, and abort handling
 - `src/errors.ts` - structured request error type
-- `src/types.ts` - request, response, event, branch, and stream state types
+- `src/types.ts` - public type barrel
+- `src/types/` - domain request, response, event, branch, and stream state types
 - `src/toolProtocol.ts` - shared filtering for textual tool-call and internal process artifacts
 - `src/parser.ts` - low-level SSE frame parsing and event decoding
 - `src/reducers.ts` - stream state helpers for UI state accumulation

@@ -281,11 +281,13 @@ focus_agent_team_outputs
 
 ## 6. Frontend / SDK 设计
 
-SDK 新增 typed client：
+SDK typed client 入口：
 
 ```text
-frontend-sdk/src/types.ts
-frontend-sdk/src/client.ts
+frontend-sdk/src/types.ts                 public type barrel
+frontend-sdk/src/types/agent-team.ts      Agent Team domain types
+frontend-sdk/src/client.ts                FocusAgentClient facade
+frontend-sdk/src/client/agent-team.ts     Agent Team endpoint mixin
 frontend-sdk/src/guards.ts
 ```
 
@@ -298,11 +300,13 @@ apps/web/src/pages/agent-team/team-workbench-page.tsx
 
 核心组件：
 
-- `AgentTeamTaskBoard`
-- `AgentTeamTaskCard`
-- `AgentTeamTaskDetailPanel`
-- `AgentTeamArtifactList`
-- `AgentTeamMergeBundleCard`
+- `AgentTeamWorkbench`
+- `CreateSessionPanel`
+- `TaskLanesPanel`
+- `TaskDetailPanel`
+- `PreMergeCheckPanel`
+- `MergeBundleCard`
+- `useAgentTeamWorkbenchViewModel`
 
 页面布局：
 
@@ -400,7 +404,7 @@ Dashboard 侧只需要读取 `summary.status`、`summary.quality_attention` 和 
 ## 11. 多 Agent 开发分工
 
 - Backend Agent：`src/focus_agent/core/agent_team.py`、`src/focus_agent/services/agent_team.py`、API contract、后端测试。
-- SDK Agent：`frontend-sdk/src/types.ts`、`client.ts`、`guards.ts`、exports、SDK tests。
+- SDK Agent：`frontend-sdk/src/types.ts`、`frontend-sdk/src/types/agent-team.ts`、`frontend-sdk/src/client.ts`、`frontend-sdk/src/client/agent-team.ts`、`guards.ts`、exports、SDK tests。
 - Web Agent：`apps/web/src/features/agent-team/`、route、shell navigation。
 - Test Agent：pytest、eval dataset、Web/SDK scaffold tests。
 - Reviewer / Verifier Agent：审查 diff、跑验证链、整理 merge readiness。
