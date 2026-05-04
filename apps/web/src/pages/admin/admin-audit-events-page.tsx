@@ -10,6 +10,11 @@ import {
   AdminErrorMessage,
   AdminPageHeading,
 } from "./admin-page-chrome";
+import {
+  AdminField,
+  AdminFiltersRow,
+  AdminPanelHeader,
+} from "./admin-page-sections";
 
 function decisionTone(decision: string): "success" | "warning" | "danger" | "neutral" {
   const normalized = decision.toLowerCase();
@@ -62,35 +67,29 @@ export function AdminAuditEventsPage() {
         />
 
         <section className="fa-admin-panel">
-          <div className="fa-observability-panel-header">
-            <div>
-              <strong>{isChineseUi ? "Filters" : "Filters"}</strong>
-              <h2>{isChineseUi ? "审计检索" : "Audit Search"}</h2>
-            </div>
-            <span>{auditQuery.isLoading ? "loading" : `${events.length} rows`}</span>
-          </div>
-          <div className="fa-observability-filters fa-admin-filters is-four">
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "操作者" : "Actor"}</span>
+          <AdminPanelHeader
+            eyebrow={isChineseUi ? "Filters" : "Filters"}
+            status={auditQuery.isLoading ? "loading" : `${events.length} rows`}
+            title={isChineseUi ? "审计检索" : "Audit Search"}
+          />
+          <AdminFiltersRow className="fa-observability-filters fa-admin-filters is-four">
+            <AdminField label={isChineseUi ? "操作者" : "Actor"}>
               <input value={actorFilter} onChange={(event) => setActorFilter(event.target.value)} />
-            </label>
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "资源类型" : "Resource type"}</span>
+            </AdminField>
+            <AdminField label={isChineseUi ? "资源类型" : "Resource type"}>
               <input value={resourceTypeFilter} onChange={(event) => setResourceTypeFilter(event.target.value)} />
-            </label>
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "资源 ID" : "Resource ID"}</span>
+            </AdminField>
+            <AdminField label={isChineseUi ? "资源 ID" : "Resource ID"}>
               <input value={resourceIdFilter} onChange={(event) => setResourceIdFilter(event.target.value)} />
-            </label>
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "决策" : "Decision"}</span>
+            </AdminField>
+            <AdminField label={isChineseUi ? "决策" : "Decision"}>
               <select value={decisionFilter} onChange={(event) => setDecisionFilter(event.target.value)}>
                 <option value="">{isChineseUi ? "全部" : "All"}</option>
                 <option value="allow">allow</option>
                 <option value="deny">deny</option>
               </select>
-            </label>
-          </div>
+            </AdminField>
+          </AdminFiltersRow>
           {auditQuery.error ? (
             <AdminErrorMessage error={auditQuery.error} fallback="Failed to load audit events." />
           ) : null}

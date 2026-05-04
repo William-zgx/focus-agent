@@ -286,7 +286,7 @@ def _scan_web_sdk_imports(root: Path = WEB_SRC_PATH) -> dict[str, list[str]]:
     if not root.exists():
         return imports
     import_pattern = re.compile(
-        r"import\s+(?:type\s+)?\{(?P<body>.*?)\}\s+from\s+[\"']@focus-agent/web-sdk[\"']",
+        r"import\s+(?:type\s+)?\{(?P<body>[^}]*)\}\s+from\s+[\"']@focus-agent/web-sdk[\"']",
         flags=re.DOTALL,
     )
     for path in sorted(root.rglob("*")):

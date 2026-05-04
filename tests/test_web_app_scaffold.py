@@ -1,6 +1,26 @@
 from pathlib import Path
 
 
+def _web_styles(web_root: Path) -> str:
+    styles_root = web_root / "src" / "shared" / "styles"
+    parts = [(styles_root / "app.css").read_text()]
+    modules_root = styles_root / "modules"
+    if modules_root.exists():
+        parts.extend(path.read_text() for path in sorted(modules_root.glob("*.css")))
+    return "\n".join(parts)
+
+
+def _join_text(*paths: Path) -> str:
+    return "\n".join(path.read_text() for path in paths)
+
+
+def _shell_text(web_root: Path) -> str:
+    shell_root = web_root / "src" / "app" / "shell"
+    paths = sorted(shell_root.glob("*.tsx")) + sorted((shell_root / "hooks").glob("*.ts"))
+    paths.append(shell_root / "app-shell-config.ts")
+    return _join_text(*paths)
+
+
 def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web"
@@ -71,11 +91,15 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "Demo token bootstrap is disabled" in provider_text
     assert "window.localStorage.removeItem" in provider_text
 
-    merge_review_text = (web_root / "src" / "features" / "merge-review" / "merge-review-card.tsx").read_text()
+    merge_review_text = _join_text(
+        web_root / "src" / "features" / "merge-review" / "merge-review-card.tsx",
+        web_root / "src" / "features" / "merge-review" / "merge-review-sections.tsx",
+        web_root / "src" / "features" / "merge-review" / "merge-review-utils.ts",
+    )
     assert "useEffect" in merge_review_text
     assert "proposalSignature" in merge_review_text
-    assert "setSummary(proposal?.summary ?? \"\")" in merge_review_text
-    assert "setMode(proposal?.recommended_import_mode ?? \"summary_only\")" in merge_review_text
+    assert "summary: proposal?.summary ?? \"\"" in merge_review_text
+    assert "mode: proposal?.recommended_import_mode ?? \"summary_only\"" in merge_review_text
 
     conversation_toolbar_text = (
         web_root / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
@@ -83,7 +107,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'to: "/c/$conversationId/t/$threadId"' in conversation_toolbar_text
     assert "threadId: rootThreadId" in conversation_toolbar_text
 
-    app_shell_text = (web_root / "src" / "app" / "shell" / "app-shell.tsx").read_text()
+    app_shell_text = _shell_text(web_root)
     assert 'type ShellMode = "admin" | "agent-workbench" | "chat"' in app_shell_text
     assert "function isAgentWorkbenchPath" in app_shell_text
     assert "function resolveShellMode" in app_shell_text
@@ -132,26 +156,23 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'to="/admin/users"' in app_shell_text
     assert 'to="/admin/audit-events"' in app_shell_text
     assert 'to="/admin/users/$userId"' in app_shell_text
-    global_navigation_text = app_shell_text.split(
-        "const globalNavigation = (",
-        maxsplit=1,
-    )[1].split("async function createBranch", maxsplit=1)[0]
+    global_navigation_text = (
+        web_root / "src" / "app" / "shell" / "app-shell-global-navigation.tsx"
+    ).read_text()
     assert "{isAdmin ? (" not in global_navigation_text
     assert "AdminAccessGate" not in global_navigation_text
-    sidebar_copy_text = app_shell_text.split(
-        'className="fa-sidebar-copy"',
-        maxsplit=1,
-    )[1].split('className="fa-sidebar-scroll"', maxsplit=1)[0]
+    sidebar_copy_text = (
+        web_root / "src" / "app" / "shell" / "app-shell-sidebar-brand.tsx"
+    ).read_text()
     assert "fa-sidebar-global-nav" not in sidebar_copy_text
-    chat_header_actions_text = app_shell_text.split(
-        'className="fa-chat-header-right-actions"',
-        maxsplit=1,
-    )[1].split("{shellStatus &&", maxsplit=1)[0]
+    chat_header_actions_text = (
+        web_root / "src" / "app" / "shell" / "app-shell-chat-header.tsx"
+    ).read_text()
     assert 'to="/agent-team"' not in chat_header_actions_text
     assert 'to="/admin/users"' not in chat_header_actions_text
     assert "SessionExitIcon" not in chat_header_actions_text
 
-    styles_text = (web_root / "src" / "shared" / "styles" / "app.css").read_text()
+    styles_text = _web_styles(web_root)
     assert ".fa-auth-bootstrap-card" in styles_text
     assert ".fa-auth-bootstrap-input" in styles_text
     assert ".fa-auth-hub" in styles_text
@@ -200,7 +221,11 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "fa-admin-workspace-header" in admin_heading_text
     assert "系统管理 / 治理" in admin_heading_text
 
-    agent_console_text = (web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx").read_text()
+    agent_console_text = _join_text(
+        web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx",
+        web_root / "src" / "pages" / "agents" / "agent-role-console-hooks.ts",
+        web_root / "src" / "pages" / "agents" / "agent-role-console-trajectory-panels.tsx",
+    )
     assert "Delegation Runs" in agent_console_text
     assert 'to="/observability/overview"' not in agent_console_text
     assert 'to="/agent/governance"' not in agent_console_text
@@ -265,19 +290,38 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     web_root = root / "apps" / "web" / "src"
 
     thread_page_text = (web_root / "pages" / "thread" / "thread-page.tsx").read_text()
-    composer_text = (web_root / "features" / "thread-stream" / "message-composer.tsx").read_text()
-    message_list_text = (web_root / "entities" / "messages" / "message-list.tsx").read_text()
+    composer_text = _join_text(
+        web_root / "features" / "thread-stream" / "message-composer.tsx",
+        web_root / "features" / "thread-stream" / "message-composer-helpers.ts",
+        web_root / "features" / "thread-stream" / "message-composer-submit.ts",
+        web_root / "entities" / "messages" / "message-list-helpers.ts",
+    )
+    message_list_text = _join_text(
+        web_root / "entities" / "messages" / "message-list.tsx",
+        web_root / "entities" / "messages" / "message-list-actions.tsx",
+        web_root / "entities" / "messages" / "message-list-branch-action-card.tsx",
+        web_root / "entities" / "messages" / "message-list-tool-activity-card.tsx",
+    )
     header_actions_text = (web_root / "features" / "thread" / "thread-header-actions.tsx").read_text()
-    branch_tree_text = (web_root / "features" / "branch-tree" / "branch-tree-panel.tsx").read_text()
-    app_shell_text = (web_root / "app" / "shell" / "app-shell.tsx").read_text()
-    merge_review_text = (web_root / "features" / "merge-review" / "merge-review-card.tsx").read_text()
+    branch_tree_text = _join_text(
+        web_root / "features" / "branch-tree" / "branch-tree-panel.tsx",
+        web_root / "features" / "branch-tree" / "branch-tree-graph-toolbar.tsx",
+        web_root / "features" / "branch-tree" / "branch-tree-helpers.ts",
+    )
+    app_shell_text = _shell_text(root / "apps" / "web")
+    merge_review_text = _join_text(
+        web_root / "features" / "merge-review" / "merge-review-card.tsx",
+        web_root / "features" / "merge-review" / "merge-review-sections.tsx",
+        web_root / "features" / "merge-review" / "merge-review-utils.ts",
+    )
 
     assert 'branch_meta?.branch_status === "merged"' in thread_page_text
     assert "isReadOnly={isMergedReadOnlyThread}" in thread_page_text
     assert "if (!trimmed || isStreaming || isReadOnly) return;" in composer_text
     assert "const wasEditing = Boolean(editDraft);" in composer_text
     assert "if (wasEditing) {" in composer_text
-    assert "const result = await onSendMessage(trimmed" in composer_text
+    assert "const result = await onSendMessage(" in composer_text
+    assert "trimmed," in composer_text
     assert "if (result.ok) {" in composer_text
     assert "onClearEditDraft?.();" in composer_text
     assert "readOnly={isReadOnly}" in composer_text
@@ -291,7 +335,8 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "if (!isReviewRoute && isMergedBranch) return;" in header_actions_text
     assert "disabled={isWorking || (!isReviewRoute && (isGeneratingConclusion || isMergedBranch))}" in header_actions_text
     assert 'const isMergedCreateTarget = createBranchTargetNode?.branch_status === "merged";' in branch_tree_text
-    assert 'disabled={!createBranchTargetThreadId || isMergedCreateTarget || isCreatingBranch}' in branch_tree_text
+    assert "createBranchDisabled={isMergedCreateTarget || isCreatingBranch}" in branch_tree_text
+    assert "disabled={!canCreateBranch || createBranchDisabled}" in branch_tree_text
     assert "Create a branch from the selected node" in branch_tree_text
     assert "Merged branches cannot create new branches" in branch_tree_text
     assert 'activeThreadState?.branch_meta?.branch_status === "merged"' in app_shell_text
@@ -305,11 +350,14 @@ def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():
     web_root = root / "apps" / "web" / "src"
 
     thread_page_text = (web_root / "pages" / "thread" / "thread-page.tsx").read_text()
-    message_list_text = (web_root / "entities" / "messages" / "message-list.tsx").read_text()
+    message_list_text = _join_text(
+        web_root / "entities" / "messages" / "message-list.tsx",
+        web_root / "entities" / "messages" / "message-list-tool-activity-card.tsx",
+    )
     message_transcript_text = (
         web_root / "entities" / "messages" / "message-transcript.ts"
     ).read_text()
-    styles_text = (web_root / "shared" / "styles" / "app.css").read_text()
+    styles_text = _web_styles(root / "apps" / "web")
 
     assert "assistantMessage={data?.assistant_message}" in thread_page_text
     assert "buildTranscriptItems(messages, assistantMessage)" in message_list_text
@@ -326,8 +374,11 @@ def test_react_web_app_marks_merged_branch_status_in_danger_tone():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web" / "src"
 
-    branch_tree_text = (web_root / "features" / "branch-tree" / "branch-tree-panel.tsx").read_text()
-    styles_text = (web_root / "shared" / "styles" / "app.css").read_text()
+    branch_tree_text = _join_text(
+        web_root / "features" / "branch-tree" / "branch-tree-panel.tsx",
+        web_root / "features" / "branch-tree" / "branch-tree-helpers.ts",
+    )
+    styles_text = _web_styles(root / "apps" / "web")
 
     assert 'case "awaiting_merge_review":\n      return "is-ready";' in branch_tree_text
     assert 'case "merged":\n      return "is-merged";' in branch_tree_text
@@ -340,10 +391,11 @@ def test_conversation_rename_uses_inline_form_not_browser_prompt():
     conversation_toolbar_text = (
         root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
     ).read_text()
-    branch_tree_text = (
-        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx"
-    ).read_text()
-    styles_text = (root / "apps" / "web" / "src" / "shared" / "styles" / "app.css").read_text()
+    branch_tree_text = _join_text(
+        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx",
+        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-detail-overlay.tsx",
+    )
+    styles_text = _web_styles(root / "apps" / "web")
 
     assert 'const conversation = await createConversation();' in conversation_toolbar_text
     assert "window.prompt" not in conversation_toolbar_text
@@ -370,20 +422,31 @@ def test_conversation_switcher_only_lists_active_conversations():
 
 def test_archived_sidebar_sections_are_collapsible_and_compact():
     root = Path(__file__).resolve().parents[1]
-    branch_tree_text = (
-        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx"
-    ).read_text()
-    styles_text = (root / "apps" / "web" / "src" / "shared" / "styles" / "app.css").read_text()
+    branch_tree_text = _join_text(
+        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-archived-sections.tsx",
+        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-archived-state.ts",
+    )
+    styles_text = _web_styles(root / "apps" / "web")
 
     assert branch_tree_text.index('已归档会话" : "Archived conversations') < branch_tree_text.index(
         '已归档分支" : "Archived branches'
     )
-    assert "const [archivedConversationsExpanded, setArchivedConversationsExpanded] = useState(" in branch_tree_text
-    assert "const [archivedBranchesExpanded, setArchivedBranchesExpanded] = useState(" in branch_tree_text
-    assert 'aria-label={isChineseUi ? "展开或收起已归档会话" : "Toggle archived conversations"}' in branch_tree_text
-    assert 'aria-label={isChineseUi ? "展开或收起已归档分支" : "Toggle archived branches"}' in branch_tree_text
-    assert "shouldShowArchivedSecondaryLine(conversation.title, conversation.root_thread_id)" in branch_tree_text
-    assert "shouldShowArchivedSecondaryLine(node.branch_name, node.thread_id)" in branch_tree_text
+    assert "archivedConversationsExpanded," in branch_tree_text
+    assert "setArchivedConversationsExpanded," in branch_tree_text
+    assert "useState(archivedConversationsCount > 0)" in branch_tree_text
+    assert "archivedBranchesExpanded," in branch_tree_text
+    assert "setArchivedBranchesExpanded," in branch_tree_text
+    assert "useState(" in branch_tree_text
+    assert "archivedBranchesCount > 0" in branch_tree_text
+    assert "展开或收起已归档会话" in branch_tree_text
+    assert "Toggle archived conversations" in branch_tree_text
+    assert "展开或收起已归档分支" in branch_tree_text
+    assert "Toggle archived branches" in branch_tree_text
+    assert "shouldShowArchivedSecondaryLine(" in branch_tree_text
+    assert "conversation.title" in branch_tree_text
+    assert "conversation.root_thread_id" in branch_tree_text
+    assert "node.branch_name" in branch_tree_text
+    assert "node.thread_id" in branch_tree_text
 
     archived_conversation_section = branch_tree_text.split(
         '{isChineseUi ? "已归档会话" : "Archived conversations"}',

@@ -613,6 +613,24 @@
   ],
   "version": 1,
   "web_sdk_imports": {
+    "apps/web/src/app/shell/merge-review-modal-host.tsx": [
+      "ThreadStateResponse"
+    ],
+    "apps/web/src/entities/messages/message-list-branch-action-card.tsx": [
+      "FocusAgentBranchActionProposal"
+    ],
+    "apps/web/src/entities/messages/message-list-helpers.ts": [
+      "FocusAgentBranchActionProposal",
+      "FocusAgentToolEvent",
+      "TurnFailedPayload"
+    ],
+    "apps/web/src/entities/messages/message-list-message-row.tsx": [
+      "TurnFailedPayload"
+    ],
+    "apps/web/src/entities/messages/message-list-streaming-bubble.tsx": [
+      "FocusAgentToolCallEvent",
+      "FocusAgentToolEvent"
+    ],
     "apps/web/src/entities/messages/message-list.tsx": [
       "FocusAgentBranchActionProposal",
       "FocusAgentToolCallEvent",
@@ -640,7 +658,23 @@
       "FocusAgentUserListRequest",
       "FocusAgentUserListResponse"
     ],
-    "apps/web/src/features/branch-tree/branch-tree-panel.tsx": [
+    "apps/web/src/features/branch-tree/branch-tree-archived-sections.tsx": [
+      "BranchTreeNode",
+      "FocusAgentConversationSummary"
+    ],
+    "apps/web/src/features/branch-tree/branch-tree-detail-overlay.tsx": [
+      "BranchTreeNode"
+    ],
+    "apps/web/src/features/branch-tree/branch-tree-graph-canvas.tsx": [
+      "BranchTreeNode"
+    ],
+    "apps/web/src/features/branch-tree/branch-tree-graph-toolbar.tsx": [
+      "BranchTreeNode"
+    ],
+    "apps/web/src/features/branch-tree/branch-tree-helpers.ts": [
+      "BranchTreeNode"
+    ],
+    "apps/web/src/features/branch-tree/branch-tree-node-renderer.tsx": [
       "BranchTreeNode"
     ],
     "apps/web/src/features/branch-tree/use-branch-actions.ts": [
@@ -648,15 +682,42 @@
       "FocusAgentApplyMergeDecisionRequest",
       "FocusAgentBranchRecord"
     ],
+    "apps/web/src/features/branch-tree/use-branch-detail-overlay-state.ts": [
+      "BranchTreeNode"
+    ],
+    "apps/web/src/features/branch-tree/use-branch-tree-actions.ts": [
+      "BranchTreeNode"
+    ],
     "apps/web/src/features/conversations/conversation-toolbar.tsx": [
       "FocusAgentConversationSummary"
     ],
     "apps/web/src/features/merge-review/merge-review-card.tsx": [
-      "FocusAgentApplyMergeDecisionRequest",
       "FocusAgentImportedConclusion",
+      "FocusAgentMergeProposal"
+    ],
+    "apps/web/src/features/merge-review/merge-review-sections.tsx": [
       "FocusAgentMergeProposal",
       "MergeMode",
       "MergeTarget"
+    ],
+    "apps/web/src/features/merge-review/merge-review-utils.ts": [
+      "FocusAgentApplyMergeDecisionRequest",
+      "FocusAgentMergeProposal",
+      "MergeMode",
+      "MergeTarget"
+    ],
+    "apps/web/src/features/thread-stream/message-composer-components.tsx": [
+      "ContextUsageResponse"
+    ],
+    "apps/web/src/features/thread-stream/message-composer-helpers.ts": [
+      "ContextUsageResponse",
+      "FocusAgentModelOption"
+    ],
+    "apps/web/src/features/thread-stream/message-composer-model-selector.tsx": [
+      "FocusAgentModelOption"
+    ],
+    "apps/web/src/features/thread-stream/message-composer-submit.ts": [
+      "FocusAgentModelOption"
     ],
     "apps/web/src/features/thread-stream/message-composer.tsx": [
       "ContextUsageResponse",
@@ -667,7 +728,7 @@
       "createInitialStreamState"
     ],
     "apps/web/src/features/thread-stream/use-thread-stream-cache.ts": [
-      "QueryClient } from \"@tanstack/react-query\";\nimport type { ThreadStateResponse"
+      "ThreadStateResponse"
     ],
     "apps/web/src/features/thread-stream/use-thread-stream-errors.ts": [
       "createInitialStreamState"
@@ -686,6 +747,12 @@
       "ThreadContextPreviewRequest",
       "ThreadContextPreviewResponse"
     ],
+    "apps/web/src/features/trajectory-observability/trajectory-action-panel-results.tsx": [
+      "FocusAgentTrajectoryBatchPromotionPreviewResponse",
+      "FocusAgentTrajectoryBatchReplayCompareResponse",
+      "FocusAgentTrajectoryPromotionResponse",
+      "FocusAgentTrajectoryReplayResponse"
+    ],
     "apps/web/src/features/trajectory-observability/trajectory-action-panel.tsx": [
       "FocusAgentTrajectoryBatchPromotionPreviewResponse",
       "FocusAgentTrajectoryBatchReplayCompareResponse",
@@ -702,16 +769,36 @@
     "apps/web/src/features/trajectory-observability/trajectory-detail-panel.tsx": [
       "FocusAgentTrajectoryTurnDetail"
     ],
+    "apps/web/src/features/trajectory-observability/trajectory-detail-sections.tsx": [
+      "FocusAgentTrajectoryTurnDetail"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-formatters.ts": [
+      "FocusAgentTrajectoryStep",
+      "safeVisibleText"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-metadata.ts": [
+      "FocusAgentTrajectoryStep"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-overview-view-model.ts": [
+      "FocusAgentRuntimeReadiness",
+      "FocusAgentTrajectoryStats",
+      "FocusAgentTrajectoryStatsRow"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-review-view-model.ts": [
+      "FocusAgentTrajectoryStatsRow",
+      "FocusAgentTrajectoryTurnDetail"
+    ],
     "apps/web/src/features/trajectory-observability/trajectory-sample-explorer.tsx": [
       "FocusAgentTrajectoryTurnSummary"
     ],
-    "apps/web/src/features/trajectory-observability/trajectory-utils.ts": [
-      "FocusAgentRequestError",
+    "apps/web/src/features/trajectory-observability/trajectory-search-utils.ts": [
+      "FocusAgentRequestError"
+    ],
+    "apps/web/src/features/trajectory-observability/trajectory-view-model-utils.ts": [
       "FocusAgentTrajectoryStatsRow",
       "FocusAgentTrajectoryStep",
       "FocusAgentTrajectoryTurnDetail",
-      "FocusAgentTrajectoryTurnSummary",
-      "safeVisibleText"
+      "FocusAgentTrajectoryTurnSummary"
     ],
     "apps/web/src/features/trajectory-observability/use-observability-overview.ts": [
       "FocusAgentObservabilityOverviewRequest",
@@ -724,17 +811,24 @@
       "FocusAgentTrajectoryListRequest",
       "FocusAgentTrajectoryListResponse"
     ],
-    "apps/web/src/pages/admin/admin-users-page.tsx": [
+    "apps/web/src/pages/admin/admin-user-detail-panels.tsx": [
+      "FocusAgentAuditEvent",
+      "FocusAgentSession",
+      "FocusAgentUser"
+    ],
+    "apps/web/src/pages/admin/admin-user-table.tsx": [
+      "FocusAgentUser"
+    ],
+    "apps/web/src/pages/admin/use-admin-user-create-form.ts": [
       "FocusAgentCreateUserRequest",
       "FocusAgentUser"
     ],
-    "apps/web/src/pages/agents/agent-role-console-page.tsx": [
+    "apps/web/src/pages/agents/agent-role-console-hooks.ts": [
       "FocusAgentArtifactListResponse",
       "FocusAgentCapabilityListResponse",
       "FocusAgentContextArtifactListResponse",
       "FocusAgentContextDecisionListResponse",
       "FocusAgentContextPolicyResponse",
-      "FocusAgentContextPreviewResponse",
       "FocusAgentCriticVerdictListResponse",
       "FocusAgentDelegationPolicyResponse",
       "FocusAgentDelegationRunListResponse",
@@ -744,21 +838,45 @@
       "FocusAgentModelRouterPolicyResponse",
       "FocusAgentReviewQueueListResponse",
       "FocusAgentRoleDecisionListResponse",
-      "FocusAgentRoleDryRunResponse",
       "FocusAgentRolePolicyResponse",
       "FocusAgentSelfRepairFailureListResponse",
-      "FocusAgentTaskLedgerPlanResponse",
       "FocusAgentTaskLedgerPolicyResponse",
       "FocusAgentTaskLedgerRunListResponse",
-      "FocusAgentToolRouteDecisionListResponse",
+      "FocusAgentToolRouteDecisionListResponse"
+    ],
+    "apps/web/src/pages/agents/agent-role-console-page.tsx": [
+      "FocusAgentContextPreviewResponse",
+      "FocusAgentRoleDryRunResponse",
+      "FocusAgentTaskLedgerPlanResponse",
       "FocusAgentToolRouteResponse"
     ],
     "apps/web/src/pages/observability/trajectory-page.tsx": [
-      "FocusAgentRequestError",
+      "FocusAgentRequestError"
+    ],
+    "apps/web/src/pages/observability/use-trajectory-batch-selection.ts": [
+      "FocusAgentTrajectoryTurnSummary"
+    ],
+    "apps/web/src/pages/observability/use-trajectory-page-actions.ts": [
+      "FocusAgentTrajectoryStatsRow",
+      "FocusAgentTrajectoryTurnDetail"
+    ],
+    "apps/web/src/pages/observability/use-trajectory-page-model.ts": [
+      "FocusAgentObservabilityOverviewResponse",
+      "FocusAgentTrajectoryListResponse",
+      "FocusAgentTrajectoryTurnDetail"
+    ],
+    "apps/web/src/pages/observability/use-trajectory-workbench-state.ts": [
       "FocusAgentTrajectoryListRequest"
     ],
     "apps/web/src/pages/thread/thread-page.tsx": [
-      "ContextUsageResponse",
+      "ContextUsageResponse"
+    ],
+    "apps/web/src/pages/thread/thread-transcript-view-model.ts": [
+      "FocusAgentBranchActionProposal",
+      "FocusAgentStreamState",
+      "ThreadStateResponse"
+    ],
+    "apps/web/src/pages/thread/use-thread-branch-actions.ts": [
       "FocusAgentBranchActionExecuteResponse",
       "FocusAgentBranchActionNavigation",
       "FocusAgentBranchActionProposal"

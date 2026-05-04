@@ -1,14 +1,8 @@
-import { useRouterState } from "@tanstack/react-router";
-
 import { AgentTeamWorkbench } from "@/features/agent-team/agent-team-workbench";
+import { useLastRouteParam } from "@/pages/use-last-route-param";
 
 export function AgentTeamWorkbenchPage() {
-  const sessionId = useRouterState({
-    select: (state) => {
-      const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<Record<"sessionId", string>>;
-      return routeParams.sessionId ? String(routeParams.sessionId) : null;
-    },
-  });
+  const sessionId = useLastRouteParam("sessionId");
 
   return <AgentTeamWorkbench sessionId={sessionId} />;
 }

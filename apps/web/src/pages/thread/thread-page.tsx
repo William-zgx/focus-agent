@@ -1,12 +1,8 @@
 import type {
   ContextUsageResponse,
-  FocusAgentBranchActionExecuteResponse,
-  FocusAgentBranchActionNavigation,
-  FocusAgentBranchActionProposal,
 } from "@focus-agent/web-sdk";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { MessageList } from "@/entities/messages/message-list";
@@ -14,26 +10,10 @@ import { MessageComposer } from "@/features/thread-stream/message-composer";
 import { useCompactThreadContext, usePreviewThreadContext } from "@/features/thread/use-thread-context";
 import { useThreadStream } from "@/features/thread-stream/use-thread-stream";
 import { useThreadState } from "@/features/thread/use-thread-state";
-import { queryKeys } from "@/shared/query/query-keys";
-import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
-function navigationFromBranchActionResult(
-  result: FocusAgentBranchActionExecuteResponse,
-): FocusAgentBranchActionNavigation | null {
-  if (result.navigation) {
-    return result.navigation;
-  }
-  if (result.branch_action.navigation) {
-    return result.branch_action.navigation;
-  }
-  if (result.branch_record) {
-    return {
-      root_thread_id: result.branch_record.root_thread_id,
-      thread_id: result.branch_record.child_thread_id,
-    };
-  }
-  return null;
-}
+import { useThreadAutoFollow } from "./use-thread-auto-follow";
+import { useThreadBranchActions } from "./use-thread-branch-actions";
+import { useThreadTranscriptViewModel } from "./thread-transcript-view-model";
 
 export function ThreadPage() {
   const { threadId, conversationId } = useRouterState({
@@ -48,17 +28,9 @@ export function ThreadPage() {
     },
   });
   const { data, isLoading, error } = useThreadState(threadId);
-  const { client } = useFocusAgent();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { isChineseUi } = useShellUi();
   const [editDraft, setEditDraft] = useState<{ id: string; content: string } | null>(null);
   const [previewContextUsage, setPreviewContextUsage] = useState<ContextUsageResponse | null>(null);
-  const [branchActionInFlightId, setBranchActionInFlightId] = useState<string | null>(null);
-  const [branchActionErrors, setBranchActionErrors] = useState<Record<string, string>>({});
-  const branchActionInFlightRef = useRef<string | null>(null);
-  const historyRef = useRef<HTMLDivElement | null>(null);
-  const shouldAutoFollowRef = useRef(true);
   const isMergedReadOnlyThread = data?.branch_meta?.branch_status === "merged";
   const { streamState, pendingUserMessage, isStreaming, sendMessage, stopStreaming } = useThreadStream({
     threadId,
@@ -69,173 +41,43 @@ export function ThreadPage() {
   const previewThreadContext = usePreviewThreadContext(threadId);
   const compactThreadContext = useCompactThreadContext(threadId);
   const previewThreadContextMutate = previewThreadContext.mutate;
-  const transcriptMessages = useMemo(() => {
-    const baseMessages = ((data?.messages as Array<Record<string, unknown>> | undefined) ?? []).slice();
-    if (!pendingUserMessage) {
-      return baseMessages;
-    }
-
-    const lastMessage = baseMessages.at(-1);
-    const lastType = String(lastMessage?.type || "").toLowerCase();
-    const lastContent = String(lastMessage?.content ?? "");
-    if (lastType === "human" && lastContent === pendingUserMessage.content) {
-      return baseMessages;
-    }
-
-    baseMessages.push({
-      id: pendingUserMessage.id,
-      type: "human",
-      content: pendingUserMessage.content,
-    });
-    return baseMessages;
-  }, [data?.messages, pendingUserMessage]);
-  const branchActions = useMemo(() => {
-    const byId = new Map<string, FocusAgentBranchActionProposal>();
-    for (const action of data?.branch_actions ?? []) {
-      byId.set(action.action_id, action);
-    }
-    for (const action of streamState?.branchActions ?? []) {
-      byId.set(action.action_id, action);
-    }
-    return [...byId.values()];
-  }, [data?.branch_actions, streamState?.branchActions]);
-  const refreshBranchActionSurfaces = useCallback(
-    async (rootThreadId: string, currentThreadId: string) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.branchTree(rootThreadId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.thread(currentThreadId) }),
-      ]);
-    },
-    [queryClient],
-  );
-  const beginBranchActionRequest = useCallback((actionId: string) => {
-    if (branchActionInFlightRef.current) {
-      return false;
-    }
-    branchActionInFlightRef.current = actionId;
-    setBranchActionInFlightId(actionId);
-    setBranchActionErrors((current) => {
-      const next = { ...current };
-      delete next[actionId];
-      return next;
-    });
-    return true;
-  }, []);
-  const endBranchActionRequest = useCallback((actionId: string) => {
-    if (branchActionInFlightRef.current === actionId) {
-      branchActionInFlightRef.current = null;
-      setBranchActionInFlightId(null);
-    }
-  }, []);
-  const refreshThreadAfterBranchActionFailure = useCallback(
-    async (actionId: string, error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error || "");
-      setBranchActionErrors((current) => ({
-        ...current,
-        [actionId]: message || (isChineseUi ? "分支操作失败。" : "Branch action failed."),
-      }));
-      const threadState = await client.getThreadState(threadId);
-      queryClient.setQueryData(queryKeys.thread(threadId), threadState);
-      await refreshBranchActionSurfaces(threadState.root_thread_id, threadId);
-    },
-    [client, isChineseUi, queryClient, refreshBranchActionSurfaces, threadId],
-  );
-  const executeBranchAction = useCallback(
-    async (action: FocusAgentBranchActionProposal) => {
-      if (!beginBranchActionRequest(action.action_id)) {
-        return;
-      }
-      try {
-        const result = await client.executeBranchAction(threadId, action.action_id);
-        queryClient.setQueryData(queryKeys.thread(threadId), result.thread_state);
-        await refreshBranchActionSurfaces(result.thread_state.root_thread_id, threadId);
-        const navigation = navigationFromBranchActionResult(result);
-        if (navigation) {
-          await queryClient.invalidateQueries({ queryKey: queryKeys.thread(navigation.thread_id) });
-          await navigate({
-            to: "/c/$conversationId/t/$threadId",
-            params: {
-              conversationId: navigation.root_thread_id,
-              threadId: navigation.thread_id,
-            },
-          });
-        }
-      } catch (error) {
-        console.error("Failed to execute branch action", error);
-        await refreshThreadAfterBranchActionFailure(action.action_id, error);
-      } finally {
-        endBranchActionRequest(action.action_id);
-      }
-    },
-    [
-      beginBranchActionRequest,
-      client,
-      endBranchActionRequest,
-      navigate,
-      queryClient,
-      refreshBranchActionSurfaces,
-      refreshThreadAfterBranchActionFailure,
-      threadId,
-    ],
-  );
-  const dismissBranchAction = useCallback(
-    async (action: FocusAgentBranchActionProposal) => {
-      if (!beginBranchActionRequest(action.action_id)) {
-        return;
-      }
-      try {
-        const threadState = await client.dismissBranchAction(threadId, action.action_id);
-        queryClient.setQueryData(queryKeys.thread(threadId), threadState);
-        await refreshBranchActionSurfaces(threadState.root_thread_id, threadId);
-      } catch (error) {
-        console.error("Failed to dismiss branch action", error);
-        await refreshThreadAfterBranchActionFailure(action.action_id, error);
-      } finally {
-        endBranchActionRequest(action.action_id);
-      }
-    },
-    [
-      beginBranchActionRequest,
-      client,
-      endBranchActionRequest,
-      queryClient,
-      refreshBranchActionSurfaces,
-      refreshThreadAfterBranchActionFailure,
-      threadId,
-    ],
-  );
-  const hasTranscriptContent = Boolean(
-    transcriptMessages.length ||
-      branchActions.length ||
-      isStreaming ||
-      streamState?.visibleText ||
-      streamState?.reasoningText ||
-      streamState?.toolCalls?.length ||
-      streamState?.toolEvents?.length ||
-      streamState?.failed,
-  );
-  const lastTranscriptMessage = transcriptMessages.at(-1);
-  const streamToolCallCount = streamState?.toolCalls?.length ?? 0;
-  const streamToolEventCount = streamState?.toolEvents?.length ?? 0;
-
-  function isNearBottom(element: HTMLElement) {
-    const distance = element.scrollHeight - element.clientHeight - element.scrollTop;
-    return distance <= 48;
-  }
-
-  function scrollToBottom() {
-    const history = historyRef.current;
-    if (!history) return;
-    history.scrollTop = history.scrollHeight;
-  }
+  const {
+    branchActions,
+    hasTranscriptContent,
+    lastTranscriptMessage,
+    streamToolCallCount,
+    streamToolEventCount,
+    transcriptMessages,
+  } = useThreadTranscriptViewModel({
+    threadState: data,
+    pendingUserMessage,
+    streamState,
+    isStreaming,
+  });
+  const {
+    branchActionErrors,
+    branchActionInFlightId,
+    dismissBranchAction,
+    executeBranchAction,
+  } = useThreadBranchActions(threadId);
+  const { followAndScrollToBottom, historyRef } = useThreadAutoFollow({
+    branchActionCount: branchActions.length,
+    hasTranscriptContent,
+    isStreaming,
+    lastTranscriptMessageContent: lastTranscriptMessage?.content,
+    lastTranscriptMessageId: lastTranscriptMessage?.id,
+    streamFailedMessage: streamState?.failed?.message,
+    streamReasoningText: streamState?.reasoningText,
+    streamToolCallCount,
+    streamToolEventCount,
+    streamVisibleText: streamState?.visibleText,
+    threadId,
+    transcriptMessageCount: transcriptMessages.length,
+  });
 
   useEffect(() => {
     setEditDraft(null);
     setPreviewContextUsage(null);
-    setBranchActionInFlightId(null);
-    setBranchActionErrors({});
-    branchActionInFlightRef.current = null;
   }, [threadId]);
 
   useEffect(() => {
@@ -248,45 +90,6 @@ export function ThreadPage() {
     }
   }, [isMergedReadOnlyThread]);
 
-  useEffect(() => {
-    const history = historyRef.current;
-    if (!history) return;
-
-    const handleScroll = () => {
-      shouldAutoFollowRef.current = isNearBottom(history);
-    };
-
-    handleScroll();
-    history.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      history.removeEventListener("scroll", handleScroll);
-    };
-  }, [threadId]);
-
-  useEffect(() => {
-    shouldAutoFollowRef.current = true;
-  }, [threadId]);
-
-  useLayoutEffect(() => {
-    if (!hasTranscriptContent || !shouldAutoFollowRef.current) {
-      return;
-    }
-    scrollToBottom();
-  }, [
-    threadId,
-    hasTranscriptContent,
-    isStreaming,
-    transcriptMessages.length,
-    lastTranscriptMessage?.id,
-    lastTranscriptMessage?.content,
-    streamState?.visibleText,
-    streamState?.reasoningText,
-    branchActions.length,
-    streamToolCallCount,
-    streamToolEventCount,
-    streamState?.failed?.message,
-  ]);
-
   async function handleSendMessage(
     message: string,
     overrides?: {
@@ -297,8 +100,7 @@ export function ThreadPage() {
     if (isMergedReadOnlyThread) {
       return { ok: false };
     }
-    shouldAutoFollowRef.current = true;
-    scrollToBottom();
+    followAndScrollToBottom();
     return sendMessage(message, overrides);
   }
 

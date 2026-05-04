@@ -1,17 +1,9 @@
 import { Link } from "@tanstack/react-router";
 
-type OverviewMetric = {
-	labelEn: string;
-	labelZh: string;
-	value: string;
-};
-
-type OverviewListItem = {
-	id: string;
-	meta: string;
-	title: string;
-	value: string;
-};
+import type {
+	OverviewListItem,
+	OverviewMetric,
+} from "@/features/trajectory-observability/trajectory-overview-view-model";
 
 interface TrajectoryOverviewDashboardProps {
 	byModel: OverviewListItem[];

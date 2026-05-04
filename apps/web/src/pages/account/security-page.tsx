@@ -54,7 +54,7 @@ export function AccountSecurityPage() {
           <p>账户</p>
           <h1>安全设置</h1>
         </div>
-        <div className="fa-auth-actions">
+        <nav aria-label="账户页面导航" className="fa-account-nav">
           <Link className="fa-route-state-link" to="/auth">
             返回入口
           </Link>
@@ -64,7 +64,7 @@ export function AccountSecurityPage() {
           <Link className="fa-route-state-link" to="/account/sessions">
             会话管理
           </Link>
-        </div>
+        </nav>
 
         {error ? <div className="fa-inline-notice is-danger">{error}</div> : null}
         {message ? <div className="fa-inline-notice is-success">{message}</div> : null}

@@ -10,3 +10,9 @@ export function normalizeAuthReturnTo(value: unknown): string {
 export function appReturnToPath(returnTo: string): string {
   return `/app${returnTo.startsWith("/") ? returnTo : `/${returnTo}`}`;
 }
+
+export function appAuthPath(path: "/login" | "/register" | "" = "", returnTo?: unknown): string {
+  const normalizedReturnTo = normalizeAuthReturnTo(returnTo);
+  const query = new URLSearchParams({ return_to: normalizedReturnTo }).toString();
+  return `/app/auth${path}${query ? `?${query}` : ""}`;
+}

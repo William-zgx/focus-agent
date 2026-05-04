@@ -40,7 +40,7 @@ export function AccountProfilePage() {
             <strong>{(principal?.roles?.length ? principal.roles : user?.roles ?? []).join(", ") || "member"}</strong>
           </div>
         </div>
-        <div className="fa-auth-actions">
+        <nav aria-label="账户页面导航" className="fa-account-nav">
           <Link className="fa-route-state-link" to="/auth">
             返回入口
           </Link>
@@ -50,7 +50,7 @@ export function AccountProfilePage() {
           <Link className="fa-route-state-link" to="/account/sessions">
             会话管理
           </Link>
-        </div>
+        </nav>
       </section>
     </div>
   );

@@ -1,94 +1,67 @@
-import type { FocusAgentCreateUserRequest, FocusAgentUser } from "@focus-agent/web-sdk";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { type FormEvent, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import {
   ADMIN_ROLE_OPTIONS,
   ADMIN_USER_STATUSES,
-  formatAdminDate,
-  formatUserLabel,
-  parseMetadataDraft,
-  splitRoleDraft,
-  statusTone,
 } from "@/features/admin-users/admin-user-utils";
-import { useAdminUsers, useCreateAdminUser } from "@/features/admin-users/use-admin-users";
 
 import {
   AdminAccessGate,
   AdminErrorMessage,
   AdminPageHeading,
 } from "./admin-page-chrome";
-
-function userStatusClass(user: FocusAgentUser) {
-  return `fa-observability-pill is-${statusTone(user.status)}`;
-}
+import {
+  AdminField,
+  AdminFiltersRow,
+  AdminPanelHeader,
+} from "./admin-page-sections";
+import { AdminUsersTable } from "./admin-user-table";
+import { useAdminUserCreateForm } from "./use-admin-user-create-form";
+import { useAdminUsersListState } from "./use-admin-users-list-state";
 
 export function AdminUsersPage() {
   const navigate = useNavigate();
   const { isChineseUi } = useShellUi();
   const locale = isChineseUi ? "zh-CN" : "en-US";
-  const [statusFilter, setStatusFilter] = useState("");
-  const [roleFilter, setRoleFilter] = useState("");
-  const [tenantFilter, setTenantFilter] = useState("");
-  const [queryFilter, setQueryFilter] = useState("");
-  const [newUserId, setNewUserId] = useState("");
-  const [newDisplayName, setNewDisplayName] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newTenantId, setNewTenantId] = useState("");
-  const [newRoles, setNewRoles] = useState("member");
-  const [newMetadata, setNewMetadata] = useState("{}");
-  const [formError, setFormError] = useState<string | null>(null);
-  const filters = useMemo(
-    () => ({
-      status: statusFilter || undefined,
-      role: roleFilter || undefined,
-      tenant_id: tenantFilter.trim() || undefined,
-      query: queryFilter.trim() || undefined,
-      limit: 80,
-      offset: 0,
-    }),
-    [queryFilter, roleFilter, statusFilter, tenantFilter],
-  );
-  const usersQuery = useAdminUsers(filters);
-  const createUser = useCreateAdminUser();
-  const users = usersQuery.data?.items ?? [];
-  const activeCount = users.filter((user) => user.status === "active").length;
-  const adminCount = users.filter((user) => user.roles.includes("admin")).length;
-
-  async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFormError(null);
-    const parsed = parseMetadataDraft(newMetadata);
-    if (parsed.error || !parsed.metadata) {
-      setFormError(parsed.error ?? "Metadata JSON is invalid.");
-      return;
-    }
-    const request: FocusAgentCreateUserRequest = {
-      user_id: newUserId.trim(),
-      display_name: newDisplayName.trim() || undefined,
-      email: newEmail.trim() || undefined,
-      tenant_id: newTenantId.trim() || undefined,
-      status: "active",
-      roles: splitRoleDraft(newRoles),
-      metadata: parsed.metadata,
-    };
-    try {
-      const user = await createUser.mutateAsync(request);
-      setNewUserId("");
-      setNewDisplayName("");
-      setNewEmail("");
-      setNewTenantId("");
-      setNewRoles("member");
-      setNewMetadata("{}");
+  const {
+    activeCount,
+    adminCount,
+    queryFilter,
+    roleFilter,
+    setQueryFilter,
+    setRoleFilter,
+    setStatusFilter,
+    setTenantFilter,
+    statusFilter,
+    tenantFilter,
+    users,
+    usersQuery,
+  } = useAdminUsersListState();
+  const {
+    createUser,
+    formError,
+    handleCreateUser,
+    newDisplayName,
+    newEmail,
+    newMetadata,
+    newRoles,
+    newTenantId,
+    newUserId,
+    setNewDisplayName,
+    setNewEmail,
+    setNewMetadata,
+    setNewRoles,
+    setNewTenantId,
+    setNewUserId,
+  } = useAdminUserCreateForm({
+    onCreated: async (user) => {
       await navigate({
         to: "/admin/users/$userId",
         params: { userId: user.user_id },
       });
-    } catch (error: unknown) {
-      setFormError(error instanceof Error ? error.message : "Failed to create user.");
-    }
-  }
+    },
+  });
 
   return (
     <AdminAccessGate>
@@ -117,139 +90,79 @@ export function AdminUsersPage() {
 
         <section className="fa-admin-grid">
           <div className="fa-admin-panel fa-admin-users-panel">
-            <div className="fa-observability-panel-header">
-              <div>
-                <strong>{isChineseUi ? "Directory" : "Directory"}</strong>
-                <h2>{isChineseUi ? "用户列表" : "Users"}</h2>
-              </div>
-              <span>{usersQuery.isLoading ? "loading" : `${users.length} rows`}</span>
-            </div>
-            <div className="fa-observability-filters fa-admin-filters">
-              <label className="fa-observability-filter">
-                <span>{isChineseUi ? "状态" : "Status"}</span>
+            <AdminPanelHeader
+              eyebrow={isChineseUi ? "Directory" : "Directory"}
+              status={usersQuery.isLoading ? "loading" : `${users.length} rows`}
+              title={isChineseUi ? "用户列表" : "Users"}
+            />
+            <AdminFiltersRow>
+              <AdminField label={isChineseUi ? "状态" : "Status"}>
                 <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                   <option value="">{isChineseUi ? "全部状态" : "All statuses"}</option>
                   {ADMIN_USER_STATUSES.map((status) => (
                     <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
-              </label>
-              <label className="fa-observability-filter">
-                <span>{isChineseUi ? "角色" : "Role"}</span>
+              </AdminField>
+              <AdminField label={isChineseUi ? "角色" : "Role"}>
                 <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
                   <option value="">{isChineseUi ? "全部角色" : "All roles"}</option>
                   {ADMIN_ROLE_OPTIONS.map((role) => (
                     <option key={role} value={role}>{role}</option>
                   ))}
                 </select>
-              </label>
-              <label className="fa-observability-filter">
-                <span>{isChineseUi ? "租户" : "Tenant"}</span>
+              </AdminField>
+              <AdminField label={isChineseUi ? "租户" : "Tenant"}>
                 <input value={tenantFilter} onChange={(event) => setTenantFilter(event.target.value)} />
-              </label>
-              <label className="fa-observability-filter">
-                <span>{isChineseUi ? "搜索" : "Search"}</span>
+              </AdminField>
+              <AdminField label={isChineseUi ? "搜索" : "Search"}>
                 <input value={queryFilter} onChange={(event) => setQueryFilter(event.target.value)} />
-              </label>
-            </div>
+              </AdminField>
+            </AdminFiltersRow>
             {usersQuery.error ? (
               <AdminErrorMessage error={usersQuery.error} fallback="Failed to load users." />
             ) : null}
-            <div className="fa-admin-table-scroll">
-              <table className="fa-admin-table">
-                <thead>
-                  <tr>
-                    <th>{isChineseUi ? "用户" : "User"}</th>
-                    <th>{isChineseUi ? "租户" : "Tenant"}</th>
-                    <th>{isChineseUi ? "状态" : "Status"}</th>
-                    <th>{isChineseUi ? "角色" : "Roles"}</th>
-                    <th>{isChineseUi ? "最近更新" : "Updated"}</th>
-                    <th>{isChineseUi ? "操作" : "Actions"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.user_id}>
-                      <td>
-                        <div className="fa-admin-identity-cell">
-                          <strong>{formatUserLabel(user)}</strong>
-                          <span>{user.email || user.user_id}</span>
-                        </div>
-                      </td>
-                      <td>{user.tenant_id || "-"}</td>
-                      <td><span className={userStatusClass(user)}>{user.status}</span></td>
-                      <td>
-                        <div className="fa-admin-chip-row">
-                          {user.roles.map((role) => <span key={role}>{role}</span>)}
-                        </div>
-                      </td>
-                      <td>{formatAdminDate(user.updated_at ?? user.created_at, locale)}</td>
-                      <td>
-                        <Link
-                          className="fa-admin-row-link"
-                          params={{ userId: user.user_id }}
-                          to="/admin/users/$userId"
-                        >
-                          {isChineseUi ? "管理" : "Manage"}
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                  {!users.length && !usersQuery.isLoading ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="fa-observability-empty is-compact">
-                          {isChineseUi ? "没有匹配的用户。" : "No users match these filters."}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+            <AdminUsersTable
+              isChineseUi={isChineseUi}
+              isLoading={usersQuery.isLoading}
+              locale={locale}
+              users={users}
+            />
           </div>
 
           <form className="fa-admin-panel fa-admin-create-panel" onSubmit={handleCreateUser}>
-            <div className="fa-observability-panel-header">
-              <div>
-                <strong>{isChineseUi ? "Create" : "Create"}</strong>
-                <h2>{isChineseUi ? "新增用户" : "New User"}</h2>
-              </div>
-              <span>{createUser.isPending ? "saving" : "active"}</span>
-            </div>
-            <label className="fa-observability-filter">
-              <span>User ID</span>
+            <AdminPanelHeader
+              eyebrow={isChineseUi ? "Create" : "Create"}
+              status={createUser.isPending ? "saving" : "active"}
+              title={isChineseUi ? "新增用户" : "New User"}
+            />
+            <AdminField label="User ID">
               <input
                 value={newUserId}
                 onChange={(event) => setNewUserId(event.target.value)}
                 required
               />
-            </label>
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "显示名" : "Display name"}</span>
+            </AdminField>
+            <AdminField label={isChineseUi ? "显示名" : "Display name"}>
               <input value={newDisplayName} onChange={(event) => setNewDisplayName(event.target.value)} />
-            </label>
-            <label className="fa-observability-filter">
-              <span>Email</span>
+            </AdminField>
+            <AdminField label="Email">
               <input value={newEmail} onChange={(event) => setNewEmail(event.target.value)} type="email" />
-            </label>
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "租户" : "Tenant"}</span>
+            </AdminField>
+            <AdminField label={isChineseUi ? "租户" : "Tenant"}>
               <input value={newTenantId} onChange={(event) => setNewTenantId(event.target.value)} />
-            </label>
-            <label className="fa-observability-filter">
-              <span>{isChineseUi ? "角色" : "Roles"}</span>
+            </AdminField>
+            <AdminField label={isChineseUi ? "角色" : "Roles"}>
               <input value={newRoles} onChange={(event) => setNewRoles(event.target.value)} />
-            </label>
-            <label className="fa-observability-filter">
-              <span>Metadata JSON</span>
+            </AdminField>
+            <AdminField label="Metadata JSON">
               <textarea
                 value={newMetadata}
                 onChange={(event) => setNewMetadata(event.target.value)}
                 rows={6}
                 spellCheck={false}
               />
-            </label>
+            </AdminField>
             {formError ? <div className="fa-inline-notice is-danger">{formError}</div> : null}
             <div className="fa-observability-command-bar">
               <button

@@ -1,0 +1,286 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  --fa-bg-shell:
+    radial-gradient(
+      circle at top left,
+      rgba(99, 102, 241, 0.24),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(34, 211, 238, 0.14),
+      transparent 26%
+    ),
+    linear-gradient(180deg, #161621 0%, #0d0d12 58%, #0a0a0f 100%);
+  --fa-panel-1: #14141c;
+  --fa-panel-2: #1c1c26;
+  --fa-panel-3: #252530;
+  --fa-panel-4: #2a2a38;
+  --fa-text: #f8fafc;
+  --fa-text-muted: #94a3b8;
+  --fa-text-soft: #64748b;
+  --fa-border: rgba(255, 255, 255, 0.1);
+  --fa-border-subtle: rgba(255, 255, 255, 0.06);
+  --fa-border-strong: rgba(129, 140, 248, 0.28);
+  --fa-accent: #6366f1;
+  --fa-accent-soft: #8b5cf6;
+  --fa-accent-cyan: #22d3ee;
+  --fa-accent-primary-glow: rgba(99, 102, 241, 0.4);
+  --fa-accent-text: color-mix(
+    in srgb,
+    var(--fa-accent) 72%,
+    var(--fa-text) 28%
+  );
+  --fa-accent-text-strong: color-mix(
+    in srgb,
+    var(--fa-accent) 82%,
+    var(--fa-text) 18%
+  );
+  --fa-accent-text-muted: color-mix(
+    in srgb,
+    var(--fa-accent) 30%,
+    var(--fa-text-muted) 70%
+  );
+  --fa-role-system-text: #fda4af;
+  --fa-role-reasoning-text: #e9d5ff;
+  --fa-role-streaming-text: #c7d2fe;
+  --fa-status-success-text: #a7f3d0;
+  --fa-status-warning-text: #fde68a;
+  --fa-status-danger-text: #fecdd3;
+  --fa-status-neutral-text: #cbd5e1;
+  --fa-gradient-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --fa-success: #10b981;
+  --fa-warning: #f59e0b;
+  --fa-danger: #f43f5e;
+  --fa-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  --fa-message-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+  --fa-user-bubble-top: #818cf8;
+  --fa-user-bubble-mid: #7367f5;
+  --fa-user-bubble-bottom: #8b5cf6;
+  --fa-user-bubble-border: rgba(159, 160, 255, 0.34);
+  --fa-user-bubble-glow: rgba(99, 102, 241, 0.3);
+  --fa-user-bubble-text: #f8fbff;
+  --fa-toolbar-shell-bg: linear-gradient(
+    180deg,
+    rgba(37, 37, 48, 0.94),
+    rgba(28, 28, 38, 0.9)
+  );
+  --fa-toolbar-shell-border: color-mix(
+    in srgb,
+    var(--fa-accent) 20%,
+    var(--fa-border) 80%
+  );
+  --fa-toolbar-shell-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  --fa-toolbar-button-bg: linear-gradient(
+    180deg,
+    rgba(37, 37, 48, 0.98),
+    rgba(18, 18, 24, 0.98)
+  );
+  --fa-toolbar-button-hover-bg: linear-gradient(
+    180deg,
+    rgba(44, 44, 58, 0.98),
+    rgba(25, 25, 34, 0.98)
+  );
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --fa-bg-shell:
+    radial-gradient(
+      circle at top left,
+      rgba(99, 102, 241, 0.12),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(34, 211, 238, 0.08),
+      transparent 24%
+    ),
+    linear-gradient(180deg, #fbfbff 0%, #f3f4fb 100%);
+  --fa-panel-1: #ffffff;
+  --fa-panel-2: #f7f7fc;
+  --fa-panel-3: #eef0fa;
+  --fa-panel-4: #e7eaf8;
+  --fa-text: #171a2b;
+  --fa-text-muted: #5e6785;
+  --fa-text-soft: #7a84a3;
+  --fa-border: rgba(76, 88, 125, 0.14);
+  --fa-border-subtle: rgba(76, 88, 125, 0.08);
+  --fa-border-strong: rgba(99, 102, 241, 0.18);
+  --fa-accent-primary-glow: rgba(99, 102, 241, 0.18);
+  --fa-accent-text: color-mix(
+    in srgb,
+    var(--fa-accent) 38%,
+    var(--fa-text) 62%
+  );
+  --fa-accent-text-strong: color-mix(
+    in srgb,
+    var(--fa-accent) 48%,
+    var(--fa-text) 52%
+  );
+  --fa-accent-text-muted: color-mix(
+    in srgb,
+    var(--fa-accent) 18%,
+    var(--fa-text-muted) 82%
+  );
+  --fa-role-system-text: #be123c;
+  --fa-role-reasoning-text: #7e22ce;
+  --fa-role-streaming-text: #4338ca;
+  --fa-status-success-text: #047857;
+  --fa-status-warning-text: #a16207;
+  --fa-status-danger-text: #be123c;
+  --fa-status-neutral-text: #475569;
+  --fa-gradient-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --fa-shadow: 0 10px 30px rgba(55, 68, 106, 0.14);
+  --fa-message-shadow: 0 4px 16px rgba(55, 68, 106, 0.12);
+  --fa-user-bubble-top: #8b7dff;
+  --fa-user-bubble-mid: #6f67f6;
+  --fa-user-bubble-bottom: #4f46e5;
+  --fa-user-bubble-border: rgba(129, 140, 248, 0.34);
+  --fa-user-bubble-glow: rgba(99, 102, 241, 0.28);
+  --fa-toolbar-shell-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(238, 240, 250, 0.96)
+  );
+  --fa-toolbar-shell-border: color-mix(
+    in srgb,
+    var(--fa-accent) 14%,
+    var(--fa-border) 86%
+  );
+  --fa-toolbar-shell-shadow: 0 10px 24px rgba(55, 68, 106, 0.1);
+  --fa-toolbar-button-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(238, 240, 250, 0.96)
+  );
+  --fa-toolbar-button-hover-bg: linear-gradient(
+    180deg,
+    rgba(248, 249, 255, 0.98),
+    rgba(232, 236, 248, 0.98)
+  );
+}
+
+:root[data-accent="white"] {
+  --fa-accent: #e5e7eb;
+  --fa-accent-soft: #f9fafb;
+  --fa-border-strong: rgba(255, 255, 255, 0.28);
+  --fa-user-bubble-top: #f8fafc;
+  --fa-user-bubble-mid: #e5e7eb;
+  --fa-user-bubble-bottom: #cbd5e1;
+  --fa-user-bubble-border: rgba(255, 255, 255, 0.36);
+  --fa-user-bubble-glow: rgba(255, 255, 255, 0.2);
+  --fa-user-bubble-text: #0f172a;
+}
+
+:root[data-accent="blue"] {
+  --fa-accent: #6366f1;
+  --fa-accent-soft: #9aa3ff;
+  --fa-border-strong: rgba(99, 102, 241, 0.22);
+  --fa-user-bubble-top: #8b7dff;
+  --fa-user-bubble-mid: #6f67f6;
+  --fa-user-bubble-bottom: #4f46e5;
+  --fa-user-bubble-border: rgba(129, 140, 248, 0.34);
+  --fa-user-bubble-glow: rgba(99, 102, 241, 0.28);
+}
+
+:root[data-accent="mint"] {
+  --fa-accent: #22d3ee;
+  --fa-accent-soft: #99f6e4;
+  --fa-border-strong: rgba(45, 212, 191, 0.24);
+  --fa-user-bubble-top: #5eead4;
+  --fa-user-bubble-mid: #2dd4bf;
+  --fa-user-bubble-bottom: #0d9488;
+  --fa-user-bubble-border: rgba(153, 246, 228, 0.4);
+  --fa-user-bubble-glow: rgba(34, 211, 238, 0.24);
+}
+
+:root[data-accent="sunset"] {
+  --fa-accent: #fb7185;
+  --fa-accent-soft: #fdba74;
+  --fa-border-strong: rgba(251, 113, 133, 0.24);
+  --fa-user-bubble-top: #fda4af;
+  --fa-user-bubble-mid: #fb7185;
+  --fa-user-bubble-bottom: #ea580c;
+  --fa-user-bubble-border: rgba(253, 164, 175, 0.4);
+  --fa-user-bubble-glow: rgba(251, 113, 133, 0.26);
+}
+
+:root[data-accent="graphite"] {
+  --fa-accent: #94a3b8;
+  --fa-accent-soft: #cbd5e1;
+  --fa-border-strong: rgba(148, 163, 184, 0.24);
+  --fa-user-bubble-top: #94a3b8;
+  --fa-user-bubble-mid: #64748b;
+  --fa-user-bubble-bottom: #475569;
+  --fa-user-bubble-border: rgba(203, 213, 225, 0.34);
+  --fa-user-bubble-glow: rgba(148, 163, 184, 0.22);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--fa-bg-shell);
+  background-attachment: fixed;
+  color: var(--fa-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+select {
+  font: inherit;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 140, 248, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    rgba(129, 140, 248, 0.72),
+    rgba(99, 102, 241, 0.48)
+  );
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

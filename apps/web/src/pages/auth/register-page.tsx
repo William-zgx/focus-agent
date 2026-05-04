@@ -1,13 +1,13 @@
 import { useSearch } from "@tanstack/react-router";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
-import { appReturnToPath, normalizeAuthReturnTo } from "./return-to";
+import { appAuthPath, appReturnToPath, normalizeAuthReturnTo } from "./return-to";
 
 export function RegisterPage() {
   const search = useSearch({ strict: false });
-  const { authError, registerWithPassword } = useFocusAgent();
+  const { authError, principal, registerWithPassword } = useFocusAgent();
   const returnTo = useMemo(() => normalizeAuthReturnTo((search as { return_to?: unknown }).return_to), [search]);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -16,6 +16,11 @@ export function RegisterPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const canSubmit = username.trim() && password && password === confirmPassword && !submitting;
+
+  useEffect(() => {
+    if (!principal) return;
+    window.location.replace(appAuthPath("/login", returnTo));
+  }, [principal, returnTo]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,8 +45,23 @@ export function RegisterPage() {
   }
 
   function handleBackToLogin() {
-    const query = new URLSearchParams({ return_to: returnTo || "/" }).toString();
-    window.location.assign(`/app/auth/login?${query}`);
+    window.location.assign(appAuthPath("/login", returnTo));
+  }
+
+  if (principal) {
+    return (
+      <div className="fa-auth-page">
+        <section className="fa-auth-panel">
+          <div className="fa-auth-header">
+            <p>注册</p>
+            <h1>{principal ? "正在返回账号入口" : "正在检查登录状态"}</h1>
+          </div>
+          <p className="fa-auth-description">
+            {principal ? "当前账号已登录，正在返回登录入口页。" : "确认当前会话后，再决定是否展示注册表单。"}
+          </p>
+        </section>
+      </div>
+    );
   }
 
   return (

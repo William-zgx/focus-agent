@@ -34,7 +34,7 @@ export function AccountSessionsPage() {
           <p>账户</p>
           <h1>会话管理</h1>
         </div>
-        <div className="fa-auth-actions">
+        <nav aria-label="账户页面导航" className="fa-account-nav">
           <Link className="fa-route-state-link" to="/auth">
             返回入口
           </Link>
@@ -44,7 +44,7 @@ export function AccountSessionsPage() {
           <Link className="fa-route-state-link" to="/account/security">
             安全设置
           </Link>
-        </div>
+        </nav>
 
         {sessions.error ? (
           <div className="fa-inline-notice is-danger">

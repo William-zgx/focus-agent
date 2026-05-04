@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useMemo } from "react";
 
-import { useShellUi } from "@/app/shell/shell-ui-context";
+import { ShellUiProvider, useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
@@ -26,12 +26,47 @@ import { LoginPage } from "@/pages/auth/login-page";
 import { RegisterPage } from "@/pages/auth/register-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
-import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { normalizeAuthReturnTo } from "@/pages/auth/return-to";
+import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 function RootLayout() {
+  const navigate = useNavigate();
+  const { principal, ready } = useFocusAgent();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const search = useRouterState({ select: (state) => state.location.searchStr });
   const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+  const returnTo = isAuthRoute ? "/" : normalizeAuthReturnTo(`${pathname}${search}`);
+  const isChineseBrowser =
+    typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
+
+  useEffect(() => {
+    if (isAuthRoute || !ready || principal) return;
+    void navigate({
+      to: "/auth/login",
+      search: { return_to: returnTo },
+      replace: true,
+    });
+  }, [isAuthRoute, navigate, principal, ready, returnTo]);
+
+  if (!isAuthRoute && !ready) {
+    return (
+      <div className="fa-route-state">
+        <div className="fa-route-state-card">
+          {isChineseBrowser ? "正在准备 Focus Agent 会话..." : "Preparing Focus Agent session..."}
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthRoute && !principal) {
+    return (
+      <div className="fa-route-state">
+        <div className="fa-route-state-card">
+          {isChineseBrowser ? "正在跳转到登录页..." : "Redirecting to sign in..."}
+        </div>
+      </div>
+    );
+  }
 
   if (isAuthRoute) {
     return <Outlet />;
@@ -45,7 +80,8 @@ function RootLayout() {
 }
 
 function NotFoundPage() {
-  const { isChineseUi } = useShellUi();
+  const isChineseUi =
+    typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
 
   return (
     <div className="fa-route-state">
@@ -112,6 +148,10 @@ function AuthGate({ children }: { children: ReactNode }) {
   const returnTo = isAuthRoute ? "/" : normalizeAuthReturnTo(`${pathname}${search}`);
 
   useEffect(() => {
+    if (!ready && !isAuthRoute) {
+      return;
+    }
+
     if (ready && !principal && !isAuthRoute) {
       void navigate({
         to: "/auth/login",
@@ -121,7 +161,7 @@ function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [isAuthRoute, navigate, principal, ready, returnTo]);
 
-  if (!ready || !principal) {
+  if (!isAuthRoute && (!ready || !principal)) {
     return (
       <div className="fa-route-state">
         <div className="fa-route-state-card">Redirecting to sign in...</div>
@@ -311,8 +351,32 @@ export function AppRouter() {
   const { ready, principal } = useFocusAgent();
   const isChineseBrowser =
     typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const appPath = pathname.startsWith("/app") ? pathname.slice("/app".length) || "/" : pathname;
+  const isAuthPath = appPath === "/auth" || appPath.startsWith("/auth/");
+  const fallbackShellUiContext = useMemo(
+    () => ({
+      languagePreference: "en" as const,
+      themePreference: "system" as const,
+      colorPreference: "white" as const,
+      setLanguagePreference() {},
+      setThemePreference() {},
+      setColorPreference() {},
+      shellStatus: null,
+      setShellStatus() {},
+      createBranch: async () => {},
+      isCreatingBranch: false,
+      mergeProposalGeneration: {},
+      markMergeProposalPreparing() {},
+      markMergeProposalReady() {},
+      markMergeProposalFailed() {},
+      isMergeProposalPreparing: () => false,
+      getMergeProposalError: () => null,
+    }),
+    [],
+  );
 
-  if (!ready) {
+  if (!isAuthPath && !ready) {
     return (
       <div className="fa-route-state">
         <div className="fa-route-state-card">
@@ -322,5 +386,9 @@ export function AppRouter() {
     );
   }
 
-  return <RouterProvider router={router} context={{ isAuthenticated: Boolean(principal) }} />;
+  return (
+    <ShellUiProvider value={fallbackShellUiContext}>
+      <RouterProvider router={router} context={{ isAuthenticated: Boolean(principal) }} />
+    </ShellUiProvider>
+  );
 }
