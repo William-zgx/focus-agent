@@ -131,9 +131,6 @@ export function ConversationToolbarView({
 						<span className="fa-toolbar-icon" aria-hidden="true">
 							<TokenUsageIcon />
 						</span>
-						<span className="fa-token-count">
-							{activeConversationTokenCount}
-						</span>
 					</button>
 				) : null}
 				<button
