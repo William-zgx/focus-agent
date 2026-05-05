@@ -8,7 +8,10 @@ import {
 } from "@/features/branch-tree/branch-tree-archived-sections";
 import { BranchNodeDetailOverlay } from "@/features/branch-tree/branch-tree-detail-overlay";
 import { BranchTreeGraphCanvas } from "@/features/branch-tree/branch-tree-graph-canvas";
-import { BranchTreeGraphToolbar } from "@/features/branch-tree/branch-tree-graph-toolbar";
+import {
+  BranchTreeCanvasTools,
+  BranchTreeGraphToolbar,
+} from "@/features/branch-tree/branch-tree-graph-toolbar";
 import { useBranchTreeArchivedSections } from "@/features/branch-tree/branch-tree-archived-state";
 import {
   type BranchGraphNode,
@@ -161,19 +164,15 @@ export function BranchTreePanel() {
       <section className="fa-tree-card">
         <BranchTreeGraphToolbar
           archivedBranchCount={data?.archived_branches?.length ?? 0}
-          branchZoom={branchZoom}
           canCreateBranch={Boolean(createBranchTargetThreadId)}
           conversationId={params.conversationId}
           createBranchDisabled={isMergedCreateTarget || isCreatingBranch}
           isChineseUi={isChineseUi}
           isFetching={isFetching}
           isMergedCreateTarget={isMergedCreateTarget}
-          onCenterSelectedNode={() => centerSelectedNode(branchZoomRef.current, "smooth")}
           onCreateBranch={() => void createBranchFromTarget(createBranchTargetThreadId, isMergedCreateTarget)}
           onRefresh={() => void refetch()}
-          onZoomChange={(nextZoom) => updateBranchZoom(nextZoom, "smooth")}
           root={data?.root}
-          selectedThreadId={selectedThreadId}
         />
 
         <div className="fa-tree-panel-body">
@@ -192,6 +191,13 @@ export function BranchTreePanel() {
           </div>
 
           <div className="fa-tree-canvas-shell">
+            <BranchTreeCanvasTools
+              branchZoom={branchZoom}
+              isChineseUi={isChineseUi}
+              onCenterSelectedNode={() => centerSelectedNode(branchZoomRef.current, "smooth")}
+              onZoomChange={(nextZoom) => updateBranchZoom(nextZoom, "smooth")}
+              selectedThreadId={selectedThreadId}
+            />
             <BranchTreeGraphCanvas
               branchZoom={branchZoom}
               detailOverlayRef={detailOverlayRef}
