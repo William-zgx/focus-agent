@@ -134,6 +134,7 @@ def build_graph(
         tools_by_name=tools_by_name,
         tool_runtime_by_name=tool_runtime_by_name,
         tool_result_cache=tool_result_cache,
+        max_parallel_workers=settings.tool_max_parallel_workers,
     )
 
     extract_memories = make_extract_memories_node(effective_memory_extractor)

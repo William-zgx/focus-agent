@@ -1,11 +1,11 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentMemoryCuratorDecisionListResponse,
   FocusAgentMemoryCuratorEvaluateRequest,
   FocusAgentMemoryCuratorEvaluateResponse,
   FocusAgentMemoryCuratorPolicyResponse,
-} from "../types";
+} from "../types.js";
 
 async function getAgentMemoryCuratorPolicy(this: FocusAgentEndpointContext): Promise<FocusAgentMemoryCuratorPolicyResponse> {
   return this.requestJson<FocusAgentMemoryCuratorPolicyResponse>("/v1/agent/memory/curator/policy", {

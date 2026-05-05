@@ -1,7 +1,4 @@
-import {
-	normalizeText,
-	parseJsonValue,
-} from "./message-transcript-normalize";
+import { normalizeText, parseJsonValue } from "./message-transcript-normalize";
 
 export function totalTokensFromUsageMetadata(value: unknown) {
 	if (!value || typeof value !== "object") {

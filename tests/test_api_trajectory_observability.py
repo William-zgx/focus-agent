@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 import pytest
 
+import focus_agent.api.routers.health_metrics as health_metrics_router
 import focus_agent.api.main as api_main
 from focus_agent.api.main import create_app
 from focus_agent.observability.trajectory import TurnTrajectoryRecord
@@ -192,6 +193,9 @@ def _runtime_stub(*, auth_enabled: bool = False, trajectory_recorder=None, traje
             app_environment="staging",
             deployment_name="focus-agent-blue",
             trajectory_enabled=trajectory_enabled,
+            metrics_trajectory_window_hours=24,
+            metrics_cache_ttl_seconds=15,
+            metrics_governance_recent_limit=1000,
         ),
         graph=object(),
         repo=object(),
@@ -199,6 +203,16 @@ def _runtime_stub(*, auth_enabled: bool = False, trajectory_recorder=None, traje
         tool_registry=object(),
         skill_registry=object(),
         trajectory_recorder=trajectory_recorder if trajectory_recorder is not None else _FakeTrajectoryRepo(),
+        background_work=SimpleNamespace(
+            snapshot=lambda: {
+                "queue_depth": 2,
+                "active_workers": 1,
+                "submitted_total": 5,
+                "deduplicated_total": 3,
+                "dropped_total": 0,
+                "failed_total": 1,
+            }
+        ),
     )
 
 
@@ -439,6 +453,48 @@ def test_observability_overview_readyz_and_metrics(monkeypatch: pytest.MonkeyPat
     assert "focus_agent_runtime_ready 1" in metrics_response.text
     assert 'focus_agent_runtime_build_info{version="1.2.3",environment="staging",deployment="focus-agent-blue"} 1' in metrics_response.text
     assert "focus_agent_trajectory_turn_count 1" in metrics_response.text
+    assert "focus_agent_background_queue_depth 2" in metrics_response.text
+    assert "focus_agent_background_worker_active 1" in metrics_response.text
+
+
+def test_metrics_scrape_uses_bounded_governance_query_and_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class _MetricsBoundedRepo(_FakeTrajectoryRepo):
+        def __init__(self):
+            self.stats_queries = []
+            self.list_queries = []
+
+        def get_turn_stats(self, query):
+            self.stats_queries.append(query)
+            return {"overview": {"turn_count": 3}, "by_status": []}
+
+        def list_turns(self, query):
+            self.list_queries.append(query)
+            return []
+
+    health_metrics_router._METRICS_TRAJECTORY_CACHE.clear()
+    _with_stub_frontend(monkeypatch, tmp_path)
+    app = create_app()
+    repo = _MetricsBoundedRepo()
+    runtime = _runtime_stub(trajectory_recorder=repo)
+    runtime.settings.metrics_trajectory_window_hours = 6
+    runtime.settings.metrics_cache_ttl_seconds = 30
+    runtime.settings.metrics_governance_recent_limit = 123
+    app.state.runtime = runtime
+    client = TestClient(app)
+
+    first_response = client.get("/metrics")
+    second_response = client.get("/metrics")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert len(repo.stats_queries) == 1
+    assert len(repo.list_queries) == 1
+    assert repo.stats_queries[0].since is not None
+    assert repo.stats_queries[0].limit is None
+    assert repo.list_queries[0].since is not None
+    assert repo.list_queries[0].limit == 123
 
 
 def test_readyz_returns_503_for_degraded_runtime(

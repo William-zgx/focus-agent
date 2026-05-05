@@ -74,6 +74,8 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
 
     vite_text = (web_root / "vite.config.ts").read_text()
     assert 'base: "/app/"' in vite_text
+    assert 'process.env.API_PORT || "8000"' in vite_text
+    assert '"/v1": apiTarget' in vite_text
 
     index_html_text = (web_root / "index.html").read_text()
     assert 'rel="icon"' in index_html_text
@@ -143,6 +145,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "aria-label={chatNavLabel}" in app_shell_text
     assert "aria-label={agentTeamNavLabel}" in app_shell_text
     assert "aria-label={adminNavLabel}" in app_shell_text
+    assert "!isChatRoute ? (" in app_shell_text
     assert "tooltipProps(adminNavLabel)" in app_shell_text
     assert 'to="/agent-team/$sessionId"' in app_shell_text
     assert "agentTeamRootThreadId" in app_shell_text
@@ -207,7 +210,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     ).read_text()
     assert "fa-agent-team-workspace-shell" in agent_team_text
     assert "fa-agent-team-stage" in agent_team_text
-    assert "并发开发控制台" in agent_team_text
+    assert "Agent Team · Mission Runner" in agent_team_text
     assert "AgentTeamRouteTabs" not in agent_team_text
 
     admin_chrome_text = (web_root / "src" / "pages" / "admin" / "admin-page-chrome.tsx").read_text()
@@ -281,7 +284,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     sdk_index_text = (sdk_root / "index.ts").read_text()
     sdk_reducer_text = (sdk_root / "reducers.ts").read_text()
     sdk_tool_protocol_text = (sdk_root / "toolProtocol.ts").read_text()
-    assert 'export * from "./toolProtocol";' in sdk_index_text
+    assert 'export * from "./toolProtocol.js";' in sdk_index_text
     assert "safeVisibleTextTransition(" in sdk_reducer_text
     assert "safeVisibleText(value)" in sdk_reducer_text
     assert "looksLikeTextualToolCallArtifact" in sdk_tool_protocol_text

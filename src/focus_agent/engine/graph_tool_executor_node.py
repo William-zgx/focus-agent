@@ -27,6 +27,7 @@ def make_tool_executor_node(
     tools_by_name: Mapping[str, Any],
     tool_runtime_by_name: Mapping[str, Any],
     tool_result_cache: ToolResultCacheStore,
+    max_parallel_workers: int = 4,
 ) -> Any:
     def tool_executor(
         state: AgentState,
@@ -135,6 +136,7 @@ def make_tool_executor_node(
             cache_store=tool_result_cache,
             cache_scope_keys=cache_scope_keys,
             invalidation_scope_keys=invalidation_scope_keys,
+            max_parallel_workers=max(1, int(max_parallel_workers or 1)),
         ):
             messages_by_index[result.index] = result.message
         result_messages = [messages_by_index[index] for index in sorted(messages_by_index)]

@@ -1,11 +1,11 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentCapabilityListResponse,
   FocusAgentToolRouteDecisionListResponse,
   FocusAgentToolRouteRequest,
   FocusAgentToolRouteResponse,
-} from "../types";
+} from "../types.js";
 
 async function listAgentCapabilities(this: FocusAgentEndpointContext): Promise<FocusAgentCapabilityListResponse> {
   return this.requestJson<FocusAgentCapabilityListResponse>("/v1/agent/capabilities", {

@@ -1,6 +1,6 @@
-import { reduceStreamEvent, createInitialStreamState } from "../reducers";
-import { applyEndpointMethods } from "./endpoint";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { reduceStreamEvent, createInitialStreamState } from "../reducers.js";
+import { applyEndpointMethods } from "./endpoint.js";
+import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentEvent,
   FocusAgentStreamHandlers,
@@ -8,7 +8,7 @@ import type {
   FocusAgentTurnRequest,
   FocusAgentResumeRequest,
   FocusAgentToolEvent,
-} from "../types";
+} from "../types.js";
 
 async function streamTurn(
   this: FocusAgentEndpointContext,

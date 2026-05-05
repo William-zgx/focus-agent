@@ -36,6 +36,8 @@ interface UseThreadStreamOptions {
   selectedThinkingMode?: string;
 }
 
+const STREAM_STATE_BATCH_MS = 40;
+
 export {
   createOptimisticThreadStreamEntry,
   createThreadStreamEntry,
@@ -78,6 +80,51 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     );
 
     let sendSucceeded = false;
+    let nextState = createInitialStreamState();
+    let pendingStreamState: typeof nextState | null = null;
+    let scheduledFrame: number | null = null;
+    let scheduledTimeout: ReturnType<typeof setTimeout> | null = null;
+    const cancelPendingStreamStateFlush = () => {
+      if (scheduledFrame !== null) {
+        cancelAnimationFrame(scheduledFrame);
+        scheduledFrame = null;
+      }
+      if (scheduledTimeout !== null) {
+        clearTimeout(scheduledTimeout);
+        scheduledTimeout = null;
+      }
+      pendingStreamState = null;
+    };
+    const flushPendingStreamState = () => {
+      if (scheduledFrame !== null) {
+        cancelAnimationFrame(scheduledFrame);
+      }
+      if (scheduledTimeout !== null) {
+        clearTimeout(scheduledTimeout);
+      }
+      scheduledFrame = null;
+      scheduledTimeout = null;
+      const streamState = pendingStreamState;
+      pendingStreamState = null;
+      if (!streamState) return;
+      if (!requestRegistry.isCurrentStreamRequest(requestThreadId, requestId, controller)) {
+        return;
+      }
+      setThreadEntries((current) =>
+        patchThreadEntry(current, requestThreadId, {
+          streamState,
+          isStreaming: true,
+        }),
+      );
+    };
+    const scheduleStreamStateFlush = () => {
+      if (scheduledFrame !== null || scheduledTimeout !== null) return;
+      if (typeof requestAnimationFrame === "function") {
+        scheduledFrame = requestAnimationFrame(flushPendingStreamState);
+        return;
+      }
+      scheduledTimeout = setTimeout(flushPendingStreamState, STREAM_STATE_BATCH_MS);
+    };
     try {
       const requestPayload = {
         thread_id: requestThreadId,
@@ -94,7 +141,6 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         { signal: controller.signal },
       );
 
-      let nextState = createInitialStreamState();
       for await (const event of stream) {
         if (!requestRegistry.isCurrentStreamRequest(requestThreadId, requestId, controller)) {
           break;
@@ -117,23 +163,25 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         if (!requestRegistry.isCurrentStreamRequest(requestThreadId, requestId, controller)) {
           break;
         }
-        setThreadEntries((current) =>
-          patchThreadEntry(current, requestThreadId, {
-            streamState: nextState,
-            isStreaming: true,
-          }),
-        );
+        pendingStreamState = nextState;
+        scheduleStreamStateFlush();
       }
       sendSucceeded = !nextState.failed && !controller.signal.aborted;
     } catch (error) {
       if (isAbortError(error, controller)) {
         sendSucceeded = false;
       } else if (requestRegistry.isCurrentStreamRequest(requestThreadId, requestId, controller)) {
+        cancelPendingStreamStateFlush();
         setThreadEntries((current) =>
           patchThreadEntry(current, requestThreadId, createFailedStreamEntryPatch(error)),
         );
       }
     } finally {
+      if (controller.signal.aborted) {
+        cancelPendingStreamStateFlush();
+      } else {
+        flushPendingStreamState();
+      }
       const isLatestRequest = requestRegistry.completeStreamRequest(requestThreadId, requestId);
       if (isLatestRequest) {
         const cleanup = resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted);

@@ -39,7 +39,9 @@ function BatchPromotionMarkers({
 				>
 					<div>
 						<span>{compactId(item.source_turn_id)}</span>
-						<strong>{item.case_id || (isChineseUi ? "可生成" : "Ready")}</strong>
+						<strong>
+							{item.case_id || (isChineseUi ? "可生成" : "Ready")}
+						</strong>
 					</div>
 					<span>{isChineseUi ? "非写入预览" : "Non-writing preview"}</span>
 				</div>
@@ -137,9 +139,7 @@ export function BatchPromotionResultConsole({
 					) : null}
 				</div>
 				<ActionResultSnippet
-					label={
-						isChineseUi ? "批量 Promote Preview" : "Batch promote-preview"
-					}
+					label={isChineseUi ? "批量 Promote Preview" : "Batch promote-preview"}
 					value={resultJson}
 				/>
 			</ActionDetailsDisclosure>
@@ -169,9 +169,7 @@ export function BatchReplayResultConsole({
 				expanded={expanded}
 				onExpandedChange={onExpandedChange}
 				summary={
-					isChineseUi
-						? "展开批量 Replay 对比详情"
-						: "Show batch replay details"
+					isChineseUi ? "展开批量 Replay 对比详情" : "Show batch replay details"
 				}
 			>
 				<div className="fa-observability-command-bar">

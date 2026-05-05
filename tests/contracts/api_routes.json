@@ -564,12 +564,88 @@
     {
       "method": "GET",
       "operation_id": "list_agent_team_sessions_v1_agent_team_sessions_get",
-      "parameters": [],
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "root_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
       "path": "/v1/agent-team/sessions",
       "request": null,
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamSessionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
         }
       }
     },
@@ -772,6 +848,71 @@
       }
     },
     {
+      "method": "POST",
+      "operation_id": "plan_agent_team_session_v1_agent_team_sessions__session_id__plan_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/plan",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/AgentTeamPlanSessionRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamDispatchResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "run_agent_team_session_v1_agent_team_sessions__session_id__run_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/run",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamSessionViewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
       "method": "GET",
       "operation_id": "list_agent_team_tasks_v1_agent_team_sessions__session_id__tasks_get",
       "parameters": [
@@ -823,6 +964,34 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_team_session_view_v1_agent_team_sessions__session_id__view_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/view",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamSessionViewResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -911,6 +1080,34 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamTaskOutputResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "run_agent_team_task_v1_agent_team_tasks__task_id__run_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}/run",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -4842,16 +5039,26 @@
         },
         "items": {
           "items": {
-            "$ref": "#/components/schemas/AgentTeamTask"
+            "$ref": "#/components/schemas/AgentTeamTaskContract"
           },
           "type": "array"
         },
+        "planning": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamPlanningMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "session": {
-          "$ref": "#/components/schemas/AgentTeamSession"
+          "$ref": "#/components/schemas/AgentTeamSessionContract"
         },
         "tasks": {
           "items": {
-            "$ref": "#/components/schemas/AgentTeamTask"
+            "$ref": "#/components/schemas/AgentTeamTaskContract"
           },
           "type": "array"
         }
@@ -4861,7 +5068,7 @@
       ],
       "type": "object"
     },
-    "AgentTeamMergeBundle": {
+    "AgentTeamMergeBundleContract": {
       "properties": {
         "accepted_tasks": {
           "items": {
@@ -4879,6 +5086,41 @@
           "items": {
             "additionalProperties": true,
             "type": "object"
+          },
+          "type": "array"
+        },
+        "final_answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final_answer_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ready",
+                "placeholder",
+                "blocked",
+                "error"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final_answer_warnings": {
+          "items": {
+            "type": "string"
           },
           "type": "array"
         },
@@ -4912,6 +5154,12 @@
         "session_id": {
           "type": "string"
         },
+        "source_output_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "summary": {
           "type": "string"
         },
@@ -4931,7 +5179,7 @@
     "AgentTeamMergeBundleResponse": {
       "properties": {
         "bundle": {
-          "$ref": "#/components/schemas/AgentTeamMergeBundle"
+          "$ref": "#/components/schemas/AgentTeamMergeBundleContract"
         }
       },
       "required": [
@@ -4999,7 +5247,7 @@
         "merge_bundle": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/AgentTeamMergeBundle"
+              "$ref": "#/components/schemas/AgentTeamMergeBundleContract"
             },
             {
               "type": "null"
@@ -5009,7 +5257,7 @@
         "session": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/AgentTeamSession"
+              "$ref": "#/components/schemas/AgentTeamSessionContract"
             },
             {
               "type": "null"
@@ -5022,6 +5270,157 @@
       ],
       "type": "object"
     },
+    "AgentTeamPlanSessionRequest": {
+      "properties": {
+        "auto_fork_branch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "create_branches": {
+          "default": true,
+          "type": "boolean"
+        },
+        "focus": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "research",
+                "implementation",
+                "verification"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "granularity": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "coarse",
+                "balanced",
+                "detailed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_tasks": {
+          "anyOf": [
+            {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replace_existing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamPlanningMetadata": {
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planner_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_count": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "AgentTeamRecommendedAction": {
       "enum": [
         "merge",
@@ -5031,7 +5430,7 @@
       ],
       "type": "string"
     },
-    "AgentTeamSession": {
+    "AgentTeamSessionContract": {
       "properties": {
         "created_at": {
           "type": "string"
@@ -5055,6 +5454,76 @@
             {
               "additionalProperties": true,
               "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_generated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planner_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planning": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamPlanningMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planning_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planning_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planning_source": {
+          "anyOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"
@@ -5086,6 +5555,7 @@
         "user_id",
         "title",
         "goal",
+        "status",
         "created_at",
         "updated_at"
       ],
@@ -5099,13 +5569,13 @@
         },
         "items": {
           "items": {
-            "$ref": "#/components/schemas/AgentTeamSession"
+            "$ref": "#/components/schemas/AgentTeamSessionContract"
           },
           "type": "array"
         },
         "sessions": {
           "items": {
-            "$ref": "#/components/schemas/AgentTeamSession"
+            "$ref": "#/components/schemas/AgentTeamSessionContract"
           },
           "type": "array"
         }
@@ -5115,7 +5585,7 @@
     "AgentTeamSessionResponse": {
       "properties": {
         "session": {
-          "$ref": "#/components/schemas/AgentTeamSession"
+          "$ref": "#/components/schemas/AgentTeamSessionContract"
         }
       },
       "required": [
@@ -5135,8 +5605,74 @@
       ],
       "type": "string"
     },
-    "AgentTeamTask": {
+    "AgentTeamSessionViewResponse": {
       "properties": {
+        "artifacts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTaskContract"
+          },
+          "type": "array"
+        },
+        "merge_bundle": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamMergeBundleContract"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputs": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTaskOutput"
+          },
+          "type": "array"
+        },
+        "planning": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamPlanningMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session": {
+          "$ref": "#/components/schemas/AgentTeamSessionContract"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTaskContract"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "type": "object"
+    },
+    "AgentTeamTaskContract": {
+      "properties": {
+        "acceptance_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "agent_run_id": {
           "anyOf": [
             {
@@ -5179,6 +5715,13 @@
             }
           ]
         },
+        "context_refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
         "created_at": {
           "type": "string"
         },
@@ -5208,14 +5751,54 @@
             }
           ]
         },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "goal": {
           "type": "string"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "output_artifact_ids": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "plan_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planning_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "risk_notes": {
           "items": {
@@ -5226,6 +5809,16 @@
         "role": {
           "$ref": "#/components/schemas/AgentTeamTaskRole"
         },
+        "run_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "scope": {
           "items": {
             "type": "string"
@@ -5235,11 +5828,51 @@
         "session_id": {
           "type": "string"
         },
+        "sort_order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "status": {
           "$ref": "#/components/schemas/AgentTeamTaskStatus"
         },
         "task_id": {
           "type": "string"
+        },
+        "task_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "updated_at": {
           "type": "string"
@@ -5260,6 +5893,7 @@
         "session_id",
         "role",
         "goal",
+        "status",
         "created_at",
         "updated_at"
       ],
@@ -5273,13 +5907,13 @@
         },
         "items": {
           "items": {
-            "$ref": "#/components/schemas/AgentTeamTask"
+            "$ref": "#/components/schemas/AgentTeamTaskContract"
           },
           "type": "array"
         },
         "tasks": {
           "items": {
-            "$ref": "#/components/schemas/AgentTeamTask"
+            "$ref": "#/components/schemas/AgentTeamTaskContract"
           },
           "type": "array"
         }
@@ -5352,7 +5986,7 @@
         "task": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/AgentTeamTask"
+              "$ref": "#/components/schemas/AgentTeamTaskContract"
             },
             {
               "type": "null"
@@ -5368,7 +6002,7 @@
     "AgentTeamTaskResponse": {
       "properties": {
         "task": {
-          "$ref": "#/components/schemas/AgentTeamTask"
+          "$ref": "#/components/schemas/AgentTeamTaskContract"
         }
       },
       "required": [
@@ -6444,6 +7078,12 @@
     },
     "CreateAgentTeamTaskRequest": {
       "properties": {
+        "acceptance_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "auto_fork_branch": {
           "anyOf": [
             {
@@ -6483,6 +7123,13 @@
               "type": "null"
             }
           ]
+        },
+        "context_refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         },
         "create_branch": {
           "default": true,
@@ -9331,6 +9978,19 @@
     },
     "UpdateAgentTeamTaskRequest": {
       "properties": {
+        "acceptance_criteria": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "branch_id": {
           "anyOf": [
             {
@@ -9364,6 +10024,20 @@
             }
           ]
         },
+        "context_refs": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "dependencies": {
           "anyOf": [
             {
@@ -9377,7 +10051,27 @@
             }
           ]
         },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "goal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_error": {
           "anyOf": [
             {
               "type": "string"
@@ -9413,6 +10107,16 @@
             }
           ]
         },
+        "run_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "scope": {
           "anyOf": [
             {
@@ -9420,6 +10124,16 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"

@@ -69,7 +69,10 @@ export function tokenUsageLabel(totalTokens: number, isChineseUi: boolean) {
 		: `Reply · ${formatTokenCount(totalTokens)} tokens`;
 }
 
-export function toolEventLabel(event: FocusAgentToolEvent, isChineseUi: boolean) {
+export function toolEventLabel(
+	event: FocusAgentToolEvent,
+	isChineseUi: boolean,
+) {
 	const toolName = String(
 		event.data.tool_name || event.data.event || "tool",
 	).trim();
@@ -175,7 +178,10 @@ export function toolLabel(isChineseUi: boolean) {
 	return isChineseUi ? "工具" : "Tool";
 }
 
-export function processingStepsSummaryLabel(count: number, isChineseUi: boolean) {
+export function processingStepsSummaryLabel(
+	count: number,
+	isChineseUi: boolean,
+) {
 	if (isChineseUi) {
 		return `处理步骤（${count}）`;
 	}

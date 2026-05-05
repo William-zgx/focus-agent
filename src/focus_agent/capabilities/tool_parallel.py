@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import atexit
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
+import threading
 
 from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, cache_key
@@ -16,6 +18,30 @@ ExecuteSingle = Callable[
     [ToolExecutionInput, ContextBudget, ToolResultCacheStore | None, str | None, int | None],
     ToolExecutionResult,
 ]
+
+_parallel_executor_lock = threading.Lock()
+_parallel_executors: dict[int, ThreadPoolExecutor] = {}
+
+
+def _parallel_executor(max_workers: int) -> ThreadPoolExecutor:
+    workers = max(1, int(max_workers or 1))
+    with _parallel_executor_lock:
+        executor = _parallel_executors.get(workers)
+        if executor is None:
+            executor = ThreadPoolExecutor(
+                max_workers=workers,
+                thread_name_prefix="focus-agent-tool",
+            )
+            _parallel_executors[workers] = executor
+        return executor
+
+
+def _shutdown_parallel_executors() -> None:
+    for executor in list(_parallel_executors.values()):
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+atexit.register(_shutdown_parallel_executors)
 
 
 def classify_tool_parallel_execution(runtime: ToolRuntimeMeta) -> ToolParallelClassification:
@@ -78,21 +104,21 @@ def run_parallel_batch(
             representative_by_cache_key[item_cache_key] = item
 
     workers = max(1, min(len(unique_calls), max_parallel_workers))
+    pool = _parallel_executor(workers)
     futures = []
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="focus-agent-tool") as pool:
-        for item in unique_calls:
-            ctx = copy_context()
-            futures.append(
-                pool.submit(
-                    ctx.run,
-                    execute_single,
-                    item,
-                    context_budget,
-                    cache_store,
-                    cache_scope_keys.get(item.index),
-                    len(tool_calls),
-                )
+    for item in unique_calls:
+        ctx = copy_context()
+        futures.append(
+            pool.submit(
+                ctx.run,
+                execute_single,
+                item,
+                context_budget,
+                cache_store,
+                cache_scope_keys.get(item.index),
+                len(tool_calls),
             )
+        )
     results = [future.result() for future in futures]
     results_by_index = {result.index: result for result in results}
     for representative in unique_calls:

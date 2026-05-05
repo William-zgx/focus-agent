@@ -35,7 +35,7 @@ class _MemoryStore:
 
 class _DecisionRepo:
     def list_turns(self, query):
-        assert query.limit in {50, None}
+        assert query.limit in {50, 1000, None}
         return [
             {
                 "id": "turn-1",

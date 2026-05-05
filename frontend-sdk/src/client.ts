@@ -1,13 +1,13 @@
-import { FocusAgentTransport, iterValidatedSSEEvents } from "./transport";
-import { applyAdminEndpoints, type AdminEndpoints } from "./client/admin";
-import { applyAgentGovernanceEndpoints, type AgentGovernanceEndpoints } from "./client/agent-governance";
-import { applyAgentTeamEndpoints, type AgentTeamEndpoints } from "./client/agent-team";
-import { applyAuthEndpoints, type AuthEndpoints } from "./client/auth";
-import { applyObservabilityEndpoints, type ObservabilityEndpoints } from "./client/observability";
-import { dedupeAndCanonicalizeAliasEvents } from "./client/stream";
-import { applyStreamingEndpoints, type StreamingEndpoints } from "./client/streaming";
-import { applyThreadBranchEndpoints, type ThreadBranchEndpoints } from "./client/thread-branch";
-import type { FocusAgentEvent } from "./types";
+import { FocusAgentTransport, iterValidatedSSEEvents } from "./transport.js";
+import { applyAdminEndpoints, type AdminEndpoints } from "./client/admin.js";
+import { applyAgentGovernanceEndpoints, type AgentGovernanceEndpoints } from "./client/agent-governance.js";
+import { applyAgentTeamEndpoints, type AgentTeamEndpoints } from "./client/agent-team.js";
+import { applyAuthEndpoints, type AuthEndpoints } from "./client/auth.js";
+import { applyObservabilityEndpoints, type ObservabilityEndpoints } from "./client/observability.js";
+import { dedupeAndCanonicalizeAliasEvents } from "./client/stream.js";
+import { applyStreamingEndpoints, type StreamingEndpoints } from "./client/streaming.js";
+import { applyThreadBranchEndpoints, type ThreadBranchEndpoints } from "./client/thread-branch.js";
+import type { FocusAgentEvent } from "./types.js";
 
 export interface FocusAgentClientOptions {
   baseUrl: string;
@@ -16,7 +16,7 @@ export interface FocusAgentClientOptions {
   fetchImpl?: typeof fetch;
 }
 
-export { FocusAgentRequestError } from "./errors";
+export { FocusAgentRequestError } from "./errors.js";
 
 export interface FocusAgentClient
   extends AuthEndpoints,

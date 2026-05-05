@@ -113,6 +113,12 @@ class Settings:
     rate_limit_enabled: bool = False
     rate_limit_per_minute: int = 60
     rate_limit_chat_per_minute: int = 20
+    metrics_trajectory_window_hours: int = 24
+    metrics_cache_ttl_seconds: int = 15
+    metrics_governance_recent_limit: int = 1000
+    tool_max_parallel_workers: int = 4
+    background_worker_max_concurrency: int = 2
+    background_queue_max_size: int = 1000
     local_checkpoint_path: str | None = None
     local_store_path: str | None = None
     branch_max_depth: int = 5

@@ -39,10 +39,27 @@ class AgentTeamSessionTaskMixin:
             self.repository.create_session(session)
         return session
 
-    def list_sessions(self, *, user_id: str | None = None) -> list[AgentTeamSession]:
+    def list_sessions(
+        self,
+        *,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+        status: AgentTeamSessionStatus | str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[AgentTeamSession]:
         with self._lock:
             sessions = self.repository.list_sessions(user_id=user_id)
-        return sorted(sessions, key=lambda item: item.created_at, reverse=True)
+        if root_thread_id is not None:
+            sessions = [session for session in sessions if session.root_thread_id == root_thread_id]
+        if status is not None:
+            status_value = AgentTeamSessionStatus(status)
+            sessions = [session for session in sessions if session.status == status_value]
+        sessions = sorted(sessions, key=lambda item: item.created_at, reverse=True)
+        start = max(0, int(offset or 0))
+        if limit is None:
+            return sessions[start:]
+        return sessions[start : start + max(0, int(limit))]
 
     def get_session(self, session_id: str, *, user_id: str | None = None) -> AgentTeamSession:
         with self._lock:
@@ -58,8 +75,15 @@ class AgentTeamSessionTaskMixin:
         user_id: str,
         role: AgentTeamTaskRole | str,
         goal: str,
+        title: str | None = None,
         scope: list[str] | None = None,
         dependencies: list[str] | None = None,
+        acceptance_criteria: list[str] | None = None,
+        planning_rationale: str | None = None,
+        sort_order: int | None = None,
+        task_type: str | None = None,
+        plan_source: str | None = None,
+        context_refs: list[dict] | None = None,
         create_branch: bool = True,
         branch_name: str | None = None,
         parent_thread_id: str | None = None,
@@ -87,9 +111,16 @@ class AgentTeamSessionTaskMixin:
             branch_id=branch_id,
             child_thread_id=child_thread_id,
             role=role_value,
+            title=title,
             goal=goal,
             scope=list(scope or []),
             dependencies=list(dependencies or []),
+            acceptance_criteria=list(acceptance_criteria or []),
+            planning_rationale=planning_rationale,
+            sort_order=sort_order,
+            task_type=task_type,
+            plan_source=plan_source,
+            context_refs=[dict(item) for item in context_refs or [] if isinstance(item, dict)],
             created_at=now,
             updated_at=now,
         )
@@ -102,7 +133,14 @@ class AgentTeamSessionTaskMixin:
         self.get_session(session_id, user_id=user_id)
         with self._lock:
             tasks = self.repository.list_tasks(session_id=session_id)
-        return sorted(tasks, key=lambda item: item.created_at)
+        return sorted(
+            tasks,
+            key=lambda item: (
+                item.sort_order is None,
+                item.sort_order if item.sort_order is not None else 0,
+                item.created_at,
+            ),
+        )
 
     def get_task(self, task_id: str, *, user_id: str | None = None) -> AgentTeamTask:
         with self._lock:
@@ -119,10 +157,18 @@ class AgentTeamSessionTaskMixin:
         changed_files: list[str] | None = None,
         verification_summary: str | None = None,
         risk_notes: list[str] | None = None,
+        acceptance_criteria: list[str] | None = None,
+        context_refs: list[dict] | None = None,
+        dependencies: list[str] | None = None,
+        scope: list[str] | None = None,
         agent_run_id: str | None = None,
         delegated_task_id: str | None = None,
         artifact_ids: list[str] | None = None,
         execution_status: str | None = None,
+        run_status: str | None = None,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+        last_error: str | None = None,
     ) -> AgentTeamTask:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
@@ -135,6 +181,16 @@ class AgentTeamSessionTaskMixin:
                 updates["verification_summary"] = verification_summary
             if risk_notes is not None:
                 updates["risk_notes"] = _dedupe([*task.risk_notes, *risk_notes])
+            if acceptance_criteria is not None:
+                updates["acceptance_criteria"] = list(acceptance_criteria)
+            if context_refs is not None:
+                updates["context_refs"] = [
+                    dict(item) for item in context_refs if isinstance(item, dict)
+                ]
+            if dependencies is not None:
+                updates["dependencies"] = list(dependencies)
+            if scope is not None:
+                updates["scope"] = list(scope)
             if agent_run_id is not None:
                 updates["agent_run_id"] = agent_run_id
             if delegated_task_id is not None:
@@ -143,6 +199,14 @@ class AgentTeamSessionTaskMixin:
                 updates["artifact_ids"] = _dedupe([*task.artifact_ids, *artifact_ids])
             if execution_status is not None:
                 updates["execution_status"] = execution_status
+            if run_status is not None:
+                updates["run_status"] = run_status
+            if started_at is not None:
+                updates["started_at"] = started_at
+            if finished_at is not None:
+                updates["finished_at"] = finished_at
+            if last_error is not None:
+                updates["last_error"] = last_error
             updated = task.model_copy(update=updates)
             self.repository.save_task(updated)
             self._refresh_session_status(updated.session_id)

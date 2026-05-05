@@ -1,11 +1,11 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentDelegationPlanRequest,
   FocusAgentDelegationPlanResponse,
   FocusAgentDelegationPolicyResponse,
   FocusAgentDelegationRunListResponse,
-} from "../types";
+} from "../types.js";
 
 async function getAgentDelegationPolicy(this: FocusAgentEndpointContext): Promise<FocusAgentDelegationPolicyResponse> {
   return this.requestJson<FocusAgentDelegationPolicyResponse>("/v1/agent/delegation/policy", {

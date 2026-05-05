@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 from focus_agent.core.agent_team import (
+    AgentTeamFinalAnswerStatus,
     AgentTeamMergeBundle,
     AgentTeamMergeDecision,
     AgentTeamRecommendedAction,
@@ -10,10 +12,18 @@ from focus_agent.core.agent_team import (
     AgentTeamSessionStatus,
     AgentTeamTask,
     AgentTeamTaskOutput,
+    AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
 
 from .agent_team_helpers import _dedupe, _now
+
+
+_REVIEW_EVIDENCE_ROLES = {
+    "reviewer",
+    "test_engineer",
+    "verifier",
+}
 
 
 class AgentTeamMergeMixin:
@@ -40,11 +50,24 @@ class AgentTeamMergeMixin:
         risk_items = _dedupe(
             [note for task in tasks for note in task.risk_notes]
             + [note for output in outputs for note in output.risk_notes]
+            + _planning_risk_notes(session=session, outputs=outputs)
         )
         test_evidence = _dedupe(
             [task.verification_summary or "" for task in tasks]
             + [evidence for output in outputs for evidence in output.test_evidence]
+            + _metadata_values(outputs, "test_evidence", "verification_evidence", "tests")
         )
+        execution_evidence = self._execution_evidence(tasks, outputs)
+        has_review_evidence = _has_review_or_verification_evidence(
+            tasks=tasks,
+            outputs=outputs,
+        )
+        if not has_review_evidence:
+            missing_evidence_note = (
+                "Missing review/verification evidence: add reviewer, verifier, or test "
+                "evidence before merge."
+            )
+            risk_items = _dedupe([*risk_items, missing_evidence_note])
         key_findings = _dedupe(output.summary for output in outputs if output.summary)
         changed_files = _dedupe(
             [path for task in tasks for path in task.changed_files]
@@ -56,6 +79,11 @@ class AgentTeamMergeMixin:
                 f"Pending {task.role.value}: {self._compact_task_goal(task.goal)}"
                 for task in pending
             ]
+            + (
+                ["Collect review/verification evidence before merge."]
+                if not has_review_evidence
+                else []
+            )
         )
         recommended = self._recommended_action(
             accepted_count=len(accepted),
@@ -64,15 +92,28 @@ class AgentTeamMergeMixin:
             blocked_count=len(blocked),
             risk_count=len(risk_items),
         )
+        final_answer = _build_final_answer(
+            session=session,
+            tasks=tasks,
+            outputs=outputs,
+            open_questions=open_questions,
+            risk_items=risk_items,
+        )
+        if final_answer["status"] == AgentTeamFinalAnswerStatus.PLACEHOLDER:
+            recommended = AgentTeamRecommendedAction.REQUEST_CHANGES
         bundle = AgentTeamMergeBundle(
             session_id=session_id,
             summary=self._bundle_summary(session=session, tasks=tasks, key_findings=key_findings),
+            final_answer=str(final_answer["answer"]),
+            final_answer_status=final_answer["status"],
+            final_answer_warnings=list(final_answer["warnings"]),
+            source_output_ids=list(final_answer["source_output_ids"]),
             accepted_tasks=accepted,
             rejected_tasks=rejected,
             key_findings=key_findings,
             changed_files=changed_files,
             test_evidence=test_evidence,
-            execution_evidence=self._execution_evidence(tasks, outputs),
+            execution_evidence=execution_evidence,
             open_questions=open_questions,
             risk_items=risk_items,
             recommended_next_action=recommended,
@@ -215,6 +256,249 @@ class AgentTeamMergeMixin:
         if key_findings:
             return f"{headline} Top finding: {key_findings[0]}"
         return headline
+
+
+def _has_review_or_verification_evidence(
+    *,
+    tasks: list[AgentTeamTask],
+    outputs: list[AgentTeamTaskOutput],
+) -> bool:
+    task_by_id = {task.task_id: task for task in tasks}
+    for output in outputs:
+        task = task_by_id.get(output.task_id)
+        role = task.role.value if task is not None else ""
+        if _explicit_verification_evidence(
+            [
+                *output.test_evidence,
+                *_values_for_keys(
+                    output.metadata, "test_evidence", "verification_evidence", "tests"
+                ),
+            ]
+        ):
+            return True
+        if role not in _REVIEW_EVIDENCE_ROLES and output.kind.value not in {
+            "review_report",
+            "test_report",
+        }:
+            continue
+        if output.summary or output.artifact_id or output.metadata:
+            return True
+    return any(
+        task.role.value in _REVIEW_EVIDENCE_ROLES and bool(task.verification_summary)
+        for task in tasks
+    )
+
+
+def _build_final_answer(
+    *,
+    session: AgentTeamSession,
+    tasks: list[AgentTeamTask],
+    outputs: list[AgentTeamTaskOutput],
+    open_questions: list[str],
+    risk_items: list[str],
+) -> dict[str, object]:
+    source_output_ids = _dedupe(output.output_id for output in outputs if output.output_id)
+    if not outputs:
+        return {
+            "status": AgentTeamFinalAnswerStatus.BLOCKED,
+            "answer": (
+                f"Agent Team 尚未产生可汇总的任务回传，无法回答：{session.goal}"
+            ),
+            "warnings": ["No task outputs are available for final answer synthesis."],
+            "source_output_ids": source_output_ids,
+        }
+
+    if _has_fake_outputs(outputs):
+        return {
+            "status": AgentTeamFinalAnswerStatus.PLACEHOLDER,
+            "answer": (
+                "当前是模拟执行，只验证了 Agent Team 的拆解、运行和回传流程，"
+                f"没有生成可交付的真实答案。请使用真实模型执行后再生成最终答案。\n\n目标：{session.goal}"
+            ),
+            "warnings": [
+                "Current mission outputs were produced by fake execution mode.",
+                "Fake execution validates workflow only; it must not be treated as a deliverable final answer.",
+            ],
+            "source_output_ids": source_output_ids,
+        }
+
+    if not _has_executor_or_writer_output(tasks=tasks, outputs=outputs):
+        return {
+            "status": AgentTeamFinalAnswerStatus.BLOCKED,
+            "answer": (
+                "Agent Team 已有部分任务回传，但缺少执行/撰写任务产出，"
+                f"暂时无法形成面向用户目标的最终答案。\n\n目标：{session.goal}"
+            ),
+            "warnings": ["Missing executor or writer output for final answer synthesis."],
+            "source_output_ids": source_output_ids,
+        }
+
+    body_items = _final_answer_content_items(outputs)
+    if not body_items:
+        return {
+            "status": AgentTeamFinalAnswerStatus.BLOCKED,
+            "answer": (
+                "Agent Team 已完成任务，但回传内容为空，无法形成最终答案。"
+                f"\n\n目标：{session.goal}"
+            ),
+            "warnings": ["Task outputs did not include summary, raw_text, or parsed content."],
+            "source_output_ids": source_output_ids,
+        }
+
+    warnings = _dedupe([*risk_items, *open_questions])
+    sections = [
+        f"目标：{session.goal}",
+        "Agent Team 最终答案：",
+        *[f"{index}. {item}" for index, item in enumerate(body_items, start=1)],
+    ]
+    if warnings:
+        sections.extend(["需要注意：", *[f"- {item}" for item in warnings]])
+    return {
+        "status": AgentTeamFinalAnswerStatus.READY,
+        "answer": "\n".join(sections),
+        "warnings": warnings,
+        "source_output_ids": source_output_ids,
+    }
+
+
+def _has_fake_outputs(outputs: list[AgentTeamTaskOutput]) -> bool:
+    for output in outputs:
+        execution = output.metadata.get("execution")
+        execution_mode = execution.get("execution_mode") if isinstance(execution, dict) else None
+        if str(execution_mode or "").strip().lower() == "fake":
+            return True
+        run = output.metadata.get("run")
+        run_execution_mode = run.get("execution_mode") if isinstance(run, dict) else None
+        if str(run_execution_mode or "").strip().lower() == "fake":
+            return True
+        if str(output.metadata.get("execution_mode") or "").strip().lower() == "fake":
+            return True
+        if output.summary.strip().lower().startswith("fake delegated"):
+            return True
+    return False
+
+
+def _has_executor_or_writer_output(
+    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
+) -> bool:
+    task_by_id = {task.task_id: task for task in tasks}
+    for output in outputs:
+        task = task_by_id.get(output.task_id)
+        if task is None:
+            continue
+        if task.role in {
+            AgentTeamTaskRole.BACKEND_EXECUTOR,
+            AgentTeamTaskRole.FRONTEND_EXECUTOR,
+            AgentTeamTaskRole.WRITER,
+        }:
+            return True
+    return False
+
+
+def _final_answer_content_items(outputs: list[AgentTeamTaskOutput]) -> list[str]:
+    items: list[str] = []
+    for output in outputs:
+        items.extend(_artifact_payload_values(output.metadata))
+        if output.summary:
+            items.append(output.summary)
+    return _dedupe(item.strip() for item in items if item and item.strip())
+
+
+def _artifact_payload_values(metadata: dict[str, object]) -> list[str]:
+    values: list[str] = []
+    direct_payload = metadata.get("payload")
+    if isinstance(direct_payload, dict):
+        values.extend(_payload_values(direct_payload))
+    artifacts = metadata.get("artifacts")
+    if not isinstance(artifacts, list):
+        return values
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        payload = artifact.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        values.extend(_payload_values(payload))
+    return values
+
+
+def _payload_values(payload: dict[str, object]) -> list[str]:
+    values: list[str] = []
+    raw_text = payload.get("raw_text")
+    if isinstance(raw_text, str) and raw_text.strip():
+        values.append(raw_text)
+    parsed = payload.get("parsed")
+    if isinstance(parsed, dict):
+        extracted = False
+        for key in ("summary", "final_answer", "answer", "findings"):
+            raw = parsed.get(key)
+            if isinstance(raw, str) and raw.strip():
+                values.append(raw)
+                extracted = True
+            elif isinstance(raw, list):
+                values.extend(str(item) for item in raw if item)
+                extracted = True
+        if not extracted:
+            values.append(json.dumps(parsed, ensure_ascii=False, sort_keys=True))
+    elif isinstance(parsed, list):
+        values.extend(str(item) for item in parsed if item)
+    elif isinstance(parsed, str) and parsed.strip():
+        values.append(parsed)
+    return values
+
+
+def _explicit_verification_evidence(values: list[str]) -> bool:
+    return any(value.strip() and not value.strip().startswith("delegated ") for value in values)
+
+
+def _planning_risk_notes(
+    *, session: AgentTeamSession, outputs: list[AgentTeamTaskOutput]
+) -> list[str]:
+    values: list[str] = []
+    latest_bundle = session.latest_merge_bundle or {}
+    if isinstance(latest_bundle, dict):
+        values.extend(_values_for_keys(latest_bundle, "risk_items", "risk_notes", "risks"))
+        values.extend(_values_for_keys(latest_bundle, "open_questions"))
+    for output in outputs:
+        values.extend(
+            _values_for_keys(
+                output.metadata,
+                "risk_items",
+                "risk_notes",
+                "risks",
+                "open_risks",
+            )
+        )
+        planning = output.metadata.get("planning")
+        if isinstance(planning, dict):
+            values.extend(
+                _values_for_keys(
+                    planning,
+                    "risk_items",
+                    "risk_notes",
+                    "risks",
+                    "open_risks",
+                )
+            )
+    return _dedupe(values)
+
+
+def _metadata_values(outputs: list[AgentTeamTaskOutput], *keys: str) -> list[str]:
+    values: list[str] = []
+    for output in outputs:
+        values.extend(_values_for_keys(output.metadata, *keys))
+    return _dedupe(values)
+
+
+def _values_for_keys(payload: dict[str, object], *keys: str) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        raw = payload.get(key)
+        if isinstance(raw, str):
+            values.append(raw)
+        elif isinstance(raw, list):
+            values.extend(str(item) for item in raw if item)
+    return values
 
 
 __all__ = ["AgentTeamMergeMixin"]

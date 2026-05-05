@@ -72,9 +72,13 @@ function TimelineEvidenceRow({
 				</div>
 				{selectedStep.runtime ? (
 					<div className="fa-observability-step-runtime">
-						{runtimeProvider ? <span>{`Provider · ${runtimeProvider}`}</span> : null}
+						{runtimeProvider ? (
+							<span>{`Provider · ${runtimeProvider}`}</span>
+						) : null}
 						{runtimeModel ? <span>{`Model · ${runtimeModel}`}</span> : null}
-						{runtimeRequest ? <span>{`Request · ${runtimeRequest}`}</span> : null}
+						{runtimeRequest ? (
+							<span>{`Request · ${runtimeRequest}`}</span>
+						) : null}
 						{runtimeTrace ? <span>{`Trace · ${runtimeTrace}`}</span> : null}
 					</div>
 				) : null}
@@ -163,7 +167,9 @@ export function ZeroStepEvidence({
 					</h3>
 					<p>{resultSummary || compactSnippet(selected.answer, 360) || "—"}</p>
 					<details className="fa-observability-raw-toggle">
-						<summary>{isChineseUi ? "查看原始结果" : "View raw output"}</summary>
+						<summary>
+							{isChineseUi ? "查看原始结果" : "View raw output"}
+						</summary>
 						<pre>
 							{JSON.stringify(
 								{ answer: selected.answer, error: selected.error },

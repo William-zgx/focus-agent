@@ -7,7 +7,9 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "lint": "pnpm dlx @biomejs/biome@2.2.4 lint src/entities src/features/trajectory-observability",
-    "format": "pnpm dlx @biomejs/biome@2.2.4 format --write src/entities src/features/trajectory-observability",
+    "format": "pnpm run format:write",
+    "format:write": "pnpm dlx @biomejs/biome@2.2.4 format --write src/entities src/features/trajectory-observability",
+    "format:check": "pnpm dlx @biomejs/biome@2.2.4 format src/entities src/features/trajectory-observability",
     "smoke:observability": "node ./scripts/observability-smoke.mjs",
     "preview": "vite preview"
   },

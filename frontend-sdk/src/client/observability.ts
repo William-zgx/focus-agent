@@ -1,6 +1,6 @@
-import { buildTrajectoryQueryString } from "./query";
-import { applyEndpointMethods } from "./endpoint";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { buildTrajectoryQueryString } from "./query.js";
+import { applyEndpointMethods } from "./endpoint.js";
+import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentObservabilityOverviewRequest,
   FocusAgentObservabilityOverviewResponse,
@@ -17,7 +17,7 @@ import type {
   FocusAgentTrajectoryReplayResponse,
   FocusAgentTrajectoryStatsRequest,
   FocusAgentTrajectoryStatsResponse,
-} from "../types";
+} from "../types.js";
 
 async function listTrajectoryTurns(
   this: FocusAgentEndpointContext,

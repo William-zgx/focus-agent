@@ -1,4 +1,4 @@
-import type { FocusAgentEvent, FocusAgentEventName, FocusAgentEventPayload } from "./types";
+import type { FocusAgentEvent, FocusAgentEventName, FocusAgentEventPayload } from "./types.js";
 
 const KNOWN_EVENT_NAMES = new Set<FocusAgentEventName>([
   "turn.status",

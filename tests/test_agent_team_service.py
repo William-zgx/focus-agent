@@ -3,7 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from focus_agent.agent_roles import AgentRole
+from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
+    AgentTeamMergeBundle,
     AgentTeamSessionStatus,
     AgentTeamTask,
     AgentTeamTaskRole,
@@ -77,6 +79,146 @@ def test_agent_team_task_execution_links_are_optional_for_old_payloads() -> None
     assert task.delegated_task_id is None
     assert task.artifact_ids == []
     assert task.execution_status is None
+    assert task.acceptance_criteria == []
+    assert task.context_refs == []
+    assert task.run_status is None
+    assert task.started_at is None
+    assert task.finished_at is None
+    assert task.last_error is None
+
+
+def test_agent_team_service_lists_sessions_with_filters() -> None:
+    service = AgentTeamService(branch_service=None)
+    first = service.create_session(root_thread_id="root-1", user_id="user-1", goal="First")
+    second = service.create_session(root_thread_id="root-2", user_id="user-1", goal="Second")
+    other_user = service.create_session(root_thread_id="root-1", user_id="user-2", goal="Other")
+    service.dispatch_default_tasks(
+        session_id=second.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+
+    assert [item.session_id for item in service.list_sessions(user_id="user-1", limit=1)] == [
+        second.session_id
+    ]
+    assert [
+        item.session_id
+        for item in service.list_sessions(user_id="user-1", root_thread_id="root-1")
+    ] == [first.session_id]
+    assert [item.session_id for item in service.list_sessions(user_id="user-1", status="running")] == [
+        second.session_id
+    ]
+    assert [item.session_id for item in service.list_sessions(user_id="user-1", offset=1)] == [
+        first.session_id
+    ]
+    assert other_user.session_id not in [
+        item.session_id for item in service.list_sessions(user_id="user-1")
+    ]
+
+
+def test_agent_team_service_plan_session_is_idempotent_and_writes_dag_fields() -> None:
+    service = AgentTeamService(
+        branch_service=None,
+        settings=Settings(
+            agent_delegation_enabled=True,
+            agent_role_routing_enabled=True,
+            agent_delegation_execution_mode="fake",
+        ),
+    )
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Plan, implement, and test backend orchestration.",
+    )
+
+    _, planned = service.plan_session(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+    _, repeated = service.plan_session(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+
+    assert [task.task_id for task in repeated] == [task.task_id for task in planned]
+    assert len(planned) >= 2
+    assert planned[0].role == AgentTeamTaskRole.ARCHITECT
+    assert planned[1].dependencies == [planned[0].task_id]
+    assert planned[1].acceptance_criteria
+    assert planned[1].context_refs == []
+
+
+def test_agent_team_service_run_ready_tasks_records_execution_evidence() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Run tasks")
+    first = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        goal="Implement backend",
+        acceptance_criteria=["Backend fake run records artifacts."],
+        context_refs=[{"kind": "thread", "id": "root-1"}],
+        create_branch=False,
+    )
+    second = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="test_engineer",
+        goal="Verify backend",
+        dependencies=[first.task_id],
+        create_branch=False,
+    )
+
+    _, after_first_run = service.run_ready_tasks(session_id=session.session_id, user_id="user-1")
+    by_id = {task.task_id: task for task in after_first_run}
+
+    assert by_id[first.task_id].status == AgentTeamTaskStatus.DONE
+    assert by_id[first.task_id].run_status == "completed"
+    assert by_id[first.task_id].agent_run_id == f"run-{first.task_id}"
+    assert by_id[first.task_id].delegated_task_id == first.task_id
+    assert by_id[first.task_id].artifact_ids == [f"artifact-{first.task_id}-fake-result"]
+    assert by_id[first.task_id].execution_status == "completed"
+    assert by_id[first.task_id].started_at is not None
+    assert by_id[first.task_id].finished_at is not None
+    assert by_id[first.task_id].last_error == ""
+    assert by_id[second.task_id].status == AgentTeamTaskStatus.DONE
+
+    outputs = service.list_task_outputs(task_id=first.task_id, user_id="user-1")
+    assert outputs[0].metadata["execution"]["agent_run_id"] == f"run-{first.task_id}"
+    assert outputs[0].metadata["artifacts"][0]["payload"]["context_refs"] == [
+        {"kind": "thread", "id": "root-1"}
+    ]
+    assert outputs[0].test_evidence == [f"delegated fake run run-{first.task_id}: completed"]
+
+    second_outputs = service.list_task_outputs(task_id=second.task_id, user_id="user-1")
+    assert second_outputs[0].metadata["scheduler"]["wave"] == 2
+
+
+def test_agent_team_service_run_task_skips_unfinished_dependencies() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Run tasks")
+    dependency = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        goal="Implement backend",
+        create_branch=False,
+    )
+    blocked = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="test_engineer",
+        goal="Verify backend",
+        dependencies=[dependency.task_id],
+        create_branch=False,
+    )
+
+    result = service.run_task(task_id=blocked.task_id, user_id="user-1")
+
+    assert result.status == AgentTeamTaskStatus.PENDING
+    assert service.list_task_outputs(task_id=blocked.task_id, user_id="user-1") == []
 
 
 def test_agent_team_merge_bundle_includes_execution_evidence() -> None:
@@ -116,7 +258,8 @@ def test_agent_team_merge_bundle_includes_execution_evidence() -> None:
 
     bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
 
-    assert bundle.recommended_next_action == "merge"
+    assert bundle.recommended_next_action == "request_changes"
+    assert any("Missing review/verification evidence" in item for item in bundle.risk_items)
     assert bundle.execution_evidence == [
         {
             "task_id": task.task_id,
@@ -127,6 +270,126 @@ def test_agent_team_merge_bundle_includes_execution_evidence() -> None:
             "execution_status": "completed",
         }
     ]
+
+
+def test_agent_team_merge_bundle_fake_outputs_use_placeholder_final_answer() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Generate a production onboarding checklist",
+    )
+    service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        goal="Draft checklist",
+        create_branch=False,
+    )
+
+    service.run_ready_tasks(session_id=session.session_id, user_id="user-1")
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.final_answer_status == "placeholder"
+    assert "模拟执行" in (bundle.final_answer or "")
+    assert "没有生成可交付的真实答案" in (bundle.final_answer or "")
+    assert bundle.recommended_next_action == "request_changes"
+    assert bundle.source_output_ids
+
+
+def test_agent_team_merge_bundle_fixture_output_builds_ready_final_answer() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Build MVP ledger final answer",
+    )
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        goal="Implement ledger",
+        create_branch=False,
+    )
+    service.record_task_output(
+        task_id=task.task_id,
+        user_id="user-1",
+        summary="Ledger backend is implemented for the MVP ledger goal.",
+        metadata={
+            "artifacts": [
+                {
+                    "payload": {
+                        "raw_text": "Raw ledger delivery text.",
+                        "parsed": {"final_answer": "Parsed MVP ledger delivery."},
+                    }
+                }
+            ]
+        },
+    )
+    service.update_task(task_id=task.task_id, user_id="user-1", status=AgentTeamTaskStatus.DONE)
+
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.final_answer_status == "ready"
+    assert "Build MVP ledger final answer" in (bundle.final_answer or "")
+    assert "Raw ledger delivery text." in (bundle.final_answer or "")
+    assert "Parsed MVP ledger delivery." in (bundle.final_answer or "")
+
+
+def test_agent_team_merge_bundle_without_executor_output_blocks_final_answer() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Ship release notes",
+    )
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="test_engineer",
+        goal="Verify release notes",
+        create_branch=False,
+    )
+    service.record_task_output(
+        task_id=task.task_id,
+        user_id="user-1",
+        kind="test_report",
+        summary="Release notes verification passed.",
+    )
+    service.update_task(task_id=task.task_id, user_id="user-1", status=AgentTeamTaskStatus.DONE)
+
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.final_answer_status == "blocked"
+    assert "缺少执行/撰写任务产出" in (bundle.final_answer or "")
+    assert any(
+        "Missing executor or writer output" in warning
+        for warning in bundle.final_answer_warnings
+    )
+
+
+def test_agent_team_merge_bundle_old_payload_fields_remain_compatible() -> None:
+    bundle = AgentTeamMergeBundle.model_validate(
+        {
+            "session_id": "session-1",
+            "summary": "Old merge summary",
+            "accepted_tasks": ["task-1"],
+            "key_findings": ["Backend finished"],
+            "test_evidence": ["pytest tests/test_agent_team_service.py"],
+            "risk_items": [],
+            "recommended_next_action": "merge",
+        }
+    )
+
+    assert bundle.summary == "Old merge summary"
+    assert bundle.key_findings == ["Backend finished"]
+    assert bundle.test_evidence == ["pytest tests/test_agent_team_service.py"]
+    assert bundle.risk_items == []
+    assert bundle.recommended_next_action == "merge"
+    assert bundle.final_answer is None
+    assert bundle.final_answer_status is None
+    assert bundle.final_answer_warnings == []
+    assert bundle.source_output_ids == []
 
 
 def test_agent_team_service_records_outputs_and_prepares_merge_bundle() -> None:
@@ -266,7 +529,7 @@ def test_agent_team_service_persists_default_dispatch_bundle_across_instances(tm
     assert dispatched_session.status == AgentTeamSessionStatus.RUNNING
     assert len(tasks) == 6
     assert bundle.session_id == session.session_id
-    assert bundle.recommended_next_action == "split_followup"
+    assert bundle.recommended_next_action == "request_changes"
 
     second = AgentTeamService(
         branch_service=None,
@@ -277,7 +540,7 @@ def test_agent_team_service_persists_default_dispatch_bundle_across_instances(tm
     assert restored_session.status == AgentTeamSessionStatus.AWAITING_REVIEW
     assert restored_session.latest_merge_bundle is not None
     assert restored_session.latest_merge_bundle["session_id"] == session.session_id
-    assert restored_session.latest_merge_bundle["recommended_next_action"] == "split_followup"
+    assert restored_session.latest_merge_bundle["recommended_next_action"] == "request_changes"
 
     restored_tasks = second.list_tasks(session_id=session.session_id, user_id="user-1")
     assert [task.role.value for task in restored_tasks] == [
@@ -327,6 +590,26 @@ def test_agent_team_service_dispatches_default_task_set_without_recursive_agents
         create_branches=False,
     )
     assert [task.task_id for task in repeated_tasks] == [task.task_id for task in tasks]
+
+
+def test_agent_team_service_runs_legacy_primed_default_planner() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-1", user_id="user-1", goal="Run default mission plan"
+    )
+    _, tasks = service.dispatch_default_tasks(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+
+    _, after_run = service.run_ready_tasks(session_id=session.session_id, user_id="user-1")
+    by_id = {task.task_id: task for task in after_run}
+
+    assert tasks[0].status == AgentTeamTaskStatus.RUNNING
+    assert by_id[tasks[0].task_id].status == AgentTeamTaskStatus.DONE
+    assert by_id[tasks[0].task_id].run_status == "completed"
+    assert all(task.status == AgentTeamTaskStatus.DONE for task in by_id.values())
 
 
 def test_agent_team_merge_bundle_keeps_open_questions_compact() -> None:

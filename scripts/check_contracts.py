@@ -332,7 +332,12 @@ def _endpoint_method_signatures(source: str) -> dict[str, str]:
 
 
 def _sdk_package_exports(index_source: str) -> list[str]:
-    return sorted(set(re.findall(r'export\s+\*\s+from\s+"([^"]+)"', index_source)))
+    return sorted(
+        set(
+            value.removesuffix(".js")
+            for value in re.findall(r'export\s+\*\s+from\s+"([^"]+)"', index_source)
+        )
+    )
 
 
 def _scan_web_sdk_imports(root: Path = WEB_SRC_PATH) -> dict[str, list[str]]:

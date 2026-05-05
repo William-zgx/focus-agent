@@ -40,6 +40,12 @@ def _token_usage_for_root_thread(*, runtime: AppRuntime, root_thread_id: str) ->
     repo = _maybe_get_trajectory_repository(runtime)
     if repo is None:
         return _normalize_token_usage()
+    aggregate = getattr(repo, "get_root_thread_token_usage", None)
+    if callable(aggregate):
+        try:
+            return _normalize_token_usage(aggregate(root_thread_id))
+        except Exception:  # noqa: BLE001
+            return _normalize_token_usage()
     try:
         turns = repo.list_turns(TrajectoryTurnQuery(root_thread_id=root_thread_id, limit=None, newest_first=True))
     except Exception:  # noqa: BLE001
@@ -51,6 +57,17 @@ def _token_usage_by_thread_for_root(*, runtime: AppRuntime, root_thread_id: str)
     repo = _maybe_get_trajectory_repository(runtime)
     if repo is None:
         return {}
+    aggregate = getattr(repo, "get_thread_token_usage_for_root", None)
+    if callable(aggregate):
+        try:
+            rows = aggregate(root_thread_id)
+        except Exception:  # noqa: BLE001
+            return {}
+        return {
+            str(thread_id): _normalize_token_usage(usage)
+            for thread_id, usage in dict(rows or {}).items()
+            if str(thread_id).strip()
+        }
     try:
         turns = repo.list_turns(TrajectoryTurnQuery(root_thread_id=root_thread_id, limit=None, newest_first=True))
     except Exception:  # noqa: BLE001

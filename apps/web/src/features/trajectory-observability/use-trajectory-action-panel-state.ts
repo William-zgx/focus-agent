@@ -24,7 +24,10 @@ export function useTrajectoryActionPanelState({
 }) {
 	const { client } = useFocusAgent();
 	const selectedTurnId = selected?.id ?? "";
-	const batchTurnIdsKey = useMemo(() => batchTurnIds.join("\n"), [batchTurnIds]);
+	const batchTurnIdsKey = useMemo(
+		() => batchTurnIds.join("\n"),
+		[batchTurnIds],
+	);
 	const [caseIdPrefix, setCaseIdPrefix] = useState("traj");
 	const [copyToolTrajectory, setCopyToolTrajectory] = useState(true);
 	const [copyAnswerSubstring, setCopyAnswerSubstring] = useState(false);
@@ -173,7 +176,9 @@ export function useTrajectoryActionPanelState({
 
 	return {
 		answerSubstringChars,
-		batchPromotionResult: hasCurrentBatchResult ? rawBatchPromotionResult : null,
+		batchPromotionResult: hasCurrentBatchResult
+			? rawBatchPromotionResult
+			: null,
 		batchReplayResult: hasCurrentBatchResult ? rawBatchReplayResult : null,
 		caseIdPrefix,
 		copyAnswerSubstring,

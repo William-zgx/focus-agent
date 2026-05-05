@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 from langchain.messages import HumanMessage
@@ -152,9 +151,16 @@ class ChatContextCompactionMixin:
             return
 
         def schedule_compact_later(*, delay: float, attempt: int) -> None:
-            timer = threading.Timer(delay, compact_later, kwargs={"attempt": attempt})
-            timer.daemon = True
-            timer.start()
+            submit_background = getattr(self, "_submit_background_work", None)
+            if callable(submit_background):
+                submit_background(
+                    key=f"context-compaction:{thread_id}",
+                    func=compact_later,
+                    delay_seconds=delay,
+                    attempt=attempt,
+                )
+                return
+            compact_later(attempt=attempt)
 
         def compact_later(*, attempt: int) -> None:
             try:

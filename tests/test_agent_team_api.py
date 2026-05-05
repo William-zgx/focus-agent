@@ -32,7 +32,9 @@ def _client(
     return TestClient(app)
 
 
-def test_agent_team_api_session_task_output_merge_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_agent_team_api_session_task_output_merge_flow(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     client = _client(monkeypatch, tmp_path)
 
     created = client.post(
@@ -89,7 +91,9 @@ def test_agent_team_api_session_task_output_merge_flow(monkeypatch: pytest.Monke
     assert decision_response.json()["decision"]["action"] == "split_followup"
 
 
-def test_agent_team_api_dispatches_default_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_agent_team_api_dispatches_default_tasks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     client = _client(monkeypatch, tmp_path)
 
     created = client.post(
@@ -116,6 +120,107 @@ def test_agent_team_api_dispatches_default_tasks(monkeypatch: pytest.MonkeyPatch
         "verifier",
     ]
     assert dispatch_payload["tasks"][0]["status"] == "running"
+
+
+def test_agent_team_api_plan_run_view_and_list_filters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+
+    first = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-1", "goal": "First backend task"},
+    ).json()["session"]
+    second = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-2", "goal": "Second backend task"},
+    ).json()["session"]
+
+    plan_response = client.post(
+        f"/v1/agent-team/sessions/{first['session_id']}/plan",
+        json={"create_branches": False},
+    )
+    assert plan_response.status_code == 200
+    plan_payload = plan_response.json()
+    assert 1 <= plan_payload["count"] <= 6
+    assert plan_payload["planning"]["source"] == "model"
+    assert plan_payload["planning"]["error"] is None
+    assert [task["role"] for task in plan_payload["tasks"]] != [
+        "planner",
+        "backend_executor",
+        "frontend_executor",
+        "test_engineer",
+        "reviewer",
+        "verifier",
+    ]
+
+    list_response = client.get("/v1/agent-team/sessions", params={"root_thread_id": "root-1"})
+    assert list_response.status_code == 200
+    assert [item["session_id"] for item in list_response.json()["sessions"]] == [
+        first["session_id"]
+    ]
+
+    paged_response = client.get("/v1/agent-team/sessions", params={"limit": 1})
+    assert paged_response.status_code == 200
+    assert paged_response.json()["count"] == 1
+    assert paged_response.json()["sessions"][0]["session_id"] == second["session_id"]
+
+    task_response = client.post(
+        f"/v1/agent-team/sessions/{second['session_id']}/tasks",
+        json={
+            "role": "backend_executor",
+            "goal": "Execute fake backend run",
+            "acceptance_criteria": ["Fake execution evidence is stored."],
+            "context_refs": [{"kind": "thread", "id": "root-2"}],
+            "create_branch": False,
+        },
+    )
+    assert task_response.status_code == 200
+    task_id = task_response.json()["task"]["task_id"]
+
+    run_response = client.post(f"/v1/agent-team/sessions/{second['session_id']}/run")
+    assert run_response.status_code == 200
+    run_task = run_response.json()["tasks"][0]
+    assert run_task["task_id"] == task_id
+    assert run_task["status"] == "done"
+    assert run_task["run_status"] == "completed"
+    assert run_task["agent_run_id"] == f"run-{task_id}"
+    assert run_task["artifact_ids"] == [f"artifact-{task_id}-fake-result"]
+
+    view_response = client.get(f"/v1/agent-team/sessions/{second['session_id']}/view")
+    assert view_response.status_code == 200
+    view = view_response.json()
+    assert view["session"]["session_id"] == second["session_id"]
+    assert view["outputs"][0]["metadata"]["execution"]["agent_run_id"] == f"run-{task_id}"
+    assert view["artifacts"][0]["payload"]["context_refs"] == [{"kind": "thread", "id": "root-2"}]
+
+
+def test_agent_team_api_task_run_respects_dependencies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+    session_id = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-1", "goal": "Dependency run"},
+    ).json()["session"]["session_id"]
+    dependency_id = client.post(
+        f"/v1/agent-team/sessions/{session_id}/tasks",
+        json={"role": "backend_executor", "goal": "Implement backend", "create_branch": False},
+    ).json()["task"]["task_id"]
+    blocked_id = client.post(
+        f"/v1/agent-team/sessions/{session_id}/tasks",
+        json={
+            "role": "test_engineer",
+            "goal": "Verify backend",
+            "dependencies": [dependency_id],
+            "create_branch": False,
+        },
+    ).json()["task"]["task_id"]
+
+    run_response = client.post(f"/v1/agent-team/tasks/{blocked_id}/run")
+
+    assert run_response.status_code == 200
+    assert run_response.json()["task"]["status"] == "pending"
 
 
 def test_agent_team_api_persists_default_dispatch_bundle_across_runtime_rebuild(
@@ -151,7 +256,7 @@ def test_agent_team_api_persists_default_dispatch_bundle_across_runtime_rebuild(
     assert bundle_response.status_code == 200
     bundle = bundle_response.json()["bundle"]
     assert bundle["session_id"] == session_id
-    assert bundle["recommended_next_action"] == "split_followup"
+    assert bundle["recommended_next_action"] == "request_changes"
 
     reloaded_client = _client(
         monkeypatch,
@@ -167,7 +272,7 @@ def test_agent_team_api_persists_default_dispatch_bundle_across_runtime_rebuild(
     restored_session = restored_response.json()["session"]
     assert restored_session["status"] == "awaiting_review"
     assert restored_session["latest_merge_bundle"]["session_id"] == session_id
-    assert restored_session["latest_merge_bundle"]["recommended_next_action"] == "split_followup"
+    assert restored_session["latest_merge_bundle"]["recommended_next_action"] == "request_changes"
 
     tasks_response = reloaded_client.get(f"/v1/agent-team/sessions/{session_id}/tasks")
     assert tasks_response.status_code == 200
@@ -183,7 +288,9 @@ def test_agent_team_api_persists_default_dispatch_bundle_across_runtime_rebuild(
     assert restored_tasks[0]["status"] == "running"
 
 
-def test_agent_team_api_missing_session_returns_404(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_agent_team_api_missing_session_returns_404(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     client = _client(monkeypatch, tmp_path)
 
     get_response = client.get("/v1/agent-team/sessions/missing-session")

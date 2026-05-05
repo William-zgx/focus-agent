@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { TextEncoder, TextDecoder } from "node:util";
 import vm from "node:vm";
 import { pathToFileURL } from "node:url";
 
@@ -88,6 +89,7 @@ function loadModule(relativePath) {
   const context = {
     exports: moduleExports,
     module: { exports: moduleExports },
+    TextDecoder,
   };
   vm.runInNewContext(transpiled, context);
   return context.module.exports;
@@ -132,27 +134,41 @@ function loadSdkStreamFunctions() {
 }
 
 function loadMessageTranscriptFunctions() {
-	const sourceText = readFileSync(
-		path.join(repoRoot, "apps/web/src/entities/messages/message-transcript.ts"),
-		"utf8",
-  );
+  const sources = [
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-normalize.ts"),
+      "utf8",
+    ),
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-tool-summary.ts"),
+      "utf8",
+    ),
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-visibility.ts"),
+      "utf8",
+    ),
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-builder.ts"),
+      "utf8",
+    ),
+  ].join("\n\n");
   const functionNames = [
     "normalizeMessageType",
     "normalizeText",
+    "parseJsonValue",
+    "totalTokensFromUsageMetadata",
+    "truncateText",
+    "extractToolSummaryCandidate",
+    "summarizeToolResult",
+    "formatToolDetailContent",
+    "uniqueToolNames",
     "looksLikeInternalToolMarkup",
     "looksLikeToolPlanningPayload",
     "shouldHideStreamingInternalContent",
-    "totalTokensFromUsageMetadata",
-    "truncateText",
-    "parseJsonValue",
-    "extractToolSummaryCandidate",
-    "summarizeToolResult",
-		"formatToolDetailContent",
-		"uniqueToolNames",
-		"visibleAssistantIndexesToHide",
-		"buildTranscriptItems",
-	];
-  const snippet = functionNames.map((name) => extractFunction(sourceText, name)).join("\n\n");
+    "visibleAssistantIndexesToHide",
+    "buildTranscriptItems",
+  ];
+  const snippet = functionNames.map((name) => extractFunction(sources, name)).join("\n\n");
   const transpiled = ts.transpileModule(
     `function looksLikeTextualToolCallArtifact(value) { return String(value ?? "").includes("<tool_call"); }\n\n${snippet}`,
     {
@@ -166,50 +182,45 @@ function loadMessageTranscriptFunctions() {
     exports: {},
     module: { exports: {} },
   };
-	vm.runInNewContext(`${transpiled}\nmodule.exports = { buildTranscriptItems };`, context);
-	return context.module.exports;
+  vm.runInNewContext(`${transpiled}\nmodule.exports = { buildTranscriptItems };`, context);
+  return context.module.exports;
 }
 
 function loadTrajectoryUtilityFunctions() {
-	const sourceText = readFileSync(
-		path.join(
-			repoRoot,
-			"apps/web/src/features/trajectory-observability/trajectory-utils.ts",
-		),
-		"utf8",
-	);
-	const functionNames = [
-		"visiblePreviewText",
-		"extractStructuredSummary",
-		"compactSnippet",
-	];
-	const snippet = functionNames
-		.map((name) => extractFunction(sourceText, name))
-		.join("\n\n");
-	const transpiled = ts.transpileModule(
-		`function safeVisibleText(value) {
-			const text = String(value ?? "");
-			return text.includes("<｜DSML｜") || text.includes("invoke name=") || text.includes("[web_fetch]")
-				? ""
-				: text;
-		}
-		${snippet}`,
-		{
-			compilerOptions: {
-				module: ts.ModuleKind.CommonJS,
-				target: ts.ScriptTarget.ES2022,
-			},
-		},
-	).outputText;
-	const context = {
-		exports: {},
-		module: { exports: {} },
-	};
-	vm.runInNewContext(
-		`${transpiled}\nmodule.exports = { extractStructuredSummary, compactSnippet };`,
-		context,
-	);
-	return context.module.exports;
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/trajectory-observability/trajectory-formatters.ts"),
+    "utf8",
+  );
+  const functionNames = [
+    "visiblePreviewText",
+    "extractStructuredSummary",
+    "compactSnippet",
+  ];
+  const snippet = functionNames.map((name) => extractFunction(sourceText, name)).join("\n\n");
+  const transpiled = ts.transpileModule(
+    `function safeVisibleText(value) {
+      const text = String(value ?? "");
+      return text.includes("<｜DSML｜") || text.includes("invoke name=") || text.includes("[web_fetch]")
+        ? ""
+        : text;
+    }
+    ${snippet}`,
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    },
+  ).outputText;
+  const context = {
+    exports: {},
+    module: { exports: {} },
+  };
+  vm.runInNewContext(
+    `${transpiled}\nmodule.exports = { extractStructuredSummary, compactSnippet };`,
+    context,
+  );
+  return context.module.exports;
 }
 
 test("request cleanup clears the optimistic user message after failed sends", () => {
@@ -417,17 +428,57 @@ test("SSE parser ignores trailing blank frames after stream completion", () => {
   const { parseSSEFrames } = loadModule("frontend-sdk/src/parser.ts");
 
   const parsed = parseSSEFrames(
-    'event: visible_text.completed\ndata: {"content":"done"}\n\n\n\n',
+    'event: visible_text.completed\r\ndata: {"content":"done"}\r\n\r\n\r\n\r\n',
   );
 
   assert.equal(parsed.frames.length, 1);
   assert.equal(parsed.frames[0].event, "visible_text.completed");
+  assert.equal(parsed.frames[0].data, '{"content":"done"}');
   assert.equal(parseSSEFrames("\n\n").frames.length, 0);
+});
+
+test("SSE decode errors include raw frame context", () => {
+  const { decodeEvent, FocusAgentSSEDecodeError } = loadModule("frontend-sdk/src/parser.ts");
+  const frame = {
+    event: "visible_text.delta",
+    data: '{"delta":',
+    raw: 'event: visible_text.delta\ndata: {"delta":',
+  };
+
+  assert.throws(
+    () => decodeEvent(frame),
+    (error) =>
+      error instanceof FocusAgentSSEDecodeError &&
+      error.frame.raw === frame.raw &&
+      error.frame.event === "visible_text.delta",
+  );
+});
+
+test("SSE iterator cancels the reader when the consumer exits early", async () => {
+  const { iterSSEEvents } = loadModule("frontend-sdk/src/parser.ts");
+  let canceled = false;
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode('event: visible_text.delta\ndata: {"delta":"hello"}\n\n'),
+      );
+    },
+    cancel() {
+      canceled = true;
+    },
+  });
+  const iterator = iterSSEEvents(stream);
+
+  const first = await iterator.next();
+  assert.equal(first.done, false);
+  assert.equal(first.value.event, "visible_text.delta");
+  await iterator.return();
+  assert.equal(canceled, true);
 });
 
 test("message list does not render trailing tool output as a fake assistant reply", () => {
   const sourceText = readFileSync(
-    path.join(repoRoot, "apps/web/src/entities/messages/message-transcript.ts"),
+    path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-builder.ts"),
     "utf8",
   );
 
@@ -530,7 +581,7 @@ test("thinking-capable model selection preserves unset backend-default semantics
 	nextThinkingModeForModelSelection,
 	thinkingOptionMetaLabel,
     thinkingModeRequestValueForModel,
-  } = loadFunctions("apps/web/src/features/thread-stream/message-composer.tsx", [
+  } = loadFunctions("apps/web/src/features/thread-stream/message-composer-helpers.ts", [
     "normalizeThinkingMode",
     "thinkingAvailableLabel",
     "thinkingUnavailableLabel",
@@ -574,7 +625,7 @@ test("context meter formats current context usage separately from token spend", 
     contextUsageTone,
     formatContextMarkerCount,
     shouldShowContextCompactAction,
-  } = loadFunctions("apps/web/src/features/thread-stream/message-composer.tsx", [
+  } = loadFunctions("apps/web/src/features/thread-stream/message-composer-helpers.ts", [
     "formatContextMarkerCount",
     "contextUsagePercent",
     "contextUsageRemainingPercent",

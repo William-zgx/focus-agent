@@ -11,12 +11,16 @@ from focus_agent.services.branches import BranchService
 from .agent_team_dispatch import AgentTeamDispatchMixin, _DEFAULT_DISPATCH_TASKS
 from .agent_team_helpers import AgentTeamHelperMixin, _ROLE_TO_BRANCH_ROLE, _dedupe, _now
 from .agent_team_merge import AgentTeamMergeMixin
+from .agent_team_planning import AgentTeamPlanningMixin
+from .agent_team_run import AgentTeamRunMixin
 from .agent_team_sessions import AgentTeamSessionTaskMixin
 
 
 class AgentTeamService(
     AgentTeamSessionTaskMixin,
     AgentTeamDispatchMixin,
+    AgentTeamPlanningMixin,
+    AgentTeamRunMixin,
     AgentTeamMergeMixin,
     AgentTeamHelperMixin,
 ):
@@ -27,9 +31,15 @@ class AgentTeamService(
         *,
         branch_service: BranchService | None = None,
         repository: AgentTeamRepository | None = None,
+        settings: object | None = None,
+        model_factory: object | None = None,
+        executor: object | None = None,
     ):
         self.branch_service = branch_service
         self.repository = repository or InMemoryAgentTeamRepository()
+        self.settings = settings
+        self.model_factory = model_factory
+        self.executor = executor
         self._lock = RLock()
 
 

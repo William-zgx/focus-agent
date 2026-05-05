@@ -1,11 +1,11 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentTaskLedgerPlanRequest,
   FocusAgentTaskLedgerPlanResponse,
   FocusAgentTaskLedgerPolicyResponse,
   FocusAgentTaskLedgerRunListResponse,
-} from "../types";
+} from "../types.js";
 
 async function getAgentTaskLedgerPolicy(this: FocusAgentEndpointContext): Promise<FocusAgentTaskLedgerPolicyResponse> {
   return this.requestJson<FocusAgentTaskLedgerPolicyResponse>("/v1/agent/task-ledger/policy", {

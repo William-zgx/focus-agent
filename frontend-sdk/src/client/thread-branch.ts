@@ -1,5 +1,5 @@
-import { applyEndpointMethods } from "./endpoint";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { applyEndpointMethods } from "./endpoint.js";
+import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentApplyMergeDecisionRequest,
   FocusAgentApplyMergeDecisionResponse,
@@ -17,7 +17,7 @@ import type {
   ThreadContextCompactResponse,
   ThreadContextPreviewRequest,
   ThreadContextPreviewResponse,
-} from "../types";
+} from "../types.js";
 
 async function listConversations(this: FocusAgentEndpointContext): Promise<FocusAgentConversationListResponse> {
   return this.requestJson<FocusAgentConversationListResponse>("/v1/conversations", {

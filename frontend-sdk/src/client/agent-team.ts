@@ -1,13 +1,19 @@
-import { buildAgentTeamQueryString } from "./query";
-import { applyEndpointMethods } from "./endpoint";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { buildAgentTeamQueryString } from "./query.js";
+import { applyEndpointMethods } from "./endpoint.js";
+import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentAgentTeamCreateSessionRequest,
   FocusAgentAgentTeamCreateTaskRequest,
   FocusAgentAgentTeamDispatchRequest,
   FocusAgentAgentTeamDispatchResponse,
+  FocusAgentAgentTeamPlanSessionRequest,
+  FocusAgentAgentTeamPlanSessionResponse,
   FocusAgentAgentTeamListSessionsRequest,
   FocusAgentAgentTeamListTasksRequest,
+  FocusAgentAgentTeamRunSessionRequest,
+  FocusAgentAgentTeamRunSessionResponse,
+  FocusAgentAgentTeamRunTaskResponse,
+  FocusAgentAgentTeamTaskRunRequest,
   FocusAgentAgentTeamMergeBundle,
   FocusAgentAgentTeamMergeDecisionRequest,
   FocusAgentAgentTeamMergeDecisionResponse,
@@ -15,11 +21,59 @@ import type {
   FocusAgentAgentTeamRecordTaskOutputRequest,
   FocusAgentAgentTeamRecordTaskOutputResponse,
   FocusAgentAgentTeamSession,
+  FocusAgentAgentTeamSessionView,
+  FocusAgentAgentTeamPlanningMetadata,
   FocusAgentAgentTeamSessionListResponse,
   FocusAgentAgentTeamTask,
+  FocusAgentAgentTeamTaskOutput,
+  FocusAgentAgentTeamArtifact,
   FocusAgentAgentTeamTaskListResponse,
   FocusAgentAgentTeamUpdateTaskRequest,
-} from "../types";
+} from "../types.js";
+
+type AgentTeamSessionActionResponse = {
+  session: FocusAgentAgentTeamSession;
+  tasks?: FocusAgentAgentTeamTask[];
+  items?: FocusAgentAgentTeamTask[];
+  outputs?: FocusAgentAgentTeamTaskOutput[];
+  artifacts?: FocusAgentAgentTeamArtifact[];
+  merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
+  planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  count?: number;
+};
+
+type AgentTeamTaskActionResponse = Omit<AgentTeamSessionActionResponse, "session"> & {
+  session?: FocusAgentAgentTeamSession | null;
+  task?: FocusAgentAgentTeamTask | null;
+};
+
+function normalizeAgentTeamSessionActionResponse<T extends AgentTeamSessionActionResponse>(
+  response: T,
+): T & FocusAgentAgentTeamRunSessionResponse {
+  const items = response.items ?? response.tasks ?? [];
+  return {
+    ...response,
+    tasks: response.tasks ?? items,
+    items,
+    outputs: response.outputs ?? [],
+    artifacts: response.artifacts ?? [],
+    planning: response.planning ?? response.session.planning ?? null,
+    count: response.count ?? items.length,
+  };
+}
+
+function normalizeAgentTeamTaskActionResponse(response: AgentTeamTaskActionResponse): FocusAgentAgentTeamRunTaskResponse {
+  const items = response.items ?? response.tasks ?? (response.task ? [response.task] : []);
+  return {
+    ...response,
+    tasks: response.tasks ?? items,
+    items,
+    outputs: response.outputs ?? [],
+    artifacts: response.artifacts ?? [],
+    planning: response.planning ?? response.session?.planning ?? null,
+    count: response.count ?? items.length,
+  };
+}
 
 async function createAgentTeamSession(
   this: FocusAgentEndpointContext,
@@ -59,6 +113,68 @@ async function getAgentTeamSession(this: FocusAgentEndpointContext, sessionId: s
     true,
   );
   return response.session;
+}
+
+async function getAgentTeamSessionView(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+): Promise<FocusAgentAgentTeamSessionView> {
+  const response = await this.requestJson<FocusAgentAgentTeamSessionView>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/view`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+  return {
+    ...response,
+    tasks: response.tasks ?? [],
+    artifacts: response.artifacts ?? [],
+    outputs: response.outputs ?? [],
+    merge_bundle: response.merge_bundle ?? response.session.latest_merge_bundle ?? null,
+    planning: response.planning ?? response.session.planning ?? { task_count: response.tasks?.length ?? 0 },
+  };
+}
+
+async function planAgentTeamSession(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  request: FocusAgentAgentTeamPlanSessionRequest = {},
+): Promise<FocusAgentAgentTeamPlanSessionResponse> {
+  const response = await this.requestJson<AgentTeamSessionActionResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...request,
+        create_branches: request.auto_fork_branch ?? request.create_branches,
+      }),
+    },
+    true,
+  );
+  return normalizeAgentTeamSessionActionResponse(response);
+}
+
+async function runAgentTeamSession(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  request: FocusAgentAgentTeamRunSessionRequest = {},
+): Promise<FocusAgentAgentTeamRunSessionResponse> {
+  const response = await this.requestJson<AgentTeamSessionActionResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/run`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...request,
+        create_branches: request.auto_fork_branch ?? request.create_branches,
+      }),
+    },
+    true,
+  );
+  return normalizeAgentTeamSessionActionResponse(response);
 }
 
 async function dispatchAgentTeamSession(
@@ -148,6 +264,26 @@ async function updateAgentTeamTask(
   return response.task;
 }
 
+async function runAgentTeamTask(
+  this: FocusAgentEndpointContext,
+  taskId: string,
+  request: FocusAgentAgentTeamTaskRunRequest = {},
+): Promise<FocusAgentAgentTeamRunTaskResponse> {
+  const response = await this.requestJson<AgentTeamTaskActionResponse>(
+    `/v1/agent-team/tasks/${encodeURIComponent(taskId)}/run`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...request,
+        create_branch: request.auto_fork_branch ?? request.create_branch,
+      }),
+    },
+    true,
+  );
+  return normalizeAgentTeamTaskActionResponse(response);
+}
+
 async function recordAgentTeamTaskOutput(
   this: FocusAgentEndpointContext,
   taskId: string,
@@ -212,11 +348,15 @@ export interface AgentTeamEndpoints {
   createAgentTeamSession: OmitThisParameter<typeof createAgentTeamSession>;
   listAgentTeamSessions: OmitThisParameter<typeof listAgentTeamSessions>;
   getAgentTeamSession: OmitThisParameter<typeof getAgentTeamSession>;
+  getAgentTeamSessionView: OmitThisParameter<typeof getAgentTeamSessionView>;
+  planAgentTeamSession: OmitThisParameter<typeof planAgentTeamSession>;
+  runAgentTeamSession: OmitThisParameter<typeof runAgentTeamSession>;
   dispatchAgentTeamSession: OmitThisParameter<typeof dispatchAgentTeamSession>;
   createAgentTeamTask: OmitThisParameter<typeof createAgentTeamTask>;
   listAgentTeamTasks: OmitThisParameter<typeof listAgentTeamTasks>;
   getAgentTeamTaskStatus: OmitThisParameter<typeof getAgentTeamTaskStatus>;
   updateAgentTeamTask: OmitThisParameter<typeof updateAgentTeamTask>;
+  runAgentTeamTask: OmitThisParameter<typeof runAgentTeamTask>;
   recordAgentTeamTaskOutput: OmitThisParameter<typeof recordAgentTeamTaskOutput>;
   prepareAgentTeamMergeBundle: OmitThisParameter<typeof prepareAgentTeamMergeBundle>;
   recordAgentTeamMergeDecision: OmitThisParameter<typeof recordAgentTeamMergeDecision>;
@@ -226,11 +366,15 @@ const agentTeamEndpoints: FocusAgentEndpointMethodMap<AgentTeamEndpoints> = {
   createAgentTeamSession,
   listAgentTeamSessions,
   getAgentTeamSession,
+  getAgentTeamSessionView,
+  planAgentTeamSession,
+  runAgentTeamSession,
   dispatchAgentTeamSession,
   createAgentTeamTask,
   listAgentTeamTasks,
   getAgentTeamTaskStatus,
   updateAgentTeamTask,
+  runAgentTeamTask,
   recordAgentTeamTaskOutput,
   prepareAgentTeamMergeBundle,
   recordAgentTeamMergeDecision,

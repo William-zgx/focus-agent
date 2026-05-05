@@ -25,6 +25,11 @@ class ChatTurnRecordingMixin:
             return
 
         def dispatch_background(func, **kwargs) -> None:
+            submit_background = getattr(self, '_submit_background_work', None)
+            if callable(submit_background):
+                task_key = str(kwargs.pop('_background_task_key'))
+                submit_background(key=task_key, func=func, **kwargs)
+                return
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
@@ -38,6 +43,7 @@ class ChatTurnRecordingMixin:
                 return
             dispatch_background(
                 refresh_title,
+                _background_task_key=f"conversation-title:{thread_id}",
                 root_thread_id=thread_id,
                 user_id=user_id,
             )
@@ -49,6 +55,7 @@ class ChatTurnRecordingMixin:
             return
         dispatch_background(
             refresh_branch,
+            _background_task_key=f"branch-title:{thread_id}",
             child_thread_id=thread_id,
             user_id=user_id,
         )

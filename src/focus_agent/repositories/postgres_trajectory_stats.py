@@ -5,6 +5,21 @@ from typing import Any
 
 
 class PostgresTrajectoryStatsMixin:
+    _TOKEN_USAGE_SELECT_SQL = """
+        COALESCE(SUM(COALESCE(NULLIF(t.metrics ->> 'input_tokens', '')::BIGINT, 0)), 0)::BIGINT AS input_tokens,
+        COALESCE(SUM(COALESCE(NULLIF(t.metrics ->> 'output_tokens', '')::BIGINT, 0)), 0)::BIGINT AS output_tokens,
+        COALESCE(
+            SUM(
+                COALESCE(
+                    NULLIF(t.metrics ->> 'total_tokens', '')::BIGINT,
+                    COALESCE(NULLIF(t.metrics ->> 'input_tokens', '')::BIGINT, 0)
+                    + COALESCE(NULLIF(t.metrics ->> 'output_tokens', '')::BIGINT, 0)
+                )
+            ),
+            0
+        )::BIGINT AS total_tokens
+    """
+
     def get_turn_stats(
         self,
         query: Any = None,
@@ -130,5 +145,51 @@ class PostgresTrajectoryStatsMixin:
             "by_tool": [self._row_to_stats_row(row) for row in by_tool_rows],
         }
 
+    def get_root_thread_token_usage(self, root_thread_id: str) -> dict[str, int]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT {self._TOKEN_USAGE_SELECT_SQL}
+                    FROM focus_trajectory_turns t
+                    WHERE t.root_thread_id = %(root_thread_id)s
+                    """,
+                    {"root_thread_id": str(root_thread_id)},
+                )
+                row = cur.fetchone() or {}
+        return self._row_to_token_usage(row)
+
+    def get_thread_token_usage_for_root(self, root_thread_id: str) -> dict[str, dict[str, int]]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT
+                        t.thread_id,
+                        {self._TOKEN_USAGE_SELECT_SQL}
+                    FROM focus_trajectory_turns t
+                    WHERE t.root_thread_id = %(root_thread_id)s
+                    GROUP BY t.thread_id
+                    """,
+                    {"root_thread_id": str(root_thread_id)},
+                )
+                rows = cur.fetchall()
+        return {
+            str(row["thread_id"]): self._row_to_token_usage(row)
+            for row in rows
+            if row.get("thread_id")
+        }
+
     def stats(self, *, filters: dict[str, Any]) -> dict[str, Any]:
         return self.get_turn_stats(filters=filters)
+
+    @staticmethod
+    def _row_to_token_usage(row: dict[str, Any]) -> dict[str, int]:
+        input_tokens = int(row.get("input_tokens") or 0)
+        output_tokens = int(row.get("output_tokens") or 0)
+        total_tokens = int(row.get("total_tokens") or (input_tokens + output_tokens))
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        }

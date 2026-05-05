@@ -10,6 +10,7 @@ from focus_agent.capabilities.tool_runtime import (
     classify_tool_parallel_execution,
     execute_tool_calls,
 )
+from focus_agent.capabilities.tool_invocation import tool_invocation_runtime_snapshot
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.core.types import ContextBudget
 
@@ -316,6 +317,20 @@ def test_tool_runtime_branch_scope_does_not_leak_between_branches():
     assert call_count == 2
 
 
+def test_tool_result_cache_store_evicts_least_recent_entries():
+    cache_store = ToolResultCacheStore(max_entries_per_scope=2)
+    cache_store.set("thread:demo:first", "one")
+    cache_store.set("thread:demo:second", "two")
+
+    assert cache_store.get("thread:demo:first") == "one"
+
+    cache_store.set("thread:demo:third", "three")
+
+    assert cache_store.get("thread:demo:first") == "one"
+    assert cache_store.get("thread:demo:second") is None
+    assert cache_store.get("thread:demo:third") == "three"
+
+
 def test_tool_runtime_side_effect_invalidates_named_cache_namespaces():
     read_count = 0
 
@@ -450,6 +465,7 @@ def test_tool_runtime_reports_parameter_validation_errors_without_invoking_tool(
 
 def test_tool_runtime_times_out_read_only_tool_without_fallback_or_cache():
     fallback_count = 0
+    before_snapshot = tool_invocation_runtime_snapshot()
 
     @tool
     def slow_lookup(name: str) -> str:
@@ -501,6 +517,9 @@ def test_tool_runtime_times_out_read_only_tool_without_fallback_or_cache():
     assert result.message.artifact["runtime"]["timed_out"] is True
     assert result.message.artifact["runtime"]["timeout_seconds"] == 0.05
     assert result.message.artifact["runtime"]["fallback_used"] is False
+    after_snapshot = tool_invocation_runtime_snapshot()
+    assert after_snapshot["timeout_total"] >= before_snapshot["timeout_total"] + 1
+    assert after_snapshot["timeout_active"] >= 1
 
 
 def test_tool_runtime_reports_cancelled_tools_without_fallback_or_cache():

@@ -1,20 +1,21 @@
 import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useConversations } from "@/features/conversations/use-conversations";
+import { queryKeys } from "@/shared/query/query-keys";
+import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 import {
-  DEFAULT_TASK_ROLES,
   errorMessage,
-  roleHint,
-  roleLabel,
   statusLabel,
   titleFromGoal,
 } from "./agent-team-workbench-utils";
 import { EmptyList, HelpText, WorkflowGuide } from "./agent-team-workbench-shared";
 import { useAgentTeamSessions, useCreateAgentTeamSession } from "./use-agent-team";
+import type { AgentTeamActionResponse, AgentTeamClientContract } from "./types";
 
 function RecentSessionsPanel({ rootThreadId }: { rootThreadId: string }) {
   const { isChineseUi } = useShellUi();
@@ -28,15 +29,15 @@ function RecentSessionsPanel({ rootThreadId }: { rootThreadId: string }) {
     <section className="fa-agent-team-panel fa-agent-team-recent-panel">
       <div className="fa-agent-team-panel-header">
         <div>
-          <span>{isChineseUi ? "快速返回" : "Quick return"}</span>
-          <strong>{isChineseUi ? "最近 Agent Team" : "Recent Agent Teams"}</strong>
+          <span>{isChineseUi ? "最近" : "Recent"}</span>
+          <strong>{isChineseUi ? "最近 Mission" : "Recent missions"}</strong>
         </div>
       </div>
       {recentSessions.isLoading ? (
-        <EmptyList>{isChineseUi ? "正在加载最近协作空间..." : "Loading recent workspaces..."}</EmptyList>
+        <EmptyList>{isChineseUi ? "正在加载最近 Mission..." : "Loading recent missions..."}</EmptyList>
       ) : recentSessions.error ? (
         <div className="fa-inline-notice is-danger">
-          {errorMessage(recentSessions.error, isChineseUi ? "最近协作空间加载失败。" : "Failed to load recent workspaces.")}
+          {errorMessage(recentSessions.error, isChineseUi ? "最近 Mission 加载失败。" : "Failed to load recent missions.")}
         </div>
       ) : sessions.length ? (
         <div className="fa-agent-team-recent-list">
@@ -57,11 +58,11 @@ function RecentSessionsPanel({ rootThreadId }: { rootThreadId: string }) {
         <EmptyList>
           {rootThreadId.trim()
             ? isChineseUi
-              ? "当前主线程还没有 Agent Team。"
-              : "No Agent Team exists for this root thread yet."
+              ? "当前来源对话还没有 Mission。"
+              : "No mission exists for this source conversation yet."
             : isChineseUi
-              ? "还没有 Agent Team。创建后会出现在这里。"
-              : "No Agent Team yet. New workspaces will appear here."}
+              ? "还没有 Mission。创建后会出现在这里。"
+              : "No mission yet. New missions will appear here."}
         </EmptyList>
       )}
     </section>
@@ -70,9 +71,13 @@ function RecentSessionsPanel({ rootThreadId }: { rootThreadId: string }) {
 
 export function CreateSessionPanel() {
   const { isChineseUi } = useShellUi();
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
   const conversationsQuery = useConversations();
   const createSession = useCreateAgentTeamSession();
   const [goal, setGoal] = useState("");
+  const [planError, setPlanError] = useState<Error | null>(null);
+  const [isPlanningNewSession, setIsPlanningNewSession] = useState(false);
   const [rootThreadId, setRootThreadId] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("root_thread_id") ?? "";
@@ -109,19 +114,40 @@ export function CreateSessionPanel() {
     event.preventDefault();
     const nextGoal = goal.trim();
     const nextRootThreadId = rootThreadId.trim();
-    if (!nextGoal || !nextRootThreadId || createSession.isPending) return;
-    const response = await createSession.mutateAsync({
-      goal: nextGoal,
-      title: titleFromGoal(nextGoal),
-      root_thread_id: nextRootThreadId,
-    });
-    const session = "session" in response ? response.session : response;
-    window.history.pushState(null, "", `/app/agent-team/${encodeURIComponent(session.session_id)}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    if (!nextGoal || !nextRootThreadId || createSession.isPending || isPlanningNewSession) return;
+    setPlanError(null);
+    setIsPlanningNewSession(true);
+    try {
+      const response = await createSession.mutateAsync({
+        goal: nextGoal,
+        title: titleFromGoal(nextGoal),
+        root_thread_id: nextRootThreadId,
+      });
+      const session = "session" in response ? response.session : response;
+      const agentTeam = client as Partial<AgentTeamClientContract>;
+      let plannedResponse: AgentTeamActionResponse | null = null;
+      try {
+        if (agentTeam.planAgentTeamSession) {
+          plannedResponse = await agentTeam.planAgentTeamSession(session.session_id, { create_branches: true });
+        } else if (agentTeam.dispatchAgentTeamSession) {
+          plannedResponse = await agentTeam.dispatchAgentTeamSession(session.session_id, { create_branches: true });
+        }
+        if (plannedResponse) {
+          queryClient.setQueryData(queryKeys.agentTeamSession(session.session_id), plannedResponse);
+        }
+      } catch (error) {
+        setPlanError(error instanceof Error ? error : new Error(String(error)));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(session.session_id) });
+      }
+      window.history.pushState(null, "", `/app/agent-team/${encodeURIComponent(session.session_id)}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } finally {
+      setIsPlanningNewSession(false);
+    }
   }
   const createHelp = isChineseUi
-    ? "选择来源对话，写下协作目标，然后创建一个可以派生多个 Agent 分支的协作空间。"
-    : "Choose the source conversation, write the collaboration goal, and create a workspace that can fork agent branches.";
+    ? "选择来源对话，写下 Mission 目标，系统会创建 Mission 并生成协作方案。"
+    : "Choose the source conversation and write the mission goal; the system creates the mission and generates the collaboration plan.";
 
   return (
     <div className="fa-agent-team-layout fa-agent-team-workspace-shell is-create">
@@ -130,13 +156,13 @@ export function CreateSessionPanel() {
           <div className="fa-chat-header-copy">
             <div className="fa-agent-team-title-block">
               <span className="fa-observability-kicker">
-                {isChineseUi ? "Agent Team · 并发开发控制台" : "Agent Team · Concurrent development"}
+                {isChineseUi ? "Agent Team · Mission Runner" : "Agent Team · Mission Runner"}
               </span>
-              <h1>{isChineseUi ? "创建并发开发工作台" : "Create a concurrent development workspace"}</h1>
+              <h1>{isChineseUi ? "创建 Mission" : "Create mission"}</h1>
               <p {...tooltipProps(createHelp)}>
                 {isChineseUi
-                  ? "从来源对话派生多个 Agent 分支，并行推进开发任务。"
-                  : "Fork source-conversation context into agent lanes that work in parallel."}
+                  ? "从来源对话抽取上下文，生成可运行的任务 DAG。"
+                  : "Use source conversation context to generate a runnable task DAG."}
               </p>
             </div>
           </div>
@@ -149,12 +175,12 @@ export function CreateSessionPanel() {
         <form className="fa-agent-team-panel fa-agent-team-create-form" onSubmit={handleSubmit}>
           <div className="fa-agent-team-panel-header">
             <div>
-              <span>{isChineseUi ? "第一步" : "Step 1"}</span>
-              <strong>{isChineseUi ? "选择对话并写目标" : "Choose conversation and goal"}</strong>
+              <span>{isChineseUi ? "来源对话 + Mission 目标" : "Source conversation + mission goal"}</span>
+              <strong>{isChineseUi ? "创建任务计划入口" : "Create the task plan entrypoint"}</strong>
               <HelpText>
                 {isChineseUi
-                  ? "默认会优先选中最近的对话；只有调试或外部线程才需要手动输入 ID。"
-                  : "The newest conversation is selected by default. Manual IDs are only for debugging or external threads."}
+                  ? "默认会优先选中最近对话；提交后会自动进入已拆解的 Mission。"
+                  : "The newest conversation is selected by default. Submitting opens the mission after planning."}
               </HelpText>
             </div>
           </div>
@@ -197,20 +223,20 @@ export function CreateSessionPanel() {
             ) : null}
           </label>
           <label className="fa-agent-team-field">
-            <span>{isChineseUi ? "协作目标" : "Team goal"}</span>
+            <span>{isChineseUi ? "Mission 目标" : "Mission goal"}</span>
             <textarea
               value={goal}
               onChange={(event) => setGoal(event.target.value)}
               placeholder={
                 isChineseUi
-                  ? "例如：实现 Agent Team Workbench MVP，并补齐验证证据。"
-                  : "Example: Implement the Agent Team Workbench MVP and capture verification evidence."
+                  ? "例如：把 Agent Team Web 从任务看板改成 Mission Runner，并补齐验证依据。"
+                  : "Example: Turn Agent Team Web from a task board into a Mission Runner and capture verification evidence."
               }
             />
             <HelpText>
               {isChineseUi
-                ? "写清楚这组 Agent 要一起完成什么；标题会自动取目标摘要。"
-                : "Describe what the agent team should accomplish; the title is generated from the goal."}
+                ? "写清楚这次 Mission 的结果、边界和验收信号；标题会自动取目标摘要。"
+                : "Describe the mission outcome, boundary, and acceptance signal; the title is generated from the goal."}
             </HelpText>
           </label>
           {createSession.error ? (
@@ -218,46 +244,41 @@ export function CreateSessionPanel() {
               {errorMessage(createSession.error, isChineseUi ? "创建失败。" : "Failed to create session.")}
             </div>
           ) : null}
+          {planError ? (
+            <div className="fa-inline-notice is-warning">
+              {errorMessage(
+                planError,
+                isChineseUi
+                  ? "Mission 已创建，但自动生成方案失败。进入后可以手动重试。"
+                  : "The mission was created, but automatic planning failed. You can retry after entering it.",
+              )}
+            </div>
+          ) : null}
           <div className="fa-agent-team-submit-row">
             <button
               className="fa-observability-preset is-primary"
-              disabled={!goal.trim() || !rootThreadId.trim() || createSession.isPending}
+              disabled={!goal.trim() || !rootThreadId.trim() || createSession.isPending || isPlanningNewSession}
               type="submit"
             >
-              {createSession.isPending
+              {createSession.isPending || isPlanningNewSession
                 ? isChineseUi
-                  ? "创建中..."
-                  : "Creating..."
+                  ? "生成方案中..."
+                  : "Generating plan..."
                 : isChineseUi
-                  ? "创建协作空间"
-                  : "Create session"}
+                  ? "生成协作方案"
+                  : "Generate collaboration plan"}
             </button>
             {!goal.trim() || !rootThreadId.trim() ? (
               <HelpText>
                 {isChineseUi
-                  ? "选择来源对话并填写协作目标后即可创建。"
-                  : "Choose a source conversation and fill the team goal to create the workspace."}
+                  ? "选择来源对话并填写 Mission 目标后即可创建。"
+                  : "Choose a source conversation and fill the mission goal to create it."}
               </HelpText>
             ) : null}
           </div>
         </form>
 
         <div className="fa-agent-team-create-side">
-          <section className="fa-agent-team-panel fa-agent-team-roles-panel">
-            <div className="fa-agent-team-panel-header">
-              <div>
-                <span>{isChineseUi ? "默认分工" : "Default lanes"}</span>
-                <strong>{isChineseUi ? "创建后可一键生成 6 个 Agent 任务" : "Create six agent tasks after setup"}</strong>
-              </div>
-            </div>
-            <div className="fa-agent-team-role-grid">
-              {DEFAULT_TASK_ROLES.map((role) => (
-                <div className="fa-agent-team-role-chip" key={role} {...tooltipProps(roleHint(role, isChineseUi))}>
-                  <strong>{roleLabel(role, isChineseUi)}</strong>
-                </div>
-              ))}
-            </div>
-          </section>
           <RecentSessionsPanel rootThreadId={rootThreadId} />
         </div>
       </div>

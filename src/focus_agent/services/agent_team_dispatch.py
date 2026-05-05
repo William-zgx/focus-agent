@@ -7,6 +7,8 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 
+from .agent_team_helpers import _now
+
 
 _DEFAULT_DISPATCH_TASKS: tuple[
     tuple[AgentTeamTaskRole, str, tuple[str, ...], tuple[AgentTeamTaskRole, ...]], ...
@@ -81,9 +83,14 @@ class AgentTeamDispatchMixin:
                 session_id=session_id,
                 user_id=user_id,
                 role=role,
+                title=role.value.replace("_", " ").title(),
                 goal=f"{goal_template}\n\nSession goal: {session.goal}",
                 scope=list(scope),
                 dependencies=dependencies,
+                planning_rationale="Legacy dispatch template task retained for backwards compatibility.",
+                sort_order=len(created_by_role) + 1,
+                task_type="coordination" if role == AgentTeamTaskRole.PLANNER else "execution",
+                plan_source="legacy_template",
                 create_branch=create_branches,
                 parent_thread_id=parent_thread_id or session.root_thread_id,
             )
@@ -100,6 +107,17 @@ class AgentTeamDispatchMixin:
 
         tasks = self.list_tasks(session_id=session_id, user_id=user_id)
         session = self.get_session(session_id, user_id=user_id)
+        with self._lock:
+            session = session.model_copy(
+                update={
+                    "planning_source": session.planning_source or "legacy_template",
+                    "planning_rationale": session.planning_rationale
+                    or "Legacy dispatch template generated the fixed compatibility task set.",
+                    "plan_generated_at": session.plan_generated_at or _now(),
+                    "updated_at": _now(),
+                }
+            )
+            self.repository.save_session(session)
         return session, tasks
 
 

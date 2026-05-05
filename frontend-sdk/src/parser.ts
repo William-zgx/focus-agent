@@ -6,8 +6,18 @@ export interface ParsedSSEFrame {
   raw: string;
 }
 
+export class FocusAgentSSEDecodeError extends Error {
+  readonly frame: ParsedSSEFrame;
+
+  constructor(frame: ParsedSSEFrame, cause: unknown) {
+    super(`Failed to decode SSE frame for event "${frame.event}".`, { cause });
+    this.name = "FocusAgentSSEDecodeError";
+    this.frame = frame;
+  }
+}
+
 export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; remainder: string } {
-  const chunks = buffer.split(/\n\n/);
+  const chunks = buffer.split(/\r?\n\r?\n/);
   const remainder = chunks.pop() ?? "";
   const frames: ParsedSSEFrame[] = [];
 
@@ -15,7 +25,7 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
     if (!rawChunk.trim()) {
       continue;
     }
-    const lines = rawChunk.split(/\n/);
+    const lines = rawChunk.split(/\r?\n/);
     let event = "message";
     const dataLines: string[] = [];
     let hasEventLine = false;
@@ -39,7 +49,12 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
 }
 
 export function decodeEvent(frame: ParsedSSEFrame): FocusAgentEvent {
-  const payload = frame.data ? (JSON.parse(frame.data) as FocusAgentEventPayload) : ({} as FocusAgentEventPayload);
+  let payload: FocusAgentEventPayload;
+  try {
+    payload = frame.data ? (JSON.parse(frame.data) as FocusAgentEventPayload) : ({} as FocusAgentEventPayload);
+  } catch (error) {
+    throw new FocusAgentSSEDecodeError(frame, error);
+  }
   return {
     event: frame.event as FocusAgentEventName,
     data: payload,
@@ -53,11 +68,15 @@ export async function* iterSSEEvents(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completed = false;
 
   try {
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        completed = true;
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
       const parsed = parseSSEFrames(buffer);
       buffer = parsed.remainder;
@@ -71,6 +90,9 @@ export async function* iterSSEEvents(
       yield decodeEvent(frame);
     }
   } finally {
+    if (!completed) {
+      await reader.cancel().catch(() => undefined);
+    }
     reader.releaseLock();
   }
 }

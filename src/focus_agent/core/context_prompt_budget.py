@@ -22,23 +22,23 @@ def apply_prompt_budget_guard(
     budget: ContextBudget,
 ) -> list[AnyMessage]:
     """Deterministically trim a prompt before model invocation."""
+    counter = _PromptBudgetCounter(budget)
     guarded = [
         _trim_message_tool_observation(message, budget=budget) for message in prompt_messages
     ]
-    if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+    if counter.count(guarded) <= budget.prompt_token_limit:
         return guarded
 
     main_system_index = _first_main_system_index(guarded)
     if main_system_index is not None:
         mandatory_indices = _mandatory_prompt_indices(guarded)
-        other_units = _prompt_budget_count(
+        other_units = counter.count(
             [
                 message
                 for index, message in enumerate(guarded)
                 if index != main_system_index
                 and (index in mandatory_indices or isinstance(message, SystemMessage))
-            ],
-            budget=budget,
+            ]
         )
         target_units = max(0, budget.prompt_token_limit - other_units)
         target_chars = _units_to_char_budget(target_units, budget=budget)
@@ -53,7 +53,7 @@ def apply_prompt_budget_guard(
             trimmed_system,
         )
 
-    if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+    if counter.count(guarded) <= budget.prompt_token_limit:
         return guarded
 
     mandatory_indices = _mandatory_prompt_indices(guarded)
@@ -63,19 +63,19 @@ def apply_prompt_budget_guard(
         if index not in mandatory_indices and not isinstance(message, SystemMessage)
     ]
     for index in reversed(removable):
-        if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+        if counter.count(guarded) <= budget.prompt_token_limit:
             break
         del guarded[index]
         mandatory_indices = _mandatory_prompt_indices(guarded)
 
-    if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+    if counter.count(guarded) <= budget.prompt_token_limit:
         return guarded
 
-    guarded = _shrink_tool_messages_to_fit(guarded, budget=budget)
-    if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+    guarded = _shrink_tool_messages_to_fit(guarded, budget=budget, counter=counter)
+    if counter.count(guarded) <= budget.prompt_token_limit:
         return guarded
 
-    return _hard_limit_prompt_messages(guarded, budget=budget)
+    return _hard_limit_prompt_messages(guarded, budget=budget, counter=counter)
 
 
 def _prompt_char_limit(budget: ContextBudget) -> int:
@@ -250,16 +250,21 @@ def _truncate_block(text: str, *, max_chars: int) -> str:
 
 
 def _shrink_tool_messages_to_fit(
-    messages: list[AnyMessage], *, budget: ContextBudget
+    messages: list[AnyMessage],
+    *,
+    budget: ContextBudget,
+    counter: "_PromptBudgetCounter | None" = None,
 ) -> list[AnyMessage]:
     guarded = list(messages)
+    budget_counter = counter or _PromptBudgetCounter(budget)
     for index in range(len(guarded) - 1, -1, -1):
-        if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+        current_count = budget_counter.count(guarded)
+        if current_count <= budget.prompt_token_limit:
             break
         message = guarded[index]
         if not isinstance(message, ToolMessage):
             continue
-        overflow_units = _prompt_budget_count(guarded, budget=budget) - budget.prompt_token_limit
+        overflow_units = current_count - budget.prompt_token_limit
         current = _text_for_budget(message)
         target = max(200, len(current) - _units_to_char_budget(overflow_units, budget=budget) - 16)
         guarded[index] = _copy_message_with_content(
@@ -278,9 +283,13 @@ def _shrink_tool_messages_to_fit(
 
 
 def _hard_limit_prompt_messages(
-    messages: list[AnyMessage], *, budget: ContextBudget
+    messages: list[AnyMessage],
+    *,
+    budget: ContextBudget,
+    counter: "_PromptBudgetCounter | None" = None,
 ) -> list[AnyMessage]:
     guarded = list(messages)
+    budget_counter = counter or _PromptBudgetCounter(budget)
     latest_human = _latest_human_index(guarded)
     ordered_indices = [
         *[
@@ -308,11 +317,12 @@ def _hard_limit_prompt_messages(
         if index in seen or index >= len(guarded):
             continue
         seen.add(index)
-        if _prompt_budget_count(guarded, budget=budget) <= budget.prompt_token_limit:
+        current_count = budget_counter.count(guarded)
+        if current_count <= budget.prompt_token_limit:
             break
         message = guarded[index]
         current = _text_for_budget(message)
-        overflow_units = _prompt_budget_count(guarded, budget=budget) - budget.prompt_token_limit
+        overflow_units = current_count - budget.prompt_token_limit
         target = max(0, len(current) - _units_to_char_budget(overflow_units, budget=budget) - 16)
         if isinstance(message, ToolMessage):
             content = trim_tool_observation(
@@ -333,14 +343,38 @@ def _hard_limit_prompt_messages(
     return guarded
 
 
-def _prompt_budget_count(messages: list[AnyMessage], *, budget: ContextBudget) -> int:
-    total = 0
-    for message in messages:
+class _PromptBudgetCounter:
+    def __init__(self, budget: ContextBudget) -> None:
+        self.budget = budget
+        self._message_cache: dict[tuple[int, str], int] = {}
+        self._system_block_cache: dict[str, int] = {}
+
+    def count(self, messages: list[AnyMessage]) -> int:
+        return sum(self.message_units(message) for message in messages)
+
+    def message_units(self, message: AnyMessage) -> int:
         if isinstance(message, SystemMessage):
-            total += _system_message_budget_units(str(message.content), budget=budget)
-        else:
-            total += _message_budget_units(message, budget=budget)
-    return total
+            return self.system_units(str(message.content))
+        text = _text_for_budget(message)
+        key = (id(message), text)
+        cached = self._message_cache.get(key)
+        if cached is not None:
+            return cached
+        value = _message_budget_units(message, budget=self.budget)
+        self._message_cache[key] = value
+        return value
+
+    def system_units(self, text: str) -> int:
+        cached = self._system_block_cache.get(text)
+        if cached is not None:
+            return cached
+        value = _system_message_budget_units(text, budget=self.budget)
+        self._system_block_cache[text] = value
+        return value
+
+
+def _prompt_budget_count(messages: list[AnyMessage], *, budget: ContextBudget) -> int:
+    return _PromptBudgetCounter(budget).count(messages)
 
 
 def _system_message_budget_units(text: str, *, budget: ContextBudget) -> int:

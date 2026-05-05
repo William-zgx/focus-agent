@@ -25,13 +25,13 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install Python dependencies
-        run: uv pip install --system -e '.[openai,dev]'
+        run: make install-openai
 
       - name: Run Ruff
-        run: ruff check .
+        run: make lint
 
       - name: Run pytest
-        run: FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env pytest
+        run: make ci-test
 
   contracts:
     name: Contract check
@@ -50,10 +50,10 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install Python dependencies
-        run: uv pip install --system -e '.[openai,dev]'
+        run: make install-openai
 
       - name: Run contract check
-        run: python3 scripts/check_contracts.py
+        run: make contract-check
 
   frontend:
     name: SDK and Web check/build
@@ -74,25 +74,28 @@ jobs:
           corepack prepare pnpm@9.15.9 --activate
 
       - name: Install frontend workspace dependencies
-        run: pnpm install --frozen-lockfile
+        run: make web-install
 
       - name: Check frontend SDK
-        run: pnpm sdk:check
+        run: make sdk-check
 
       - name: Build frontend SDK
-        run: pnpm sdk:build
+        run: make sdk-build
 
       - name: Validate frontend SDK transport
-        run: pnpm --dir frontend-sdk validate:transport
+        run: make sdk-validate-transport
 
       - name: Lint web app
-        run: pnpm --filter @focus-agent/web-app lint
+        run: make web-lint
 
-      - name: Format web app
-        run: pnpm --filter @focus-agent/web-app format
+      - name: Check web app formatting
+        run: make web-format-check
 
       - name: Check web app
-        run: pnpm web:check
+        run: make web-check
 
       - name: Build web app
-        run: pnpm web:build
+        run: make web-build
+
+      - name: Run stream frontend regression tests
+        run: make test-thread-stream-frontend-regressions

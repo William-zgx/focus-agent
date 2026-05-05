@@ -68,71 +68,75 @@ export function AppShellGlobalNavigation({
           <span>{chatNavLabel}</span>
         </Link>
       )}
-      {lastAgentTeamTarget?.sessionId && !isChatRoute ? (
-        <Link
-          aria-label={agentTeamNavLabel}
-          className={`fa-sidebar-nav-link ${isAgentWorkbenchShell ? "is-active" : ""}`.trim()}
-          params={{ sessionId: lastAgentTeamTarget.sessionId }}
-          {...tooltipProps(agentTeamNavLabel)}
-          to="/agent-team/$sessionId"
-        >
-          <span className="fa-sidebar-nav-icon" aria-hidden="true">
-            <AgentTeamIcon />
-          </span>
-          <span>{agentTeamNavLabel}</span>
-        </Link>
-      ) : (
-        <Link
-          aria-label={agentTeamNavLabel}
-          className={`fa-sidebar-nav-link ${isAgentWorkbenchShell ? "is-active" : ""}`.trim()}
-          search={agentTeamRootThreadId ? { root_thread_id: agentTeamRootThreadId } : undefined}
-          {...tooltipProps(agentTeamNavLabel)}
-          to="/agent-team"
-        >
-          <span className="fa-sidebar-nav-icon" aria-hidden="true">
-            <AgentTeamIcon />
-          </span>
-          <span>{agentTeamNavLabel}</span>
-        </Link>
-      )}
-      {adminNavTarget.page === "audit" ? (
-        <Link
-          aria-label={adminNavLabel}
-          className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
-          {...tooltipProps(adminNavLabel)}
-          to="/admin/audit-events"
-        >
-          <span className="fa-sidebar-nav-icon" aria-hidden="true">
-            <AdminConsoleIcon />
-          </span>
-          <span>{adminNavLabel}</span>
-        </Link>
-      ) : adminNavTarget.page === "user" ? (
-        <Link
-          aria-label={adminNavLabel}
-          className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
-          params={{ userId: adminNavTarget.userId }}
-          {...tooltipProps(adminNavLabel)}
-          to="/admin/users/$userId"
-        >
-          <span className="fa-sidebar-nav-icon" aria-hidden="true">
-            <AdminConsoleIcon />
-          </span>
-          <span>{adminNavLabel}</span>
-        </Link>
-      ) : (
-        <Link
-          aria-label={adminNavLabel}
-          className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
-          {...tooltipProps(adminNavLabel)}
-          to="/admin/users"
-        >
-          <span className="fa-sidebar-nav-icon" aria-hidden="true">
-            <AdminConsoleIcon />
-          </span>
-          <span>{adminNavLabel}</span>
-        </Link>
-      )}
+      {!isChatRoute ? (
+        lastAgentTeamTarget?.sessionId ? (
+          <Link
+            aria-label={agentTeamNavLabel}
+            className={`fa-sidebar-nav-link ${isAgentWorkbenchShell ? "is-active" : ""}`.trim()}
+            params={{ sessionId: lastAgentTeamTarget.sessionId }}
+            {...tooltipProps(agentTeamNavLabel)}
+            to="/agent-team/$sessionId"
+          >
+            <span className="fa-sidebar-nav-icon" aria-hidden="true">
+              <AgentTeamIcon />
+            </span>
+            <span>{agentTeamNavLabel}</span>
+          </Link>
+        ) : (
+          <Link
+            aria-label={agentTeamNavLabel}
+            className={`fa-sidebar-nav-link ${isAgentWorkbenchShell ? "is-active" : ""}`.trim()}
+            search={agentTeamRootThreadId ? { root_thread_id: agentTeamRootThreadId } : undefined}
+            {...tooltipProps(agentTeamNavLabel)}
+            to="/agent-team"
+          >
+            <span className="fa-sidebar-nav-icon" aria-hidden="true">
+              <AgentTeamIcon />
+            </span>
+            <span>{agentTeamNavLabel}</span>
+          </Link>
+        )
+      ) : null}
+      {!isChatRoute ? (
+        adminNavTarget.page === "audit" ? (
+          <Link
+            aria-label={adminNavLabel}
+            className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
+            {...tooltipProps(adminNavLabel)}
+            to="/admin/audit-events"
+          >
+            <span className="fa-sidebar-nav-icon" aria-hidden="true">
+              <AdminConsoleIcon />
+            </span>
+            <span>{adminNavLabel}</span>
+          </Link>
+        ) : adminNavTarget.page === "user" ? (
+          <Link
+            aria-label={adminNavLabel}
+            className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
+            params={{ userId: adminNavTarget.userId }}
+            {...tooltipProps(adminNavLabel)}
+            to="/admin/users/$userId"
+          >
+            <span className="fa-sidebar-nav-icon" aria-hidden="true">
+              <AdminConsoleIcon />
+            </span>
+            <span>{adminNavLabel}</span>
+          </Link>
+        ) : (
+          <Link
+            aria-label={adminNavLabel}
+            className={`fa-sidebar-nav-link ${isAdminRoute ? "is-active" : ""}`.trim()}
+            {...tooltipProps(adminNavLabel)}
+            to="/admin/users"
+          >
+            <span className="fa-sidebar-nav-icon" aria-hidden="true">
+              <AdminConsoleIcon />
+            </span>
+            <span>{adminNavLabel}</span>
+          </Link>
+        )
+      ) : null}
     </nav>
   );
 }

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from concurrent.futures import CancelledError as FutureCancelledError
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from contextvars import copy_context
-from threading import Thread
+import atexit
+import threading
 from typing import Any
 
 from .tool_execution_types import ToolExecutionInput
@@ -23,6 +25,62 @@ class ToolParameterValidationError(ValueError):
         super().__init__(f"Tool '{tool_name}' parameter validation failed: {error}")
 
 
+_TOOL_INVOCATION_EXECUTOR_MAX_WORKERS = 8
+_tool_invocation_executor_lock = threading.Lock()
+_tool_invocation_executor_instance: ThreadPoolExecutor | None = None
+_tool_invocation_timeout_active = 0
+_tool_invocation_timeout_total = 0
+
+
+def _tool_invocation_executor() -> ThreadPoolExecutor:
+    global _tool_invocation_executor_instance
+    with _tool_invocation_executor_lock:
+        if _tool_invocation_executor_instance is None:
+            _tool_invocation_executor_instance = ThreadPoolExecutor(
+                max_workers=_TOOL_INVOCATION_EXECUTOR_MAX_WORKERS,
+                thread_name_prefix="focus-agent-tool-timeout",
+            )
+        return _tool_invocation_executor_instance
+
+
+def _shutdown_tool_invocation_executor() -> None:
+    executor = _tool_invocation_executor_instance
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+atexit.register(_shutdown_tool_invocation_executor)
+
+
+def _mark_timed_out_future_active() -> None:
+    global _tool_invocation_timeout_active, _tool_invocation_timeout_total
+    with _tool_invocation_executor_lock:
+        _tool_invocation_timeout_active += 1
+        _tool_invocation_timeout_total += 1
+
+
+def _mark_timed_out_future_done(_future: Any) -> None:
+    global _tool_invocation_timeout_active
+    with _tool_invocation_executor_lock:
+        if _tool_invocation_timeout_active > 0:
+            _tool_invocation_timeout_active -= 1
+
+
+def _mark_timed_out_future_cancelled() -> None:
+    global _tool_invocation_timeout_total
+    with _tool_invocation_executor_lock:
+        _tool_invocation_timeout_total += 1
+
+
+def tool_invocation_runtime_snapshot() -> dict[str, int]:
+    with _tool_invocation_executor_lock:
+        return {
+            "timeout_active": _tool_invocation_timeout_active,
+            "timeout_total": _tool_invocation_timeout_total,
+            "max_workers": _TOOL_INVOCATION_EXECUTOR_MAX_WORKERS,
+        }
+
+
 def invoke_tool(item: ToolExecutionInput) -> Any:
     timeout_seconds = effective_timeout_seconds(item.runtime)
     if timeout_seconds is None:
@@ -31,36 +89,31 @@ def invoke_tool(item: ToolExecutionInput) -> Any:
 
 
 def invoke_tool_with_timeout(*, item: ToolExecutionInput, timeout_seconds: float) -> Any:
-    outcome: dict[str, Any] = {}
-    error: dict[str, Exception] = {}
     ctx = copy_context()
 
-    def _runner() -> None:
+    def _runner() -> Any:
         try:
-            outcome["value"] = ctx.run(item.tool.invoke, item.args)
+            return ctx.run(item.tool.invoke, item.args)
         except BaseException as exc:  # noqa: BLE001
             if isinstance(exc, Exception):
-                error["value"] = exc
-            else:
-                error["value"] = RuntimeError(
-                    f"Tool '{item.tool_name}' aborted with {type(exc).__name__}: {exc}"
-                )
+                raise
+            raise RuntimeError(
+                f"Tool '{item.tool_name}' aborted with {type(exc).__name__}: {exc}"
+            ) from exc
 
-    worker = Thread(
-        target=_runner,
-        name=f"focus-agent-tool-timeout-{item.tool_name}",
-        daemon=True,
-    )
-    worker.start()
-    worker.join(timeout_seconds)
-    if worker.is_alive():
+    future = _tool_invocation_executor().submit(_runner)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except FutureTimeoutError as exc:
+        if not future.cancel():
+            _mark_timed_out_future_active()
+            future.add_done_callback(_mark_timed_out_future_done)
+        else:
+            _mark_timed_out_future_cancelled()
         raise ToolInvocationTimeoutError(
             tool_name=item.tool_name,
             timeout_seconds=timeout_seconds,
-        )
-    if "value" in error:
-        raise error["value"]
-    return outcome.get("value")
+        ) from exc
 
 
 def effective_timeout_seconds(runtime: ToolRuntimeMeta) -> float | None:

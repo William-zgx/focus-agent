@@ -1,10 +1,10 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentArtifactListResponse,
   FocusAgentArtifactSynthesisRequest,
   FocusAgentArtifactSynthesisResponse,
-} from "../types";
+} from "../types.js";
 
 async function listAgentArtifacts(this: FocusAgentEndpointContext, limit = 50): Promise<FocusAgentArtifactListResponse> {
   const params = new URLSearchParams();

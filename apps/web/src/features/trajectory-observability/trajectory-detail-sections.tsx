@@ -1,6 +1,9 @@
 import type { FocusAgentTrajectoryTurnDetail } from "@focus-agent/web-sdk";
 
-import { TimelineEvidence, ZeroStepEvidence } from "./trajectory-evidence-views";
+import {
+	TimelineEvidence,
+	ZeroStepEvidence,
+} from "./trajectory-evidence-views";
 import { TrajectoryEmptyState } from "./trajectory-states";
 import type { EvidenceMode, ReviewSummary } from "./trajectory-utils";
 import {
@@ -233,13 +236,17 @@ export function SupplementalContextPanel({
 			<div className="fa-trajectory-workbench-raw-stack">
 				{selected.plan_meta ? (
 					<details className="fa-observability-raw-toggle">
-						<summary>{isChineseUi ? "查看 plan meta" : "View plan meta"}</summary>
+						<summary>
+							{isChineseUi ? "查看 plan meta" : "View plan meta"}
+						</summary>
 						<pre>{JSON.stringify(selected.plan_meta, null, 2)}</pre>
 					</details>
 				) : null}
 				{selected.reflection ? (
 					<details className="fa-observability-raw-toggle">
-						<summary>{isChineseUi ? "查看 reflection" : "View reflection"}</summary>
+						<summary>
+							{isChineseUi ? "查看 reflection" : "View reflection"}
+						</summary>
 						<pre>{JSON.stringify(selected.reflection, null, 2)}</pre>
 					</details>
 				) : null}

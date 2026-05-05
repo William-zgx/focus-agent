@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
 from focus_agent.api.main import _aggregate_token_usage_from_turns, _annotate_branch_tree_token_usage, create_app
+from focus_agent.api.route_utils.token_usage import _token_usage_by_thread_for_root, _token_usage_for_root_thread
 from focus_agent.api.schemas import (
     AgentRoleDecisionListResponse,
     AgentRoleDryRunRequest,
@@ -435,6 +438,51 @@ def test_api_token_usage_helpers_aggregate_and_annotate_tree():
 
     assert total == {"input_tokens": 17, "output_tokens": 15, "total_tokens": 32}
     assert annotated.token_usage["total_tokens"] == 32
+
+
+def test_api_token_usage_helpers_prefer_repository_aggregation():
+    class _AggregateTokenUsageRepo:
+        def __init__(self):
+            self.root_calls = []
+            self.thread_calls = []
+
+        def get_root_thread_token_usage(self, root_thread_id):
+            self.root_calls.append(root_thread_id)
+            return {"input_tokens": 4, "output_tokens": 6}
+
+        def get_thread_token_usage_for_root(self, root_thread_id):
+            self.thread_calls.append(root_thread_id)
+            return {
+                "root-1": {"input_tokens": 4, "output_tokens": 6},
+                "branch-1": {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},
+            }
+
+        def list_turns(self, query):  # noqa: ARG002
+            raise AssertionError("token usage should use repository aggregation")
+
+        def get_turn(self, turn_id):  # noqa: ARG002
+            return None
+
+        def list_steps_by_turn_ids(self, turn_ids):  # noqa: ARG002
+            return {}
+
+        def get_turn_stats(self, query):  # noqa: ARG002
+            return {}
+
+    repo = _AggregateTokenUsageRepo()
+    runtime = SimpleNamespace(
+        settings=SimpleNamespace(database_uri=None),
+        trajectory_recorder=repo,
+    )
+
+    root_usage = _token_usage_for_root_thread(runtime=runtime, root_thread_id="root-1")
+    by_thread = _token_usage_by_thread_for_root(runtime=runtime, root_thread_id="root-1")
+
+    assert root_usage == {"input_tokens": 4, "output_tokens": 6, "total_tokens": 10}
+    assert by_thread["root-1"] == {"input_tokens": 4, "output_tokens": 6, "total_tokens": 10}
+    assert by_thread["branch-1"]["total_tokens"] == 5
+    assert repo.root_calls == ["root-1"]
+    assert repo.thread_calls == ["root-1"]
 
 
 def test_apply_merge_decision_request_allows_proposal_overrides():

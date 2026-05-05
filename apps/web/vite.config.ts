@@ -3,6 +3,10 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
+const apiHost = process.env.API_HOST || "127.0.0.1";
+const apiPort = process.env.API_PORT || "8000";
+const apiTarget = `http://${apiHost}:${apiPort}`;
+
 export default defineConfig({
   base: "/app/",
   plugins: [react(), tailwindcss()],
@@ -40,10 +44,10 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     proxy: {
-      "/v1": "http://127.0.0.1:8000",
-      "/healthz": "http://127.0.0.1:8000",
-      "/readyz": "http://127.0.0.1:8000",
-      "/metrics": "http://127.0.0.1:8000",
+      "/v1": apiTarget,
+      "/healthz": apiTarget,
+      "/readyz": apiTarget,
+      "/metrics": apiTarget,
     },
   },
 });

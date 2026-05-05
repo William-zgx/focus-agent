@@ -102,7 +102,9 @@ export function AgentRunBubble({
 					{steps.length > 0 ? (
 						<details className="fa-agent-run-steps-shell">
 							<summary className="fa-agent-run-steps-summary">
-								<span>{processingStepsSummaryLabel(steps.length, isChineseUi)}</span>
+								<span>
+									{processingStepsSummaryLabel(steps.length, isChineseUi)}
+								</span>
 								<span className="fa-agent-run-steps-hint">
 									{processingStepsToggleHint(isChineseUi)}
 								</span>

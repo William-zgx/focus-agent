@@ -207,7 +207,10 @@ export function ReplayResultConsole({
 						isChineseUi={isChineseUi}
 						replayResult={replayResult}
 					/>
-					<ReplayDiffGrid isChineseUi={isChineseUi} replayResult={replayResult} />
+					<ReplayDiffGrid
+						isChineseUi={isChineseUi}
+						replayResult={replayResult}
+					/>
 					<ActionResultSnippet
 						label={isChineseUi ? "Replay 结果" : "Replay result"}
 						value={JSON.stringify(replayResult.replay_result, null, 2)}

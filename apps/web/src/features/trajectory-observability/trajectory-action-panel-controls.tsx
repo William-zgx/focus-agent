@@ -154,7 +154,9 @@ export function TrajectoryBatchActionControls({
 				<div>
 					<span>{isChineseUi ? "批量治理" : "Batch governance"}</span>
 					<strong>
-						{isChineseUi ? `${selectedCount} 条已勾选` : `${selectedCount} selected`}
+						{isChineseUi
+							? `${selectedCount} 条已勾选`
+							: `${selectedCount} selected`}
 					</strong>
 				</div>
 				{hasBatchSelection && onClearBatchSelection ? (

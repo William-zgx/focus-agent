@@ -1,4 +1,4 @@
-import type { FocusAgentEvent } from "../types";
+import type { FocusAgentEvent } from "../types.js";
 
 function canonicalizeAliasEvent(event: FocusAgentEvent): FocusAgentEvent {
   switch (event.event) {

@@ -1,5 +1,5 @@
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
-import type { FocusAgentModelsResponse } from "../types";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
+import type { FocusAgentModelsResponse } from "../types.js";
 
 async function listModels(this: FocusAgentEndpointContext): Promise<FocusAgentModelsResponse> {
   return this.requestJson<FocusAgentModelsResponse>("/v1/models", {

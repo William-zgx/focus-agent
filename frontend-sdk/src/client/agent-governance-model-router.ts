@@ -1,11 +1,11 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentModelRouteRequest,
   FocusAgentModelRouteResponse,
   FocusAgentModelRouterDecisionListResponse,
   FocusAgentModelRouterPolicyResponse,
-} from "../types";
+} from "../types.js";
 
 async function getAgentModelRouterPolicy(this: FocusAgentEndpointContext): Promise<FocusAgentModelRouterPolicyResponse> {
   return this.requestJson<FocusAgentModelRouterPolicyResponse>("/v1/agent/model-router/policy", {

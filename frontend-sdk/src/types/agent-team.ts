@@ -40,6 +40,22 @@ export type FocusAgentAgentTeamMergeNextAction =
   | "split_followup"
   | "discard";
 
+export type FocusAgentAgentTeamFinalAnswerStatus = "ready" | "placeholder" | "blocked" | "error" | string;
+
+export type FocusAgentAgentTeamPlanGranularity = "auto" | "coarse" | "balanced" | "detailed";
+
+export type FocusAgentAgentTeamPlanFocus = "auto" | "research" | "implementation" | "verification";
+
+export interface FocusAgentAgentTeamPlanningMetadata {
+  source?: string | null;
+  rationale?: string | null;
+  planner_model_id?: string | null;
+  generated_at?: string | null;
+  plan_hash?: string | null;
+  error?: string | null;
+  task_count: number;
+}
+
 export interface FocusAgentAgentTeamSession {
   session_id: string;
   root_thread_id: string;
@@ -51,6 +67,13 @@ export interface FocusAgentAgentTeamSession {
   updated_at: string;
   latest_merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
   merge_decision?: Record<string, unknown> | null;
+  planning_source?: string | null;
+  planning_rationale?: string | null;
+  planner_model_id?: string | null;
+  plan_generated_at?: string | null;
+  plan_hash?: string | null;
+  planning_error?: string | null;
+  planning?: FocusAgentAgentTeamPlanningMetadata | null;
 }
 
 export interface FocusAgentAgentTeamTask {
@@ -60,9 +83,17 @@ export interface FocusAgentAgentTeamTask {
   child_thread_id?: string | null;
   role: FocusAgentAgentTeamTaskRole;
   goal: string;
+  title?: string | null;
+  planning_rationale?: string | null;
+  sort_order?: number | null;
+  task_type?: string | null;
+  plan_source?: string | null;
+  acceptance_criteria?: string[];
+  context_refs?: Record<string, unknown>[];
   scope: string[];
   dependencies: string[];
   status: FocusAgentAgentTeamTaskStatus;
+  run_status?: string | null;
   output_artifact_ids: string[];
   agent_run_id?: string | null;
   delegated_task_id?: string | null;
@@ -71,17 +102,36 @@ export interface FocusAgentAgentTeamTask {
   changed_files: string[];
   verification_summary?: string | null;
   risk_notes: string[];
+  started_at?: string | null;
+  finished_at?: string | null;
+  last_error?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface FocusAgentAgentTeamTaskOutput {
+  output_id?: string;
   task_id: string;
+  kind?: FocusAgentAgentTeamArtifactKind | null;
   artifact_id?: string | null;
   artifact_kind?: FocusAgentAgentTeamArtifactKind | null;
   content?: string | null;
   summary?: string | null;
   changed_files: string[];
+  test_evidence?: string[];
   verification_summary?: string | null;
   risk_notes: string[];
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+}
+
+export interface FocusAgentAgentTeamArtifact {
+  artifact_id: string;
+  task_id?: string | null;
+  kind?: FocusAgentAgentTeamArtifactKind | string | null;
+  title?: string | null;
+  summary?: string | null;
+  content?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 }
@@ -89,6 +139,10 @@ export interface FocusAgentAgentTeamTaskOutput {
 export interface FocusAgentAgentTeamMergeBundle {
   session_id: string;
   summary: string;
+  final_answer?: string | null;
+  final_answer_status?: FocusAgentAgentTeamFinalAnswerStatus | null;
+  final_answer_warnings?: string[];
+  source_output_ids?: string[];
   accepted_tasks: string[];
   rejected_tasks: string[];
   key_findings: string[];
@@ -128,12 +182,76 @@ export interface FocusAgentAgentTeamDispatchResponse {
   session: FocusAgentAgentTeamSession;
   tasks: FocusAgentAgentTeamTask[];
   items: FocusAgentAgentTeamTask[];
+  outputs?: FocusAgentAgentTeamTaskOutput[];
+  artifacts?: FocusAgentAgentTeamArtifact[];
+  merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
+  planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  count: number;
+}
+
+export interface FocusAgentAgentTeamSessionView {
+  session: FocusAgentAgentTeamSession;
+  tasks: FocusAgentAgentTeamTask[];
+  outputs?: FocusAgentAgentTeamTaskOutput[];
+  artifacts: FocusAgentAgentTeamArtifact[];
+  merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
+  planning?: FocusAgentAgentTeamPlanningMetadata | null;
+}
+
+export interface FocusAgentAgentTeamSessionRunRequest {
+  create_branches?: boolean;
+  auto_fork_branch?: boolean | null;
+  parent_thread_id?: string | null;
+  task_ids?: string[];
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentAgentTeamTaskRunRequest {
+  create_branch?: boolean;
+  auto_fork_branch?: boolean | null;
+  parent_thread_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentAgentTeamSessionRunResponse {
+  session: FocusAgentAgentTeamSession;
+  tasks: FocusAgentAgentTeamTask[];
+  items: FocusAgentAgentTeamTask[];
+  outputs: FocusAgentAgentTeamTaskOutput[];
+  artifacts: FocusAgentAgentTeamArtifact[];
+  merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
+  planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  count: number;
+}
+
+export interface FocusAgentAgentTeamPlanSessionRequest extends FocusAgentAgentTeamSessionRunRequest {
+  replace_existing?: boolean;
+  granularity?: FocusAgentAgentTeamPlanGranularity;
+  focus?: FocusAgentAgentTeamPlanFocus;
+  max_tasks?: number;
+}
+
+export type FocusAgentAgentTeamPlanSessionResponse = FocusAgentAgentTeamSessionRunResponse;
+export type FocusAgentAgentTeamRunSessionRequest = FocusAgentAgentTeamSessionRunRequest;
+export type FocusAgentAgentTeamRunSessionResponse = FocusAgentAgentTeamSessionRunResponse;
+
+export interface FocusAgentAgentTeamRunTaskResponse {
+  task?: FocusAgentAgentTeamTask | null;
+  session?: FocusAgentAgentTeamSession | null;
+  tasks: FocusAgentAgentTeamTask[];
+  items: FocusAgentAgentTeamTask[];
+  outputs: FocusAgentAgentTeamTaskOutput[];
+  artifacts: FocusAgentAgentTeamArtifact[];
+  merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
+  planning?: FocusAgentAgentTeamPlanningMetadata | null;
   count: number;
 }
 
 export interface FocusAgentAgentTeamCreateTaskRequest {
   role: FocusAgentAgentTeamTaskRole;
   goal: string;
+  acceptance_criteria?: string[];
+  context_refs?: Record<string, unknown>[];
   scope?: string[];
   dependencies?: string[];
   branch_id?: string | null;
@@ -158,14 +276,20 @@ export interface FocusAgentAgentTeamTaskListResponse {
 export interface FocusAgentAgentTeamUpdateTaskRequest {
   status?: FocusAgentAgentTeamTaskStatus;
   goal?: string;
+  acceptance_criteria?: string[];
+  context_refs?: Record<string, unknown>[];
   scope?: string[];
   dependencies?: string[];
   branch_id?: string | null;
   child_thread_id?: string | null;
   output_artifact_ids?: string[];
+  run_status?: string | null;
   changed_files?: string[];
   verification_summary?: string | null;
   risk_notes?: string[];
+  started_at?: string | null;
+  finished_at?: string | null;
+  last_error?: string | null;
 }
 
 export interface FocusAgentAgentTeamRecordTaskOutputRequest {

@@ -4,17 +4,22 @@ import { queryKeys } from "@/shared/query/query-keys";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 import type {
+  AgentTeamActionResponse,
   AgentTeamClientContract,
   AgentTeamCreateSessionRequest,
   AgentTeamCreateTaskRequest,
   AgentTeamDispatchRequest,
   AgentTeamListSessionsRequest,
+  AgentTeamPlanSessionRequest,
+  AgentTeamRunSessionRequest,
+  AgentTeamRunTaskRequest,
   AgentTeamMergeBundle,
   AgentTeamSession,
   AgentTeamSessionListResponse,
   AgentTeamSessionView,
   AgentTeamTask,
 } from "./types";
+import { isTaskRunning, normalizeSessionView } from "./agent-team-workbench-utils";
 
 function agentTeamClient(client: unknown): Partial<AgentTeamClientContract> {
   return client as Partial<AgentTeamClientContract>;
@@ -22,6 +27,100 @@ function agentTeamClient(client: unknown): Partial<AgentTeamClientContract> {
 
 function missingSdkMethod(method: keyof AgentTeamClientContract): Error {
   return new Error(`Agent Team SDK method ${method} is unavailable. Rebuild the SDK slice with the Agent Team endpoint contract.`);
+}
+
+function shouldPollSessionView(data: AgentTeamSession | AgentTeamSessionView | undefined) {
+  const view = normalizeSessionView(data);
+  if (!view) return false;
+  return view.session.status === "running" || view.tasks.some(isTaskRunning);
+}
+
+function coerceViewResponse(
+  response: AgentTeamActionResponse,
+  previous: AgentTeamSession | AgentTeamSessionView | undefined,
+): AgentTeamSessionView | null {
+  const previousView = normalizeSessionView(previous);
+  const responseView =
+    "session" in response || ("root_thread_id" in response && "goal" in response)
+      ? normalizeSessionView(response as AgentTeamSession | AgentTeamSessionView)
+      : null;
+  if (responseView) {
+    return {
+      ...responseView,
+      tasks: responseView.tasks.length ? responseView.tasks : previousView?.tasks ?? [],
+      outputs: responseView.outputs?.length ? responseView.outputs : previousView?.outputs ?? [],
+      artifacts: responseView.artifacts?.length ? responseView.artifacts : previousView?.artifacts ?? [],
+      merge_bundle: responseView.merge_bundle ?? previousView?.merge_bundle ?? null,
+    };
+  }
+
+  const taskResponse = "task" in response && response.task ? response.task : response;
+  if ("task_id" in taskResponse) {
+    if (!previousView) return null;
+    const nextTask = taskResponse as AgentTeamTask;
+    const existingTask = previousView.tasks.some((task) => task.task_id === nextTask.task_id);
+    return {
+      ...previousView,
+      tasks: existingTask
+        ? previousView.tasks.map((task) => (task.task_id === nextTask.task_id ? nextTask : task))
+        : [...previousView.tasks, nextTask],
+    };
+  }
+
+  const mergeBundle =
+    "summary" in response && "session_id" in response
+      ? (response as AgentTeamMergeBundle)
+      : "bundle" in response
+        ? response.bundle ?? null
+      : "merge_bundle" in response
+        ? response.merge_bundle ?? null
+        : null;
+  if (mergeBundle && previousView) {
+    return {
+      ...previousView,
+      session: {
+        ...previousView.session,
+        latest_merge_bundle: mergeBundle,
+      },
+      merge_bundle: mergeBundle,
+    };
+  }
+
+  return null;
+}
+
+function updateSessionCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  sessionId: string | null,
+  response: AgentTeamActionResponse,
+) {
+  if (!sessionId) return;
+  const queryKey = queryKeys.agentTeamSession(sessionId);
+  const previous = queryClient.getQueryData<AgentTeamSession | AgentTeamSessionView>(queryKey);
+  const nextView = coerceViewResponse(response, previous);
+  if (nextView) {
+    queryClient.setQueryData(queryKey, nextView);
+    return;
+  }
+  void queryClient.invalidateQueries({ queryKey });
+}
+
+async function getLegacySessionView(
+  agentTeam: Partial<AgentTeamClientContract>,
+  sessionId: string,
+): Promise<AgentTeamSession | AgentTeamSessionView> {
+  if (!agentTeam.getAgentTeamSession) throw missingSdkMethod("getAgentTeamSession");
+  const session = await agentTeam.getAgentTeamSession(sessionId);
+  if ("session" in session) return session;
+  if (!agentTeam.listAgentTeamTasks) return session;
+  const taskResponse = await agentTeam.listAgentTeamTasks(sessionId);
+  const tasks = Array.isArray(taskResponse) ? taskResponse : taskResponse.items ?? [];
+  return {
+    session,
+    tasks,
+    artifacts: [],
+    merge_bundle: null,
+  };
 }
 
 export function useAgentTeamSession(sessionId: string | null) {
@@ -32,20 +131,11 @@ export function useAgentTeamSession(sessionId: string | null) {
     queryKey: sessionId ? queryKeys.agentTeamSession(sessionId) : queryKeys.agentTeamSession(""),
     queryFn: async () => {
       if (!sessionId) throw new Error("Missing Agent Team session id.");
-      if (!agentTeam.getAgentTeamSession) throw missingSdkMethod("getAgentTeamSession");
-      const session = await agentTeam.getAgentTeamSession(sessionId);
-      if ("session" in session) return session;
-      if (!agentTeam.listAgentTeamTasks) return session;
-      const taskResponse = await agentTeam.listAgentTeamTasks(sessionId);
-      const tasks = Array.isArray(taskResponse) ? taskResponse : taskResponse.items ?? [];
-      return {
-        session,
-        tasks,
-        artifacts: [],
-        merge_bundle: null,
-      };
+      if (agentTeam.getAgentTeamSessionView) return agentTeam.getAgentTeamSessionView(sessionId);
+      return getLegacySessionView(agentTeam, sessionId);
     },
     enabled: ready && Boolean(sessionId),
+    refetchInterval: (query) => (shouldPollSessionView(query.state.data) ? 3000 : false),
   });
 }
 
@@ -80,7 +170,7 @@ export function useCreateAgentTeamSession() {
     },
     onSuccess: (data) => {
       const sessionId = "session" in data ? data.session.session_id : data.session_id;
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId) });
+      updateSessionCache(queryClient, sessionId, data);
       void queryClient.invalidateQueries({ queryKey: ["agent-team-sessions"] });
     },
   });
@@ -97,34 +187,71 @@ export function useCreateAgentTeamTask(sessionId: string | null) {
       if (!agentTeam.createAgentTeamTask) throw missingSdkMethod("createAgentTeamTask");
       return agentTeam.createAgentTeamTask(sessionId, request);
     },
-    onSuccess: () => {
-      if (sessionId) void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId) });
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+    },
+  });
+}
+
+export function usePlanAgentTeamSession(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamActionResponse, Error, AgentTeamPlanSessionRequest | undefined>({
+    mutationFn: async (request) => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (agentTeam.planAgentTeamSession) return agentTeam.planAgentTeamSession(sessionId, request);
+      if (!agentTeam.dispatchAgentTeamSession) throw missingSdkMethod("dispatchAgentTeamSession");
+      return agentTeam.dispatchAgentTeamSession(sessionId, {
+        create_branches: request?.create_branches ?? true,
+        parent_thread_id: request?.parent_thread_id,
+      });
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+    },
+  });
+}
+
+export function useRunAgentTeamSession(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamActionResponse, Error, AgentTeamRunSessionRequest | undefined>({
+    mutationFn: async (request) => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (agentTeam.runAgentTeamSession) return agentTeam.runAgentTeamSession(sessionId, request);
+      if (!agentTeam.dispatchAgentTeamSession) throw missingSdkMethod("dispatchAgentTeamSession");
+      return agentTeam.dispatchAgentTeamSession(sessionId, { create_branches: true });
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+    },
+  });
+}
+
+export function useRunAgentTeamTask(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamActionResponse, Error, { taskId: string; request?: AgentTeamRunTaskRequest }>({
+    mutationFn: async ({ taskId, request }) => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (agentTeam.runAgentTeamTask) return agentTeam.runAgentTeamTask(taskId, request);
+      if (!agentTeam.dispatchAgentTeamSession) throw missingSdkMethod("dispatchAgentTeamSession");
+      return agentTeam.dispatchAgentTeamSession(sessionId, { create_branches: true });
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
     },
   });
 }
 
 export function useDispatchAgentTeamSession(sessionId: string | null) {
-  const { client } = useFocusAgent();
-  const queryClient = useQueryClient();
-  const agentTeam = agentTeamClient(client);
-
-  return useMutation<AgentTeamSessionView, Error, AgentTeamDispatchRequest | undefined>({
-    mutationFn: async (request) => {
-      if (!sessionId) throw new Error("Missing Agent Team session id.");
-      if (!agentTeam.dispatchAgentTeamSession) throw missingSdkMethod("dispatchAgentTeamSession");
-      const response = await agentTeam.dispatchAgentTeamSession(sessionId, request);
-      const tasks = "tasks" in response ? response.tasks : response.items;
-      return {
-        session: response.session,
-        tasks: tasks ?? [],
-        artifacts: "artifacts" in response ? response.artifacts : [],
-        merge_bundle: "merge_bundle" in response ? response.merge_bundle : null,
-      };
-    },
-    onSuccess: () => {
-      if (sessionId) void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId) });
-    },
-  });
+  return usePlanAgentTeamSession(sessionId);
 }
 
 export function useAgentTeamMergeProposal(sessionId: string | null) {
@@ -141,8 +268,8 @@ export function useAgentTeamMergeProposal(sessionId: string | null) {
       if (agentTeam.createAgentTeamMergeProposal) return agentTeam.createAgentTeamMergeProposal(sessionId);
       throw missingSdkMethod("prepareAgentTeamMergeBundle");
     },
-    onSuccess: () => {
-      if (sessionId) void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId) });
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
     },
   });
 }

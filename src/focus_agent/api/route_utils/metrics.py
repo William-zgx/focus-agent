@@ -26,6 +26,8 @@ def _build_prometheus_metrics_payload(
     trajectory_stats: dict[str, Any] | None,
     trajectory_available: bool,
     agent_governance_metrics: dict[str, int] | None = None,
+    background_metrics: dict[str, int] | None = None,
+    tool_runtime_metrics: dict[str, int] | None = None,
 ) -> str:
     lines = [
         "# HELP focus_agent_runtime_ready Whether the application runtime is ready to serve traffic.",
@@ -67,6 +69,8 @@ def _build_prometheus_metrics_payload(
     )
     if not trajectory_available or not trajectory_stats:
         lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
+        lines.extend(_background_metric_lines(background_metrics or {}))
+        lines.extend(_tool_runtime_metric_lines(tool_runtime_metrics or {}))
         return "\n".join(lines) + "\n"
 
     overview = trajectory_stats.get("overview") or {}
@@ -118,6 +122,8 @@ def _build_prometheus_metrics_payload(
             )
         )
     lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
+    lines.extend(_background_metric_lines(background_metrics or {}))
+    lines.extend(_tool_runtime_metric_lines(tool_runtime_metrics or {}))
     return "\n".join(lines) + "\n"
 
 
@@ -165,6 +171,70 @@ def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
         "# HELP focus_agent_critic_gate_rejected_count Rejected artifacts observed in critic gate results.",
         "# TYPE focus_agent_critic_gate_rejected_count gauge",
         _prometheus_metric_line("focus_agent_critic_gate_rejected_count", int(metrics.get("critic_gate_rejected") or 0)),
+    ]
+
+
+def _background_metric_lines(metrics: dict[str, int]) -> list[str]:
+    return [
+        "# HELP focus_agent_background_queue_depth Pending best-effort background tasks.",
+        "# TYPE focus_agent_background_queue_depth gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_queue_depth",
+            int(metrics.get("queue_depth") or 0),
+        ),
+        "# HELP focus_agent_background_worker_active Active best-effort background workers.",
+        "# TYPE focus_agent_background_worker_active gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_worker_active",
+            int(metrics.get("active_workers") or 0),
+        ),
+        "# HELP focus_agent_background_task_submitted_total Submitted best-effort background tasks.",
+        "# TYPE focus_agent_background_task_submitted_total counter",
+        _prometheus_metric_line(
+            "focus_agent_background_task_submitted_total",
+            int(metrics.get("submitted_total") or 0),
+        ),
+        "# HELP focus_agent_background_task_deduplicated_total Deduplicated best-effort background tasks.",
+        "# TYPE focus_agent_background_task_deduplicated_total counter",
+        _prometheus_metric_line(
+            "focus_agent_background_task_deduplicated_total",
+            int(metrics.get("deduplicated_total") or 0),
+        ),
+        "# HELP focus_agent_background_task_dropped_total Dropped best-effort background tasks.",
+        "# TYPE focus_agent_background_task_dropped_total counter",
+        _prometheus_metric_line(
+            "focus_agent_background_task_dropped_total",
+            int(metrics.get("dropped_total") or 0),
+        ),
+        "# HELP focus_agent_background_task_failed_total Failed best-effort background tasks.",
+        "# TYPE focus_agent_background_task_failed_total counter",
+        _prometheus_metric_line(
+            "focus_agent_background_task_failed_total",
+            int(metrics.get("failed_total") or 0),
+        ),
+    ]
+
+
+def _tool_runtime_metric_lines(metrics: dict[str, int]) -> list[str]:
+    return [
+        "# HELP focus_agent_tool_timeout_active Timed-out read-only tool calls still running in the bounded executor.",
+        "# TYPE focus_agent_tool_timeout_active gauge",
+        _prometheus_metric_line(
+            "focus_agent_tool_timeout_active",
+            int(metrics.get("timeout_active") or 0),
+        ),
+        "# HELP focus_agent_tool_timeout_total Timed-out read-only tool calls observed by the bounded executor.",
+        "# TYPE focus_agent_tool_timeout_total counter",
+        _prometheus_metric_line(
+            "focus_agent_tool_timeout_total",
+            int(metrics.get("timeout_total") or 0),
+        ),
+        "# HELP focus_agent_tool_timeout_max_workers Maximum workers for timeout-wrapped tool calls.",
+        "# TYPE focus_agent_tool_timeout_max_workers gauge",
+        _prometheus_metric_line(
+            "focus_agent_tool_timeout_max_workers",
+            int(metrics.get("max_workers") or 0),
+        ),
     ]
 
 

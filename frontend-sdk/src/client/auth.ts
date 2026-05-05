@@ -1,5 +1,5 @@
-import { applyEndpointMethods } from "./endpoint";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { applyEndpointMethods } from "./endpoint.js";
+import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentAuthResponse,
   FocusAgentChangePasswordRequest,
@@ -12,7 +12,7 @@ import type {
   FocusAgentSession,
   FocusAgentSessionListResponse,
   FocusAgentUser,
-} from "../types";
+} from "../types.js";
 
 async function register(this: FocusAgentEndpointContext, request: FocusAgentRegisterRequest): Promise<FocusAgentAuthResponse> {
   return this.requestJson<FocusAgentAuthResponse>("/v1/auth/register", {

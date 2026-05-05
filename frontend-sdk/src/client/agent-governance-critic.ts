@@ -1,10 +1,10 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentCriticEvaluateRequest,
   FocusAgentCriticEvaluateResponse,
   FocusAgentCriticVerdictListResponse,
-} from "../types";
+} from "../types.js";
 
 async function listAgentCriticVerdicts(this: FocusAgentEndpointContext, limit = 50): Promise<FocusAgentCriticVerdictListResponse> {
   const params = new URLSearchParams();

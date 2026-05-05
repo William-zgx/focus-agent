@@ -1,10 +1,10 @@
-import { appendQueryValue } from "./query";
-import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { appendQueryValue } from "./query.js";
+import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentSelfRepairFailureListResponse,
   FocusAgentSelfRepairPromotePreviewRequest,
   FocusAgentSelfRepairPromotePreviewResponse,
-} from "../types";
+} from "../types.js";
 
 async function listAgentSelfRepairFailures(this: FocusAgentEndpointContext, limit = 50): Promise<FocusAgentSelfRepairFailureListResponse> {
   const params = new URLSearchParams();

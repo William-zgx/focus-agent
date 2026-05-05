@@ -1,7 +1,7 @@
-import { unwrapUserResponse } from "./auth";
-import { buildAdminUserQueryString, buildAuditEventQueryString } from "./query";
-import { applyEndpointMethods } from "./endpoint";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint";
+import { unwrapUserResponse } from "./auth.js";
+import { buildAdminUserQueryString, buildAuditEventQueryString } from "./query.js";
+import { applyEndpointMethods } from "./endpoint.js";
+import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentAuditEventListRequest,
   FocusAgentAuditEventListResponse,
@@ -16,7 +16,7 @@ import type {
   FocusAgentUser,
   FocusAgentUserListRequest,
   FocusAgentUserListResponse,
-} from "../types";
+} from "../types.js";
 
 async function listUserSessions(this: FocusAgentEndpointContext, userId: string): Promise<FocusAgentSessionListResponse> {
   return this.requestJson<FocusAgentSessionListResponse>(

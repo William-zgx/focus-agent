@@ -6,7 +6,7 @@ import type {
   FocusAgentTrajectoryListRequest,
   FocusAgentTrajectoryStatsRequest,
   FocusAgentUserListRequest,
-} from "../types";
+} from "../types.js";
 
 export function appendQueryValue(params: URLSearchParams, key: string, value: unknown): void {
   if (value === undefined || value === null) {

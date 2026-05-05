@@ -72,6 +72,13 @@ class AgentTeamRecommendedAction(str, Enum):
     DISCARD = "discard"
 
 
+class AgentTeamFinalAnswerStatus(str, Enum):
+    READY = "ready"
+    PLACEHOLDER = "placeholder"
+    BLOCKED = "blocked"
+    ERROR = "error"
+
+
 class AgentTeamSession(BaseModel):
     session_id: str
     root_thread_id: str
@@ -83,6 +90,12 @@ class AgentTeamSession(BaseModel):
     updated_at: str
     latest_merge_bundle: dict[str, Any] | None = None
     merge_decision: dict[str, Any] | None = None
+    planning_source: str | None = None
+    planning_rationale: str | None = None
+    planner_model_id: str | None = None
+    plan_generated_at: str | None = None
+    plan_hash: str | None = None
+    planning_error: str | None = None
 
 
 class AgentTeamTask(BaseModel):
@@ -91,10 +104,18 @@ class AgentTeamTask(BaseModel):
     branch_id: str | None = None
     child_thread_id: str | None = None
     role: AgentTeamTaskRole
+    title: str | None = None
     goal: str
     scope: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    planning_rationale: str | None = None
+    sort_order: int | None = None
+    task_type: str | None = None
+    plan_source: str | None = None
+    context_refs: list[dict[str, Any]] = Field(default_factory=list)
     status: AgentTeamTaskStatus = AgentTeamTaskStatus.PENDING
+    run_status: str | None = None
     output_artifact_ids: list[str] = Field(default_factory=list)
     agent_run_id: str | None = None
     delegated_task_id: str | None = None
@@ -103,6 +124,9 @@ class AgentTeamTask(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     verification_summary: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
+    started_at: str | None = None
+    finished_at: str | None = None
+    last_error: str | None = None
     created_at: str
     updated_at: str
 
@@ -123,6 +147,10 @@ class AgentTeamTaskOutput(BaseModel):
 class AgentTeamMergeBundle(BaseModel):
     session_id: str
     summary: str
+    final_answer: str | None = None
+    final_answer_status: AgentTeamFinalAnswerStatus | None = None
+    final_answer_warnings: list[str] = Field(default_factory=list)
+    source_output_ids: list[str] = Field(default_factory=list)
     accepted_tasks: list[str] = Field(default_factory=list)
     rejected_tasks: list[str] = Field(default_factory=list)
     key_findings: list[str] = Field(default_factory=list)
@@ -147,6 +175,7 @@ class AgentTeamMergeDecision(BaseModel):
 
 __all__ = [
     "AgentTeamArtifactKind",
+    "AgentTeamFinalAnswerStatus",
     "AgentTeamMergeBundle",
     "AgentTeamMergeDecision",
     "AgentTeamRecommendedAction",

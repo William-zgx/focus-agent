@@ -1,4 +1,4 @@
-import type { FocusAgentEvent } from "../types";
+import type { FocusAgentEvent } from "../types.js";
 
 export interface FocusAgentEndpointContext {
   requestJson<T>(path: string, init: RequestInit, auth: boolean): Promise<T>;

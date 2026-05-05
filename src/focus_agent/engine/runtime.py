@@ -19,6 +19,7 @@ from ..repositories.sqlite_branch_repository import SQLiteBranchRepository
 from ..repositories.sqlite_user_repository import SQLiteUserRepository
 from ..repositories.user_repository import UserRepository
 from ..services.agent_team import AgentTeamService
+from ..services.background_work import BoundedBackgroundQueue
 from ..services.branches import BranchService
 from ..services.users import UserService
 from ..skills import SkillRegistry
@@ -81,6 +82,7 @@ class AppRuntime:
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
     otel_runtime: OTelRuntime
+    background_work: BoundedBackgroundQueue
     _exit_stack: ExitStack
 
     def close(self) -> None:
@@ -96,6 +98,12 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     exit_stack = ExitStack()
     otel_runtime = initialize_otel_runtime(settings)
     exit_stack.callback(otel_runtime.shutdown)
+    background_work = BoundedBackgroundQueue(
+        name="runtime",
+        max_concurrency=settings.background_worker_max_concurrency,
+        max_size=settings.background_queue_max_size,
+    )
+    exit_stack.callback(background_work.close)
 
     persistence = _create_runtime_persistence(settings=settings, exit_stack=exit_stack)
     memory = _create_memory_components(persistence.store)
@@ -135,6 +143,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         trajectory_recorder=persistence.trajectory_recorder,
         artifact_metadata_repository=persistence.artifact_metadata_repository,
         otel_runtime=otel_runtime,
+        background_work=background_work,
         _exit_stack=exit_stack,
     )
 
@@ -236,6 +245,7 @@ def _create_runtime_services(
     agent_team_service = AgentTeamService(
         branch_service=branch_service,
         repository=_create_agent_team_repository(settings),
+        settings=settings,
     )
     user_service = UserService(
         user_repository,

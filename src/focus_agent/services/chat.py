@@ -44,6 +44,7 @@ class ChatServicePorts:
     skill_registry: Any | None = None
     trajectory_recorder: Any | None = None
     checkpointer: Any | None = None
+    background_work: Any | None = None
 
     @classmethod
     def from_runtime(cls, runtime: Any) -> ChatServicePorts:
@@ -55,6 +56,7 @@ class ChatServicePorts:
             skill_registry=getattr(runtime, 'skill_registry', None),
             trajectory_recorder=getattr(runtime, 'trajectory_recorder', None),
             checkpointer=getattr(runtime, 'checkpointer', None),
+            background_work=getattr(runtime, 'background_work', None),
         )
 
 
@@ -74,6 +76,7 @@ class ChatService(
         self.runtime = self.ports
         self._active_turns: set[str] = set()
         self._active_turns_lock = threading.Lock()
+        self._background_work = self.ports.background_work
 
     def _acquire_thread_turn(self, *, thread_id: str) -> None:
         with self._active_turns_lock:
@@ -87,6 +90,23 @@ class ChatService(
     def _release_thread_turn(self, *, thread_id: str) -> None:
         with self._active_turns_lock:
             self._active_turns.discard(thread_id)
+
+    def _submit_background_work(self, *, key: str, func, delay_seconds: float = 0.0, **kwargs: Any) -> bool:
+        if self._background_work is None:
+            from .background_work import BoundedBackgroundQueue
+
+            settings = self.runtime.settings
+            self._background_work = BoundedBackgroundQueue(
+                name="chat",
+                max_concurrency=getattr(settings, "background_worker_max_concurrency", 2),
+                max_size=getattr(settings, "background_queue_max_size", 1000),
+            )
+        return self._background_work.submit(
+            key=key,
+            func=func,
+            delay_seconds=delay_seconds,
+            **kwargs,
+        )
 
     @staticmethod
     def _message_content_to_text(content: Any) -> str:

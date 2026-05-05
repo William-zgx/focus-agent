@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from focus_agent.api.contracts import (
+    AgentTeamMergeBundleContract,
     AgentTeamMergeBundleResponse,
     AgentTeamSessionListResponse,
     AgentTeamTaskListResponse,
@@ -185,16 +186,26 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
     )
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamMergeBundle"),
-        {"execution_evidence"},
+        {"execution_evidence", "final_answer", "final_answer_status", "final_answer_warnings", "source_output_ids"},
     )
     _assert_interface_has_fields(
         _interface_body(web_types, "AgentTeamMergeBundle"),
-        {"execution_evidence"},
+        {"execution_evidence", "final_answer", "final_answer_status", "final_answer_warnings", "source_output_ids"},
     )
 
     assert set(AgentTeamSessionListResponse.model_fields) == {"sessions", "items", "count"}
     assert set(AgentTeamTaskListResponse.model_fields) == {"tasks", "items", "count"}
     assert set(AgentTeamMergeBundleResponse.model_fields) == {"bundle"}
+    assert {
+        "final_answer",
+        "final_answer_status",
+        "final_answer_warnings",
+        "source_output_ids",
+    }.issubset(AgentTeamMergeBundleContract.model_fields)
+    old_bundle = AgentTeamMergeBundleContract.model_validate({"session_id": "session-1", "summary": "legacy"})
+    assert old_bundle.final_answer is None
+    assert old_bundle.final_answer_warnings == []
+    assert old_bundle.source_output_ids == []
 
     for method in [
         "createAgentTeamSession",
@@ -252,14 +263,23 @@ def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
 
     assert "latest_merge_bundle" in workbench_text
     assert "data.session.latest_merge_bundle" in workbench_text
-    assert "activeBundle?.recommended_next_action" in workbench_text
-    assert "重新生成协作汇总" in workbench_text
-    assert "fa-header-card fa-agent-team-compact-header" in workbench_text
-    assert "返回对话" in workbench_text
-    assert "fa-agent-team-progress-strip" in workbench_text
+    assert "recommended_next_action" in workbench_text
+    assert "重新生成结果" in workbench_text
+    assert "fa-agent-team-guided-layout" in workbench_text
+    assert "fa-agent-team-mission-header" in workbench_text
+    assert "fa-agent-team-mission-progress" in workbench_text
+    assert "返回来源对话" in workbench_text
+    assert "fa-agent-team-progress-overview" in workbench_text
+    assert "fa-agent-team-primary-action" in workbench_text
+    assert "StatusPill status={session.status}" not in workbench_text
+    assert "AdvancedDetailsPanel" in workbench_text
     assert "compactTaskGoal" in workbench_text
     assert "evidenceItems" in workbench_text
     assert "task.verification_summary" in workbench_text
     assert "activeBundle.test_evidence" in workbench_text
+    assert "Agent Team 最终答案" in workbench_text
+    assert "finalAnswerText" in workbench_text
+    assert "source_output_ids" in workbench_text
+    assert "fa-agent-team-execution-mode" in workbench_text
     assert "white-space: pre-line" in stylesheet_text
-    assert "fa-agent-team-workbench-grid" in stylesheet_text
+    assert "fa-agent-team-guided-grid" in stylesheet_text

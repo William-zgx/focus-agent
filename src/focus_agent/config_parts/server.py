@@ -33,4 +33,19 @@ def load_server_config(env: MutableMapping[str, str], defaults: Any) -> dict[str
         "rate_limit_chat_per_minute": int(
             env.get("RATE_LIMIT_CHAT_PER_MINUTE", str(defaults.rate_limit_chat_per_minute))
         ),
+        "metrics_trajectory_window_hours": int(
+            env.get(
+                "METRICS_TRAJECTORY_WINDOW_HOURS",
+                str(defaults.metrics_trajectory_window_hours),
+            )
+        ),
+        "metrics_cache_ttl_seconds": int(
+            env.get("METRICS_CACHE_TTL_SECONDS", str(defaults.metrics_cache_ttl_seconds))
+        ),
+        "metrics_governance_recent_limit": int(
+            env.get(
+                "METRICS_GOVERNANCE_RECENT_LIMIT",
+                str(defaults.metrics_governance_recent_limit),
+            )
+        ),
     }

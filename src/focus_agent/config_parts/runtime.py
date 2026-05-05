@@ -29,6 +29,18 @@ def load_runtime_config(
         "local_checkpoint_path": env.get("LOCAL_CHECKPOINT_PATH") or None,
         "local_store_path": env.get("LOCAL_STORE_PATH") or None,
         "branch_max_depth": int(env.get("BRANCH_MAX_DEPTH", str(defaults.branch_max_depth))),
+        "tool_max_parallel_workers": int(
+            env.get("TOOL_MAX_PARALLEL_WORKERS", str(defaults.tool_max_parallel_workers))
+        ),
+        "background_worker_max_concurrency": int(
+            env.get(
+                "BACKGROUND_WORKER_MAX_CONCURRENCY",
+                str(defaults.background_worker_max_concurrency),
+            )
+        ),
+        "background_queue_max_size": int(
+            env.get("BACKGROUND_QUEUE_MAX_SIZE", str(defaults.background_queue_max_size))
+        ),
         "skill_directories": (
             _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))
             if env.get("FOCUS_AGENT_SKILLS_DIRS") is not None
