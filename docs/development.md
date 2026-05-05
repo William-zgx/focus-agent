@@ -74,7 +74,7 @@ Recommended validation ladder:
 make ci
 ```
 
-`make ci` runs Python lint, CI-style pytest, API/SDK contract snapshots, frontend SDK check/build, and Web check/build. For Python formatting-only review, run:
+`make ci` runs Python lint, CI-style pytest, API/SDK contract snapshots, frontend SDK check/build/transport validation, Web lint/format-check/check/build, and the Node stream frontend regression suite. For Python formatting-only review, run:
 
 ```bash
 make format-check
@@ -112,7 +112,18 @@ make web-build
 
 The Web lint/format scripts are intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-check` and `make web-build` remain the full app type/build gates.
 
-5. If browser-level chat, branch tree, or merge-review flows changed:
+5. If Agent Team planning, execution, final-answer synthesis, or Mission Runner UI changed:
+
+```bash
+.venv/bin/python -m pytest tests/test_agent_team_* -q
+make contract-check
+make web-check
+make web-build
+```
+
+Fake Agent Team execution is a workflow-only validation mode. It must surface as `final_answer_status="placeholder"` and `request_changes`, not as a deliverable answer. Browser checks should confirm the default UI hides raw fake run text and keeps output ids/artifact ids inside Advanced details.
+
+6. If browser-level chat, branch tree, or merge-review flows changed:
 
 ```bash
 make ui-smoke

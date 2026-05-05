@@ -74,7 +74,7 @@ make test-chat-service
 make ci
 ```
 
-`make ci` 会运行 Python lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build 和 Web check/build。只检查 Python 格式时可跑：
+`make ci` 会运行 Python lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。只检查 Python 格式时可跑：
 
 ```bash
 make format-check
@@ -108,7 +108,18 @@ make web-build
 
 Web lint/format 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
 
-5. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
+5. 如果改动影响 Agent Team planning、execution、final-answer synthesis 或 Mission Runner UI：
+
+```bash
+.venv/bin/python -m pytest tests/test_agent_team_* -q
+make contract-check
+make web-check
+make web-build
+```
+
+Agent Team 的 fake execution 只用于验证流程，必须展示为 `final_answer_status="placeholder"` 和 `request_changes`，不能被当成可交付最终答案。浏览器检查应确认默认 UI 不显示 raw fake run text，output id / artifact id 只出现在高级详情里。
+
+6. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 
 ```bash
 make ui-smoke

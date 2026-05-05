@@ -21,7 +21,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Branch-aware conversations with controlled merge-back
 - Streaming chat APIs and a built-in React web app at `/app`
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
-- Agent Team Workbench for auditable multi-agent work branches
+- Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, memory pipeline, and typed frontend SDK
 - Built-in repo, git, web, artifact, and memory tools
@@ -53,6 +53,7 @@ custom OpenAI-compatible model path.
 Then open:
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`

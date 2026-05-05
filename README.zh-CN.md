@@ -21,7 +21,7 @@ Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式
 - 支持分支式会话与受控 merge 回主线
 - 提供流式聊天 API 和内置 React Web 界面 `/app`
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
-- 提供 Agent Team Workbench，把复杂任务拆成可审计的多 Agent 工作分支
+- 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、记忆链路和类型完备的前端 SDK
 - 提供仓库、git、网页、artifact 和 memory 工具
@@ -53,6 +53,7 @@ make api
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
