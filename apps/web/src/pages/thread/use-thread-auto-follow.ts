@@ -10,6 +10,7 @@ interface UseThreadAutoFollowOptions {
   streamReasoningText?: string;
   streamToolCallCount: number;
   streamToolEventCount: number;
+  toolApprovalInterruptCount: number;
   streamVisibleText?: string;
   threadId: string;
   transcriptMessageCount: number;
@@ -30,6 +31,7 @@ export function useThreadAutoFollow({
   streamReasoningText,
   streamToolCallCount,
   streamToolEventCount,
+  toolApprovalInterruptCount,
   streamVisibleText,
   threadId,
   transcriptMessageCount,
@@ -83,6 +85,7 @@ export function useThreadAutoFollow({
     streamReasoningText,
     streamToolCallCount,
     streamToolEventCount,
+    toolApprovalInterruptCount,
     streamVisibleText,
     threadId,
     transcriptMessageCount,

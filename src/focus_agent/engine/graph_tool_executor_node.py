@@ -17,7 +17,7 @@ from ..capabilities.tool_runtime import (
     is_tool_approval_approved,
 )
 from ..core.request_context import RequestContext
-from ..core.state import AgentState
+from ..core.state import AgentState, append_agent_state_record
 from .graph_turn_helpers import (
     _canonicalize_tool_call_args,
     _context_budget_from_state,
@@ -68,6 +68,7 @@ def make_tool_executor_node(
         ]
         messages_by_index: dict[int, ToolMessage] = {}
         seen_tool_call_signatures: set[str] = set()
+        updates: dict[str, Any] = {}
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
             tool_name = str(tool_call.get("name") or "").strip()
             tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
@@ -130,8 +131,21 @@ def make_tool_executor_node(
                 runtime=runtime_meta,
             )
             if runtime_meta.requires_approval:
-                approval_response = interrupt(build_tool_approval_interrupt_payload(execution_input))
-                if not is_tool_approval_approved(approval_response):
+                approval_payload = build_tool_approval_interrupt_payload(execution_input)
+                approval_response = interrupt(approval_payload)
+                approved = is_tool_approval_approved(approval_response)
+                append_agent_state_record(
+                    updates,
+                    "tool_approval_decision",
+                    {
+                        **approval_payload,
+                        "approved": approved,
+                        "decision": "approved" if approved else "denied",
+                    },
+                    source=f"tool_executor:{tool_call_id}",
+                    metadata={"tool_call_id": tool_call_id},
+                )
+                if not approved:
                     messages_by_index[index] = build_tool_error_message(
                         tool_call_id=tool_call_id,
                         tool_name=tool_name,
@@ -161,7 +175,8 @@ def make_tool_executor_node(
         ):
             messages_by_index[result.index] = result.message
         result_messages = [messages_by_index[index] for index in sorted(messages_by_index)]
-        return {"messages": result_messages}
+        updates["messages"] = result_messages
+        return updates
 
     return tool_executor
 

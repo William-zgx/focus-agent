@@ -41,6 +41,19 @@ def load_runtime_config(
         "background_queue_max_size": int(
             env.get("BACKGROUND_QUEUE_MAX_SIZE", str(defaults.background_queue_max_size))
         ),
+        "background_job_backend": env.get("BACKGROUND_JOB_BACKEND", defaults.background_job_backend),
+        "background_job_claim_ttl_seconds": float(
+            env.get(
+                "BACKGROUND_JOB_CLAIM_TTL_SECONDS",
+                str(defaults.background_job_claim_ttl_seconds),
+            )
+        ),
+        "runtime_thread_lock_ttl_seconds": float(
+            env.get(
+                "RUNTIME_THREAD_LOCK_TTL_SECONDS",
+                str(defaults.runtime_thread_lock_ttl_seconds),
+            )
+        ),
         "skill_directories": (
             _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))
             if env.get("FOCUS_AGENT_SKILLS_DIRS") is not None

@@ -116,6 +116,18 @@ enabled = true
 label = "Skill View"
 description = "Load the full instructions for a named skill."
 
+# Optional controlled provider registry entries. Provider ids here can only
+# configure builtin, skill, or provider factories registered by application code.
+[[providers]]
+id = "builtin"
+enabled = true
+order = 0
+
+[[providers]]
+id = "skill"
+enabled = true
+order = 100
+
 [web_search]
 enabled = true
 label = "Web Search"

@@ -100,7 +100,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     exit_stack = ExitStack()
     otel_runtime = initialize_otel_runtime(settings)
     exit_stack.callback(otel_runtime.shutdown)
-    coordination_backend = create_coordination_backend(database_uri=settings.database_uri)
+    coordination_backend = create_coordination_backend(
+        database_uri=settings.database_uri,
+        background_job_backend=settings.background_job_backend,
+        background_job_claim_ttl_seconds=settings.background_job_claim_ttl_seconds,
+    )
     background_work = BoundedBackgroundQueue(
         name="runtime",
         max_concurrency=settings.background_worker_max_concurrency,

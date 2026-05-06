@@ -34,6 +34,7 @@ _TOOL_METADATA_OVERLAY_KEYS = frozenset(
         "toolset",
     }
 )
+_TOOL_PROVIDER_CONFIG_KEYS = frozenset({"id", "enabled", "order", "metadata"})
 
 
 class ModelCatalogValidationError(ValueError):
@@ -90,6 +91,15 @@ def _validate_provider_id(provider_id: str, *, source: str, location: str) -> No
             source,
             f"{location}.id must match {_PROVIDER_ID_PATTERN.pattern!r}; got {provider_id!r}.",
         )
+
+
+def _normalize_provider_id(raw: object, *, source: str, location: str) -> str:
+    provider_id = _normalize_optional_string(raw)
+    if provider_id is None:
+        raise _catalog_error(source, f"{location}.id is required.")
+    provider_id = provider_id.lower()
+    _validate_provider_id(provider_id, source=source, location=location)
+    return provider_id
 
 
 def _validate_provider_aliases(
@@ -365,6 +375,14 @@ class SkillViewToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolProviderConfig:
+    id: str
+    enabled: bool = True
+    order: int | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class ModelCatalogConfig:
     default_model: str | None = None
     helper_model: str | None = None
@@ -402,6 +420,7 @@ class ToolCatalogConfig:
     section_order: tuple[str, ...] = ()
     metadata_section_order: tuple[str, ...] = ()
     generic_metadata_overlays: dict[str, dict[str, object]] = field(default_factory=dict)
+    providers: tuple[ToolProviderConfig, ...] = ()
 
     @property
     def section_names(self) -> tuple[str, ...]:
@@ -433,6 +452,17 @@ class ToolCatalogConfig:
 
     def metadata_overlay_for(self, tool_name: str) -> dict[str, object]:
         return dict(self.generic_metadata_overlays.get(tool_name, {}))
+
+    def provider_config_for(self, provider_id: str) -> ToolProviderConfig | None:
+        normalized = str(provider_id or "").strip().lower()
+        for provider in self.providers:
+            if provider.id == normalized:
+                return provider
+        return None
+
+    def provider_metadata_overlay_for(self, provider_id: str) -> dict[str, object]:
+        provider = self.provider_config_for(provider_id)
+        return dict(provider.metadata) if provider is not None else {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -616,7 +646,9 @@ def load_tool_catalog_document(
         return ToolCatalogConfig()
 
     raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
-    raw_section_names = tuple(str(section_name) for section_name in raw)
+    raw_section_names = tuple(
+        str(section_name) for section_name in raw if section_name != "providers"
+    )
     ordered_section_names = tuple(
         dict.fromkeys(
             [
@@ -638,6 +670,7 @@ def load_tool_catalog_document(
         section_order=ordered_section_names,
         metadata_section_order=raw_section_names,
         generic_metadata_overlays=_load_tool_metadata_overlays(raw),
+        providers=_load_tool_provider_configs(raw, source=str(resolved)),
         **loaded_sections,
     )
 
@@ -645,6 +678,8 @@ def load_tool_catalog_document(
 def _load_tool_metadata_overlays(raw: dict[str, object]) -> dict[str, dict[str, object]]:
     overlays: dict[str, dict[str, object]] = {}
     for section_name, raw_section in raw.items():
+        if section_name == "providers":
+            continue
         if not isinstance(raw_section, dict):
             continue
         overlay: dict[str, object] = {}
@@ -662,3 +697,49 @@ def _load_tool_metadata_overlays(raw: dict[str, object]) -> dict[str, dict[str, 
         if overlay:
             overlays[str(section_name)] = overlay
     return overlays
+
+
+def _load_tool_provider_configs(
+    raw: dict[str, object],
+    *,
+    source: str,
+) -> tuple[ToolProviderConfig, ...]:
+    raw_providers = raw.get("providers")
+    if raw_providers is None:
+        return ()
+    if not isinstance(raw_providers, list):
+        raise _catalog_error(source, "providers must be an array of TOML tables.")
+
+    providers: list[ToolProviderConfig] = []
+    seen_provider_ids: set[str] = set()
+    for index, item in enumerate(raw_providers):
+        location = f"providers[{index}]"
+        if not isinstance(item, dict):
+            raise _catalog_error(source, f"{location} must be a TOML table.")
+        blocked_keys = {"module", "factory", "callable", "entrypoint"} & set(item)
+        if blocked_keys:
+            blocked = ", ".join(sorted(blocked_keys))
+            raise _catalog_error(
+                source,
+                f"{location} may not configure external Python loading keys: {blocked}.",
+            )
+        unknown_keys = set(item) - _TOOL_PROVIDER_CONFIG_KEYS
+        if unknown_keys:
+            unknown = ", ".join(sorted(str(key) for key in unknown_keys))
+            raise _catalog_error(source, f"{location} has unsupported keys: {unknown}.")
+
+        provider_id = _normalize_provider_id(item.get("id"), source=source, location=location)
+        if provider_id in seen_provider_ids:
+            raise _catalog_error(source, f"{location}.id duplicates {provider_id!r}.")
+        seen_provider_ids.add(provider_id)
+        enabled = _tool_enabled(item.get("enabled"), True)
+        order_raw = item.get("order")
+        providers.append(
+            ToolProviderConfig(
+                id=provider_id,
+                enabled=enabled,
+                order=int(order_raw) if order_raw is not None else None,
+                metadata=_copy_toml_mapping(item.get("metadata")),
+            )
+        )
+    return tuple(providers)

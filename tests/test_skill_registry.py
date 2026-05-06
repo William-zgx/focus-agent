@@ -1,8 +1,17 @@
 import json
 from pathlib import Path
 
+from langchain.tools import tool
+
+from focus_agent.capabilities.tool_manifest import StaticToolProvider
 from focus_agent.capabilities.tool_registry import build_tool_registry
-from focus_agent.config import Settings, SkillViewToolConfig, SkillsListToolConfig, ToolCatalogConfig
+from focus_agent.config import (
+    Settings,
+    SkillViewToolConfig,
+    SkillsListToolConfig,
+    ToolCatalogConfig,
+)
+from focus_agent.config_parts.catalogs import ToolProviderConfig
 from focus_agent.core.types import PromptMode
 from focus_agent.skills.registry import (
     SkillRegistry,
@@ -48,6 +57,17 @@ def _write_skill(
         ]
     )
     (skill_dir / "SKILL.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _make_string_tool(name: str, result: str, *, metadata: dict[str, object] | None = None):
+    def _tool_impl() -> str:
+        return result
+
+    _tool_impl.__name__ = name
+    _tool_impl.__doc__ = f"Return {result}."
+    tool_obj = tool(_tool_impl)
+    tool_obj.metadata = dict(metadata or {})
+    return tool_obj
 
 
 def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
@@ -146,7 +166,10 @@ def test_tool_registry_passes_artifact_metadata_repository_to_default_tools(tmp_
         captured["artifact_metadata_repository"] = artifact_metadata_repository
         return []
 
-    monkeypatch.setattr("focus_agent.capabilities.tool_registry.get_default_tools", fake_get_default_tools)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_registry.get_default_tools",
+        fake_get_default_tools,
+    )
     sentinel_repo = object()
 
     build_tool_registry(
@@ -263,6 +286,144 @@ def test_tool_registry_applies_manifest_metadata_overlay_to_runtime(tmp_path):
     assert runtime.allowed_roles == ("critic",)
     assert runtime.intent_policies == ("workspace_lookup",)
     assert runtime.risk_level == "medium"
+
+
+def test_tool_registry_accepts_explicit_provider_factories(tmp_path):
+    registry = SkillRegistry([tmp_path])
+
+    def build_local_provider(context):
+        assert context.settings.workspace_root == "."
+        return StaticToolProvider(
+            provider_id="local_tools",
+            tools=(_make_string_tool("local_lookup", "local-result"),),
+        )
+
+    tool_registry = build_tool_registry(
+        settings=Settings(),
+        skill_registry=registry,
+        explicit_provider_factories={"local_tools": build_local_provider},
+    )
+
+    assert tool_registry.by_name["local_lookup"].invoke({}) == "local-result"
+    assert tool_registry.runtime_by_name["local_lookup"].provider_id == "local_tools"
+
+
+def test_tool_registry_skips_disabled_explicit_provider_factory(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    factory_called = False
+
+    def build_disabled_provider(context):  # noqa: ARG001
+        nonlocal factory_called
+        factory_called = True
+        return StaticToolProvider(
+            provider_id="local_tools",
+            tools=(_make_string_tool("disabled_lookup", "disabled-result"),),
+        )
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(ToolProviderConfig(id="local_tools", enabled=False),)
+            )
+        ),
+        skill_registry=registry,
+        explicit_provider_factories={"local_tools": build_disabled_provider},
+    )
+
+    assert factory_called is False
+    assert "disabled_lookup" not in tool_registry.by_name
+
+
+def test_tool_registry_skips_disabled_builtin_provider(tmp_path, monkeypatch):
+    registry = SkillRegistry([tmp_path])
+    get_default_tools_called = False
+
+    def fake_get_default_tools(settings, **kwargs):  # noqa: ARG001
+        nonlocal get_default_tools_called
+        get_default_tools_called = True
+        return []
+
+    monkeypatch.setattr("focus_agent.capabilities.tool_registry.get_default_tools", fake_get_default_tools)
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(ToolProviderConfig(id="builtin", enabled=False),)
+            )
+        ),
+        skill_registry=registry,
+    )
+
+    assert get_default_tools_called is False
+    assert "skills_list" in tool_registry.by_name
+    manifests = tool_registry.manifest_by_name.values()
+    assert all(manifest.provider_id != "builtin" for manifest in manifests)
+
+
+def test_tool_registry_uses_provider_order_for_manifest_merge(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    lower_provider = StaticToolProvider(
+        provider_id="lower_tools",
+        tools=(_make_string_tool("shared_lookup", "lower"),),
+    )
+    higher_provider = StaticToolProvider(
+        provider_id="higher_tools",
+        tools=(_make_string_tool("shared_lookup", "higher"),),
+    )
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(
+                    ToolProviderConfig(id="lower_tools", order=300),
+                    ToolProviderConfig(id="higher_tools", order=200),
+                )
+            )
+        ),
+        skill_registry=registry,
+        explicit_providers=(lower_provider, higher_provider),
+    )
+
+    assert tool_registry.by_name["shared_lookup"].invoke({}) == "lower"
+    assert tool_registry.manifest_by_name["shared_lookup"].provider_id == "lower_tools"
+
+
+def test_tool_registry_applies_tool_metadata_overlay_after_provider_overlay(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    provider = StaticToolProvider(
+        provider_id="local_tools",
+        tools=(
+            _make_string_tool(
+                "overlay_lookup",
+                "overlay",
+                metadata={"parallel_safe": True, "risk_level": "low"},
+            ),
+        ),
+    )
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(
+                    ToolProviderConfig(
+                        id="local_tools",
+                        metadata={"risk_level": "high", "toolset": "provider"},
+                    ),
+                ),
+                generic_metadata_overlays={
+                    "overlay_lookup": {"risk_level": "medium", "toolset": "tool"}
+                },
+            )
+        ),
+        skill_registry=registry,
+        explicit_providers=(provider,),
+    )
+
+    runtime = tool_registry.runtime_by_name["overlay_lookup"]
+
+    assert runtime.parallel_safe is True
+    assert runtime.risk_level == "medium"
+    assert runtime.toolset == "tool"
 
 
 def test_bundled_registry_contains_copied_practical_skills():

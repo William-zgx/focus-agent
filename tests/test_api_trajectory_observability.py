@@ -455,6 +455,8 @@ def test_observability_overview_readyz_and_metrics(monkeypatch: pytest.MonkeyPat
     assert "focus_agent_trajectory_turn_count 1" in metrics_response.text
     assert "focus_agent_background_queue_depth 2" in metrics_response.text
     assert "focus_agent_background_worker_active 1" in metrics_response.text
+    assert "focus_agent_background_job_durable_enabled 0" in metrics_response.text
+    assert 'focus_agent_background_job_status_count{status="pending"} 0' in metrics_response.text
 
 
 def test_metrics_scrape_uses_bounded_governance_query_and_cache(

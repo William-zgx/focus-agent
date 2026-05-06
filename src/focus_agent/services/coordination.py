@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import threading
 import time
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 import psycopg
@@ -89,6 +89,8 @@ class InMemoryThreadTurnLockBackend:
 
 
 class InMemoryBackgroundJobDeduperBackend:
+    durable = False
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._keys: set[str] = set()
@@ -103,6 +105,13 @@ class InMemoryBackgroundJobDeduperBackend:
     def release_job_key(self, key: str) -> None:
         with self._lock:
             self._keys.discard(key)
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "job_backend_durable": 0,
+                "job_pending_total": len(self._keys),
+            }
 
 
 class InMemoryRateLimitBackend:
@@ -208,6 +217,147 @@ class PostgresThreadTurnLockBackend:
                 )
 
 
+class PostgresBackgroundJobDeduperBackend:
+    """Postgres-backed durable background job key coordination."""
+
+    durable = True
+
+    def __init__(self, database_uri: str, *, claim_ttl_seconds: float = 300.0, owner: str | None = None) -> None:
+        self.database_uri = database_uri
+        self.claim_ttl_seconds = max(float(claim_ttl_seconds or 0.0), 1.0)
+        self.owner = owner or f"background:{uuid4().hex}"
+
+    def _connect(self):
+        return psycopg.connect(self.database_uri, row_factory=dict_row)
+
+    def _claimed_until(self) -> datetime:
+        return datetime.now(timezone.utc) + timedelta(seconds=self.claim_ttl_seconds)
+
+    def try_claim_job_key(self, key: str) -> bool:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO focus_background_jobs (
+                        job_key,
+                        status,
+                        attempt,
+                        claimed_by,
+                        claimed_until,
+                        last_error,
+                        created_at,
+                        updated_at,
+                        metadata
+                    )
+                    VALUES (%s, 'pending', 1, %s, %s, NULL, now(), now(), '{}'::jsonb)
+                    ON CONFLICT (job_key) DO UPDATE SET
+                        status = 'pending',
+                        attempt = focus_background_jobs.attempt + 1,
+                        claimed_by = EXCLUDED.claimed_by,
+                        claimed_until = EXCLUDED.claimed_until,
+                        last_error = NULL,
+                        updated_at = now()
+                    WHERE focus_background_jobs.status IN ('succeeded', 'failed', 'released')
+                       OR focus_background_jobs.claimed_until <= now()
+                    RETURNING attempt
+                    """,
+                    (str(key), self.owner, self._claimed_until()),
+                )
+                return cur.fetchone() is not None
+
+    def mark_job_running(self, key: str) -> None:
+        self._update_job(
+            """
+            UPDATE focus_background_jobs
+            SET status = 'running',
+                claimed_until = %s,
+                updated_at = now()
+            WHERE job_key = %s
+              AND claimed_by = %s
+              AND status = 'pending'
+            """,
+            (self._claimed_until(), str(key), self.owner),
+        )
+
+    def mark_job_succeeded(self, key: str) -> None:
+        self._update_job(
+            """
+            UPDATE focus_background_jobs
+            SET status = 'succeeded',
+                claimed_by = NULL,
+                claimed_until = NULL,
+                last_error = NULL,
+                updated_at = now()
+            WHERE job_key = %s
+              AND claimed_by = %s
+              AND status = 'running'
+            """,
+            (str(key), self.owner),
+        )
+
+    def mark_job_failed(self, key: str, error: str) -> None:
+        self._update_job(
+            """
+            UPDATE focus_background_jobs
+            SET status = 'failed',
+                claimed_by = NULL,
+                claimed_until = NULL,
+                last_error = %s,
+                updated_at = now()
+            WHERE job_key = %s
+              AND claimed_by = %s
+              AND status = 'running'
+            """,
+            (str(error)[:4000], str(key), self.owner),
+        )
+
+    def release_job_key(self, key: str) -> None:
+        self._update_job(
+            """
+            UPDATE focus_background_jobs
+            SET status = 'released',
+                claimed_by = NULL,
+                claimed_until = NULL,
+                updated_at = now()
+            WHERE job_key = %s
+              AND status NOT IN ('succeeded', 'failed')
+            """,
+            (str(key),),
+        )
+
+    def snapshot(self) -> dict[str, int]:
+        metrics = {
+            "job_backend_durable": 1,
+            "job_pending_total": 0,
+            "job_running_total": 0,
+            "job_succeeded_total": 0,
+            "job_failed_total": 0,
+            "job_released_total": 0,
+            "job_attempt_total": 0,
+        }
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT status, COUNT(*) AS count, COALESCE(SUM(attempt), 0) AS attempts
+                    FROM focus_background_jobs
+                    GROUP BY status
+                    """
+                )
+                for row in cur.fetchall():
+                    status = str(row.get("status") or "unknown").strip().lower()
+                    count = int(row.get("count") or 0)
+                    attempts = int(row.get("attempts") or 0)
+                    metrics[f"job_{status}_total"] = count
+                    metrics["job_attempt_total"] += attempts
+        return metrics
+
+    def _update_job(self, sql: str, params: tuple[Any, ...]) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+
+
 def create_in_memory_coordination_backend() -> CoordinationBackend:
     return CoordinationBackend(
         thread_turns=InMemoryThreadTurnLockBackend(),
@@ -216,13 +366,24 @@ def create_in_memory_coordination_backend() -> CoordinationBackend:
     )
 
 
-def create_coordination_backend(*, database_uri: str | None = None) -> CoordinationBackend:
+def create_coordination_backend(
+    *,
+    database_uri: str | None = None,
+    background_job_backend: str = "memory",
+    background_job_claim_ttl_seconds: float = 300.0,
+) -> CoordinationBackend:
     in_memory = create_in_memory_coordination_backend()
     if not database_uri:
         return in_memory
+    job_backend = in_memory.job_deduper
+    if str(background_job_backend or "memory").strip().lower() == "postgres":
+        job_backend = PostgresBackgroundJobDeduperBackend(
+            database_uri,
+            claim_ttl_seconds=background_job_claim_ttl_seconds,
+        )
     return CoordinationBackend(
         thread_turns=PostgresThreadTurnLockBackend(database_uri),
-        job_deduper=in_memory.job_deduper,
+        job_deduper=job_backend,
         rate_limiter=in_memory.rate_limiter,
     )
 
@@ -241,6 +402,7 @@ __all__ = [
     "InMemoryBackgroundJobDeduperBackend",
     "InMemoryRateLimitBackend",
     "InMemoryThreadTurnLockBackend",
+    "PostgresBackgroundJobDeduperBackend",
     "PostgresThreadTurnLockBackend",
     "RateLimitBackend",
     "ThreadTurnLease",

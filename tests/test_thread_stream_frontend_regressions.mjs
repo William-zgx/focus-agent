@@ -386,6 +386,64 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
   assert.equal(withArtifactCompleted.visibleText, "");
 });
 
+test("tool approval helpers and reducer preserve interrupt compatibility", () => {
+  const { createToolApprovalDecision, isToolApprovalInterrupt } = loadFunctions(
+    "frontend-sdk/src/guards.ts",
+    ["createToolApprovalDecision", "isToolApprovalInterrupt"],
+  );
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+  const interrupt = {
+    kind: "tool_approval",
+    tool_name: "write_file",
+    tool_call_id: "call-approval",
+    args: { path: "README.md" },
+    risk_level: "high",
+  };
+
+  assert.equal(
+    JSON.stringify(createToolApprovalDecision(true)),
+    JSON.stringify({
+      kind: "tool_approval",
+      approved: true,
+    }),
+  );
+  assert.equal(isToolApprovalInterrupt(interrupt), true);
+  assert.equal(isToolApprovalInterrupt({ ...interrupt, args: [] }), false);
+
+  const interrupted = reduceStreamEvent(createInitialStreamState(), {
+    event: "turn.interrupt",
+    data: { thread_id: "thread-1", interrupt },
+  });
+  assert.equal(interrupted.interrupts.length, 1);
+  assert.equal(JSON.stringify(interrupted.interrupts[0]), JSON.stringify(interrupt));
+});
+
+test("web thread UI wires tool approval rendering to stream resume decisions", () => {
+  const messageListSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list.tsx"),
+    "utf8",
+  );
+  const approvalCardSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list-tool-approval-card.tsx"),
+    "utf8",
+  );
+  const threadPageSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/thread-page.tsx"),
+    "utf8",
+  );
+  const streamHookSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream.ts"),
+    "utf8",
+  );
+
+  assert.equal(messageListSource.includes("toolApprovalInterrupts.map"), true);
+  assert.equal(approvalCardSource.includes("onDecide?.(interrupt, true)"), true);
+  assert.equal(approvalCardSource.includes("onDecide?.(interrupt, false)"), true);
+  assert.equal(threadPageSource.includes("handleDecideToolApproval"), true);
+  assert.equal(streamHookSource.includes("client.streamResume"), true);
+  assert.equal(streamHookSource.includes("createToolApprovalDecision(approved)"), true);
+});
+
 test("stream reducer tracks branch action lifecycle events", () => {
   const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
   const proposed = {

@@ -150,12 +150,13 @@ class ChatContextCompactionMixin:
             return
         if not bool(getattr(self.runtime.settings, "context_auto_compaction_enabled", True)):
             return
+        job_key = background_job_key(kind="context_compaction", thread_id=thread_id)
 
         def schedule_compact_later(*, delay: float, attempt: int) -> None:
             submit_background = getattr(self, "_submit_background_work", None)
             if callable(submit_background):
                 submit_background(
-                    key=background_job_key(kind="context_compaction", thread_id=thread_id),
+                    key=job_key,
                     func=compact_later,
                     delay_seconds=delay,
                     attempt=attempt,
@@ -173,6 +174,9 @@ class ChatContextCompactionMixin:
                 )
             except ConcurrentTurnError:
                 if attempt < 2:
+                    release_job = getattr(self, "_release_background_job_key", None)
+                    if callable(release_job):
+                        release_job(job_key)
                     schedule_compact_later(delay=0.2, attempt=attempt + 1)
                     return
                 logger.debug("post-turn context compaction skipped because the thread stayed busy")

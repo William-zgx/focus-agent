@@ -1771,7 +1771,16 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
     )
 
     tool_messages = [message for message in resumed.value["messages"] if isinstance(message, ToolMessage)]
+    approval_records = [
+        record
+        for record in resumed.value["governance_records"]
+        if record["name"] == "tool_approval_decision"
+    ]
     assert call_count == 1
+    assert approval_records[-1]["payload"]["approved"] is True
+    assert approval_records[-1]["payload"]["tool_name"] == "approval_lookup"
+    assert approval_records[-1]["payload"]["tool_call_id"] == "approval-1"
+    assert approval_records[-1]["payload"]["risk_level"] == "high"
     assert tool_messages[-1].content == "approved:focus"
     assert resumed.value["messages"][-1].content == "approval handled"
 
@@ -1829,8 +1838,16 @@ def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatc
     )
 
     tool_messages = [message for message in resumed.value["messages"] if isinstance(message, ToolMessage)]
+    approval_records = [
+        record
+        for record in resumed.value["governance_records"]
+        if record["name"] == "tool_approval_decision"
+    ]
     payload = json.loads(tool_messages[-1].content)
     assert call_count == 0
+    assert approval_records[-1]["payload"]["approved"] is False
+    assert approval_records[-1]["payload"]["decision"] == "denied"
+    assert approval_records[-1]["payload"]["tool_call_id"] == "approval-deny-1"
     assert tool_messages[-1].status == "error"
     assert payload["status"] == "error"
     assert payload["tool"] == "approval_lookup"

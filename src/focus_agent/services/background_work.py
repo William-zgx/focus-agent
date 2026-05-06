@@ -90,6 +90,14 @@ class BoundedBackgroundQueue:
         return True
 
     def snapshot(self) -> dict[str, int]:
+        job_metrics: dict[str, int] = {}
+        snapshot_backend = getattr(self._job_deduper, "snapshot", None)
+        if callable(snapshot_backend):
+            try:
+                job_metrics = {str(key): int(value) for key, value in dict(snapshot_backend()).items()}
+            except Exception:  # noqa: BLE001 - metrics must not break health scrapes
+                logger.warning("background job backend snapshot failed", exc_info=True)
+                job_metrics = {"job_backend_error": 1}
         with self._lock:
             return {
                 "queue_depth": self._queue.qsize(),
@@ -101,6 +109,7 @@ class BoundedBackgroundQueue:
                 "dropped_total": self._dropped_total,
                 "completed_total": self._completed_total,
                 "failed_total": self._failed_total,
+                **job_metrics,
             }
 
     def close(self) -> None:
@@ -112,6 +121,9 @@ class BoundedBackgroundQueue:
             except queue.Full:
                 break
 
+    def release_job_key(self, key: str) -> None:
+        self._job_deduper.release_job_key(str(key or "background:anonymous"))
+
     def _worker(self) -> None:
         while True:
             task = self._queue.get()
@@ -122,23 +134,41 @@ class BoundedBackgroundQueue:
                 delay = task.run_at - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
-                self._job_deduper.release_job_key(task.key)
+                self._mark_job_running(task.key)
                 with self._lock:
                     self._active_workers += 1
                 try:
                     task.func(**task.kwargs)
-                except Exception:  # noqa: BLE001 - best-effort background work must not break turns
+                except Exception as exc:  # noqa: BLE001 - best-effort background work must not break turns
                     logger.warning("background task failed", extra={"task_key": task.key}, exc_info=True)
+                    self._mark_job_failed(task.key, str(exc))
                     with self._lock:
                         self._failed_total += 1
                 else:
+                    self._mark_job_succeeded(task.key)
                     with self._lock:
                         self._completed_total += 1
             finally:
+                self._job_deduper.release_job_key(task.key)
                 with self._lock:
                     if self._active_workers > 0:
                         self._active_workers -= 1
                 self._queue.task_done()
+
+    def _mark_job_running(self, key: str) -> None:
+        marker = getattr(self._job_deduper, "mark_job_running", None)
+        if callable(marker):
+            marker(key)
+
+    def _mark_job_succeeded(self, key: str) -> None:
+        marker = getattr(self._job_deduper, "mark_job_succeeded", None)
+        if callable(marker):
+            marker(key)
+
+    def _mark_job_failed(self, key: str, error: str) -> None:
+        marker = getattr(self._job_deduper, "mark_job_failed", None)
+        if callable(marker):
+            marker(key, error)
 
 
 __all__ = ["BackgroundTask", "BoundedBackgroundQueue"]

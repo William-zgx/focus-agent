@@ -1,5 +1,6 @@
 import type {
 	FocusAgentBranchActionProposal,
+	FocusAgentToolApprovalInterrupt,
 	FocusAgentToolCallEvent,
 	FocusAgentToolEvent,
 	TurnFailedPayload,
@@ -13,6 +14,7 @@ import {
 	SystemFailureRow,
 } from "./message-list-message-row";
 import { AgentRunBubble } from "./message-list-streaming-bubble";
+import { ToolApprovalCard } from "./message-list-tool-approval-card";
 import { ToolActivityCard } from "./message-list-tool-activity-card";
 import {
 	buildTranscriptItems,
@@ -33,10 +35,18 @@ interface MessageListProps {
 	branchActions?: FocusAgentBranchActionProposal[];
 	branchActionErrors?: Record<string, string>;
 	branchActionInFlightId?: string | null;
+	toolApprovalInterrupts?: FocusAgentToolApprovalInterrupt[];
+	toolApprovalError?: string;
+	toolApprovalErrorId?: string | null;
+	toolApprovalInFlightId?: string | null;
 	isChineseUi?: boolean;
 	onEditMessage?: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 	onDismissBranchAction?: (action: FocusAgentBranchActionProposal) => void;
+	onDecideToolApproval?: (
+		interrupt: FocusAgentToolApprovalInterrupt,
+		approved: boolean,
+	) => void;
 }
 
 export function MessageList({
@@ -52,10 +62,15 @@ export function MessageList({
 	branchActions = [],
 	branchActionErrors = {},
 	branchActionInFlightId = null,
+	toolApprovalInterrupts = [],
+	toolApprovalError = "",
+	toolApprovalErrorId = null,
+	toolApprovalInFlightId = null,
 	isChineseUi = false,
 	onEditMessage,
 	onExecuteBranchAction,
 	onDismissBranchAction,
+	onDecideToolApproval,
 }: MessageListProps) {
 	const transcriptItems = useMemo(
 		() => buildTranscriptItems(messages, assistantMessage),
@@ -106,6 +121,22 @@ export function MessageList({
 					isBusy={branchActionInFlightId === action.action_id}
 					onExecute={onExecuteBranchAction}
 					onDismiss={onDismissBranchAction}
+				/>
+			))}
+
+			{toolApprovalInterrupts.map((interrupt) => (
+				<ToolApprovalCard
+					key={interrupt.tool_call_id}
+					interrupt={interrupt}
+					isBusy={toolApprovalInFlightId === interrupt.tool_call_id}
+					isChineseUi={isChineseUi}
+					isReadOnly={isReadOnly}
+					errorMessage={
+						toolApprovalErrorId === interrupt.tool_call_id
+							? toolApprovalError
+							: ""
+					}
+					onDecide={onDecideToolApproval}
 				/>
 			))}
 

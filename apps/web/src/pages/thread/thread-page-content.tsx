@@ -2,6 +2,7 @@ import type {
 	ContextUsageResponse,
 	FocusAgentBranchActionProposal,
 	FocusAgentStreamState,
+	FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
 import type { RefObject } from "react";
 
@@ -28,6 +29,10 @@ interface ThreadPageContentProps {
 	onClearEditDraft: () => void;
 	onCompactContext: () => Promise<void> | void;
 	onDismissBranchAction: (action: FocusAgentBranchActionProposal) => void;
+	onDecideToolApproval: (
+		interrupt: FocusAgentToolApprovalInterrupt,
+		approved: boolean,
+	) => void;
 	onEditMessage: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction: (action: FocusAgentBranchActionProposal) => void;
 	onPreviewContextUsage: (draftMessage: string) => void;
@@ -46,6 +51,10 @@ interface ThreadPageContentProps {
 	streamState: FocusAgentStreamState | null;
 	threadContextUsage?: ContextUsageResponse | null;
 	threadError?: unknown;
+	toolApprovalError?: string;
+	toolApprovalErrorId?: string | null;
+	toolApprovalInFlightId?: string | null;
+	toolApprovalInterrupts: FocusAgentToolApprovalInterrupt[];
 }
 
 export function ThreadPageContent({
@@ -68,6 +77,7 @@ export function ThreadPageContent({
 	onClearEditDraft,
 	onCompactContext,
 	onDismissBranchAction,
+	onDecideToolApproval,
 	onEditMessage,
 	onExecuteBranchAction,
 	onPreviewContextUsage,
@@ -80,6 +90,10 @@ export function ThreadPageContent({
 	streamState,
 	threadContextUsage,
 	threadError,
+	toolApprovalError = "",
+	toolApprovalErrorId = null,
+	toolApprovalInFlightId = null,
+	toolApprovalInterrupts,
 }: ThreadPageContentProps) {
 	const composerContextUsage =
 		previewContextUsage ?? contextUsage ?? threadContextUsage ?? null;
@@ -116,10 +130,15 @@ export function ThreadPageContent({
 									branchActions={branchActions}
 									branchActionErrors={branchActionErrors}
 									branchActionInFlightId={branchActionInFlightId}
+									toolApprovalInterrupts={toolApprovalInterrupts}
+									toolApprovalError={toolApprovalError}
+									toolApprovalErrorId={toolApprovalErrorId}
+									toolApprovalInFlightId={toolApprovalInFlightId}
 									isChineseUi={isChineseUi}
 									onEditMessage={onEditMessage}
 									onExecuteBranchAction={onExecuteBranchAction}
 									onDismissBranchAction={onDismissBranchAction}
+									onDecideToolApproval={onDecideToolApproval}
 									streamFailed={streamState?.failed}
 									streamToolCalls={streamState?.toolCalls}
 									streamToolEvents={streamState?.toolEvents}

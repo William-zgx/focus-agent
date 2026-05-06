@@ -8,7 +8,12 @@ from typing import Any
 
 import focus_agent.engine.runtime as runtime_mod
 from focus_agent.config import Settings, ensure_runtime_directories
-from focus_agent.services.coordination import InMemoryThreadTurnLockBackend, PostgresThreadTurnLockBackend
+from focus_agent.services.coordination import (
+    InMemoryBackgroundJobDeduperBackend,
+    InMemoryThreadTurnLockBackend,
+    PostgresBackgroundJobDeduperBackend,
+    PostgresThreadTurnLockBackend,
+)
 
 
 class _FakeContextManager:
@@ -179,6 +184,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         assert runtime.agent_team_service.repository is agent_team_repo
         assert runtime.user_service.repository is user_repo
         assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
+        assert isinstance(runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend)
         assert saver.setup_calls == 1
         assert store.setup_calls == 1
         assert repo.setup_calls == 1
@@ -242,11 +248,43 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
         assert isinstance(runtime.coordination_backend.thread_turns, InMemoryThreadTurnLockBackend)
+        assert isinstance(runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend)
         assert captured["store"] is runtime.store
         assert captured["checkpointer"] is runtime.checkpointer
         assert "local-fallback" in caplog.text
     finally:
         runtime.close()
+
+
+def test_create_runtime_uses_postgres_background_jobs_only_when_opted_in(monkeypatch, tmp_path):
+    def fake_build_tool_registry(
+        *,
+        settings,
+        skill_registry,
+        store=None,
+        checkpointer=None,
+        artifact_metadata_repository=None,
+    ):
+        return {"artifact_metadata_repository": artifact_metadata_repository}
+
+    _install_postgres_modules(monkeypatch)
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+
+    settings = _make_settings(
+        tmp_path,
+        database_uri="postgresql://focus-agent.test/runtime",
+        trajectory_enabled=False,
+    )
+    settings.background_job_backend = "postgres"
+    settings.background_job_claim_ttl_seconds = 12.0
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
+        assert isinstance(runtime.coordination_backend.job_deduper, PostgresBackgroundJobDeduperBackend)
+        assert runtime.coordination_backend.job_deduper.claim_ttl_seconds == 12.0
+    finally:
+        runtime.close()
+
 
 def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):
     def fake_build_tool_registry(*, settings, skill_registry, store=None, checkpointer=None):

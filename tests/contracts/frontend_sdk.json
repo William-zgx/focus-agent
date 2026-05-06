@@ -319,13 +319,14 @@
     "FocusAgentStreamChannel": "export type FocusAgentStreamChannel = | \"visible_text\" | \"reasoning_tool_call\" | \"tool\" | \"system\";",
     "FocusAgentStreamHandlers": "export interface FocusAgentStreamHandlers { onEvent?: (event: FocusAgentEvent) => void; onVisibleTextDelta?: (event: FocusAgentEvent<\"visible_text.delta\">) => void; onReasoningDelta?: (event: FocusAgentEvent<\"reasoning.delta\">) => void; onToolCallDelta?: (event: FocusAgentToolCallEvent) => void; onToolEvent?: (event: FocusAgentToolEvent) => void; onCompleted?: (event: FocusAgentEvent<\"turn.completed\">) => void; onFailed?: (event: FocusAgentEvent<\"turn.failed\">) => void; }",
     "FocusAgentStreamMetadata": "export interface FocusAgentStreamMetadata { langgraph_node?: string; langgraph_path?: string | string[]; langgraph_step?: number; tags?: string[]; run_id?: string; model_name?: string; ls_provider?: string; [key: string]: unknown; }",
-    "FocusAgentStreamState": "export interface FocusAgentStreamState { visibleText: string; reasoningText: string; toolCalls: FocusAgentToolCallEvent[]; toolEvents: FocusAgentToolEvent[]; branchActions: FocusAgentBranchActionProposal[]; latestTurnState?: Record<string, unknown>; isClosed: boolean; failed?: TurnFailedPayload; }",
+    "FocusAgentStreamState": "export interface FocusAgentStreamState { visibleText: string; reasoningText: string; toolCalls: FocusAgentToolCallEvent[]; toolEvents: FocusAgentToolEvent[]; interrupts: unknown[]; branchActions: FocusAgentBranchActionProposal[]; latestTurnState?: Record<string, unknown>; isClosed: boolean; failed?: TurnFailedPayload; }",
     "FocusAgentTaskLedgerPlanRequest": "export interface FocusAgentTaskLedgerPlanRequest { message?: string; delegation_plan?: Record<string, unknown>; }",
     "FocusAgentTaskLedgerPlanResponse": "export interface FocusAgentTaskLedgerPlanResponse { policy: FocusAgentTaskLedgerPolicyResponse; ledger: Record<string, unknown>; artifacts: Array<Record<string, unknown>>; critic_gate_result?: Record<string, unknown> | null; synthesis_result?: Record<string, unknown> | null; }",
     "FocusAgentTaskLedgerPolicyResponse": "export interface FocusAgentTaskLedgerPolicyResponse { enabled: boolean; artifact_synthesis_enabled: boolean; critic_gate_enabled: boolean; critic_gate_enforce: boolean; default_off_legacy_safe: boolean; }",
     "FocusAgentTaskLedgerRunListResponse": "export interface FocusAgentTaskLedgerRunListResponse { items: Array<Record<string, unknown>>; count: number; trajectory_available: boolean; trajectory_error?: string | null; }",
     "FocusAgentTokenResponse": "export interface FocusAgentTokenResponse { access_token: string; token_type: \"bearer\"; expires_in_seconds: number; issuer: string; }",
     "FocusAgentTokenUsageSummary": "export interface FocusAgentTokenUsageSummary { input_tokens: number; output_tokens: number; total_tokens: number; }",
+    "FocusAgentToolApprovalDecision": "export interface FocusAgentToolApprovalDecision { kind: \"tool_approval\"; approved: boolean; }",
     "FocusAgentToolApprovalInterrupt": "export interface FocusAgentToolApprovalInterrupt { kind: \"tool_approval\"; tool_name: string; tool_call_id: string; args: Record<string, unknown>; risk_level: string; }",
     "FocusAgentToolCallEvent": "export type FocusAgentToolCallEvent = | FocusAgentEvent<\"tool_call.delta\"> | FocusAgentEvent<\"tool.call.delta\">;",
     "FocusAgentToolEvent": "export type FocusAgentToolEvent = | FocusAgentEvent<\"tool.requested\"> | FocusAgentEvent<\"tool.start\"> | FocusAgentEvent<\"tool.delta\"> | FocusAgentEvent<\"tool.end\"> | FocusAgentEvent<\"tool.error\"> | FocusAgentEvent<\"tool.result\">;",
@@ -523,6 +524,7 @@
     "FocusAgentTaskLedgerRunListResponse",
     "FocusAgentTokenResponse",
     "FocusAgentTokenUsageSummary",
+    "FocusAgentToolApprovalDecision",
     "FocusAgentToolApprovalInterrupt",
     "FocusAgentToolCallEvent",
     "FocusAgentToolEvent",
@@ -613,6 +615,7 @@
     "turn.closed",
     "turn.completed",
     "turn.failed",
+    "turn.interrupt",
     "visible_text.completed",
     "visible_text.delta"
   ],
@@ -669,8 +672,12 @@
       "FocusAgentToolCallEvent",
       "FocusAgentToolEvent"
     ],
+    "apps/web/src/entities/messages/message-list-tool-approval-card.tsx": [
+      "FocusAgentToolApprovalInterrupt"
+    ],
     "apps/web/src/entities/messages/message-list.tsx": [
       "FocusAgentBranchActionProposal",
+      "FocusAgentToolApprovalInterrupt",
       "FocusAgentToolCallEvent",
       "FocusAgentToolEvent",
       "TurnFailedPayload"
@@ -783,6 +790,7 @@
     ],
     "apps/web/src/features/thread-stream/use-thread-stream.ts": [
       "createInitialStreamState",
+      "createToolApprovalDecision",
       "reduceStreamEvent"
     ],
     "apps/web/src/features/thread/thread-header-action-buttons.tsx": [
@@ -934,12 +942,18 @@
     "apps/web/src/pages/thread/thread-page-content.tsx": [
       "ContextUsageResponse",
       "FocusAgentBranchActionProposal",
-      "FocusAgentStreamState"
+      "FocusAgentStreamState",
+      "FocusAgentToolApprovalInterrupt"
+    ],
+    "apps/web/src/pages/thread/thread-page.tsx": [
+      "FocusAgentToolApprovalInterrupt"
     ],
     "apps/web/src/pages/thread/thread-transcript-view-model.ts": [
       "FocusAgentBranchActionProposal",
       "FocusAgentStreamState",
-      "ThreadStateResponse"
+      "FocusAgentToolApprovalInterrupt",
+      "ThreadStateResponse",
+      "isToolApprovalInterrupt"
     ],
     "apps/web/src/pages/thread/use-thread-branch-actions.ts": [
       "FocusAgentBranchActionExecuteResponse",

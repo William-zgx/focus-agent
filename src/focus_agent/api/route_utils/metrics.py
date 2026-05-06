@@ -212,6 +212,51 @@ def _background_metric_lines(metrics: dict[str, int]) -> list[str]:
             "focus_agent_background_task_failed_total",
             int(metrics.get("failed_total") or 0),
         ),
+        "# HELP focus_agent_background_job_durable_enabled Whether durable background job coordination is enabled.",
+        "# TYPE focus_agent_background_job_durable_enabled gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_job_durable_enabled",
+            int(metrics.get("job_backend_durable") or 0),
+        ),
+        "# HELP focus_agent_background_job_status_count Durable background jobs grouped by status.",
+        "# TYPE focus_agent_background_job_status_count gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
+            int(metrics.get("job_pending_total") or 0),
+            labels={"status": "pending"},
+        ),
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
+            int(metrics.get("job_running_total") or 0),
+            labels={"status": "running"},
+        ),
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
+            int(metrics.get("job_succeeded_total") or 0),
+            labels={"status": "succeeded"},
+        ),
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
+            int(metrics.get("job_failed_total") or 0),
+            labels={"status": "failed"},
+        ),
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
+            int(metrics.get("job_released_total") or 0),
+            labels={"status": "released"},
+        ),
+        "# HELP focus_agent_background_job_attempt_total Total durable background job attempts.",
+        "# TYPE focus_agent_background_job_attempt_total counter",
+        _prometheus_metric_line(
+            "focus_agent_background_job_attempt_total",
+            int(metrics.get("job_attempt_total") or 0),
+        ),
+        "# HELP focus_agent_background_job_backend_error Whether the background job backend snapshot failed.",
+        "# TYPE focus_agent_background_job_backend_error gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_job_backend_error",
+            int(metrics.get("job_backend_error") or 0),
+        ),
     ]
 
 

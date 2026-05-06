@@ -46,6 +46,11 @@ export interface FocusAgentToolApprovalInterrupt {
   risk_level: string;
 }
 
+export interface FocusAgentToolApprovalDecision {
+  kind: "tool_approval";
+  approved: boolean;
+}
+
 export type ThreadContextCompactTrigger =
   | "manual"
   | "auto_pre_send"

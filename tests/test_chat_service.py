@@ -526,7 +526,7 @@ def test_stream_message_emits_heartbeat_during_long_running_turn(tmp_path: Path)
             return SimpleNamespace(values=self.values, interrupts=[])
 
     runtime = SimpleNamespace(
-        settings=Settings(sse_heartbeat_seconds=0.01),
+        settings=Settings(sse_heartbeat_seconds=0.01, runtime_thread_lock_ttl_seconds=17.0),
         graph=SlowStreamingGraph(),
         repo=repo,
         branch_service=SimpleNamespace(
@@ -585,7 +585,7 @@ def test_stream_message_heartbeats_and_releases_coordination_lock(tmp_path: Path
 
     locks = RecordingThreadLocks()
     runtime = SimpleNamespace(
-        settings=Settings(sse_heartbeat_seconds=0.01),
+        settings=Settings(sse_heartbeat_seconds=0.01, runtime_thread_lock_ttl_seconds=17.0),
         graph=SlowStreamingGraph(),
         repo=repo,
         branch_service=SimpleNamespace(
@@ -608,6 +608,73 @@ def test_stream_message_heartbeats_and_releases_coordination_lock(tmp_path: Path
     assert any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
     assert locks.acquired
     assert locks.heartbeats
+    assert locks.acquired[0][2] == 17.0
+    assert locks.heartbeats[0][2] == 17.0
+    assert locks.released == [("root-1", locks.acquired[0][1])]
+
+
+def test_stream_message_releases_coordination_lock_when_client_disconnects(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class RecordingThreadLocks:
+        def __init__(self):
+            self.acquired: list[tuple[str, str, float]] = []
+            self.released: list[tuple[str, str]] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.acquired.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            return True
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            self.released.append((thread_id, owner))
+
+    class BlockingStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            await asyncio.sleep(10.0)
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    locks = RecordingThreadLocks()
+    runtime = SimpleNamespace(
+        settings=Settings(sse_heartbeat_seconds=0.01),
+        graph=BlockingStreamingGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def run_test():
+        stream = chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")
+        first_frame = await anext(stream)
+        assert "event: turn.status" in first_frame
+        await stream.aclose()
+
+    asyncio.run(run_test())
+
+    assert locks.acquired
     assert locks.released == [("root-1", locks.acquired[0][1])]
 
 

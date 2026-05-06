@@ -233,7 +233,7 @@ def normalize_tool_metadata(
         **_normalize_metadata(overlay),
     }
     if provider_id:
-        merged.setdefault("provider_id", provider_id)
+        merged["provider_id"] = provider_id
     if merged.get("side_effect_kind") == "workspace_write":
         merged.setdefault("requires_workspace_write", True)
     if merged.get("requires_workspace_write"):

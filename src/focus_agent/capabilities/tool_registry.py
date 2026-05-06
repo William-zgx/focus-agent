@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+import re
 from typing import Any, Callable, Mapping
 
 from langchain.tools import tool
@@ -14,6 +15,19 @@ from .tool_manifest import StaticToolProvider, ToolManifest, ToolProvider, norma
 
 ToolArgValidator = Callable[[Mapping[str, Any]], None]
 ToolFallbackHandler = Callable[[Exception, Mapping[str, Any]], Any]
+_PROVIDER_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+
+
+@dataclass(frozen=True, slots=True)
+class ToolProviderFactoryContext:
+    settings: Settings
+    skill_registry: SkillRegistry
+    store: Any = None
+    checkpointer: Any = None
+    artifact_metadata_repository: Any = None
+
+
+ToolProviderFactory = Callable[[ToolProviderFactoryContext], ToolProvider]
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,26 +167,21 @@ def build_tool_registry(
     store=None,
     checkpointer=None,
     artifact_metadata_repository=None,
+    explicit_providers: Iterable[ToolProvider] | None = None,
+    explicit_provider_factories: Mapping[str, ToolProviderFactory] | None = None,
 ) -> ToolRegistry:
-    providers: tuple[ToolProvider, ...] = (
-        StaticToolProvider(
-            provider_id="builtin",
-            tools=tuple(
-                get_default_tools(
-                    settings,
-                    store=store,
-                    checkpointer=checkpointer,
-                    artifact_metadata_repository=artifact_metadata_repository,
-                )
-            ),
-        ),
-        StaticToolProvider(
-            provider_id="skill",
-            tools=tuple(_build_skill_tools(settings=settings, skill_registry=skill_registry)),
-        ),
+    providers = _build_controlled_tool_provider_registry(
+        settings=settings,
+        skill_registry=skill_registry,
+        store=store,
+        checkpointer=checkpointer,
+        artifact_metadata_repository=artifact_metadata_repository,
+        explicit_providers=explicit_providers,
+        explicit_provider_factories=explicit_provider_factories,
     )
     all_manifests = _merge_tool_provider_manifests(
         providers,
+        provider_metadata_overlay_for=settings.tool_catalog.provider_metadata_overlay_for,
         metadata_overlay_for=settings.tool_catalog.metadata_overlay_for,
     )
     ordered_names = tuple(
@@ -194,16 +203,116 @@ def build_tool_registry(
     )
 
 
+def _build_controlled_tool_provider_registry(
+    *,
+    settings: Settings,
+    skill_registry: SkillRegistry,
+    store: Any,
+    checkpointer: Any,
+    artifact_metadata_repository: Any,
+    explicit_providers: Iterable[ToolProvider] | None,
+    explicit_provider_factories: Mapping[str, ToolProviderFactory] | None,
+) -> tuple[ToolProvider, ...]:
+    context = ToolProviderFactoryContext(
+        settings=settings,
+        skill_registry=skill_registry,
+        store=store,
+        checkpointer=checkpointer,
+        artifact_metadata_repository=artifact_metadata_repository,
+    )
+    registered: dict[str, tuple[int, ToolProvider]] = {}
+
+    def provider_enabled(provider_id: str) -> bool:
+        provider_config = settings.tool_catalog.provider_config_for(provider_id)
+        return provider_config is None or provider_config.enabled
+
+    def register(provider: ToolProvider, *, default_order: int) -> None:
+        provider_id = _normalize_provider_id(getattr(provider, "provider_id", ""))
+        if provider_id in registered:
+            raise ValueError(f"Tool provider {provider_id!r} is already registered.")
+        provider_config = settings.tool_catalog.provider_config_for(provider_id)
+        if provider_config is not None and not provider_config.enabled:
+            return
+        order = provider_config.order if provider_config is not None else None
+        registered[provider_id] = (default_order if order is None else order, provider)
+
+    if provider_enabled("builtin"):
+        register(
+            StaticToolProvider(
+                provider_id="builtin",
+                tools=tuple(
+                    get_default_tools(
+                        settings,
+                        store=store,
+                        checkpointer=checkpointer,
+                        artifact_metadata_repository=artifact_metadata_repository,
+                    )
+                ),
+            ),
+            default_order=0,
+        )
+    if provider_enabled("skill"):
+        register(
+            StaticToolProvider(
+                provider_id="skill",
+                tools=tuple(_build_skill_tools(settings=settings, skill_registry=skill_registry)),
+            ),
+            default_order=100,
+        )
+
+    explicit_index = 0
+    for provider in explicit_providers or ():
+        register(provider, default_order=200 + explicit_index)
+        explicit_index += 1
+
+    for provider_id, factory in (explicit_provider_factories or {}).items():
+        normalized_provider_id = _normalize_provider_id(provider_id)
+        provider_config = settings.tool_catalog.provider_config_for(normalized_provider_id)
+        if provider_config is not None and not provider_config.enabled:
+            continue
+        provider = factory(context)
+        returned_provider_id = _normalize_provider_id(getattr(provider, "provider_id", ""))
+        if returned_provider_id != normalized_provider_id:
+            raise ValueError(
+                f"Tool provider factory {normalized_provider_id!r} returned provider "
+                f"{returned_provider_id!r}."
+            )
+        register(provider, default_order=200 + explicit_index)
+        explicit_index += 1
+
+    return tuple(
+        provider
+        for _provider_id, (_order, provider) in sorted(
+            registered.items(),
+            key=lambda item: (item[1][0], item[0]),
+        )
+    )
+
+
 def _merge_tool_provider_manifests(
     providers: Iterable[ToolProvider],
     *,
+    provider_metadata_overlay_for: Callable[[str], Mapping[str, Any]],
     metadata_overlay_for: Callable[[str], Mapping[str, Any]],
 ) -> dict[str, ToolManifest]:
     manifests: dict[str, ToolManifest] = {}
     for provider in providers:
         for manifest in provider.tool_manifests():
-            manifests[manifest.name] = manifest.with_overlay(metadata_overlay_for(manifest.name))
+            provider_overlay = provider_metadata_overlay_for(provider.provider_id)
+            provider_manifest = manifest.with_overlay(provider_overlay)
+            manifests[manifest.name] = provider_manifest.with_overlay(
+                metadata_overlay_for(manifest.name)
+            )
     return manifests
+
+
+def _normalize_provider_id(provider_id: object) -> str:
+    normalized = str(provider_id or "").strip()
+    if not _PROVIDER_ID_PATTERN.fullmatch(normalized):
+        raise ValueError(
+            f"Tool provider id must match {_PROVIDER_ID_PATTERN.pattern!r}; got {provider_id!r}."
+        )
+    return normalized
 
 
 def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> list[Any]:

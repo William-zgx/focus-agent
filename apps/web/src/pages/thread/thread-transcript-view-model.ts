@@ -1,8 +1,10 @@
 import type {
   FocusAgentBranchActionProposal,
   FocusAgentStreamState,
+  FocusAgentToolApprovalInterrupt,
   ThreadStateResponse,
 } from "@focus-agent/web-sdk";
+import { isToolApprovalInterrupt } from "@focus-agent/web-sdk";
 import { useMemo } from "react";
 
 import type { PendingUserMessage } from "@/features/thread-stream/use-thread-stream";
@@ -52,9 +54,25 @@ export function useThreadTranscriptViewModel({
     return [...byId.values()];
   }, [threadState?.branch_actions, streamState?.branchActions]);
 
+  const toolApprovalInterrupts = useMemo(() => {
+    const byId = new Map<string, FocusAgentToolApprovalInterrupt>();
+    for (const interrupt of threadState?.interrupts ?? []) {
+      if (isToolApprovalInterrupt(interrupt)) {
+        byId.set(interrupt.tool_call_id, interrupt);
+      }
+    }
+    for (const interrupt of streamState?.interrupts ?? []) {
+      if (isToolApprovalInterrupt(interrupt)) {
+        byId.set(interrupt.tool_call_id, interrupt);
+      }
+    }
+    return [...byId.values()];
+  }, [threadState?.interrupts, streamState?.interrupts]);
+
   const hasTranscriptContent = Boolean(
     transcriptMessages.length ||
       branchActions.length ||
+      toolApprovalInterrupts.length ||
       isStreaming ||
       streamState?.visibleText ||
       streamState?.reasoningText ||
@@ -72,6 +90,7 @@ export function useThreadTranscriptViewModel({
     lastTranscriptMessage,
     streamToolCallCount,
     streamToolEventCount,
+    toolApprovalInterrupts,
     transcriptMessages,
   };
 }

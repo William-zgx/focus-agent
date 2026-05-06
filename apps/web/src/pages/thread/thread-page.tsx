@@ -1,5 +1,6 @@
 import { useRouterState } from "@tanstack/react-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import type { FocusAgentToolApprovalInterrupt } from "@focus-agent/web-sdk";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import {
@@ -44,6 +45,7 @@ export function ThreadPage() {
 		streamState,
 		pendingUserMessage,
 		isStreaming,
+		resumeToolApproval,
 		sendMessage,
 		stopStreaming,
 	} = useThreadStream({
@@ -61,6 +63,7 @@ export function ThreadPage() {
 		lastTranscriptMessage,
 		streamToolCallCount,
 		streamToolEventCount,
+		toolApprovalInterrupts,
 		transcriptMessages,
 	} = useThreadTranscriptViewModel({
 		threadState: data,
@@ -84,10 +87,18 @@ export function ThreadPage() {
 		streamReasoningText: streamState?.reasoningText,
 		streamToolCallCount,
 		streamToolEventCount,
+		toolApprovalInterruptCount: toolApprovalInterrupts.length,
 		streamVisibleText: streamState?.visibleText,
 		threadId,
 		transcriptMessageCount: transcriptMessages.length,
 	});
+	const [toolApprovalInFlightId, setToolApprovalInFlightId] = useState<
+		string | null
+	>(null);
+	const [toolApprovalErrorId, setToolApprovalErrorId] = useState<string | null>(
+		null,
+	);
+	const [toolApprovalError, setToolApprovalError] = useState("");
 
 	async function handleSendMessage(
 		message: string,
@@ -124,6 +135,27 @@ export function ThreadPage() {
 		setPreviewContextUsage(payload.context_usage ?? null);
 	}
 
+	async function handleDecideToolApproval(
+		interrupt: FocusAgentToolApprovalInterrupt,
+		approved: boolean,
+	) {
+		if (isMergedReadOnlyThread) return;
+		setToolApprovalInFlightId(interrupt.tool_call_id);
+		setToolApprovalErrorId(null);
+		setToolApprovalError("");
+		followAndScrollToBottom();
+		const result = await resumeToolApproval(approved);
+		if (!result.ok) {
+			setToolApprovalErrorId(interrupt.tool_call_id);
+			setToolApprovalError(
+				isChineseUi
+					? "提交工具审批结果失败。"
+					: "Failed to submit the tool approval decision.",
+			);
+		}
+		setToolApprovalInFlightId(null);
+	}
+
 	return (
 		<ThreadPageContent
 			assistantMessage={data?.assistant_message}
@@ -144,6 +176,9 @@ export function ThreadPage() {
 			messages={transcriptMessages}
 			onClearEditDraft={() => setEditDraft(null)}
 			onCompactContext={handleCompactContext}
+			onDecideToolApproval={(interrupt, approved) =>
+				void handleDecideToolApproval(interrupt, approved)
+			}
 			onDismissBranchAction={(action) => void dismissBranchAction(action)}
 			onEditMessage={setEditDraft}
 			onExecuteBranchAction={(action) => void executeBranchAction(action)}
@@ -156,6 +191,10 @@ export function ThreadPage() {
 			selectedThinkingMode={data?.selected_thinking_mode}
 			streamState={streamState}
 			threadError={error}
+			toolApprovalError={toolApprovalError}
+			toolApprovalErrorId={toolApprovalErrorId}
+			toolApprovalInFlightId={toolApprovalInFlightId}
+			toolApprovalInterrupts={toolApprovalInterrupts}
 		/>
 	);
 }

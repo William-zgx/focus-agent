@@ -1,4 +1,5 @@
 import {
+  createToolApprovalDecision,
   createInitialStreamState,
   reduceStreamEvent,
 } from "@focus-agent/web-sdk";
@@ -64,19 +65,24 @@ export function useThreadStream(options: UseThreadStreamOptions) {
   const { handleBranchActionExecuted } = useThreadStreamNavigation();
   const [threadEntries, setThreadEntries] = useState<Record<string, ThreadStreamEntry>>({});
 
-  async function sendMessage(
-    message: string,
-    overrides?: SendMessageOverrides,
-  ): Promise<SendMessageResult> {
-    const requestThreadId = options.threadId;
-    const requestRootThreadId = options.rootThreadId;
-    const { requestId, controller } = requestRegistry.beginStreamRequest(requestThreadId);
+  async function runStreamRequest({
+    requestThreadId,
+    requestRootThreadId,
+    requestId,
+    controller,
+    streamFactory,
+  }: {
+    requestThreadId: string;
+    requestRootThreadId: string;
+    requestId: string;
+    controller: AbortController;
+    streamFactory: () => ReturnType<typeof client.streamTurn>;
+  }): Promise<SendMessageResult> {
     setThreadEntries((current) =>
-      nextThreadEntryMap(
-        current,
-        requestThreadId,
-        createOptimisticThreadStreamEntry(requestThreadId, message),
-      ),
+      patchThreadEntry(current, requestThreadId, {
+        streamState: createInitialStreamState(),
+        isStreaming: true,
+      }),
     );
 
     let sendSucceeded = false;
@@ -125,21 +131,9 @@ export function useThreadStream(options: UseThreadStreamOptions) {
       }
       scheduledTimeout = setTimeout(flushPendingStreamState, STREAM_STATE_BATCH_MS);
     };
-    try {
-      const requestPayload = {
-        thread_id: requestThreadId,
-        message,
-        model: overrides?.model || options.selectedModel || undefined,
-        thinking_mode: resolveThinkingModeForRequest(
-          overrides,
-          options.selectedThinkingMode,
-        ),
-      };
 
-      const stream = await client.streamTurn(
-        requestPayload,
-        { signal: controller.signal },
-      );
+    try {
+      const stream = await streamFactory();
 
       for await (const event of stream) {
         if (!requestRegistry.isCurrentStreamRequest(requestThreadId, requestId, controller)) {
@@ -203,6 +197,62 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     return { ok: sendSucceeded };
   }
 
+  async function sendMessage(
+    message: string,
+    overrides?: SendMessageOverrides,
+  ): Promise<SendMessageResult> {
+    const requestThreadId = options.threadId;
+    const requestRootThreadId = options.rootThreadId;
+    const { requestId, controller } = requestRegistry.beginStreamRequest(requestThreadId);
+    setThreadEntries((current) =>
+      nextThreadEntryMap(
+        current,
+        requestThreadId,
+        createOptimisticThreadStreamEntry(requestThreadId, message),
+      ),
+    );
+
+    const requestPayload = {
+      thread_id: requestThreadId,
+      message,
+      model: overrides?.model || options.selectedModel || undefined,
+      thinking_mode: resolveThinkingModeForRequest(
+        overrides,
+        options.selectedThinkingMode,
+      ),
+    };
+
+    return runStreamRequest({
+      requestThreadId,
+      requestRootThreadId,
+      requestId,
+      controller,
+      streamFactory: () =>
+        client.streamTurn(requestPayload, { signal: controller.signal }),
+    });
+  }
+
+  async function resumeToolApproval(approved: boolean): Promise<SendMessageResult> {
+    const requestThreadId = options.threadId;
+    const requestRootThreadId = options.rootThreadId;
+    const { requestId, controller } = requestRegistry.beginStreamRequest(requestThreadId);
+
+    return runStreamRequest({
+      requestThreadId,
+      requestRootThreadId,
+      requestId,
+      controller,
+      streamFactory: () =>
+        client.streamResume(
+          {
+            thread_id: requestThreadId,
+            resume: createToolApprovalDecision(approved),
+          },
+          { signal: controller.signal },
+        ),
+    });
+  }
+
   function stopStreaming() {
     requestRegistry.stopStreamRequest(options.threadId);
   }
@@ -214,6 +264,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     pendingUserMessage: currentEntry.pendingUserMessage,
     isStreaming: currentEntry.isStreaming,
     sendMessage,
+    resumeToolApproval,
     stopStreaming,
   };
 }

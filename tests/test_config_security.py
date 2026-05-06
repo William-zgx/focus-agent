@@ -30,6 +30,9 @@ _CONFIG_ENV_KEYS = (
     "TOOL_MAX_PARALLEL_WORKERS",
     "BACKGROUND_WORKER_MAX_CONCURRENCY",
     "BACKGROUND_QUEUE_MAX_SIZE",
+    "BACKGROUND_JOB_BACKEND",
+    "BACKGROUND_JOB_CLAIM_TTL_SECONDS",
+    "RUNTIME_THREAD_LOCK_TTL_SECONDS",
     "CORS_ALLOWED_ORIGINS",
     "CORS_ALLOW_CREDENTIALS",
     "FOCUS_AGENT_LOCAL_ENV_FILE",
@@ -82,6 +85,9 @@ def test_settings_from_env_allows_development_defaults(monkeypatch, tmp_path, en
     assert settings.tool_max_parallel_workers == 4
     assert settings.background_worker_max_concurrency == 2
     assert settings.background_queue_max_size == 1000
+    assert settings.background_job_backend == "memory"
+    assert settings.background_job_claim_ttl_seconds == 300.0
+    assert settings.runtime_thread_lock_ttl_seconds == 300.0
 
 
 def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path):
@@ -92,6 +98,9 @@ def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path
     monkeypatch.setenv("TOOL_MAX_PARALLEL_WORKERS", "7")
     monkeypatch.setenv("BACKGROUND_WORKER_MAX_CONCURRENCY", "3")
     monkeypatch.setenv("BACKGROUND_QUEUE_MAX_SIZE", "42")
+    monkeypatch.setenv("BACKGROUND_JOB_BACKEND", "postgres")
+    monkeypatch.setenv("BACKGROUND_JOB_CLAIM_TTL_SECONDS", "45")
+    monkeypatch.setenv("RUNTIME_THREAD_LOCK_TTL_SECONDS", "90")
 
     settings = Settings.from_env()
 
@@ -101,6 +110,9 @@ def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path
     assert settings.tool_max_parallel_workers == 7
     assert settings.background_worker_max_concurrency == 3
     assert settings.background_queue_max_size == 42
+    assert settings.background_job_backend == "postgres"
+    assert settings.background_job_claim_ttl_seconds == 45.0
+    assert settings.runtime_thread_lock_ttl_seconds == 90.0
 
 
 def test_settings_from_env_is_side_effect_free_for_runtime_directories(monkeypatch, tmp_path):

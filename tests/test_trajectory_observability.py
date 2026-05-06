@@ -150,6 +150,47 @@ def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
     assert record.metrics["tool_router_enforced"] == 1
 
 
+def test_build_turn_trajectory_record_includes_tool_approval_governance_record():
+    started = utc_now()
+    approval_record = make_agent_state_record(
+        "tool_approval_decision",
+        {
+            "kind": "tool_approval",
+            "tool_name": "write_file",
+            "tool_call_id": "call-approval",
+            "args": {"path": "README.md"},
+            "risk_level": "high",
+            "approved": False,
+            "decision": "denied",
+        },
+        source="tool_executor:call-approval",
+        metadata={"tool_call_id": "call-approval"},
+    )
+
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.resume",
+        status="succeeded",
+        final_values={
+            "messages": [HumanMessage(content="resume approval"), AIMessage(content="done")],
+            "llm_calls": 1,
+            "governance_records": [approval_record],
+        },
+        initial_message_count=0,
+        initial_llm_calls=0,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=5),
+    )
+
+    [stored_record] = record.plan_meta["governance_records"]
+    assert stored_record["name"] == "tool_approval_decision"
+    assert stored_record["payload"]["approved"] is False
+    assert stored_record["payload"]["tool_call_id"] == "call-approval"
+    assert stored_record["metadata"]["tool_call_id"] == "call-approval"
+
+
 def test_postgres_trajectory_repository_executes_setup_and_insert(monkeypatch):
     executed: list[tuple[str, object]] = []
 

@@ -145,6 +145,13 @@ class ChatService(
             **kwargs,
         )
 
+    def _release_background_job_key(self, key: str) -> None:
+        release = getattr(self._background_work, "release_job_key", None)
+        if callable(release):
+            release(key)
+            return
+        self._coordination_backend.job_deduper.release_job_key(key)
+
     @staticmethod
     def _message_content_to_text(content: Any) -> str:
         return message_content_to_text(content)

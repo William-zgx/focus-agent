@@ -223,6 +223,7 @@ export interface FocusAgentStreamState {
   reasoningText: string;
   toolCalls: FocusAgentToolCallEvent[];
   toolEvents: FocusAgentToolEvent[];
+  interrupts: unknown[];
   branchActions: FocusAgentBranchActionProposal[];
   latestTurnState?: Record<string, unknown>;
   isClosed: boolean;

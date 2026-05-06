@@ -63,3 +63,59 @@ def test_background_queue_uses_shared_job_deduper() -> None:
     finally:
         queue_a.close()
         queue_b.close()
+
+
+def test_background_queue_records_durable_job_lifecycle_and_snapshot() -> None:
+    class DurableDeduper:
+        durable = True
+
+        def __init__(self):
+            self.keys: set[str] = set()
+            self.events: list[tuple[str, str]] = []
+
+        def try_claim_job_key(self, key: str) -> bool:
+            if key in self.keys:
+                return False
+            self.keys.add(key)
+            self.events.append(("claim", key))
+            return True
+
+        def mark_job_running(self, key: str) -> None:
+            self.events.append(("running", key))
+
+        def mark_job_succeeded(self, key: str) -> None:
+            self.events.append(("succeeded", key))
+
+        def release_job_key(self, key: str) -> None:
+            self.keys.discard(key)
+            self.events.append(("release", key))
+
+        def snapshot(self) -> dict[str, int]:
+            return {
+                "job_backend_durable": 1,
+                "job_pending_total": len(self.keys),
+                "job_succeeded_total": 1,
+                "job_attempt_total": 1,
+            }
+
+    deduper = DurableDeduper()
+    calls: list[str] = []
+    queue = BoundedBackgroundQueue(name="durable", max_concurrency=1, max_size=2, job_deduper=deduper)
+    try:
+        assert queue.submit(key="job-1", func=lambda: calls.append("ran"))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and not calls:
+            time.sleep(0.01)
+
+        snapshot = queue.snapshot()
+        assert calls == ["ran"]
+        assert ("claim", "job-1") in deduper.events
+        assert ("running", "job-1") in deduper.events
+        assert ("succeeded", "job-1") in deduper.events
+        assert ("release", "job-1") in deduper.events
+        assert snapshot["completed_total"] == 1
+        assert snapshot["job_backend_durable"] == 1
+        assert snapshot["job_succeeded_total"] == 1
+        assert snapshot["job_attempt_total"] == 1
+    finally:
+        queue.close()

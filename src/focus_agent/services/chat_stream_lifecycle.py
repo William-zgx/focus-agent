@@ -96,6 +96,7 @@ class ChatStreamLifecycleMixin:
         initial_llm_calls = 0
         input_messages = list(payload.get('messages', []) if isinstance(payload, dict) else [])
         started_at = utc_now()
+        emit_closed_frame = True
         try:
             context, branch_meta, initial_values = self._preflight_thread_access(
                 thread_id=thread_id,
@@ -377,6 +378,10 @@ class ChatStreamLifecycleMixin:
                     'thread_id': thread_id,
                 },
             )
+        except GeneratorExit:
+            emit_closed_frame = False
+            raise
         finally:
             self._release_thread_turn(thread_id=thread_id)
-            yield self._sse_frame(event='turn.closed', data={'status': 'ok', 'thread_id': thread_id})
+            if emit_closed_frame:
+                yield self._sse_frame(event='turn.closed', data={'status': 'ok', 'thread_id': thread_id})

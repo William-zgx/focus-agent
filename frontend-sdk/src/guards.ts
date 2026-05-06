@@ -1,4 +1,8 @@
-import type { FocusAgentEvent, FocusAgentToolApprovalInterrupt } from "./types.js";
+import type {
+  FocusAgentEvent,
+  FocusAgentToolApprovalDecision,
+  FocusAgentToolApprovalInterrupt,
+} from "./types.js";
 
 export function isVisibleTextDeltaEvent(
   event: FocusAgentEvent,
@@ -45,6 +49,10 @@ export function isToolApprovalInterrupt(
     !Array.isArray(payload.args) &&
     typeof payload.risk_level === "string"
   );
+}
+
+export function createToolApprovalDecision(approved: boolean): FocusAgentToolApprovalDecision {
+  return { kind: "tool_approval", approved };
 }
 
 export function isTerminalEvent(event: FocusAgentEvent): boolean {

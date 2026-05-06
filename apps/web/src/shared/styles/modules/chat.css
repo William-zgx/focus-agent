@@ -1201,6 +1201,85 @@
   gap: 8px;
 }
 
+.fa-tool-approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--fa-warning) 38%, var(--fa-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fa-warning) 8%, var(--fa-panel));
+  box-shadow: var(--fa-message-shadow);
+  padding: 14px;
+}
+
+.fa-tool-approval-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fa-tool-approval-card-title {
+  color: var(--fa-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.fa-tool-approval-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fa-tool-approval-card-meta span,
+.fa-tool-approval-card-body span {
+  color: var(--fa-text-muted);
+  font-size: 12px;
+}
+
+.fa-tool-approval-card-badge {
+  border: 1px solid color-mix(in srgb, var(--fa-warning) 45%, var(--fa-border));
+  border-radius: 999px;
+  color: var(--fa-text);
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.fa-tool-approval-card-body {
+  display: grid;
+  gap: 6px;
+}
+
+.fa-tool-approval-card-body pre {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--fa-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fa-bg) 72%, transparent);
+  color: var(--fa-text);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fa-tool-approval-card-error {
+  color: var(--fa-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.fa-tool-approval-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 900px) {
   .fa-chat-main-body .fa-tool-activity-stack {
     max-width: min(100%, 680px);

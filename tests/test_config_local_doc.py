@@ -214,6 +214,66 @@ def test_load_tool_catalog_document_preserves_generic_tool_metadata_overlay(tmp_
     assert "future_provider_tool" in loaded.manifest_section_names
 
 
+def test_load_tool_catalog_document_reads_provider_registry_config(tmp_path):
+    config_doc = tmp_path / "tools.toml"
+    config_doc.write_text(
+        "\n".join(
+            [
+                "[search_code]",
+                'risk_level = "high"',
+                "",
+                "[[providers]]",
+                'id = "skill"',
+                "enabled = false",
+                "order = 5",
+                "",
+                "[[providers]]",
+                'id = "local_tools"',
+                "enabled = true",
+                "order = 20",
+                "[providers.metadata]",
+                'toolset = "local"',
+                'risk_level = "medium"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_tool_catalog_document(config_doc)
+
+    assert tuple(provider.id for provider in loaded.providers) == ("skill", "local_tools")
+    assert loaded.providers[0].enabled is False
+    assert loaded.providers[0].order == 5
+    assert loaded.provider_metadata_overlay_for("local_tools") == {
+        "risk_level": "medium",
+        "toolset": "local",
+    }
+    assert "providers" not in loaded.manifest_section_names
+    assert loaded.metadata_overlay_for("search_code") == {"risk_level": "high"}
+
+
+def test_load_tool_catalog_document_rejects_external_provider_loading_keys(tmp_path):
+    config_doc = tmp_path / "tools.toml"
+    config_doc.write_text(
+        "\n".join(
+            [
+                "[[providers]]",
+                'id = "unsafe"',
+                'module = "external.provider.module"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_tool_catalog_document(config_doc)
+    except ModelCatalogValidationError as exc:
+        assert "external Python loading" in str(exc)
+        assert "module" in str(exc)
+    else:
+        raise AssertionError("expected provider loading key validation failure")
+
+
 def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
     config_doc = tmp_path / "models.toml"
     tools_doc = tmp_path / "tools.toml"

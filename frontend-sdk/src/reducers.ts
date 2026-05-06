@@ -16,6 +16,7 @@ export function createInitialStreamState(): FocusAgentStreamState {
     reasoningText: "",
     toolCalls: [],
     toolEvents: [],
+    interrupts: [],
     branchActions: [],
     latestTurnState: undefined,
     isClosed: false,
@@ -102,6 +103,8 @@ export function reduceStreamEvent(
     case "branch.action.dismissed":
     case "branch.action.failed":
       return upsertBranchAction(state, event.data.branch_action);
+    case "turn.interrupt":
+      return { ...state, interrupts: [...state.interrupts, event.data.interrupt] };
     case "turn.completed":
       return {
         ...state,
