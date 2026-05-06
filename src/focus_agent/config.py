@@ -145,6 +145,19 @@ class Settings:
     agent_memory_read_source: str = "postgres"
     agent_memory_extractor_mode: str = "heuristic"
     agent_memory_postgres_trigram_enabled: bool = False
+    agent_memory_embedding_enabled: bool = False
+    agent_memory_embedding_backend: str = "disabled"
+    agent_memory_embedding_provider: str = "openai_compatible"
+    agent_memory_embedding_model: str = "text-embedding-3-small"
+    agent_memory_embedding_dimensions: int = 1536
+    agent_memory_embedding_base_url: str | None = None
+    agent_memory_embedding_api_key_env: str | None = "OPENAI_API_KEY"
+    agent_memory_embedding_api_key: str | None = field(default=None, repr=False)
+    agent_memory_embedding_batch_size: int = 32
+    agent_memory_vector_search_mode: str = "shadow"
+    agent_memory_vector_index_enabled: bool = False
+    agent_memory_pgvector_extension_mode: str = "auto_create"
+    agent_memory_embedding_timeout_seconds: float = 30.0
     agent_memory_approval_for_shared_writes: bool = False
     agent_memory_curator_enabled: bool = False
     agent_memory_auto_promote_on_merge: bool = True

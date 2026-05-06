@@ -36,6 +36,7 @@ def get_default_tools(
     checkpointer=None,
     artifact_metadata_repository=None,
     memory_repository=None,
+    memory_embedding_service=None,
 ):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +106,7 @@ def get_default_tools(
         *build_memory_tools(
             store=store,
             memory_repository=memory_repository,
+            memory_embedding_service=memory_embedding_service,
             tool_catalog=tool_catalog,
             emit_tool_event=_emit_tool_event,
             get_current_thread_id=_get_current_thread_id,

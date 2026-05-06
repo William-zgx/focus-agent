@@ -11,6 +11,11 @@ from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings, ensure_runtime_directories
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
+from ..memory.embedding import (
+    MemoryEmbeddingError,
+    MemoryEmbeddingService,
+    create_memory_embedding_provider,
+)
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
 from ..repositories.agent_team_repository import AgentTeamRepository
 from ..repositories.branch_repository import BranchRepository
@@ -54,6 +59,9 @@ class RuntimeMemoryComponents:
     memory_writer: MemoryWriter
     memory_extractor: MemoryExtractor
     memory_repository: object | None
+    memory_embedding_service: MemoryEmbeddingService | None
+    memory_embedding_provider: object | None
+    memory_embedding_backend_error: str | None = None
 
 
 @dataclass(slots=True)
@@ -86,6 +94,9 @@ class AppRuntime:
     memory_writer: MemoryWriter
     memory_extractor: MemoryExtractor
     memory_repository: object | None
+    memory_embedding_service: MemoryEmbeddingService | None
+    memory_embedding_provider: object | None
+    memory_embedding_backend_error: str | None
     skill_registry: SkillRegistry
     tool_registry: ToolRegistry
     trajectory_recorder: object | None
@@ -162,7 +173,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         store=persistence.store,
         memory_repository=persistence.memory_repository,
     )
-    registries = _create_runtime_registries(settings=settings, persistence=persistence)
+    registries = _create_runtime_registries(
+        settings=settings,
+        persistence=persistence,
+        memory=memory,
+    )
     graph = _create_runtime_graph(
         settings=settings,
         persistence=persistence,
@@ -196,6 +211,9 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_writer=memory.memory_writer,
         memory_extractor=memory.memory_extractor,
         memory_repository=memory.memory_repository,
+        memory_embedding_service=memory.memory_embedding_service,
+        memory_embedding_provider=memory.memory_embedding_provider,
+        memory_embedding_backend_error=memory.memory_embedding_backend_error,
         skill_registry=registries.skill_registry,
         tool_registry=registries.tool_registry,
         trajectory_recorder=persistence.trajectory_recorder,
@@ -261,8 +279,28 @@ def _create_memory_components(
     memory_repository: object | None = None,
 ) -> RuntimeMemoryComponents:
     memory_policy = MemoryPolicy()
-    memory_retriever = MemoryRetriever(store=store, repository=memory_repository, policy=memory_policy)
-    memory_writer = MemoryWriter(store=store, repository=memory_repository, policy=memory_policy)
+    memory_embedding_service, memory_embedding_backend_error = _create_memory_embedding_service(
+        settings,
+        memory_repository=memory_repository,
+    )
+    memory_embedding_provider = (
+        memory_embedding_service.provider if memory_embedding_service is not None else None
+    )
+    vector_search_mode = str(getattr(settings, "agent_memory_vector_search_mode", "shadow")).strip().lower()
+    memory_retriever = MemoryRetriever(
+        store=store,
+        repository=memory_repository,
+        policy=memory_policy,
+        retrieval_mode="hybrid" if vector_search_mode == "hybrid" else "fts",
+        vector_shadow=vector_search_mode == "shadow",
+        embedding_provider=memory_embedding_provider,
+    )
+    memory_writer = MemoryWriter(
+        store=store,
+        repository=memory_repository,
+        policy=memory_policy,
+        embedding_service=memory_embedding_service,
+    )
     memory_extractor = MemoryExtractor(mode=settings.agent_memory_extractor_mode)
     return RuntimeMemoryComponents(
         memory_policy=memory_policy,
@@ -270,13 +308,39 @@ def _create_memory_components(
         memory_writer=memory_writer,
         memory_extractor=memory_extractor,
         memory_repository=memory_repository,
+        memory_embedding_service=memory_embedding_service,
+        memory_embedding_provider=memory_embedding_provider,
+        memory_embedding_backend_error=memory_embedding_backend_error,
     )
+
+
+def _create_memory_embedding_service(
+    settings: Settings,
+    *,
+    memory_repository: object | None,
+) -> tuple[MemoryEmbeddingService | None, str | None]:
+    try:
+        provider = create_memory_embedding_provider(settings)
+    except MemoryEmbeddingError as exc:
+        logger.warning("Memory embedding backend unavailable: %s", exc)
+        return None, str(exc)
+    if provider is None:
+        return None, None
+    if memory_repository is None:
+        return None, "local_fallback"
+    service = MemoryEmbeddingService(
+        repository=memory_repository,
+        provider=provider,
+        batch_size=getattr(settings, "agent_memory_embedding_batch_size", 32),
+    )
+    return service, None
 
 
 def _create_runtime_registries(
     *,
     settings: Settings,
     persistence: RuntimePersistence,
+    memory: RuntimeMemoryComponents,
 ) -> RuntimeRegistries:
     skill_registry = SkillRegistry.from_settings(settings)
     tool_registry = _build_tool_registry_compat(
@@ -286,6 +350,7 @@ def _create_runtime_registries(
         checkpointer=persistence.checkpointer,
         artifact_metadata_repository=persistence.artifact_metadata_repository,
         memory_repository=persistence.memory_repository,
+        memory_embedding_service=memory.memory_embedding_service,
     )
     return RuntimeRegistries(skill_registry=skill_registry, tool_registry=tool_registry)
 
@@ -374,7 +439,7 @@ def _create_postgres_primary_persistence(
     _setup_component_if_available(artifact_metadata_repository)
 
     memory_repository = PostgresMemoryRepository(settings.database_uri)
-    _setup_component_if_available(memory_repository)
+    _setup_memory_repository_if_available(memory_repository, settings=settings)
 
     trajectory_recorder = None
     if _trajectory_enabled(settings):
@@ -437,6 +502,35 @@ def _setup_component_if_available(component: object) -> None:
         setup()
 
 
+def _setup_memory_repository_if_available(component: object, *, settings: Settings) -> None:
+    setup = getattr(component, "setup", None)
+    if not callable(setup):
+        return
+    signature = inspect.signature(setup)
+    if not signature.parameters:
+        setup()
+        return
+    setup(
+        dimensions=getattr(settings, "agent_memory_embedding_dimensions", 1536),
+        vector_index=getattr(settings, "agent_memory_vector_index_enabled", False),
+        memory_embeddings_enabled=_memory_embedding_configured(settings),
+        pgvector_extension_mode=getattr(
+            settings,
+            "agent_memory_pgvector_extension_mode",
+            "auto_create",
+        ),
+    )
+
+
+def _memory_embedding_configured(settings: Settings) -> bool:
+    backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
+    if backend and backend not in {"disabled", "none", "off"}:
+        return True
+    if bool(getattr(settings, "agent_memory_embedding_enabled", False)):
+        return True
+    return str(getattr(settings, "agent_memory_vector_search_mode", "off")).strip().lower() == "hybrid"
+
+
 def _build_tool_registry_compat(
     *,
     settings: Settings,
@@ -445,6 +539,7 @@ def _build_tool_registry_compat(
     checkpointer: object,
     artifact_metadata_repository: object | None,
     memory_repository: object | None = None,
+    memory_embedding_service: object | None = None,
 ) -> ToolRegistry:
     kwargs = {
         "settings": settings,
@@ -456,6 +551,8 @@ def _build_tool_registry_compat(
         kwargs["artifact_metadata_repository"] = artifact_metadata_repository
     if "memory_repository" in inspect.signature(build_tool_registry).parameters:
         kwargs["memory_repository"] = memory_repository
+    if "memory_embedding_service" in inspect.signature(build_tool_registry).parameters:
+        kwargs["memory_embedding_service"] = memory_embedding_service
     return build_tool_registry(**kwargs)
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import inspect
 import re
 
 from ..core.request_context import RequestContext
@@ -17,6 +19,9 @@ from .policy import MemoryPolicy
 from .scorer import score_memory_hit
 
 
+logger = logging.getLogger(__name__)
+
+
 class MemoryRetriever:
     def __init__(
         self,
@@ -25,11 +30,21 @@ class MemoryRetriever:
         repository=None,
         policy: MemoryPolicy | None = None,
         default_limit: int = 8,
+        retrieval_mode: str = "fts",
+        vector_shadow: bool = True,
+        rrf_k: int = 60,
+        embedding_provider=None,
     ):
+        if retrieval_mode not in {"fts", "hybrid"}:
+            raise ValueError("retrieval_mode must be 'fts' or 'hybrid'")
         self.store = store
         self.repository = repository
         self.policy = policy or MemoryPolicy(top_k=default_limit)
         self.default_limit = default_limit
+        self.retrieval_mode = retrieval_mode
+        self.vector_shadow = vector_shadow
+        self.rrf_k = max(1, int(rrf_k))
+        self.embedding_provider = embedding_provider
 
     def retrieve_for_turn(
         self,
@@ -46,9 +61,32 @@ class MemoryRetriever:
         )
         namespaces = self._candidate_namespaces(context=context)
         hits: list[MemorySearchHit] = []
+        vector_hits: list[MemorySearchHit] = []
+        vector_statuses: list[str] = []
         for namespace in namespaces:
             hits.extend(self._search_namespace(namespace, effective_query, limit=self.default_limit))
-        reranked = self._rerank_hits(hits, query=effective_query, prompt_mode=prompt_mode)
+            if self._should_search_vectors():
+                namespace_vector_hits, namespace_vector_status = self._search_vector_namespace(
+                    namespace,
+                    effective_query,
+                    limit=self.default_limit,
+                )
+                vector_hits.extend(namespace_vector_hits)
+                vector_statuses.append(namespace_vector_status)
+        vector_status = _combined_vector_status(
+            vector_statuses,
+            enabled=self._should_search_vectors(),
+            repository_available=self.repository is not None,
+        )
+        if self.retrieval_mode == "hybrid" and vector_status == "completed":
+            reranked = self._rrf_blend_hits(
+                [
+                    self._rerank_hits(hits, query=effective_query, prompt_mode=prompt_mode),
+                    self._rerank_hits(vector_hits, query=effective_query, prompt_mode=prompt_mode),
+                ]
+            )
+        else:
+            reranked = self._rerank_hits(hits, query=effective_query, prompt_mode=prompt_mode)
         deduped = self._dedupe_hits(reranked)
         bundle = RetrievedMemoryBundle(
             query=effective_query,
@@ -65,6 +103,13 @@ class MemoryRetriever:
             selected_memory_ids=selected_ids,
             budget_reason=f"top_k:{self.default_limit}",
             source="postgres" if self.repository is not None else "legacy_store",
+            vector_shadow=_vector_shadow_plan(
+                vector_hits=vector_hits,
+                vector_status=vector_status,
+                retrieval_mode=self.retrieval_mode,
+                vector_shadow_enabled=self.vector_shadow,
+            ),
+            vector_status=vector_status,
         )
         return filtered.model_copy(
             update={"retrieval_plan": retrieval_plan.model_dump(mode="json")}
@@ -76,15 +121,7 @@ class MemoryRetriever:
     def _search_namespace(self, namespace: tuple[str, ...], query: str, limit: int) -> list[MemorySearchHit]:
         if self.repository is not None:
             hits = self.repository.search(namespace=namespace, query=query, limit=limit)
-            return [
-                hit.model_copy(
-                    update={
-                        "matched_terms": hit.matched_terms or _matched_terms(query, hit.record),
-                        "namespace": hit.namespace or namespace,
-                    }
-                )
-                for hit in hits
-            ]
+            return _normalize_repository_hits(hits, namespace=namespace, query=query)
         if self.store is None:
             return []
         raw_hits = self.store.search(namespace, query=query, limit=limit) or []
@@ -130,6 +167,41 @@ class MemoryRetriever:
             )
         return hits
 
+    def _should_search_vectors(self) -> bool:
+        if self.repository is None:
+            return False
+        if self.embedding_provider is None:
+            return _vector_search_accepts_query(_repository_vector_search(self.repository))
+        if self.retrieval_mode == "hybrid":
+            return True
+        return self.vector_shadow
+
+    def _search_vector_namespace(
+        self,
+        namespace: tuple[str, ...],
+        query: str,
+        limit: int,
+    ) -> tuple[list[MemorySearchHit], str]:
+        search_vectors = _repository_vector_search(self.repository)
+        if search_vectors is None:
+            return [], "unsupported"
+        try:
+            if self.embedding_provider is not None:
+                query_vector = self.embedding_provider.embed([query])[0]
+                hits = search_vectors(
+                    namespace=namespace,
+                    embedding=query_vector,
+                    provider_id=self.embedding_provider.provider_id,
+                    model_id=self.embedding_provider.model_id,
+                    limit=limit,
+                )
+            else:
+                hits = search_vectors(namespace=namespace, query=query, limit=limit)
+        except Exception:
+            logger.warning("memory vector search failed; falling back to FTS", exc_info=True)
+            return [], "failed"
+        return _normalize_repository_hits(hits, namespace=namespace, query=query), "completed"
+
     def _rerank_hits(self, hits: list[MemorySearchHit], *, query: str, prompt_mode: PromptMode) -> list[MemorySearchHit]:
         reranked = [
             hit.model_copy(update={"score": score_memory_hit(hit, query=query, prompt_mode=prompt_mode)})
@@ -151,6 +223,119 @@ class MemoryRetriever:
             if current is None or _hit_preference(hit) > _hit_preference(current):
                 deduped_by_key[resolution_key] = hit
         return sorted(deduped_by_key.values(), key=lambda item: item.score, reverse=True)
+
+    def _rrf_blend_hits(self, ranked_hit_lists: list[list[MemorySearchHit]]) -> list[MemorySearchHit]:
+        hits_by_id: dict[str, MemorySearchHit] = {}
+        scores_by_id: dict[str, float] = {}
+        for ranked_hits in ranked_hit_lists:
+            seen_ids: set[str] = set()
+            for rank, hit in enumerate(ranked_hits, start=1):
+                memory_id = hit.record.memory_id
+                if memory_id in seen_ids:
+                    continue
+                seen_ids.add(memory_id)
+                scores_by_id[memory_id] = scores_by_id.get(memory_id, 0.0) + (
+                    1.0 / (self.rrf_k + rank)
+                )
+                current = hits_by_id.get(memory_id)
+                if current is None or _hit_preference(hit) > _hit_preference(current):
+                    hits_by_id[memory_id] = hit
+        blended = [
+            hit.model_copy(update={"score": round(scores_by_id[memory_id], 6)})
+            for memory_id, hit in hits_by_id.items()
+        ]
+        return sorted(blended, key=lambda item: item.score, reverse=True)
+
+
+def _repository_vector_search(repository):
+    for name in ("vector_search", "search_vector", "search_vectors"):
+        search_vectors = getattr(repository, name, None)
+        if callable(search_vectors):
+            return search_vectors
+    return None
+
+
+def _vector_search_accepts_query(search_vectors) -> bool:
+    if search_vectors is None:
+        return False
+    try:
+        return "query" in inspect.signature(search_vectors).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _normalize_repository_hits(
+    hits: list[object],
+    *,
+    namespace: tuple[str, ...],
+    query: str,
+) -> list[MemorySearchHit]:
+    normalized: list[MemorySearchHit] = []
+    for hit in hits or []:
+        if isinstance(hit, MemorySearchHit):
+            normalized.append(
+                hit.model_copy(
+                    update={
+                        "matched_terms": hit.matched_terms or _matched_terms(query, hit.record),
+                        "namespace": hit.namespace or namespace,
+                    }
+                )
+            )
+            continue
+        record = getattr(hit, "record", None)
+        if not isinstance(record, MemoryRecord):
+            continue
+        hit_namespace = getattr(hit, "namespace", None) or namespace
+        normalized.append(
+            MemorySearchHit(
+                record=record,
+                score=float(getattr(hit, "score", 0.0) or 0.0),
+                matched_terms=_matched_terms(query, record),
+                namespace=tuple(hit_namespace),
+                rationale=str(getattr(hit, "rationale", None) or "vector"),
+            )
+        )
+    return normalized
+
+
+def _combined_vector_status(
+    statuses: list[str],
+    *,
+    enabled: bool,
+    repository_available: bool,
+) -> str:
+    if not repository_available:
+        return "unsupported"
+    if not enabled:
+        return "disabled"
+    if not statuses:
+        return "unsupported"
+    if "failed" in statuses:
+        return "failed"
+    if "completed" in statuses:
+        return "completed"
+    return "unsupported"
+
+
+def _vector_shadow_plan(
+    *,
+    vector_hits: list[MemorySearchHit],
+    vector_status: str,
+    retrieval_mode: str,
+    vector_shadow_enabled: bool,
+) -> dict[str, object]:
+    if (
+        retrieval_mode != "fts"
+        or not vector_shadow_enabled
+        or vector_status not in {"completed", "failed"}
+    ):
+        return {}
+    return {
+        "enabled": True,
+        "status": vector_status,
+        "hit_count": len(vector_hits),
+        "memory_ids": [hit.record.memory_id for hit in vector_hits],
+    }
 
 
 def _matched_terms(query: str, record: MemoryRecord) -> list[str]:

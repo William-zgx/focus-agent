@@ -27,6 +27,9 @@ class MemoryRecordResponse(BaseModel):
     promoted_to_main: bool | None = None
     semantic_key: str | None = None
     fingerprint: str | None = None
+    embedding_status: str | None = None
+    embedding_model_id: str | None = None
+    embedding_updated_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
     deleted_at: str | None = None

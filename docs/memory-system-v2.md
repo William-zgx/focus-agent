@@ -2,7 +2,7 @@
 
 更新时间：2026-05-06
 
-本文是 PostgreSQL canonical memory 架构的系统设计文档。它描述当前仓库中的真实实现，而不是未来设想。旧版 `docs/memory-system.md` 仍可作为演进背景阅读；本文件重点整理 v2 后的设计边界、数据模型、运行时链路、审计治理和后续风险。
+本文是 PostgreSQL canonical memory 架构的系统设计文档。它描述当前仓库中的真实实现，而不是未来设想。旧版 `docs/memory-system.md` 仍可作为演进背景阅读；本文件重点整理 v2 后的设计边界、数据模型、运行时链路、pgvector shadow、审计治理和后续风险。
 
 ## 1. 定位
 
@@ -15,11 +15,13 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 在稳定 turn 结束后做保守启发式抽取，经 `MemoryPolicy` 和 `MemoryService` 写入 canonical store。
 - 分支和多 agent 产生的候选默认隔离，只有 merge/promotion 语义确认后才进入主线可依赖 memory。
 - PostgreSQL 独立业务表是生产 canonical storage；LangGraph Store 保留给 checkpoint/graph 兼容路径和本地 fallback。
+- pgvector embedding 已作为可选 shadow index 接入 canonical memory；默认关闭，不改变 FTS 主路径排序。
 
 当前明确不做：
 
-- 不引入 mandatory vector database。
-- 不依赖 embedding retrieval。
+- 不引入 mandatory external vector database；pgvector 是 PostgreSQL 内的可选能力，不是外部向量库。
+- 不把 embedding retrieval 作为默认或必需检索路径；pgvector 只作为 canonical memory 的可选 shadow index 或 hybrid rerank 输入。
+- 不通过 API/SDK/Web 返回 embedding 向量本身，只暴露状态、模型和更新时间等 metadata。
 - 不增加专用 memory summarizer model。
 - 不把 Markdown snapshot 当运行时事实源。
 - 不提供普通 HTTP create/update memory；HTTP surface 目前是 list/detail/audit/candidates/forget。
@@ -45,7 +47,13 @@ flowchart TD
     Service --> Policy["MemoryPolicy"]
     Service --> Audit["focus_memory_audit_events"]
     Service --> Memories["focus_memories"]
+    Service --> EmbeddingSvc["MemoryEmbeddingService (optional)"]
+    EmbeddingSvc --> Provider["EmbeddingProvider"]
+    EmbeddingSvc --> Embeddings["focus_memory_embeddings"]
     Service --> Tombstones["focus_memory_tombstones"]
+    Retrieve --> RetrieverVector["MemoryRetriever vector path (optional)"]
+    RetrieverVector --> Provider
+    RetrieverVector --> Embeddings
     Model --> Tools["memory_save / memory_search / memory_forget"]
     Tools --> Service
     Tools --> RepoSearch
@@ -59,19 +67,21 @@ flowchart TD
 | 文件 | 责任 |
 | --- | --- |
 | `src/focus_agent/memory/models.py` | Pydantic memory 数据模型、状态枚举、写入决策、检索计划。 |
-| `src/focus_agent/memory/service.py` | repository-backed 写入治理、upsert、冲突、脱敏、forget、audit。 |
+| `src/focus_agent/memory/service.py` | repository-backed 写入治理、upsert、冲突、脱敏、forget、audit，并在注入 embedding service 时 best-effort 写 shadow。 |
 | `src/focus_agent/repositories/memory_repository.py` | canonical memory repository protocol。 |
-| `src/focus_agent/repositories/postgres_memory_repository.py` | PostgreSQL 实现，读写 `focus_memories` 等业务表。 |
-| `src/focus_agent/repositories/postgres_schema.py` | schema v8，创建 memory/audit/tombstone/candidate 表和索引。 |
-| `src/focus_agent/memory/retriever.py` | namespace 选择、query 构造、repository search、rerank、dedupe、retrieval plan。 |
+| `src/focus_agent/repositories/postgres_memory_repository.py` | PostgreSQL 实现，读写 `focus_memories`、`focus_memory_embeddings` 等业务表。 |
+| `src/focus_agent/repositories/postgres_schema.py` | schema v8-v10，创建 memory/audit/tombstone/candidate/embedding 表和索引。 |
+| `src/focus_agent/memory/embedding.py` | `EmbeddingProvider`、OpenAI-compatible provider、deterministic test provider、embedding text/hash。 |
+| `src/focus_agent/memory/embedding_service.py` | `MemoryEmbeddingService` re-export，供 runtime/writer/tools/迁移引用。 |
+| `src/focus_agent/memory/retriever.py` | namespace 选择、query 构造、repository FTS search、可选 vector search、shadow/hybrid 计划、rerank、dedupe、retrieval plan。 |
 | `src/focus_agent/memory/policy.py` | 自动写入准入、读取 namespace、PromptMode 过滤和 section budget。 |
 | `src/focus_agent/memory/writer.py` | graph 写入适配器；Postgres 模式委托 `MemoryService`，local fallback 保留 legacy store。 |
 | `src/focus_agent/memory/extractor.py` | 稳定 turn 后的启发式候选抽取。 |
 | `src/focus_agent/memory/assembler.py` | `<memory-context>` 渲染和 prompt injection guard。 |
 | `src/focus_agent/memory/curator.py` | branch finding promotion 前的冲突检查和候选治理。 |
-| `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools。 |
+| `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前保持 FTS/rerank/dedupe。 |
 | `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/candidates/forget surface。 |
-| `src/focus_agent/migrate_local_state.py` | legacy LangGraph Store memory backfill 到 `focus_memories`。 |
+| `src/focus_agent/migrate_local_state.py` | legacy LangGraph Store memory backfill 到 `focus_memories`，可选补齐 memory embeddings。 |
 
 ## 3. 数据模型
 
@@ -128,9 +138,11 @@ flowchart TD
 - `confidence/importance`
 - `promoted_to_main`
 - `fingerprint/semantic_key`
+- `embedding_status/embedding_model_id/embedding_updated_at`
 - `created_at/updated_at/deleted_at`
 
 `content` 保留事实内容，`summary` 优先用于 prompt、检索和控制台展示。`fingerprint` 用于物理等价去重，`semantic_key` 用于同主题合并和冲突判断。
+`embedding_*` 字段是 API/SDK/Web projection metadata，用于描述可选 pgvector shadow 的索引状态，不包含向量值，也不是 memory 权限、forget 或生命周期的事实源。
 
 ### 3.4 Write Decision、Audit、Candidate、Retrieval Plan
 
@@ -152,9 +164,15 @@ flowchart TD
 
 `MemoryRetrievalPlan` 记录一次 retrieval 的 query、namespaces、filters、prompt-visible selected memory ids、budget reason 和 source。它会写入 `AgentState.memory_retrieval_plan`。
 
+Embedding 相关 repository dataclass 也定义在 `repositories/memory_repository.py`：
+
+- `MemoryEmbeddingRecord`：写入 `focus_memory_embeddings` 的 provider/model/dimensions/content_hash/vector payload。
+- `MemoryEmbeddingMetadata`：API metadata 和幂等判断使用的 embedding 状态快照。
+- `MemoryEmbeddingSearchHit`：pgvector search 返回的 hit，`MemoryRetriever` 会 normalize 成 `MemorySearchHit` 再参与 shadow plan 或 hybrid RRF。这个 normalization 是实际 pgvector smoke 测试覆盖过的边界：repository 可以返回 embedding hit，prompt 层仍只消费普通 memory hit。
+
 ## 4. PostgreSQL Canonical Storage
 
-Schema v8 创建四张 memory 表：
+Schema v8-v10 创建 memory 业务表：
 
 | 表 | 用途 |
 | --- | --- |
@@ -162,6 +180,7 @@ Schema v8 创建四张 memory 表：
 | `focus_memory_audit_events` | append-only audit trail。 |
 | `focus_memory_tombstones` | soft forget tombstone。 |
 | `focus_memory_candidates` | multi-agent / branch candidate board。 |
+| `focus_memory_embeddings` | 可选 pgvector shadow index；只有 embedding 配置启用或 hybrid 模式需要时才创建。 |
 
 ```mermaid
 erDiagram
@@ -220,6 +239,22 @@ erDiagram
         text_array evidence_refs
         jsonb data_json
     }
+    focus_memory_embeddings {
+        text embedding_id PK
+        text memory_id FK
+        text_array namespace
+        text provider_id
+        text model_id
+        int dimensions
+        text content_hash
+        vector embedding
+        text status
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        jsonb metadata_json
+    }
+    focus_memories ||--o{ focus_memory_embeddings : "memory_id"
 ```
 
 `focus_memories.data_json` 保存完整 Pydantic payload；索引列用于过滤、排序、检索和运营查询。这样既保留模型 round-trip，又避免把所有业务查询压在不透明 JSONB 上。
@@ -234,8 +269,70 @@ erDiagram
 - partial unique `(namespace, fingerprint)` where not forgotten/deleted
 - `semantic_key`
 - `GIN to_tsvector('simple', summary || content)`
+- `focus_memory_embeddings(memory_id, provider_id, model_id, content_hash)` partial unique where active
+- `focus_memory_embeddings(namespace, status, updated_at DESC)`
+- `focus_memory_embeddings(provider_id, model_id, status, updated_at DESC)`
+- optional HNSW `embedding vector_cosine_ops` when `AGENT_MEMORY_VECTOR_INDEX_ENABLED=true`
 
-当前检索是 PostgreSQL FTS + `ILIKE` fallback。`AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` 已作为配置位存在，但 `pg_trgm` 不是当前启动硬依赖。
+Schema version 语义：
+
+- v8：创建 `focus_memories`、audit、tombstone、candidate 表。
+- v9：幂等清理历史 forgotten rows 中遗留的正文。
+- v10：创建 pgvector extension、`focus_memory_embeddings` 和相关索引。Runtime 只有在 embedding backend 配置启用或 `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时才请求 v10 schema；默认 shadow 配置但 provider 关闭时不会强制创建 pgvector schema。
+
+当前基础检索是 PostgreSQL FTS + `ILIKE` fallback。`AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` 已作为配置位存在，但 `pg_trgm` 不是当前启动硬依赖。
+
+### 4.1 pgvector Shadow 边界
+
+pgvector 如果启用，只能作为 canonical memory 的 shadow index：
+
+- canonical truth 仍是 `focus_memories` 和 `data_json` round-trip。
+- shadow 只保存按 `memory_id` 关联的 embedding 向量和索引 metadata，不能成为权限、forget、audit 或 migration 的唯一事实源。
+- API/SDK/Web 只返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`；不会返回 `embedding`、`embedding_vector`、`vector` 等向量字段。
+- 检索仍必须先应用 namespace/read policy；embedding recall 只能在同一权限边界内补充召回或排序。
+- provider/model/dimensions/content_hash 是幂等和多模型并存边界；维度变化应通过新 model/version 和重建流程处理。
+- shadow 缺失、过期或模型不匹配时，系统应继续走 PostgreSQL FTS + `ILIKE` fallback。
+
+### 4.2 pgvector Extension 生命周期
+
+`vector` 是 PostgreSQL database-level extension，不是普通应用表。规范环境中应把 extension
+治理和应用 schema migration 分开：
+
+```mermaid
+flowchart TD
+    Env["Environment"] --> Mode{"AGENT_MEMORY_PGVECTOR_EXTENSION_MODE"}
+    Mode -- "auto_create" --> Local["local/test app migration"]
+    Local --> Create["CREATE EXTENSION IF NOT EXISTS vector"]
+    Mode -- "required" --> Prod["production app startup"]
+    Prod --> Check["verify pg_extension has vector"]
+    Check -- "missing" --> Fail["fail fast with readiness/startup error"]
+    Check -- "installed" --> Tables["create/verify focus_memory_embeddings"]
+```
+
+- `auto_create`：本地开发、CI、短生命周期测试库可用。应用 migration 会执行 `CREATE EXTENSION IF NOT EXISTS vector`，要求连接账号有 extension 权限。
+- `required`：生产推荐。DBA 或迁移账号先执行 `CREATE EXTENSION IF NOT EXISTS vector`，应用账号启动时只校验，不尝试创建 extension。
+- 未启用 embedding backend 且不是 `hybrid` 模式时，runtime 不执行 v10，也不会要求 pgvector。
+- 维度由 `AGENT_MEMORY_EMBEDDING_DIMENSIONS` 决定；`embedding vector(N)` 不应在线改列类型。模型或维度变化应切换 `model_id` 并重建 shadow。
+- `AGENT_MEMORY_VECTOR_INDEX_ENABLED=true` 会创建 HNSW index，适合在 staging 或生产维护窗口打开；默认关闭，避免首次构建成本影响启动。
+
+常用检查 SQL：
+
+```sql
+SELECT extversion FROM pg_extension WHERE extname = 'vector';
+
+SELECT format_type(a.atttypid, a.atttypmod) AS embedding_type
+FROM pg_attribute a
+WHERE a.attrelid = to_regclass('focus_memory_embeddings')
+  AND a.attname = 'embedding'
+  AND NOT a.attisdropped;
+
+SELECT indexname
+FROM pg_indexes
+WHERE indexname IN (
+  'idx_focus_memory_embeddings_unique_content',
+  'idx_focus_memory_embeddings_vector'
+);
+```
 
 ## 5. Runtime Backend
 
@@ -244,8 +341,14 @@ flowchart TD
     Settings["Settings"] --> HasDb{"DATABASE_URI set?"}
     HasDb -- "yes" --> Pg["PostgresSaver + PostgresStore + PostgresMemoryRepository"]
     HasDb -- "no" --> Local["PersistentInMemorySaver + PersistentInMemoryStore"]
+    Settings --> EmbEnabled{"embedding configured?"}
+    EmbEnabled -- "yes + Postgres" --> EmbSvc["MemoryEmbeddingService"]
+    EmbSvc --> Provider["EmbeddingProvider"]
+    Provider --> OpenAI["openai_compatible"]
+    Provider --> TestProvider["deterministic_test"]
     Pg --> Runtime["AppRuntime"]
     Local --> Runtime
+    EmbSvc --> Runtime
     Runtime --> Retriever["MemoryRetriever(store, repository?)"]
     Runtime --> Writer["MemoryWriter(store, repository?)"]
     Runtime --> Tools["Tool registry memory tools"]
@@ -253,13 +356,19 @@ flowchart TD
     Retriever --> RepoPath{"repository available?"}
     RepoPath -- "yes" --> Canonical["focus_memories"]
     RepoPath -- "no" --> Legacy["LangGraph Store fallback"]
+    Retriever --> Vector{"shadow/hybrid + provider?"}
+    Vector -- "yes" --> Embeddings["focus_memory_embeddings"]
 ```
 
 真实选择逻辑：
 
 - 有 `DATABASE_URI`：初始化 `PostgresMemoryRepository`，并注入 retriever/writer/tool registry/API。
 - 无 `DATABASE_URI`：`runtime.memory_repository=None`，memory 走 legacy LangGraph Store fallback。
-- readiness 会在 Postgres 模式下检查 `memory_repository`，本地模式下标记 `local_fallback`。
+- v10 schema setup 会在 embedding backend 配置启用或 `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时请求；pgvector extension 行为由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 决定，`auto_create` 会尝试创建，`required` 只校验已安装。
+- embedding provider 只有在 `AGENT_MEMORY_EMBEDDING_ENABLED=true` 或 `AGENT_MEMORY_EMBEDDING_BACKEND` 非 `disabled` 时才会创建；仅设置 `hybrid` 但没有 provider 时不会实际 vector search。
+- 有 repository 且 provider 创建成功时，runtime 会把同一个 `MemoryEmbeddingService` 注入 writer、tool registry 和 turn-level retriever。
+- readiness 会在 Postgres 模式下检查 `memory_repository`，并通过 `memory_embedding_backend` 报告 provider 状态，通过 `memory_pgvector` 报告 extension/table/dimensions/index 状态。
+- local fallback 不维护 pgvector shadow；API list/detail 类 endpoint 返回 `available=false` 或 records 中的 `embedding_*` metadata 为空，不能据此判断生产索引健康度。
 
 配置项：
 
@@ -269,9 +378,25 @@ flowchart TD
 | `AGENT_MEMORY_READ_SOURCE` | `postgres` | 已解析，当前 retriever 是 repository 优先、无 repository 时 legacy fallback。 |
 | `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。 |
 | `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` | `false` | 预留/可选增强配置位。 |
+| `AGENT_MEMORY_EMBEDDING_ENABLED` | `false` | 是否启用 memory embedding provider。 |
+| `AGENT_MEMORY_EMBEDDING_BACKEND` | `disabled` | `disabled`、`deterministic_test` 或 `openai_compatible`。 |
+| `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `shadow` | `shadow` 只记录向量候选；`hybrid` 用 RRF 合并 FTS/vector。 |
+| `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` | dev/test: `auto_create`; non-dev: `required` | pgvector extension 治理模式；生产推荐 `required`。 |
+| `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | 是否创建 HNSW vector index。 |
 | `AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES` | `false` | 预留审批策略配置位；完整审批应继续接入 tool approval/governance。 |
 | `AGENT_MEMORY_CURATOR_ENABLED` | `false` | 是否启用 branch promotion curator。 |
 | `AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE` | `true` | curator enabled 时是否自动写入无冲突候选。 |
+| `AGENT_MEMORY_EMBEDDING_ENABLED` | `false` | 是否启用 memory embedding provider；默认不调用真实 provider。 |
+| `AGENT_MEMORY_EMBEDDING_BACKEND` | `disabled` | 实际 backend 选择；可为 `disabled`、`openai_compatible`、`deterministic_test`。 |
+| `AGENT_MEMORY_EMBEDDING_PROVIDER` | `openai_compatible` | legacy/兼容 provider 名；backend 未显式设置但 enabled 时使用。 |
+| `AGENT_MEMORY_EMBEDDING_MODEL` | `text-embedding-3-small` | embedding model id，写入 shadow metadata 和幂等 key。 |
+| `AGENT_MEMORY_EMBEDDING_DIMENSIONS` | `1536` | pgvector 列维度和 provider 输出维度校验。维度变化应走新 model/version + rebuild。 |
+| `AGENT_MEMORY_EMBEDDING_BASE_URL` | unset | OpenAI-compatible endpoint base URL。 |
+| `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` | `OPENAI_API_KEY` | 从哪个环境变量读取 embedding API key；可用 direct key 覆盖。 |
+| `AGENT_MEMORY_EMBEDDING_BATCH_SIZE` | `32` | embedding service 批量大小上限。 |
+| `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS` | `30.0` | OpenAI-compatible provider 请求超时。 |
+| `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `shadow` | `shadow` 记录 vector candidates 但不改 FTS 排序；`hybrid` 使用 RRF 合并；无 provider 时不会实际 vector search。 |
+| `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | v10 schema 中是否创建 HNSW vector index。 |
 
 ## 6. Namespace 与隔离
 
@@ -379,8 +504,15 @@ bootstrap_turn
 flowchart TD
     Query["build retrieval query"] --> Namespaces["allowed namespaces"]
     Namespaces --> Search["repository.search per namespace"]
+    Namespaces --> VectorGate{"vector enabled + provider?"}
+    VectorGate -- "shadow/hybrid" --> EmbedQuery["EmbeddingProvider.embed(query)"]
+    EmbedQuery --> VectorSearch["repository.search_vector per namespace"]
     Search --> Hits["MemorySearchHit[]"]
+    VectorSearch --> VectorHits["MemoryEmbeddingSearchHit[]"]
+    VectorHits --> Normalize["normalize to MemorySearchHit"]
+    Normalize --> VectorPlan["vector_shadow / hybrid candidates"]
     Hits --> Rerank["score_memory_hit"]
+    VectorPlan --> Rerank
     Rerank --> Dedupe["memory_resolution_key dedupe"]
     Dedupe --> PromptPolicy["PromptMode filter + section budget"]
     PromptPolicy --> Plan["MemoryRetrievalPlan selected_memory_ids"]
@@ -393,6 +525,10 @@ Prompt 过滤：
 - `SYNTHESIZE` 隐藏未 promoted branch-local finding。
 - `PromptMode` 决定 user/project/approved/branch/episodic/other 的 section priority 和 section budget。
 - `MemoryRetrievalPlan.selected_memory_ids` 记录 policy/filter/budget 后真正进入 prompt 的 memory ids。
+- shadow 模式下，vector candidates 写入 `MemoryRetrievalPlan.vector_shadow`，不改变 FTS 排序和 prompt 注入顺序。
+- hybrid 模式下，FTS rank 和 vector rank 使用 RRF 合并；namespace/status/deleted_at 过滤仍在 SQL 层先执行。
+- provider 未启用、provider 失败、pgvector schema 不存在或维度不匹配时，retriever 回退到 FTS + `ILIKE`，并在 plan 中记录 `vector_status=disabled/failed/unsupported` 等状态，不暴露 provider 原始敏感错误。
+- 当前 production graph turn 的 retriever 在 runtime 注入 embedding provider 后可以走 shadow/hybrid；显式 `memory_search` tool 目前没有注入 embedding provider，Postgres 路径实际仍是 FTS/rerank/dedupe。
 
 `render_memory_block()` 会输出 `<memory-context>` fenced block。`sanitize_memory_text()` 会移除伪造 `<memory-context>` 标签，并过滤常见 prompt injection / secret exfiltration 片段。Memory 是 recalled background context，不是 system/developer/user 指令，不能覆盖当前指令层级。
 
@@ -416,6 +552,9 @@ flowchart TD
     Accepted --> Repo["focus_memories"]
     Merged --> Repo
     Conflict --> Repo
+    Accepted --> Embed["MemoryEmbeddingService.ensure_embedding"]
+    Merged --> Embed
+    Embed --> Shadow["focus_memory_embeddings"]
     Accepted --> Audit["focus_memory_audit_events"]
     Merged --> Audit
     Conflict --> Audit
@@ -432,6 +571,8 @@ flowchart TD
 - project scope 只允许 `project_fact` 写入当前 project namespace。
 - root thread scope 只允许 `turn_summary/imported_conclusion` 写入 root episodic 或 conversation main。
 - branch scope 只允许 `branch_finding` 写入当前 branch local memory。
+
+Postgres runtime 注入 `MemoryEmbeddingService` 时，`accepted` 和 `merged` 的 write decision 会在 memory upsert 成功后 best-effort 写入或刷新 embedding shadow。Embedding provider 失败不会回滚 `focus_memories` 写入，只会记录日志、audit/metric 线索和 readiness/error 状态；这是为了避免可选语义索引阻断 canonical memory 主流程。
 
 ### 9.2 直接写入 Helper
 
@@ -465,6 +606,8 @@ flowchart TD
 
 直接调用 tool 的 legacy/local 测试路径仍保留旧参数形态；生产 graph path 以 runtime context 为准。
 
+如果 tool registry 注入了 `memory_embedding_service`，`memory_save` accepted/merged 后也会走同一条 best-effort embedding 写入链路；没有注入时只写 canonical memory，不把 embedding 作为保存成功的前提。
+
 ### 9.4 去重、合并与冲突
 
 匹配依据：
@@ -496,6 +639,7 @@ flowchart TD
     Service --> Existing["repository.get_record"]
     Service --> RepoForget["repository.forget_record"]
     RepoForget --> Mark["focus_memories.status=forgotten + deleted_at"]
+    RepoForget --> DeleteEmbedding["delete focus_memory_embeddings by memory_id"]
     RepoForget --> Tombstone["focus_memory_tombstones"]
     Service --> Audit["focus_memory_audit_events"]
     Service --> Decision["MemoryWriteDecision forgotten/skipped"]
@@ -506,6 +650,7 @@ Forget 是 tombstone + payload erasure：
 - `focus_memories.status` 改为 `forgotten`。
 - `deleted_at` 置为当前时间。
 - `content` 清空，`summary` 变为 `[forgotten]`，`data_json.content/summary/status/deleted_at` 同步更新。
+- 如果存在 pgvector shadow，`PostgresMemoryRepository.forget_record()` 会在同一 repository 操作中删除对应 `memory_id` 的 `focus_memory_embeddings` rows；旧向量不能继续参与召回，API metadata 也不会再展示 active embedding 状态。
 - `focus_memory_tombstones` 写 tombstone。
 - audit event 记录 actor/reason/tombstone id，并回填 existing record 的 user/thread/branch metadata。
 
@@ -546,21 +691,24 @@ flowchart LR
 
 | Tool | Side effect | Parallel safe | Postgres 行为 |
 | --- | --- | --- | --- |
-| `memory_save` | yes | no | `MemoryService.upsert_request` + audit。 |
-| `memory_search` | no | yes | `MemoryRetriever(repository=...)` search/rerank/dedupe。 |
-| `memory_forget` | yes | no | `MemoryService.forget` + tombstone + audit。 |
+| `memory_save` | yes | no | `MemoryService.upsert_request` + audit；runtime 注入 embedding service 时 best-effort 写 shadow。 |
+| `memory_search` | no | yes | `MemoryRetriever(repository=...)` search/rerank/dedupe；当前 Postgres tool path 不注入 embedding provider，因此实际是 FTS 主路径。 |
+| `memory_forget` | yes | no | `MemoryService.forget` + tombstone + audit；Postgres 下同步删除 `focus_memory_embeddings` rows。 |
 
 ```mermaid
 sequenceDiagram
     participant Model
     participant Tool
     participant Service as MemoryService
+    participant EmbSvc as MemoryEmbeddingService
     participant Retriever as MemoryRetriever
     participant Repo as PostgresMemoryRepository
 
     Model->>Tool: memory_save(content, kind, scope)
     Tool->>Service: upsert_request(actor=memory_save_tool)
     Service->>Repo: find_existing + upsert_record + audit
+    Service->>EmbSvc: optional ensure_embedding
+    EmbSvc->>Repo: upsert_embedding
     Tool-->>Model: JSON memory_id/action
 
     Model->>Tool: memory_search(query)
@@ -570,7 +718,7 @@ sequenceDiagram
 
     Model->>Tool: memory_forget(memory_id)
     Tool->>Service: forget(actor=memory_forget_tool)
-    Service->>Repo: status=forgotten + tombstone + audit
+    Service->>Repo: status=forgotten + tombstone + delete embeddings + audit
     Tool-->>Model: JSON deleted/namespace
 ```
 
@@ -580,6 +728,7 @@ Local fallback 下，这些 tools 保留 legacy LangGraph Store path。
 
 - graph path 的 `memory_save/search/forget` 参数由当前 `RequestContext` 绑定，不允许模型自由跨 user/root/namespace。
 - `memory_search` 默认读取当前 user profile 和当前 root main/episodic；只有 context 有 `branch_id/project_id` 时才加入当前 branch/project namespace。
+- 当前显式 `memory_search` tool 不会把模型 query 送到 embedding provider。turn-level `retrieve_memory` 才是 pgvector shadow/hybrid 的主要接入点；如果后续要让 tool search 也走 vector，需要给 tool retriever 注入同一 provider 并补权限/成本观测。
 - local fallback 的 `memory_forget` 仍是 store delete，没有 Postgres tombstone；生产 canonical 行为以 Postgres 为准。
 
 ## 13. API、SDK 与 Web Console
@@ -621,6 +770,8 @@ Web surface：
 - detail、record audit 和 forget 会先按 `memory_id` 读取 record，再校验 user/thread/branch/project ownership；不属于当前 principal 的 record 对外表现为 404。
 - global memory/audit/candidate/forget 使用持久化 `AuthContext` role permissions：`memory:read`、`memory:audit`、`memory:forget`。仅 bearer token scope 不授予全局 memory 视图。
 - `MemoryRecordResponse.payload_redacted=true` 表示正文不可用；forgotten record 返回 `content=""`、`summary="[forgotten]"`。
+- `MemoryRecordResponse` 可选返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`，Memory Console 在列表和详情中展示这些 metadata。HTTP surface 不返回向量字段，candidate record payload 也应过滤向量 key。
+- readiness/health 的 component check 中包含 `memory_embedding_backend`；它用于判断 embedding provider 和 pgvector shadow 的可用性，不代表 canonical memory API 是否可用。
 
 ## 14. Migration
 
@@ -635,7 +786,11 @@ flowchart TD
     Valid -- "yes" --> Record["MemoryRecord"]
     Record --> Fingerprint["fingerprint / semantic_key"]
     Fingerprint --> Repo["PostgresMemoryRepository.upsert_record"]
-    Repo --> Report["migration report"]
+    Repo --> Backfill{"--backfill-memory-embeddings?"}
+    Backfill -- "no" --> Report["migration report"]
+    Backfill -- "yes" --> EmbSvc["MemoryEmbeddingService"]
+    EmbSvc --> Embeddings["focus_memory_embeddings"]
+    Embeddings --> Report
 ```
 
 迁移特性：
@@ -644,6 +799,8 @@ flowchart TD
 - 幂等：重复迁移走 `upsert_record`。
 - dry-run 只解析和计数，不写 Postgres。
 - schema v9 会幂等清理历史 forgotten rows，把遗留 `content/summary/data_json` 正文替换为空正文和 `[forgotten]` 摘要。
+- `--backfill-memory-embeddings` 会扫描 `status=active` 的 canonical memory，并按当前 env 中的 embedding provider/model/dimensions best-effort 补齐 shadow，报告 `scanned/written/skipped/failed`。
+- embedding backfill 依赖目标数据库已具备 v10 pgvector schema。生产通常由 runtime 在 embedding enabled 或 hybrid 时 setup；离线迁移前也可以先用相同配置启动一次 schema setup。当前 backfill 不会把 local fallback 当 embedding 事实源。
 - tombstone 防回填仍需在更完整 dual read/backfill 阶段继续补强。
 
 ## 15. Observability 与 AgentState
@@ -664,6 +821,15 @@ Memory 相关 AgentState 字段：
 
 `governance_records` 是更通用的治理/观测 envelope。Memory v2 已把 retrieval plan 和 write decisions 结构化，但还有进一步把 memory metrics/API 投影完全 record-first 的空间。
 
+embedding 相关观测不会记录向量值：
+
+- `MemoryRetrievalPlan.vector_status`：`disabled`、`unsupported`、`completed` 或 `failed`。
+- `MemoryRetrievalPlan.vector_shadow`：shadow 模式下的状态、hit_count 和候选 memory ids。
+- API/Web metadata：`embedding_status`、`embedding_model_id`、`embedding_updated_at`。
+- readiness：`memory_embedding_backend` component check。
+
+这些字段用于判断 pgvector shadow 覆盖率和质量差异，但不应被当作授权结果或 canonical memory 状态。
+
 ## 16. 测试覆盖
 
 关键测试：
@@ -679,6 +845,7 @@ Memory 相关 AgentState 字段：
 - `tests/test_default_tools.py`
 - `tests/test_runtime_backend_selection.py`
 - `tests/test_migrate_local_state.py`
+- `tests/test_memory_embedding_provider.py`
 - `tests/eval/test_memory_suite.py`
 - `scripts/memory_context_eval.py`
 
@@ -692,6 +859,10 @@ Memory 相关 AgentState 字段：
 - writer/tool runtime Postgres path 和 local fallback。
 - runtime 在 Postgres/local 模式下的组件注入。
 - legacy store memory backfill。
+- embedding provider 配置、deterministic provider、readiness 状态、writer/tool best-effort 写 shadow。
+- pgvector repository upsert/search/filter/forget cleanup；vector search 必须保持 namespace/status/deleted_at 权限过滤。
+- retriever shadow/hybrid plan、`MemoryEmbeddingSearchHit` normalization、provider failure fallback。
+- migration `--backfill-memory-embeddings` 的幂等计数和 failure report。
 - memory eval suite 和 context eval trend。
 
 ## 17. 编码规范检查结论
@@ -703,7 +874,7 @@ Memory 相关 AgentState 字段：
 - service 层负责业务决策，repository 层负责持久化。
 - core memory models 禁止 extra 字段。
 - API contract model 与 SDK snapshot 已进入 contract check。
-- 无新增宽泛 `except Exception` 出现在 core service/repository/API router。
+- 宽泛异常捕获只保留在 best-effort embedding、fallback introspection、API projection 容错等边界，不能吞掉 canonical memory upsert/forget 的主路径错误。
 
 已在 v2 检查中收敛的点：
 
@@ -718,6 +889,9 @@ Memory 相关 AgentState 字段：
 - Memory API 接入持久化 role permissions 和 user/thread/branch/project ownership，避免普通 principal 通过 detail/audit/candidate/forget 读取或遗忘其他用户的 memory。
 - Memory tools 在 graph path 绑定 `RequestContext`，拒绝跨 user/root/namespace 参数。
 - Forget 默认擦除 `focus_memories` 拆列和 `data_json` 中的正文；API/SDK/Web 用 `payload_redacted` 展示 tombstone 状态。
+- Postgres forget 同步删除 `focus_memory_embeddings` rows，避免 forgotten memory 通过语义 shadow 被召回。
+- pgvector smoke 验证发现并修复了 `MemoryEmbeddingSearchHit` 进入 retriever 后未 normalize 的问题；现在 vector hits 会统一转换成 `MemorySearchHit`。
+- runtime 注入 embedding provider 后，turn-level retrieval 可以记录 shadow candidates 或执行 hybrid RRF；显式 `memory_search` tool 当前仍是 FTS 主路径。
 - `focus-agent-migrate-local-state` 报告中的 database URI 改为脱敏输出，legacy store 非 dict payload 也不会因 `dict(value)` 崩溃。
 - `MemoryCurator` 的 skipped 统计保留非 promotable candidate，不再在冲突检测前丢失 skip reason。
 
@@ -741,13 +915,27 @@ Memory API 已接入持久化角色权限和 thread/branch ownership；后续还
 
 ### 18.3 Search Quality
 
-当前 PostgreSQL FTS + `ILIKE` 对关键词明确的 memory 够用，但同义改写、隐式事实、长距离抽象能力有限。后续可以优先做：
+当前基础排序仍以 PostgreSQL FTS + `ILIKE` 为默认主路径；关键词明确的 memory 够用，但同义改写、隐式事实、长距离抽象能力有限。
+
+pgvector embedding shadow 已落地，但不是默认强制路径：
+
+- `focus_memory_embeddings` 是独立 shadow 表，`focus_memories` 仍是 canonical truth。
+- 默认配置为 `AGENT_MEMORY_EMBEDDING_ENABLED=false`、`AGENT_MEMORY_VECTOR_SEARCH_MODE=shadow`；也就是说未启用 provider 时不会生成 embedding，也不会调用 pgvector search。
+- 启用 embedding provider 后，accepted/merged memory 写入会 best-effort 生成 embedding；retriever 在 shadow 模式记录 vector candidates，不改变默认 prompt 排序。
+- `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时会用 RRF 合并 FTS rank 与 vector rank。
+- namespace/read policy 仍是第一层权限边界；forget 会清理对应 shadow embedding；local fallback 不维护 pgvector shadow。
+- `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 把环境治理显式化：local/test 可 `auto_create`，生产推荐 `required` 并在应用启动前由 DBA/迁移账号预装 extension。
+- 显式 `memory_search` tool 当前尚未把 query embedding provider 接入 tool retriever；它能受益于 Postgres FTS、CJK fallback、rerank/dedupe，但不等同于 turn-level `retrieve_memory` 的 pgvector shadow/hybrid 能力。
+- 当前已用 `deterministic_test` provider 和真实 Postgres+pgvector smoke 验证过 shadow 写入、vector 召回、hybrid retriever 和 forget cleanup；生产 embedding model 的语义质量、成本、延迟和 hybrid 阈值还需要上线后用 shadow metrics 评估。
+
+后续 search quality 可以继续优先做：
 
 - query expansion。
 - semantic key 改进。
 - scene-aware rerank。
 - 可选 trigram。
-- 可选 embedding，但 namespace/read policy 必须仍是第一层权限边界。
+- embedding 质量评估、模型切换/重建流程、hybrid 排序阈值和召回监控。
+- 显式 tool search 是否接入 vector、接入后如何做成本控制和审批/观测。
 
 ### 18.4 Candidate Promotion
 
@@ -774,6 +962,8 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 - Postgres 是 production canonical。
 - local fallback 可用于裸跑、单测、离线迁移。
+- local fallback 不维护 pgvector shadow，不保证 `embedding_*` metadata；缺失 metadata 不应影响本地 search/write/forget 基础路径。
+- 离线 embedding backfill 依赖 v10 pgvector schema 已存在；如果单独跑 `--backfill-memory-embeddings`，需要先确认数据库已用 embedding/hybrid 配置完成 schema setup。
 - migration/backfill 完成后应尽量避免 dual truth 长期存在。
 
 ## 19. 文件导航
@@ -782,6 +972,8 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 - `src/focus_agent/memory/models.py`
 - `src/focus_agent/memory/service.py`
+- `src/focus_agent/memory/embedding.py`
+- `src/focus_agent/memory/embedding_service.py`
 - `src/focus_agent/memory/retriever.py`
 - `src/focus_agent/memory/writer.py`
 - `src/focus_agent/memory/policy.py`
@@ -812,6 +1004,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 - `src/focus_agent/migrate_local_state.py`
 - `tests/test_memory_service.py`
+- `tests/test_memory_embedding_provider.py`
 - `tests/test_postgres_memory_repository.py`
 - `tests/test_memory_retriever.py`
 - `tests/test_memory_pipeline.py`

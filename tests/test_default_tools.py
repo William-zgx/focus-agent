@@ -233,15 +233,27 @@ class _MemoryToolRepository:
         return list(self.records.values())
 
 
+class _FakeMemoryEmbeddingService:
+    def __init__(self) -> None:
+        self.embedded_memory_ids: list[str] = []
+
+    def ensure_embedding(self, record: MemoryRecord) -> dict[str, object]:
+        self.embedded_memory_ids.append(record.memory_id)
+        return {"memory_id": record.memory_id, "status": "written"}
+
+
 def _tool_map(
     settings: Settings,
     *,
     artifact_metadata_repository=None,
     memory_repository=None,
+    memory_embedding_service=None,
 ) -> dict[str, object]:
     kwargs = {"artifact_metadata_repository": artifact_metadata_repository}
     if memory_repository is not None:
         kwargs["memory_repository"] = memory_repository
+    if memory_embedding_service is not None:
+        kwargs["memory_embedding_service"] = memory_embedding_service
     return {tool.name: tool for tool in get_default_tools(settings, **kwargs)}
 
 
@@ -823,7 +835,12 @@ def test_memory_search_reuses_retriever_dedupe_and_rerank_logic():
 
 def test_memory_tools_use_repository_when_provided():
     repo = _MemoryToolRepository()
-    tools = _tool_map(Settings(), memory_repository=repo)
+    embedding_service = _FakeMemoryEmbeddingService()
+    tools = _tool_map(
+        Settings(),
+        memory_repository=repo,
+        memory_embedding_service=embedding_service,
+    )
 
     saved = json.loads(
         tools["memory_save"].invoke(
@@ -866,6 +883,7 @@ def test_memory_tools_use_repository_when_provided():
     assert searched["results"][0]["content"] == "Repository-backed memory prefers concise answers."
     assert forgotten["deleted"] is True
     assert searched_again["results"] == []
+    assert embedding_service.embedded_memory_ids == [saved["memory_id"]]
     assert [event.actor for event in repo.audit_events] == [
         "memory_save_tool",
         "memory_forget_tool",

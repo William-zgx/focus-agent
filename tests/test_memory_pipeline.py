@@ -10,6 +10,7 @@ from focus_agent.engine.local_persistence import PersistentInMemoryStore
 from focus_agent.memory import (
     MemoryAuditEvent,
     MemoryRecord,
+    MemoryRetrievalPlan,
     MemorySearchHit,
     MemoryStatus,
     MemoryWriter,
@@ -132,6 +133,24 @@ def test_render_memory_block_groups_sections_by_memory_role():
     assert "请用英文回答。" in rendered
     assert "owner 丢失问题进入主线" in rendered
     assert "owner 字段首次加载丢失" in rendered
+
+
+def test_memory_retrieval_plan_serializes_vector_shadow_status():
+    plan = MemoryRetrievalPlan(
+        query="owner",
+        namespaces=[("conversation", "root-1", "main")],
+        filters={"status": "active"},
+        selected_memory_ids=["mem-1"],
+        vector_shadow={"enabled": True, "memory_ids": ["mem-vector"]},
+        vector_status="completed",
+    )
+    bundle = RetrievedMemoryBundle(
+        query="owner",
+        retrieval_plan=plan.model_dump(mode="json"),
+    )
+
+    assert bundle.retrieval_plan["vector_shadow"]["memory_ids"] == ["mem-vector"]
+    assert bundle.retrieval_plan["vector_status"] == "completed"
 
 
 def test_render_memory_block_dedupes_branch_and_main_duplicates_preferring_promoted_variant():

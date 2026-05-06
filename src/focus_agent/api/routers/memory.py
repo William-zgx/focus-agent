@@ -76,7 +76,7 @@ def list_memory(
         offset=offset,
     )
     items = [
-        _memory_record_response(item)
+        _memory_record_response(item, repository=repository)
         for item in repository.list_records(query)
         if _can_access_memory_record(item, auth=auth, runtime=runtime)
     ]
@@ -198,7 +198,7 @@ def get_memory(
         auth=auth,
         runtime=runtime,
     )
-    return MemoryRecordDetailResponse(item=_memory_record_response(item))
+    return MemoryRecordDetailResponse(item=_memory_record_response(item, repository=repository))
 
 
 @router.post("/v1/memory/{memory_id}/forget", response_model=ForgetMemoryRecordResponse)
@@ -581,14 +581,27 @@ def _value(value: object) -> str | None:
 def _model_payload(value: object) -> dict[str, Any]:
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
-        return model_dump(mode="json")
+        return _without_embedding_vectors(model_dump(mode="json"))
     if isinstance(value, dict):
-        return dict(value)
+        return _without_embedding_vectors(value)
     return {}
 
 
-def _memory_record_response(record: MemoryRecord) -> MemoryRecordResponse:
+def _without_embedding_vectors(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        str(key): value
+        for key, value in dict(payload).items()
+        if str(key) not in {"embedding", "embedding_vector", "vector"}
+    }
+
+
+def _memory_record_response(
+    record: MemoryRecord,
+    *,
+    repository: MemoryRepository | None = None,
+) -> MemoryRecordResponse:
     payload_redacted = _value(record.status) == "forgotten" or record.deleted_at is not None
+    embedding_metadata = _embedding_response_metadata(record, repository=repository)
     return MemoryRecordResponse(
         memory_id=record.memory_id,
         kind=_value(record.kind),
@@ -609,11 +622,85 @@ def _memory_record_response(record: MemoryRecord) -> MemoryRecordResponse:
         promoted_to_main=record.promoted_to_main,
         semantic_key=record.semantic_key,
         fingerprint=record.fingerprint,
+        embedding_status=_value(getattr(record, "embedding_status", None))
+        or _value(embedding_metadata.get("status")),
+        embedding_model_id=_value(getattr(record, "embedding_model_id", None))
+        or _value(embedding_metadata.get("model_id")),
+        embedding_updated_at=_dt(getattr(record, "embedding_updated_at", None))
+        or _dt(embedding_metadata.get("updated_at")),
         created_at=_dt(record.created_at),
         updated_at=_dt(record.updated_at),
         deleted_at=_dt(record.deleted_at),
         payload_redacted=payload_redacted,
     )
+
+
+def _embedding_response_metadata(
+    record: MemoryRecord,
+    *,
+    repository: MemoryRepository | None,
+) -> dict[str, object]:
+    if repository is None:
+        return {}
+    memory_id = record.memory_id
+    for name in (
+        "get_embedding_metadata",
+        "get_memory_embedding_metadata",
+        "get_embedding",
+        "get_memory_embedding",
+        "get_memory_record_embedding",
+        "find_memory_embedding",
+    ):
+        getter = getattr(repository, name, None)
+        if not callable(getter):
+            continue
+        try:
+            metadata = getter(memory_id=memory_id)
+        except TypeError:
+            try:
+                metadata = getter(memory_id)
+            except Exception:
+                return {}
+        except Exception:
+            return {}
+        return _embedding_metadata_payload(metadata)
+    list_metadata = getattr(repository, "list_embedding_metadata", None)
+    if callable(list_metadata):
+        try:
+            for metadata in list_metadata(namespace=record.namespace, limit=500):
+                payload = _embedding_metadata_payload(metadata)
+                if payload.get("memory_id") == memory_id:
+                    return payload
+        except Exception:
+            return {}
+    get_status = getattr(repository, "get_embedding_status", None)
+    if callable(get_status):
+        try:
+            return {"status": get_status(memory_id)}
+        except Exception:
+            return {}
+    return {}
+
+
+def _embedding_metadata_payload(value: object) -> dict[str, object]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        payload = value
+    else:
+        payload = {
+            "memory_id": getattr(value, "memory_id", None),
+            "status": getattr(value, "status", None),
+            "model": getattr(value, "model", None),
+            "model_id": getattr(value, "model_id", None),
+            "updated_at": getattr(value, "updated_at", None),
+        }
+    return {
+        "memory_id": payload.get("memory_id"),
+        "status": payload.get("embedding_status") or payload.get("status"),
+        "model_id": payload.get("embedding_model_id") or payload.get("model_id") or payload.get("model"),
+        "updated_at": payload.get("embedding_updated_at") or payload.get("updated_at"),
+    }
 
 
 def _audit_event_response(event: MemoryAuditEvent) -> MemoryAuditEventResponse:

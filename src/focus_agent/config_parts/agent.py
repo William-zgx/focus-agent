@@ -5,6 +5,80 @@ from typing import Any, MutableMapping
 from .common import _env_bool, _normalize_agent_delegation_execution_mode, _split_csv
 
 
+def _optional_string_env(env: MutableMapping[str, str], name: str, default: str | None) -> str | None:
+    if name not in env:
+        return default
+    value = env.get(name)
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _optional_int_env(env: MutableMapping[str, str], name: str, default: int | None) -> int | None:
+    value = env.get(name)
+    if value is None or not value.strip():
+        return default
+    return int(value)
+
+
+def _float_env(env: MutableMapping[str, str], name: str, default: float) -> float:
+    return float(env.get(name, str(default)))
+
+
+def _normalize_embedding_provider(value: object) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def _non_development_environment(env: MutableMapping[str, str]) -> bool:
+    value = (env.get("APP_ENVIRONMENT") or env.get("ENVIRONMENT") or "").strip().lower()
+    return bool(value and value not in {"dev", "development", "local", "test", "testing", "ci"})
+
+
+def _normalize_pgvector_extension_mode(value: object) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {"auto", "auto_create", "create", "create_if_missing"}:
+        return "auto_create"
+    if normalized in {"require", "required", "require_installed", "preinstalled", "pre_installed"}:
+        return "required"
+    raise ValueError(
+        "AGENT_MEMORY_PGVECTOR_EXTENSION_MODE must be one of: auto_create, required"
+    )
+
+
+def _pgvector_extension_mode_env(env: MutableMapping[str, str], defaults: Any) -> str:
+    value = env.get("AGENT_MEMORY_PGVECTOR_EXTENSION_MODE")
+    if value is not None:
+        return _normalize_pgvector_extension_mode(value)
+    if _non_development_environment(env):
+        return "required"
+    return _normalize_pgvector_extension_mode(
+        getattr(defaults, "agent_memory_pgvector_extension_mode", "auto_create")
+    )
+
+
+def _embedding_provider_env(env: MutableMapping[str, str], defaults: Any) -> str:
+    return _normalize_embedding_provider(
+        env.get("AGENT_MEMORY_EMBEDDING_PROVIDER")
+        or env.get("AGENT_MEMORY_EMBEDDING_BACKEND")
+        or defaults.agent_memory_embedding_provider
+    )
+
+
+def _embedding_backend_env(env: MutableMapping[str, str], defaults: Any) -> str:
+    if env.get("AGENT_MEMORY_EMBEDDING_BACKEND") is not None:
+        return _normalize_embedding_provider(env.get("AGENT_MEMORY_EMBEDDING_BACKEND"))
+    if _env_bool(
+        env,
+        "AGENT_MEMORY_EMBEDDING_ENABLED",
+        default=defaults.agent_memory_embedding_enabled,
+    ):
+        return _embedding_provider_env(env, defaults)
+    return _normalize_embedding_provider(
+        getattr(defaults, "agent_memory_embedding_backend", "disabled")
+    )
+
+
 def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, object]:
     return {
         "plan_act_reflect_enabled": _env_bool(
@@ -62,6 +136,66 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             env,
             "AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED",
             default=defaults.agent_memory_postgres_trigram_enabled,
+        ),
+        "agent_memory_embedding_enabled": _env_bool(
+            env,
+            "AGENT_MEMORY_EMBEDDING_ENABLED",
+            default=defaults.agent_memory_embedding_enabled,
+        ),
+        "agent_memory_embedding_backend": _embedding_backend_env(env, defaults),
+        "agent_memory_embedding_provider": _embedding_provider_env(env, defaults),
+        "agent_memory_embedding_model": str(
+            env.get("AGENT_MEMORY_EMBEDDING_MODEL")
+            or defaults.agent_memory_embedding_model
+        ).strip(),
+        "agent_memory_embedding_dimensions": int(
+            env.get(
+                "AGENT_MEMORY_EMBEDDING_DIMENSIONS",
+                str(defaults.agent_memory_embedding_dimensions),
+            )
+        ),
+        "agent_memory_embedding_base_url": _optional_string_env(
+            env,
+            "AGENT_MEMORY_EMBEDDING_BASE_URL",
+            defaults.agent_memory_embedding_base_url,
+        ),
+        "agent_memory_embedding_api_key_env": _optional_string_env(
+            env,
+            "AGENT_MEMORY_EMBEDDING_API_KEY_ENV",
+            defaults.agent_memory_embedding_api_key_env,
+        ),
+        "agent_memory_embedding_api_key": _optional_string_env(
+            env,
+            "AGENT_MEMORY_EMBEDDING_API_KEY",
+            getattr(defaults, "agent_memory_embedding_api_key", None),
+        ),
+        "agent_memory_embedding_batch_size": max(
+            1,
+            int(
+                env.get(
+                    "AGENT_MEMORY_EMBEDDING_BATCH_SIZE",
+                    str(defaults.agent_memory_embedding_batch_size),
+                )
+            ),
+        ),
+        "agent_memory_vector_search_mode": (
+            str(
+                env.get("AGENT_MEMORY_VECTOR_SEARCH_MODE")
+                or defaults.agent_memory_vector_search_mode
+            )
+            .strip()
+            .lower()
+        ),
+        "agent_memory_vector_index_enabled": _env_bool(
+            env,
+            "AGENT_MEMORY_VECTOR_INDEX_ENABLED",
+            default=defaults.agent_memory_vector_index_enabled,
+        ),
+        "agent_memory_pgvector_extension_mode": _pgvector_extension_mode_env(env, defaults),
+        "agent_memory_embedding_timeout_seconds": _float_env(
+            env,
+            "AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS",
+            defaults.agent_memory_embedding_timeout_seconds,
         ),
         "agent_memory_approval_for_shared_writes": _env_bool(
             env,

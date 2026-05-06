@@ -8,6 +8,7 @@ from langgraph.checkpoint.base import empty_checkpoint
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
+from focus_agent.memory.embedding import DeterministicTestEmbeddingProvider, MemoryEmbeddingService
 from focus_agent.migrate_local_state import (
     AppStateSinkDiscovery,
     main,
@@ -70,6 +71,35 @@ class FakeMemoryRepository:
         self.upsert_calls += 1
         self.records[record.memory_id] = record
         return record.memory_id
+
+    def list_records(self, query):
+        records = list(self.records.values())
+        if getattr(query, "status", None) is not None:
+            records = [
+                record
+                for record in records
+                if getattr(getattr(record, "status", None), "value", None) == query.status
+            ]
+        return records[query.offset : query.offset + query.limit]
+
+
+class FakeMemoryEmbeddingRepository:
+    def __init__(self):
+        self.setup_calls = 0
+        self.upsert_calls = 0
+        self.embeddings: dict[str, dict] = {}
+
+    def setup(self) -> None:
+        self.setup_calls += 1
+
+    def get_memory_embedding(self, memory_id: str):
+        return self.embeddings.get(memory_id)
+
+    def upsert_memory_embedding(self, **payload) -> str:
+        self.upsert_calls += 1
+        memory_id = str(payload["memory_id"])
+        self.embeddings[memory_id] = dict(payload)
+        return memory_id
 
 
 class FakeAppStateSink:
@@ -292,3 +322,80 @@ def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monk
     assert second_report["steps"][2]["details"]["migrated_item_count"] == 1
     assert second_report["steps"][3]["details"]["migrated_memory_count"] == 1
     assert second_report["steps"][4]["details"]["migrated_checkpoint_count"] == 1
+
+
+def test_run_migration_backfills_memory_embeddings_idempotently(tmp_path, monkeypatch):
+    workspace_dir, _state_dir = _build_source_state(tmp_path)
+    fake_store = FakePostgresStore()
+    fake_saver = FakePostgresSaver()
+    fake_memory_repo = FakeMemoryRepository()
+    fake_embedding_repo = FakeMemoryEmbeddingRepository()
+    embedding_service = MemoryEmbeddingService(
+        repository=fake_embedding_repo,
+        provider=DeterministicTestEmbeddingProvider(dimensions=4),
+    )
+    fake_sink = FakeAppStateSink()
+    trajectory_setup_calls: list[str] = []
+
+    @contextmanager
+    def _open_fake_store(_database_uri: str):
+        yield fake_store
+
+    @contextmanager
+    def _open_fake_saver(_database_uri: str):
+        yield fake_saver
+
+    def _setup_fake_trajectory(_database_uri: str) -> None:
+        trajectory_setup_calls.append("called")
+
+    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _open_fake_store)
+    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _open_fake_saver)
+    monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory)
+    monkeypatch.setattr(
+        "focus_agent.migrate_local_state.create_memory_repository",
+        lambda _database_uri: fake_memory_repo,
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrate_local_state.create_memory_embedding_service",
+        lambda _database_uri: embedding_service,
+    )
+
+    args = parse_args(
+        [
+            "--source-dir",
+            str(workspace_dir),
+            "--database-uri",
+            "postgresql://example/focus-agent",
+            "--checkpoint-mode",
+            "latest-stable",
+            "--backfill-memory-embeddings",
+            "--report-path",
+            str(tmp_path / "real-report.json"),
+        ]
+    )
+
+    sink_discovery = AppStateSinkDiscovery(
+        sink=fake_sink,
+        description=fake_sink.description,
+        attempts=["test fixture"],
+    )
+
+    first_report = run_migration(args, sink_discovery=sink_discovery)
+    second_report = run_migration(args, sink_discovery=sink_discovery)
+    first_embedding_step = next(
+        step for step in first_report["steps"] if step["name"] == "memory-embeddings"
+    )
+    second_embedding_step = next(
+        step for step in second_report["steps"] if step["name"] == "memory-embeddings"
+    )
+
+    assert args.backfill_memory_embeddings is True
+    assert first_embedding_step["details"]["scanned_memory_count"] == 1
+    assert first_embedding_step["details"]["written_embedding_count"] == 1
+    assert first_embedding_step["details"]["skipped_embedding_count"] == 0
+    assert second_embedding_step["details"]["scanned_memory_count"] == 1
+    assert second_embedding_step["details"]["written_embedding_count"] == 0
+    assert second_embedding_step["details"]["skipped_embedding_count"] == 1
+    assert fake_embedding_repo.setup_calls == 2
+    assert fake_embedding_repo.upsert_calls == 1
+    assert len(fake_embedding_repo.embeddings) == 1

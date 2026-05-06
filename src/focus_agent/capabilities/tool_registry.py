@@ -27,6 +27,7 @@ class ToolProviderFactoryContext:
     checkpointer: Any = None
     artifact_metadata_repository: Any = None
     memory_repository: Any = None
+    memory_embedding_service: Any = None
 
 
 ToolProviderFactory = Callable[[ToolProviderFactoryContext], ToolProvider]
@@ -214,6 +215,7 @@ def build_tool_registry(
     checkpointer=None,
     artifact_metadata_repository=None,
     memory_repository=None,
+    memory_embedding_service=None,
     explicit_providers: Iterable[ToolProvider] | None = None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None = None,
 ) -> ToolRegistry:
@@ -224,6 +226,7 @@ def build_tool_registry(
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
         memory_repository=memory_repository,
+        memory_embedding_service=memory_embedding_service,
         explicit_providers=explicit_providers,
         explicit_provider_factories=explicit_provider_factories,
     )
@@ -260,6 +263,7 @@ def _build_controlled_tool_provider_registry(
     checkpointer: Any,
     artifact_metadata_repository: Any,
     memory_repository: Any,
+    memory_embedding_service: Any,
     explicit_providers: Iterable[ToolProvider] | None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None,
 ) -> tuple[ToolProvider, ...]:
@@ -270,6 +274,7 @@ def _build_controlled_tool_provider_registry(
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
         memory_repository=memory_repository,
+        memory_embedding_service=memory_embedding_service,
     )
     registered: dict[str, tuple[int, ToolProvider]] = {}
     explicit_provider_list = tuple(explicit_providers or ())
@@ -441,6 +446,8 @@ def _call_default_tools(context: ToolProviderFactoryContext) -> list[Any]:
     signature = inspect.signature(get_default_tools)
     if "memory_repository" in signature.parameters:
         kwargs["memory_repository"] = context.memory_repository
+    if "memory_embedding_service" in signature.parameters:
+        kwargs["memory_embedding_service"] = context.memory_embedding_service
     return get_default_tools(context.settings, **kwargs)
 
 

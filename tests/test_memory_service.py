@@ -17,6 +17,11 @@ from focus_agent.memory.models import (
     MemoryWriteDecisionStatus,
     MemoryWriteRequest,
 )
+from focus_agent.memory.embedding import (
+    DeterministicTestEmbeddingProvider,
+    MemoryEmbeddingService,
+    memory_embedding_text,
+)
 from focus_agent.memory.service import MemoryService
 from focus_agent.repositories.memory_repository import MemoryListQuery
 from focus_agent.storage.namespaces import project_memory_namespace, user_profile_namespace
@@ -191,6 +196,32 @@ class _RejectingPolicy:
         return False
 
 
+class _RecordingEmbeddingService:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[MemoryRecord] = []
+
+    def ensure_embedding(self, record: MemoryRecord) -> None:
+        self.calls.append(record)
+        if self.fail:
+            raise RuntimeError("embedding backend unavailable")
+
+
+class _FakeMemoryEmbeddingRepository:
+    def __init__(self) -> None:
+        self.embeddings: dict[str, dict[str, Any]] = {}
+        self.upsert_calls = 0
+
+    def get_memory_embedding(self, memory_id: str) -> dict[str, Any] | None:
+        return self.embeddings.get(memory_id)
+
+    def upsert_memory_embedding(self, **payload: Any) -> str:
+        self.upsert_calls += 1
+        memory_id = str(payload["memory_id"])
+        self.embeddings[memory_id] = dict(payload)
+        return memory_id
+
+
 def test_memory_service_redacts_sensitive_content_in_records_decisions_and_audit():
     repo = _FakeMemoryRepository()
     service = MemoryService(repository=repo)
@@ -354,3 +385,95 @@ def test_memory_service_persist_records_emits_skip_decision_when_policy_rejects(
     assert outcome["decisions"][0]["status"] == MemoryWriteDecisionStatus.SKIPPED.value
     assert repo.records == {}
     assert repo.audit_events[0].action == "policy"
+
+
+def test_memory_service_writes_embeddings_after_accept_and_merge():
+    repo = _FakeMemoryRepository()
+    embedding_service = _RecordingEmbeddingService()
+    service = MemoryService(repository=repo, embedding_service=embedding_service)
+    first = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=user_profile_namespace("user-1"),
+        content="Please keep answers concise.",
+        summary="Please keep answers concise.",
+        user_id="user-1",
+        importance=0.8,
+        semantic_key="pref-answer-style",
+    )
+    second = first.model_copy(
+        update={
+            "content": "Please keep answers direct.",
+            "summary": "Please keep answers direct.",
+            "importance": 0.9,
+        }
+    )
+
+    accepted = service.upsert_request(first, actor="unit-test", reason="first")
+    merged = service.upsert_request(second, actor="unit-test", reason="merge")
+
+    assert accepted.status == MemoryWriteDecisionStatus.ACCEPTED
+    assert merged.status == MemoryWriteDecisionStatus.MERGED
+    assert [record.memory_id for record in embedding_service.calls] == [
+        accepted.memory_id,
+        merged.memory_id,
+    ]
+    assert embedding_service.calls[-1].content == "Please keep answers direct."
+
+
+def test_memory_service_embedding_failure_does_not_block_write():
+    repo = _FakeMemoryRepository()
+    service = MemoryService(
+        repository=repo,
+        embedding_service=_RecordingEmbeddingService(fail=True),
+    )
+    request = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=project_memory_namespace("project-1"),
+        content="Project uses canonical memory writes.",
+        summary="Canonical memory writes",
+        root_thread_id="root-1",
+    )
+
+    decision = service.upsert_request(request, actor="unit-test", reason="nonblocking")
+
+    assert decision.status == MemoryWriteDecisionStatus.ACCEPTED
+    assert decision.memory_id in repo.records
+    assert repo.audit_events[-1].action == "written"
+
+
+def test_memory_embedding_service_text_hash_and_idempotent_upsert():
+    embedding_repo = _FakeMemoryEmbeddingRepository()
+    service = MemoryEmbeddingService(
+        repository=embedding_repo,
+        provider=DeterministicTestEmbeddingProvider(dimensions=4),
+    )
+    record = MemoryRecord(
+        memory_id="memory-1",
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        status=MemoryStatus.ACTIVE,
+        namespace=project_memory_namespace("project-1"),
+        content="Project deploys from the release branch.",
+        summary="Deploys from release branch",
+        tags=["release", "project"],
+    )
+
+    first = service.ensure_embedding(record)
+    second = service.ensure_embedding(record)
+    updated = service.ensure_embedding(
+        record.model_copy(update={"content": "Project deploys from the main branch."})
+    )
+
+    assert first["status"] == "written"
+    assert second["status"] == "skipped"
+    assert second["reason"] == "content_hash_match"
+    assert updated["status"] == "written"
+    assert embedding_repo.upsert_calls == 2
+    assert first["content_hash"] != updated["content_hash"]
+    assert embedding_repo.embeddings["memory-1"]["content_hash"] == updated["content_hash"]
+    assert "Deploys from release branch" in memory_embedding_text(record)

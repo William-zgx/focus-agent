@@ -16,6 +16,13 @@ from .curator import (
     MemorySemanticConflict,
 )
 from .extractor import MemoryExtractor
+from .embedding import (
+    DeterministicTestEmbeddingProvider,
+    MemoryEmbeddingError,
+    OpenAICompatibleEmbeddingProvider,
+    create_memory_embedding_provider,
+)
+from .embedding_service import MemoryEmbeddingService
 from .models import (
     MemoryAuditEvent,
     MemoryCandidate,
@@ -47,6 +54,11 @@ from ..storage.import_memory import (
 __all__ = [
     "MemoryExtractionResult",
     "MemoryExtractor",
+    "DeterministicTestEmbeddingProvider",
+    "MemoryEmbeddingError",
+    "MemoryEmbeddingService",
+    "OpenAICompatibleEmbeddingProvider",
+    "create_memory_embedding_provider",
     "MemoryAuditEvent",
     "MemoryCandidate",
     "MemoryCurator",

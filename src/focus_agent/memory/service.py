@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 import re
 from typing import Any
 from uuid import uuid4
@@ -23,7 +24,10 @@ from .models import (
     MemoryWriteDecisionStatus,
     MemoryWriteRequest,
 )
+from .embedding_service import MemoryEmbeddingService
 from .policy import MemoryPolicy
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
@@ -32,9 +36,15 @@ class MemoryService:
         *,
         repository: MemoryRepository,
         policy: MemoryPolicy | None = None,
+        embedding_service: MemoryEmbeddingService | None = None,
     ):
         self.repository = repository
         self.policy = policy or MemoryPolicy()
+        self.embedding_service = (
+            embedding_service
+            if embedding_service is not None
+            else MemoryEmbeddingService.from_repository(repository)
+        )
 
     def persist_records(
         self,
@@ -109,6 +119,7 @@ class MemoryService:
         )
         if existing is None:
             self.repository.upsert_record(record)
+            self._write_embedding_best_effort(record)
             return self._decision(
                 status=MemoryWriteDecisionStatus.ACCEPTED,
                 action="written",
@@ -138,6 +149,7 @@ class MemoryService:
         merged = merge_duplicate_records(existing, sanitized)
         merged = merged.model_copy(update={"status": MemoryStatus.ACTIVE})
         self.repository.upsert_record(merged)
+        self._write_embedding_best_effort(merged)
         return self._decision(
             status=MemoryWriteDecisionStatus.MERGED,
             action="merged",
@@ -192,6 +204,18 @@ class MemoryService:
             action="forget",
             redacted_payload={"tombstone_id": tombstone_id} if tombstone_id else {},
         )
+
+    def _write_embedding_best_effort(self, record: MemoryRecord) -> None:
+        if self.embedding_service is None:
+            return
+        try:
+            self.embedding_service.ensure_embedding(record)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "failed to write memory embedding for memory_id=%s",
+                record.memory_id,
+                exc_info=True,
+            )
 
     def _decision(
         self,

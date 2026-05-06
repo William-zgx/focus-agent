@@ -20,6 +20,9 @@ export interface FocusAgentMemoryRecord {
   promoted_to_main?: boolean | null;
   fingerprint?: string | null;
   semantic_key?: string | null;
+  embedding_status?: string | null;
+  embedding_model_id?: string | null;
+  embedding_updated_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   deleted_at?: string | null;

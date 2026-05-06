@@ -5,15 +5,35 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
-def ensure_app_postgres_schema(database_uri: str) -> None:
+def ensure_app_postgres_schema(
+    database_uri: str,
+    *,
+    dimensions: int = 1536,
+    vector_index: bool = False,
+    memory_embeddings_enabled: bool = False,
+    pgvector_extension_mode: str = "auto_create",
+) -> None:
     with psycopg.connect(database_uri) as conn:
-        ensure_app_postgres_schema_on_connection(conn)
+        ensure_app_postgres_schema_on_connection(
+            conn,
+            dimensions=dimensions,
+            vector_index=vector_index,
+            memory_embeddings_enabled=memory_embeddings_enabled,
+            pgvector_extension_mode=pgvector_extension_mode,
+        )
 
 
-def ensure_app_postgres_schema_on_connection(conn: object) -> None:
+def ensure_app_postgres_schema_on_connection(
+    conn: object,
+    *,
+    dimensions: int = 1536,
+    vector_index: bool = False,
+    memory_embeddings_enabled: bool = False,
+    pgvector_extension_mode: str = "auto_create",
+) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -24,11 +44,21 @@ def ensure_app_postgres_schema_on_connection(conn: object) -> None:
             """
         )
         for version, migration in _MIGRATIONS:
+            if version == 10 and not memory_embeddings_enabled:
+                continue
             cur.execute("SELECT version FROM focus_schema_migrations WHERE version = %s", (version,))
             existing = cur.fetchone()
             if existing is not None:
                 continue
-            migration(cur.execute)
+            if version == 10:
+                _run_migration_v10(
+                    cur.execute,
+                    dimensions=dimensions,
+                    vector_index=vector_index,
+                    pgvector_extension_mode=pgvector_extension_mode,
+                )
+            else:
+                migration(cur.execute)
             cur.execute(
                 "INSERT INTO focus_schema_migrations (version) VALUES (%s) ON CONFLICT (version) DO NOTHING",
                 (version,),
@@ -659,6 +689,93 @@ def _run_migration_v9(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v10(
+    execute: Callable[..., object],
+    *,
+    dimensions: int = 1536,
+    vector_index: bool = False,
+    pgvector_extension_mode: str = "auto_create",
+) -> None:
+    safe_dimensions = max(1, int(dimensions))
+    mode = _normalize_pgvector_extension_mode(pgvector_extension_mode)
+    if mode == "auto_create":
+        execute("CREATE EXTENSION IF NOT EXISTS vector")
+    else:
+        execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
+                    RAISE EXCEPTION
+                        'pgvector extension is required before focus_memory_embeddings migration';
+                END IF;
+            END $$;
+            """
+        )
+    execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS focus_memory_embeddings (
+            embedding_id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL REFERENCES focus_memories(memory_id) ON DELETE CASCADE,
+            namespace TEXT[] NOT NULL,
+            provider_id TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            dimensions INT NOT NULL,
+            content_hash TEXT NOT NULL,
+            embedding vector({safe_dimensions}) NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            deleted_at TIMESTAMPTZ,
+            metadata_json JSONB NOT NULL DEFAULT '{{}}'::jsonb
+        )
+        """
+    )
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_memory_embeddings_unique_content
+        ON focus_memory_embeddings(memory_id, provider_id, model_id, content_hash)
+        WHERE deleted_at IS NULL
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_embeddings_namespace_status_updated
+        ON focus_memory_embeddings(namespace, status, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_embeddings_model_status_updated
+        ON focus_memory_embeddings(provider_id, model_id, status, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_embeddings_content_hash
+        ON focus_memory_embeddings(content_hash)
+        WHERE content_hash IS NOT NULL
+        """
+    )
+    if vector_index:
+        execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_focus_memory_embeddings_vector
+            ON focus_memory_embeddings USING hnsw (embedding vector_cosine_ops)
+            WHERE status = 'active' AND deleted_at IS NULL
+            """
+        )
+
+
+def _normalize_pgvector_extension_mode(value: object) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {"auto", "auto_create", "create", "create_if_missing"}:
+        return "auto_create"
+    if normalized in {"require", "required", "require_installed", "preinstalled", "pre_installed"}:
+        return "required"
+    raise ValueError("pgvector_extension_mode must be one of: auto_create, required")
+
+
 _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (1, _run_migration_v1),
     (2, _run_migration_v2),
@@ -669,4 +786,5 @@ _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (7, _run_migration_v7),
     (8, _run_migration_v8),
     (9, _run_migration_v9),
+    (10, _run_migration_v10),
 )

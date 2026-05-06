@@ -16,6 +16,128 @@ def _trajectory_expected(settings: Settings | Any) -> bool:
     return bool(enabled and database_uri)
 
 
+def _memory_embedding_configured(settings: Settings | Any) -> bool:
+    enabled = bool(getattr(settings, "agent_memory_embedding_enabled", False))
+    backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
+    if backend and backend not in {"disabled", "none", "off"}:
+        return True
+    if enabled:
+        return True
+    return (
+        str(getattr(settings, "agent_memory_vector_search_mode", "off") or "")
+        .strip()
+        .lower()
+        == "hybrid"
+    )
+
+
+def _memory_embedding_backend_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusResponse:
+    settings = getattr(runtime, "settings", None)
+    enabled = bool(getattr(settings, "agent_memory_embedding_enabled", False))
+    backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
+    if backend in {"", "disabled", "none", "off"} and enabled:
+        backend = str(
+            getattr(settings, "agent_memory_embedding_provider", "openai_compatible")
+        ).strip().lower()
+    if backend in {"", "disabled", "none", "off"}:
+        return RuntimeComponentStatusResponse(
+            name="memory_embedding_backend",
+            ready=True,
+            detail="disabled",
+        )
+
+    service = getattr(runtime, "memory_embedding_service", None)
+    if service is not None:
+        provider_obj = getattr(service, "embedder", None) or getattr(service, "provider", None)
+        provider = getattr(provider_obj, "provider_id", None)
+        if provider is None and isinstance(provider_obj, str):
+            provider = provider_obj
+        model = getattr(provider_obj, "model_id", None) or getattr(provider_obj, "model", None)
+        model_detail = f" model={model}" if model else ""
+        return RuntimeComponentStatusResponse(
+            name="memory_embedding_backend",
+            ready=True,
+            detail=f"{provider or backend}: ready{model_detail}",
+        )
+
+    return RuntimeComponentStatusResponse(
+        name="memory_embedding_backend",
+        ready=False,
+        detail=(
+            getattr(runtime, "memory_embedding_backend_error", None)
+            or f"{backend}: provider unavailable"
+        ),
+    )
+
+
+def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusResponse:
+    settings = getattr(runtime, "settings", None)
+    if not _memory_embedding_configured(settings):
+        return RuntimeComponentStatusResponse(
+            name="memory_pgvector",
+            ready=True,
+            detail="disabled",
+        )
+    if not getattr(settings, "database_uri", None):
+        return RuntimeComponentStatusResponse(
+            name="memory_pgvector",
+            ready=True,
+            detail="local_fallback",
+        )
+
+    repository = getattr(runtime, "memory_repository", None)
+    if repository is None:
+        return RuntimeComponentStatusResponse(
+            name="memory_pgvector",
+            ready=False,
+            detail="postgres memory repository missing",
+        )
+    inspect_pgvector = getattr(repository, "inspect_pgvector_support", None)
+    if not callable(inspect_pgvector):
+        return RuntimeComponentStatusResponse(
+            name="memory_pgvector",
+            ready=False,
+            detail="postgres memory repository cannot inspect pgvector",
+        )
+
+    dimensions = int(getattr(settings, "agent_memory_embedding_dimensions", 1536) or 1536)
+    vector_index = bool(getattr(settings, "agent_memory_vector_index_enabled", False))
+    extension_mode = str(
+        getattr(settings, "agent_memory_pgvector_extension_mode", "auto_create") or "auto_create"
+    ).strip()
+    try:
+        status = inspect_pgvector(dimensions=dimensions, vector_index=vector_index)
+    except Exception as exc:  # pragma: no cover - concrete failures are driver-specific.
+        return RuntimeComponentStatusResponse(
+            name="memory_pgvector",
+            ready=False,
+            detail=f"inspection_failed: {type(exc).__name__}",
+        )
+
+    extension_installed = bool(status.get("extension_installed"))
+    table_exists = bool(status.get("embeddings_table_exists"))
+    dimensions_match = bool(status.get("dimensions_match"))
+    vector_index_exists = bool(status.get("vector_index_exists"))
+    ready = extension_installed and table_exists and dimensions_match
+    if vector_index:
+        ready = ready and vector_index_exists
+
+    version = status.get("extension_version") or "unknown"
+    column_type = status.get("embedding_column_type") or "missing"
+    index_detail = "present" if vector_index_exists else "missing"
+    if not vector_index:
+        index_detail = "disabled"
+    return RuntimeComponentStatusResponse(
+        name="memory_pgvector",
+        ready=ready,
+        detail=(
+            f"mode={extension_mode} extension={'installed' if extension_installed else 'missing'}"
+            f" version={version} table={'present' if table_exists else 'missing'}"
+            f" dimensions={column_type} index={index_detail}"
+        ),
+    )
+
+
 def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
     settings = getattr(runtime, "settings", None)
     otel_runtime = getattr(runtime, "otel_runtime", None)
@@ -116,6 +238,9 @@ def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespo
                 detail="tracing disabled",
             )
         )
+
+    checks.append(_memory_embedding_backend_check(runtime))
+    checks.append(_memory_pgvector_check(runtime))
 
     trajectory_expected = _trajectory_expected(settings)
     trajectory_recorder = getattr(runtime, "trajectory_recorder", None)

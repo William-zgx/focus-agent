@@ -10,6 +10,7 @@ from focus_agent.memory import (
     MemorySearchHit,
     MemoryVisibility,
 )
+from focus_agent.repositories.memory_repository import MemoryEmbeddingSearchHit
 
 
 class FakeStore:
@@ -384,9 +385,70 @@ class RepositorySearchFake:
         return self.hits_by_namespace.get(tuple(namespace), [])[:limit]
 
 
+class RepositoryVectorSearchFake(RepositorySearchFake):
+    def __init__(self, hits_by_namespace, vector_hits_by_namespace):
+        super().__init__(hits_by_namespace)
+        self.vector_hits_by_namespace = {
+            tuple(namespace): list(hits)
+            for namespace, hits in vector_hits_by_namespace.items()
+        }
+        self.vector_calls = []
+
+    def vector_search(self, *, namespace, query, limit):
+        self.vector_calls.append((tuple(namespace), query, limit))
+        return self.vector_hits_by_namespace.get(tuple(namespace), [])[:limit]
+
+
+class RepositoryFailingVectorSearchFake(RepositorySearchFake):
+    def __init__(self, hits_by_namespace):
+        super().__init__(hits_by_namespace)
+        self.vector_calls = []
+
+    def vector_search(self, *, namespace, query, limit):
+        self.vector_calls.append((tuple(namespace), query, limit))
+        raise RuntimeError("vector index is unavailable")
+
+
+class RepositoryPgvectorLikeFake(RepositorySearchFake):
+    def __init__(self, hits_by_namespace):
+        super().__init__(hits_by_namespace)
+        self.vector_calls = []
+
+    def search_vector(self, *, namespace, embedding, provider_id, model_id, limit):
+        self.vector_calls.append((tuple(namespace), embedding, provider_id, model_id, limit))
+        return []
+
+
 class StoreShouldNotBeUsed:
     def search(self, namespace, query, limit):  # noqa: ARG002
         raise AssertionError("repository-backed retriever should not call the legacy store")
+
+
+def _repository_hit(
+    *,
+    memory_id: str,
+    namespace: tuple[str, ...],
+    content: str,
+    summary: str,
+    score: float,
+    importance: float = 0.5,
+) -> MemorySearchHit:
+    return MemorySearchHit(
+        record=MemoryRecord(
+            memory_id=memory_id,
+            kind=MemoryKind.PROJECT_FACT,
+            scope=MemoryScope.ROOT_THREAD,
+            visibility=MemoryVisibility.SHARED,
+            namespace=namespace,
+            content=content,
+            summary=summary,
+            root_thread_id="root-1",
+            user_id="user-1",
+            importance=importance,
+        ),
+        score=score,
+        namespace=namespace,
+    )
 
 
 def test_memory_retriever_uses_repository_hits_and_marks_postgres_source():
@@ -427,6 +489,253 @@ def test_memory_retriever_uses_repository_hits_and_marks_postgres_source():
     assert repo.calls[0][0] == namespace
     assert bundle.hits[0].record.memory_id == "repo-mem-1"
     assert "owner" in bundle.hits[0].matched_terms
+
+
+def test_memory_retriever_does_not_call_pgvector_without_embedding_provider():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositoryPgvectorLikeFake(
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="fts-mem",
+                    namespace=namespace,
+                    content="owner collision text result",
+                    summary="owner collision text result",
+                    score=0.42,
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(store=StoreShouldNotBeUsed(), repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["fts-mem"]
+    assert repo.vector_calls == []
+    assert bundle.retrieval_plan["vector_status"] == "disabled"
+
+
+def test_memory_retriever_normalizes_pgvector_embedding_hits():
+    namespace = ("conversation", "root-1", "main")
+    record = _repository_hit(
+        memory_id="vector-hit",
+        namespace=namespace,
+        content="A vector-only memory hit from pgvector.",
+        summary="Vector-only memory",
+        score=0.0,
+    ).record
+    repo = RepositoryVectorSearchFake(
+        {namespace: []},
+        {
+            namespace: [
+                MemoryEmbeddingSearchHit(
+                    embedding_id="emb-1",
+                    memory_id=record.memory_id,
+                    record=record,
+                    score=0.93,
+                    distance=0.07,
+                    namespace=namespace,
+                    provider_id="deterministic_test",
+                    model_id="deterministic-test",
+                    dimensions=64,
+                    status="active",
+                    content_hash="hash",
+                    metadata={},
+                )
+            ]
+        },
+    )
+    retriever = MemoryRetriever(
+        store=StoreShouldNotBeUsed(),
+        repository=repo,
+        retrieval_mode="hybrid",
+    )
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="vector-only",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["vector-hit"]
+    assert bundle.hits[0].rationale == "vector"
+    assert bundle.retrieval_plan["vector_status"] == "completed"
+
+
+def test_memory_retriever_runs_vector_search_in_shadow_without_changing_default_results():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositoryVectorSearchFake(
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="fts-mem",
+                    namespace=namespace,
+                    content="owner collision text result",
+                    summary="owner collision text result",
+                    score=0.42,
+                )
+            ]
+        },
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="vector-only-mem",
+                    namespace=namespace,
+                    content="semantic nearest neighbor",
+                    summary="semantic nearest neighbor",
+                    score=0.99,
+                )
+            ]
+        },
+    )
+    retriever = MemoryRetriever(store=StoreShouldNotBeUsed(), repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["fts-mem"]
+    assert repo.vector_calls[0][0] == namespace
+    assert bundle.retrieval_plan["vector_shadow"]["enabled"] is True
+    assert bundle.retrieval_plan["vector_shadow"]["memory_ids"] == ["vector-only-mem"]
+    assert bundle.retrieval_plan["vector_status"] == "completed"
+
+
+def test_memory_retriever_falls_back_to_fts_when_shadow_vector_search_fails():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositoryFailingVectorSearchFake(
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="fts-mem",
+                    namespace=namespace,
+                    content="owner collision text result",
+                    summary="owner collision text result",
+                    score=0.42,
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(store=StoreShouldNotBeUsed(), repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["fts-mem"]
+    assert repo.vector_calls[0][0] == namespace
+    assert bundle.retrieval_plan["vector_shadow"]["enabled"] is True
+    assert bundle.retrieval_plan["vector_shadow"]["memory_ids"] == []
+    assert bundle.retrieval_plan["vector_status"] == "failed"
+
+
+def test_memory_retriever_hybrid_mode_falls_back_to_fts_when_vector_search_fails():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositoryFailingVectorSearchFake(
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="fts-mem",
+                    namespace=namespace,
+                    content="owner collision text result",
+                    summary="owner collision text result",
+                    score=0.42,
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(
+        store=StoreShouldNotBeUsed(),
+        repository=repo,
+        retrieval_mode="hybrid",
+    )
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["fts-mem"]
+    assert repo.vector_calls[0][0] == namespace
+    assert bundle.retrieval_plan["vector_shadow"] == {}
+    assert bundle.retrieval_plan["vector_status"] == "failed"
+
+
+def test_memory_retriever_hybrid_mode_uses_rrf_to_mix_text_and_vector_results():
+    namespace = ("conversation", "root-1", "main")
+    shared_hit = _repository_hit(
+        memory_id="shared-mem",
+        namespace=namespace,
+        content="owner collision shared result",
+        summary="owner collision shared result",
+        score=0.91,
+    )
+    repo = RepositoryVectorSearchFake(
+        {
+            namespace: [
+                shared_hit,
+                _repository_hit(
+                    memory_id="text-only-mem",
+                    namespace=namespace,
+                    content="owner collision text only",
+                    summary="owner collision text only",
+                    score=0.8,
+                ),
+            ]
+        },
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="vector-only-mem",
+                    namespace=namespace,
+                    content="owner collision vector only",
+                    summary="owner collision vector only",
+                    score=0.95,
+                ),
+                shared_hit,
+            ]
+        },
+    )
+    retriever = MemoryRetriever(
+        store=StoreShouldNotBeUsed(),
+        repository=repo,
+        retrieval_mode="hybrid",
+    )
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == [
+        "shared-mem",
+        "vector-only-mem",
+        "text-only-mem",
+    ]
+    assert bundle.retrieval_plan["vector_shadow"] == {}
+    assert bundle.retrieval_plan["vector_status"] == "completed"
 
 
 def test_memory_retrieval_plan_records_prompt_visible_hits_after_policy_filter():

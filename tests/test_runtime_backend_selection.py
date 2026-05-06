@@ -63,6 +63,7 @@ def _make_postgres_component(*, with_factory: bool):
         def __init__(self, value: str):
             self.value = value
             self.setup_calls = 0
+            self.setup_kwargs: dict[str, object] = {}
             type(self).instances.append(self)
 
         @classmethod
@@ -71,8 +72,9 @@ def _make_postgres_component(*, with_factory: bool):
                 raise AssertionError("from_conn_string() should not be used for this fake")
             return _FakeContextManager(cls(value))
 
-        def setup(self) -> None:
+        def setup(self, **kwargs: object) -> None:
             self.setup_calls += 1
+            self.setup_kwargs = dict(kwargs)
 
     return _Component
 
@@ -271,6 +273,55 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert captured["store"] is runtime.store
         assert captured["checkpointer"] is runtime.checkpointer
         assert "local-fallback" in caplog.text
+    finally:
+        runtime.close()
+
+
+def test_create_runtime_injects_deterministic_memory_embedding_service(monkeypatch, tmp_path):
+    def fake_build_tool_registry(
+        *,
+        settings,
+        skill_registry,
+        store=None,
+        checkpointer=None,
+        artifact_metadata_repository=None,
+        memory_repository=None,
+    ):
+        return {
+            "store": store,
+            "checkpointer": checkpointer,
+            "artifact_metadata_repository": artifact_metadata_repository,
+            "memory_repository": memory_repository,
+        }
+
+    fake_modules = _install_postgres_modules(monkeypatch)
+    monkeypatch.setattr(
+        fake_modules["memory_repo"],
+        "upsert_embedding",
+        lambda self, **kwargs: kwargs.get("memory_id", "embedding-id"),
+        raising=False,
+    )
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+
+    settings = _make_settings(
+        tmp_path,
+        database_uri="postgresql://focus-agent.test/runtime",
+        trajectory_enabled=False,
+    )
+    settings.agent_memory_embedding_backend = "deterministic_test"
+    settings.agent_memory_embedding_dimensions = 5
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        assert runtime.memory_embedding_service is not None
+        assert runtime.memory_embedding_service.provider.provider_id == "deterministic_test"
+        assert len(runtime.memory_embedding_service.provider.embed_query("runtime probe")) == 5
+        assert runtime.memory_embedding_backend_error is None
+        assert fake_modules["memory_repo"].instances[0].setup_kwargs == {
+            "dimensions": 5,
+            "vector_index": False,
+            "memory_embeddings_enabled": True,
+            "pgvector_extension_mode": "auto_create",
+        }
     finally:
         runtime.close()
 

@@ -236,6 +236,7 @@ def build_memory_tools(
     *,
     store: Any,
     memory_repository: Any = None,
+    memory_embedding_service: Any = None,
     tool_catalog: Any,
     emit_tool_event: Callable[..., None],
     get_current_thread_id: Callable[[], str | None],
@@ -298,7 +299,10 @@ def build_memory_tools(
                 importance=importance,
             )
             if memory_repository is not None:
-                decision = MemoryService(repository=memory_repository).upsert_request(
+                decision = MemoryService(
+                    repository=memory_repository,
+                    embedding_service=memory_embedding_service,
+                ).upsert_request(
                     record,
                     actor="memory_save_tool",
                     reason="explicit_tool_save",
@@ -433,7 +437,10 @@ def build_memory_tools(
             )
             deleted_namespace: tuple[str, ...] | None = None
             if memory_repository is not None:
-                service = MemoryService(repository=memory_repository)
+                service = MemoryService(
+                    repository=memory_repository,
+                    embedding_service=memory_embedding_service,
+                )
                 for candidate_namespace in namespaces:
                     decision = service.forget(
                         memory_id=normalized_id,

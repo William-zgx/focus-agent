@@ -155,8 +155,11 @@ export function MemoryConsolePage() {
                 onClick={() => setSelectedMemoryId(item.memory_id)}
                 type="button"
               >
-                <span>{item.kind} · {item.status}</span>
-                <strong>{compact(memoryDisplayText(item), 120)}</strong>
+                <div>
+                  <span>{item.kind} · {item.status}</span>
+                  <strong>{compact(memoryDisplayText(item), 120)}</strong>
+                  <em>{embeddingDisplayText(item)}</em>
+                </div>
               </button>
             ))}
             {!memories.length ? <div className="fa-route-state-card">No memory records found.</div> : null}
@@ -222,6 +225,18 @@ function MemoryDetail({ item }: { item: FocusAgentMemoryRecord }) {
         <dd>{item.source_branch_id || item.source_thread_id || item.root_thread_id || "none"}</dd>
       </div>
       <div>
+        <dt>Embedding status</dt>
+        <dd>{item.embedding_status || "unknown"}</dd>
+      </div>
+      <div>
+        <dt>Embedding model</dt>
+        <dd>{item.embedding_model_id || "none"}</dd>
+      </div>
+      <div>
+        <dt>Embedding updated</dt>
+        <dd>{formatMemoryTimestamp(item.embedding_updated_at)}</dd>
+      </div>
+      <div>
         <dt>Summary</dt>
         <dd>{memoryDisplayText(item)}</dd>
       </div>
@@ -256,6 +271,25 @@ function CandidateRow({ item }: { item: FocusAgentMemoryCandidate }) {
 
 function compact(value: string, limit: number) {
   return value.length > limit ? `${value.slice(0, limit - 1)}...` : value;
+}
+
+function embeddingDisplayText(item: FocusAgentMemoryRecord) {
+  return [
+    item.embedding_status || "unknown",
+    item.embedding_model_id || "no model",
+    formatMemoryTimestamp(item.embedding_updated_at),
+  ].join(" · ");
+}
+
+function formatMemoryTimestamp(value?: string | null) {
+  if (!value) {
+    return "none";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
 }
 
 function memoryDisplayText(item: FocusAgentMemoryRecord) {

@@ -26,19 +26,32 @@ from .models import (
     MemoryVisibility,
     MemoryWriteRequest,
 )
+from .embedding_service import MemoryEmbeddingService
 from .policy import MemoryPolicy
 from .service import MemoryService
 
 
 class MemoryWriter:
-    def __init__(self, *, store=None, repository=None, policy: MemoryPolicy | None = None):
+    def __init__(
+        self,
+        *,
+        store=None,
+        repository=None,
+        policy: MemoryPolicy | None = None,
+        embedding_service: MemoryEmbeddingService | None = None,
+    ):
         self.store = store
         self.repository = repository
         self.policy = policy or MemoryPolicy()
+        self.embedding_service = embedding_service
 
     def write_records(self, records: list[MemoryWriteRequest]) -> list[str]:
         if self.repository is not None:
-            return MemoryService(repository=self.repository, policy=self.policy).write_records(
+            return MemoryService(
+                repository=self.repository,
+                policy=self.policy,
+                embedding_service=self.embedding_service,
+            ).write_records(
                 records,
                 actor="memory_writer",
             )
@@ -63,7 +76,11 @@ class MemoryWriter:
         state: dict[str, Any],
     ) -> dict[str, Any]:
         if self.repository is not None:
-            return MemoryService(repository=self.repository, policy=self.policy).persist_records(
+            return MemoryService(
+                repository=self.repository,
+                policy=self.policy,
+                embedding_service=self.embedding_service,
+            ).persist_records(
                 records,
                 context=context,
                 state=state,

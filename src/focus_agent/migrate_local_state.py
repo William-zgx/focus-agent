@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import hashlib
 import importlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -23,6 +24,7 @@ from .engine.local_persistence import (
     _focus_agent_checkpoint_serde,
 )
 from .memory.dedupe import memory_fingerprint, memory_semantic_key
+from .memory.embedding_service import MemoryEmbeddingService
 from .memory.models import (
     MemoryKind,
     MemoryRecord,
@@ -31,6 +33,7 @@ from .memory.models import (
     MemoryVisibility,
 )
 from .repositories.artifact_metadata_repository import ArtifactMetadataRepository
+from .repositories.memory_repository import MemoryListQuery
 from .repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 
@@ -100,6 +103,9 @@ class FocusMemorySink(Protocol):
     def upsert_record(self, record: MemoryRecord) -> str:
         ...
 
+    def list_records(self, query: MemoryListQuery) -> list[MemoryRecord]:
+        ...
+
 
 @contextmanager
 def open_postgres_saver(database_uri: str):
@@ -135,6 +141,89 @@ def create_memory_repository(database_uri: str) -> FocusMemorySink:
     from .repositories.postgres_memory_repository import PostgresMemoryRepository
 
     return PostgresMemoryRepository(database_uri)
+
+
+def create_memory_embedding_service(database_uri: str) -> MemoryEmbeddingService | None:
+    candidates: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+        (
+            "focus_agent.repositories.postgres_memory_embedding_repository",
+            (
+                "create_memory_embedding_service",
+                "create_postgres_memory_embedding_service",
+                "create_memory_embedding_repository",
+            ),
+            (
+                "PostgresMemoryEmbeddingRepository",
+                "PostgresMemoryEmbeddingsRepository",
+            ),
+        ),
+    )
+    for module_name, factory_names, class_names in candidates:
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            continue
+
+        for factory_name in factory_names:
+            factory = getattr(module, factory_name, None)
+            if callable(factory):
+                service = _coerce_memory_embedding_service(factory(database_uri))
+                if service is not None:
+                    return service
+
+        for class_name in class_names:
+            repository_class = getattr(module, class_name, None)
+            if repository_class is None:
+                continue
+            service = _coerce_memory_embedding_service(repository_class(database_uri))
+            if service is not None:
+                return service
+
+    from .memory.embedding import create_memory_embedding_service as create_configured_service
+
+    return create_configured_service(
+        _migration_memory_embedding_settings(),
+        repository=create_memory_repository(database_uri),
+    )
+
+
+def _coerce_memory_embedding_service(candidate: object | None) -> MemoryEmbeddingService | None:
+    if candidate is None:
+        return None
+    if callable(getattr(candidate, "ensure_embedding", None)):
+        return candidate  # type: ignore[return-value]
+    return MemoryEmbeddingService.from_repository(candidate)
+
+
+def _migration_memory_embedding_settings() -> object:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        agent_memory_embedding_enabled=True,
+        agent_memory_embedding_provider=(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_PROVIDER")
+            or os.environ.get("AGENT_MEMORY_EMBEDDING_BACKEND")
+            or "openai_compatible"
+        ),
+        agent_memory_embedding_model=(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_MODEL") or "text-embedding-3-small"
+        ),
+        agent_memory_embedding_dimensions=int(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_DIMENSIONS") or "1536"
+        ),
+        agent_memory_embedding_base_url=os.environ.get("AGENT_MEMORY_EMBEDDING_BASE_URL"),
+        agent_memory_embedding_api_key_env=(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_API_KEY_ENV") or "OPENAI_API_KEY"
+        ),
+        agent_memory_embedding_api_key=os.environ.get("AGENT_MEMORY_EMBEDDING_API_KEY"),
+        agent_memory_embedding_batch_size=int(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_BATCH_SIZE") or "32"
+        ),
+        agent_memory_embedding_timeout_seconds=float(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS") or "30.0"
+        ),
+        resolved_env=dict(os.environ),
+    )
 
 
 def _redact_database_uri(database_uri: str) -> str:
@@ -179,6 +268,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--artifact-scan",
         action="store_true",
         help="Scan the local artifacts directory and include the results in the report.",
+    )
+    parser.add_argument(
+        "--backfill-memory-embeddings",
+        action="store_true",
+        help="Idempotently write missing embeddings for active focus memories after migration.",
     )
     parser.add_argument(
         "--report-path",
@@ -865,6 +959,129 @@ def _migrate_focus_memories(
     }
 
 
+def _backfill_memory_embeddings(
+    database_uri: str,
+    *,
+    enabled: bool,
+    dry_run: bool,
+    batch_size: int = 500,
+) -> dict[str, Any]:
+    if not enabled:
+        return {
+            "status": "skipped",
+            "reason": "--backfill-memory-embeddings was not provided",
+            "scanned_memory_count": 0,
+            "written_embedding_count": 0,
+            "skipped_embedding_count": 0,
+            "failed_embedding_count": 0,
+        }
+
+    if dry_run:
+        return {
+            "status": "dry-run",
+            "scanned_memory_count": 0,
+            "written_embedding_count": 0,
+            "skipped_embedding_count": 0,
+            "failed_embedding_count": 0,
+        }
+
+    repository = create_memory_repository(database_uri)
+    list_records = getattr(repository, "list_records", None)
+    if not callable(list_records):
+        return {
+            "status": "skipped",
+            "reason": "memory_repository_does_not_support_list_records",
+            "scanned_memory_count": 0,
+            "written_embedding_count": 0,
+            "skipped_embedding_count": 0,
+            "failed_embedding_count": 0,
+        }
+
+    try:
+        embedding_service = create_memory_embedding_service(database_uri)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "skipped",
+            "reason": f"memory_embedding_service_unavailable: {exc}",
+            "scanned_memory_count": 0,
+            "written_embedding_count": 0,
+            "skipped_embedding_count": 0,
+            "failed_embedding_count": 0,
+        }
+    if embedding_service is None:
+        return {
+            "status": "skipped",
+            "reason": "memory_embedding_service_unavailable",
+            "scanned_memory_count": 0,
+            "written_embedding_count": 0,
+            "skipped_embedding_count": 0,
+            "failed_embedding_count": 0,
+        }
+
+    _setup_memory_embedding_service(embedding_service)
+    scanned_count = 0
+    written_count = 0
+    skipped_count = 0
+    failed_count = 0
+    failures: list[dict[str, str]] = []
+    offset = 0
+
+    while True:
+        records = list_records(
+            MemoryListQuery(
+                status=MemoryStatus.ACTIVE.value,
+                limit=batch_size,
+                offset=offset,
+            )
+        )
+        if not records:
+            break
+
+        for record in records:
+            scanned_count += 1
+            try:
+                result = embedding_service.ensure_embedding(record)
+            except Exception as exc:  # noqa: BLE001
+                failed_count += 1
+                if len(failures) < 10:
+                    failures.append({"memory_id": record.memory_id, "reason": str(exc)})
+                continue
+
+            status = _memory_embedding_result_status(result)
+            if status in {"written", "updated", "created", "upserted"}:
+                written_count += 1
+            elif status == "skipped":
+                skipped_count += 1
+            else:
+                skipped_count += 1
+
+        if len(records) < batch_size:
+            break
+        offset += batch_size
+
+    return {
+        "status": "completed" if failed_count == 0 else "completed_with_errors",
+        "scanned_memory_count": scanned_count,
+        "written_embedding_count": written_count,
+        "skipped_embedding_count": skipped_count,
+        "failed_embedding_count": failed_count,
+        "failures": failures,
+    }
+
+
+def _setup_memory_embedding_service(embedding_service: object) -> None:
+    repository = getattr(embedding_service, "embedding_repository", embedding_service)
+    setup = getattr(repository, "setup", None)
+    if callable(setup):
+        setup()
+
+
+def _memory_embedding_result_status(result: object) -> str:
+    if isinstance(result, dict):
+        return str(result.get("status") or "")
+    return str(getattr(result, "status", "") or "")
+
+
 def _migrate_checkpoints(
     database_uri: str,
     checkpoints: Sequence[LocalCheckpointRecord],
@@ -929,6 +1146,9 @@ def run_migration(
                 "app_state_sink_available": sink_info.sink is not None,
                 "app_state_sink_description": sink_info.description,
                 "focus_memories_backfill": "dry-run",
+                "memory_embeddings_backfill": (
+                    "dry-run" if args.backfill_memory_embeddings else "disabled"
+                ),
                 "trajectory_backfill": "disabled",
             },
         }
@@ -948,6 +1168,9 @@ def run_migration(
                 "app_state_sink_available": sink_info.sink is not None,
                 "app_state_sink_description": sink_info.description,
                 "focus_memories_backfill": "enabled",
+                "memory_embeddings_backfill": (
+                    "enabled" if args.backfill_memory_embeddings else "disabled"
+                ),
                 "trajectory_backfill": "disabled",
             },
         }
@@ -996,6 +1219,17 @@ def run_migration(
     }
     checkpoint_step["status"] = checkpoint_step["details"]["status"]
 
+    memory_embedding_step = {
+        "name": "memory-embeddings",
+        "status": "pending",
+        "details": _backfill_memory_embeddings(
+            args.database_uri,
+            enabled=bool(args.backfill_memory_embeddings),
+            dry_run=args.dry_run,
+        ),
+    }
+    memory_embedding_step["status"] = memory_embedding_step["details"]["status"]
+
     if args.artifact_scan:
         artifacts = scan_artifacts(layout.artifact_dir)
         artifact_step = {
@@ -1031,6 +1265,10 @@ def run_migration(
     integration_notes.append(
         "Checkpoint mode latest-stable selects the newest checkpoint per (thread_id, checkpoint_ns) with no pending writes."
     )
+    if args.backfill_memory_embeddings:
+        integration_notes.append(
+            "Memory embedding backfill scans active canonical memories and skips rows with matching content_hash."
+        )
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -1053,6 +1291,7 @@ def run_migration(
             store_step,
             focus_memories_step,
             checkpoint_step,
+            memory_embedding_step,
             artifact_step,
         ],
         "summary": {

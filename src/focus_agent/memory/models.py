@@ -78,6 +78,9 @@ class MemoryRecord(MemoryModel):
     promoted_to_main: bool = False
     fingerprint: str | None = None
     semantic_key: str | None = None
+    embedding_status: str | None = None
+    embedding_model_id: str | None = None
+    embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
     deleted_at: datetime | None = None
@@ -169,6 +172,8 @@ class MemoryRetrievalPlan(MemoryModel):
     selected_memory_ids: list[str] = Field(default_factory=list)
     budget_reason: str = "top_k"
     source: str = "postgres"
+    vector_shadow: dict[str, object] = Field(default_factory=dict)
+    vector_status: str = "unsupported"
 
 
 class MemoryExtractionResult(MemoryModel):
