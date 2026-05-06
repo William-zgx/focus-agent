@@ -204,6 +204,21 @@ class InMemoryBackgroundJobDeduperBackend:
                 job.claim = None
                 job.claimed_until = 0.0
 
+    def heartbeat_job_claim(self, key: str, claim: BackgroundJobClaim, ttl_seconds: float) -> bool:
+        now = time.monotonic()
+        claimed_until = now + max(float(ttl_seconds or 0.0), 0.001)
+        with self._lock:
+            job = self._jobs.get(key)
+            if (
+                job is None
+                or job.claim != claim
+                or job.status != "running"
+                or job.claimed_until <= now
+            ):
+                return False
+            job.claimed_until = claimed_until
+            return True
+
     def enqueue_job(self, spec: BackgroundJobSpec) -> bool:
         with self._lock:
             current = self._jobs.get(spec.key)
@@ -261,24 +276,27 @@ class InMemoryBackgroundJobDeduperBackend:
         return None
 
     def mark_job_claim_running(self, key: str, claim: BackgroundJobClaim) -> None:
+        now = time.monotonic()
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.claim == claim and job.status == "pending":
+            if job is not None and job.claim == claim and job.status == "pending" and job.claimed_until > now:
                 job.status = "running"
 
     def mark_job_claim_succeeded(self, key: str, claim: BackgroundJobClaim) -> None:
+        now = time.monotonic()
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.claim == claim and job.status == "running":
+            if job is not None and job.claim == claim and job.status == "running" and job.claimed_until > now:
                 job.status = "succeeded"
                 job.claim = None
                 job.claimed_until = 0.0
                 job.last_error = None
 
     def mark_job_claim_failed(self, key: str, claim: BackgroundJobClaim, error: str) -> None:
+        now = time.monotonic()
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.claim == claim and job.status == "running":
+            if job is not None and job.claim == claim and job.status == "running" and job.claimed_until > now:
                 job.claim = None
                 job.claimed_until = 0.0
                 job.last_error = str(error)[:4000]
@@ -435,8 +453,12 @@ class PostgresBackgroundJobDeduperBackend:
     def _connect(self):
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
+    @staticmethod
+    def _claimed_until_after(ttl_seconds: float) -> datetime:
+        return datetime.now(timezone.utc) + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+
     def _claimed_until(self) -> datetime:
-        return datetime.now(timezone.utc) + timedelta(seconds=self.claim_ttl_seconds)
+        return self._claimed_until_after(self.claim_ttl_seconds)
 
     def try_claim_job_key(self, key: str) -> bool:
         return self.claim_job_key(key) is not None
@@ -636,6 +658,30 @@ class PostgresBackgroundJobDeduperBackend:
         )
         return spec, claim
 
+    def heartbeat_job_claim(self, key: str, claim: BackgroundJobClaim, ttl_seconds: float) -> bool:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE focus_background_jobs
+                    SET claimed_until = %s,
+                        updated_at = now()
+                    WHERE job_key = %s
+                      AND claimed_by = %s
+                      AND claim_token = %s
+                      AND status = 'running'
+                      AND claimed_until > now()
+                    RETURNING job_key
+                    """,
+                    (
+                        self._claimed_until_after(ttl_seconds),
+                        str(key),
+                        claim.owner,
+                        claim.claim_token,
+                    ),
+                )
+                return cur.fetchone() is not None
+
     def mark_job_running(self, key: str) -> None:
         claim = self._legacy_claim_for_key(key)
         if claim is None:
@@ -653,6 +699,7 @@ class PostgresBackgroundJobDeduperBackend:
               AND claimed_by = %s
               AND claim_token = %s
               AND status = 'pending'
+              AND claimed_until > now()
             """,
             (self._claimed_until(), str(key), claim.owner, claim.claim_token),
         )
@@ -677,6 +724,7 @@ class PostgresBackgroundJobDeduperBackend:
               AND claimed_by = %s
               AND claim_token = %s
               AND status = 'running'
+              AND claimed_until > now()
             """,
             (str(key), claim.owner, claim.claim_token),
         )
@@ -705,6 +753,7 @@ class PostgresBackgroundJobDeduperBackend:
               AND claimed_by = %s
               AND claim_token = %s
               AND status = 'running'
+              AND claimed_until > now()
             """,
             (str(error)[:4000], str(key), claim.owner, claim.claim_token),
         )

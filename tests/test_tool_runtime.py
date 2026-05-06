@@ -57,11 +57,7 @@ def test_tool_runtime_builds_and_parses_tool_approval_contract():
     assert payload["kind"] == "tool_approval"
     assert payload["tool_name"] == "risky_write"
     assert payload["tool_call_id"] == "call-approval"
-    assert payload["args"] == {
-        "name": "[REDACTED]",
-        "api_token": "[REDACTED]",
-        "customer_id": "public",
-    }
+    assert "args" not in payload
     assert payload["redacted_args"] == {
         "name": "[REDACTED]",
         "api_token": "[REDACTED]",

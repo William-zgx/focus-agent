@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from langchain.tools import tool
 
 import focus_agent.engine.runtime as runtime_mod
-from focus_agent.config import Settings, ensure_runtime_directories
+from focus_agent.config import Settings, ToolCatalogConfig, ensure_runtime_directories
+from focus_agent.config_parts.catalogs import ToolProviderConfig
 from focus_agent.services.coordination import (
     InMemoryBackgroundJobDeduperBackend,
     InMemoryThreadTurnLockBackend,
@@ -254,6 +256,63 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert captured["store"] is runtime.store
         assert captured["checkpointer"] is runtime.checkpointer
         assert "local-fallback" in caplog.text
+    finally:
+        runtime.close()
+
+
+def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch, tmp_path):
+    def runtime_probe_impl() -> str:
+        """Return a marker from the runtime provider registry test."""
+        return "runtime-loaded"
+
+    runtime_probe = tool(runtime_probe_impl)
+
+    def fake_get_default_tools(settings, **kwargs):  # noqa: ARG001
+        return [runtime_probe]
+
+    class _FakeLocalSaver:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeLocalStore:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeSQLiteBranchRepository:
+        def __init__(self, path: str):
+            self.path = path
+
+    class _FakeSQLiteAgentTeamRepository:
+        def __init__(self, path: str):
+            self.path = path
+
+    class _FakeSQLiteUserRepository:
+        def __init__(self, path: str):
+            self.path = path
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_registry.get_default_tools",
+        fake_get_default_tools,
+    )
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=runtime_mod.build_tool_registry)
+    monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
+    monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
+    monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
+    monkeypatch.setattr(runtime_mod, "SQLiteAgentTeamRepository", _FakeSQLiteAgentTeamRepository)
+    monkeypatch.setattr(runtime_mod, "SQLiteUserRepository", _FakeSQLiteUserRepository)
+
+    settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
+    settings.tool_catalog = ToolCatalogConfig(
+        providers=(
+            ToolProviderConfig(id="builtin", enabled=True),
+            ToolProviderConfig(id="skill", enabled=False),
+        )
+    )
+
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        assert runtime.tool_registry.by_name["runtime_probe_impl"].invoke({}) == "runtime-loaded"
+        assert runtime.tool_registry.runtime_by_name["runtime_probe_impl"].provider_id == "builtin"
     finally:
         runtime.close()
 

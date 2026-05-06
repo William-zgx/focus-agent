@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager
 import logging
+from collections.abc import Iterator
 
 from langgraph_sdk import get_sync_client
 
@@ -13,6 +15,7 @@ from ..core.branching import (
     MergeDecision,
     MergeProposalOverrides,
     MergeProposal,
+    MergeTarget,
 )
 from ..core.merge_review import generate_merge_proposal  # noqa: F401 - compatibility monkeypatch hook
 from ..core.request_context import RequestContext
@@ -26,6 +29,8 @@ from .branch_memory_promotion import BranchMemoryPromotionMixin
 from .branch_merge import BranchMergeCoordinator
 from .branch_naming_policy import BranchNamingPolicyMixin
 from .branch_tree import BranchTreeCoordinator
+from .coordination import CoordinationBackend, create_in_memory_coordination_backend
+from .thread_turn_lease import ThreadTurnLeaseManager
 
 
 logger = logging.getLogger("focus_agent.branches")
@@ -48,6 +53,7 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         self.repo = repo
         self.store = store
         self.memory_writer = memory_writer
+        self._coordination_backend: CoordinationBackend | None = None
         self._last_memory_curator_decision: dict[str, object] | None = None
         self.thread_client = get_sync_client(url=settings.langgraph_api_url) if settings.langgraph_api_url else None
         self.proposal_model = create_chat_model(
@@ -79,6 +85,44 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             coordinator = BranchTreeCoordinator(self)
             self.tree_view = coordinator
         return coordinator
+
+    def _branch_coordination_backend(self) -> CoordinationBackend:
+        backend = getattr(self, "_coordination_backend", None)
+        if backend is None:
+            backend = create_in_memory_coordination_backend()
+            self._coordination_backend = backend
+        return backend
+
+    def _thread_turn_lock_ttl_seconds(self) -> float:
+        settings = getattr(self, "settings", None)
+        return max(float(getattr(settings, "runtime_thread_lock_ttl_seconds", 300.0) or 300.0), 1.0)
+
+    def _thread_turn_lock_heartbeat_seconds(self) -> float:
+        ttl_seconds = self._thread_turn_lock_ttl_seconds()
+        settings = getattr(self, "settings", None)
+        configured_seconds = float(getattr(settings, "runtime_thread_lock_heartbeat_seconds", 30.0) or 30.0)
+        return max(min(ttl_seconds / 3.0, configured_seconds), 0.001)
+
+    def _thread_turn_lease(self, *, thread_id: str) -> ThreadTurnLeaseManager:
+        return ThreadTurnLeaseManager(
+            backend=self._branch_coordination_backend().thread_turns,
+            thread_id=thread_id,
+            ttl_seconds=self._thread_turn_lock_ttl_seconds(),
+            heartbeat_interval_seconds=self._thread_turn_lock_heartbeat_seconds(),
+        )
+
+    @contextmanager
+    def _thread_write_lease(self, *, thread_id: str) -> Iterator[None]:
+        with self._thread_turn_lease(thread_id=thread_id):
+            yield
+
+    @contextmanager
+    def _thread_write_leases(self, *, thread_ids: list[str] | tuple[str, ...] | set[str]) -> Iterator[None]:
+        ordered_thread_ids = sorted({str(thread_id) for thread_id in thread_ids if str(thread_id).strip()})
+        with ExitStack() as stack:
+            for thread_id in ordered_thread_ids:
+                stack.enter_context(self._thread_turn_lease(thread_id=thread_id))
+            yield
 
     @staticmethod
     def _clean_list_override(items: object) -> list[str]:
@@ -262,11 +306,12 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         user_id: str,
         force: bool = False,
     ) -> BranchRecord | None:
-        return self._lifecycle_coordinator().refresh_branch_role(
-            child_thread_id=child_thread_id,
-            user_id=user_id,
-            force=force,
-        )
+        with self._thread_write_lease(thread_id=child_thread_id):
+            return self._lifecycle_coordinator().refresh_branch_role(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+                force=force,
+            )
 
     def refresh_branch_name(
         self,
@@ -276,12 +321,13 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         name_source: str | None = None,
         force: bool = False,
     ) -> BranchRecord | None:
-        return self._lifecycle_coordinator().refresh_branch_name(
-            child_thread_id=child_thread_id,
-            user_id=user_id,
-            name_source=name_source,
-            force=force,
-        )
+        with self._thread_write_lease(thread_id=child_thread_id):
+            return self._lifecycle_coordinator().refresh_branch_name(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+                name_source=name_source,
+                force=force,
+            )
 
     def refresh_branch_name_after_first_turn(
         self,
@@ -300,10 +346,11 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         child_thread_id: str,
         user_id: str,
     ) -> BranchRecord | None:
-        return self._lifecycle_coordinator().refresh_branch_metadata_after_first_turn(
-            child_thread_id=child_thread_id,
-            user_id=user_id,
-        )
+        with self._thread_write_lease(thread_id=child_thread_id):
+            return self._lifecycle_coordinator().refresh_branch_metadata_after_first_turn(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+            )
 
     def rename_branch(
         self,
@@ -312,11 +359,12 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         user_id: str,
         branch_name: str,
     ) -> BranchRecord:
-        return self._lifecycle_coordinator().rename_branch(
-            child_thread_id=child_thread_id,
-            user_id=user_id,
-            branch_name=branch_name,
-        )
+        with self._thread_write_lease(thread_id=child_thread_id):
+            return self._lifecycle_coordinator().rename_branch(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+                branch_name=branch_name,
+            )
 
     def refresh_conversation_title_after_first_turn(
         self,
@@ -336,11 +384,12 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         user_id: str,
         is_archived: bool,
     ) -> ConversationRecord:
-        return self._lifecycle_coordinator().set_conversation_archive_state(
-            root_thread_id=root_thread_id,
-            user_id=user_id,
-            is_archived=is_archived,
-        )
+        with self._thread_write_lease(thread_id=root_thread_id):
+            return self._lifecycle_coordinator().set_conversation_archive_state(
+                root_thread_id=root_thread_id,
+                user_id=user_id,
+                is_archived=is_archived,
+            )
 
     def archive_conversation(self, *, root_thread_id: str, user_id: str) -> ConversationRecord:
         return self._set_conversation_archive_state(
@@ -357,10 +406,11 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         )
 
     def prepare_merge_proposal(self, *, child_thread_id: str, user_id: str) -> MergeProposal:
-        return self._merge_coordinator().prepare_merge_proposal(
-            child_thread_id=child_thread_id,
-            user_id=user_id,
-        )
+        with self._thread_write_lease(thread_id=child_thread_id):
+            return self._merge_coordinator().prepare_merge_proposal(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+            )
 
     def apply_merge_decision(
         self,
@@ -370,12 +420,23 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         context: RequestContext,
         proposal_overrides: MergeProposalOverrides | None = None,
     ) -> ImportedConclusion | None:
-        return self._merge_coordinator().apply_merge_decision(
-            child_thread_id=child_thread_id,
-            decision=decision,
-            context=context,
-            proposal_overrides=proposal_overrides,
-        )
+        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=context.user_id)
+        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
+        thread_ids = [child_thread_id]
+        if decision.approved and decision.mode.value != 'none':
+            target_thread_id = (
+                branch_record.root_thread_id
+                if decision.target == MergeTarget.ROOT_THREAD
+                else branch_record.return_thread_id
+            )
+            thread_ids.append(target_thread_id)
+        with self._thread_write_leases(thread_ids=thread_ids):
+            return self._merge_coordinator().apply_merge_decision(
+                child_thread_id=child_thread_id,
+                decision=decision,
+                context=context,
+                proposal_overrides=proposal_overrides,
+            )
 
     def get_branch_tree(self, *, root_thread_id: str, user_id: str) -> BranchTreeNode:
         return self._tree_coordinator().get_branch_tree(root_thread_id=root_thread_id, user_id=user_id)
@@ -384,11 +445,12 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         return self._tree_coordinator().list_archived_branches(root_thread_id=root_thread_id, user_id=user_id)
 
     def _set_branch_archive_state(self, *, child_thread_id: str, user_id: str, is_archived: bool) -> BranchRecord:
-        return self._tree_coordinator().set_branch_archive_state(
-            child_thread_id=child_thread_id,
-            user_id=user_id,
-            is_archived=is_archived,
-        )
+        with self._thread_write_lease(thread_id=child_thread_id):
+            return self._tree_coordinator().set_branch_archive_state(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+                is_archived=is_archived,
+            )
 
     def archive_branch(self, *, child_thread_id: str, user_id: str) -> BranchRecord:
         return self._set_branch_archive_state(child_thread_id=child_thread_id, user_id=user_id, is_archived=True)

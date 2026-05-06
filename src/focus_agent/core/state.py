@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import operator
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import MappingProxyType
-from typing import Annotated, Any, Literal, Mapping, TypeAlias, TypedDict
+from typing import Annotated, Any, Callable, Literal, Mapping, TypeAlias, TypedDict
 
 from langchain.messages import AnyMessage
 from pydantic import BaseModel
@@ -263,25 +264,203 @@ class AgentStateRecord(TypedDict, total=False):
 
 GOVERNANCE_RECORD_SCHEMA_VERSION = 2
 
+GovernanceMetricExtractor: TypeAlias = Callable[[Any], Mapping[str, int]]
+
+
+@dataclass(frozen=True, slots=True)
+class GovernanceRecordDescriptor:
+    name: AgentStateRecordName
+    domain: AgentStateRecordDomain = "governance"
+    mirror_key: AgentStateKey | None = None
+    plan_meta_key: str | None = None
+    metric_extractor: GovernanceMetricExtractor | None = None
+
+    @property
+    def projected_plan_meta_key(self) -> str:
+        return self.plan_meta_key or str(self.mirror_key or self.name)
+
+
+GOVERNANCE_METRIC_KEYS: tuple[str, ...] = (
+    "memory_promotions",
+    "memory_conflicts",
+    "tool_router_denied",
+    "tool_router_enforced",
+    "agent_delegation_runs",
+    "critic_rejects",
+    "agent_review_pending",
+    "model_router_fallback",
+    "agent_failures",
+    "context_artifact_refs",
+    "context_over_budget",
+    "agent_task_ledger_tasks",
+    "delegated_artifacts",
+    "critic_gate_rejected",
+)
+
+
+def _memory_curator_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {
+        "memory_promotions": len(payload.get("promoted_memory_ids") or []),
+        "memory_conflicts": len(payload.get("conflicts") or []),
+    }
+
+
+def _tool_route_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {
+        "tool_router_denied": len(payload.get("denied_tools") or []),
+        "tool_router_enforced": 1 if payload.get("enforce") else 0,
+    }
+
+
+def _agent_delegation_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {"agent_delegation_runs": len(payload.get("runs") or [])}
+
+
+def _model_route_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {"model_router_fallback": 1 if payload.get("fallback_used") else 0}
+
+
+def _agent_failure_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, list):
+        return {}
+    return {
+        "agent_failures": len(payload),
+        "critic_rejects": len(
+            [
+                item
+                for item in payload
+                if isinstance(item, Mapping) and item.get("failure_type") == "critic_rejected"
+            ]
+        ),
+    }
+
+
+def _agent_review_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, list):
+        return {}
+    return {
+        "agent_review_pending": len(
+            [item for item in payload if isinstance(item, Mapping) and item.get("status") == "pending"]
+        )
+    }
+
+
+def _context_artifact_ref_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, list):
+        return {}
+    return {"context_artifact_refs": len(payload)}
+
+
+def _context_budget_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {"context_over_budget": 1 if int(payload.get("over_budget_chars") or 0) > 0 else 0}
+
+
+def _agent_task_ledger_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {"agent_task_ledger_tasks": len(payload.get("tasks") or [])}
+
+
+def _delegated_artifact_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, list):
+        return {}
+    return {"delegated_artifacts": len(payload)}
+
+
+def _critic_gate_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    return {"critic_gate_rejected": len(payload.get("rejected_artifact_ids") or [])}
+
+
+GOVERNANCE_RECORD_DESCRIPTORS: tuple[GovernanceRecordDescriptor, ...] = (
+    GovernanceRecordDescriptor("role_route_plan", mirror_key="role_route_plan"),
+    GovernanceRecordDescriptor(
+        "memory_curator_decision",
+        mirror_key="memory_curator_decision",
+        metric_extractor=_memory_curator_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "tool_route_plan",
+        mirror_key="tool_route_plan",
+        metric_extractor=_tool_route_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "agent_delegation_plan",
+        mirror_key="agent_delegation_plan",
+        metric_extractor=_agent_delegation_metrics,
+    ),
+    GovernanceRecordDescriptor("agent_runs", mirror_key="agent_runs"),
+    GovernanceRecordDescriptor(
+        "model_route_decision",
+        mirror_key="model_route_decision",
+        metric_extractor=_model_route_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "agent_failure_records",
+        mirror_key="agent_failure_records",
+        metric_extractor=_agent_failure_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "agent_review_queue",
+        mirror_key="agent_review_queue",
+        metric_extractor=_agent_review_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "context_budget_decision",
+        mirror_key="context_budget_decision",
+        metric_extractor=_context_budget_metrics,
+    ),
+    GovernanceRecordDescriptor("context_compression_plan", mirror_key="context_compression_plan"),
+    GovernanceRecordDescriptor(
+        "context_artifact_refs",
+        mirror_key="context_artifact_refs",
+        metric_extractor=_context_artifact_ref_metrics,
+    ),
+    GovernanceRecordDescriptor("role_context_views", mirror_key="role_context_views"),
+    GovernanceRecordDescriptor("context_compaction", mirror_key="context_compaction"),
+    GovernanceRecordDescriptor(
+        "agent_task_ledger",
+        mirror_key="agent_task_ledger",
+        metric_extractor=_agent_task_ledger_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "delegated_artifacts",
+        mirror_key="delegated_artifacts",
+        metric_extractor=_delegated_artifact_metrics,
+    ),
+    GovernanceRecordDescriptor("artifact_synthesis_result", mirror_key="artifact_synthesis_result"),
+    GovernanceRecordDescriptor(
+        "critic_gate_result",
+        mirror_key="critic_gate_result",
+        metric_extractor=_critic_gate_metrics,
+    ),
+)
+GOVERNANCE_RECORD_DESCRIPTOR_REGISTRY: Mapping[str, GovernanceRecordDescriptor] = MappingProxyType(
+    {descriptor.name: descriptor for descriptor in GOVERNANCE_RECORD_DESCRIPTORS}
+)
+GOVERNANCE_RECORD_DESCRIPTORS_BY_MIRROR_KEY: Mapping[str, GovernanceRecordDescriptor] = MappingProxyType(
+    {
+        str(descriptor.mirror_key): descriptor
+        for descriptor in GOVERNANCE_RECORD_DESCRIPTORS
+        if descriptor.mirror_key
+    }
+)
 GOVERNANCE_RECORD_MIRROR_KEYS: Mapping[str, AgentStateKey] = MappingProxyType(
     {
-        "role_route_plan": "role_route_plan",
-        "memory_curator_decision": "memory_curator_decision",
-        "tool_route_plan": "tool_route_plan",
-        "agent_delegation_plan": "agent_delegation_plan",
-        "agent_runs": "agent_runs",
-        "model_route_decision": "model_route_decision",
-        "agent_failure_records": "agent_failure_records",
-        "agent_review_queue": "agent_review_queue",
-        "context_budget_decision": "context_budget_decision",
-        "context_compression_plan": "context_compression_plan",
-        "context_artifact_refs": "context_artifact_refs",
-        "role_context_views": "role_context_views",
-        "context_compaction": "context_compaction",
-        "agent_task_ledger": "agent_task_ledger",
-        "delegated_artifacts": "delegated_artifacts",
-        "artifact_synthesis_result": "artifact_synthesis_result",
-        "critic_gate_result": "critic_gate_result",
+        descriptor.name: descriptor.mirror_key
+        for descriptor in GOVERNANCE_RECORD_DESCRIPTORS
+        if descriptor.mirror_key
     }
 )
 
@@ -568,6 +747,94 @@ def serialize_agent_state(state: Mapping[str, Any]) -> dict[str, Any]:
     return {key: _serialize_value(value) for key, value in serializable.items()}
 
 
+_GOVERNANCE_MISSING = object()
+
+
+def governance_record_descriptor(name_or_mirror_key: AgentStateRecordName | str) -> GovernanceRecordDescriptor | None:
+    key = str(name_or_mirror_key)
+    return GOVERNANCE_RECORD_DESCRIPTOR_REGISTRY.get(key) or GOVERNANCE_RECORD_DESCRIPTORS_BY_MIRROR_KEY.get(key)
+
+
+def governance_metric_defaults() -> dict[str, int]:
+    return {key: 0 for key in GOVERNANCE_METRIC_KEYS}
+
+
+def governance_plan_meta_projection(state: Mapping[str, Any]) -> dict[str, Any]:
+    projection: dict[str, Any] = {}
+    governance_records = state.get("governance_records")
+    if governance_records:
+        projection["governance_records"] = _serialize_value(governance_records)
+    for descriptor in GOVERNANCE_RECORD_DESCRIPTORS:
+        payload = latest_agent_state_record_payload(
+            state,
+            descriptor.name,
+            domain=descriptor.domain,
+            default=_GOVERNANCE_MISSING,
+        )
+        if payload is _GOVERNANCE_MISSING or not _has_governance_projection_payload(payload):
+            continue
+        projection[descriptor.projected_plan_meta_key] = _serialize_value(payload)
+    return projection
+
+
+def governance_plan_meta_payload(
+    plan_meta: Mapping[str, Any],
+    key_path: AgentStateRecordName | str,
+    *,
+    default: Any = None,
+) -> Any:
+    parts = str(key_path).split(".")
+    base_key = parts[0]
+    descriptor = governance_record_descriptor(base_key)
+    payload = latest_agent_state_record_payload(
+        plan_meta,
+        descriptor.name if descriptor else base_key,
+        domain=descriptor.domain if descriptor else None,
+        default=_GOVERNANCE_MISSING,
+    )
+    if payload is _GOVERNANCE_MISSING:
+        payload = plan_meta.get(base_key, _GOVERNANCE_MISSING)
+    if payload is _GOVERNANCE_MISSING:
+        return default
+    for part in parts[1:]:
+        payload = payload.get(part) if isinstance(payload, Mapping) else _GOVERNANCE_MISSING
+        if payload is _GOVERNANCE_MISSING:
+            return default
+    return payload
+
+
+def governance_metrics_from_record_payloads(
+    state: Mapping[str, Any],
+    *,
+    include_zero: bool = True,
+) -> dict[str, int]:
+    metrics = governance_metric_defaults() if include_zero else {}
+    for descriptor in GOVERNANCE_RECORD_DESCRIPTORS:
+        if descriptor.metric_extractor is None:
+            continue
+        payload = latest_agent_state_record_payload(
+            state,
+            descriptor.name,
+            domain=descriptor.domain,
+            default=_GOVERNANCE_MISSING,
+        )
+        if payload is _GOVERNANCE_MISSING or not _has_governance_projection_payload(payload):
+            continue
+        for key, value in descriptor.metric_extractor(payload).items():
+            metric_value = int(value or 0)
+            if include_zero or metric_value:
+                metrics[key] = metrics.get(key, 0) + metric_value
+    return metrics
+
+
+def _has_governance_projection_payload(payload: Any) -> bool:
+    if payload is None:
+        return False
+    if isinstance(payload, (list, tuple, dict)) and not payload:
+        return False
+    return True
+
+
 def make_agent_state_record(
     name: AgentStateRecordName | str,
     payload: Any,
@@ -580,7 +847,8 @@ def make_agent_state_record(
     actor: str | None = None,
     created_at: datetime | str | None = None,
 ) -> AgentStateRecord:
-    resolved_mirror_key = mirror_key or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(name))
+    descriptor = governance_record_descriptor(name)
+    resolved_mirror_key = descriptor.mirror_key if descriptor and domain == descriptor.domain else None
     record: AgentStateRecord = {
         "schema_version": GOVERNANCE_RECORD_SCHEMA_VERSION,
         "record_id": f"{source}:{domain}:{name}",
@@ -700,11 +968,21 @@ def _agent_state_record_matches(
 
 
 def _agent_state_record_mirror_key(record: Mapping[str, Any]) -> str:
-    return str(record.get("mirror_key") or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(record.get("name"))) or "")
+    record_name = str(record.get("name") or "")
+    descriptor = governance_record_descriptor(record_name)
+    if descriptor is None and not record_name:
+        descriptor = governance_record_descriptor(str(record.get("mirror_key") or ""))
+    if descriptor is None:
+        return ""
+    record_domain = record.get("domain")
+    if record_domain not in (None, descriptor.domain):
+        return ""
+    return str(descriptor.mirror_key or "")
 
 
 def _legacy_mirror_key_for(name_or_mirror_key: AgentStateRecordName | str) -> str:
-    return str(GOVERNANCE_RECORD_MIRROR_KEYS.get(str(name_or_mirror_key)) or name_or_mirror_key)
+    descriptor = governance_record_descriptor(name_or_mirror_key)
+    return str(descriptor.mirror_key if descriptor and descriptor.mirror_key else name_or_mirror_key)
 
 
 def _record_created_at(value: datetime | str | None) -> str:

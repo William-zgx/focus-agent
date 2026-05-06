@@ -45,6 +45,7 @@ export function isToolApprovalInterrupt(
     typeof payload.interrupt_id === "string" &&
     typeof payload.tool_name === "string" &&
     typeof payload.tool_call_id === "string" &&
+    !("args" in payload) &&
     !!payload.redacted_args &&
     typeof payload.redacted_args === "object" &&
     !Array.isArray(payload.redacted_args) &&

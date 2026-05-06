@@ -23,6 +23,11 @@ from focus_agent.core.types import FindingItem
 from focus_agent.memory.models import MemoryKind, MemoryScope, MemoryWriteRequest
 from focus_agent.services.branches import BranchService
 from focus_agent.config import Settings
+from focus_agent.services.coordination import (
+    CoordinationBackend,
+    InMemoryBackgroundJobDeduperBackend,
+    InMemoryRateLimitBackend,
+)
 
 
 class FakeRepo:
@@ -360,6 +365,58 @@ def test_apply_merge_decision_marks_branch_merged():
     assert service.repo.get(record.branch_id).branch_status == BranchStatus.MERGED
     child_updates = [update for update in service.graph.updates if update[0] == record.child_thread_id]
     assert child_updates[-1][1]["branch_meta"]["branch_status"] == "merged"
+
+
+def test_apply_merge_decision_acquires_thread_locks_in_sorted_order():
+    record = _make_record(
+        root_thread_id="a-root",
+        parent_thread_id="a-root",
+        child_thread_id="z-child",
+        return_thread_id="a-root",
+    )
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([record])
+    service.graph = FakeGraph({record.child_thread_id: {"merge_proposal": {"summary": "sorted"}}, "a-root": {}})
+    service.store = None
+    service.memory_writer = None
+
+    class RecordingThreadLocks:
+        def __init__(self):
+            self.acquired: list[str] = []
+            self.released: list[str] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            del owner, ttl_seconds
+            self.acquired.append(thread_id)
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            del thread_id, owner, ttl_seconds
+            return True
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            del owner
+            self.released.append(thread_id)
+
+    locks = RecordingThreadLocks()
+    service._coordination_backend = CoordinationBackend(
+        thread_turns=locks,
+        job_deduper=InMemoryBackgroundJobDeduperBackend(),
+        rate_limiter=InMemoryRateLimitBackend(),
+    )
+
+    service.apply_merge_decision(
+        child_thread_id=record.child_thread_id,
+        decision=MergeDecision(
+            approved=True,
+            mode=MergeMode.SUMMARY_ONLY,
+            target=MergeTarget.ROOT_THREAD,
+        ),
+        context=RequestContext(user_id="user-1", root_thread_id=record.root_thread_id),
+    )
+
+    assert locks.acquired[:2] == ["a-root", "z-child"]
+    assert locks.released == ["z-child", "a-root"]
 
 
 def test_apply_merge_decision_promotes_only_when_returning_to_root_main():

@@ -58,11 +58,6 @@ class BranchLifecycleCoordinator:
         else:
             child_thread_id = str(uuid.uuid4())
             fork_strategy = 'local_snapshot_seed'
-            svc.graph.update_state(
-                {'configurable': {'thread_id': child_thread_id}},
-                parent_values,
-                as_node='bootstrap_turn',
-            )
 
         branch_meta = BranchMeta(
             branch_id=branch_id,
@@ -80,22 +75,6 @@ class BranchLifecycleCoordinator:
         branch_meta_payload['branch_name_pending_ai'] = branch_name is None
         branch_meta_payload['branch_role_pending_ai'] = branch_role == BranchRole.EXPLORE_ALTERNATIVES
 
-        svc.graph.update_state(
-            {'configurable': {'thread_id': child_thread_id}},
-            {
-                'branch_meta': branch_meta_payload,
-                'merge_proposal': None,
-                'merge_decision': None,
-                'branch_local_findings': [],
-            },
-            as_node='bootstrap_turn',
-        )
-        svc.repo.ensure_thread_owner(
-            thread_id=child_thread_id,
-            root_thread_id=root_thread_id,
-            owner_user_id=user_id,
-        )
-
         record = BranchRecord(
             branch_id=branch_id,
             root_thread_id=root_thread_id,
@@ -110,7 +89,30 @@ class BranchLifecycleCoordinator:
             fork_checkpoint_id=fork_checkpoint_id,
             fork_strategy=fork_strategy,
         )
-        svc.repo.create(record)
+        with svc._thread_write_lease(thread_id=child_thread_id):
+            if fork_strategy == 'local_snapshot_seed':
+                svc.graph.update_state(
+                    {'configurable': {'thread_id': child_thread_id}},
+                    parent_values,
+                    as_node='bootstrap_turn',
+                )
+
+            svc.graph.update_state(
+                {'configurable': {'thread_id': child_thread_id}},
+                {
+                    'branch_meta': branch_meta_payload,
+                    'merge_proposal': None,
+                    'merge_decision': None,
+                    'branch_local_findings': [],
+                },
+                as_node='bootstrap_turn',
+            )
+            svc.repo.ensure_thread_owner(
+                thread_id=child_thread_id,
+                root_thread_id=root_thread_id,
+                owner_user_id=user_id,
+            )
+            svc.repo.create(record)
         return record
 
     def refresh_branch_role(

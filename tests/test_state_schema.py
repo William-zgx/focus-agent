@@ -14,6 +14,7 @@ from focus_agent.core.state import (
     ALL_AGENT_STATE_FIELDS,
     BRANCH_STATE_FIELDS,
     CONVERSATION_STATE_FIELDS,
+    GOVERNANCE_RECORD_DESCRIPTORS,
     GOVERNANCE_RECORD_MIRROR_KEYS,
     GOVERNANCE_RECORD_SCHEMA_VERSION,
     GOVERNANCE_STATE_FIELDS,
@@ -24,6 +25,8 @@ from focus_agent.core.state import (
     agent_state_record_payloads,
     append_agent_state_record,
     default_agent_state_slice,
+    governance_metrics_from_record_payloads,
+    governance_plan_meta_projection,
     initial_agent_state,
     latest_agent_state_record_payload,
     make_agent_state_record,
@@ -196,6 +199,15 @@ def test_governance_schema_guard_blocks_new_top_level_fields():
         "artifact_synthesis_result",
         "critic_gate_result",
     }
+    assert set(GOVERNANCE_RECORD_MIRROR_KEYS.values()) <= set(GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST)
+
+
+def test_governance_record_mirror_keys_derive_from_descriptors():
+    assert dict(GOVERNANCE_RECORD_MIRROR_KEYS) == {
+        descriptor.name: descriptor.mirror_key
+        for descriptor in GOVERNANCE_RECORD_DESCRIPTORS
+        if descriptor.mirror_key
+    }
 
 
 def test_governance_records_backfill_legacy_mirror_fields():
@@ -276,6 +288,57 @@ def test_append_agent_state_record_accepts_request_id_and_actor():
     assert record["actor"] == "agent_f"
     assert updates["governance_records"] == [record]
     assert updates["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
+
+
+def test_unregistered_governance_record_does_not_create_top_level_mirror():
+    updates = {}
+
+    record = append_agent_state_record(
+        updates,
+        "tool_approval_decision",
+        {"approved": False, "tool_name": "write_file"},
+        source="test",
+        mirror_key="tool_route_plan",
+    )
+    normalized = normalize_agent_state(updates)
+
+    assert "mirror_key" not in record
+    assert updates["governance_records"] == [record]
+    assert "tool_route_plan" not in updates
+    assert normalized["tool_route_plan"] is None
+    assert latest_agent_state_record_payload(normalized, "tool_approval_decision") == {
+        "approved": False,
+        "tool_name": "write_file",
+    }
+
+
+def test_governance_descriptor_projection_and_metrics_prefer_records():
+    state = {
+        "tool_route_plan": {"enabled": True, "denied_tools": ["legacy"], "enforce": False},
+        "memory_curator_decision": {"promoted_memory_ids": ["legacy"], "conflicts": []},
+        "governance_records": [
+            make_agent_state_record(
+                "tool_route_plan",
+                {"enabled": True, "denied_tools": ["write_text_artifact"], "enforce": True},
+                source="test",
+            ),
+            make_agent_state_record(
+                "memory_curator_decision",
+                {"promoted_memory_ids": ["mem-1", "mem-2"], "conflicts": [{"id": "conflict-1"}]},
+                source="test",
+            ),
+        ],
+    }
+
+    projection = governance_plan_meta_projection(state)
+    metrics = governance_metrics_from_record_payloads(state)
+
+    assert projection["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
+    assert projection["memory_curator_decision"]["promoted_memory_ids"] == ["mem-1", "mem-2"]
+    assert metrics["tool_router_denied"] == 1
+    assert metrics["tool_router_enforced"] == 1
+    assert metrics["memory_promotions"] == 2
+    assert metrics["memory_conflicts"] == 1
 
 
 def test_slice_agent_state_exposes_normalized_domain_defaults_without_mutating_input():

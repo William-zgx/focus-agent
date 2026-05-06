@@ -152,6 +152,34 @@ def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
     assert record.metrics["tool_router_enforced"] == 1
 
 
+def test_build_turn_trajectory_record_uses_descriptor_metrics_and_legacy_fallback():
+    started = utc_now()
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="succeeded",
+        final_values={
+            "messages": [HumanMessage(content="governance"), AIMessage(content="done")],
+            "llm_calls": 1,
+            "tool_route_plan": {"enabled": True, "denied_tools": ["legacy_tool"], "enforce": True},
+            "agent_task_ledger": {"tasks": [{"task_id": "task-1"}, {"task_id": "task-2"}]},
+            "delegated_artifacts": [{"artifact_id": "artifact-1"}],
+        },
+        initial_message_count=0,
+        initial_llm_calls=0,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=5),
+    )
+
+    assert record.plan_meta["tool_route_plan"]["denied_tools"] == ["legacy_tool"]
+    assert record.metrics["tool_router_denied"] == 1
+    assert record.metrics["tool_router_enforced"] == 1
+    assert record.metrics["agent_task_ledger_tasks"] == 2
+    assert record.metrics["delegated_artifacts"] == 1
+
+
 def test_build_turn_trajectory_record_includes_tool_approval_governance_record():
     started = utc_now()
     approval_record = make_agent_state_record(

@@ -308,6 +308,41 @@ def test_tool_registry_accepts_explicit_provider_factories(tmp_path):
     assert tool_registry.runtime_by_name["local_lookup"].provider_id == "local_tools"
 
 
+def test_tool_registry_rejects_enabled_unknown_provider_config(tmp_path):
+    registry = SkillRegistry([tmp_path])
+
+    try:
+        build_tool_registry(
+            settings=Settings(
+                tool_catalog=ToolCatalogConfig(
+                    providers=(ToolProviderConfig(id="unknown_tools", enabled=True),)
+                )
+            ),
+            skill_registry=registry,
+        )
+    except ValueError as exc:
+        assert "unknown_tools" in str(exc)
+        assert "provider factory" in str(exc)
+    else:
+        raise AssertionError("expected enabled unknown provider validation failure")
+
+
+def test_tool_registry_ignores_disabled_unknown_provider_config(tmp_path):
+    registry = SkillRegistry([tmp_path])
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(ToolProviderConfig(id="unknown_tools", enabled=False),)
+            )
+        ),
+        skill_registry=registry,
+    )
+
+    assert "skills_list" in tool_registry.by_name
+    assert "skill_view" in tool_registry.by_name
+
+
 def test_tool_registry_skips_disabled_explicit_provider_factory(tmp_path):
     registry = SkillRegistry([tmp_path])
     factory_called = False

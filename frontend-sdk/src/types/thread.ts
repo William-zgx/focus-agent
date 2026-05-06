@@ -43,7 +43,6 @@ export interface FocusAgentToolApprovalInterrupt {
   interrupt_id: string;
   tool_name: string;
   tool_call_id: string;
-  args: Record<string, unknown>;
   redacted_args: Record<string, unknown>;
   risk_level: string;
   policy_version: string;

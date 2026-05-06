@@ -5,6 +5,7 @@ import time
 from focus_agent.services.coordination import (
     BackgroundJobClaim,
     BackgroundJobSpec,
+    InMemoryBackgroundJobDeduperBackend,
     InMemoryThreadTurnLockBackend,
     PostgresBackgroundJobDeduperBackend,
     PostgresThreadTurnLockBackend,
@@ -25,6 +26,39 @@ def test_in_memory_thread_turn_lock_respects_owner_and_ttl() -> None:
     assert backend.acquire_thread_turn(thread_id="thread-expiring", owner="owner-a", ttl_seconds=0.001)
     time.sleep(0.01)
     assert backend.acquire_thread_turn(thread_id="thread-expiring", owner="owner-b", ttl_seconds=1.0)
+
+
+def test_in_memory_background_job_heartbeats_and_rejects_stale_claims() -> None:
+    backend = InMemoryBackgroundJobDeduperBackend()
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-1",
+        payload={"root_thread_id": "thread-1", "user_id": "user-1"},
+        max_attempts=2,
+    )
+
+    assert backend.enqueue_job(spec)
+    claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    assert claimed is not None
+    _, claim = claimed
+    backend.mark_job_claim_running(spec.key, claim)
+
+    stale_claim = BackgroundJobClaim(claim_token="stale-token", owner=claim.owner, attempt=claim.attempt)
+    assert not backend.heartbeat_job_claim(spec.key, stale_claim, ttl_seconds=1.0)
+    backend.mark_job_claim_succeeded(spec.key, stale_claim)
+    assert backend.snapshot()["job_running_total"] == 1
+
+    assert backend.heartbeat_job_claim(spec.key, claim, ttl_seconds=0.001)
+    time.sleep(0.01)
+    assert not backend.heartbeat_job_claim(spec.key, claim, ttl_seconds=1.0)
+    backend.mark_job_claim_succeeded(spec.key, claim)
+    assert backend.snapshot()["job_succeeded_total"] == 0
+
+    reclaimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    assert reclaimed is not None
+    _, next_claim = reclaimed
+    assert next_claim.claim_token != claim.claim_token
+    assert next_claim.attempt == 2
 
 
 def test_postgres_thread_turn_lock_uses_owner_ttl_heartbeat_and_release(monkeypatch) -> None:
@@ -93,6 +127,8 @@ def test_postgres_background_job_backend_claim_retry_release_and_metrics(monkeyp
         def fetchone(self):
             if "RETURNING attempt, claim_token" in self._sql:
                 return {"attempt": 2, "claim_token": "claim-token-1"}
+            if "RETURNING job_key" in self._sql:
+                return {"job_key": "chat:context_compaction:thread-1"}
             return None
 
         def fetchall(self):
@@ -125,6 +161,7 @@ def test_postgres_background_job_backend_claim_retry_release_and_metrics(monkeyp
     claim = backend.claim_job_key("chat:context_compaction:thread-1")
     assert claim == BackgroundJobClaim(claim_token="claim-token-1", owner="worker-1", attempt=2)
     backend.mark_job_running("chat:context_compaction:thread-1")
+    assert backend.heartbeat_job_claim("chat:context_compaction:thread-1", claim, ttl_seconds=30.0)
     backend.mark_job_failed("chat:context_compaction:thread-1", "busy")
     backend.release_job_claim("chat:context_compaction:thread-1", claim)
     snapshot = backend.snapshot()
@@ -135,20 +172,118 @@ def test_postgres_background_job_backend_claim_retry_release_and_metrics(monkeyp
     assert "claim_token = EXCLUDED.claim_token" in statements[0]
     assert "status = 'running'" in statements[1]
     assert "claim_token = %s" in statements[1]
-    assert "WHEN attempt >= max_attempts THEN 'failed'" in statements[2]
-    assert "ELSE 'pending'" in statements[2]
-    assert "claim_token = %s" in statements[2]
-    assert "status = 'released'" in statements[3]
+    assert "claimed_until > now()" in statements[1]
+    assert "SET claimed_until = %s" in statements[2]
+    assert "WHERE job_key = %s AND claimed_by = %s AND claim_token = %s" in statements[2]
+    assert "claimed_until > now()" in statements[2]
+    assert "WHEN attempt >= max_attempts THEN 'failed'" in statements[3]
+    assert "ELSE 'pending'" in statements[3]
     assert "claim_token = %s" in statements[3]
+    assert "claimed_until > now()" in statements[3]
+    assert "status = 'released'" in statements[4]
+    assert "claim_token = %s" in statements[4]
     assert executed[0][1][0] == "chat:context_compaction:thread-1"
     assert executed[0][1][1] == "context_compaction"
     assert executed[0][1][2] == "worker-1"
     assert isinstance(executed[0][1][4], str)
-    assert executed[2][1] == ("busy", "chat:context_compaction:thread-1", "worker-1", "claim-token-1")
+    assert executed[2][1][1:] == ("chat:context_compaction:thread-1", "worker-1", "claim-token-1")
+    assert executed[3][1] == ("busy", "chat:context_compaction:thread-1", "worker-1", "claim-token-1")
     assert snapshot["job_backend_durable"] == 1
     assert snapshot["job_pending_total"] == 1
     assert snapshot["job_failed_total"] == 1
     assert snapshot["job_attempt_total"] == 5
+
+
+def test_postgres_background_job_heartbeat_guards_claim_and_extends_ttl(monkeypatch) -> None:
+    executed: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+            self._sql = " ".join(sql.split())
+
+        def fetchone(self):
+            if "RETURNING job_key" in self._sql:
+                return {"job_key": "chat:branch_title:thread-1"}
+            return None
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.services.coordination.psycopg.connect",
+        lambda uri, row_factory=None: FakeConnection(),
+    )
+
+    backend = PostgresBackgroundJobDeduperBackend(
+        "postgresql://example",
+        owner="worker-1",
+    )
+    claim = BackgroundJobClaim(claim_token="claim-token-1", owner="worker-1", attempt=1)
+
+    assert backend.heartbeat_job_claim("chat:branch_title:thread-1", claim, ttl_seconds=30.0)
+
+    statement = " ".join(executed[0][0].split())
+    assert "UPDATE focus_background_jobs SET claimed_until = %s, updated_at = now()" in statement
+    assert "WHERE job_key = %s AND claimed_by = %s AND claim_token = %s" in statement
+    assert "status = 'running'" in statement
+    assert "claimed_until > now()" in statement
+    assert executed[0][1][1:] == ("chat:branch_title:thread-1", "worker-1", "claim-token-1")
+
+
+def test_postgres_background_job_success_requires_live_claim(monkeypatch) -> None:
+    executed: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.services.coordination.psycopg.connect",
+        lambda uri, row_factory=None: FakeConnection(),
+    )
+
+    backend = PostgresBackgroundJobDeduperBackend(
+        "postgresql://example",
+        owner="worker-old",
+    )
+    stale_claim = BackgroundJobClaim(claim_token="old-token", owner="worker-old", attempt=1)
+    backend.mark_job_claim_succeeded("chat:branch_title:thread-1", stale_claim)
+
+    statement = " ".join(executed[0][0].split())
+    assert "claimed_by = %s" in statement
+    assert "claim_token = %s" in statement
+    assert "claimed_until > now()" in statement
+    assert executed[0][1] == ("chat:branch_title:thread-1", "worker-old", "old-token")
 
 
 def test_postgres_background_job_backend_enqueues_and_claims_specs(monkeypatch) -> None:

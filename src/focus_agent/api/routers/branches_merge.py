@@ -6,6 +6,7 @@ from focus_agent.core.branching import MergeDecision
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
+from focus_agent.services.chat_turn_errors import ConcurrentTurnError
 
 from ..contracts import (
     ApplyMergeDecisionRequest,
@@ -43,6 +44,8 @@ def create_branch(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -62,6 +65,8 @@ def archive_branch_route(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return record.model_dump(mode='json')
@@ -84,6 +89,8 @@ def rename_branch_route(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return record.model_dump(mode='json')
@@ -101,6 +108,8 @@ def activate_branch_route(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return record.model_dump(mode='json')
@@ -120,6 +129,8 @@ def prepare_branch_merge_proposal(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -150,6 +161,8 @@ def submit_merge_decision(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ConcurrentTurnError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ApplyMergeDecisionResponse(imported=imported)

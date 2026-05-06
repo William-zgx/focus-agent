@@ -37,6 +37,10 @@ class BackgroundTask:
 BackgroundJobHandler = Callable[[dict[str, Any]], Any]
 
 
+class _DurableJobClaimLost(RuntimeError):
+    pass
+
+
 class BackgroundJobHandlerRegistry:
     """Registry for durable job kinds that are safe to replay by name."""
 
@@ -126,6 +130,7 @@ class DurableBackgroundWorker:
         self._claimed_total = 0
         self._completed_total = 0
         self._failed_total = 0
+        self._heartbeat_lost_total = 0
         self._thread = threading.Thread(
             target=self._loop,
             name=f"focus-agent-durable-background-{name}",
@@ -155,26 +160,37 @@ class DurableBackgroundWorker:
         with self._lock:
             self._claimed_total += 1
             self._active += 1
+        heartbeat: tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread] | None = None
         try:
             self._mark_job_running(spec.key, claim)
             handler = self._handlers.get(spec.kind)
             if handler is None:
                 raise KeyError(f"unregistered durable background job kind: {spec.kind}")
+            heartbeat = self._start_job_claim_heartbeat(spec.key, claim)
             handler(dict(spec.payload))
+            if not self._stop_job_claim_heartbeat(heartbeat):
+                raise _DurableJobClaimLost("durable background job claim heartbeat lost")
         except Exception as exc:  # noqa: BLE001 - durable worker records and moves to the next job
+            heartbeat_lost = not self._stop_job_claim_heartbeat(heartbeat, confirm=False)
+            error = str(exc)
+            if heartbeat_lost and not isinstance(exc, _DurableJobClaimLost):
+                error = f"{error}; durable background job claim heartbeat lost"
             logger.warning(
                 "durable background job failed",
                 extra={"job_key": spec.key, "job_kind": spec.kind},
                 exc_info=True,
             )
-            self._mark_job_failed(spec.key, claim, str(exc))
+            self._mark_job_failed(spec.key, claim, error)
             with self._lock:
                 self._failed_total += 1
+                if heartbeat_lost or isinstance(exc, _DurableJobClaimLost):
+                    self._heartbeat_lost_total += 1
         else:
             self._mark_job_succeeded(spec.key, claim)
             with self._lock:
                 self._completed_total += 1
         finally:
+            self._stop_job_claim_heartbeat(heartbeat, confirm=False)
             with self._lock:
                 if self._active > 0:
                     self._active -= 1
@@ -187,6 +203,7 @@ class DurableBackgroundWorker:
                 "durable_worker_claimed_total": self._claimed_total,
                 "durable_worker_completed_total": self._completed_total,
                 "durable_worker_failed_total": self._failed_total,
+                "durable_worker_heartbeat_lost_total": self._heartbeat_lost_total,
             }
 
     def _loop(self) -> None:
@@ -208,6 +225,71 @@ class DurableBackgroundWorker:
         marker = getattr(self._job_backend, "mark_job_claim_failed", None)
         if callable(marker):
             marker(key, claim, error)
+
+    def _claim_heartbeat_ttl_seconds(self) -> float:
+        if self._claim_ttl_seconds is not None:
+            return max(float(self._claim_ttl_seconds or 0.0), 0.001)
+        backend_ttl = getattr(self._job_backend, "claim_ttl_seconds", 300.0)
+        return max(float(backend_ttl or 300.0), 0.001)
+
+    def _claim_heartbeat_interval_seconds(self) -> float:
+        return min(max(self._claim_heartbeat_ttl_seconds() / 3.0, 0.05), 5.0)
+
+    def _heartbeat_job_claim(self, key: str, claim: BackgroundJobClaim) -> bool:
+        heartbeater = getattr(self._job_backend, "heartbeat_job_claim", None)
+        if not callable(heartbeater):
+            return True
+        try:
+            return bool(heartbeater(key, claim, self._claim_heartbeat_ttl_seconds()))
+        except Exception:  # noqa: BLE001 - heartbeat failures must not mark success
+            logger.warning("durable background job heartbeat failed", extra={"job_key": key}, exc_info=True)
+            return False
+
+    def _start_job_claim_heartbeat(
+        self,
+        key: str,
+        claim: BackgroundJobClaim,
+    ) -> tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread] | None:
+        heartbeater = getattr(self._job_backend, "heartbeat_job_claim", None)
+        if not callable(heartbeater):
+            return None
+        stop_event = threading.Event()
+        lost_event = threading.Event()
+        interval = self._claim_heartbeat_interval_seconds()
+
+        def run() -> None:
+            while not stop_event.wait(interval):
+                if not self._heartbeat_job_claim(key, claim):
+                    lost_event.set()
+                    return
+
+        thread = threading.Thread(
+            target=run,
+            name=f"focus-agent-durable-background-heartbeat-{self.name}",
+            daemon=True,
+        )
+        thread.start()
+        return key, claim, stop_event, lost_event, thread
+
+    def _stop_job_claim_heartbeat(
+        self,
+        heartbeat: tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread] | None,
+        *,
+        confirm: bool = True,
+    ) -> bool:
+        if heartbeat is None:
+            return True
+        key, claim, stop_event, lost_event, thread = heartbeat
+        stop_event.set()
+        if thread.is_alive():
+            thread.join(timeout=1.0)
+        if thread.is_alive():
+            return False
+        if lost_event.is_set():
+            return False
+        if confirm:
+            return self._heartbeat_job_claim(key, claim)
+        return True
 
 
 class BoundedBackgroundQueue:

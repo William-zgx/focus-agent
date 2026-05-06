@@ -10,6 +10,13 @@ from langchain.messages import AIMessage, HumanMessage
 
 from focus_agent.services.branches import BranchService
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.services.chat_turn_errors import ConcurrentTurnError
+from focus_agent.services.coordination import (
+    CoordinationBackend,
+    InMemoryBackgroundJobDeduperBackend,
+    InMemoryRateLimitBackend,
+    InMemoryThreadTurnLockBackend,
+)
 
 
 def _record(
@@ -209,6 +216,37 @@ def test_archive_and_activate_branch_update_repo_and_graph_metadata():
     assert activated.archived_at is None
     assert service.graph.last_update["branch_meta"]["is_archived"] is False
     assert service.graph.last_update["branch_meta"]["archived_at"] is None
+
+
+def test_archive_branch_rejects_concurrent_chat_turn_lock():
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo(
+        [
+            _record(
+                branch_id="b-locked",
+                parent_thread_id="root-1",
+                child_thread_id="child-locked",
+                branch_name="locked branch",
+                branch_depth=1,
+            )
+        ]
+    )
+    service.graph = FakeGraph({"branch_meta": {}})
+    locks = InMemoryThreadTurnLockBackend()
+    service._coordination_backend = CoordinationBackend(
+        thread_turns=locks,
+        job_deduper=InMemoryBackgroundJobDeduperBackend(),
+        rate_limiter=InMemoryRateLimitBackend(),
+    )
+
+    assert locks.acquire_thread_turn(thread_id="child-locked", owner="chat-turn", ttl_seconds=30.0)
+    try:
+        with pytest.raises(ConcurrentTurnError, match="still processing the previous turn"):
+            service.archive_branch(child_thread_id="child-locked", user_id="user-1")
+    finally:
+        locks.release_thread_turn(thread_id="child-locked", owner="chat-turn")
+
+    assert service.repo.get("b-locked").is_archived is False
 
 
 def test_archive_repairs_incomplete_branch_meta_payload():

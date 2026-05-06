@@ -397,7 +397,6 @@ test("tool approval helpers and reducer preserve interrupt compatibility", () =>
     interrupt_id: "tool-approval:call-approval:abc123",
     tool_name: "write_file",
     tool_call_id: "call-approval",
-    args: { path: "README.md", api_token: "[REDACTED]" },
     redacted_args: { path: "README.md", api_token: "[REDACTED]" },
     risk_level: "high",
     policy_version: "tool_approval.v2",
@@ -415,6 +414,7 @@ test("tool approval helpers and reducer preserve interrupt compatibility", () =>
     }),
   );
   assert.equal(isToolApprovalInterrupt(interrupt), true);
+  assert.equal(isToolApprovalInterrupt({ ...interrupt, args: { path: "README.md" } }), false);
   assert.equal(isToolApprovalInterrupt({ ...interrupt, redacted_args: [] }), false);
 
   const interrupted = reduceStreamEvent(createInitialStreamState(), {
@@ -447,6 +447,7 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(approvalCardSource.includes("onDecide?.(interrupt, true)"), true);
   assert.equal(approvalCardSource.includes("onDecide?.(interrupt, false)"), true);
   assert.equal(approvalCardSource.includes("interrupt.redacted_args"), true);
+  assert.equal(approvalCardSource.includes("interrupt.args"), false);
   assert.equal(threadPageSource.includes("handleDecideToolApproval"), true);
   assert.equal(streamHookSource.includes("client.streamResume"), true);
   assert.equal(streamHookSource.includes("createToolApprovalDecision(interrupt, approved)"), true);

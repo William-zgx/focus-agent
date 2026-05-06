@@ -31,6 +31,42 @@ ToolProviderFactory = Callable[[ToolProviderFactoryContext], ToolProvider]
 
 
 @dataclass(frozen=True, slots=True)
+class _RegisteredToolProviderFactory:
+    provider_id: str
+    factory: ToolProviderFactory
+    default_order: int
+
+
+class ToolProviderFactoryRegistry:
+    def __init__(self) -> None:
+        self._factories: dict[str, _RegisteredToolProviderFactory] = {}
+
+    def register(
+        self,
+        provider_id: str,
+        factory: ToolProviderFactory,
+        *,
+        default_order: int,
+    ) -> None:
+        normalized_provider_id = _normalize_provider_id(provider_id)
+        if normalized_provider_id in self._factories:
+            raise ValueError(
+                f"Tool provider factory {normalized_provider_id!r} is already registered."
+            )
+        self._factories[normalized_provider_id] = _RegisteredToolProviderFactory(
+            provider_id=normalized_provider_id,
+            factory=factory,
+            default_order=default_order,
+        )
+
+    def entries(self) -> tuple[_RegisteredToolProviderFactory, ...]:
+        return tuple(self._factories.values())
+
+    def provider_ids(self) -> set[str]:
+        return set(self._factories)
+
+
+@dataclass(frozen=True, slots=True)
 class ToolRuntimeMeta:
     side_effect: bool = False
     parallel_safe: bool = False
@@ -230,6 +266,23 @@ def _build_controlled_tool_provider_registry(
         artifact_metadata_repository=artifact_metadata_repository,
     )
     registered: dict[str, tuple[int, ToolProvider]] = {}
+    explicit_provider_list = tuple(explicit_providers or ())
+    explicit_factory_mapping = dict(explicit_provider_factories or {})
+    known_provider_ids = set(_TOOL_PROVIDER_FACTORY_REGISTRY.provider_ids())
+    known_provider_ids.update(
+        _normalize_provider_id(getattr(provider, "provider_id", ""))
+        for provider in explicit_provider_list
+    )
+    known_provider_ids.update(
+        _normalize_provider_id(provider_id)
+        for provider_id in explicit_factory_mapping
+    )
+
+    for provider_config in settings.tool_catalog.providers:
+        if provider_config.enabled and provider_config.id not in known_provider_ids:
+            raise ValueError(
+                f"Tool provider {provider_config.id!r} is enabled but no provider factory is registered."
+            )
 
     def provider_enabled(provider_id: str) -> bool:
         provider_config = settings.tool_catalog.provider_config_for(provider_id)
@@ -245,36 +298,24 @@ def _build_controlled_tool_provider_registry(
         order = provider_config.order if provider_config is not None else None
         registered[provider_id] = (default_order if order is None else order, provider)
 
-    if provider_enabled("builtin"):
-        register(
-            StaticToolProvider(
-                provider_id="builtin",
-                tools=tuple(
-                    get_default_tools(
-                        settings,
-                        store=store,
-                        checkpointer=checkpointer,
-                        artifact_metadata_repository=artifact_metadata_repository,
-                    )
-                ),
-            ),
-            default_order=0,
-        )
-    if provider_enabled("skill"):
-        register(
-            StaticToolProvider(
-                provider_id="skill",
-                tools=tuple(_build_skill_tools(settings=settings, skill_registry=skill_registry)),
-            ),
-            default_order=100,
-        )
+    for entry in _TOOL_PROVIDER_FACTORY_REGISTRY.entries():
+        if not provider_enabled(entry.provider_id):
+            continue
+        provider = entry.factory(context)
+        returned_provider_id = _normalize_provider_id(getattr(provider, "provider_id", ""))
+        if returned_provider_id != entry.provider_id:
+            raise ValueError(
+                f"Tool provider factory {entry.provider_id!r} returned provider "
+                f"{returned_provider_id!r}."
+            )
+        register(provider, default_order=entry.default_order)
 
     explicit_index = 0
-    for provider in explicit_providers or ():
+    for provider in explicit_provider_list:
         register(provider, default_order=200 + explicit_index)
         explicit_index += 1
 
-    for provider_id, factory in (explicit_provider_factories or {}).items():
+    for provider_id, factory in explicit_factory_mapping.items():
         normalized_provider_id = _normalize_provider_id(provider_id)
         provider_config = settings.tool_catalog.provider_config_for(normalized_provider_id)
         if provider_config is not None and not provider_config.enabled:
@@ -376,3 +417,42 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
     if settings.tool_catalog.skill_view.enabled:
         tools.append(skill_view)
     return tools
+
+
+def _build_builtin_tool_provider(context: ToolProviderFactoryContext) -> ToolProvider:
+    return StaticToolProvider(
+        provider_id="builtin",
+        tools=tuple(
+            get_default_tools(
+                context.settings,
+                store=context.store,
+                checkpointer=context.checkpointer,
+                artifact_metadata_repository=context.artifact_metadata_repository,
+            )
+        ),
+    )
+
+
+def _build_skill_tool_provider(context: ToolProviderFactoryContext) -> ToolProvider:
+    return StaticToolProvider(
+        provider_id="skill",
+        tools=tuple(
+            _build_skill_tools(
+                settings=context.settings,
+                skill_registry=context.skill_registry,
+            )
+        ),
+    )
+
+
+_TOOL_PROVIDER_FACTORY_REGISTRY = ToolProviderFactoryRegistry()
+_TOOL_PROVIDER_FACTORY_REGISTRY.register(
+    "builtin",
+    _build_builtin_tool_provider,
+    default_order=0,
+)
+_TOOL_PROVIDER_FACTORY_REGISTRY.register(
+    "skill",
+    _build_skill_tool_provider,
+    default_order=100,
+)

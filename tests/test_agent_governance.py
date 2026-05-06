@@ -12,8 +12,12 @@ from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import make_agent_state_record
-from focus_agent.engine.graph_builder import build_graph
+from focus_agent.engine.graph_builder import _tools_for_policy, build_graph
 from focus_agent.memory.curator import MemoryCurator
+from focus_agent.api.route_utils.agent_governance_trajectory_responses import (
+    _agent_governance_metrics_from_turns,
+    _plan_meta_governance_payload,
+)
 
 
 class _Hit:
@@ -227,6 +231,49 @@ def test_tool_router_builds_capability_registry_and_denies_critic_writes():
     assert "web_search" in plan.denied_tools
 
 
+def test_tool_router_matches_graph_policy_filtering_for_core_policies():
+    @tool
+    def approval_lookup(name: str) -> str:
+        """Lookup that requires approval."""
+        return name
+
+    approval_lookup.metadata = {
+        "requires_approval": True,
+        "risk_level": "high",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+    }
+
+    tools = [search_code, write_text_artifact, web_search, approval_lookup]
+    registry = ToolRegistry(tools=tuple(tools))
+
+    for policy, role in (
+        ("direct_answer", "executor"),
+        ("workspace_lookup", "executor"),
+        ("live_web_research", "planner"),
+        ("execution", "executor"),
+    ):
+        graph_allowed = [item.name for item in _tools_for_policy(policy, tools, role=role)]
+        route_plan = build_tool_route_plan(
+            tool_registry=registry,
+            role=role,
+            tool_policy=policy,
+            available_tool_names=[item.name for item in tools],
+        )
+        assert route_plan.allowed_tools == graph_allowed
+
+    execution_plan = build_tool_route_plan(
+        tool_registry=registry,
+        role="executor",
+        tool_policy="execution",
+        available_tool_names=[item.name for item in tools],
+    )
+    approval_decision = next(item for item in execution_plan.decisions if item.name == "approval_lookup")
+    assert approval_decision.allowed is True
+    assert approval_decision.reason == "approval_required"
+    assert "approval_lookup" in execution_plan.allowed_tools
+
+
 def test_graph_tool_router_filters_bound_tools_for_critic(monkeypatch):
     captured = {}
 
@@ -335,6 +382,39 @@ def test_memory_curator_marks_semantic_conflict_for_review():
     assert decision.status == "needs_review"
     assert len(decision.conflicts) == 1
     assert decision.candidates == []
+
+
+def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
+    rows = [
+        {
+            "plan_meta": {
+                "governance_records": [
+                    make_agent_state_record(
+                        "tool_route_plan",
+                        {"denied_tools": ["record_tool"], "enforce": True},
+                        source="test",
+                    )
+                ],
+                "tool_route_plan": {"denied_tools": ["legacy_tool"], "enforce": False},
+            }
+        },
+        {
+            "plan_meta": {
+                "memory_curator_decision": {
+                    "promoted_memory_ids": ["mem-1"],
+                    "conflicts": [{"candidate_id": "candidate-1"}],
+                }
+            }
+        },
+    ]
+
+    metrics = _agent_governance_metrics_from_turns(rows)
+
+    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "tool_route_plan")["denied_tools"] == ["record_tool"]
+    assert metrics["tool_router_denied"] == 1
+    assert metrics["tool_router_enforced"] == 1
+    assert metrics["memory_promotions"] == 1
+    assert metrics["memory_conflicts"] == 1
 
 
 def test_agent_governance_api_shapes(monkeypatch, tmp_path):

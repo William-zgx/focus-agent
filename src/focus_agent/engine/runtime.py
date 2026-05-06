@@ -169,6 +169,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         user_repository=persistence.user_repository,
         store=persistence.store,
         memory_writer=memory.memory_writer,
+        coordination_backend=coordination_backend,
     )
 
     return AppRuntime(
@@ -284,6 +285,7 @@ def _create_runtime_services(
     user_repository: UserRepository,
     store: object,
     memory_writer: MemoryWriter,
+    coordination_backend: CoordinationBackend,
 ) -> RuntimeServices:
     branch_service = BranchService(
         settings=settings,
@@ -292,6 +294,7 @@ def _create_runtime_services(
         store=store,
         memory_writer=memory_writer,
     )
+    branch_service._coordination_backend = coordination_backend
     agent_team_service = AgentTeamService(
         branch_service=branch_service,
         repository=_create_agent_team_repository(settings),

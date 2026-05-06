@@ -6,6 +6,7 @@ from langchain.tools import tool
 from langgraph.types import Command
 
 from focus_agent.capabilities.tool_registry import ToolRegistry
+from focus_agent.capabilities.tool_router import build_tool_route_plan
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
@@ -877,7 +878,19 @@ def test_tools_for_policy_filters_web_and_write_tools():
         """Write artifact."""
         return title + body
 
-    tools = [list_files, search_code, read_file, web_search, write_text_artifact]
+    @tool
+    def approval_lookup(name: str) -> str:
+        """Lookup that requires approval."""
+        return name
+
+    approval_lookup.metadata = {
+        "requires_approval": True,
+        "risk_level": "high",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+    }
+
+    tools = [list_files, search_code, read_file, web_search, write_text_artifact, approval_lookup]
 
     assert [item.name for item in _tools_for_policy("direct_answer", tools)] == []
     assert [item.name for item in _tools_for_policy("workspace_lookup", tools)] == [
@@ -894,9 +907,21 @@ def test_tools_for_policy_filters_web_and_write_tools():
         "list_files",
         "search_code",
         "read_file",
-        "web_search",
         "write_text_artifact",
+        "approval_lookup",
     ]
+    route_plan = build_tool_route_plan(
+        tool_registry=ToolRegistry(tools=tuple(tools)),
+        role="executor",
+        tool_policy="execution",
+        available_tool_names=[tool.name for tool in tools],
+    )
+    assert route_plan.allowed_tools == [
+        item.name for item in _tools_for_policy("execution", tools, role="executor")
+    ]
+    approval_decision = next(item for item in route_plan.decisions if item.name == "approval_lookup")
+    assert approval_decision.allowed is True
+    assert approval_decision.reason == "approval_required"
 
 
 def test_graph_does_not_bind_tools_for_direct_answer_turn(monkeypatch):
@@ -1759,7 +1784,7 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
     assert interrupt_payload["interrupt_id"].startswith("tool-approval:approval-1:")
     assert interrupt_payload["tool_name"] == "approval_lookup"
     assert interrupt_payload["tool_call_id"] == "approval-1"
-    assert interrupt_payload["args"] == {"name": "focus"}
+    assert "args" not in interrupt_payload
     assert interrupt_payload["redacted_args"] == {"name": "focus"}
     assert interrupt_payload["risk_level"] == "high"
     assert interrupt_payload["policy_version"] == "tool_approval.v2"
@@ -1789,6 +1814,8 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
     assert approval_records[-1]["payload"]["approved"] is True
     assert approval_records[-1]["payload"]["tool_name"] == "approval_lookup"
     assert approval_records[-1]["payload"]["tool_call_id"] == "approval-1"
+    assert "args" not in approval_records[-1]["payload"]
+    assert approval_records[-1]["payload"]["redacted_args"] == {"name": "focus"}
     assert approval_records[-1]["payload"]["risk_level"] == "high"
     assert tool_messages[-1].content == "approved:focus"
     assert resumed.value["messages"][-1].content == "approval handled"
@@ -1865,6 +1892,8 @@ def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatc
     assert approval_records[-1]["payload"]["approved"] is False
     assert approval_records[-1]["payload"]["decision"] == "denied"
     assert approval_records[-1]["payload"]["tool_call_id"] == "approval-deny-1"
+    assert "args" not in approval_records[-1]["payload"]
+    assert approval_records[-1]["payload"]["redacted_args"] == {"name": "focus"}
     assert tool_messages[-1].status == "error"
     assert payload["status"] == "error"
     assert payload["tool"] == "approval_lookup"

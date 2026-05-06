@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from langchain.messages import ToolMessage
 
+from ..agent_roles import AgentRole
+from ..capabilities.tool_router import CapabilityPolicyEngine
 from ..capabilities.tool_registry import ToolRuntimeMeta
 
 
@@ -328,17 +330,21 @@ def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
     return "direct_answer"
 
 
-def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = "") -> list[Any]:
-    if policy == "direct_answer":
-        return []
+def _tools_for_policy(
+    policy: _ToolPolicy,
+    tools: list[Any],
+    latest_user: str = "",
+    *,
+    role: AgentRole | str | None = None,
+) -> list[Any]:
+    policy_engine = CapabilityPolicyEngine()
+    effective_role = role or _default_role_for_policy(policy)
+    candidates = [
+        tool
+        for tool in tools
+        if policy_engine.tool_allowed(tool, role=effective_role, tool_policy=policy)[0]
+    ]
     if policy == "workspace_lookup":
-        candidates = [
-            tool
-            for tool in tools
-            if _tool_supports_policy(tool, "workspace_lookup")
-            and not _tool_runtime(tool).requires_network
-            and not _tool_runtime(tool).requires_workspace_write
-        ]
         normalized = " ".join(latest_user.strip().split())
         if _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS) and not _contains_any(
             normalized, _FILE_BROWSE_INTENT_MARKERS
@@ -350,19 +356,17 @@ def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = 
             ]
             if focused:
                 return focused
-        return candidates
-    if policy == "live_web_research":
-        return [tool for tool in tools if _tool_supports_policy(tool, "live_web_research")]
-    return list(tools)
+    return candidates
 
 
 def _tool_runtime(tool: Any) -> ToolRuntimeMeta:
     return ToolRuntimeMeta.from_tool(tool)
 
 
-def _tool_supports_policy(tool: Any, policy: _ToolPolicy) -> bool:
-    runtime = _tool_runtime(tool)
-    return policy in runtime.intent_policies
+def _default_role_for_policy(policy: _ToolPolicy) -> AgentRole:
+    if policy == "live_web_research":
+        return AgentRole.PLANNER
+    return AgentRole.EXECUTOR
 
 
 def _workspace_lookup_should_start_with_search(

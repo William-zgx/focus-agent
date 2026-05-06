@@ -46,6 +46,55 @@ class ToolRoutePlan(StateModel):
     decisions: list[ToolRouteDecision] = Field(default_factory=list)
 
 
+class CapabilityPolicyEngine:
+    def allow_tool(
+        self,
+        capability: CapabilityDescriptor,
+        *,
+        role: AgentRole | str,
+        tool_policy: str,
+    ) -> tuple[bool, str]:
+        normalized_role = normalize_agent_role(role)
+        normalized_policy = (tool_policy or "execution").strip().lower()
+        if normalized_policy == "direct_answer":
+            return False, "direct_answer_policy"
+        if normalized_policy != "execution" and normalized_policy not in capability.intent_policies:
+            return False, f"policy_not_allowed:{normalized_policy}"
+        if normalized_policy == "workspace_lookup":
+            if capability.requires_network:
+                return False, "workspace_lookup_no_network"
+            if capability.requires_workspace_write:
+                return False, "workspace_lookup_no_workspace_write"
+        if normalized_policy == "live_web_research" and capability.requires_workspace_write:
+            return False, "live_web_research_no_workspace_write"
+        if normalized_role.value not in capability.allowed_roles:
+            return False, f"role_not_allowed:{normalized_role.value}"
+        if normalized_role == AgentRole.CRITIC and capability.requires_workspace_write:
+            return False, "critic_no_workspace_write"
+        if capability.toolset == "memory" and capability.side_effect:
+            return False, "memory_write_reserved"
+        if capability.requires_approval:
+            return True, "approval_required"
+        return True, "allowed"
+
+    def tool_allowed(
+        self,
+        tool: Any,
+        *,
+        role: AgentRole | str,
+        tool_policy: str,
+    ) -> tuple[bool, str]:
+        return self.allow_tool(
+            capability_from_tool(
+                name=str(getattr(tool, "name", "")).strip(),
+                description=str(getattr(tool, "description", "") or ""),
+                runtime=ToolRuntimeMeta.from_tool(tool),
+            ),
+            role=role,
+            tool_policy=tool_policy,
+        )
+
+
 def build_capability_registry(tool_registry: ToolRegistry) -> list[CapabilityDescriptor]:
     descriptors: list[CapabilityDescriptor] = []
     for tool in tuple(tool_registry.tools):
@@ -90,13 +139,18 @@ def build_tool_route_plan(
     normalized_role = normalize_agent_role(role)
     available = [str(name).strip() for name in available_tool_names if str(name).strip()]
     capabilities = {item.name: item for item in build_capability_registry(tool_registry)}
+    policy_engine = CapabilityPolicyEngine()
     decisions: list[ToolRouteDecision] = []
     for name in available:
         capability = capabilities.get(name)
         if capability is None:
             decisions.append(ToolRouteDecision(name=name, allowed=False, reason="unknown_tool"))
             continue
-        allowed, reason = _allow_tool(capability, role=normalized_role, tool_policy=tool_policy)
+        allowed, reason = policy_engine.allow_tool(
+            capability,
+            role=normalized_role,
+            tool_policy=tool_policy,
+        )
         decisions.append(
             ToolRouteDecision(
                 name=name,
@@ -131,25 +185,6 @@ def infer_tool_router_role(role_route_plan: dict[str, Any] | None, *, fallback: 
     return fallback
 
 
-def _allow_tool(capability: CapabilityDescriptor, *, role: AgentRole, tool_policy: str) -> tuple[bool, str]:
-    normalized_policy = (tool_policy or "execution").strip().lower()
-    if normalized_policy == "direct_answer":
-        return False, "direct_answer_policy"
-    if normalized_policy != "execution" and normalized_policy not in capability.intent_policies:
-        return False, f"policy_not_allowed:{normalized_policy}"
-    if normalized_policy == "workspace_lookup" and capability.requires_network:
-        return False, "workspace_lookup_no_network"
-    if role.value not in capability.allowed_roles:
-        return False, f"role_not_allowed:{role.value}"
-    if role == AgentRole.CRITIC and capability.requires_workspace_write:
-        return False, "critic_no_workspace_write"
-    if capability.toolset == "memory" and capability.side_effect:
-        return False, "memory_write_reserved"
-    if capability.requires_approval:
-        return True, "approval_required"
-    return True, "allowed"
-
-
 def _default_risk_level(runtime: ToolRuntimeMeta) -> str:
     if runtime.requires_approval:
         return "high"
@@ -159,6 +194,7 @@ def _default_risk_level(runtime: ToolRuntimeMeta) -> str:
 
 
 __all__ = [
+    "CapabilityPolicyEngine",
     "CapabilityDescriptor",
     "ToolRouteDecision",
     "ToolRoutePlan",

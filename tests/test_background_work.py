@@ -232,6 +232,126 @@ def test_durable_background_worker_runs_registered_handler_with_claim() -> None:
     assert worker.snapshot()["durable_worker_completed_total"] == 1
 
 
+def test_durable_background_worker_heartbeats_long_handler_claim() -> None:
+    claim = BackgroundJobClaim(claim_token="claim-heartbeat", owner="worker-1", attempt=1)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-heartbeat",
+        payload={"root_thread_id": "thread-heartbeat", "user_id": "user-1"},
+        max_attempts=2,
+    )
+
+    class Backend:
+        def __init__(self):
+            self.claimed = False
+            self.heartbeat_seen = False
+            self.events: list[tuple[str, str, str]] = []
+
+        def claim_next_job(self, *, allowed_kinds, claim_ttl_seconds=None):
+            if self.claimed:
+                return None
+            self.claimed = True
+            return spec, claim
+
+        def mark_job_claim_running(self, key: str, job_claim: BackgroundJobClaim) -> None:
+            self.events.append(("running", key, job_claim.claim_token))
+
+        def heartbeat_job_claim(self, key: str, job_claim: BackgroundJobClaim, ttl_seconds: float) -> bool:
+            self.heartbeat_seen = True
+            self.events.append(("heartbeat", key, job_claim.claim_token))
+            return True
+
+        def mark_job_claim_succeeded(self, key: str, job_claim: BackgroundJobClaim) -> None:
+            self.events.append(("succeeded", key, job_claim.claim_token))
+
+        def mark_job_claim_failed(self, key: str, job_claim: BackgroundJobClaim, error: str) -> None:
+            self.events.append(("failed", key, job_claim.claim_token))
+
+    backend = Backend()
+
+    def handler(payload):
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and not backend.heartbeat_seen:
+            time.sleep(0.01)
+        assert backend.heartbeat_seen
+
+    registry = BackgroundJobHandlerRegistry({"conversation_title": handler})
+    worker = DurableBackgroundWorker(
+        name="heartbeat",
+        job_backend=backend,
+        handlers=registry,
+        claim_ttl_seconds=0.15,
+    )
+
+    assert worker.run_once()
+    assert ("heartbeat", "chat:conversation_title:thread-heartbeat", "claim-heartbeat") in backend.events
+    assert ("succeeded", "chat:conversation_title:thread-heartbeat", "claim-heartbeat") in backend.events
+    assert not any(event[0] == "failed" for event in backend.events)
+    assert worker.snapshot()["durable_worker_completed_total"] == 1
+
+
+def test_durable_background_worker_does_not_succeed_when_heartbeat_is_lost() -> None:
+    claim = BackgroundJobClaim(claim_token="claim-lost", owner="worker-1", attempt=1)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-lost",
+        payload={"root_thread_id": "thread-lost", "user_id": "user-1"},
+        max_attempts=2,
+    )
+
+    class Backend:
+        def __init__(self):
+            self.claimed = False
+            self.heartbeat_seen = False
+            self.events: list[tuple[str, str, str, str]] = []
+
+        def claim_next_job(self, *, allowed_kinds, claim_ttl_seconds=None):
+            if self.claimed:
+                return None
+            self.claimed = True
+            return spec, claim
+
+        def mark_job_claim_running(self, key: str, job_claim: BackgroundJobClaim) -> None:
+            self.events.append(("running", key, job_claim.claim_token, ""))
+
+        def heartbeat_job_claim(self, key: str, job_claim: BackgroundJobClaim, ttl_seconds: float) -> bool:
+            self.heartbeat_seen = True
+            self.events.append(("heartbeat", key, job_claim.claim_token, ""))
+            return False
+
+        def mark_job_claim_succeeded(self, key: str, job_claim: BackgroundJobClaim) -> None:
+            self.events.append(("succeeded", key, job_claim.claim_token, ""))
+
+        def mark_job_claim_failed(self, key: str, job_claim: BackgroundJobClaim, error: str) -> None:
+            self.events.append(("failed", key, job_claim.claim_token, error))
+
+    backend = Backend()
+
+    def handler(payload):
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and not backend.heartbeat_seen:
+            time.sleep(0.01)
+        assert backend.heartbeat_seen
+
+    registry = BackgroundJobHandlerRegistry({"conversation_title": handler})
+    worker = DurableBackgroundWorker(
+        name="heartbeat-lost",
+        job_backend=backend,
+        handlers=registry,
+        claim_ttl_seconds=0.15,
+    )
+
+    assert worker.run_once()
+    assert not any(event[0] == "succeeded" for event in backend.events)
+    failed = [event for event in backend.events if event[0] == "failed"]
+    assert failed
+    assert "heartbeat lost" in failed[0][3]
+    snapshot = worker.snapshot()
+    assert snapshot["durable_worker_completed_total"] == 0
+    assert snapshot["durable_worker_failed_total"] == 1
+    assert snapshot["durable_worker_heartbeat_lost_total"] == 1
+
+
 def test_default_durable_handlers_call_fixed_service_methods() -> None:
     class ChatService:
         def __init__(self):
