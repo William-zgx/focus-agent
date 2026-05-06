@@ -300,6 +300,8 @@ class ChatService(
         initial_llm_calls = int(initial_values.get('llm_calls') or 0)
         started_at = utc_now()
         trace_correlation: TraceCorrelation | None = None
+        pending_branch_name_refresh: dict[str, Any] | None = None
+        response: dict[str, Any] | None = None
         with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
             try:
                 draft_message = self._draft_message_from_payload(payload)
@@ -375,13 +377,12 @@ class ChatService(
                     kind=kind,
                 )
                 turn_lease.raise_if_lost()
-                self._schedule_branch_name_refresh_after_first_turn(
-                    thread_id=thread_id,
-                    user_id=user_id,
-                    branch_meta=latest_branch_meta,
-                    kind=kind,
-                )
-                return response
+                pending_branch_name_refresh = {
+                    "thread_id": thread_id,
+                    "user_id": user_id,
+                    "branch_meta": latest_branch_meta,
+                    "kind": kind,
+                }
             except Exception as exc:
                 if not isinstance(exc, ThreadTurnLeaseLost):
                     self._record_turn_trajectory_best_effort(
@@ -401,6 +402,11 @@ class ChatService(
                         error=str(exc),
                     )
                 raise
+        if pending_branch_name_refresh is not None:
+            self._schedule_branch_name_refresh_after_first_turn(**pending_branch_name_refresh)
+        if response is None:
+            raise RuntimeError("chat turn completed without a response payload")
+        return response
 
     def send_message(
         self,

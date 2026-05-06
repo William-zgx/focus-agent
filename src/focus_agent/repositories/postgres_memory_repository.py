@@ -27,7 +27,10 @@ from .memory_repository import (
     MemoryListQuery,
     MemoryRepository,
 )
-from .postgres_schema import ensure_app_postgres_schema_on_connection
+from .postgres_schema import (
+    ensure_app_postgres_schema_on_connection,
+    rebuild_memory_embedding_index_on_connection,
+)
 
 
 class PostgresMemoryRepository(MemoryRepository):
@@ -123,6 +126,36 @@ class PostgresMemoryRepository(MemoryRepository):
             "vector_index_expected": bool(vector_index),
             "vector_index_exists": bool(row.get("vector_index_exists")),
         }
+
+    def rebuild_embedding_index(
+        self,
+        *,
+        dimensions: int | None = None,
+        vector_index: bool | None = None,
+        pgvector_extension_mode: str | None = None,
+    ) -> dict[str, object]:
+        resolved_dimensions = self.dimensions if dimensions is None else max(1, int(dimensions))
+        resolved_vector_index = self.vector_index if vector_index is None else bool(vector_index)
+        resolved_extension_mode = (
+            self.pgvector_extension_mode
+            if pgvector_extension_mode is None
+            else pgvector_extension_mode
+        )
+        with psycopg.connect(self.database_uri) as conn:
+            rebuild_memory_embedding_index_on_connection(
+                conn,
+                dimensions=resolved_dimensions,
+                vector_index=resolved_vector_index,
+                pgvector_extension_mode=resolved_extension_mode,
+            )
+        self.dimensions = resolved_dimensions
+        self.vector_index = resolved_vector_index
+        self.pgvector_extension_mode = resolved_extension_mode
+        self.memory_embeddings_enabled = True
+        return self.inspect_pgvector_support(
+            dimensions=resolved_dimensions,
+            vector_index=resolved_vector_index,
+        )
 
     def upsert_record(self, record: MemoryRecord) -> str:
         payload = record.model_dump(mode="json")
@@ -381,6 +414,35 @@ class PostgresMemoryRepository(MemoryRepository):
             with conn.cursor() as cur:
                 cur.execute(
                     """
+                    UPDATE focus_memory_embeddings
+                    SET
+                        status = 'stale',
+                        deleted_at = %(updated_at)s,
+                        updated_at = %(updated_at)s,
+                        metadata_json = metadata_json || %(stale_metadata_json)s
+                    WHERE memory_id = %(memory_id)s
+                      AND provider_id = %(provider_id)s
+                      AND model_id = %(model_id)s
+                      AND content_hash <> %(content_hash)s
+                      AND status = 'active'
+                      AND deleted_at IS NULL
+                    """,
+                    {
+                        "memory_id": memory_id,
+                        "provider_id": provider_id,
+                        "model_id": model_id,
+                        "content_hash": content_hash or "",
+                        "updated_at": now,
+                        "stale_metadata_json": Jsonb(
+                            {
+                                "stale_reason": "memory_content_changed",
+                                "replaced_by_content_hash": content_hash or "",
+                            }
+                        ),
+                    },
+                )
+                cur.execute(
+                    """
                     INSERT INTO focus_memory_embeddings (
                         embedding_id, memory_id, namespace, provider_id, model_id, dimensions,
                         content_hash, embedding, status, created_at, updated_at, deleted_at, metadata_json
@@ -389,11 +451,14 @@ class PostgresMemoryRepository(MemoryRepository):
                         %(dimensions)s, %(content_hash)s, %(embedding)s::vector, %(status)s,
                         %(created_at)s, %(updated_at)s, NULL, %(metadata_json)s
                     )
-                    ON CONFLICT (memory_id, provider_id, model_id, content_hash)
-                    WHERE deleted_at IS NULL
+                    ON CONFLICT (embedding_id)
                     DO UPDATE SET
+                        memory_id = EXCLUDED.memory_id,
                         namespace = EXCLUDED.namespace,
+                        provider_id = EXCLUDED.provider_id,
+                        model_id = EXCLUDED.model_id,
                         dimensions = EXCLUDED.dimensions,
+                        content_hash = EXCLUDED.content_hash,
                         embedding = EXCLUDED.embedding,
                         status = EXCLUDED.status,
                         deleted_at = NULL,
@@ -560,6 +625,8 @@ class PostgresMemoryRepository(MemoryRepository):
                     SELECT status
                     FROM focus_memory_embeddings
                     WHERE memory_id = %s AND deleted_at IS NULL
+                    ORDER BY updated_at DESC, embedding_id DESC
+                    LIMIT 1
                     """,
                     (memory_id,),
                 )

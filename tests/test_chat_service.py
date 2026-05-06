@@ -16,6 +16,7 @@ from focus_agent.services.coordination import (
     InMemoryThreadTurnLockBackend,
     InMemoryRateLimitBackend,
 )
+from focus_agent.services.thread_turn_lease import ThreadTurnLeaseManager
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
@@ -791,6 +792,124 @@ def test_branch_title_refresh_uses_durable_background_jobs_when_enabled(tmp_path
     ]
     assert all(spec.max_attempts == 3 for spec in job_deduper.enqueued)
     assert all(spec.dedupe_policy == "replace" for spec in job_deduper.enqueued)
+
+
+def test_branch_metadata_refresh_is_scheduled_after_sync_turn_lease_release(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    locks = InMemoryThreadTurnLockBackend()
+
+    class ImmediateBackgroundWork:
+        def __init__(self):
+            self.submitted: list[str] = []
+
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del delay_seconds
+            self.submitted.append(key)
+            func(**kwargs)
+            return True
+
+    class LeaseCheckingBranchService:
+        def __init__(self):
+            self.calls: list[dict[str, str]] = []
+
+        def refresh_branch_metadata_after_first_turn(self, **kwargs):
+            with ThreadTurnLeaseManager(
+                backend=locks,
+                thread_id=kwargs["child_thread_id"],
+                ttl_seconds=30.0,
+                heartbeat_interval_seconds=30.0,
+            ):
+                self.calls.append(dict(kwargs))
+
+    background_work = ImmediateBackgroundWork()
+    branch_service = LeaseCheckingBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=RecordingGraph(),
+        repo=repo,
+        branch_service=branch_service,
+        background_work=background_work,
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="first branch turn")
+
+    assert background_work.submitted[-1] == "chat:branch_title:child-1"
+    assert branch_service.calls == [{"child_thread_id": "child-1", "user_id": "owner-1"}]
+
+
+def test_branch_metadata_refresh_is_scheduled_after_stream_turn_lease_release(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    locks = InMemoryThreadTurnLockBackend()
+
+    class ImmediateBackgroundWork:
+        def __init__(self):
+            self.submitted: list[str] = []
+
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del delay_seconds
+            self.submitted.append(key)
+            func(**kwargs)
+            return True
+
+    class LeaseCheckingBranchService:
+        def __init__(self):
+            self.calls: list[dict[str, str]] = []
+
+        def refresh_branch_metadata_after_first_turn(self, **kwargs):
+            with ThreadTurnLeaseManager(
+                backend=locks,
+                thread_id=kwargs["child_thread_id"],
+                ttl_seconds=30.0,
+                heartbeat_interval_seconds=30.0,
+            ):
+                self.calls.append(dict(kwargs))
+
+    class BranchStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="Branch answer.")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    background_work = ImmediateBackgroundWork()
+    branch_service = LeaseCheckingBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=BranchStreamingGraph(),
+        repo=repo,
+        branch_service=branch_service,
+        background_work=background_work,
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="child-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert any("event: turn.completed" in frame for frame in frames)
+    assert background_work.submitted[-1] == "chat:branch_title:child-1"
+    assert branch_service.calls == [{"child_thread_id": "child-1", "user_id": "owner-1"}]
 
 
 def test_sse_frame_serializes_message_objects():

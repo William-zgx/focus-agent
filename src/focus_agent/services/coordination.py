@@ -254,7 +254,11 @@ class InMemoryBackgroundJobDeduperBackend:
                     if job.last_error is None:
                         job.last_error = "claim expired after max attempts"
                     continue
-                due_pending = job.status == "pending" and job.spec.run_at <= run_now
+                due_pending = (
+                    job.status == "pending"
+                    and job.spec.run_at <= run_now
+                    and (job.claim is None or job.claimed_until <= now)
+                )
                 expired_running = job.status == "running" and job.claimed_until <= now
                 if not due_pending and not expired_running:
                     continue
@@ -269,7 +273,7 @@ class InMemoryBackgroundJobDeduperBackend:
                     owner=self.owner,
                     attempt=job.attempt,
                 )
-                job.status = "pending"
+                job.status = "running"
                 job.claim = claim
                 job.claimed_until = now + ttl
                 return job.spec, claim
@@ -279,7 +283,12 @@ class InMemoryBackgroundJobDeduperBackend:
         now = time.monotonic()
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.claim == claim and job.status == "pending" and job.claimed_until > now:
+            if (
+                job is not None
+                and job.claim == claim
+                and job.status in {"pending", "running"}
+                and job.claimed_until > now
+            ):
                 job.status = "running"
 
     def mark_job_claim_succeeded(self, key: str, claim: BackgroundJobClaim) -> None:
@@ -610,7 +619,11 @@ class PostgresBackgroundJobDeduperBackend:
                         FROM focus_background_jobs
                         WHERE kind = ANY(%s)
                           AND (
-                                (status = 'pending' AND run_at <= now())
+                                (
+                                    status = 'pending'
+                                    AND run_at <= now()
+                                    AND (claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now())
+                                )
                                 OR (status = 'running' AND claimed_until <= now())
                           )
                           AND attempt < max_attempts
@@ -619,7 +632,7 @@ class PostgresBackgroundJobDeduperBackend:
                         LIMIT 1
                     )
                     UPDATE focus_background_jobs AS jobs
-                    SET status = 'pending',
+                    SET status = 'running',
                         attempt = jobs.attempt + 1,
                         claimed_by = %s,
                         claimed_until = %s,
@@ -698,7 +711,7 @@ class PostgresBackgroundJobDeduperBackend:
             WHERE job_key = %s
               AND claimed_by = %s
               AND claim_token = %s
-              AND status = 'pending'
+              AND status IN ('pending', 'running')
               AND claimed_until > now()
             """,
             (self._claimed_until(), str(key), claim.owner, claim.claim_token),
@@ -778,6 +791,7 @@ class PostgresBackgroundJobDeduperBackend:
               AND claimed_by = %s
               AND claim_token = %s
               AND status NOT IN ('succeeded', 'failed')
+              AND claimed_until > now()
             """,
             (str(key), claim.owner, claim.claim_token),
         )

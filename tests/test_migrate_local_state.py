@@ -11,6 +11,7 @@ from focus_agent.engine.local_persistence import PersistentInMemorySaver, Persis
 from focus_agent.memory.embedding import DeterministicTestEmbeddingProvider, MemoryEmbeddingService
 from focus_agent.migrate_local_state import (
     AppStateSinkDiscovery,
+    _migration_memory_embedding_settings,
     main,
     parse_args,
     run_migration,
@@ -86,11 +87,13 @@ class FakeMemoryRepository:
 class FakeMemoryEmbeddingRepository:
     def __init__(self):
         self.setup_calls = 0
+        self.setup_kwargs: list[dict] = []
         self.upsert_calls = 0
         self.embeddings: dict[str, dict] = {}
 
-    def setup(self) -> None:
+    def setup(self, **kwargs) -> None:
         self.setup_calls += 1
+        self.setup_kwargs.append(dict(kwargs))
 
     def get_memory_embedding(self, memory_id: str):
         return self.embeddings.get(memory_id)
@@ -100,6 +103,20 @@ class FakeMemoryEmbeddingRepository:
         memory_id = str(payload["memory_id"])
         self.embeddings[memory_id] = dict(payload)
         return memory_id
+
+
+def test_migration_memory_embedding_settings_default_to_local_auto_route(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_MEMORY_EMBEDDING_BACKEND", raising=False)
+    monkeypatch.delenv("AGENT_MEMORY_EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_MEMORY_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("AGENT_MEMORY_EMBEDDING_DIMENSIONS", raising=False)
+
+    settings = _migration_memory_embedding_settings()
+
+    assert settings.agent_memory_embedding_backend == "auto"
+    assert settings.agent_memory_embedding_provider == "openai_compatible"
+    assert settings.agent_memory_embedding_model == "embeddinggemma"
+    assert settings.agent_memory_embedding_dimensions == 768
 
 
 class FakeAppStateSink:
@@ -397,5 +414,9 @@ def test_run_migration_backfills_memory_embeddings_idempotently(tmp_path, monkey
     assert second_embedding_step["details"]["written_embedding_count"] == 0
     assert second_embedding_step["details"]["skipped_embedding_count"] == 1
     assert fake_embedding_repo.setup_calls == 2
+    assert fake_embedding_repo.setup_kwargs == [
+        {"memory_embeddings_enabled": True, "dimensions": 4},
+        {"memory_embeddings_enabled": True, "dimensions": 4},
+    ]
     assert fake_embedding_repo.upsert_calls == 1
     assert len(fake_embedding_repo.embeddings) == 1

@@ -9,6 +9,7 @@ import urllib.error
 from typing import Any, Protocol
 from urllib.request import Request, urlopen
 
+from .embedding_policy import should_embed_memory
 from .models import MemoryRecord, MemoryStatus
 
 
@@ -65,6 +66,73 @@ class DeterministicTestEmbeddingProvider:
         return self.embed(list(texts))
 
 
+DEFAULT_OLLAMA_EMBEDDING_MODEL = "embeddinggemma"
+DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS = 768
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS = 1536
+
+
+def ollama_embedding_install_hint(model_id: str = DEFAULT_OLLAMA_EMBEDDING_MODEL) -> str:
+    return f"ollama pull {model_id or DEFAULT_OLLAMA_EMBEDDING_MODEL}"
+
+
+class OllamaEmbeddingProvider:
+    provider_id = "ollama"
+
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        model_id: str | None = None,
+        dimensions: int = DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS,
+        base_url: str | None = None,
+        timeout_seconds: float = 30.0,
+    ):
+        self.model_id = (model or model_id or DEFAULT_OLLAMA_EMBEDDING_MODEL).strip()
+        self.dimensions = _validate_dimensions(dimensions)
+        self.base_url = _ollama_native_base_url(base_url or DEFAULT_OLLAMA_BASE_URL)
+        self.timeout_seconds = float(timeout_seconds)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        payload = {
+            "model": self.model_id,
+            "input": texts,
+        }
+        request = Request(
+            f"{self.base_url}/api/embed",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                decoded = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise MemoryEmbeddingError(
+                "Ollama embedding request failed. "
+                f"Ensure Ollama is running and install the model with: "
+                f"{ollama_embedding_install_hint(self.model_id)}"
+            ) from exc
+
+        embeddings = _extract_ollama_embeddings(decoded, expected_count=len(texts))
+        return [_coerce_embedding(vector, dimensions=self.dimensions) for vector in embeddings]
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return self.embed(list(texts))
+
+    def embed_text(self, text: str) -> list[float]:
+        return self.embed([text])[0]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_text(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.embed(list(texts))
+
+
 class OpenAICompatibleEmbeddingProvider:
     provider_id = "openai_compatible"
 
@@ -78,7 +146,7 @@ class OpenAICompatibleEmbeddingProvider:
         base_url: str | None = None,
         timeout_seconds: float = 30.0,
     ):
-        self.model_id = (model or model_id or "text-embedding-3-small").strip()
+        self.model_id = (model or model_id or DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL).strip()
         self.dimensions = _validate_dimensions(dimensions)
         self.api_key = api_key.strip()
         self.base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
@@ -268,27 +336,23 @@ def create_memory_embedding_provider(settings: Any) -> EmbeddingProvider | None:
     if backend in {"", "disabled", "none", "off"}:
         return None
     provider_id = backend
-    model_id = str(getattr(settings, "agent_memory_embedding_model", "text-embedding-3-small")).strip()
-    dimensions = int(getattr(settings, "agent_memory_embedding_dimensions", None) or 1536)
+    model_id = str(getattr(settings, "agent_memory_embedding_model", DEFAULT_OLLAMA_EMBEDDING_MODEL)).strip()
+    dimensions = int(getattr(settings, "agent_memory_embedding_dimensions", None) or DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS)
     if provider_id == "deterministic_test":
         return DeterministicTestEmbeddingProvider(model_id=model_id or "deterministic-test", dimensions=dimensions)
+    if provider_id == "ollama":
+        return _create_ollama_embedding_provider(settings)
     if provider_id == "openai_compatible":
-        api_key_env = str(getattr(settings, "agent_memory_embedding_api_key_env", "OPENAI_API_KEY") or "").strip()
-        api_key = str(getattr(settings, "agent_memory_embedding_api_key", "") or "").strip()
-        if not api_key and api_key_env:
-            api_key = _settings_environ(settings).get(api_key_env, "").strip()
-            if not api_key:
-                raise EmbeddingProviderConfigError(
-                    f"OpenAI-compatible embedding API key env {api_key_env!r} is not set."
-                )
-        base_url = getattr(settings, "agent_memory_embedding_base_url", None)
-        return OpenAICompatibleEmbeddingProvider(
-            model_id=model_id or "text-embedding-3-small",
-            dimensions=dimensions,
-            api_key=api_key,
-            base_url=str(base_url).strip() if base_url else None,
-            timeout_seconds=float(getattr(settings, "agent_memory_embedding_timeout_seconds", 30.0)),
+        return _create_openai_compatible_embedding_provider(
+            settings,
+            model_id=_openai_compatible_embedding_model(settings, model_id=model_id),
+            dimensions=_openai_compatible_embedding_dimensions(
+                settings,
+                dimensions=dimensions,
+            ),
         )
+    if provider_id == "auto":
+        return _create_auto_memory_embedding_provider(settings)
     raise EmbeddingProviderConfigError(f"Unknown memory embedding provider: {provider_id}")
 
 
@@ -316,11 +380,218 @@ def _memory_embedding_backend(settings: Any) -> str:
     return str(backend or "").strip().lower().replace("-", "_")
 
 
+def _create_auto_memory_embedding_provider(settings: Any) -> EmbeddingProvider | None:
+    ollama_provider = _create_ollama_embedding_provider(settings)
+    if _ollama_model_available(ollama_provider):
+        return ollama_provider
+
+    if not _openai_compatible_fallback_configured(settings):
+        raise EmbeddingProviderConfigError(
+            "Auto memory embedding provider unavailable. "
+            f"Ollama model {ollama_provider.model_id!r} is not installed or Ollama is not running. "
+            f"Install it with: {ollama_embedding_install_hint(ollama_provider.model_id)}."
+        )
+
+    try:
+        model_id = _openai_compatible_embedding_model(
+            settings,
+            model_id=str(
+                getattr(settings, "agent_memory_embedding_model", DEFAULT_OLLAMA_EMBEDDING_MODEL)
+                or ""
+            ).strip(),
+        )
+        return _create_openai_compatible_embedding_provider(
+            settings,
+            model_id=model_id,
+            dimensions=_openai_compatible_embedding_dimensions(
+                settings,
+                dimensions=int(
+                    getattr(settings, "agent_memory_embedding_dimensions", None)
+                    or DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS
+                ),
+            ),
+        )
+    except EmbeddingProviderConfigError as exc:
+        raise EmbeddingProviderConfigError(
+            "Auto memory embedding provider unavailable. "
+            f"Ollama model {ollama_provider.model_id!r} is not installed or Ollama is not running. "
+            f"Install it with: {ollama_embedding_install_hint(ollama_provider.model_id)}. "
+            f"OpenAI-compatible fallback unavailable: {exc}"
+        ) from exc
+
+
+def _create_ollama_embedding_provider(settings: Any) -> OllamaEmbeddingProvider:
+    model_id = _ollama_embedding_model(settings)
+    return OllamaEmbeddingProvider(
+        model_id=model_id,
+        dimensions=_ollama_embedding_dimensions(settings, model_id=model_id),
+        base_url=_ollama_embedding_base_url(settings),
+        timeout_seconds=float(getattr(settings, "agent_memory_embedding_timeout_seconds", 30.0)),
+    )
+
+
+def _create_openai_compatible_embedding_provider(
+    settings: Any,
+    *,
+    model_id: str,
+    dimensions: int,
+) -> OpenAICompatibleEmbeddingProvider:
+    api_key_env = str(getattr(settings, "agent_memory_embedding_api_key_env", "OPENAI_API_KEY") or "").strip()
+    api_key = str(getattr(settings, "agent_memory_embedding_api_key", "") or "").strip()
+    inherited_client_kwargs = _default_model_client_kwargs(settings)
+    if not api_key and api_key_env:
+        api_key = _settings_environ(settings).get(api_key_env, "").strip()
+    if not api_key:
+        api_key = str(inherited_client_kwargs.get("api_key") or "").strip()
+    if not api_key:
+        key_hint = f" env {api_key_env!r}" if api_key_env else ""
+        raise EmbeddingProviderConfigError(
+            f"OpenAI-compatible embedding API key{key_hint} is not set."
+        )
+    base_url = getattr(settings, "agent_memory_embedding_base_url", None)
+    if not base_url:
+        base_url = inherited_client_kwargs.get("base_url")
+    return OpenAICompatibleEmbeddingProvider(
+        model_id=model_id or DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
+        dimensions=dimensions,
+        api_key=api_key,
+        base_url=str(base_url).strip() if base_url else None,
+        timeout_seconds=float(getattr(settings, "agent_memory_embedding_timeout_seconds", 30.0)),
+    )
+
+
 def _settings_environ(settings: Any) -> dict[str, str]:
     resolved = getattr(settings, "resolved_env", None)
     if isinstance(resolved, dict) and resolved:
         return {str(key): str(value) for key, value in resolved.items()}
     return dict(os.environ)
+
+
+def _openai_compatible_fallback_configured(settings: Any) -> bool:
+    env = _settings_environ(settings)
+    env_backend = _normalize_provider_name(env.get("AGENT_MEMORY_EMBEDDING_BACKEND"))
+    env_provider = _normalize_provider_name(env.get("AGENT_MEMORY_EMBEDDING_PROVIDER"))
+    if env_backend == "openai_compatible" or env_provider == "openai_compatible":
+        return True
+    for key in (
+        "AGENT_MEMORY_EMBEDDING_BASE_URL",
+        "AGENT_MEMORY_EMBEDDING_API_KEY",
+        "AGENT_MEMORY_EMBEDDING_API_KEY_ENV",
+    ):
+        if str(env.get(key) or "").strip():
+            return True
+    explicit_model = str(env.get("AGENT_MEMORY_EMBEDDING_MODEL") or "").strip()
+    if explicit_model and explicit_model not in {
+        DEFAULT_OLLAMA_EMBEDDING_MODEL,
+        "embedding-gemma",
+    }:
+        return True
+    base_url = str(getattr(settings, "agent_memory_embedding_base_url", "") or "").strip()
+    if base_url and "ollama" not in base_url.lower() and "11434" not in base_url:
+        return True
+    if str(getattr(settings, "agent_memory_embedding_api_key", "") or "").strip():
+        return True
+    api_key_env = str(getattr(settings, "agent_memory_embedding_api_key_env", "") or "").strip()
+    if api_key_env and api_key_env != "OPENAI_API_KEY":
+        return True
+    return False
+
+
+def _openai_compatible_embedding_model(settings: Any, *, model_id: str) -> str:
+    env = _settings_environ(settings)
+    explicit_model = str(env.get("AGENT_MEMORY_EMBEDDING_MODEL") or "").strip()
+    model = str(model_id or explicit_model or "").strip()
+    if model and model not in {DEFAULT_OLLAMA_EMBEDDING_MODEL, "embedding-gemma"}:
+        return model
+    return DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL
+
+
+def _openai_compatible_embedding_dimensions(settings: Any, *, dimensions: int) -> int:
+    env = _settings_environ(settings)
+    if str(env.get("AGENT_MEMORY_EMBEDDING_DIMENSIONS") or "").strip():
+        return _validate_dimensions(dimensions)
+    if dimensions in {0, DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS}:
+        return DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS
+    return _validate_dimensions(dimensions)
+
+
+def _normalize_provider_name(value: object) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def _default_model_client_kwargs(settings: Any) -> dict[str, str]:
+    try:
+        from ..model_registry import resolve_model_config
+
+        resolved = resolve_model_config(
+            str(getattr(settings, "model", "") or ""),
+            settings=settings,
+        )
+    except Exception:
+        return {}
+    return {str(key): str(value) for key, value in resolved.client_kwargs.items()}
+
+
+def _ollama_embedding_model(settings: Any) -> str:
+    model = str(getattr(settings, "agent_memory_embedding_model", "") or "").strip()
+    if not model or model == "text-embedding-3-small":
+        return DEFAULT_OLLAMA_EMBEDDING_MODEL
+    return model
+
+
+def _ollama_embedding_dimensions(settings: Any, *, model_id: str) -> int:
+    dimensions = int(getattr(settings, "agent_memory_embedding_dimensions", None) or 0)
+    if model_id == DEFAULT_OLLAMA_EMBEDDING_MODEL and dimensions in {0, 1536}:
+        return DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS
+    return _validate_dimensions(dimensions or DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS)
+
+
+def _ollama_embedding_base_url(settings: Any) -> str:
+    base_url = str(getattr(settings, "agent_memory_embedding_base_url", "") or "").strip()
+    if not base_url:
+        base_url = _settings_environ(settings).get("OLLAMA_BASE_URL", "").strip()
+    return _ollama_native_base_url(base_url or DEFAULT_OLLAMA_BASE_URL)
+
+
+def _ollama_native_base_url(base_url: str) -> str:
+    normalized = str(base_url or DEFAULT_OLLAMA_BASE_URL).strip().rstrip("/")
+    if normalized.endswith("/v1"):
+        normalized = normalized[: -len("/v1")].rstrip("/")
+    return normalized or DEFAULT_OLLAMA_BASE_URL
+
+
+def _ollama_model_available(provider: OllamaEmbeddingProvider) -> bool:
+    request = Request(f"{provider.base_url}/api/tags", method="GET")
+    try:
+        with urlopen(request, timeout=provider.timeout_seconds) as response:
+            decoded = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return False
+
+    models = decoded.get("models") if isinstance(decoded, dict) else None
+    if not isinstance(models, list):
+        return False
+    expected = provider.model_id
+    for item in models:
+        if isinstance(item, dict):
+            name = str(item.get("name") or item.get("model") or "").strip()
+        else:
+            name = str(item or "").strip()
+        if name == expected or name == f"{expected}:latest" or name.split(":", 1)[0] == expected:
+            return True
+    return False
+
+
+def _extract_ollama_embeddings(decoded: object, *, expected_count: int) -> list[object]:
+    if not isinstance(decoded, dict):
+        raise MemoryEmbeddingError("Ollama embedding provider returned an invalid response shape.")
+    embeddings = decoded.get("embeddings")
+    if embeddings is None and expected_count == 1:
+        embedding = decoded.get("embedding")
+        embeddings = [embedding] if embedding is not None else None
+    if not isinstance(embeddings, list) or len(embeddings) != expected_count:
+        raise MemoryEmbeddingError("Ollama embedding provider returned an invalid response shape.")
+    return list(embeddings)
 
 
 def _existing_memory_embedding_content_hash(
@@ -334,15 +605,14 @@ def _existing_memory_embedding_content_hash(
     if repository is None:
         return None
 
-    get_embedding = getattr(repository, "get_memory_embedding", None)
-    if callable(get_embedding):
-        try:
-            return _metadata_content_hash(get_embedding(memory_id=memory_id))
-        except TypeError:
-            return _metadata_content_hash(get_embedding(memory_id))
-
     list_metadata = getattr(repository, "list_embedding_metadata", None)
     if not callable(list_metadata):
+        get_embedding = getattr(repository, "get_memory_embedding", None)
+        if callable(get_embedding):
+            try:
+                return _metadata_content_hash(get_embedding(memory_id=memory_id))
+            except TypeError:
+                return _metadata_content_hash(get_embedding(memory_id))
         return None
 
     offset = 0
@@ -441,15 +711,6 @@ def memory_embedding_content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def should_embed_memory(record: MemoryRecord) -> bool:
-    return (
-        record.status == MemoryStatus.ACTIVE
-        and record.deleted_at is None
-        and bool(memory_embedding_text(record))
-        and (record.summary != "[forgotten]" or bool(record.content))
-    )
-
-
 def _validate_dimensions(value: int) -> int:
     dimensions = int(value)
     if dimensions <= 0:
@@ -492,17 +753,24 @@ def vector_literal(vector: list[float]) -> str:
 
 
 __all__ = [
+    "DEFAULT_OLLAMA_BASE_URL",
+    "DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS",
+    "DEFAULT_OLLAMA_EMBEDDING_MODEL",
+    "DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS",
+    "DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL",
     "DeterministicTestEmbeddingProvider",
     "EmbeddingProvider",
     "EmbeddingProviderConfigError",
     "MemoryEmbeddingError",
     "MemoryEmbeddingPayload",
     "MemoryEmbeddingService",
+    "OllamaEmbeddingProvider",
     "OpenAICompatibleEmbeddingProvider",
     "create_memory_embedding_provider",
     "create_memory_embedding_service",
     "memory_embedding_content_hash",
     "memory_embedding_text",
+    "ollama_embedding_install_hint",
     "should_embed_memory",
     "vector_literal",
 ]

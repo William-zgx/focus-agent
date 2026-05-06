@@ -95,6 +95,14 @@ class MemoryRepository(Protocol):
         pgvector_extension_mode: str = "auto_create",
     ) -> None: ...
 
+    def rebuild_embedding_index(
+        self,
+        *,
+        dimensions: int | None = None,
+        vector_index: bool | None = None,
+        pgvector_extension_mode: str | None = None,
+    ) -> dict[str, object]: ...
+
     def upsert_record(self, record: MemoryRecord) -> str: ...
 
     def find_existing(

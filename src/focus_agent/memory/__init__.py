@@ -22,6 +22,7 @@ from .embedding import (
     OpenAICompatibleEmbeddingProvider,
     create_memory_embedding_provider,
 )
+from .embedding_policy import MemoryEmbeddingPolicy
 from .embedding_service import MemoryEmbeddingService
 from .models import (
     MemoryAuditEvent,
@@ -56,6 +57,7 @@ __all__ = [
     "MemoryExtractor",
     "DeterministicTestEmbeddingProvider",
     "MemoryEmbeddingError",
+    "MemoryEmbeddingPolicy",
     "MemoryEmbeddingService",
     "OpenAICompatibleEmbeddingProvider",
     "create_memory_embedding_provider",

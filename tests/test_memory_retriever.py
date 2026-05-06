@@ -419,6 +419,15 @@ class RepositoryPgvectorLikeFake(RepositorySearchFake):
         return []
 
 
+class FakeEmbeddingProvider:
+    provider_id = "fake_embedder"
+    model_id = "fake-embedding-model"
+    dimensions = 3
+
+    def embed(self, texts):
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
 class StoreShouldNotBeUsed:
     def search(self, namespace, query, limit):  # noqa: ARG002
         raise AssertionError("repository-backed retriever should not call the legacy store")
@@ -519,6 +528,53 @@ def test_memory_retriever_does_not_call_pgvector_without_embedding_provider():
     assert [hit.record.memory_id for hit in bundle.hits] == ["fts-mem"]
     assert repo.vector_calls == []
     assert bundle.retrieval_plan["vector_status"] == "disabled"
+    assert bundle.retrieval_plan["vector_candidate_count"] == 0
+    assert bundle.retrieval_plan["vector_fallback_reason"] == "vector_search_disabled"
+
+
+def test_memory_retriever_records_embedding_provider_metadata_in_plan():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositoryPgvectorLikeFake(
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="fts-mem",
+                    namespace=namespace,
+                    content="owner collision text result",
+                    summary="owner collision text result",
+                    score=0.42,
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(
+        store=StoreShouldNotBeUsed(),
+        repository=repo,
+        retrieval_mode="hybrid",
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert repo.vector_calls[0] == (
+        namespace,
+        [0.1, 0.2, 0.3],
+        "fake_embedder",
+        "fake-embedding-model",
+        8,
+    )
+    assert bundle.retrieval_plan["embedding_provider"] == {
+        "provider_id": "fake_embedder",
+        "model_id": "fake-embedding-model",
+        "dimensions": 3,
+    }
+    assert bundle.retrieval_plan["vector_candidate_count"] == 0
 
 
 def test_memory_retriever_normalizes_pgvector_embedding_hits():
@@ -678,6 +734,7 @@ def test_memory_retriever_hybrid_mode_falls_back_to_fts_when_vector_search_fails
     assert repo.vector_calls[0][0] == namespace
     assert bundle.retrieval_plan["vector_shadow"] == {}
     assert bundle.retrieval_plan["vector_status"] == "failed"
+    assert bundle.retrieval_plan["vector_fallback_reason"] == "vector_search_failed_fts_fallback"
 
 
 def test_memory_retriever_hybrid_mode_uses_rrf_to_mix_text_and_vector_results():

@@ -110,6 +110,13 @@ class MemoryRetriever:
                 vector_shadow_enabled=self.vector_shadow,
             ),
             vector_status=vector_status,
+            vector_candidate_count=len(vector_hits),
+            vector_fallback_reason=_vector_fallback_reason(
+                vector_status=vector_status,
+                enabled=self._should_search_vectors(),
+                retrieval_mode=self.retrieval_mode,
+            ),
+            embedding_provider=_embedding_provider_metadata(self.embedding_provider),
         )
         return filtered.model_copy(
             update={"retrieval_plan": retrieval_plan.model_dump(mode="json")}
@@ -336,6 +343,35 @@ def _vector_shadow_plan(
         "hit_count": len(vector_hits),
         "memory_ids": [hit.record.memory_id for hit in vector_hits],
     }
+
+
+def _vector_fallback_reason(*, vector_status: str, enabled: bool, retrieval_mode: str) -> str | None:
+    if vector_status == "completed":
+        return None
+    if not enabled:
+        return "vector_search_disabled"
+    if vector_status == "failed":
+        return "vector_search_failed_fts_fallback"
+    if vector_status == "unsupported":
+        return "vector_search_unsupported_fts_fallback"
+    if retrieval_mode != "hybrid":
+        return None
+    return f"vector_search_{vector_status}_fts_fallback"
+
+
+def _embedding_provider_metadata(provider: object | None) -> dict[str, object]:
+    if provider is None:
+        return {}
+    metadata: dict[str, object] = {}
+    for output_key, attr in (
+        ("provider_id", "provider_id"),
+        ("model_id", "model_id"),
+        ("dimensions", "dimensions"),
+    ):
+        value = getattr(provider, attr, None)
+        if value is not None:
+            metadata[output_key] = value
+    return metadata
 
 
 def _matched_terms(query: str, record: MemoryRecord) -> list[str]:

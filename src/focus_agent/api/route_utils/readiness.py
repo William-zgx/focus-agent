@@ -53,21 +53,49 @@ def _memory_embedding_backend_check(runtime: AppRuntime | Any) -> RuntimeCompone
         if provider is None and isinstance(provider_obj, str):
             provider = provider_obj
         model = getattr(provider_obj, "model_id", None) or getattr(provider_obj, "model", None)
-        model_detail = f" model={model}" if model else ""
+        details = [f"{provider or backend}: ready"]
+        if backend == "auto" and provider:
+            details.append(f"auto_selected={provider}")
+        if model:
+            details.append(f"model={model}")
+        dimensions = getattr(provider_obj, "dimensions", None)
+        if dimensions:
+            details.append(f"dimensions={dimensions}")
         return RuntimeComponentStatusResponse(
             name="memory_embedding_backend",
             ready=True,
-            detail=f"{provider or backend}: ready{model_detail}",
+            detail=" ".join(details),
+        )
+
+    if not getattr(settings, "database_uri", None):
+        detail = getattr(runtime, "memory_embedding_backend_error", None) or "local_fallback"
+        return RuntimeComponentStatusResponse(
+            name="memory_embedding_backend",
+            ready=True,
+            detail=f"local_fallback: {detail}",
         )
 
     return RuntimeComponentStatusResponse(
         name="memory_embedding_backend",
         ready=False,
-        detail=(
-            getattr(runtime, "memory_embedding_backend_error", None)
-            or f"{backend}: provider unavailable"
-        ),
+        detail=_memory_embedding_unavailable_detail(runtime, backend=backend),
     )
+
+
+def _memory_embedding_unavailable_detail(runtime: AppRuntime | Any, *, backend: str) -> str:
+    settings = getattr(runtime, "settings", None)
+    detail = (
+        getattr(runtime, "memory_embedding_backend_error", None)
+        or f"{backend}: provider unavailable"
+    )
+    provider = str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
+    if (
+        backend in {"auto", "ollama"}
+        or provider == "ollama"
+        or "ollama" in detail.lower()
+    ) and "ollama pull" not in detail:
+        return f"{detail}; install_hint=ollama pull embeddinggemma"
+    return detail
 
 
 def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusResponse:

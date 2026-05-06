@@ -200,16 +200,20 @@ def _migration_memory_embedding_settings() -> object:
 
     return SimpleNamespace(
         agent_memory_embedding_enabled=True,
+        agent_memory_embedding_backend=(
+            os.environ.get("AGENT_MEMORY_EMBEDDING_BACKEND")
+            or os.environ.get("AGENT_MEMORY_EMBEDDING_PROVIDER")
+            or "auto"
+        ),
         agent_memory_embedding_provider=(
             os.environ.get("AGENT_MEMORY_EMBEDDING_PROVIDER")
-            or os.environ.get("AGENT_MEMORY_EMBEDDING_BACKEND")
             or "openai_compatible"
         ),
         agent_memory_embedding_model=(
-            os.environ.get("AGENT_MEMORY_EMBEDDING_MODEL") or "text-embedding-3-small"
+            os.environ.get("AGENT_MEMORY_EMBEDDING_MODEL") or "embeddinggemma"
         ),
         agent_memory_embedding_dimensions=int(
-            os.environ.get("AGENT_MEMORY_EMBEDDING_DIMENSIONS") or "1536"
+            os.environ.get("AGENT_MEMORY_EMBEDDING_DIMENSIONS") or "768"
         ),
         agent_memory_embedding_base_url=os.environ.get("AGENT_MEMORY_EMBEDDING_BASE_URL"),
         agent_memory_embedding_api_key_env=(
@@ -1073,7 +1077,12 @@ def _setup_memory_embedding_service(embedding_service: object) -> None:
     repository = getattr(embedding_service, "embedding_repository", embedding_service)
     setup = getattr(repository, "setup", None)
     if callable(setup):
-        setup()
+        provider = getattr(embedding_service, "provider", None)
+        dimensions = int(getattr(provider, "dimensions", 1536) or 1536)
+        try:
+            setup(memory_embeddings_enabled=True, dimensions=dimensions)
+        except TypeError:
+            setup()
 
 
 def _memory_embedding_result_status(result: object) -> str:

@@ -174,6 +174,9 @@ class MemoryRetrievalPlan(MemoryModel):
     source: str = "postgres"
     vector_shadow: dict[str, object] = Field(default_factory=dict)
     vector_status: str = "unsupported"
+    vector_candidate_count: int = 0
+    vector_fallback_reason: str | None = None
+    embedding_provider: dict[str, object] = Field(default_factory=dict)
 
 
 class MemoryExtractionResult(MemoryModel):

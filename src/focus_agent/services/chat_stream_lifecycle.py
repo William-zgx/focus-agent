@@ -177,6 +177,7 @@ class ChatStreamLifecycleMixin:
         input_messages = list(payload.get('messages', []) if isinstance(payload, dict) else [])
         started_at = utc_now()
         emit_closed_frame = True
+        pending_branch_name_refresh: dict[str, Any] | None = None
         try:
             context, branch_meta, initial_values = self._preflight_thread_access(
                 thread_id=thread_id,
@@ -425,12 +426,12 @@ class ChatStreamLifecycleMixin:
                         data={'thread_id': thread_id, 'interrupt': interrupt_payload},
                     )
             turn_lease.raise_if_lost()
-            self._schedule_branch_name_refresh_after_first_turn(
-                thread_id=thread_id,
-                user_id=user_id,
-                branch_meta=latest_branch_meta,
-                kind=kind,
-            )
+            pending_branch_name_refresh = {
+                "thread_id": thread_id,
+                "user_id": user_id,
+                "branch_meta": latest_branch_meta,
+                "kind": kind,
+            }
             yield self._sse_frame(
                 event='turn.completed',
                 data={'thread_state': final_state},
@@ -468,5 +469,7 @@ class ChatStreamLifecycleMixin:
         finally:
             if turn_lease is not None:
                 turn_lease.close()
+            if pending_branch_name_refresh is not None:
+                self._schedule_branch_name_refresh_after_first_turn(**pending_branch_name_refresh)
             if emit_closed_frame:
                 yield self._sse_frame(event='turn.closed', data={'status': 'ok', 'thread_id': thread_id})

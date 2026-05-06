@@ -61,6 +61,22 @@ def test_in_memory_background_job_heartbeats_and_rejects_stale_claims() -> None:
     assert next_claim.attempt == 2
 
 
+def test_in_memory_background_job_does_not_duplicate_live_pending_claim() -> None:
+    backend = InMemoryBackgroundJobDeduperBackend()
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-dup",
+        payload={"root_thread_id": "thread-dup", "user_id": "user-1"},
+        max_attempts=2,
+    )
+
+    assert backend.enqueue_job(spec)
+    first_claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+
+    assert first_claimed is not None
+    assert backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0) is None
+
+
 def test_postgres_thread_turn_lock_uses_owner_ttl_heartbeat_and_release(monkeypatch) -> None:
     executed: list[tuple[str, object]] = []
 
@@ -361,12 +377,102 @@ def test_postgres_background_job_backend_enqueues_and_claims_specs(monkeypatch) 
     assert "claim_token" in statements[0]
     assert "FOR UPDATE SKIP LOCKED" in statements[2]
     assert "kind = ANY(%s)" in statements[2]
+    assert "claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now()" in statements[2]
+    assert "SET status = 'running'" in statements[2]
     assert "claim_token = %s" in statements[2]
     assert executed[0][1][0] == "chat:conversation_title:thread-1"
     assert executed[0][1][1] == "conversation_title"
     assert executed[0][1][4] == 3
     assert executed[2][1][0] == ["conversation_title"]
     assert executed[2][1][1] == "worker-1"
+
+
+def test_postgres_background_job_claim_next_does_not_duplicate_live_claim(monkeypatch) -> None:
+    storage = {
+        "status": "pending",
+        "attempt": 0,
+        "claim_token": None,
+        "claimed_until_live": False,
+    }
+    executed: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+            self._sql = " ".join(sql.split())
+            self._params = params
+
+        def fetchone(self):
+            if "RETURNING jobs.job_key" not in self._sql:
+                return None
+            excludes_live_pending = "claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now()" in self._sql
+            marks_running = "SET status = 'running'" in self._sql
+            status = str(storage["status"])
+            is_live = bool(storage["claimed_until_live"])
+            if status == "pending" and is_live and excludes_live_pending:
+                return None
+            if status == "running" and is_live:
+                return None
+            storage["attempt"] = int(storage["attempt"]) + 1
+            storage["status"] = "running" if marks_running else "pending"
+            storage["claim_token"] = self._params[3]
+            storage["claimed_until_live"] = True
+            return {
+                "job_key": "chat:conversation_title:thread-dup",
+                "kind": "conversation_title",
+                "payload": {"root_thread_id": "thread-dup", "user_id": "user-1"},
+                "run_at": None,
+                "max_attempts": 3,
+                "dedupe_policy": "skip",
+                "attempt": storage["attempt"],
+                "claim_token": storage["claim_token"],
+            }
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.services.coordination.psycopg.connect",
+        lambda uri, row_factory=None: FakeConnection(),
+    )
+
+    worker_a = PostgresBackgroundJobDeduperBackend(
+        "postgresql://example",
+        claim_ttl_seconds=30.0,
+        owner="worker-a",
+    )
+    worker_b = PostgresBackgroundJobDeduperBackend(
+        "postgresql://example",
+        claim_ttl_seconds=30.0,
+        owner="worker-b",
+    )
+
+    first_claimed = worker_a.claim_next_job(allowed_kinds=("conversation_title",))
+    second_claimed = worker_b.claim_next_job(allowed_kinds=("conversation_title",))
+
+    assert first_claimed is not None
+    assert second_claimed is None
+    statements = [" ".join(sql.split()) for sql, _ in executed]
+    claim_statements = [statement for statement in statements if "RETURNING jobs.job_key" in statement]
+    assert claim_statements
+    assert all(
+        "SET status = 'running'" in statement
+        or "claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now()" in statement
+        for statement in claim_statements
+    )
 
 
 def test_postgres_background_job_claim_token_guards_stale_workers(monkeypatch) -> None:
@@ -407,4 +513,5 @@ def test_postgres_background_job_claim_token_guards_stale_workers(monkeypatch) -
     statement = " ".join(executed[0][0].split())
     assert "claimed_by = %s" in statement
     assert "claim_token = %s" in statement
+    assert "claimed_until > now()" in statement
     assert executed[0][1] == ("chat:branch_title:thread-1", "worker-old", "old-token")

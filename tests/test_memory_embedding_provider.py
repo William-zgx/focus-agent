@@ -13,6 +13,7 @@ import focus_agent.memory.embedding as embedding_mod
 from focus_agent.memory.embedding import (
     DeterministicTestEmbeddingProvider,
     EmbeddingProviderConfigError,
+    OllamaEmbeddingProvider,
     OpenAICompatibleEmbeddingProvider,
     create_memory_embedding_provider,
 )
@@ -47,7 +48,15 @@ def test_deterministic_embedding_provider_returns_stable_unit_vectors() -> None:
 
 
 def test_memory_embedding_service_factory_supports_disabled_and_deterministic_backends() -> None:
-    assert create_memory_embedding_provider(Settings()) is None
+    assert (
+        create_memory_embedding_provider(
+            Settings(
+                agent_memory_embedding_enabled=False,
+                agent_memory_embedding_backend="disabled",
+            )
+        )
+        is None
+    )
 
     provider = create_memory_embedding_provider(
         Settings(
@@ -59,6 +68,23 @@ def test_memory_embedding_service_factory_supports_disabled_and_deterministic_ba
     assert provider is not None
     assert provider.provider_id == "deterministic_test"
     assert len(provider.embed_query("hello")) == 4
+
+
+def test_memory_embedding_defaults_to_openai_compatible_and_inherits_model_provider_client_config() -> None:
+    provider = create_memory_embedding_provider(
+        Settings(
+            agent_memory_embedding_backend="openai_compatible",
+            resolved_env={
+                "OPENAI_BASE_URL": "https://models.example.test/v1",
+                "OPENAI_API_KEY": "model-secret",
+            }
+        )
+    )
+
+    assert isinstance(provider, OpenAICompatibleEmbeddingProvider)
+    assert provider.provider_id == "openai_compatible"
+    assert provider.base_url == "https://models.example.test/v1"
+    assert provider.api_key == "model-secret"
 
 
 def test_memory_embedding_config_loads_agent_env_overrides() -> None:
@@ -84,6 +110,21 @@ def test_memory_embedding_config_loads_agent_env_overrides() -> None:
     assert values["agent_memory_embedding_dimensions"] == 32
     assert values["agent_memory_pgvector_extension_mode"] == "required"
     assert values["agent_memory_embedding_timeout_seconds"] == 4.5
+
+
+def test_memory_embedding_config_defaults_to_auto_ollama_route() -> None:
+    values = load_agent_config({}, Settings())
+
+    assert values["agent_memory_embedding_backend"] == "auto"
+    assert values["agent_memory_embedding_model"] == "embeddinggemma"
+    assert values["agent_memory_embedding_dimensions"] == 768
+
+
+def test_memory_embedding_config_enabled_false_disables_backend_by_default() -> None:
+    values = load_agent_config({"AGENT_MEMORY_EMBEDDING_ENABLED": "false"}, Settings())
+
+    assert values["agent_memory_embedding_enabled"] is False
+    assert values["agent_memory_embedding_backend"] == "disabled"
 
 
 def test_memory_embedding_config_defaults_pgvector_extension_mode_by_environment() -> None:
@@ -140,6 +181,138 @@ def test_openai_compatible_embedding_provider_posts_embeddings_request(monkeypat
     }
 
 
+def test_auto_embedding_provider_prefers_available_ollama_embeddinggemma(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        captured.setdefault("urls", []).append(request.full_url)
+        captured["timeout"] = timeout
+        if request.full_url == "http://ollama.example.test/api/tags":
+            return _FakeEmbeddingResponse({"models": [{"name": "embeddinggemma:latest"}]})
+        captured["embed_payload"] = json.loads(request.data.decode("utf-8"))
+        return _FakeEmbeddingResponse(
+            {
+                "embeddings": [
+                    [1.0, *([0.0] * 767)],
+                    [0.0, 1.0, *([0.0] * 766)],
+                ]
+            }
+        )
+
+    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+
+    provider = create_memory_embedding_provider(
+        Settings(
+            agent_memory_embedding_backend="auto",
+            agent_memory_embedding_base_url="http://ollama.example.test/v1",
+        )
+    )
+
+    assert isinstance(provider, OllamaEmbeddingProvider)
+    assert provider.provider_id == "ollama"
+    assert provider.model_id == "embeddinggemma"
+    assert provider.dimensions == 768
+    assert provider.base_url == "http://ollama.example.test"
+
+    vectors = provider.embed_texts(["alpha", "beta"])
+
+    assert [len(vector) for vector in vectors] == [768, 768]
+    assert captured["urls"] == [
+        "http://ollama.example.test/api/tags",
+        "http://ollama.example.test/api/embed",
+    ]
+    assert captured["timeout"] == 30.0
+    assert captured["embed_payload"] == {
+        "model": "embeddinggemma",
+        "input": ["alpha", "beta"],
+    }
+
+
+def test_auto_embedding_provider_reports_ollama_install_hint_when_no_backend_available(
+    monkeypatch,
+) -> None:
+    def fake_urlopen(request, timeout):
+        del timeout
+        assert request.full_url == "http://ollama.example.test/api/tags"
+        return _FakeEmbeddingResponse({"models": [{"name": "llama3.2:latest"}]})
+
+    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+
+    settings = Settings(
+        model="unknown-provider:missing",
+        agent_memory_embedding_backend="auto",
+        agent_memory_embedding_base_url="http://ollama.example.test",
+        agent_memory_embedding_api_key_env="",
+        agent_memory_embedding_api_key="",
+    )
+    with pytest.raises(EmbeddingProviderConfigError, match="ollama pull embeddinggemma"):
+        create_memory_embedding_provider(settings)
+
+
+def test_auto_embedding_provider_does_not_inherit_chat_credentials_as_cloud_fallback(
+    monkeypatch,
+) -> None:
+    def fake_urlopen(request, timeout):
+        del timeout
+        assert request.full_url == "http://ollama.example.test/api/tags"
+        return _FakeEmbeddingResponse({"models": []})
+
+    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+
+    settings = Settings(
+        agent_memory_embedding_backend="auto",
+        agent_memory_embedding_base_url="http://ollama.example.test",
+        resolved_env={
+            "OPENAI_BASE_URL": "https://chat-models.example.test/v1",
+            "OPENAI_API_KEY": "chat-model-secret",
+        },
+    )
+
+    with pytest.raises(EmbeddingProviderConfigError, match="ollama pull embeddinggemma"):
+        create_memory_embedding_provider(settings)
+
+
+def test_auto_embedding_provider_uses_explicit_openai_compatible_fallback(
+    monkeypatch,
+) -> None:
+    def fake_urlopen(request, timeout):
+        del timeout
+        assert request.full_url == "http://127.0.0.1:11434/api/tags"
+        return _FakeEmbeddingResponse({"models": []})
+
+    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+
+    provider = create_memory_embedding_provider(
+        Settings(
+            agent_memory_embedding_backend="auto",
+            agent_memory_embedding_api_key="direct-secret",
+            agent_memory_embedding_api_key_env="",
+        )
+    )
+
+    assert isinstance(provider, OpenAICompatibleEmbeddingProvider)
+    assert provider.model_id == "text-embedding-3-small"
+    assert provider.dimensions == 1536
+
+
+def test_explicit_openai_compatible_backend_does_not_probe_ollama(monkeypatch) -> None:
+    def fail_urlopen(request, timeout):
+        del request, timeout
+        raise AssertionError("explicit openai_compatible backend should not probe Ollama")
+
+    monkeypatch.setattr(embedding_mod, "urlopen", fail_urlopen)
+
+    provider = create_memory_embedding_provider(
+        Settings(
+            agent_memory_embedding_backend="openai_compatible",
+            agent_memory_embedding_api_key="direct-secret",
+            agent_memory_embedding_api_key_env="",
+        )
+    )
+
+    assert isinstance(provider, OpenAICompatibleEmbeddingProvider)
+
+
 def test_openai_compatible_factory_reports_missing_configured_api_key_env() -> None:
     settings = Settings(
         agent_memory_embedding_backend="openai_compatible",
@@ -194,6 +367,56 @@ def test_readiness_reports_memory_embedding_backend_ready_and_keeps_trajectory_l
     assert readiness.checks[-1].name == "trajectory_recorder"
 
 
+def test_readiness_reports_auto_selected_embedding_provider_metadata() -> None:
+    class _Provider:
+        provider_id = "ollama"
+        model_id = "embeddinggemma"
+        dimensions = 768
+
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0] * self.dimensions for _ in texts]
+
+    class _Repository:
+        def inspect_pgvector_support(self, *, dimensions: int, vector_index: bool) -> dict[str, object]:
+            return {
+                "extension_installed": True,
+                "extension_version": "0.8.0",
+                "embeddings_table_exists": True,
+                "embedding_column_type": f"vector({dimensions})",
+                "dimensions_match": True,
+                "vector_index_exists": vector_index,
+            }
+
+    settings = Settings(
+        database_uri="postgresql://focus-agent.test/readiness",
+        agent_memory_embedding_backend="auto",
+    )
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        memory_repository=_Repository(),
+        memory_embedding_service=MemoryEmbeddingService(
+            repository=object(),
+            provider=_Provider(),
+        ),
+        memory_embedding_backend_error=None,
+        otel_runtime=None,
+        trajectory_recorder=None,
+    )
+
+    readiness = _build_runtime_readiness(runtime)
+    check = next(item for item in readiness.checks if item.name == "memory_embedding_backend")
+
+    assert check.ready is True
+    assert "auto_selected=ollama" in check.detail
+    assert "model=embeddinggemma" in check.detail
+    assert "dimensions=768" in check.detail
+
+
 def test_readiness_degrades_when_configured_pgvector_storage_is_missing() -> None:
     class _Repository:
         def inspect_pgvector_support(self, *, dimensions: int, vector_index: bool) -> dict[str, object]:
@@ -239,7 +462,10 @@ def test_readiness_degrades_when_configured_pgvector_storage_is_missing() -> Non
 
 def test_readiness_degrades_when_configured_memory_embedding_backend_is_unavailable() -> None:
     runtime = SimpleNamespace(
-        settings=Settings(agent_memory_embedding_backend="openai_compatible"),
+        settings=Settings(
+            database_uri="postgresql://focus-agent.test/readiness",
+            agent_memory_embedding_backend="openai_compatible",
+        ),
         graph=object(),
         repo=object(),
         branch_service=object(),
@@ -259,3 +485,52 @@ def test_readiness_degrades_when_configured_memory_embedding_backend_is_unavaila
     assert readiness.status == "degraded"
     assert check.ready is False
     assert check.detail == "missing embedding credentials"
+
+
+def test_readiness_reports_ollama_install_hint_when_auto_backend_is_unavailable() -> None:
+    runtime = SimpleNamespace(
+        settings=Settings(
+            database_uri="postgresql://focus-agent.test/readiness",
+            agent_memory_embedding_backend="auto",
+        ),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        memory_repository=None,
+        memory_embedding_service=None,
+        memory_embedding_backend_error="ollama model embeddinggemma is not installed",
+        otel_runtime=None,
+        trajectory_recorder=None,
+    )
+
+    readiness = _build_runtime_readiness(runtime)
+    check = next(item for item in readiness.checks if item.name == "memory_embedding_backend")
+
+    assert readiness.ready is False
+    assert check.ready is False
+    assert "install_hint=ollama pull embeddinggemma" in check.detail
+
+
+def test_readiness_keeps_local_fallback_ready_when_default_embedding_credentials_are_absent() -> None:
+    runtime = SimpleNamespace(
+        settings=Settings(agent_memory_embedding_backend="openai_compatible"),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        memory_repository=None,
+        memory_embedding_service=None,
+        memory_embedding_backend_error="missing embedding credentials",
+        otel_runtime=None,
+        trajectory_recorder=None,
+    )
+
+    readiness = _build_runtime_readiness(runtime)
+    check = next(item for item in readiness.checks if item.name == "memory_embedding_backend")
+
+    assert readiness.ready is True
+    assert check.ready is True
+    assert check.detail == "local_fallback: missing embedding credentials"

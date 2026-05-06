@@ -2,7 +2,7 @@
 
 更新时间：2026-05-06
 
-本文是 PostgreSQL canonical memory 架构的系统设计文档。它描述当前仓库中的真实实现，而不是未来设想。旧版 `docs/memory-system.md` 仍可作为演进背景阅读；本文件重点整理 v2 后的设计边界、数据模型、运行时链路、pgvector shadow、审计治理和后续风险。
+本文是 PostgreSQL canonical memory 架构的系统设计文档。它描述当前仓库中的真实实现，而不是未来设想。旧版 `docs/memory-system.md` 仍可作为演进背景阅读；本文件重点整理 v2 后的设计边界、数据模型、运行时链路、pgvector embedding、审计治理和后续风险。
 
 ## 1. 定位
 
@@ -15,14 +15,15 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 在稳定 turn 结束后做保守启发式抽取，经 `MemoryPolicy` 和 `MemoryService` 写入 canonical store。
 - 分支和多 agent 产生的候选默认隔离，只有 merge/promotion 语义确认后才进入主线可依赖 memory。
 - PostgreSQL 独立业务表是生产 canonical storage；LangGraph Store 保留给 checkpoint/graph 兼容路径和本地 fallback。
-- pgvector embedding 已作为可选 shadow index 接入 canonical memory；默认关闭，不改变 FTS 主路径排序。
+- pgvector embedding 默认启用，并作为 turn-level memory retrieval 的 hybrid 输入参与 RRF 合并；本地默认自动探测 Ollama `embeddinggemma`，`focus_memories` 仍是 canonical truth，`focus_memory_embeddings` 是可重建索引。
 
 当前明确不做：
 
-- 不引入 mandatory external vector database；pgvector 是 PostgreSQL 内的可选能力，不是外部向量库。
-- 不把 embedding retrieval 作为默认或必需检索路径；pgvector 只作为 canonical memory 的可选 shadow index 或 hybrid rerank 输入。
+- 不引入 mandatory external vector database；pgvector 是 PostgreSQL 内的默认语义检索能力，不是外部向量库。
+- 不把 embedding 向量本身当 canonical memory；forget、权限、审计仍以 `focus_memories` 和 tombstone 为准。
 - 不通过 API/SDK/Web 返回 embedding 向量本身，只暴露状态、模型和更新时间等 metadata。
 - 不增加专用 memory summarizer model。
+- 不把短期上下文、规则、项目指令或工作记忆 embedding 化；这些内容继续通过 context assembly、pinned/context state、skills 和 `AGENTS.md` 等显式上下文进入模型。
 - 不把 Markdown snapshot 当运行时事实源。
 - 不提供普通 HTTP create/update memory；HTTP surface 目前是 list/detail/audit/candidates/forget。
 - 不改变 Agent Team / Mission Runner 公共 API、UI、任务模型。
@@ -180,7 +181,7 @@ Schema v8-v10 创建 memory 业务表：
 | `focus_memory_audit_events` | append-only audit trail。 |
 | `focus_memory_tombstones` | soft forget tombstone。 |
 | `focus_memory_candidates` | multi-agent / branch candidate board。 |
-| `focus_memory_embeddings` | 可选 pgvector shadow index；只有 embedding 配置启用或 hybrid 模式需要时才创建。 |
+| `focus_memory_embeddings` | pgvector embedding index；默认启用，可在显式关闭 embedding 且不用 hybrid 时跳过创建。 |
 
 ```mermaid
 erDiagram
@@ -278,22 +279,43 @@ Schema version 语义：
 
 - v8：创建 `focus_memories`、audit、tombstone、candidate 表。
 - v9：幂等清理历史 forgotten rows 中遗留的正文。
-- v10：创建 pgvector extension、`focus_memory_embeddings` 和相关索引。Runtime 只有在 embedding backend 配置启用或 `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时才请求 v10 schema；默认 shadow 配置但 provider 关闭时不会强制创建 pgvector schema。
+- v10：按 extension mode 创建或校验 pgvector，创建 `focus_memory_embeddings` 和相关索引。当前默认 embedding backend 已启用且检索模式为 `hybrid`，因此有 `DATABASE_URI` 的默认启动会请求 v10 schema；显式关闭 embedding 且不使用 `hybrid` 时才不会强制创建 pgvector schema。
 
-当前基础检索是 PostgreSQL FTS + `ILIKE` fallback。`AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` 已作为配置位存在，但 `pg_trgm` 不是当前启动硬依赖。
+当前基础检索是 PostgreSQL FTS + `ILIKE` fallback + pgvector hybrid。`AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` 已作为配置位存在，但 `pg_trgm` 不是当前启动硬依赖。
 
-### 4.1 pgvector Shadow 边界
+### 4.1 pgvector Embedding 边界
 
-pgvector 如果启用，只能作为 canonical memory 的 shadow index：
+pgvector 默认启用，但它仍只是 canonical memory 的可重建语义索引：
 
 - canonical truth 仍是 `focus_memories` 和 `data_json` round-trip。
-- shadow 只保存按 `memory_id` 关联的 embedding 向量和索引 metadata，不能成为权限、forget、audit 或 migration 的唯一事实源。
+- embedding 表只保存按 `memory_id` 关联的向量和索引 metadata，不能成为权限、forget、audit 或 migration 的唯一事实源。
 - API/SDK/Web 只返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`；不会返回 `embedding`、`embedding_vector`、`vector` 等向量字段。
 - 检索仍必须先应用 namespace/read policy；embedding recall 只能在同一权限边界内补充召回或排序。
 - provider/model/dimensions/content_hash 是幂等和多模型并存边界；维度变化应通过新 model/version 和重建流程处理。
-- shadow 缺失、过期或模型不匹配时，系统应继续走 PostgreSQL FTS + `ILIKE` fallback。
+- embedding 缺失、过期、provider 失败或模型不匹配时，系统应继续走 PostgreSQL FTS + `ILIKE` fallback。
 
-### 4.2 pgvector Extension 生命周期
+### 4.2 Embedding 分层策略
+
+`MemoryEmbeddingPolicy` 是长期语义记忆是否进入向量索引的统一判断入口。默认 eligible：
+
+- `user_preference`
+- `user_profile`
+- `project_fact`
+- `imported_conclusion`
+- 已 promotion 到 main/root 的 `branch_finding`
+
+默认不写 embedding：
+
+- `turn_summary`
+- `tool_observation`
+- `artifact`
+- `citation`
+- 规则、项目指令、短期上下文、工作记忆
+- forgotten、deleted、空正文/空摘要 record
+
+这些非 embedding 内容不是“不参与上下文”，而是不走向量召回：它们仍可通过 FTS、explicit context assembly、pinned/context state、skills、`AGENTS.md` 或专门 tool surface 进入 prompt。这样可以避免短期噪声、运行时观察和规则文本污染长期语义索引，也让 pgvector 表保持可重建、低噪声。
+
+### 4.3 pgvector Extension 生命周期
 
 `vector` 是 PostgreSQL database-level extension，不是普通应用表。规范环境中应把 extension
 治理和应用 schema migration 分开：
@@ -311,7 +333,7 @@ flowchart TD
 
 - `auto_create`：本地开发、CI、短生命周期测试库可用。应用 migration 会执行 `CREATE EXTENSION IF NOT EXISTS vector`，要求连接账号有 extension 权限。
 - `required`：生产推荐。DBA 或迁移账号先执行 `CREATE EXTENSION IF NOT EXISTS vector`，应用账号启动时只校验，不尝试创建 extension。
-- 未启用 embedding backend 且不是 `hybrid` 模式时，runtime 不执行 v10，也不会要求 pgvector。
+- 显式关闭 embedding backend 且不是 `hybrid` 模式时，runtime 不执行 v10，也不会要求 pgvector；默认配置会要求 pgvector schema 可用。
 - 维度由 `AGENT_MEMORY_EMBEDDING_DIMENSIONS` 决定；`embedding vector(N)` 不应在线改列类型。模型或维度变化应切换 `model_id` 并重建 shadow。
 - `AGENT_MEMORY_VECTOR_INDEX_ENABLED=true` 会创建 HNSW index，适合在 staging 或生产维护窗口打开；默认关闭，避免首次构建成本影响启动。
 
@@ -344,6 +366,7 @@ flowchart TD
     Settings --> EmbEnabled{"embedding configured?"}
     EmbEnabled -- "yes + Postgres" --> EmbSvc["MemoryEmbeddingService"]
     EmbSvc --> Provider["EmbeddingProvider"]
+    Provider --> Ollama["ollama / embeddinggemma"]
     Provider --> OpenAI["openai_compatible"]
     Provider --> TestProvider["deterministic_test"]
     Pg --> Runtime["AppRuntime"]
@@ -365,7 +388,7 @@ flowchart TD
 - 有 `DATABASE_URI`：初始化 `PostgresMemoryRepository`，并注入 retriever/writer/tool registry/API。
 - 无 `DATABASE_URI`：`runtime.memory_repository=None`，memory 走 legacy LangGraph Store fallback。
 - v10 schema setup 会在 embedding backend 配置启用或 `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时请求；pgvector extension 行为由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 决定，`auto_create` 会尝试创建，`required` 只校验已安装。
-- embedding provider 只有在 `AGENT_MEMORY_EMBEDDING_ENABLED=true` 或 `AGENT_MEMORY_EMBEDDING_BACKEND` 非 `disabled` 时才会创建；仅设置 `hybrid` 但没有 provider 时不会实际 vector search。
+- embedding provider 默认创建；显式设置 `AGENT_MEMORY_EMBEDDING_ENABLED=false` 且未指定 backend 时会关闭，或可直接设置 `AGENT_MEMORY_EMBEDDING_BACKEND=disabled`。仅设置 `hybrid` 但没有 provider 时会回退 FTS。
 - 有 repository 且 provider 创建成功时，runtime 会把同一个 `MemoryEmbeddingService` 注入 writer、tool registry 和 turn-level retriever。
 - readiness 会在 Postgres 模式下检查 `memory_repository`，并通过 `memory_embedding_backend` 报告 provider 状态，通过 `memory_pgvector` 报告 extension/table/dimensions/index 状态。
 - local fallback 不维护 pgvector shadow；API list/detail 类 endpoint 返回 `available=false` 或 records 中的 `embedding_*` metadata 为空，不能据此判断生产索引健康度。
@@ -378,25 +401,24 @@ flowchart TD
 | `AGENT_MEMORY_READ_SOURCE` | `postgres` | 已解析，当前 retriever 是 repository 优先、无 repository 时 legacy fallback。 |
 | `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。 |
 | `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` | `false` | 预留/可选增强配置位。 |
-| `AGENT_MEMORY_EMBEDDING_ENABLED` | `false` | 是否启用 memory embedding provider。 |
-| `AGENT_MEMORY_EMBEDDING_BACKEND` | `disabled` | `disabled`、`deterministic_test` 或 `openai_compatible`。 |
-| `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `shadow` | `shadow` 只记录向量候选；`hybrid` 用 RRF 合并 FTS/vector。 |
 | `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` | dev/test: `auto_create`; non-dev: `required` | pgvector extension 治理模式；生产推荐 `required`。 |
 | `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | 是否创建 HNSW vector index。 |
 | `AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES` | `false` | 预留审批策略配置位；完整审批应继续接入 tool approval/governance。 |
 | `AGENT_MEMORY_CURATOR_ENABLED` | `false` | 是否启用 branch promotion curator。 |
 | `AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE` | `true` | curator enabled 时是否自动写入无冲突候选。 |
-| `AGENT_MEMORY_EMBEDDING_ENABLED` | `false` | 是否启用 memory embedding provider；默认不调用真实 provider。 |
-| `AGENT_MEMORY_EMBEDDING_BACKEND` | `disabled` | 实际 backend 选择；可为 `disabled`、`openai_compatible`、`deterministic_test`。 |
-| `AGENT_MEMORY_EMBEDDING_PROVIDER` | `openai_compatible` | legacy/兼容 provider 名；backend 未显式设置但 enabled 时使用。 |
-| `AGENT_MEMORY_EMBEDDING_MODEL` | `text-embedding-3-small` | embedding model id，写入 shadow metadata 和幂等 key。 |
-| `AGENT_MEMORY_EMBEDDING_DIMENSIONS` | `1536` | pgvector 列维度和 provider 输出维度校验。维度变化应走新 model/version + rebuild。 |
-| `AGENT_MEMORY_EMBEDDING_BASE_URL` | unset | OpenAI-compatible endpoint base URL。 |
-| `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` | `OPENAI_API_KEY` | 从哪个环境变量读取 embedding API key；可用 direct key 覆盖。 |
+| `AGENT_MEMORY_EMBEDDING_ENABLED` | `true` | 是否启用 memory embedding provider；默认会创建 provider。 |
+| `AGENT_MEMORY_EMBEDDING_BACKEND` | `auto` | 实际 backend 选择；`auto` 优先 Ollama `embeddinggemma`，只有显式配置云端 embedding endpoint/key 时才尝试 OpenAI-compatible fallback。 |
+| `AGENT_MEMORY_EMBEDDING_PROVIDER` | `openai_compatible` | legacy/兼容 provider 名；建议新配置使用 `AGENT_MEMORY_EMBEDDING_BACKEND`。 |
+| `AGENT_MEMORY_EMBEDDING_MODEL` | `embeddinggemma` | embedding model id，写入 shadow metadata 和幂等 key。 |
+| `AGENT_MEMORY_EMBEDDING_DIMENSIONS` | `768` | pgvector 列维度和 provider 输出维度校验。维度变化应走新 model/version + rebuild。 |
+| `AGENT_MEMORY_EMBEDDING_BASE_URL` | unset | Ollama native base URL 或 OpenAI-compatible endpoint；auto 模式未设置时使用 `OLLAMA_BASE_URL` 或 `http://127.0.0.1:11434`。 |
+| `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` | `OPENAI_API_KEY` | 云端 OpenAI-compatible embedding 从哪个环境变量读取 API key；Ollama native 不需要真实 key。 |
 | `AGENT_MEMORY_EMBEDDING_BATCH_SIZE` | `32` | embedding service 批量大小上限。 |
 | `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS` | `30.0` | OpenAI-compatible provider 请求超时。 |
-| `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `shadow` | `shadow` 记录 vector candidates 但不改 FTS 排序；`hybrid` 使用 RRF 合并；无 provider 时不会实际 vector search。 |
+| `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `hybrid` | 默认使用 RRF 合并 FTS/vector；`shadow` 只记录 vector candidates；无 provider 时回退到 FTS。 |
 | `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | v10 schema 中是否创建 HNSW vector index。 |
+
+本地默认路线需要显式安装模型：`ollama pull embeddinggemma`。应用启动不会静默下载模型；缺失时 readiness 和 `focus-agent-memory-embedding doctor` 会给出安装提示。auto 不会把 chat model 凭据当作默认 embedding fallback；若使用云端 embedding endpoint，显式设置 `AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible`、`AGENT_MEMORY_EMBEDDING_MODEL`、`AGENT_MEMORY_EMBEDDING_BASE_URL`、`AGENT_MEMORY_EMBEDDING_API_KEY_ENV` 或 `AGENT_MEMORY_EMBEDDING_API_KEY`。provider 请求失败不会回滚 memory 写入，但 readiness 会把 `memory_embedding_backend` 标成 degraded。
 
 ## 6. Namespace 与隔离
 
@@ -771,7 +793,7 @@ Web surface：
 - global memory/audit/candidate/forget 使用持久化 `AuthContext` role permissions：`memory:read`、`memory:audit`、`memory:forget`。仅 bearer token scope 不授予全局 memory 视图。
 - `MemoryRecordResponse.payload_redacted=true` 表示正文不可用；forgotten record 返回 `content=""`、`summary="[forgotten]"`。
 - `MemoryRecordResponse` 可选返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`，Memory Console 在列表和详情中展示这些 metadata。HTTP surface 不返回向量字段，candidate record payload 也应过滤向量 key。
-- readiness/health 的 component check 中包含 `memory_embedding_backend`；它用于判断 embedding provider 和 pgvector shadow 的可用性，不代表 canonical memory API 是否可用。
+- readiness/health 的 component check 中包含 `memory_embedding_backend` 和 `memory_pgvector`；前者判断 embedding provider，后者判断 extension/table/dimensions/index。它们不代表 canonical memory API 是否可用。
 
 ## 14. Migration
 
@@ -915,14 +937,15 @@ Memory API 已接入持久化角色权限和 thread/branch ownership；后续还
 
 ### 18.3 Search Quality
 
-当前基础排序仍以 PostgreSQL FTS + `ILIKE` 为默认主路径；关键词明确的 memory 够用，但同义改写、隐式事实、长距离抽象能力有限。
+当前基础排序由 PostgreSQL FTS + `ILIKE` 与 pgvector hybrid 共同构成；关键词明确的 memory 仍可由 FTS 命中，同义改写、隐式事实、长距离抽象主要依赖 embedding 候选补足。
 
-pgvector embedding shadow 已落地，但不是默认强制路径：
+pgvector embedding 已默认启用：
 
-- `focus_memory_embeddings` 是独立 shadow 表，`focus_memories` 仍是 canonical truth。
-- 默认配置为 `AGENT_MEMORY_EMBEDDING_ENABLED=false`、`AGENT_MEMORY_VECTOR_SEARCH_MODE=shadow`；也就是说未启用 provider 时不会生成 embedding，也不会调用 pgvector search。
-- 启用 embedding provider 后，accepted/merged memory 写入会 best-effort 生成 embedding；retriever 在 shadow 模式记录 vector candidates，不改变默认 prompt 排序。
-- `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时会用 RRF 合并 FTS rank 与 vector rank。
+- `focus_memory_embeddings` 是独立可重建索引表，`focus_memories` 仍是 canonical truth。
+- 默认配置为 `AGENT_MEMORY_EMBEDDING_ENABLED=true`、`AGENT_MEMORY_EMBEDDING_BACKEND=auto`、`AGENT_MEMORY_EMBEDDING_MODEL=embeddinggemma`、`AGENT_MEMORY_EMBEDDING_DIMENSIONS=768`、`AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid`。
+- auto backend 优先本地 Ollama `embeddinggemma`；缺模型时不会自动下载，也不会默认继承 chat provider 凭据，而是在 readiness / doctor 中给出 `ollama pull embeddinggemma`。
+- accepted/merged memory 写入会 best-effort 生成 embedding；embedding provider 失败不会回滚 canonical memory 写入，但 readiness 会报告 degraded。
+- `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 会用 RRF 合并 FTS rank 与 vector rank；`shadow` 可用于只观测 vector candidates。
 - namespace/read policy 仍是第一层权限边界；forget 会清理对应 shadow embedding；local fallback 不维护 pgvector shadow。
 - `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 把环境治理显式化：local/test 可 `auto_create`，生产推荐 `required` 并在应用启动前由 DBA/迁移账号预装 extension。
 - 显式 `memory_search` tool 当前尚未把 query embedding provider 接入 tool retriever；它能受益于 Postgres FTS、CJK fallback、rerank/dedupe，但不等同于 turn-level `retrieve_memory` 的 pgvector shadow/hybrid 能力。

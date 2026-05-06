@@ -65,6 +65,14 @@ class RuntimeMemoryComponents:
 
 
 @dataclass(slots=True)
+class RuntimeMemoryEmbeddingSetup:
+    provider: object | None
+    backend_error: str | None
+    dimensions: int
+    memory_embeddings_enabled: bool
+
+
+@dataclass(slots=True)
 class RuntimeRegistries:
     skill_registry: SkillRegistry
     tool_registry: ToolRegistry
@@ -167,11 +175,17 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     )
     exit_stack.callback(background_work.close)
 
-    persistence = _create_runtime_persistence(settings=settings, exit_stack=exit_stack)
+    memory_embedding_setup = _resolve_memory_embedding_setup(settings)
+    persistence = _create_runtime_persistence(
+        settings=settings,
+        exit_stack=exit_stack,
+        memory_embedding_setup=memory_embedding_setup,
+    )
     memory = _create_memory_components(
         settings=settings,
         store=persistence.store,
         memory_repository=persistence.memory_repository,
+        memory_embedding_setup=memory_embedding_setup,
     )
     registries = _create_runtime_registries(
         settings=settings,
@@ -230,6 +244,7 @@ def _create_runtime_persistence(
     *,
     settings: Settings,
     exit_stack: ExitStack,
+    memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
 ) -> RuntimePersistence:
     if settings.database_uri:
         logger.info("Runtime persistence backend selected: postgres-primary")
@@ -245,6 +260,7 @@ def _create_runtime_persistence(
             _create_postgres_primary_persistence(
                 settings=settings,
                 exit_stack=exit_stack,
+                memory_embedding_setup=memory_embedding_setup,
             )
         )
     else:
@@ -277,11 +293,13 @@ def _create_memory_components(
     settings: Settings,
     store: object,
     memory_repository: object | None = None,
+    memory_embedding_setup: RuntimeMemoryEmbeddingSetup | None = None,
 ) -> RuntimeMemoryComponents:
     memory_policy = MemoryPolicy()
     memory_embedding_service, memory_embedding_backend_error = _create_memory_embedding_service(
         settings,
         memory_repository=memory_repository,
+        memory_embedding_setup=memory_embedding_setup,
     )
     memory_embedding_provider = (
         memory_embedding_service.provider if memory_embedding_service is not None else None
@@ -318,12 +336,12 @@ def _create_memory_embedding_service(
     settings: Settings,
     *,
     memory_repository: object | None,
+    memory_embedding_setup: RuntimeMemoryEmbeddingSetup | None = None,
 ) -> tuple[MemoryEmbeddingService | None, str | None]:
-    try:
-        provider = create_memory_embedding_provider(settings)
-    except MemoryEmbeddingError as exc:
-        logger.warning("Memory embedding backend unavailable: %s", exc)
-        return None, str(exc)
+    setup = memory_embedding_setup or _resolve_memory_embedding_setup(settings)
+    if setup.backend_error is not None:
+        return None, setup.backend_error
+    provider = setup.provider
     if provider is None:
         return None, None
     if memory_repository is None:
@@ -414,6 +432,7 @@ def _create_postgres_primary_persistence(
     *,
     settings: Settings,
     exit_stack: ExitStack,
+    memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
 ) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object]:
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
@@ -439,7 +458,11 @@ def _create_postgres_primary_persistence(
     _setup_component_if_available(artifact_metadata_repository)
 
     memory_repository = PostgresMemoryRepository(settings.database_uri)
-    _setup_memory_repository_if_available(memory_repository, settings=settings)
+    _setup_memory_repository_if_available(
+        memory_repository,
+        settings=settings,
+        memory_embedding_setup=memory_embedding_setup,
+    )
 
     trajectory_recorder = None
     if _trajectory_enabled(settings):
@@ -502,7 +525,48 @@ def _setup_component_if_available(component: object) -> None:
         setup()
 
 
-def _setup_memory_repository_if_available(component: object, *, settings: Settings) -> None:
+def _resolve_memory_embedding_setup(settings: Settings) -> RuntimeMemoryEmbeddingSetup:
+    provider: object | None = None
+    backend_error: str | None = None
+    try:
+        provider = create_memory_embedding_provider(settings)
+    except MemoryEmbeddingError as exc:
+        backend_error = str(exc)
+        logger.warning("Memory embedding backend unavailable: %s", exc)
+    dimensions = _memory_embedding_schema_dimensions(settings, provider=provider)
+    try:
+        settings.agent_memory_embedding_dimensions = dimensions
+    except Exception:  # pragma: no cover - Settings is mutable in production.
+        pass
+    return RuntimeMemoryEmbeddingSetup(
+        provider=provider,
+        backend_error=backend_error,
+        dimensions=dimensions,
+        memory_embeddings_enabled=_memory_embedding_configured(settings),
+    )
+
+
+def _memory_embedding_schema_dimensions(settings: Settings, *, provider: object | None) -> int:
+    provider_dimensions = getattr(provider, "dimensions", None)
+    if provider_dimensions:
+        return max(1, int(provider_dimensions))
+    configured = int(getattr(settings, "agent_memory_embedding_dimensions", 1536) or 1536)
+    if configured > 0:
+        return configured
+    model_id = str(getattr(settings, "agent_memory_embedding_model", "") or "").strip().lower()
+    backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
+    provider_id = str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
+    if model_id in {"embeddinggemma", "embedding-gemma"} or backend == "ollama" or provider_id == "ollama":
+        return 768
+    return 1536
+
+
+def _setup_memory_repository_if_available(
+    component: object,
+    *,
+    settings: Settings,
+    memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
+) -> None:
     setup = getattr(component, "setup", None)
     if not callable(setup):
         return
@@ -511,9 +575,9 @@ def _setup_memory_repository_if_available(component: object, *, settings: Settin
         setup()
         return
     setup(
-        dimensions=getattr(settings, "agent_memory_embedding_dimensions", 1536),
+        dimensions=memory_embedding_setup.dimensions,
         vector_index=getattr(settings, "agent_memory_vector_index_enabled", False),
-        memory_embeddings_enabled=_memory_embedding_configured(settings),
+        memory_embeddings_enabled=memory_embedding_setup.memory_embeddings_enabled,
         pgvector_extension_mode=getattr(
             settings,
             "agent_memory_pgvector_extension_mode",

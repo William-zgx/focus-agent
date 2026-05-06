@@ -65,6 +65,53 @@ def ensure_app_postgres_schema_on_connection(
             )
 
 
+def rebuild_memory_embedding_index(
+    database_uri: str,
+    *,
+    dimensions: int = 1536,
+    vector_index: bool = False,
+    pgvector_extension_mode: str = "auto_create",
+) -> None:
+    with psycopg.connect(database_uri) as conn:
+        rebuild_memory_embedding_index_on_connection(
+            conn,
+            dimensions=dimensions,
+            vector_index=vector_index,
+            pgvector_extension_mode=pgvector_extension_mode,
+        )
+
+
+def rebuild_memory_embedding_index_on_connection(
+    conn: object,
+    *,
+    dimensions: int = 1536,
+    vector_index: bool = False,
+    pgvector_extension_mode: str = "auto_create",
+) -> None:
+    ensure_app_postgres_schema_on_connection(
+        conn,
+        dimensions=dimensions,
+        vector_index=vector_index,
+        memory_embeddings_enabled=False,
+        pgvector_extension_mode=pgvector_extension_mode,
+    )
+    with conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS focus_memory_embeddings CASCADE")
+        _run_migration_v10(
+            cur.execute,
+            dimensions=dimensions,
+            vector_index=vector_index,
+            pgvector_extension_mode=pgvector_extension_mode,
+        )
+        cur.execute(
+            """
+            INSERT INTO focus_schema_migrations (version)
+            VALUES (10)
+            ON CONFLICT (version) DO NOTHING
+            """
+        )
+
+
 def _run_migration_v1(execute: Callable[..., object]) -> None:
     execute(
         """

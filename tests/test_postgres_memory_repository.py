@@ -16,7 +16,12 @@ from focus_agent.memory.models import (
 )
 from focus_agent.repositories.memory_repository import MemoryEmbeddingListQuery, MemoryListQuery
 from focus_agent.repositories.postgres_memory_repository import PostgresMemoryRepository
-from focus_agent.repositories.postgres_schema import SCHEMA_VERSION, _MIGRATIONS, _run_migration_v10
+from focus_agent.repositories.postgres_schema import (
+    SCHEMA_VERSION,
+    _MIGRATIONS,
+    _run_migration_v10,
+    rebuild_memory_embedding_index_on_connection,
+)
 
 
 class _FakePostgresMemoryDB:
@@ -109,14 +114,15 @@ class _FakeCursor:
             return
         if normalized.startswith("INSERT INTO focus_memory_embeddings"):
             memory_id = str(params["memory_id"])
-            previous = self.db.embeddings.get(memory_id)
+            embedding_id = str(params["embedding_id"])
+            previous = self.db.embeddings.get(embedding_id)
             row = dict(params)
             row["namespace"] = list(params["namespace"])
             row["embedding"] = _parse_vector_literal(params["embedding"])
             row["metadata_json"] = _json_payload(params["metadata_json"])
             row["deleted_at"] = None
             row["created_at"] = previous["created_at"] if previous is not None else params["created_at"]
-            self.db.embeddings[memory_id] = row
+            self.db.embeddings[embedding_id] = row
             self.rowcount = 1
             return
         if normalized.startswith("SELECT m.data_json, e.embedding_id"):
@@ -161,24 +167,46 @@ class _FakeCursor:
             self._fetchall = rows[: int(params["limit"])]
             return
         if normalized.startswith("SELECT status FROM focus_memory_embeddings WHERE memory_id = %s"):
-            row = self.db.embeddings.get(str(params[0]))
+            row = _latest_embedding_row(self.db, memory_id=str(params[0]))
             self._fetchone = {"status": row["status"]} if row and row["deleted_at"] is None else None
             return
+        if normalized.startswith("UPDATE focus_memory_embeddings SET status = 'stale'"):
+            for row in self.db.embeddings.values():
+                if row["memory_id"] != params["memory_id"]:
+                    continue
+                if row["provider_id"] != params["provider_id"]:
+                    continue
+                if row["model_id"] != params["model_id"]:
+                    continue
+                if row["content_hash"] == params["content_hash"]:
+                    continue
+                if row["status"] != "active" or row["deleted_at"] is not None:
+                    continue
+                row["status"] = "stale"
+                row["deleted_at"] = params["updated_at"]
+                row["updated_at"] = params["updated_at"]
+                row["metadata_json"] = {
+                    **row["metadata_json"],
+                    **_json_payload(params["stale_metadata_json"]),
+                }
+                self.rowcount += 1
+            return
         if normalized.startswith("UPDATE focus_memory_embeddings"):
-            row = self.db.embeddings.get(str(params["memory_id"]))
-            if row is None or row["deleted_at"] is not None:
-                return
-            row["status"] = params["status"]
-            row["updated_at"] = params["updated_at"]
-            if "metadata_json" in params:
-                row["metadata_json"] = {**row["metadata_json"], **_json_payload(params["metadata_json"])}
-            self.rowcount = 1
+            for row in _active_embedding_rows(self.db, memory_id=str(params["memory_id"])):
+                row["status"] = params["status"]
+                row["updated_at"] = params["updated_at"]
+                if "metadata_json" in params:
+                    row["metadata_json"] = {
+                        **row["metadata_json"],
+                        **_json_payload(params["metadata_json"]),
+                    }
+                self.rowcount += 1
             return
         if (
             normalized.startswith("SELECT embedding_id, memory_id, namespace, provider_id, model_id")
             and "WHERE memory_id = %s" in normalized
         ):
-            row = self.db.embeddings.get(str(params[0]))
+            row = _latest_embedding_row(self.db, memory_id=str(params[0]))
             self._fetchone = (
                 {
                     "embedding_id": row["embedding_id"],
@@ -229,7 +257,14 @@ class _FakeCursor:
             return
         if normalized.startswith("DELETE FROM focus_memory_embeddings WHERE memory_id = %s"):
             memory_id = str(params[0])
-            self.rowcount = 1 if self.db.embeddings.pop(memory_id, None) is not None else 0
+            embedding_ids = [
+                embedding_id
+                for embedding_id, row in self.db.embeddings.items()
+                if row["memory_id"] == memory_id
+            ]
+            for embedding_id in embedding_ids:
+                del self.db.embeddings[embedding_id]
+            self.rowcount = len(embedding_ids)
             return
         if normalized.startswith("INSERT INTO focus_memory_tombstones"):
             memory_id = str(params["memory_id"])
@@ -325,6 +360,28 @@ class _FakeConnection:
 
     def cursor(self) -> _FakeCursor:
         return _FakeCursor(self.db)
+
+
+def _active_embedding_rows(
+    db: _FakePostgresMemoryDB,
+    *,
+    memory_id: str,
+) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in db.embeddings.values()
+        if row["memory_id"] == memory_id and row["deleted_at"] is None
+    ]
+
+
+def _latest_embedding_row(
+    db: _FakePostgresMemoryDB,
+    *,
+    memory_id: str,
+) -> dict[str, Any] | None:
+    rows = _active_embedding_rows(db, memory_id=memory_id)
+    rows.sort(key=lambda row: (row["updated_at"], row["embedding_id"]), reverse=True)
+    return rows[0] if rows else None
 
 
 def test_postgres_memory_repository_upsert_search_forget_and_audit(monkeypatch):
@@ -450,6 +507,119 @@ def test_postgres_memory_repository_upsert_search_forget_and_audit(monkeypatch):
     assert db.embeddings == {}
     assert repo.list_records(MemoryListQuery(namespace=record.namespace, status="forgotten")) == [forgotten]
     assert repo.search(namespace=record.namespace, query="owner collision", limit=5) == []
+
+
+def test_postgres_memory_repository_rebuild_embedding_index_preserves_memories(monkeypatch):
+    db = _FakePostgresMemoryDB()
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_memory_repository.psycopg.connect",
+        lambda uri, row_factory=None: _FakeConnection(db),
+    )
+
+    def fake_rebuild(conn, **kwargs):  # noqa: ARG001
+        db.embeddings.clear()
+
+    repo = PostgresMemoryRepository("postgresql://example")
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_memory_repository.rebuild_memory_embedding_index_on_connection",
+        fake_rebuild,
+    )
+    monkeypatch.setattr(
+        repo,
+        "inspect_pgvector_support",
+        lambda **kwargs: {
+            "extension_installed": True,
+            "embeddings_table_exists": True,
+            "dimensions_match": True,
+            "configured_dimensions": kwargs["dimensions"],
+        },
+    )
+    record = _memory_record(
+        memory_id="mem-rebuild",
+        namespace=("conversation", "root-1", "main"),
+        summary="keep canonical",
+        content="Canonical memory survives embedding index rebuild.",
+        fingerprint="fp-rebuild",
+        semantic_key="sk-rebuild",
+    )
+
+    repo.upsert_record(record)
+    repo.upsert_embedding(
+        memory_id=record.memory_id,
+        namespace=record.namespace,
+        embedding=[0.1, 0.2, 0.3],
+        provider_id="ollama",
+        model_id="embeddinggemma",
+        content_hash="hash-rebuild",
+    )
+
+    status = repo.rebuild_embedding_index(dimensions=768, vector_index=True)
+
+    assert status["dimensions_match"] is True
+    assert db.memories[record.memory_id]["data_json"]["summary"] == "keep canonical"
+    assert db.embeddings == {}
+    assert repo.dimensions == 768
+    assert repo.vector_index is True
+    assert repo.memory_embeddings_enabled is True
+
+
+def test_postgres_memory_repository_stales_old_embedding_when_content_hash_changes(monkeypatch):
+    db = _FakePostgresMemoryDB()
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_memory_repository.psycopg.connect",
+        lambda uri, row_factory=None: _FakeConnection(db),
+    )
+    repo = PostgresMemoryRepository("postgresql://example")
+    record = _memory_record(
+        memory_id="mem-content-change",
+        namespace=("conversation", "root-1", "main"),
+        summary="content change",
+        content="Original content.",
+        fingerprint="fp-content-change",
+        semantic_key="sk-content-change",
+    )
+    repo.upsert_record(record)
+    repo.upsert_embedding(
+        memory_id=record.memory_id,
+        namespace=record.namespace,
+        embedding=[1.0, 0.0, 0.0],
+        provider_id="ollama",
+        model_id="embeddinggemma",
+        content_hash="hash-old",
+    )
+
+    repo.upsert_embedding(
+        memory_id=record.memory_id,
+        namespace=record.namespace,
+        embedding=[0.0, 1.0, 0.0],
+        provider_id="ollama",
+        model_id="embeddinggemma",
+        content_hash="hash-new",
+    )
+
+    active_rows = repo.list_embedding_metadata(
+        MemoryEmbeddingListQuery(
+            namespace=record.namespace,
+            provider_id="ollama",
+            model_id="embeddinggemma",
+            status="active",
+        )
+    )
+    assert [row.content_hash for row in active_rows] == ["hash-new"]
+    assert any(
+        row["content_hash"] == "hash-old"
+        and row["status"] == "stale"
+        and row["deleted_at"] is not None
+        for row in db.embeddings.values()
+    )
+    hits = repo.search_embeddings(
+        namespace=record.namespace,
+        embedding=[1.0, 0.0, 0.0],
+        provider_id="ollama",
+        model_id="embeddinggemma",
+        limit=5,
+    )
+    assert [hit.content_hash for hit in hits] == ["hash-new"]
 
 
 def test_postgres_memory_repository_candidates_round_trip(monkeypatch):
@@ -588,6 +758,42 @@ def test_postgres_memory_embeddings_migration_can_create_vector_index():
     combined = " ".join(" ".join(sql.split()) for sql in executed)
     assert "idx_focus_memory_embeddings_vector" in combined
     assert "USING hnsw (embedding vector_cosine_ops)" in combined
+
+
+def test_rebuild_memory_embedding_index_only_drops_embedding_storage():
+    executed: list[str] = []
+
+    class _RecordingCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        def execute(self, sql: str, params=None) -> None:  # noqa: ARG002
+            executed.append(sql)
+
+        def fetchone(self):
+            return None
+
+    class _RecordingConnection:
+        def cursor(self):
+            return _RecordingCursor()
+
+    rebuild_memory_embedding_index_on_connection(
+        _RecordingConnection(),
+        dimensions=768,
+        vector_index=True,
+        pgvector_extension_mode="required",
+    )
+
+    combined = " ".join(" ".join(sql.split()) for sql in executed)
+    assert "DROP TABLE IF EXISTS focus_memory_embeddings CASCADE" in combined
+    assert "CREATE TABLE IF NOT EXISTS focus_memory_embeddings" in combined
+    assert "embedding vector(768) NOT NULL" in combined
+    assert "idx_focus_memory_embeddings_vector" in combined
+    assert "DROP TABLE IF EXISTS focus_memories" not in combined
+    assert "DELETE FROM focus_memories" not in combined
 
 
 def _memory_record(

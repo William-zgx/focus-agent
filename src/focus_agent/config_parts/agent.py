@@ -68,15 +68,17 @@ def _embedding_provider_env(env: MutableMapping[str, str], defaults: Any) -> str
 def _embedding_backend_env(env: MutableMapping[str, str], defaults: Any) -> str:
     if env.get("AGENT_MEMORY_EMBEDDING_BACKEND") is not None:
         return _normalize_embedding_provider(env.get("AGENT_MEMORY_EMBEDDING_BACKEND"))
+    if env.get("AGENT_MEMORY_EMBEDDING_PROVIDER") is not None:
+        return _embedding_provider_env(env, defaults)
     if _env_bool(
         env,
         "AGENT_MEMORY_EMBEDDING_ENABLED",
         default=defaults.agent_memory_embedding_enabled,
     ):
-        return _embedding_provider_env(env, defaults)
-    return _normalize_embedding_provider(
-        getattr(defaults, "agent_memory_embedding_backend", "disabled")
-    )
+        return _normalize_embedding_provider(
+            getattr(defaults, "agent_memory_embedding_backend", "disabled")
+        )
+    return "disabled"
 
 
 def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, object]:

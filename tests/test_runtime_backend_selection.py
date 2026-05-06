@@ -326,6 +326,72 @@ def test_create_runtime_injects_deterministic_memory_embedding_service(monkeypat
         runtime.close()
 
 
+def test_create_runtime_sets_pgvector_schema_dimensions_from_resolved_provider(
+    monkeypatch,
+    tmp_path,
+):
+    class _Provider:
+        provider_id = "ollama"
+        model_id = "embeddinggemma"
+        dimensions = 7
+
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0] * self.dimensions for _ in texts]
+
+    provider = _Provider()
+
+    def fake_build_tool_registry(
+        *,
+        settings,
+        skill_registry,
+        store=None,
+        checkpointer=None,
+        artifact_metadata_repository=None,
+        memory_repository=None,
+        memory_embedding_service=None,
+    ):
+        return {
+            "settings": settings,
+            "skill_registry": skill_registry,
+            "store": store,
+            "checkpointer": checkpointer,
+            "artifact_metadata_repository": artifact_metadata_repository,
+            "memory_repository": memory_repository,
+            "memory_embedding_service": memory_embedding_service,
+        }
+
+    fake_modules = _install_postgres_modules(monkeypatch)
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+    monkeypatch.setattr(
+        runtime_mod,
+        "create_memory_embedding_provider",
+        lambda settings: provider,  # noqa: ARG005
+    )
+
+    settings = _make_settings(
+        tmp_path,
+        database_uri="postgresql://focus-agent.test/runtime",
+        trajectory_enabled=False,
+    )
+    settings.agent_memory_embedding_backend = "auto"
+    settings.agent_memory_embedding_model = "embeddinggemma"
+    settings.agent_memory_embedding_dimensions = 1536
+
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        assert runtime.memory_embedding_service is not None
+        assert runtime.memory_embedding_service.provider is provider
+        assert settings.agent_memory_embedding_dimensions == 7
+        assert fake_modules["memory_repo"].instances[0].setup_kwargs == {
+            "dimensions": 7,
+            "vector_index": False,
+            "memory_embeddings_enabled": True,
+            "pgvector_extension_mode": "auto_create",
+        }
+    finally:
+        runtime.close()
+
+
 def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch, tmp_path):
     def runtime_probe_impl() -> str:
         """Return a marker from the runtime provider registry test."""
