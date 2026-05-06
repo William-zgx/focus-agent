@@ -17,18 +17,25 @@ from .curator import (
 )
 from .extractor import MemoryExtractor
 from .models import (
+    MemoryAuditEvent,
+    MemoryCandidate,
     MemoryExtractionResult,
     MemoryKind,
     MemoryRecord,
+    MemoryRetrievalPlan,
     MemoryScope,
     MemorySearchHit,
+    MemoryStatus,
     MemoryVisibility,
+    MemoryWriteDecision,
+    MemoryWriteDecisionStatus,
     MemoryWriteRequest,
     RetrievedMemoryBundle,
 )
 from .policy import MemoryPolicy
 from .retriever import MemoryRetriever
 from .scorer import score_memory_hit, score_memory_importance
+from .service import MemoryService
 from .writer import MemoryWriter
 from ..storage.import_memory import (
     branch_memory_namespace,
@@ -40,15 +47,22 @@ from ..storage.import_memory import (
 __all__ = [
     "MemoryExtractionResult",
     "MemoryExtractor",
+    "MemoryAuditEvent",
+    "MemoryCandidate",
     "MemoryCurator",
     "MemoryCuratorDecision",
     "MemoryKind",
     "MemoryPolicy",
     "MemoryRecord",
+    "MemoryRetrievalPlan",
     "MemoryRetriever",
     "MemoryScope",
     "MemorySearchHit",
+    "MemoryService",
+    "MemoryStatus",
     "MemoryVisibility",
+    "MemoryWriteDecision",
+    "MemoryWriteDecisionStatus",
     "MemoryWriteRequest",
     "MemoryWriter",
     "MemoryPromotionCandidate",

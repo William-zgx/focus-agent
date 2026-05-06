@@ -57,6 +57,21 @@ class FakePostgresSaver:
         }
 
 
+class FakeMemoryRepository:
+    def __init__(self):
+        self.setup_calls = 0
+        self.upsert_calls = 0
+        self.records: dict[str, object] = {}
+
+    def setup(self) -> None:
+        self.setup_calls += 1
+
+    def upsert_record(self, record) -> str:
+        self.upsert_calls += 1
+        self.records[record.memory_id] = record
+        return record.memory_id
+
+
 class FakeAppStateSink:
     description = "fake-app-state-sink"
 
@@ -166,6 +181,7 @@ def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgre
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _unexpected_call)
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _unexpected_call)
     monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _unexpected_call)
+    monkeypatch.setattr("focus_agent.migrate_local_state.create_memory_repository", _unexpected_call)
 
     exit_code = main(
         [
@@ -191,12 +207,16 @@ def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgre
     assert '"skipped_due_to_pending_writes": 1' in report
     assert '"artifact_count": 1' in report
     assert '"store_item_count": 1' in report
+    assert '"name": "focus-memories"' in report
+    assert '"eligible_memory_count": 1' in report
+    assert '"migrated_memory_count": 0' in report
 
 
 def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monkeypatch):
     workspace_dir, _state_dir = _build_source_state(tmp_path)
     fake_store = FakePostgresStore()
     fake_saver = FakePostgresSaver()
+    fake_memory_repo = FakeMemoryRepository()
     fake_sink = FakeAppStateSink()
     trajectory_setup_calls: list[str] = []
 
@@ -214,6 +234,10 @@ def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monk
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _open_fake_store)
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _open_fake_saver)
     monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory)
+    monkeypatch.setattr(
+        "focus_agent.migrate_local_state.create_memory_repository",
+        lambda _database_uri: fake_memory_repo,
+    )
 
     args = parse_args(
         [
@@ -240,17 +264,31 @@ def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monk
     assert first_report["steps"][0]["status"] == "completed"
     assert first_report["steps"][1]["details"]["branch_migrated"] == 1
     assert first_report["steps"][2]["details"]["migrated_item_count"] == 1
-    assert first_report["steps"][3]["details"]["migrated_checkpoint_count"] == 1
+    assert first_report["steps"][3]["name"] == "focus-memories"
+    assert first_report["steps"][3]["details"]["eligible_memory_count"] == 1
+    assert first_report["steps"][3]["details"]["migrated_memory_count"] == 1
+    assert first_report["steps"][4]["details"]["migrated_checkpoint_count"] == 1
 
     assert len(fake_store.items) == 1
+    assert len(fake_memory_repo.records) == 1
+    focus_memory = next(iter(fake_memory_repo.records.values()))
+    assert focus_memory.memory_id.startswith("legacy-langgraph-store:")
+    assert focus_memory.kind.value == "imported_conclusion"
+    assert focus_memory.scope.value == "root_thread"
+    assert focus_memory.visibility.value == "shared"
+    assert focus_memory.root_thread_id == "root-1"
+    assert focus_memory.promoted_to_main is True
     assert len(fake_saver.checkpoints) == 1
     assert len(fake_sink.thread_access_rows) == 2
     assert len(fake_sink.conversation_rows) == 1
     assert len(fake_sink.branch_rows) == 1
     assert fake_store.setup_calls == 2
     assert fake_saver.setup_calls == 2
+    assert fake_memory_repo.setup_calls == 2
+    assert fake_memory_repo.upsert_calls == 2
     assert fake_sink.setup_calls == 2
     assert len(trajectory_setup_calls) == 2
 
     assert second_report["steps"][2]["details"]["migrated_item_count"] == 1
-    assert second_report["steps"][3]["details"]["migrated_checkpoint_count"] == 1
+    assert second_report["steps"][3]["details"]["migrated_memory_count"] == 1
+    assert second_report["steps"][4]["details"]["migrated_checkpoint_count"] == 1

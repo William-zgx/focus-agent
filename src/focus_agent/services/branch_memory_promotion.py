@@ -190,7 +190,10 @@ class BranchMemoryPromotionMixin:
         settings = getattr(self, "settings", None)
         if bool(getattr(settings, "agent_memory_curator_enabled", False)):
             auto_promote = bool(getattr(settings, "agent_memory_auto_promote_on_merge", True))
-            curator = MemoryCurator(store=self.store)
+            curator = MemoryCurator(
+                store=self.store,
+                repository=getattr(memory_writer, "repository", None),
+            )
             decision = curator.evaluate_branch_promotion(
                 branch_record=branch_record,
                 findings=promotable_findings,

@@ -15,6 +15,7 @@ def get_default_tools(
     store=None,
     checkpointer=None,
     artifact_metadata_repository=None,
+    memory_repository=None,
 ):
     _factory._get_current_thread_id = _get_current_thread_id
     return _factory.get_default_tools(
@@ -22,6 +23,7 @@ def get_default_tools(
         store=store,
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
+        memory_repository=memory_repository,
     )
 
 

@@ -41,7 +41,8 @@ class _FakeMemoryComponent:
 
 
 class _FakeMemoryExtractor:
-    pass
+    def __init__(self, **kwargs: Any):
+        self.kwargs = kwargs
 
 
 class _FakeSkillRegistry:
@@ -81,6 +82,7 @@ def _install_postgres_modules(monkeypatch):
     store_cls = _make_postgres_component(with_factory=True)
     branch_repo_cls = _make_postgres_component(with_factory=False)
     artifact_repo_cls = _make_postgres_component(with_factory=False)
+    memory_repo_cls = _make_postgres_component(with_factory=False)
     trajectory_repo_cls = _make_postgres_component(with_factory=False)
     agent_team_repo_cls = _make_postgres_component(with_factory=False)
     user_repo_cls = _make_postgres_component(with_factory=False)
@@ -93,6 +95,8 @@ def _install_postgres_modules(monkeypatch):
     branch_module.PostgresBranchRepository = branch_repo_cls
     artifact_module = types.ModuleType("focus_agent.repositories.artifact_metadata_repository")
     artifact_module.ArtifactMetadataRepository = artifact_repo_cls
+    memory_module = types.ModuleType("focus_agent.repositories.postgres_memory_repository")
+    memory_module.PostgresMemoryRepository = memory_repo_cls
     trajectory_module = types.ModuleType("focus_agent.repositories.postgres_trajectory_repository")
     trajectory_module.PostgresTrajectoryRepository = trajectory_repo_cls
     agent_team_module = types.ModuleType("focus_agent.repositories.postgres_agent_team_repository")
@@ -104,6 +108,7 @@ def _install_postgres_modules(monkeypatch):
     monkeypatch.setitem(sys.modules, "langgraph.store.postgres", store_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_branch_repository", branch_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.artifact_metadata_repository", artifact_module)
+    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_memory_repository", memory_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_user_repository", user_module)
@@ -113,6 +118,7 @@ def _install_postgres_modules(monkeypatch):
         "store": store_cls,
         "branch_repo": branch_repo_cls,
         "artifact_repo": artifact_repo_cls,
+        "memory_repo": memory_repo_cls,
         "trajectory_repo": trajectory_repo_cls,
         "agent_team_repo": agent_team_repo_cls,
         "user_repo": user_repo_cls,
@@ -151,12 +157,14 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         store=None,
         checkpointer=None,
         artifact_metadata_repository=None,
+        memory_repository=None,
     ):
         captured["settings"] = settings
         captured["skill_registry"] = skill_registry
         captured["store"] = store
         captured["checkpointer"] = checkpointer
         captured["artifact_metadata_repository"] = artifact_metadata_repository
+        captured["memory_repository"] = memory_repository
         return {"tool_registry": True}
 
     fake_modules = _install_postgres_modules(monkeypatch)
@@ -175,6 +183,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         store = fake_modules["store"].instances[0]
         repo = fake_modules["branch_repo"].instances[0]
         artifact_repo = fake_modules["artifact_repo"].instances[0]
+        memory_repo = fake_modules["memory_repo"].instances[0]
         trajectory_repo = fake_modules["trajectory_repo"].instances[0]
         agent_team_repo = fake_modules["agent_team_repo"].instances[0]
         user_repo = fake_modules["user_repo"].instances[0]
@@ -183,6 +192,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         assert runtime.store is store
         assert runtime.repo is repo
         assert runtime.user_repository is user_repo
+        assert runtime.memory_repository is memory_repo
         assert runtime.artifact_metadata_repository is artifact_repo
         assert runtime.trajectory_recorder is trajectory_repo
         assert runtime.agent_team_service.repository is agent_team_repo
@@ -193,10 +203,14 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         assert store.setup_calls == 1
         assert repo.setup_calls == 1
         assert artifact_repo.setup_calls == 1
+        assert memory_repo.setup_calls == 1
         assert trajectory_repo.setup_calls == 1
         assert agent_team_repo.setup_calls == 1
         assert user_repo.setup_calls == 1
         assert captured["artifact_metadata_repository"] is artifact_repo
+        assert captured["memory_repository"] is memory_repo
+        assert runtime.memory_retriever.kwargs["repository"] is memory_repo
+        assert runtime.memory_writer.kwargs["repository"] is memory_repo
         assert "postgres-primary" in caplog.text
     finally:
         runtime.close()
@@ -251,6 +265,7 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert runtime.user_service.repository.path == str(tmp_path / "branches.sqlite3")
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
+        assert runtime.memory_repository is None
         assert isinstance(runtime.coordination_backend.thread_turns, InMemoryThreadTurnLockBackend)
         assert isinstance(runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend)
         assert captured["store"] is runtime.store

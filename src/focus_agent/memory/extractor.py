@@ -22,7 +22,12 @@ from .models import (
 
 
 class MemoryExtractor:
+    def __init__(self, *, mode: str = "heuristic"):
+        self.mode = str(mode or "heuristic").strip().lower()
+
     def extract_from_turn(self, *, context: RequestContext, state: dict[str, Any]) -> MemoryExtractionResult:
+        if self.mode == "off":
+            return MemoryExtractionResult(records=[], summary="memory extraction disabled")
         records: list[MemoryWriteRequest] = []
         records.extend(self._extract_user_preferences(state=state, context=context))
         records.extend(self._extract_project_facts(context=context, state=state))

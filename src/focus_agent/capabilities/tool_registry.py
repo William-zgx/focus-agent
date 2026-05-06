@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+import inspect
 import re
 from typing import Any, Callable, Mapping
 
@@ -25,6 +26,7 @@ class ToolProviderFactoryContext:
     store: Any = None
     checkpointer: Any = None
     artifact_metadata_repository: Any = None
+    memory_repository: Any = None
 
 
 ToolProviderFactory = Callable[[ToolProviderFactoryContext], ToolProvider]
@@ -211,6 +213,7 @@ def build_tool_registry(
     store=None,
     checkpointer=None,
     artifact_metadata_repository=None,
+    memory_repository=None,
     explicit_providers: Iterable[ToolProvider] | None = None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None = None,
 ) -> ToolRegistry:
@@ -220,6 +223,7 @@ def build_tool_registry(
         store=store,
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
+        memory_repository=memory_repository,
         explicit_providers=explicit_providers,
         explicit_provider_factories=explicit_provider_factories,
     )
@@ -255,6 +259,7 @@ def _build_controlled_tool_provider_registry(
     store: Any,
     checkpointer: Any,
     artifact_metadata_repository: Any,
+    memory_repository: Any,
     explicit_providers: Iterable[ToolProvider] | None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None,
 ) -> tuple[ToolProvider, ...]:
@@ -264,6 +269,7 @@ def _build_controlled_tool_provider_registry(
         store=store,
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
+        memory_repository=memory_repository,
     )
     registered: dict[str, tuple[int, ToolProvider]] = {}
     explicit_provider_list = tuple(explicit_providers or ())
@@ -422,15 +428,20 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
 def _build_builtin_tool_provider(context: ToolProviderFactoryContext) -> ToolProvider:
     return StaticToolProvider(
         provider_id="builtin",
-        tools=tuple(
-            get_default_tools(
-                context.settings,
-                store=context.store,
-                checkpointer=context.checkpointer,
-                artifact_metadata_repository=context.artifact_metadata_repository,
-            )
-        ),
+        tools=tuple(_call_default_tools(context)),
     )
+
+
+def _call_default_tools(context: ToolProviderFactoryContext) -> list[Any]:
+    kwargs: dict[str, Any] = {
+        "store": context.store,
+        "checkpointer": context.checkpointer,
+        "artifact_metadata_repository": context.artifact_metadata_repository,
+    }
+    signature = inspect.signature(get_default_tools)
+    if "memory_repository" in signature.parameters:
+        kwargs["memory_repository"] = context.memory_repository
+    return get_default_tools(context.settings, **kwargs)
 
 
 def _build_skill_tool_provider(context: ToolProviderFactoryContext) -> ToolProvider:

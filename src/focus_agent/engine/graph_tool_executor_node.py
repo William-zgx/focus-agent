@@ -7,6 +7,7 @@ from langchain.messages import HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
+from ..capabilities.default_tool_modules.memory import authorize_memory_tool_args
 from ..capabilities.tool_runtime import (
     ToolExecutionInput,
     ToolResultCacheStore,
@@ -94,6 +95,21 @@ def make_tool_executor_node(
                 )
                 continue
             seen_tool_call_signatures.add(signature)
+            authorized_args, authorization_error = authorize_memory_tool_args(
+                tool_name,
+                tool_args,
+                runtime.context,
+            )
+            if authorization_error is not None:
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=authorization_error,
+                    runtime_info={"memory_context_authorization_failed": True},
+                )
+                continue
+            tool_args = authorized_args or tool_args
             route_plan = state.get("tool_route_plan") or {}
             denied_tools = (
                 set(route_plan.get("denied_tools") or []) if isinstance(route_plan, dict) else set()

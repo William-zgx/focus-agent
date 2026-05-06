@@ -52,8 +52,9 @@ class MemoryCuratorDecision(MemoryModel):
 
 
 class MemoryCurator:
-    def __init__(self, *, store=None):
+    def __init__(self, *, store=None, repository=None):
         self.store = store
+        self.repository = repository
 
     def evaluate_branch_promotion(
         self,
@@ -85,8 +86,11 @@ class MemoryCurator:
             )
             for index, item in enumerate(findings)
         ]
-        candidates = [item for item in candidates if item.promotable]
-        conflicts = self._find_conflicts(candidates, root_thread_id=branch_record.root_thread_id)
+        promotable_candidates = [item for item in candidates if item.promotable]
+        conflicts = self._find_conflicts(
+            promotable_candidates,
+            root_thread_id=branch_record.root_thread_id,
+        )
         conflicted_ids = {item.candidate_id for item in conflicts}
         skipped = [
             {"candidate_id": candidate.candidate_id, "reason": candidate.skip_reason or "not_promotable"}
@@ -97,7 +101,9 @@ class MemoryCurator:
             {"candidate_id": candidate_id, "reason": "semantic_conflict"}
             for candidate_id in sorted(conflicted_ids)
         )
-        promotable = [item for item in candidates if item.candidate_id not in conflicted_ids]
+        promotable = [
+            item for item in promotable_candidates if item.candidate_id not in conflicted_ids
+        ]
         status = "ready"
         if conflicts:
             status = "needs_review"
@@ -146,6 +152,38 @@ class MemoryCurator:
         *,
         root_thread_id: str,
     ) -> list[MemorySemanticConflict]:
+        if self.repository is not None:
+            conflicts: list[MemorySemanticConflict] = []
+            namespace = conversation_main_namespace(root_thread_id)
+            for candidate in candidates:
+                for existing_hit in self.repository.search(
+                    namespace=namespace,
+                    query=candidate.summary,
+                    limit=20,
+                ):
+                    existing = existing_hit.record
+                    existing_key = existing.semantic_key or memory_semantic_key(existing)
+                    same_key_different_summary = (
+                        existing_key == candidate.semantic_key
+                        and _normalize(existing.summary or existing.content) != _normalize(candidate.summary)
+                    )
+                    overlapping_branch_finding = (
+                        existing.kind == MemoryKind.BRANCH_FINDING
+                        and has_textual_overlap(existing.summary or existing.content, candidate.summary)
+                        and _normalize(existing.summary or existing.content) != _normalize(candidate.summary)
+                    )
+                    if same_key_different_summary or overlapping_branch_finding:
+                        conflicts.append(
+                            MemorySemanticConflict(
+                                candidate_id=candidate.candidate_id,
+                                existing_memory_id=existing.memory_id,
+                                semantic_key=candidate.semantic_key,
+                                candidate_summary=candidate.summary,
+                                existing_summary=existing.summary or existing.content,
+                            )
+                        )
+                        break
+            return conflicts
         if self.store is None:
             return []
         namespace = conversation_main_namespace(root_thread_id)

@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING, Any
 from .artifact_metadata_repository import ArtifactMetadataRepository
 from .agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
 from .branch_repository import BranchRepository
+from .memory_repository import MemoryListQuery, MemoryRepository
 from .postgres_branch_repository import PostgresBranchRepository
+from .postgres_memory_repository import PostgresMemoryRepository
 from .postgres_schema import ensure_app_postgres_schema
 from .postgres_trajectory_repository import PostgresTrajectoryRepository
 from .postgres_user_repository import PostgresUserRepository
@@ -30,8 +32,11 @@ __all__ = [
     "BranchRepository",
     "InMemoryAgentTeamRepository",
     "InMemoryUserRepository",
+    "MemoryListQuery",
+    "MemoryRepository",
     "PostgresAgentTeamRepository",
     "PostgresBranchRepository",
+    "PostgresMemoryRepository",
     "PostgresTrajectoryRepository",
     "PostgresUserRepository",
     "SQLiteAgentTeamRepository",

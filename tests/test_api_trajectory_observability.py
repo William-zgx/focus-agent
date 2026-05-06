@@ -202,6 +202,7 @@ def _runtime_stub(*, auth_enabled: bool = False, trajectory_recorder=None, traje
         branch_service=object(),
         tool_registry=object(),
         skill_registry=object(),
+        memory_repository=object(),
         trajectory_recorder=trajectory_recorder if trajectory_recorder is not None else _FakeTrajectoryRepo(),
         background_work=SimpleNamespace(
             snapshot=lambda: {

@@ -5,7 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 9
 
 
 def ensure_app_postgres_schema(database_uri: str) -> None:
@@ -451,6 +451,214 @@ def _run_migration_v7(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v8(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_memories (
+            memory_id TEXT PRIMARY KEY,
+            namespace TEXT[] NOT NULL,
+            kind TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            visibility TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            user_id TEXT,
+            root_thread_id TEXT,
+            source_thread_id TEXT,
+            source_branch_id TEXT,
+            semantic_key TEXT,
+            fingerprint TEXT,
+            confidence DOUBLE PRECISION,
+            importance DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+            summary TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            promoted_to_main BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            deleted_at TIMESTAMPTZ,
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_memory_audit_events (
+            event_id TEXT PRIMARY KEY,
+            action TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            memory_id TEXT,
+            candidate_id TEXT,
+            actor TEXT,
+            reason TEXT,
+            namespace TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            user_id TEXT,
+            root_thread_id TEXT,
+            source_thread_id TEXT,
+            source_branch_id TEXT,
+            request_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_memory_tombstones (
+            tombstone_id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL UNIQUE,
+            namespace TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            semantic_key TEXT,
+            fingerprint TEXT,
+            actor TEXT,
+            reason TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_memory_candidates (
+            candidate_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            agent_id TEXT,
+            task_id TEXT,
+            branch_id TEXT,
+            root_thread_id TEXT,
+            user_id TEXT,
+            evidence_refs TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            data_json JSONB NOT NULL
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_namespace_status_updated
+        ON focus_memories(namespace, status, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_kind_scope_visibility
+        ON focus_memories(kind, scope, visibility)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_user_updated
+        ON focus_memories(user_id, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_root_updated
+        ON focus_memories(root_thread_id, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_source_branch
+        ON focus_memories(source_branch_id, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_memories_active_fingerprint
+        ON focus_memories(namespace, fingerprint)
+        WHERE fingerprint IS NOT NULL AND status != 'forgotten' AND deleted_at IS NULL
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_semantic_key
+        ON focus_memories(semantic_key)
+        WHERE semantic_key IS NOT NULL
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_text_search
+        ON focus_memories USING GIN (
+            to_tsvector('simple', coalesce(summary, '') || ' ' || coalesce(content, ''))
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_audit_memory_created
+        ON focus_memory_audit_events(memory_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_audit_root_created
+        ON focus_memory_audit_events(root_thread_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_tombstones_semantic_key
+        ON focus_memory_tombstones(semantic_key)
+        WHERE semantic_key IS NOT NULL
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_candidates_status_updated
+        ON focus_memory_candidates(status, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memory_candidates_root_updated
+        ON focus_memory_candidates(root_thread_id, updated_at DESC)
+        """
+    )
+
+
+def _run_migration_v9(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        UPDATE focus_memories
+        SET
+            content = '',
+            summary = '[forgotten]',
+            deleted_at = COALESCE(deleted_at, updated_at, now()),
+            updated_at = now(),
+            data_json =
+                jsonb_set(
+                    jsonb_set(
+                        jsonb_set(
+                            jsonb_set(
+                                jsonb_set(data_json, '{content}', to_jsonb(''::text), true),
+                                '{summary}', to_jsonb('[forgotten]'::text), true
+                            ),
+                            '{status}', to_jsonb('forgotten'::text), true
+                        ),
+                        '{deleted_at}',
+                        to_jsonb(to_char(COALESCE(deleted_at, updated_at, now()), 'YYYY-MM-DD"T"HH24:MI:SS.USOF')),
+                        true
+                    ),
+                    '{updated_at}',
+                    to_jsonb(to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS.USOF')),
+                    true
+                )
+        WHERE status = 'forgotten'
+          AND (
+              content <> ''
+              OR summary <> '[forgotten]'
+              OR data_json->>'content' IS DISTINCT FROM ''
+              OR data_json->>'summary' IS DISTINCT FROM '[forgotten]'
+              OR data_json->>'status' IS DISTINCT FROM 'forgotten'
+              OR deleted_at IS NULL
+              OR NOT (data_json ? 'deleted_at')
+              OR data_json->>'deleted_at' IS NULL
+          )
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (1, _run_migration_v1),
     (2, _run_migration_v2),
@@ -459,4 +667,6 @@ _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (5, _run_migration_v5),
     (6, _run_migration_v6),
     (7, _run_migration_v7),
+    (8, _run_migration_v8),
+    (9, _run_migration_v9),
 )

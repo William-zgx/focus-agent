@@ -58,6 +58,12 @@ def test_postgres_schema_setup_creates_app_tables(monkeypatch):
     assert any("ADD COLUMN IF NOT EXISTS max_attempts" in sql for sql in statements)
     assert any("ADD COLUMN IF NOT EXISTS dedupe_policy" in sql for sql in statements)
     assert any("ADD COLUMN IF NOT EXISTS claim_token" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memories" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memory_audit_events" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memory_tombstones" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memory_candidates" in sql for sql in statements)
+    assert any("idx_focus_memories_text_search" in sql for sql in statements)
+    assert any(params == (8,) for _, params in executed)
 
 
 def test_postgres_schema_setup_runs_v2_when_v1_already_exists(monkeypatch):
@@ -100,6 +106,52 @@ def test_postgres_schema_setup_runs_v2_when_v1_already_exists(monkeypatch):
     assert not any("CREATE TABLE IF NOT EXISTS focus_conversations" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_sessions" in sql for sql in statements)
     assert any(params == (2,) for _, params in executed)
+
+
+def test_postgres_schema_setup_runs_v8_when_prior_versions_exist(monkeypatch):
+    executed: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+            self._params = params
+
+        def fetchone(self):
+            if self._params and self._params[0] in {1, 2, 3, 4, 5, 6, 7}:
+                return {"version": self._params[0]}
+            return None
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_schema.psycopg.connect",
+        lambda uri: FakeConnection(),
+    )
+
+    ensure_app_postgres_schema("postgresql://example")
+
+    statements = [sql for sql, _ in executed]
+    assert not any("CREATE TABLE IF NOT EXISTS focus_conversations" in sql for sql in statements)
+    assert not any("CREATE TABLE IF NOT EXISTS focus_background_jobs" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memories" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memory_audit_events" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memory_tombstones" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_memory_candidates" in sql for sql in statements)
+    assert any(params == (8,) for _, params in executed)
 
 
 def test_postgres_branch_repository_setup_and_write_queries(monkeypatch):

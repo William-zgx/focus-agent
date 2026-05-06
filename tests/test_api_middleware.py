@@ -309,6 +309,7 @@ def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         branch_service=object(),
         tool_registry=object(),
         skill_registry=object(),
+        memory_repository=object(),
         otel_runtime=SimpleNamespace(
             ready=True,
             detail="exporting spans via otlp",
@@ -337,6 +338,8 @@ def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert tracing_check["ready"] is True
     trajectory_check = next(item for item in payload["checks"] if item["name"] == "trajectory_recorder")
     assert trajectory_check["ready"] is True
+    memory_check = next(item for item in payload["checks"] if item["name"] == "memory_repository")
+    assert memory_check["ready"] is True
     assert payload["app_version"] == "9.9.9"
     assert payload["environment"] == "staging"
     assert payload["deployment"] == "focus-agent-blue"

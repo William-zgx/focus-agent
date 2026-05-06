@@ -62,6 +62,7 @@ export function isAgentWorkbenchPath(pathname: string) {
     pathname === "/observability/overview" ||
     pathname === "/observability/trajectory" ||
     pathname === "/agent/governance" ||
+    pathname === "/agent/memory" ||
     pathname === "/agent/roles"
   );
 }

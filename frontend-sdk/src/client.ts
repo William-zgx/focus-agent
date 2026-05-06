@@ -3,6 +3,7 @@ import { applyAdminEndpoints, type AdminEndpoints } from "./client/admin.js";
 import { applyAgentGovernanceEndpoints, type AgentGovernanceEndpoints } from "./client/agent-governance.js";
 import { applyAgentTeamEndpoints, type AgentTeamEndpoints } from "./client/agent-team.js";
 import { applyAuthEndpoints, type AuthEndpoints } from "./client/auth.js";
+import { applyMemoryEndpoints, type MemoryEndpoints } from "./client/memory.js";
 import { applyObservabilityEndpoints, type ObservabilityEndpoints } from "./client/observability.js";
 import { dedupeAndCanonicalizeAliasEvents } from "./client/stream.js";
 import { applyStreamingEndpoints, type StreamingEndpoints } from "./client/streaming.js";
@@ -24,6 +25,7 @@ export interface FocusAgentClient
     AgentGovernanceEndpoints,
     AgentTeamEndpoints,
     ThreadBranchEndpoints,
+    MemoryEndpoints,
     ObservabilityEndpoints,
     StreamingEndpoints {}
 
@@ -94,5 +96,6 @@ applyAdminEndpoints(FocusAgentClient);
 applyAgentGovernanceEndpoints(FocusAgentClient);
 applyAgentTeamEndpoints(FocusAgentClient);
 applyThreadBranchEndpoints(FocusAgentClient);
+applyMemoryEndpoints(FocusAgentClient);
 applyObservabilityEndpoints(FocusAgentClient);
 applyStreamingEndpoints(FocusAgentClient);

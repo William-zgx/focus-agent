@@ -2,7 +2,14 @@ from types import SimpleNamespace
 
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import Plan, PlanStep, PromptMode
-from focus_agent.memory import MemoryRetriever
+from focus_agent.memory import (
+    MemoryKind,
+    MemoryRecord,
+    MemoryRetriever,
+    MemoryScope,
+    MemorySearchHit,
+    MemoryVisibility,
+)
 
 
 class FakeStore:
@@ -362,3 +369,114 @@ def test_memory_retriever_extracts_matched_terms_for_chinese_query_without_space
     )
 
     assert bundle.hits[0].matched_terms
+
+
+class RepositorySearchFake:
+    def __init__(self, hits_by_namespace):
+        self.hits_by_namespace = {
+            tuple(namespace): list(hits)
+            for namespace, hits in hits_by_namespace.items()
+        }
+        self.calls = []
+
+    def search(self, *, namespace, query, limit):
+        self.calls.append((tuple(namespace), query, limit))
+        return self.hits_by_namespace.get(tuple(namespace), [])[:limit]
+
+
+class StoreShouldNotBeUsed:
+    def search(self, namespace, query, limit):  # noqa: ARG002
+        raise AssertionError("repository-backed retriever should not call the legacy store")
+
+
+def test_memory_retriever_uses_repository_hits_and_marks_postgres_source():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositorySearchFake(
+        {
+            namespace: [
+                MemorySearchHit(
+                    record=MemoryRecord(
+                        memory_id="repo-mem-1",
+                        kind=MemoryKind.PROJECT_FACT,
+                        scope=MemoryScope.ROOT_THREAD,
+                        visibility=MemoryVisibility.SHARED,
+                        namespace=namespace,
+                        content="owner collision is fixed in the repository layer",
+                        summary="owner collision repository fix",
+                        root_thread_id="root-1",
+                        user_id="user-1",
+                    ),
+                    score=0.42,
+                    namespace=namespace,
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(store=StoreShouldNotBeUsed(), repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="owner collision",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert bundle.retrieval_plan["source"] == "postgres"
+    assert namespace in bundle.namespaces
+    assert repo.calls[0][0] == namespace
+    assert bundle.hits[0].record.memory_id == "repo-mem-1"
+    assert "owner" in bundle.hits[0].matched_terms
+
+
+def test_memory_retrieval_plan_records_prompt_visible_hits_after_policy_filter():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositorySearchFake(
+        {
+            namespace: [
+                MemorySearchHit(
+                    record=MemoryRecord(
+                        memory_id="hidden-branch-finding",
+                        kind=MemoryKind.BRANCH_FINDING,
+                        scope=MemoryScope.BRANCH,
+                        visibility=MemoryVisibility.PROMOTABLE,
+                        namespace=namespace,
+                        content="branch-only finding should stay hidden in synthesize",
+                        summary="branch-only finding",
+                        root_thread_id="root-1",
+                        user_id="user-1",
+                        source_branch_id="branch-1",
+                    ),
+                    score=0.99,
+                    namespace=namespace,
+                ),
+                MemorySearchHit(
+                    record=MemoryRecord(
+                        memory_id="visible-project-fact",
+                        kind=MemoryKind.PROJECT_FACT,
+                        scope=MemoryScope.ROOT_THREAD,
+                        visibility=MemoryVisibility.SHARED,
+                        namespace=namespace,
+                        content="visible project memory",
+                        summary="visible project memory",
+                        root_thread_id="root-1",
+                        user_id="user-1",
+                    ),
+                    score=0.5,
+                    namespace=namespace,
+                ),
+            ]
+        }
+    )
+    retriever = MemoryRetriever(store=StoreShouldNotBeUsed(), repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="finding project",
+        prompt_mode=PromptMode.SYNTHESIZE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["visible-project-fact"]
+    assert bundle.retrieval_plan["selected_memory_ids"] == ["visible-project-fact"]

@@ -27,6 +27,7 @@ from focus_agent.engine.graph_builder import (
     build_graph,
 )
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
+from focus_agent.memory import MemoryExtractor, MemoryRetriever
 
 
 def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
@@ -1486,6 +1487,222 @@ class _SingleRoundToolModel:
         if self.on_final_invoke is not None:
             self.on_final_invoke(prompt_messages)
         return AIMessage(content=self.final_answer)
+
+
+class _RecordingMemoryStore:
+    def __init__(self):
+        self.put_calls = []
+        self.search_calls = []
+        self.delete_calls = []
+        self.data = {}
+
+    def put(self, namespace, key, value):
+        self.put_calls.append((tuple(namespace), key, dict(value)))
+        self.data.setdefault(tuple(namespace), {})[key] = dict(value)
+
+    def get(self, namespace, key):
+        return self.data.get(tuple(namespace), {}).get(key)
+
+    def delete(self, namespace, key):
+        self.delete_calls.append((tuple(namespace), key))
+        self.data.get(tuple(namespace), {}).pop(key, None)
+
+    def search(self, namespace, query, limit):  # noqa: ARG002
+        self.search_calls.append(tuple(namespace))
+        return []
+
+
+def _graph_with_memory_store(store):
+    return build_graph(
+        settings=Settings(),
+        store=store,
+        memory_retriever=MemoryRetriever(store=None),
+        memory_extractor=MemoryExtractor(mode="off"),
+    )
+
+
+def test_graph_memory_search_binds_missing_context_args_and_avoids_default_project(monkeypatch):
+    store = _RecordingMemoryStore()
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "memory-search-1",
+                "name": "memory_search",
+                "args": {"query": "concise"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    result = _graph_with_memory_store(store).invoke(
+        {
+            "messages": [HumanMessage(content="use the memory tool")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    payload = json.loads(tool_messages[-1].content)
+
+    assert tool_messages[-1].status == "success"
+    assert ["user", "user-1", "profile"] in payload["namespaces"]
+    assert ["conversation", "root-1", "main"] in payload["namespaces"]
+    assert ["project", "default", "memory"] not in payload["namespaces"]
+    assert ("project", "default", "memory") not in store.search_calls
+
+
+def test_graph_memory_tool_rejects_mismatched_user_and_root_without_executing(monkeypatch):
+    store = _RecordingMemoryStore()
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "memory-save-1",
+                "name": "memory_save",
+                "args": {
+                    "content": "User prefers concise answers.",
+                    "user_id": "other-user",
+                },
+            },
+            {
+                "id": "memory-forget-1",
+                "name": "memory_forget",
+                "args": {"memory_id": "memory-1", "root_thread_id": "other-root"},
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    result = _graph_with_memory_store(store).invoke(
+        {
+            "messages": [HumanMessage(content="use the memory tool")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    errors = [json.loads(message.content) for message in tool_messages]
+
+    assert [message.status for message in tool_messages] == ["error", "error"]
+    assert "user_id" in errors[0]["error"]
+    assert "root_thread_id" in errors[1]["error"]
+    assert store.put_calls == []
+    assert store.delete_calls == []
+
+
+def test_graph_memory_tool_rejects_explicit_other_user_namespace(monkeypatch):
+    store = _RecordingMemoryStore()
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "memory-search-1",
+                "name": "memory_search",
+                "args": {"query": "concise", "namespace": "user/other-user/profile"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    result = _graph_with_memory_store(store).invoke(
+        {
+            "messages": [HumanMessage(content="use the memory tool")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    payload = json.loads(tool_messages[-1].content)
+
+    assert tool_messages[-1].status == "error"
+    assert "outside the active request context" in payload["error"]
+    assert store.search_calls == []
+
+
+def test_graph_memory_tool_rejects_skill_scope_without_executing(monkeypatch):
+    store = _RecordingMemoryStore()
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "memory-search-1",
+                "name": "memory_search",
+                "args": {"query": "research", "namespace": "skill/research/memory"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    result = _graph_with_memory_store(store).invoke(
+        {
+            "messages": [HumanMessage(content="use the memory tool")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    payload = json.loads(tool_messages[-1].content)
+
+    assert tool_messages[-1].status == "error"
+    assert "skill-scoped memory is not allowed" in payload["error"]
+    assert store.search_calls == []
+
+
+def test_graph_memory_tool_allows_current_branch_namespace(monkeypatch):
+    store = _RecordingMemoryStore()
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "memory-search-1",
+                "name": "memory_search",
+                "args": {
+                    "query": "finding",
+                    "namespace": "conversation/root-1/branch/branch-1/local_memory",
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    result = _graph_with_memory_store(store).invoke(
+        {
+            "messages": [HumanMessage(content="use the memory tool")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(
+            user_id="user-1",
+            root_thread_id="root-1",
+            branch_id="branch-1",
+        ),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+
+    assert tool_messages[-1].status == "success"
+    assert store.search_calls == [
+        ("conversation", "root-1", "branch", "branch-1", "local_memory")
+    ]
 
 
 def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypatch):

@@ -154,6 +154,23 @@ from .contract_models.observability import (
     TrajectoryBatchReplayCompareResponse,
 )
 
+from .contract_models.memory import (
+    MemoryRecordResponse,
+    MemoryRecordListResponse,
+    MemoryRecordDetailResponse,
+    MemoryListResponse,
+    MemoryDetailResponse,
+    MemoryAuditEventResponse,
+    MemoryAuditEventListResponse,
+    MemoryAuditListResponse,
+    ForgetMemoryRecordRequest,
+    ForgetMemoryRecordResponse,
+    MemoryForgetRequest,
+    MemoryForgetResponse,
+    MemoryCandidateResponse,
+    MemoryCandidateListResponse,
+)
+
 __all__ = [
     "AgentRolePolicyResponse",
     "AgentRoleDryRunRequest",
@@ -291,4 +308,18 @@ __all__ = [
     "TrajectoryBatchPromotionPreviewResponse",
     "TrajectoryBatchReplaySummaryResponse",
     "TrajectoryBatchReplayCompareResponse",
+    "MemoryRecordResponse",
+    "MemoryRecordListResponse",
+    "MemoryRecordDetailResponse",
+    "MemoryListResponse",
+    "MemoryDetailResponse",
+    "MemoryAuditEventResponse",
+    "MemoryAuditEventListResponse",
+    "MemoryAuditListResponse",
+    "ForgetMemoryRecordRequest",
+    "ForgetMemoryRecordResponse",
+    "MemoryForgetRequest",
+    "MemoryForgetResponse",
+    "MemoryCandidateResponse",
+    "MemoryCandidateListResponse",
 ]

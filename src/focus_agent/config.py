@@ -141,6 +141,11 @@ class Settings:
     agent_role_memory_model: str | None = None
     agent_role_skill_model: str | None = None
     agent_role_max_parallel_runs: int = 2
+    agent_memory_backend: str = "postgres"
+    agent_memory_read_source: str = "postgres"
+    agent_memory_extractor_mode: str = "heuristic"
+    agent_memory_postgres_trigram_enabled: bool = False
+    agent_memory_approval_for_shared_writes: bool = False
     agent_memory_curator_enabled: bool = False
     agent_memory_auto_promote_on_merge: bool = True
     agent_tool_router_enabled: bool = False

@@ -8,8 +8,10 @@ from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemoryStore
 from focus_agent.memory import (
+    MemoryAuditEvent,
     MemoryRecord,
     MemorySearchHit,
+    MemoryStatus,
     MemoryWriter,
     RetrievedMemoryBundle,
     render_memory_block,
@@ -417,6 +419,84 @@ def test_graph_extracts_and_writes_user_memory(monkeypatch, tmp_path):
     payload = hits[0].value
     assert payload["kind"] == "user_preference"
     assert "emoji" in payload["content"]
+
+
+class _MemoryWriterRepository:
+    def __init__(self):
+        self.records: dict[str, MemoryRecord] = {}
+        self.audit_events: list[MemoryAuditEvent] = []
+
+    def find_existing(
+        self,
+        *,
+        namespace: tuple[str, ...],
+        fingerprint: str,
+        semantic_key: str,
+        kind: str | None = None,
+        scope: str | None = None,
+    ) -> MemoryRecord | None:
+        for record in self.records.values():
+            if record.namespace != namespace:
+                continue
+            if kind and record.kind.value != kind:
+                continue
+            if scope and record.scope.value != scope:
+                continue
+            if record.fingerprint == fingerprint or record.semantic_key == semantic_key:
+                return record
+        return None
+
+    def upsert_record(self, record: MemoryRecord) -> str:
+        self.records[record.memory_id] = record
+        return record.memory_id
+
+    def append_audit_event(self, event: MemoryAuditEvent) -> str:
+        self.audit_events.append(event)
+        return event.event_id
+
+    def forget_record(self, **kwargs):  # noqa: ANN003
+        del kwargs
+        return None
+
+    def search(self, **kwargs):  # noqa: ANN003
+        del kwargs
+        return []
+
+    def list_records(self, query):  # noqa: ANN001
+        del query
+        return list(self.records.values())
+
+    def get_record(self, memory_id: str) -> MemoryRecord | None:
+        return self.records.get(memory_id)
+
+
+def test_memory_writer_persists_through_repository_and_returns_audit_decisions():
+    repo = _MemoryWriterRepository()
+    writer = MemoryWriter(store=None, repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    state = {"messages": [AIMessage(content="偏好已更新。")]}
+    request = MemoryWriteRequest(
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=user_profile_namespace("user-1"),
+        content="Please keep answers concise.",
+        summary="Concise answers",
+        user_id="user-1",
+        importance=0.8,
+    )
+
+    outcome = writer.persist_records([request], context=context, state=state)
+
+    assert outcome["prepared"] == 1
+    assert outcome["written"]
+    assert outcome["merged"] == []
+    assert outcome["skipped"] == []
+    assert outcome["decisions"][0]["status"] == "accepted"
+    assert outcome["decisions"][0]["audit_id"] == repo.audit_events[0].event_id
+    stored = repo.records[outcome["written"][0]]
+    assert stored.status == MemoryStatus.ACTIVE
+    assert stored.content == "Please keep answers concise."
 
 
 class _FakeSearchResult:

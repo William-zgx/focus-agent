@@ -98,6 +98,7 @@ class AgentState(TypedDict, total=False):
     # Written by prompt assembly after memory rendering, read by model invocation,
     # and never merge-imported because it only reflects the current prompt surface.
     memory_prompt_block: str
+    memory_retrieval_plan: dict[str, Any]
 
     # Written by skill selection for the active turn, read by prompt assembly,
     # and reused on resume when the turn is still in progress.
@@ -189,6 +190,7 @@ AgentStateKey: TypeAlias = Literal[
     "prompt_mode",
     "retrieved_memories",
     "memory_prompt_block",
+    "memory_retrieval_plan",
     "active_skill_ids",
     "available_skills_block",
     "active_skills_block",
@@ -490,6 +492,7 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "prompt_mode",
     "retrieved_memories",
     "memory_prompt_block",
+    "memory_retrieval_plan",
     "active_skill_ids",
     "available_skills_block",
     "active_skills_block",
@@ -557,6 +560,7 @@ MEMORY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "pinned_items",
     "retrieved_memories",
     "memory_prompt_block",
+    "memory_retrieval_plan",
     "memory_write_requests",
     "memory_write_result",
 )
@@ -638,6 +642,7 @@ OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "delegated_artifacts",
     "artifact_synthesis_result",
     "critic_gate_result",
+    "memory_retrieval_plan",
     "memory_write_result",
 )
 STATE_DOMAIN_FIELDS: Mapping[AgentStateDomain, tuple[AgentStateKey, ...]] = MappingProxyType(
@@ -678,6 +683,7 @@ def initial_agent_state() -> AgentState:
         "prompt_mode": PromptMode.EXPLORE,
         "retrieved_memories": [],
         "memory_prompt_block": "",
+        "memory_retrieval_plan": {},
         "active_skill_ids": [],
         "available_skills_block": "",
         "active_skills_block": "",

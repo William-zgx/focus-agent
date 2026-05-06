@@ -96,7 +96,11 @@ def _rendered_memory_line(record: MemoryRecord, *, score: float, recency_order: 
     summary = sanitize_memory_text(record.summary or record.content)
     if not summary:
         return None
-    line = f"[{_memory_source_label(record)}] {summary} [score {score:.2f}]"
+    line = (
+        f"[{_memory_source_label(record)}"
+        f"; updated:{record.updated_at.date().isoformat()}"
+        f"; confidence:{float(record.confidence or 0.0):.2f}] {summary}"
+    )
     return _RenderedMemoryLine(
         block_key=_memory_block_key(record),
         line=line,

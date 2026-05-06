@@ -24,6 +24,7 @@ from .routers import (
     branches_merge,
     conversation_chat_context,
     health_metrics,
+    memory,
     observability,
 )
 from .routers.frontend_static import register_frontend_routes
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_users.router)
     app.include_router(agent_team.router)
     app.include_router(agent_governance.router)
+    app.include_router(memory.router)
     app.include_router(observability.router)
     app.include_router(conversation_chat_context.router)
     app.include_router(branches_merge.router)

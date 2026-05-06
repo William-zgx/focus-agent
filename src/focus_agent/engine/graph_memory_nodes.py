@@ -67,6 +67,7 @@ def make_retrieve_memory_node(
                 for hit in bundle.hits
             ],
             "memory_prompt_block": render_memory_block(bundle),
+            "memory_retrieval_plan": bundle.retrieval_plan,
             "prompt_mode": prompt_mode,
         }
 

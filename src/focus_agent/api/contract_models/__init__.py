@@ -150,6 +150,23 @@ from .observability import (
     TrajectoryBatchReplayCompareResponse,
 )
 
+from .memory import (
+    MemoryRecordResponse,
+    MemoryRecordListResponse,
+    MemoryRecordDetailResponse,
+    MemoryListResponse,
+    MemoryDetailResponse,
+    MemoryAuditEventResponse,
+    MemoryAuditEventListResponse,
+    MemoryAuditListResponse,
+    ForgetMemoryRecordRequest,
+    ForgetMemoryRecordResponse,
+    MemoryForgetRequest,
+    MemoryForgetResponse,
+    MemoryCandidateResponse,
+    MemoryCandidateListResponse,
+)
+
 __all__ = [
     "AgentRolePolicyResponse",
     "AgentRoleDryRunRequest",
@@ -283,4 +300,18 @@ __all__ = [
     "TrajectoryBatchPromotionPreviewResponse",
     "TrajectoryBatchReplaySummaryResponse",
     "TrajectoryBatchReplayCompareResponse",
+    "MemoryRecordResponse",
+    "MemoryRecordListResponse",
+    "MemoryRecordDetailResponse",
+    "MemoryListResponse",
+    "MemoryDetailResponse",
+    "MemoryAuditEventResponse",
+    "MemoryAuditEventListResponse",
+    "MemoryAuditListResponse",
+    "ForgetMemoryRecordRequest",
+    "ForgetMemoryRecordResponse",
+    "MemoryForgetRequest",
+    "MemoryForgetResponse",
+    "MemoryCandidateResponse",
+    "MemoryCandidateListResponse",
 ]

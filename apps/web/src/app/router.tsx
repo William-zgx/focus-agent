@@ -23,6 +23,7 @@ import { AccountProfilePage } from "@/pages/account/profile-page";
 import { AccountSecurityPage } from "@/pages/account/security-page";
 import { AccountSessionsPage } from "@/pages/account/sessions-page";
 import { LoginPage } from "@/pages/auth/login-page";
+import { MemoryConsolePage } from "@/pages/memory/memory-console-page";
 import { RegisterPage } from "@/pages/auth/register-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
@@ -245,6 +246,12 @@ const agentGovernanceConsoleRoute = createRoute({
   component: protect(<AgentRoleConsolePage />),
 });
 
+const agentMemoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agent/memory",
+  component: protect(<MemoryConsolePage />),
+});
+
 const agentTeamRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/agent-team",
@@ -319,6 +326,7 @@ const routeTree = rootRoute.addChildren([
   observabilityOverviewRoute,
   agentRoleConsoleRoute,
   agentGovernanceConsoleRoute,
+  agentMemoryRoute,
   agentTeamRoute,
   agentTeamSessionRoute,
   adminUsersRoute,

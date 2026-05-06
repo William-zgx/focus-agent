@@ -31,7 +31,9 @@ export function useShellRouteState() {
     routeState.pathname === "/observability/overview" ||
     routeState.pathname === "/observability/trajectory";
   const isAgentGovernanceRoute =
-    routeState.pathname === "/agent/governance" || routeState.pathname === "/agent/roles";
+    routeState.pathname === "/agent/governance" ||
+    routeState.pathname === "/agent/memory" ||
+    routeState.pathname === "/agent/roles";
   const isAdminRoute =
     routeState.pathname === "/admin/users" ||
     routeState.pathname.startsWith("/admin/users/") ||

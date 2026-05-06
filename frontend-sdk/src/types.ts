@@ -5,6 +5,7 @@ export * from "./types/auth.js";
 export * from "./types/branch.js";
 export * from "./types/chat.js";
 export * from "./types/common.js";
+export * from "./types/memory.js";
 export * from "./types/stream.js";
 export * from "./types/thread.js";
 export * from "./types/trajectory.js";

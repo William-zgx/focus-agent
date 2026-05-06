@@ -54,12 +54,30 @@ def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespo
                 detail="postgres-primary",
             )
         )
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="memory_repository",
+                ready=getattr(runtime, "memory_repository", None) is not None,
+                detail=(
+                    "postgres-canonical"
+                    if getattr(runtime, "memory_repository", None) is not None
+                    else "postgres memory repository missing"
+                ),
+            )
+        )
     else:
         checks.append(
             RuntimeComponentStatusResponse(
                 name="persistence_backend",
                 ready=True,
                 detail="local-fallback",
+            )
+        )
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="memory_repository",
+                ready=True,
+                detail="local_fallback: legacy LangGraph store memory",
             )
         )
 

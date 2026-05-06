@@ -49,6 +49,25 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 )
             ),
         ),
+        "agent_memory_backend": str(
+            env.get("AGENT_MEMORY_BACKEND") or defaults.agent_memory_backend
+        ).strip().lower(),
+        "agent_memory_read_source": str(
+            env.get("AGENT_MEMORY_READ_SOURCE") or defaults.agent_memory_read_source
+        ).strip().lower(),
+        "agent_memory_extractor_mode": str(
+            env.get("AGENT_MEMORY_EXTRACTOR_MODE") or defaults.agent_memory_extractor_mode
+        ).strip().lower(),
+        "agent_memory_postgres_trigram_enabled": _env_bool(
+            env,
+            "AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED",
+            default=defaults.agent_memory_postgres_trigram_enabled,
+        ),
+        "agent_memory_approval_for_shared_writes": _env_bool(
+            env,
+            "AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES",
+            default=defaults.agent_memory_approval_for_shared_writes,
+        ),
         "agent_memory_curator_enabled": _env_bool(
             env, "AGENT_MEMORY_CURATOR_ENABLED", default=defaults.agent_memory_curator_enabled
         ),

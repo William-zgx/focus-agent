@@ -22,6 +22,9 @@ class _FakeArtifactMetadataCursor:
         if normalized.startswith("ALTER TABLE"):
             self._rows = []
             return
+        if normalized.startswith("UPDATE focus_memories"):
+            self._rows = []
+            return
         if normalized.startswith("SELECT version FROM focus_schema_migrations"):
             self._rows = []
             return

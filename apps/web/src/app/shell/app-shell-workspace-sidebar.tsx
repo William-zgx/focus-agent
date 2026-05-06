@@ -72,6 +72,13 @@ export function AppShellWorkspaceSidebar({
               <span>{isChineseUi ? "治理" : "Governance"}</span>
               <strong>{isChineseUi ? "记忆 / 工具 / 路由" : "Memory / tools / routing"}</strong>
             </Link>
+            <Link
+              className={`fa-workspace-sidebar-item ${pathname === "/agent/memory" ? "is-active" : ""}`.trim()}
+              to="/agent/memory"
+            >
+              <span>{isChineseUi ? "记忆" : "Memory"}</span>
+              <strong>{isChineseUi ? "记录、候选与审计" : "Records, candidates, audit"}</strong>
+            </Link>
           </>
         ) : (
           <>

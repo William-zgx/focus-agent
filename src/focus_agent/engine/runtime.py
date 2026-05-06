@@ -42,6 +42,7 @@ class RuntimePersistence:
     store: object
     repo: BranchRepository
     user_repository: UserRepository
+    memory_repository: object | None
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
 
@@ -52,6 +53,7 @@ class RuntimeMemoryComponents:
     memory_retriever: MemoryRetriever
     memory_writer: MemoryWriter
     memory_extractor: MemoryExtractor
+    memory_repository: object | None
 
 
 @dataclass(slots=True)
@@ -83,6 +85,7 @@ class AppRuntime:
     memory_retriever: MemoryRetriever
     memory_writer: MemoryWriter
     memory_extractor: MemoryExtractor
+    memory_repository: object | None
     skill_registry: SkillRegistry
     tool_registry: ToolRegistry
     trajectory_recorder: object | None
@@ -154,7 +157,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     exit_stack.callback(background_work.close)
 
     persistence = _create_runtime_persistence(settings=settings, exit_stack=exit_stack)
-    memory = _create_memory_components(persistence.store)
+    memory = _create_memory_components(
+        settings=settings,
+        store=persistence.store,
+        memory_repository=persistence.memory_repository,
+    )
     registries = _create_runtime_registries(settings=settings, persistence=persistence)
     graph = _create_runtime_graph(
         settings=settings,
@@ -169,6 +176,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         user_repository=persistence.user_repository,
         store=persistence.store,
         memory_writer=memory.memory_writer,
+        memory_repository=persistence.memory_repository,
         coordination_backend=coordination_backend,
     )
 
@@ -187,6 +195,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_retriever=memory.memory_retriever,
         memory_writer=memory.memory_writer,
         memory_extractor=memory.memory_extractor,
+        memory_repository=memory.memory_repository,
         skill_registry=registries.skill_registry,
         tool_registry=registries.tool_registry,
         trajectory_recorder=persistence.trajectory_recorder,
@@ -206,7 +215,15 @@ def _create_runtime_persistence(
 ) -> RuntimePersistence:
     if settings.database_uri:
         logger.info("Runtime persistence backend selected: postgres-primary")
-        checkpointer, store, repo, user_repository, trajectory_recorder, artifact_metadata_repository = (
+        (
+            checkpointer,
+            store,
+            repo,
+            user_repository,
+            memory_repository,
+            trajectory_recorder,
+            artifact_metadata_repository,
+        ) = (
             _create_postgres_primary_persistence(
                 settings=settings,
                 exit_stack=exit_stack,
@@ -214,7 +231,15 @@ def _create_runtime_persistence(
         )
     else:
         logger.info("Runtime persistence backend selected: local-fallback")
-        checkpointer, store, repo, user_repository, trajectory_recorder, artifact_metadata_repository = (
+        (
+            checkpointer,
+            store,
+            repo,
+            user_repository,
+            memory_repository,
+            trajectory_recorder,
+            artifact_metadata_repository,
+        ) = (
             _create_local_fallback_persistence(settings)
         )
 
@@ -223,21 +248,28 @@ def _create_runtime_persistence(
         store=store,
         repo=repo,
         user_repository=user_repository,
+        memory_repository=memory_repository,
         trajectory_recorder=trajectory_recorder,
         artifact_metadata_repository=artifact_metadata_repository,
     )
 
 
-def _create_memory_components(store: object) -> RuntimeMemoryComponents:
+def _create_memory_components(
+    *,
+    settings: Settings,
+    store: object,
+    memory_repository: object | None = None,
+) -> RuntimeMemoryComponents:
     memory_policy = MemoryPolicy()
-    memory_retriever = MemoryRetriever(store=store, policy=memory_policy)
-    memory_writer = MemoryWriter(store=store, policy=memory_policy)
-    memory_extractor = MemoryExtractor()
+    memory_retriever = MemoryRetriever(store=store, repository=memory_repository, policy=memory_policy)
+    memory_writer = MemoryWriter(store=store, repository=memory_repository, policy=memory_policy)
+    memory_extractor = MemoryExtractor(mode=settings.agent_memory_extractor_mode)
     return RuntimeMemoryComponents(
         memory_policy=memory_policy,
         memory_retriever=memory_retriever,
         memory_writer=memory_writer,
         memory_extractor=memory_extractor,
+        memory_repository=memory_repository,
     )
 
 
@@ -253,6 +285,7 @@ def _create_runtime_registries(
         store=persistence.store,
         checkpointer=persistence.checkpointer,
         artifact_metadata_repository=persistence.artifact_metadata_repository,
+        memory_repository=persistence.memory_repository,
     )
     return RuntimeRegistries(skill_registry=skill_registry, tool_registry=tool_registry)
 
@@ -285,6 +318,7 @@ def _create_runtime_services(
     user_repository: UserRepository,
     store: object,
     memory_writer: MemoryWriter,
+    memory_repository: object | None,
     coordination_backend: CoordinationBackend,
 ) -> RuntimeServices:
     branch_service = BranchService(
@@ -315,12 +349,13 @@ def _create_postgres_primary_persistence(
     *,
     settings: Settings,
     exit_stack: ExitStack,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, object]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object]:
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
 
     from ..repositories.artifact_metadata_repository import ArtifactMetadataRepository
     from ..repositories.postgres_branch_repository import PostgresBranchRepository
+    from ..repositories.postgres_memory_repository import PostgresMemoryRepository
     from ..repositories.postgres_user_repository import PostgresUserRepository
 
     assert settings.database_uri is not None
@@ -338,6 +373,9 @@ def _create_postgres_primary_persistence(
     artifact_metadata_repository = ArtifactMetadataRepository(settings.database_uri)
     _setup_component_if_available(artifact_metadata_repository)
 
+    memory_repository = PostgresMemoryRepository(settings.database_uri)
+    _setup_component_if_available(memory_repository)
+
     trajectory_recorder = None
     if _trajectory_enabled(settings):
         from ..repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
@@ -350,12 +388,20 @@ def _create_postgres_primary_persistence(
         else:
             trajectory_recorder = candidate
 
-    return checkpointer, store, repo, user_repository, trajectory_recorder, artifact_metadata_repository
+    return (
+        checkpointer,
+        store,
+        repo,
+        user_repository,
+        memory_repository,
+        trajectory_recorder,
+        artifact_metadata_repository,
+    )
 
 
 def _create_local_fallback_persistence(
     settings: Settings,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object | None]:
     persistence_dir = Path(settings.branch_db_path).expanduser().parent
     checkpoint_path = (
         Path(settings.local_checkpoint_path).expanduser()
@@ -371,7 +417,7 @@ def _create_local_fallback_persistence(
     store = PersistentInMemoryStore(store_path)
     repo = SQLiteBranchRepository(settings.branch_db_path)
     user_repository = SQLiteUserRepository(settings.branch_db_path)
-    return checkpointer, store, repo, user_repository, None, None
+    return checkpointer, store, repo, user_repository, None, None, None
 
 
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
@@ -398,6 +444,7 @@ def _build_tool_registry_compat(
     store: object,
     checkpointer: object,
     artifact_metadata_repository: object | None,
+    memory_repository: object | None = None,
 ) -> ToolRegistry:
     kwargs = {
         "settings": settings,
@@ -407,6 +454,8 @@ def _build_tool_registry_compat(
     }
     if "artifact_metadata_repository" in inspect.signature(build_tool_registry).parameters:
         kwargs["artifact_metadata_repository"] = artifact_metadata_repository
+    if "memory_repository" in inspect.signature(build_tool_registry).parameters:
+        kwargs["memory_repository"] = memory_repository
     return build_tool_registry(**kwargs)
 
 

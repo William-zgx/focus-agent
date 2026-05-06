@@ -96,7 +96,12 @@ class MemoryPolicy:
         *,
         prompt_mode: PromptMode,
     ) -> RetrievedMemoryBundle:
-        hits = list(bundle.hits)
+        hits = [
+            hit
+            for hit in list(bundle.hits)
+            if str(getattr(hit.record.status, "value", hit.record.status)) == "active"
+            and hit.record.deleted_at is None
+        ]
         if prompt_mode == PromptMode.SYNTHESIZE:
             hits = [
                 hit

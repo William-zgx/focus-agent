@@ -23,6 +23,7 @@ from focus_agent.config import (
 )
 from focus_agent.core.types import ContextBudget
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
+from focus_agent.memory import MemoryAuditEvent, MemoryRecord, MemorySearchHit, MemoryStatus
 
 
 class _FakeHeaders(dict):
@@ -161,14 +162,87 @@ class _MemoryToolStore:
         ][:limit]
 
 
-def _tool_map(settings: Settings, *, artifact_metadata_repository=None) -> dict[str, object]:
-    return {
-        tool.name: tool
-        for tool in get_default_tools(
-            settings,
-            artifact_metadata_repository=artifact_metadata_repository,
+class _MemoryToolRepository:
+    def __init__(self):
+        self.records: dict[str, MemoryRecord] = {}
+        self.audit_events: list[MemoryAuditEvent] = []
+
+    def find_existing(
+        self,
+        *,
+        namespace: tuple[str, ...],
+        fingerprint: str,
+        semantic_key: str,
+        kind: str | None = None,
+        scope: str | None = None,
+    ) -> MemoryRecord | None:
+        for record in self.records.values():
+            if record.namespace != namespace:
+                continue
+            if record.status == MemoryStatus.FORGOTTEN or record.deleted_at is not None:
+                continue
+            if kind and record.kind.value != kind:
+                continue
+            if scope and record.scope.value != scope:
+                continue
+            if record.fingerprint == fingerprint or record.semantic_key == semantic_key:
+                return record
+        return None
+
+    def upsert_record(self, record: MemoryRecord) -> str:
+        self.records[record.memory_id] = record
+        return record.memory_id
+
+    def search(self, *, namespace: tuple[str, ...], query: str, limit: int) -> list[MemorySearchHit]:
+        query_text = query.casefold()
+        hits = [
+            MemorySearchHit(record=record, score=0.6, namespace=record.namespace)
+            for record in self.records.values()
+            if record.namespace == namespace
+            and record.status == MemoryStatus.ACTIVE
+            and query_text in f"{record.summary} {record.content}".casefold()
+        ]
+        return hits[:limit]
+
+    def forget_record(
+        self,
+        *,
+        memory_id: str,
+        namespace: tuple[str, ...] | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
+    ) -> str | None:
+        del actor, reason
+        record = self.records.get(memory_id)
+        if record is None or (namespace is not None and record.namespace != namespace):
+            return None
+        self.records[memory_id] = record.model_copy(
+            update={"status": MemoryStatus.FORGOTTEN}
         )
-    }
+        return f"tombstone-{memory_id}"
+
+    def append_audit_event(self, event: MemoryAuditEvent) -> str:
+        self.audit_events.append(event)
+        return event.event_id
+
+    def get_record(self, memory_id: str) -> MemoryRecord | None:
+        return self.records.get(memory_id)
+
+    def list_records(self, query):  # noqa: ANN001
+        del query
+        return list(self.records.values())
+
+
+def _tool_map(
+    settings: Settings,
+    *,
+    artifact_metadata_repository=None,
+    memory_repository=None,
+) -> dict[str, object]:
+    kwargs = {"artifact_metadata_repository": artifact_metadata_repository}
+    if memory_repository is not None:
+        kwargs["memory_repository"] = memory_repository
+    return {tool.name: tool for tool in get_default_tools(settings, **kwargs)}
 
 
 def _runtime_invoke(tool_obj, args: dict[str, object]) -> tuple[str, str]:
@@ -745,6 +819,57 @@ def test_memory_search_reuses_retriever_dedupe_and_rerank_logic():
     assert len(searched["results"]) == 1
     assert searched["results"][0]["memory_id"] == "pref-new"
     assert searched["results"][0]["content"] == "请用英文回答。"
+
+
+def test_memory_tools_use_repository_when_provided():
+    repo = _MemoryToolRepository()
+    tools = _tool_map(Settings(), memory_repository=repo)
+
+    saved = json.loads(
+        tools["memory_save"].invoke(
+            {
+                "content": "Repository-backed memory prefers concise answers.",
+                "kind": "user_preference",
+                "scope": "user",
+                "user_id": "researcher-1",
+            }
+        )
+    )
+    searched = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "concise",
+                "user_id": "researcher-1",
+            }
+        )
+    )
+    forgotten = json.loads(
+        tools["memory_forget"].invoke(
+            {
+                "memory_id": saved["memory_id"],
+                "user_id": "researcher-1",
+            }
+        )
+    )
+    searched_again = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "concise",
+                "user_id": "researcher-1",
+            }
+        )
+    )
+
+    assert saved["saved"] is True
+    assert saved["action"] == "written"
+    assert searched["results"][0]["memory_id"] == saved["memory_id"]
+    assert searched["results"][0]["content"] == "Repository-backed memory prefers concise answers."
+    assert forgotten["deleted"] is True
+    assert searched_again["results"] == []
+    assert [event.actor for event in repo.audit_events] == [
+        "memory_save_tool",
+        "memory_forget_tool",
+    ]
 
 
 def test_conversation_summary_reads_latest_checkpoint(tmp_path):

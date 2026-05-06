@@ -3,10 +3,10 @@ from __future__ import annotations
 import re
 
 from ..core.request_context import RequestContext
-from ..core.types import Plan, PromptMode
-from ..core.types import FindingItem
+from ..core.types import FindingItem, Plan, PromptMode
 from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
+    MemoryRetrievalPlan,
     MemoryRecord,
     MemoryScope,
     MemorySearchHit,
@@ -18,8 +18,16 @@ from .scorer import score_memory_hit
 
 
 class MemoryRetriever:
-    def __init__(self, *, store=None, policy: MemoryPolicy | None = None, default_limit: int = 8):
+    def __init__(
+        self,
+        *,
+        store=None,
+        repository=None,
+        policy: MemoryPolicy | None = None,
+        default_limit: int = 8,
+    ):
         self.store = store
+        self.repository = repository
         self.policy = policy or MemoryPolicy(top_k=default_limit)
         self.default_limit = default_limit
 
@@ -48,12 +56,35 @@ class MemoryRetriever:
             namespaces=namespaces,
             total_hits=len(deduped),
         )
-        return self.policy.filter_bundle_for_prompt(bundle, prompt_mode=prompt_mode)
+        filtered = self.policy.filter_bundle_for_prompt(bundle, prompt_mode=prompt_mode)
+        selected_ids = [hit.record.memory_id for hit in filtered.hits]
+        retrieval_plan = MemoryRetrievalPlan(
+            query=effective_query,
+            namespaces=namespaces,
+            filters={"status": "active"},
+            selected_memory_ids=selected_ids,
+            budget_reason=f"top_k:{self.default_limit}",
+            source="postgres" if self.repository is not None else "legacy_store",
+        )
+        return filtered.model_copy(
+            update={"retrieval_plan": retrieval_plan.model_dump(mode="json")}
+        )
 
     def _candidate_namespaces(self, *, context: RequestContext) -> list[tuple[str, ...]]:
         return self.policy.allowed_namespaces_for_read(context=context)
 
     def _search_namespace(self, namespace: tuple[str, ...], query: str, limit: int) -> list[MemorySearchHit]:
+        if self.repository is not None:
+            hits = self.repository.search(namespace=namespace, query=query, limit=limit)
+            return [
+                hit.model_copy(
+                    update={
+                        "matched_terms": hit.matched_terms or _matched_terms(query, hit.record),
+                        "namespace": hit.namespace or namespace,
+                    }
+                )
+                for hit in hits
+            ]
         if self.store is None:
             return []
         raw_hits = self.store.search(namespace, query=query, limit=limit) or []

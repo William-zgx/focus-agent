@@ -35,6 +35,7 @@ def get_default_tools(
     store=None,
     checkpointer=None,
     artifact_metadata_repository=None,
+    memory_repository=None,
 ):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -103,6 +104,7 @@ def get_default_tools(
     _merge_tool_group(
         *build_memory_tools(
             store=store,
+            memory_repository=memory_repository,
             tool_catalog=tool_catalog,
             emit_tool_event=_emit_tool_event,
             get_current_thread_id=_get_current_thread_id,

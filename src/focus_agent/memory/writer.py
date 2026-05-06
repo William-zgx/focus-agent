@@ -27,14 +27,21 @@ from .models import (
     MemoryWriteRequest,
 )
 from .policy import MemoryPolicy
+from .service import MemoryService
 
 
 class MemoryWriter:
-    def __init__(self, *, store=None, policy: MemoryPolicy | None = None):
+    def __init__(self, *, store=None, repository=None, policy: MemoryPolicy | None = None):
         self.store = store
+        self.repository = repository
         self.policy = policy or MemoryPolicy()
 
     def write_records(self, records: list[MemoryWriteRequest]) -> list[str]:
+        if self.repository is not None:
+            return MemoryService(repository=self.repository, policy=self.policy).write_records(
+                records,
+                actor="memory_writer",
+            )
         if self.store is None:
             return []
         keys: list[str] = []
@@ -55,6 +62,12 @@ class MemoryWriter:
         context: RequestContext,
         state: dict[str, Any],
     ) -> dict[str, Any]:
+        if self.repository is not None:
+            return MemoryService(repository=self.repository, policy=self.policy).persist_records(
+                records,
+                context=context,
+                state=state,
+            )
         outcome: dict[str, Any] = {
             "prepared": len(records),
             "written": [],

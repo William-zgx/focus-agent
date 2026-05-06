@@ -2345,6 +2345,452 @@
     },
     {
       "method": "GET",
+      "operation_id": "list_memory_v1_memory_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "namespace",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "scope",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "visibility",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "user_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "root_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "source_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "source_branch_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/MemoryRecordListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_memory_audit_v1_memory_audit_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "memory_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory/audit",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/MemoryAuditEventListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_memory_candidates_v1_memory_candidates_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "root_thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory/candidates",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/MemoryCandidateListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_memory_v1_memory__memory_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory/{memory_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/MemoryRecordDetailResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_memory_record_audit_v1_memory__memory_id__audit_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory/{memory_id}/audit",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/MemoryAuditEventListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "forget_memory_v1_memory__memory_id__forget_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory/{memory_id}/forget",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ForgetMemoryRecordRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ForgetMemoryRecordResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "list_models_v1_models_get",
       "parameters": [],
       "path": "/v1/models",
@@ -7330,6 +7776,86 @@
       },
       "type": "object"
     },
+    "ForgetMemoryRecordRequest": {
+      "properties": {
+        "namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ForgetMemoryRecordResponse": {
+      "properties": {
+        "audit_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "forgotten": {
+          "type": "boolean"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tombstone_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "memory_id",
+        "forgotten"
+      ],
+      "type": "object"
+    },
     "ForkBranchRequest": {
       "properties": {
         "branch_name": {
@@ -7457,6 +7983,634 @@
         "branch_name",
         "mode",
         "summary"
+      ],
+      "type": "object"
+    },
+    "MemoryAuditEventListResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "postgres",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryAuditEventResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "MemoryAuditEventResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "memory_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "namespace": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "event_id"
+      ],
+      "type": "object"
+    },
+    "MemoryCandidateListResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "postgres",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryCandidateResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "MemoryCandidateResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "record": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "root_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "candidate_id"
+      ],
+      "type": "object"
+    },
+    "MemoryRecordDetailResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "postgres",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "item": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MemoryRecordResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "MemoryRecordListResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "postgres",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryRecordResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "MemoryRecordResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deleted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "importance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "namespace": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "payload_redacted": {
+          "default": false,
+          "type": "boolean"
+        },
+        "promoted_to_main": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "semantic_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "memory_id"
       ],
       "type": "object"
     },
