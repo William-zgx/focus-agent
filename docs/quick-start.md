@@ -146,6 +146,8 @@ uv run python scripts/ui_smoke_test.py \
 
 Use a real, tool-using prompt when changing streaming, transport validation, or web search behavior. The smoke script waits for the streamed assistant response to stabilize before asserting the final text.
 
+For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`; `http://127.0.0.1:5173/app` may be handled differently by the dev server. The smoke script launches Chrome with a temporary user data directory, which avoids stale localStorage, extensions, and personal-profile auth state. If a manual browser opens a blank login page while the smoke script passes, retry with a clean profile or clear site data for `127.0.0.1` before treating it as an app regression.
+
 ## 8. Next Docs
 
 - [Observability Runbook](observability-runbook.md)

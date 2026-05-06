@@ -138,6 +138,8 @@ The browser smoke waits for the assistant response to stabilize after streaming 
 
 `scripts/ui_smoke_test.py` does not start the API or Vite dev server. Before running it with defaults, make sure `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:5173/app/` are already reachable. If you point it at the backend-served static app, run `make web-build` first.
 
+When testing the Vite app, keep the `/app/` trailing slash. The dev server may return different results for `/app` versus `/app/`, while the backend-served static app normalizes through FastAPI. The smoke uses a temporary Chrome profile; if a manual Chrome profile shows a blank login page or stale auth state while the smoke passes, clear site data or use a clean profile before filing a UI regression.
+
 6. If observability pages or seeded trajectory browser flows changed:
 
 ```bash
@@ -148,6 +150,8 @@ pnpm --dir apps/web smoke:observability
 ```
 
 `scripts/observability_ui_smoke.py` can auto-start the local API through `./scripts/run-api.sh` when the health probe fails; pass `--no-start-api` when you want to require an already running API. It still needs Chrome and either `DATABASE_URI` or the managed local Postgres runtime file. `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements, but does not replace, the real-browser smoke.
+
+If the API redirects `/app` to the Vite server, pass `--app-base-url http://127.0.0.1:5173/app` so the browser smoke waits on the same origin it actually renders. When the page visibly renders trajectory evidence and all captured fetches return 200 but the smoke fails on missing copy or panel text, update the smoke assertion alongside the UI change; do not paper over endpoint failures, console errors, or empty evidence states.
 
 7. If trajectory observability contracts changed:
 

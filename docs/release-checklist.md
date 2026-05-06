@@ -92,6 +92,7 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 ```
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
+- Local Vite smoke URLs should use `http://127.0.0.1:5173/app/` with the trailing slash. Manual browser passes are useful, but personal Chrome profiles can carry stale localStorage, extensions, and auth state; prefer the smoke script's temporary Chrome profile for release evidence and use manual passes as an additional visual check.
 - Auth UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, sidebar logout, Bearer Token login, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
@@ -122,6 +123,8 @@ make postgres-ops POSTGRES_OPS_ARGS="--database-uri postgresql://user:pass@host:
 make otel-smoke OTEL_SMOKE_ARGS="--endpoint http://otel-collector:4318 --collector-health-url http://otel-collector:13133/healthz --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' --report-json reports/release-gate/otel-smoke.json"
 make agent-governance-report AGENT_GOVERNANCE_REPORT_ARGS="--report-json reports/agent-governance/latest.json --max-review-queue-backlog 10 --max-avg-cost-usd 0.05"
 ```
+
+`production_smoke.py` is release evidence, not a replacement for `ui_smoke_test.py`. In live mode, provide `--stream-events-json` from a captured successful SSE turn; `--stream-events-url` is only for a GET-compatible event endpoint and should not point directly at the POST-only chat streaming route. For local development, prefer `make ci` plus `uv run python scripts/ui_smoke_test.py` for functional coverage, and use `production-smoke --dry-run` unless the deployment supplies production-like auth, rate-limit, web URL, and stream-event evidence.
 
 Postgres migration verification can be attached as a machine-readable report from the migration command. When moving local state into Postgres, use the migration report path as the release-health/evidence input:
 
