@@ -50,6 +50,7 @@ def test_postgres_schema_setup_creates_app_tables(monkeypatch):
     assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_sessions" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_tasks" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_agent_team_outputs" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS focus_runtime_locks" in sql for sql in statements)
 
 
 def test_postgres_schema_setup_runs_v2_when_v1_already_exists(monkeypatch):

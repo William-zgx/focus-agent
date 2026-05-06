@@ -8,6 +8,7 @@ from typing import Any
 
 import focus_agent.engine.runtime as runtime_mod
 from focus_agent.config import Settings, ensure_runtime_directories
+from focus_agent.services.coordination import InMemoryThreadTurnLockBackend, PostgresThreadTurnLockBackend
 
 
 class _FakeContextManager:
@@ -177,6 +178,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         assert runtime.trajectory_recorder is trajectory_repo
         assert runtime.agent_team_service.repository is agent_team_repo
         assert runtime.user_service.repository is user_repo
+        assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
         assert saver.setup_calls == 1
         assert store.setup_calls == 1
         assert repo.setup_calls == 1
@@ -239,6 +241,7 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert runtime.user_service.repository.path == str(tmp_path / "branches.sqlite3")
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
+        assert isinstance(runtime.coordination_backend.thread_turns, InMemoryThreadTurnLockBackend)
         assert captured["store"] is runtime.store
         assert captured["checkpointer"] is runtime.checkpointer
         assert "local-fallback" in caplog.text

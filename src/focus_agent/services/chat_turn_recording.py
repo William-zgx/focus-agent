@@ -6,6 +6,7 @@ from typing import Any
 
 from ..core.branching import BranchMeta
 from ..observability.tracing import TraceCorrelation
+from .coordination import background_job_key
 from .chat_trajectory import record_turn_trajectory_best_effort
 
 
@@ -43,7 +44,7 @@ class ChatTurnRecordingMixin:
                 return
             dispatch_background(
                 refresh_title,
-                _background_task_key=f"conversation-title:{thread_id}",
+                _background_task_key=background_job_key(kind="conversation_title", thread_id=thread_id),
                 root_thread_id=thread_id,
                 user_id=user_id,
             )
@@ -55,7 +56,7 @@ class ChatTurnRecordingMixin:
             return
         dispatch_background(
             refresh_branch,
-            _background_task_key=f"branch-title:{thread_id}",
+            _background_task_key=background_job_key(kind="branch_title", thread_id=thread_id),
             child_thread_id=thread_id,
             user_id=user_id,
         )

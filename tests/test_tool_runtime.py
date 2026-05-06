@@ -7,8 +7,10 @@ from langchain.tools import tool
 from focus_agent.capabilities.tool_runtime import (
     ToolExecutionInput,
     ToolResultCacheStore,
+    build_tool_approval_interrupt_payload,
     classify_tool_parallel_execution,
     execute_tool_calls,
+    is_tool_approval_approved,
 )
 from focus_agent.capabilities.tool_invocation import tool_invocation_runtime_snapshot
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
@@ -29,6 +31,39 @@ def test_tool_runtime_classifies_parallel_execution_safely():
     assert "workspace_write" in side_effect.reason
     assert default.can_run_in_parallel is False
     assert default.mode == "serialized_runtime"
+
+
+def test_tool_runtime_builds_and_parses_tool_approval_contract():
+    @tool
+    def risky_write(name: str) -> str:
+        """Risky write tool."""
+        return f"wrote:{name}"
+
+    risky_write.metadata = {
+        "requires_approval": True,
+        "risk_level": "high",
+    }
+    item = ToolExecutionInput(
+        index=0,
+        tool_call_id="call-approval",
+        tool_name="risky_write",
+        args={"name": "alpha"},
+        tool=risky_write,
+        runtime=ToolRuntimeMeta.from_tool(risky_write),
+    )
+
+    assert build_tool_approval_interrupt_payload(item) == {
+        "kind": "tool_approval",
+        "tool_name": "risky_write",
+        "tool_call_id": "call-approval",
+        "args": {"name": "alpha"},
+        "risk_level": "high",
+    }
+    assert is_tool_approval_approved({"kind": "tool_approval", "approved": True}) is True
+    assert is_tool_approval_approved({"kind": "tool_approval", "decision": "approve"}) is True
+    assert is_tool_approval_approved({"kind": "tool_approval", "approved": False}) is False
+    assert is_tool_approval_approved({"kind": "tool_approval", "approved": "false"}) is False
+    assert is_tool_approval_approved({"kind": "merge_review", "approved": True}) is False
 
 
 def test_tool_runtime_uses_fallback_handler_when_primary_tool_fails():

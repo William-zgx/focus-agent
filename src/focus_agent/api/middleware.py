@@ -13,8 +13,8 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from focus_agent.config import Settings
-from focus_agent.security.rate_limit import SlidingWindowRateLimiter
 from focus_agent.security.tokens import AuthError, decode_access_token
+from focus_agent.services.coordination import InMemoryRateLimitBackend, RateLimitBackend
 
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -65,7 +65,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._default_limit = default_limit
         self._chat_limit = chat_limit
         self._settings = settings
-        self._limiter = SlidingWindowRateLimiter(window_seconds=60.0)
+        self._limiter = InMemoryRateLimitBackend()
 
     def _identity(self, request: Request) -> str:
         auth_header = request.headers.get("authorization") or ""
@@ -89,13 +89,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return self._chat_limit
         return self._default_limit
 
+    def _rate_limit_backend(self, request: Request) -> RateLimitBackend:
+        runtime = getattr(getattr(request.app, "state", None), "runtime", None)
+        coordination_backend = getattr(runtime, "coordination_backend", None)
+        backend = getattr(coordination_backend, "rate_limiter", None)
+        check = getattr(backend, "check", None)
+        if callable(check):
+            return backend
+        return self._limiter
+
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method in {"OPTIONS", "HEAD"}:
             return await call_next(request)
         limit = self._resolve_limit(request.url.path)
         identity = self._identity(request)
         bucket_key = f"{identity}:{request.url.path}"
-        result = self._limiter.check(key=bucket_key, limit=limit)
+        result = self._rate_limit_backend(request).check(key=bucket_key, limit=limit, window_seconds=60.0)
         if not result.allowed:
             retry_after = max(1, int(round(result.retry_after_seconds)))
             return JSONResponse(

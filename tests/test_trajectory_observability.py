@@ -6,6 +6,7 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
+from focus_agent.core.state import make_agent_state_record
 from focus_agent.observability.trajectory import (
     build_turn_trajectory_record,
     extract_trajectory_steps,
@@ -116,6 +117,37 @@ def test_build_turn_trajectory_record_uses_only_current_turn_messages():
     assert record.metrics["tool_calls"] == 1
     assert record.trajectory[0].observation == "abc"
     assert record.trajectory[0].observation_truncated is True
+
+
+def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
+    started = utc_now()
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="succeeded",
+        final_values={
+            "messages": [HumanMessage(content="route tools"), AIMessage(content="done")],
+            "llm_calls": 1,
+            "governance_records": [
+                make_agent_state_record(
+                    "tool_route_plan",
+                    {"enabled": True, "denied_tools": ["write_text_artifact"], "enforce": True},
+                    source="test",
+                )
+            ],
+        },
+        initial_message_count=0,
+        initial_llm_calls=0,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=5),
+    )
+
+    assert record.plan_meta["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
+    assert record.plan_meta["governance_records"][0]["name"] == "tool_route_plan"
+    assert record.metrics["tool_router_denied"] == 1
+    assert record.metrics["tool_router_enforced"] == 1
 
 
 def test_postgres_trajectory_repository_executes_setup_and_insert(monkeypatch):

@@ -8,6 +8,8 @@ import threading
 import time
 from typing import Any
 
+from .coordination import BackgroundJobDeduperBackend, InMemoryBackgroundJobDeduperBackend
+
 logger = logging.getLogger("focus_agent.background")
 
 
@@ -28,13 +30,14 @@ class BoundedBackgroundQueue:
         name: str,
         max_concurrency: int = 2,
         max_size: int = 1000,
+        job_deduper: BackgroundJobDeduperBackend | None = None,
     ) -> None:
         self.name = name
         self.max_concurrency = max(1, int(max_concurrency or 1))
         self.max_size = max(1, int(max_size or 1))
         self._queue: queue.Queue[BackgroundTask | None] = queue.Queue(maxsize=self.max_size)
         self._lock = threading.Lock()
-        self._queued_keys: set[str] = set()
+        self._job_deduper = job_deduper or InMemoryBackgroundJobDeduperBackend()
         self._closed = False
         self._active_workers = 0
         self._submitted_total = 0
@@ -66,10 +69,9 @@ class BoundedBackgroundQueue:
             if self._closed:
                 self._dropped_total += 1
                 return False
-            if task_key in self._queued_keys:
+            if not self._job_deduper.try_claim_job_key(task_key):
                 self._deduplicated_total += 1
                 return False
-            self._queued_keys.add(task_key)
         task = BackgroundTask(
             key=task_key,
             func=func,
@@ -79,8 +81,8 @@ class BoundedBackgroundQueue:
         try:
             self._queue.put_nowait(task)
         except queue.Full:
+            self._job_deduper.release_job_key(task_key)
             with self._lock:
-                self._queued_keys.discard(task_key)
                 self._dropped_total += 1
             return False
         with self._lock:
@@ -120,8 +122,8 @@ class BoundedBackgroundQueue:
                 delay = task.run_at - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
+                self._job_deduper.release_job_key(task.key)
                 with self._lock:
-                    self._queued_keys.discard(task.key)
                     self._active_workers += 1
                 try:
                     task.func(**task.kwargs)

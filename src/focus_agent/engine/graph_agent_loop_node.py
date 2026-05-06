@@ -12,7 +12,7 @@ from ..capabilities.tool_router import build_tool_route_plan, infer_tool_router_
 from ..config import Settings
 from ..core.context_policy import apply_prompt_budget_guard
 from ..core.request_context import RequestContext
-from ..core.state import AgentState
+from ..core.state import AgentState, append_agent_state_record
 from ..core.types import Plan
 from .graph_plan_nodes import _format_plan_block
 from .graph_turn_helpers import (
@@ -213,7 +213,12 @@ def make_agent_loop_node(
         }
         if tool_route_plan is not None:
             dumped = tool_route_plan.model_dump(mode="json")
-            updates["tool_route_plan"] = dumped
+            append_agent_state_record(
+                updates,
+                "tool_route_plan",
+                dumped,
+                source="agent_loop",
+            )
             plan_meta = {
                 **(state.get("plan_meta") or {}),
                 "tool_route_plan": dumped,
@@ -227,7 +232,12 @@ def make_agent_loop_node(
                         model_route_decision=state.get("model_route_decision"),
                     )
                 ]
-                updates["agent_failure_records"] = failures
+                append_agent_state_record(
+                    updates,
+                    "agent_failure_records",
+                    failures,
+                    source="agent_loop",
+                )
                 plan_meta["agent_failure_records"] = failures
             if settings.agent_review_queue_enabled:
                 review_items = [
@@ -242,8 +252,18 @@ def make_agent_loop_node(
                         or [],
                     )
                 ]
-                updates["agent_review_queue"] = review_items
+                append_agent_state_record(
+                    updates,
+                    "agent_review_queue",
+                    review_items,
+                    source="agent_loop",
+                )
                 plan_meta["agent_review_queue"] = review_items
+            if updates.get("governance_records"):
+                plan_meta["governance_records"] = [
+                    *list(plan_meta.get("governance_records") or []),
+                    *list(updates.get("governance_records") or []),
+                ]
             updates["plan_meta"] = plan_meta
         if tool_protocol_repair_count:
             current_plan_meta = updates.get("plan_meta") or state.get("plan_meta") or {}

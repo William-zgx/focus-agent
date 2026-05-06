@@ -38,6 +38,14 @@ export interface ThreadContextPreviewResponse {
   context_usage: ContextUsageResponse;
 }
 
+export interface FocusAgentToolApprovalInterrupt {
+  kind: "tool_approval";
+  tool_name: string;
+  tool_call_id: string;
+  args: Record<string, unknown>;
+  risk_level: string;
+}
+
 export type ThreadContextCompactTrigger =
   | "manual"
   | "auto_pre_send"

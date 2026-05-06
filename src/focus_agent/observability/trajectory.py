@@ -9,6 +9,7 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
+from ..core.state import with_agent_state_record_mirrors
 from .tracing import TraceCorrelation
 
 
@@ -207,6 +208,7 @@ def build_turn_trajectory_record(
     answer_max_chars: int = 4000,
     hash_user_id: bool = True,
 ) -> TurnTrajectoryRecord:
+    final_values = with_agent_state_record_mirrors(final_values)
     final_messages = list(final_values.get("messages", []) or [])
     appended_messages = (
         final_messages[initial_message_count:]
@@ -236,6 +238,9 @@ def build_turn_trajectory_record(
     correlation = trace_correlation
 
     plan_meta = dict(_json_safe(final_values.get("plan_meta")) or {})
+    governance_records = _json_safe(final_values.get("governance_records"))
+    if governance_records:
+        plan_meta["governance_records"] = governance_records
     role_route_plan = _json_safe(final_values.get("role_route_plan"))
     if role_route_plan:
         plan_meta["role_route_plan"] = role_route_plan

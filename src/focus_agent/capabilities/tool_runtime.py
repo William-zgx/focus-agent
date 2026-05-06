@@ -5,7 +5,13 @@ from langgraph.config import get_stream_writer  # noqa: F401
 from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, build_cache_scope_key, invalidate_after_side_effect
 from .tool_execution import execute_single
-from .tool_execution_types import ToolExecutionInput, ToolExecutionResult, ToolParallelClassification
+from .tool_execution_types import (
+    ToolExecutionInput,
+    ToolExecutionResult,
+    ToolParallelClassification,
+    build_tool_approval_interrupt_payload,
+    is_tool_approval_approved,
+)
 from .tool_invocation import ToolInvocationTimeoutError, ToolParameterValidationError
 from .tool_messages import build_tool_error_message
 from .tool_parallel import classify_tool_parallel_execution, run_parallel_batch
@@ -18,9 +24,11 @@ __all__ = [
     "ToolParameterValidationError",
     "ToolResultCacheStore",
     "build_cache_scope_key",
+    "build_tool_approval_interrupt_payload",
     "build_tool_error_message",
     "classify_tool_parallel_execution",
     "execute_tool_calls",
+    "is_tool_approval_approved",
 ]
 
 

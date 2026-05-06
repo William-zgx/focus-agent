@@ -21,6 +21,7 @@ from ..repositories.user_repository import UserRepository
 from ..services.agent_team import AgentTeamService
 from ..services.background_work import BoundedBackgroundQueue
 from ..services.branches import BranchService
+from ..services.coordination import CoordinationBackend, create_coordination_backend
 from ..services.users import UserService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
@@ -83,6 +84,7 @@ class AppRuntime:
     artifact_metadata_repository: object | None
     otel_runtime: OTelRuntime
     background_work: BoundedBackgroundQueue
+    coordination_backend: CoordinationBackend
     _exit_stack: ExitStack
 
     def close(self) -> None:
@@ -98,10 +100,12 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     exit_stack = ExitStack()
     otel_runtime = initialize_otel_runtime(settings)
     exit_stack.callback(otel_runtime.shutdown)
+    coordination_backend = create_coordination_backend(database_uri=settings.database_uri)
     background_work = BoundedBackgroundQueue(
         name="runtime",
         max_concurrency=settings.background_worker_max_concurrency,
         max_size=settings.background_queue_max_size,
+        job_deduper=coordination_backend.job_deduper,
     )
     exit_stack.callback(background_work.close)
 
@@ -144,6 +148,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         artifact_metadata_repository=persistence.artifact_metadata_repository,
         otel_runtime=otel_runtime,
         background_work=background_work,
+        coordination_backend=coordination_backend,
         _exit_stack=exit_stack,
     )
 

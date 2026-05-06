@@ -241,6 +241,30 @@ def test_tool_registry_uses_tool_catalog_section_order(tmp_path):
     assert ordered_names == ("skills_list", "list_files", "skill_view", "web_search")
 
 
+def test_tool_registry_applies_manifest_metadata_overlay_to_runtime(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                generic_metadata_overlays={
+                    "search_code": {
+                        "allowed_roles": ("critic",),
+                        "intent_policies": ("workspace_lookup",),
+                        "risk_level": "medium",
+                    }
+                }
+            )
+        ),
+        skill_registry=registry,
+    )
+
+    runtime = tool_registry.runtime_by_name["search_code"]
+
+    assert runtime.allowed_roles == ("critic",)
+    assert runtime.intent_policies == ("workspace_lookup",)
+    assert runtime.risk_level == "medium"
+
+
 def test_bundled_registry_contains_copied_practical_skills():
     registry = SkillRegistry([bundled_skills_dir()])
     names = {item["name"] for item in registry.list_skills()}

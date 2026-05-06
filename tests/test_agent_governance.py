@@ -247,6 +247,11 @@ def test_graph_tool_router_filters_bound_tools_for_critic(monkeypatch):
     assert captured["bound_tools"] == ["search_code"]
     assert result.value["tool_route_plan"]["role"] == "critic"
     assert "write_text_artifact" in result.value["tool_route_plan"]["denied_tools"]
+    assert any(
+        record["name"] == "tool_route_plan"
+        and record["mirror_key"] == "tool_route_plan"
+        for record in result.value["governance_records"]
+    )
 
 
 def test_memory_curator_promotes_clean_branch_findings_and_blocks_discarded_branch():

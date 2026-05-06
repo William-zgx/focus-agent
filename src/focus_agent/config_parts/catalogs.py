@@ -14,6 +14,26 @@ DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
 _ToolConfigT = TypeVar("_ToolConfigT")
 _PROVIDER_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+_TOOL_METADATA_OVERLAY_KEYS = frozenset(
+    {
+        "allowed_roles",
+        "cache_scope",
+        "cacheable",
+        "fallback_group",
+        "intent_policies",
+        "intent_tags",
+        "max_observation_chars",
+        "parallel_safe",
+        "requires_approval",
+        "requires_network",
+        "requires_workspace_write",
+        "risk_level",
+        "side_effect",
+        "side_effect_kind",
+        "timeout_seconds",
+        "toolset",
+    }
+)
 
 
 class ModelCatalogValidationError(ValueError):
@@ -380,6 +400,8 @@ class ToolCatalogConfig:
     skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     section_order: tuple[str, ...] = ()
+    metadata_section_order: tuple[str, ...] = ()
+    generic_metadata_overlays: dict[str, dict[str, object]] = field(default_factory=dict)
 
     @property
     def section_names(self) -> tuple[str, ...]:
@@ -395,6 +417,22 @@ class ToolCatalogConfig:
     @property
     def by_name(self) -> dict[str, Any]:
         return {section_name: getattr(self, section_name) for section_name in self.section_names}
+
+    @property
+    def manifest_section_names(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                [
+                    *self.metadata_section_order,
+                    *self.section_order,
+                    *tuple(_TOOL_CATALOG_SPECS),
+                    *self.generic_metadata_overlays.keys(),
+                ]
+            )
+        )
+
+    def metadata_overlay_for(self, tool_name: str) -> dict[str, object]:
+        return dict(self.generic_metadata_overlays.get(tool_name, {}))
 
 
 @dataclass(frozen=True, slots=True)
@@ -578,6 +616,7 @@ def load_tool_catalog_document(
         return ToolCatalogConfig()
 
     raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
+    raw_section_names = tuple(str(section_name) for section_name in raw)
     ordered_section_names = tuple(
         dict.fromkeys(
             [
@@ -595,4 +634,31 @@ def load_tool_catalog_document(
         )
         for section_name, spec in _TOOL_CATALOG_SPECS.items()
     }
-    return ToolCatalogConfig(section_order=ordered_section_names, **loaded_sections)
+    return ToolCatalogConfig(
+        section_order=ordered_section_names,
+        metadata_section_order=raw_section_names,
+        generic_metadata_overlays=_load_tool_metadata_overlays(raw),
+        **loaded_sections,
+    )
+
+
+def _load_tool_metadata_overlays(raw: dict[str, object]) -> dict[str, dict[str, object]]:
+    overlays: dict[str, dict[str, object]] = {}
+    for section_name, raw_section in raw.items():
+        if not isinstance(raw_section, dict):
+            continue
+        overlay: dict[str, object] = {}
+        metadata = raw_section.get("metadata")
+        if isinstance(metadata, dict):
+            overlay.update(_copy_toml_mapping(metadata))
+        for key in _TOOL_METADATA_OVERLAY_KEYS:
+            if key in raw_section:
+                overlay[key] = _copy_toml_value(raw_section[key])
+        if section_name not in _TOOL_CATALOG_SPECS:
+            for key, value in raw_section.items():
+                if key == "metadata":
+                    continue
+                overlay.setdefault(str(key), _copy_toml_value(value))
+        if overlay:
+            overlays[str(section_name)] = overlay
+    return overlays

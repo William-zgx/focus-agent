@@ -33,6 +33,12 @@ from .chat_thread_state import effective_thinking_mode, response_payload
 from .chat_thread_access import ChatThreadAccessMixin
 from .chat_turn_errors import ConcurrentTurnError
 from .chat_turn_recording import ChatTurnRecordingMixin
+from .coordination import (
+    CoordinationBackend,
+    ThreadTurnLease,
+    create_in_memory_coordination_backend,
+    new_thread_turn_owner,
+)
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,7 @@ class ChatServicePorts:
     trajectory_recorder: Any | None = None
     checkpointer: Any | None = None
     background_work: Any | None = None
+    coordination_backend: CoordinationBackend | None = None
 
     @classmethod
     def from_runtime(cls, runtime: Any) -> ChatServicePorts:
@@ -57,6 +64,7 @@ class ChatServicePorts:
             trajectory_recorder=getattr(runtime, 'trajectory_recorder', None),
             checkpointer=getattr(runtime, 'checkpointer', None),
             background_work=getattr(runtime, 'background_work', None),
+            coordination_backend=getattr(runtime, 'coordination_backend', None),
         )
 
 
@@ -74,22 +82,50 @@ class ChatService(
     def __init__(self, runtime: AppRuntime | ChatServicePorts):
         self.ports = runtime if isinstance(runtime, ChatServicePorts) else ChatServicePorts.from_runtime(runtime)
         self.runtime = self.ports
-        self._active_turns: set[str] = set()
+        self._coordination_backend = self.ports.coordination_backend or create_in_memory_coordination_backend()
+        self._active_turn_leases: dict[str, ThreadTurnLease] = {}
         self._active_turns_lock = threading.Lock()
         self._background_work = self.ports.background_work
 
     def _acquire_thread_turn(self, *, thread_id: str) -> None:
+        owner = new_thread_turn_owner()
+        ttl_seconds = self._thread_turn_lock_ttl_seconds()
+        acquired = self._coordination_backend.thread_turns.acquire_thread_turn(
+            thread_id=thread_id,
+            owner=owner,
+            ttl_seconds=ttl_seconds,
+        )
+        if not acquired:
+            raise ConcurrentTurnError(
+                "This thread is still processing the previous turn. "
+                "Please wait for it to finish before sending another message."
+            )
+        lease = ThreadTurnLease(thread_id=thread_id, owner=owner)
         with self._active_turns_lock:
-            if thread_id in self._active_turns:
-                raise ConcurrentTurnError(
-                    "This thread is still processing the previous turn. "
-                    "Please wait for it to finish before sending another message."
-                )
-            self._active_turns.add(thread_id)
+            self._active_turn_leases[thread_id] = lease
+
+    def _heartbeat_thread_turn(self, *, thread_id: str) -> bool:
+        with self._active_turns_lock:
+            lease = self._active_turn_leases.get(thread_id)
+        if lease is None:
+            return False
+        return self._coordination_backend.thread_turns.heartbeat_thread_turn(
+            thread_id=thread_id,
+            owner=lease.owner,
+            ttl_seconds=self._thread_turn_lock_ttl_seconds(),
+        )
 
     def _release_thread_turn(self, *, thread_id: str) -> None:
         with self._active_turns_lock:
-            self._active_turns.discard(thread_id)
+            lease = self._active_turn_leases.pop(thread_id, None)
+        if lease is not None:
+            self._coordination_backend.thread_turns.release_thread_turn(
+                thread_id=thread_id,
+                owner=lease.owner,
+            )
+
+    def _thread_turn_lock_ttl_seconds(self) -> float:
+        return max(float(getattr(self.runtime.settings, "runtime_thread_lock_ttl_seconds", 300.0) or 300.0), 1.0)
 
     def _submit_background_work(self, *, key: str, func, delay_seconds: float = 0.0, **kwargs: Any) -> bool:
         if self._background_work is None:
@@ -100,6 +136,7 @@ class ChatService(
                 name="chat",
                 max_concurrency=getattr(settings, "background_worker_max_concurrency", 2),
                 max_size=getattr(settings, "background_queue_max_size", 1000),
+                job_deduper=self._coordination_backend.job_deduper,
             )
         return self._background_work.submit(
             key=key,

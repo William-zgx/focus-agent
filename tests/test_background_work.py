@@ -37,3 +37,29 @@ def test_background_queue_drops_after_close() -> None:
         assert snapshot["dropped_total"] == 1
     finally:
         queue.close()
+
+
+def test_background_queue_uses_shared_job_deduper() -> None:
+    class SharedDeduper:
+        def __init__(self):
+            self.keys: set[str] = set()
+
+        def try_claim_job_key(self, key: str) -> bool:
+            if key in self.keys:
+                return False
+            self.keys.add(key)
+            return True
+
+        def release_job_key(self, key: str) -> None:
+            self.keys.discard(key)
+
+    deduper = SharedDeduper()
+    queue_a = BoundedBackgroundQueue(name="shared-a", max_concurrency=1, max_size=2, job_deduper=deduper)
+    queue_b = BoundedBackgroundQueue(name="shared-b", max_concurrency=1, max_size=2, job_deduper=deduper)
+    try:
+        assert queue_a.submit(key="same-thread", func=lambda: None, delay_seconds=0.05)
+        assert not queue_b.submit(key="same-thread", func=lambda: None, delay_seconds=0.05)
+        assert queue_b.snapshot()["deduplicated_total"] == 1
+    finally:
+        queue_a.close()
+        queue_b.close()

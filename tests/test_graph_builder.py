@@ -1,7 +1,9 @@
+import json
 import time
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain.tools import tool
+from langgraph.types import Command
 
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
@@ -23,6 +25,7 @@ from focus_agent.engine.graph_builder import (
     _tools_for_policy,
     build_graph,
 )
+from focus_agent.engine.local_persistence import PersistentInMemorySaver
 
 
 def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
@@ -64,9 +67,11 @@ def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
     )
 
     delegation = result.value["agent_delegation_plan"]
+    records = result.value["governance_records"]
     assert delegation["execution_mode"] == "observe"
     assert all(run["status"] == "planned" for run in delegation["runs"])
     assert delegation["run_results"] == []
+    assert any(record["name"] == "agent_delegation_plan" for record in records)
 
 
 def test_graph_delegation_fake_mode_updates_runs_and_artifacts(monkeypatch):
@@ -112,11 +117,14 @@ def test_graph_delegation_fake_mode_updates_runs_and_artifacts(monkeypatch):
     delegation = result.value["agent_delegation_plan"]
     artifacts = result.value["delegated_artifacts"]
     synthesis = result.value["artifact_synthesis_result"]
+    record_names = [record["name"] for record in result.value["governance_records"]]
 
     assert delegation["execution_mode"] == "fake"
     assert any(run["status"] == "completed" for run in delegation["runs"])
     assert any("fake delegated result" in artifact["title"] for artifact in artifacts)
     assert synthesis["accepted_artifact_ids"]
+    assert "agent_task_ledger" in record_names
+    assert "delegated_artifacts" in record_names
 
 
 def test_graph_delegation_inline_mode_merges_completed_runs_and_artifacts(monkeypatch):
@@ -1689,6 +1697,146 @@ def test_graph_tool_executor_parallelizes_read_only_tools(monkeypatch):
     assert [message.tool_call_id for message in tool_messages] == ["call-a", "call-b"]
     assert tool_messages[0].content == "alpha"
     assert tool_messages[1].content == "beta"
+
+
+def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_approve(
+    monkeypatch, tmp_path
+):
+    call_count = 0
+
+    @tool
+    def approval_lookup(name: str) -> str:
+        """Lookup that requires approval."""
+        nonlocal call_count
+        call_count += 1
+        return f"approved:{name}"
+
+    approval_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+        "requires_approval": True,
+        "risk_level": "high",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+    }
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "approval-1", "name": "approval_lookup", "args": {"name": "focus"}},
+        ],
+        final_answer="approval handled",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=(approval_lookup,)),
+    )
+    config = {"configurable": {"thread_id": "thread-approval-approve"}}
+    context = RequestContext(user_id="user-1", root_thread_id="thread-approval-approve")
+
+    interrupted = graph.invoke(
+        {
+            "messages": [HumanMessage(content="run approval lookup")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    assert call_count == 0
+    assert interrupted.interrupts
+    assert getattr(interrupted.interrupts[0], "value", None) == {
+        "kind": "tool_approval",
+        "tool_name": "approval_lookup",
+        "tool_call_id": "approval-1",
+        "args": {"name": "focus"},
+        "risk_level": "high",
+    }
+    assert "approval_lookup" in interrupted.value["tool_route_plan"]["allowed_tools"]
+
+    resumed = graph.invoke(
+        Command(resume={"kind": "tool_approval", "approved": True}),
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    tool_messages = [message for message in resumed.value["messages"] if isinstance(message, ToolMessage)]
+    assert call_count == 1
+    assert tool_messages[-1].content == "approved:focus"
+    assert resumed.value["messages"][-1].content == "approval handled"
+
+
+def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatch, tmp_path):
+    call_count = 0
+
+    @tool
+    def approval_lookup(name: str) -> str:
+        """Lookup that requires approval."""
+        nonlocal call_count
+        call_count += 1
+        return f"approved:{name}"
+
+    approval_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+        "requires_approval": True,
+        "risk_level": "high",
+    }
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "approval-deny-1", "name": "approval_lookup", "args": {"name": "focus"}},
+        ],
+        final_answer="approval denied handled",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=(approval_lookup,)),
+    )
+    config = {"configurable": {"thread_id": "thread-approval-deny"}}
+    context = RequestContext(user_id="user-1", root_thread_id="thread-approval-deny")
+    graph.invoke(
+        {
+            "messages": [HumanMessage(content="run approval lookup")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    resumed = graph.invoke(
+        Command(resume={"kind": "tool_approval", "approved": False}),
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    tool_messages = [message for message in resumed.value["messages"] if isinstance(message, ToolMessage)]
+    payload = json.loads(tool_messages[-1].content)
+    assert call_count == 0
+    assert tool_messages[-1].status == "error"
+    assert payload["status"] == "error"
+    assert payload["tool"] == "approval_lookup"
+    assert "denied by approval response" in payload["error"]
+    assert tool_messages[-1].artifact["runtime"]["tool_approval_denied"] is True
+    assert resumed.value["messages"][-1].content == "approval denied handled"
 
 
 def test_graph_tool_executor_reuses_thread_cache_for_cacheable_tools(monkeypatch):

@@ -8,6 +8,7 @@ from langchain.messages import HumanMessage
 from ..context_usage import build_context_usage
 from ..observability.trajectory import utc_now
 from .chat_turn_errors import ConcurrentTurnError
+from .coordination import background_job_key
 
 logger = logging.getLogger("focus_agent.chat")
 
@@ -154,7 +155,7 @@ class ChatContextCompactionMixin:
             submit_background = getattr(self, "_submit_background_work", None)
             if callable(submit_background):
                 submit_background(
-                    key=f"context-compaction:{thread_id}",
+                    key=background_job_key(kind="context_compaction", thread_id=thread_id),
                     func=compact_later,
                     delay_seconds=delay,
                     attempt=attempt,

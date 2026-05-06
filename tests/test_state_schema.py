@@ -20,6 +20,7 @@ from focus_agent.core.state import (
     STATE_DOMAIN_FIELDS,
     default_agent_state_slice,
     initial_agent_state,
+    make_agent_state_record,
     normalize_agent_state,
     serialize_agent_state,
     slice_agent_state,
@@ -53,6 +54,7 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["available_skills_block"] == ""
     assert state["active_skills_block"] == ""
     assert state["role_route_plan"] is None
+    assert state["governance_records"] == []
     assert state["memory_curator_decision"] is None
     assert state["tool_route_plan"] is None
     assert state["agent_delegation_plan"] is None
@@ -109,6 +111,7 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["available_skills_block"] == ""
     assert normalized["active_skills_block"] == ""
     assert normalized["role_route_plan"] is None
+    assert normalized["governance_records"] == []
     assert normalized["memory_curator_decision"] is None
     assert normalized["tool_route_plan"] is None
     assert normalized["agent_delegation_plan"] is None
@@ -152,12 +155,38 @@ def test_agent_state_domains_cover_existing_wire_fields():
     assert "branch_actions" in state_domain_fields("branch")
     assert "retrieved_memories" in state_domain_fields("memory")
     assert "tool_route_plan" in state_domain_fields("governance")
+    assert "governance_records" in state_domain_fields("governance")
+    assert "governance_records" in state_domain_fields("observability")
     assert "llm_calls" in state_domain_fields("observability")
     assert "branch_action_audit" in state_domain_fields("observability")
     assert state_domains_for_field("role_route_plan") == (
         "governance",
         "observability",
     )
+    assert state_domains_for_field("governance_records") == (
+        "governance",
+        "observability",
+    )
+
+
+def test_governance_records_backfill_legacy_mirror_fields():
+    record = make_agent_state_record(
+        "tool_route_plan",
+        {"enabled": True, "allowed_tools": ["search_code"]},
+        source="test",
+    )
+
+    normalized = normalize_agent_state({"governance_records": [record]})
+    payload = serialize_agent_state({"governance_records": [record]})
+
+    assert normalized["tool_route_plan"] == {
+        "enabled": True,
+        "allowed_tools": ["search_code"],
+    }
+    assert normalized["governance_records"][0]["schema_version"] == 1
+    assert normalized["governance_records"][0]["domain"] == "governance"
+    assert normalized["governance_records"][0]["mirror_key"] == "tool_route_plan"
+    assert payload["tool_route_plan"]["allowed_tools"] == ["search_code"]
 
 
 def test_slice_agent_state_exposes_normalized_domain_defaults_without_mutating_input():
@@ -250,6 +279,13 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
                 "enabled": True,
                 "decisions": [{"role": "executor", "model_id": "openai:gpt-4.1-mini"}],
             },
+            "governance_records": [
+                make_agent_state_record(
+                    "role_route_plan",
+                    {"enabled": True, "decisions": [{"role": "executor"}]},
+                    source="test",
+                )
+            ],
             "memory_curator_decision": {"enabled": True, "status": "ready"},
             "tool_route_plan": {"enabled": True, "allowed_tools": ["search_code"]},
             "agent_delegation_plan": {"enabled": True, "tasks": [{"task_id": "task-1"}]},
@@ -288,6 +324,8 @@ def test_serialize_agent_state_round_trips_structured_governance_models():
     assert decoded["available_skills_block"].startswith("## Available skills")
     assert decoded["active_skills_block"].startswith("## Active skills")
     assert decoded["role_route_plan"]["decisions"][0]["role"] == "executor"
+    assert decoded["governance_records"][0]["name"] == "role_route_plan"
+    assert decoded["governance_records"][0]["payload"]["decisions"][0]["role"] == "executor"
     assert decoded["memory_curator_decision"]["status"] == "ready"
     assert decoded["tool_route_plan"]["allowed_tools"] == ["search_code"]
     assert decoded["agent_delegation_plan"]["tasks"][0]["task_id"] == "task-1"

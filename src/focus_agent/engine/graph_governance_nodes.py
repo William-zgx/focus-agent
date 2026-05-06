@@ -22,7 +22,7 @@ from ..agent_task_ledger import (
 )
 from ..capabilities.tool_router import infer_tool_router_role
 from ..config import Settings
-from ..core.state import AgentState
+from ..core.state import AgentState, append_agent_state_record
 from .graph_turn_helpers import _latest_human_message_text
 from .graph_tool_policy import _classify_turn_tool_policy
 
@@ -44,7 +44,14 @@ def make_role_route_dry_run_node(
             available_tool_names=[str(getattr(tool, "name", "")) for tool in tools],
             tool_policy=tool_policy,
         )
-        return {"role_route_plan": plan.model_dump(mode="json")}
+        updates: dict[str, Any] = {}
+        append_agent_state_record(
+            updates,
+            "role_route_plan",
+            plan.model_dump(mode="json"),
+            source="role_route_dry_run",
+        )
+        return updates
 
     return role_route_dry_run
 
@@ -96,8 +103,18 @@ def make_delegation_governance_node(
                 delegation_plan = delegation_plan.model_copy(update={"runs": merged_runs})
             delegation_dump = delegation_plan.model_dump(mode="json")
             delegation_dump["run_results"] = [item.model_dump(mode="json") for item in run_results]
-            updates["agent_delegation_plan"] = delegation_dump
-            updates["agent_runs"] = list(delegation_dump.get("runs") or [])
+            append_agent_state_record(
+                updates,
+                "agent_delegation_plan",
+                delegation_dump,
+                source="delegation_governance",
+            )
+            append_agent_state_record(
+                updates,
+                "agent_runs",
+                list(delegation_dump.get("runs") or []),
+                source="delegation_governance",
+            )
             meta["agent_delegation_plan"] = delegation_dump
             meta["agent_delegation_execution_mode"] = execution_mode
         if settings.agent_model_router_enabled:
@@ -110,7 +127,12 @@ def make_delegation_governance_node(
                 tool_risk="low",
                 context_size=len(str(state.get("assembled_context") or "")),
             ).model_dump(mode="json")
-            updates["model_route_decision"] = decision
+            append_agent_state_record(
+                updates,
+                "model_route_decision",
+                decision,
+                source="delegation_governance",
+            )
             meta["model_route_decision"] = decision
             if decision.get("enabled") and decision.get("mode") == "enforce":
                 updates["selected_model"] = str(
@@ -152,16 +174,41 @@ def make_delegation_governance_node(
                     artifacts=artifacts,
                     critic_gate_result=critic_result,
                 ).model_dump(mode="json")
-            updates["agent_task_ledger"] = ledger
-            updates["delegated_artifacts"] = artifacts
+            append_agent_state_record(
+                updates,
+                "agent_task_ledger",
+                ledger,
+                source="delegation_governance",
+            )
+            append_agent_state_record(
+                updates,
+                "delegated_artifacts",
+                artifacts,
+                source="delegation_governance",
+            )
             meta["agent_task_ledger"] = ledger
             meta["delegated_artifacts"] = artifacts
             if critic_result is not None:
-                updates["critic_gate_result"] = critic_result
+                append_agent_state_record(
+                    updates,
+                    "critic_gate_result",
+                    critic_result,
+                    source="delegation_governance",
+                )
                 meta["critic_gate_result"] = critic_result
             if synthesis_result is not None:
-                updates["artifact_synthesis_result"] = synthesis_result
+                append_agent_state_record(
+                    updates,
+                    "artifact_synthesis_result",
+                    synthesis_result,
+                    source="delegation_governance",
+                )
                 meta["artifact_synthesis_result"] = synthesis_result
+        if updates.get("governance_records"):
+            meta["governance_records"] = [
+                *list(meta.get("governance_records") or []),
+                *list(updates.get("governance_records") or []),
+            ]
         if meta != dict(state.get("plan_meta") or {}):
             updates["plan_meta"] = meta
         return updates

@@ -8,56 +8,6 @@ from ..agent_roles import AgentRole, normalize_agent_role
 from ..core.types import StateModel
 from .tool_registry import ToolRegistry, ToolRuntimeMeta
 
-_NETWORK_TOOLS = {"web_search", "web_fetch"}
-_WORKSPACE_WRITE_TOOLS = {"write_text_artifact", "artifact_update"}
-_MEMORY_WRITE_TOOLS = {"memory_save", "memory_forget"}
-_ROLE_DEFAULTS: dict[AgentRole, set[str]] = {
-    AgentRole.ORCHESTRATOR: {"conversation_summary", "skills_list", "skill_view"},
-    AgentRole.PLANNER: {
-        "web_search",
-        "web_fetch",
-        "current_utc_time",
-        "search_code",
-        "read_file",
-        "conversation_summary",
-        "skills_list",
-        "skill_view",
-    },
-    AgentRole.EXECUTOR: {
-        "list_files",
-        "read_file",
-        "search_code",
-        "codebase_stats",
-        "git_status",
-        "git_diff",
-        "artifact_list",
-        "artifact_read",
-        "artifact_update",
-        "write_text_artifact",
-    },
-    AgentRole.CRITIC: {
-        "list_files",
-        "read_file",
-        "search_code",
-        "git_status",
-        "git_diff",
-        "git_log",
-        "artifact_list",
-        "artifact_read",
-    },
-    AgentRole.MEMORY_CURATOR: {
-        "memory_search",
-        "conversation_summary",
-        "artifact_list",
-        "artifact_read",
-    },
-    AgentRole.SKILL_SCOUT: {
-        "skills_list",
-        "skill_view",
-        "conversation_summary",
-    },
-}
-
 
 class CapabilityDescriptor(StateModel):
     name: str
@@ -71,6 +21,8 @@ class CapabilityDescriptor(StateModel):
     requires_network: bool = False
     requires_workspace_write: bool = False
     requires_approval: bool = False
+    intent_policies: list[str] = Field(default_factory=list)
+    intent_tags: list[str] = Field(default_factory=list)
 
 
 class ToolRouteDecision(StateModel):
@@ -103,23 +55,21 @@ def build_capability_registry(tool_registry: ToolRegistry) -> list[CapabilityDes
 
 
 def capability_from_tool(*, name: str, description: str, runtime: ToolRuntimeMeta) -> CapabilityDescriptor:
-    allowed_roles = list(runtime.allowed_roles) or [
-        role.value
-        for role, tool_names in _ROLE_DEFAULTS.items()
-        if name in tool_names
-    ]
     return CapabilityDescriptor(
         name=name,
         description=description,
-        toolset=runtime.toolset or _default_toolset(name),
-        allowed_roles=allowed_roles,
-        risk_level=runtime.risk_level or _default_risk_level(name, runtime),
+        toolset=runtime.toolset,
+        allowed_roles=list(runtime.allowed_roles),
+        risk_level=runtime.risk_level or _default_risk_level(runtime),
         side_effect=runtime.side_effect,
         parallel_safe=runtime.parallel_safe,
         cacheable=runtime.cacheable,
-        requires_network=name in _NETWORK_TOOLS,
-        requires_workspace_write=name in _WORKSPACE_WRITE_TOOLS or runtime.side_effect_kind == "workspace_write",
+        requires_network=runtime.requires_network,
+        requires_workspace_write=runtime.requires_workspace_write
+        or runtime.side_effect_kind == "workspace_write",
         requires_approval=runtime.requires_approval,
+        intent_policies=list(runtime.intent_policies),
+        intent_tags=list(runtime.intent_tags),
     )
 
 
@@ -179,39 +129,25 @@ def _allow_tool(capability: CapabilityDescriptor, *, role: AgentRole, tool_polic
     normalized_policy = (tool_policy or "execution").strip().lower()
     if normalized_policy == "direct_answer":
         return False, "direct_answer_policy"
+    if normalized_policy != "execution" and normalized_policy not in capability.intent_policies:
+        return False, f"policy_not_allowed:{normalized_policy}"
     if normalized_policy == "workspace_lookup" and capability.requires_network:
         return False, "workspace_lookup_no_network"
-    if normalized_policy == "live_web_research" and capability.name not in {"web_search", "web_fetch", "current_utc_time"}:
-        return False, "live_web_policy"
     if role.value not in capability.allowed_roles:
         return False, f"role_not_allowed:{role.value}"
-    if capability.requires_approval:
-        return False, "approval_required"
     if role == AgentRole.CRITIC and capability.requires_workspace_write:
         return False, "critic_no_workspace_write"
-    if capability.name in _MEMORY_WRITE_TOOLS:
+    if capability.toolset == "memory" and capability.side_effect:
         return False, "memory_write_reserved"
+    if capability.requires_approval:
+        return True, "approval_required"
     return True, "allowed"
 
 
-def _default_toolset(name: str) -> str:
-    if name.startswith("web_") or name == "current_utc_time":
-        return "web"
-    if name.startswith("memory_"):
-        return "memory"
-    if name.startswith("artifact_") or name == "write_text_artifact":
-        return "artifact"
-    if name.startswith("git_") or name in {"read_file", "list_files", "search_code", "codebase_stats"}:
-        return "workspace"
-    if name.startswith("skill"):
-        return "skill"
-    return "core"
-
-
-def _default_risk_level(name: str, runtime: ToolRuntimeMeta) -> str:
+def _default_risk_level(runtime: ToolRuntimeMeta) -> str:
     if runtime.requires_approval:
         return "high"
-    if runtime.side_effect or name in _WORKSPACE_WRITE_TOOLS or name in _MEMORY_WRITE_TOOLS:
+    if runtime.side_effect or runtime.requires_workspace_write:
         return "medium"
     return "low"
 

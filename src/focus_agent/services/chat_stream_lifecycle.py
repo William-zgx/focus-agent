@@ -167,6 +167,9 @@ class ChatStreamLifecycleMixin:
                 trace_correlation=trace_correlation,
             ):
                 if chunk is None:
+                    heartbeat_thread_turn = getattr(self, "_heartbeat_thread_turn", None)
+                    if callable(heartbeat_thread_turn):
+                        heartbeat_thread_turn(thread_id=thread_id)
                     yield self._sse_frame(
                         event='status',
                         data={'stage': 'heartbeat', 'thread_id': thread_id, 'channel': 'system'},

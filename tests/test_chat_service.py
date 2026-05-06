@@ -9,6 +9,11 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
 from focus_agent.services.branch_actions import is_branch_action_request
+from focus_agent.services.coordination import (
+    CoordinationBackend,
+    InMemoryBackgroundJobDeduperBackend,
+    InMemoryRateLimitBackend,
+)
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
@@ -538,6 +543,72 @@ def test_stream_message_emits_heartbeat_during_long_running_turn(tmp_path: Path)
 
     assert any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
     assert any("event: turn.completed" in frame for frame in frames)
+
+
+def test_stream_message_heartbeats_and_releases_coordination_lock(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class RecordingThreadLocks:
+        def __init__(self):
+            self.acquired: list[tuple[str, str, float]] = []
+            self.heartbeats: list[tuple[str, str, float]] = []
+            self.released: list[tuple[str, str]] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.acquired.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.heartbeats.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            self.released.append((thread_id, owner))
+
+    class SlowStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [AIMessage(content="Final answer after heartbeat.")],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            await asyncio.sleep(0.03)
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    locks = RecordingThreadLocks()
+    runtime = SimpleNamespace(
+        settings=Settings(sse_heartbeat_seconds=0.01),
+        graph=SlowStreamingGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    frames = asyncio.run(collect_frames())
+
+    assert any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
+    assert locks.acquired
+    assert locks.heartbeats
+    assert locks.released == [("root-1", locks.acquired[0][1])]
 
 
 def test_stream_message_does_not_complete_with_previous_assistant_reply(tmp_path: Path):

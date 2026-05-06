@@ -180,6 +180,40 @@ def test_load_tool_catalog_document_reads_web_search_config(tmp_path):
     assert loaded.by_name["list_files"].default_max_results == 12
 
 
+def test_load_tool_catalog_document_preserves_generic_tool_metadata_overlay(tmp_path):
+    config_doc = tmp_path / "tools.toml"
+    config_doc.write_text(
+        "\n".join(
+            [
+                "[search_code]",
+                'toolset = "workspace"',
+                'allowed_roles = ["critic"]',
+                'intent_policies = ["workspace_lookup"]',
+                "",
+                "[future_provider_tool]",
+                'label = "Future Tool"',
+                'toolset = "custom"',
+                'risk_level = "high"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_tool_catalog_document(config_doc)
+
+    assert loaded.metadata_overlay_for("search_code") == {
+        "allowed_roles": ["critic"],
+        "intent_policies": ["workspace_lookup"],
+        "toolset": "workspace",
+    }
+    assert loaded.metadata_overlay_for("future_provider_tool") == {
+        "label": "Future Tool",
+        "risk_level": "high",
+        "toolset": "custom",
+    }
+    assert "future_provider_tool" in loaded.manifest_section_names
+
+
 def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
     config_doc = tmp_path / "models.toml"
     tools_doc = tmp_path / "tools.toml"

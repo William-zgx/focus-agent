@@ -226,9 +226,12 @@ def test_graph_enabled_records_role_route_plan_without_changing_model_path(monke
     )
 
     plan = result.value["role_route_plan"]
+    records = result.value["governance_records"]
     assert plan["enabled"] is True
     assert plan["decisions"][1]["role"] == "executor"
     assert plan["decisions"][1]["model_id"] == "moonshot:kimi-k2.6"
+    assert records[0]["name"] == "role_route_plan"
+    assert records[0]["payload"]["decisions"][1]["role"] == "executor"
     assert captured["model_id"] == "openai:gpt-4.1-mini"
     assert captured["bound_tools"] == ["search_code"]
 

@@ -12,7 +12,7 @@ from focus_agent.api.deps import require_roles, require_scopes
 from focus_agent.api.main import create_app
 from focus_agent.api.middleware import RateLimitMiddleware, REQUEST_ID_HEADER
 from focus_agent.config import Settings
-from focus_agent.security.rate_limit import SlidingWindowRateLimiter
+from focus_agent.security.rate_limit import RateLimitResult, SlidingWindowRateLimiter
 from focus_agent.security.tokens import Principal, create_access_token
 
 
@@ -256,6 +256,37 @@ def test_rate_limit_middleware_returns_envelope(
     assert body["code"] == 429
     assert body["data"]["retry_after_seconds"] >= 1
     assert responses[-1].headers.get("Retry-After")
+
+
+def test_rate_limit_middleware_uses_runtime_coordination_backend() -> None:
+    class DenyBackend:
+        def __init__(self):
+            self.calls: list[dict[str, object]] = []
+
+        def check(self, *, key: str, limit: int, window_seconds: float = 60.0) -> RateLimitResult:
+            self.calls.append({"key": key, "limit": limit, "window_seconds": window_seconds})
+            return RateLimitResult(allowed=False, remaining=0, retry_after_seconds=4.2)
+
+    backend = DenyBackend()
+    settings = Settings(auth_enabled=False)
+    app = FastAPI()
+    app.state.runtime = SimpleNamespace(coordination_backend=SimpleNamespace(rate_limiter=backend))
+
+    @app.get("/v1/chat/turns")
+    def chat_turns() -> dict[str, bool]:
+        return {"ok": True}
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        default_limit=10,
+        chat_limit=3,
+        settings=settings,
+    )
+
+    response = TestClient(app).get("/v1/chat/turns")
+
+    assert response.status_code == 429
+    assert backend.calls == [{"key": "ip:testclient:/v1/chat/turns", "limit": 3, "window_seconds": 60.0}]
 
 
 def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

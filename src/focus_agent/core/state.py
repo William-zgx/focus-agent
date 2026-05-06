@@ -113,6 +113,10 @@ class AgentState(TypedDict, total=False):
     # data; Delegation Runtime can consume it when its feature flag is enabled.
     role_route_plan: dict[str, Any] | None
 
+    # Append-only governance/observability records. New governance capabilities
+    # should write records here and mirror legacy keys for current consumers.
+    governance_records: Annotated[list[AgentStateRecord], operator.add]
+
     # Written by Memory Curator when branch-local memories are evaluated for
     # promotion. It is observability data unless merge auto-promotion is enabled.
     memory_curator_decision: dict[str, Any] | None
@@ -189,6 +193,7 @@ AgentStateKey: TypeAlias = Literal[
     "selected_model",
     "selected_thinking_mode",
     "role_route_plan",
+    "governance_records",
     "memory_curator_decision",
     "tool_route_plan",
     "agent_delegation_plan",
@@ -219,6 +224,62 @@ AgentStateDomain: TypeAlias = Literal[
     "governance",
     "observability",
 ]
+AgentStateRecordDomain: TypeAlias = Literal["governance", "observability"]
+AgentStateRecordName: TypeAlias = Literal[
+    "role_route_plan",
+    "memory_curator_decision",
+    "tool_route_plan",
+    "agent_delegation_plan",
+    "agent_runs",
+    "model_route_decision",
+    "agent_failure_records",
+    "agent_review_queue",
+    "context_budget_decision",
+    "context_compression_plan",
+    "context_artifact_refs",
+    "role_context_views",
+    "context_compaction",
+    "agent_task_ledger",
+    "delegated_artifacts",
+    "artifact_synthesis_result",
+    "critic_gate_result",
+]
+
+
+class AgentStateRecord(TypedDict, total=False):
+    schema_version: int
+    record_id: str
+    domain: AgentStateRecordDomain
+    name: AgentStateRecordName | str
+    source: str
+    mirror_key: AgentStateKey | str
+    payload: Any
+    metadata: dict[str, Any]
+
+
+GOVERNANCE_RECORD_SCHEMA_VERSION = 1
+
+GOVERNANCE_RECORD_MIRROR_KEYS: Mapping[str, AgentStateKey] = MappingProxyType(
+    {
+        "role_route_plan": "role_route_plan",
+        "memory_curator_decision": "memory_curator_decision",
+        "tool_route_plan": "tool_route_plan",
+        "agent_delegation_plan": "agent_delegation_plan",
+        "agent_runs": "agent_runs",
+        "model_route_decision": "model_route_decision",
+        "agent_failure_records": "agent_failure_records",
+        "agent_review_queue": "agent_review_queue",
+        "context_budget_decision": "context_budget_decision",
+        "context_compression_plan": "context_compression_plan",
+        "context_artifact_refs": "context_artifact_refs",
+        "role_context_views": "role_context_views",
+        "context_compaction": "context_compaction",
+        "agent_task_ledger": "agent_task_ledger",
+        "delegated_artifacts": "delegated_artifacts",
+        "artifact_synthesis_result": "artifact_synthesis_result",
+        "critic_gate_result": "critic_gate_result",
+    }
+)
 
 ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "messages",
@@ -252,6 +313,7 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "selected_model",
     "selected_thinking_mode",
     "role_route_plan",
+    "governance_records",
     "memory_curator_decision",
     "tool_route_plan",
     "agent_delegation_plan",
@@ -321,6 +383,7 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "selected_model",
     "selected_thinking_mode",
     "role_route_plan",
+    "governance_records",
     "memory_curator_decision",
     "tool_route_plan",
     "agent_delegation_plan",
@@ -346,6 +409,7 @@ OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "branch_action_audit",
     "plan_meta",
     "role_route_plan",
+    "governance_records",
     "memory_curator_decision",
     "tool_route_plan",
     "agent_delegation_plan",
@@ -408,6 +472,7 @@ def initial_agent_state() -> AgentState:
         "selected_model": "",
         "selected_thinking_mode": "",
         "role_route_plan": None,
+        "governance_records": [],
         "memory_curator_decision": None,
         "tool_route_plan": None,
         "agent_delegation_plan": None,
@@ -437,6 +502,7 @@ def normalize_agent_state(state: Mapping[str, Any] | None = None) -> AgentState:
     normalized = initial_agent_state()
     if state:
         normalized.update(dict(state))
+    _apply_governance_record_mirrors(normalized)
     return normalized
 
 
@@ -465,7 +531,86 @@ def default_agent_state_slice(domain: AgentStateDomain) -> dict[AgentStateKey, A
 
 
 def serialize_agent_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: _serialize_value(value) for key, value in dict(state).items()}
+    serializable = with_agent_state_record_mirrors(state)
+    return {key: _serialize_value(value) for key, value in serializable.items()}
+
+
+def make_agent_state_record(
+    name: AgentStateRecordName | str,
+    payload: Any,
+    *,
+    source: str,
+    domain: AgentStateRecordDomain = "governance",
+    mirror_key: AgentStateKey | str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> AgentStateRecord:
+    resolved_mirror_key = mirror_key or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(name))
+    record: AgentStateRecord = {
+        "schema_version": GOVERNANCE_RECORD_SCHEMA_VERSION,
+        "record_id": f"{source}:{domain}:{name}",
+        "domain": domain,
+        "name": name,
+        "source": source,
+        "payload": _serialize_value(payload),
+    }
+    if resolved_mirror_key:
+        record["mirror_key"] = resolved_mirror_key
+    if metadata:
+        record["metadata"] = dict(metadata)
+    return record
+
+
+def append_agent_state_record(
+    updates: dict[str, Any],
+    name: AgentStateRecordName | str,
+    payload: Any,
+    *,
+    source: str,
+    domain: AgentStateRecordDomain = "governance",
+    mirror_key: AgentStateKey | str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> AgentStateRecord:
+    record = make_agent_state_record(
+        name,
+        payload,
+        source=source,
+        domain=domain,
+        mirror_key=mirror_key,
+        metadata=metadata,
+    )
+    updates.setdefault("governance_records", []).append(record)
+    resolved_mirror_key = record.get("mirror_key")
+    if resolved_mirror_key in ALL_AGENT_STATE_FIELDS:
+        updates[resolved_mirror_key] = payload
+    return record
+
+
+def with_agent_state_record_mirrors(state: Mapping[str, Any]) -> dict[str, Any]:
+    mirrored = dict(state)
+    _apply_governance_record_mirrors(mirrored)
+    return mirrored
+
+
+def _apply_governance_record_mirrors(state: dict[str, Any]) -> None:
+    records = state.get("governance_records") or []
+    if not isinstance(records, list):
+        return
+    protected_keys = {
+        key
+        for key in GOVERNANCE_RECORD_MIRROR_KEYS.values()
+        if state.get(key) not in (None, [], {})
+    }
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        mirror_key = str(
+            record.get("mirror_key") or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(record.get("name")))
+        )
+        if mirror_key not in ALL_AGENT_STATE_FIELDS:
+            continue
+        payload = record.get("payload")
+        if mirror_key not in protected_keys:
+            state[mirror_key] = payload
 
 
 def _serialize_value(value: Any) -> Any:

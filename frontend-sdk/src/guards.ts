@@ -1,4 +1,4 @@
-import type { FocusAgentEvent } from "./types.js";
+import type { FocusAgentEvent, FocusAgentToolApprovalInterrupt } from "./types.js";
 
 export function isVisibleTextDeltaEvent(
   event: FocusAgentEvent,
@@ -27,6 +27,24 @@ export function isToolLifecycleEvent(event: FocusAgentEvent): boolean {
     "tool.error",
     "tool.result",
   ].includes(event.event);
+}
+
+export function isToolApprovalInterrupt(
+  interrupt: unknown,
+): interrupt is FocusAgentToolApprovalInterrupt {
+  if (!interrupt || typeof interrupt !== "object") {
+    return false;
+  }
+  const payload = interrupt as Record<string, unknown>;
+  return (
+    payload.kind === "tool_approval" &&
+    typeof payload.tool_name === "string" &&
+    typeof payload.tool_call_id === "string" &&
+    !!payload.args &&
+    typeof payload.args === "object" &&
+    !Array.isArray(payload.args) &&
+    typeof payload.risk_level === "string"
+  );
 }
 
 export function isTerminalEvent(event: FocusAgentEvent): boolean {

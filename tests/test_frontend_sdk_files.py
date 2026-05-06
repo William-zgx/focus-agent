@@ -73,6 +73,7 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'FocusAgentCriticEvaluateResponse' in types_text
     assert 'FocusAgentBranchActionProposal' in types_text
     assert 'FocusAgentBranchActionExecuteResponse' in types_text
+    assert 'FocusAgentToolApprovalInterrupt' in types_text
     assert 'branch.action.executed' in types_text
 
     client_text = _sdk_client_text(root)
@@ -86,7 +87,10 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'raw' in errors_text
 
     transport_text = (root / 'src' / 'transport.ts').read_text()
+    guards_text = (root / 'src' / 'guards.ts').read_text()
     assert 'class FocusAgentTransport' in transport_text
+    assert 'isToolApprovalInterrupt' in guards_text
+    assert 'payload.kind === "tool_approval"' in guards_text
     assert 'createFocusAgentRequestError' in transport_text
     assert 'listModels' in client_text
     assert 'listConversations' in client_text

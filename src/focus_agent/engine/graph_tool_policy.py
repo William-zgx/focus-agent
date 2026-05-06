@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from langchain.messages import ToolMessage
 
+from ..capabilities.tool_registry import ToolRuntimeMeta
+
 
 _DIRECT_ANSWER_NOTE = (
     "This turn should be answered directly. Do not call tools, browse the web, inspect files, "
@@ -31,27 +33,6 @@ _BRANCH_ACTION_GUARD_NOTE = (
 
 
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
-
-
-_WORKSPACE_TOOL_NAMES = frozenset(
-    {
-        "list_files",
-        "read_file",
-        "search_code",
-        "codebase_stats",
-        "git_status",
-        "git_diff",
-        "git_log",
-        "skills_list",
-        "skill_view",
-        "artifact_list",
-        "artifact_read",
-        "conversation_summary",
-    }
-)
-
-
-_LIVE_WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch", "current_utc_time"})
 
 
 _NO_TOOL_INTENT_MARKERS = (
@@ -351,16 +332,37 @@ def _tools_for_policy(policy: _ToolPolicy, tools: list[Any], latest_user: str = 
     if policy == "direct_answer":
         return []
     if policy == "workspace_lookup":
-        allowed_names = _WORKSPACE_TOOL_NAMES
+        candidates = [
+            tool
+            for tool in tools
+            if _tool_supports_policy(tool, "workspace_lookup")
+            and not _tool_runtime(tool).requires_network
+            and not _tool_runtime(tool).requires_workspace_write
+        ]
         normalized = " ".join(latest_user.strip().split())
         if _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS) and not _contains_any(
             normalized, _FILE_BROWSE_INTENT_MARKERS
         ):
-            allowed_names = frozenset({"search_code", "read_file"})
-        return [tool for tool in tools if getattr(tool, "name", "") in allowed_names]
+            focused = [
+                tool
+                for tool in candidates
+                if "code_search" in _tool_runtime(tool).intent_tags
+            ]
+            if focused:
+                return focused
+        return candidates
     if policy == "live_web_research":
-        return [tool for tool in tools if getattr(tool, "name", "") in _LIVE_WEB_TOOL_NAMES]
+        return [tool for tool in tools if _tool_supports_policy(tool, "live_web_research")]
     return list(tools)
+
+
+def _tool_runtime(tool: Any) -> ToolRuntimeMeta:
+    return ToolRuntimeMeta.from_tool(tool)
+
+
+def _tool_supports_policy(tool: Any, policy: _ToolPolicy) -> bool:
+    runtime = _tool_runtime(tool)
+    return policy in runtime.intent_policies
 
 
 def _workspace_lookup_should_start_with_search(

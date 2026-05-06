@@ -5,13 +5,16 @@ from typing import Any
 
 from langchain.messages import HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
+from langgraph.types import interrupt
 
 from ..capabilities.tool_runtime import (
     ToolExecutionInput,
     ToolResultCacheStore,
     build_cache_scope_key,
+    build_tool_approval_interrupt_payload,
     build_tool_error_message,
     execute_tool_calls,
+    is_tool_approval_approved,
 )
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
@@ -93,7 +96,11 @@ def make_tool_executor_node(
             denied_tools = (
                 set(route_plan.get("denied_tools") or []) if isinstance(route_plan, dict) else set()
             )
-            if tool_name in denied_tools and bool(route_plan.get("enforce", True)):
+            if (
+                tool_name in denied_tools
+                and bool(route_plan.get("enforce", True))
+                and not _denial_is_approval_required(route_plan, tool_name)
+            ):
                 messages_by_index[index] = build_tool_error_message(
                     tool_call_id=tool_call_id,
                     tool_name=tool_name,
@@ -114,16 +121,30 @@ def make_tool_executor_node(
             runtime_meta = tool_runtime_by_name.get(tool_name)
             if runtime_meta is None:
                 continue
-            execution_inputs.append(
-                ToolExecutionInput(
-                    index=index,
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    tool=tool,
-                    runtime=runtime_meta,
-                )
+            execution_input = ToolExecutionInput(
+                index=index,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                args=tool_args,
+                tool=tool,
+                runtime=runtime_meta,
             )
+            if runtime_meta.requires_approval:
+                approval_response = interrupt(build_tool_approval_interrupt_payload(execution_input))
+                if not is_tool_approval_approved(approval_response):
+                    messages_by_index[index] = build_tool_error_message(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        args=tool_args,
+                        error=f"Tool execution denied by approval response: {tool_name}",
+                        runtime_info={
+                            "tool_approval_denied": True,
+                            "requires_approval": True,
+                            "risk_level": runtime_meta.risk_level or "low",
+                        },
+                    )
+                    continue
+            execution_inputs.append(execution_input)
             cache_scope_keys[index] = build_cache_scope_key(
                 scope=runtime_meta.cache_scope,
                 root_thread_id=root_thread_id,
@@ -143,6 +164,18 @@ def make_tool_executor_node(
         return {"messages": result_messages}
 
     return tool_executor
+
+
+def _denial_is_approval_required(route_plan: Any, tool_name: str) -> bool:
+    if not isinstance(route_plan, dict):
+        return False
+    for decision in route_plan.get("decisions") or []:
+        if not isinstance(decision, dict):
+            continue
+        if str(decision.get("name") or "") != tool_name:
+            continue
+        return str(decision.get("reason") or "") == "approval_required"
+    return False
 
 
 __all__ = ["make_tool_executor_node"]

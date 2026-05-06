@@ -5,7 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def ensure_app_postgres_schema(database_uri: str) -> None:
@@ -372,9 +372,38 @@ def _run_migration_v4(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v5(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_runtime_locks (
+            lock_key TEXT PRIMARY KEY,
+            lock_type TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            acquired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            expires_at TIMESTAMPTZ NOT NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_runtime_locks_type_expires
+        ON focus_runtime_locks(lock_type, expires_at)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_runtime_locks_owner
+        ON focus_runtime_locks(owner)
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (1, _run_migration_v1),
     (2, _run_migration_v2),
     (3, _run_migration_v3),
     (4, _run_migration_v4),
+    (5, _run_migration_v5),
 )
