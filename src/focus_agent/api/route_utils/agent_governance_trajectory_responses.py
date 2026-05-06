@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from focus_agent.core.state import latest_agent_state_record_payload
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 
@@ -12,7 +13,7 @@ def _role_route_decision_items(rows: Sequence[dict[str, Any]]) -> list[dict[str,
     items: list[dict[str, Any]] = []
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
-        role_route_plan = plan_meta.get("role_route_plan")
+        role_route_plan = _plan_meta_governance_payload(plan_meta, "role_route_plan")
         if not isinstance(role_route_plan, dict):
             continue
         decisions = role_route_plan.get("decisions")
@@ -62,7 +63,7 @@ def _plan_meta_items(rows: Sequence[dict[str, Any]], key: str) -> list[dict[str,
     items: list[dict[str, Any]] = []
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
-        payload = plan_meta.get(key)
+        payload = _plan_meta_governance_payload(plan_meta, key)
         if not isinstance(payload, dict):
             continue
         items.append(
@@ -112,9 +113,7 @@ def _list_plan_meta_list_items(
     items: list[dict[str, Any]] = []
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
-        payload: Any = plan_meta
-        for part in key.split("."):
-            payload = payload.get(part) if isinstance(payload, dict) else None
+        payload = _plan_meta_governance_payload(plan_meta, key)
         if not isinstance(payload, list):
             continue
         for raw in payload:
@@ -154,47 +153,60 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
     }
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
-        memory_decision = plan_meta.get("memory_curator_decision")
+        memory_decision = _plan_meta_governance_payload(plan_meta, "memory_curator_decision")
         if isinstance(memory_decision, dict):
             metrics["memory_promotions"] += len(memory_decision.get("promoted_memory_ids") or [])
             metrics["memory_conflicts"] += len(memory_decision.get("conflicts") or [])
-        tool_plan = plan_meta.get("tool_route_plan")
+        tool_plan = _plan_meta_governance_payload(plan_meta, "tool_route_plan")
         if isinstance(tool_plan, dict):
             metrics["tool_router_denied"] += len(tool_plan.get("denied_tools") or [])
             metrics["tool_router_enforced"] += 1 if tool_plan.get("enforce") else 0
-        delegation_plan = plan_meta.get("agent_delegation_plan")
+        delegation_plan = _plan_meta_governance_payload(plan_meta, "agent_delegation_plan")
         if isinstance(delegation_plan, dict):
             metrics["agent_delegation_runs"] += len(delegation_plan.get("runs") or [])
-        model_decision = plan_meta.get("model_route_decision")
+        model_decision = _plan_meta_governance_payload(plan_meta, "model_route_decision")
         if isinstance(model_decision, dict):
             metrics["model_router_fallback"] += 1 if model_decision.get("fallback_used") else 0
-        failures = plan_meta.get("agent_failure_records")
+        failures = _plan_meta_governance_payload(plan_meta, "agent_failure_records")
         if isinstance(failures, list):
             metrics["agent_failures"] += len(failures)
             metrics["critic_rejects"] += len(
                 [item for item in failures if isinstance(item, dict) and item.get("failure_type") == "critic_rejected"]
             )
-        review_queue = plan_meta.get("agent_review_queue")
+        review_queue = _plan_meta_governance_payload(plan_meta, "agent_review_queue")
         if isinstance(review_queue, list):
             metrics["agent_review_pending"] += len(
                 [item for item in review_queue if isinstance(item, dict) and item.get("status") == "pending"]
             )
-        context_refs = plan_meta.get("context_artifact_refs")
+        context_refs = _plan_meta_governance_payload(plan_meta, "context_artifact_refs")
         if isinstance(context_refs, list):
             metrics["context_artifact_refs"] += len(context_refs)
-        context_budget = plan_meta.get("context_budget_decision")
+        context_budget = _plan_meta_governance_payload(plan_meta, "context_budget_decision")
         if isinstance(context_budget, dict):
             metrics["context_over_budget"] += 1 if int(context_budget.get("over_budget_chars") or 0) > 0 else 0
-        task_ledger = plan_meta.get("agent_task_ledger")
+        task_ledger = _plan_meta_governance_payload(plan_meta, "agent_task_ledger")
         if isinstance(task_ledger, dict):
             metrics["agent_task_ledger_tasks"] += len(task_ledger.get("tasks") or [])
-        delegated_artifacts = plan_meta.get("delegated_artifacts")
+        delegated_artifacts = _plan_meta_governance_payload(plan_meta, "delegated_artifacts")
         if isinstance(delegated_artifacts, list):
             metrics["delegated_artifacts"] += len(delegated_artifacts)
-        critic_gate = plan_meta.get("critic_gate_result")
+        critic_gate = _plan_meta_governance_payload(plan_meta, "critic_gate_result")
         if isinstance(critic_gate, dict):
             metrics["critic_gate_rejected"] += len(critic_gate.get("rejected_artifact_ids") or [])
     return metrics
+
+
+_MISSING = object()
+
+
+def _plan_meta_governance_payload(plan_meta: dict[str, Any], key: str) -> Any:
+    parts = key.split(".")
+    payload = latest_agent_state_record_payload(plan_meta, parts[0], default=_MISSING)
+    if payload is _MISSING:
+        payload = plan_meta.get(parts[0])
+    for part in parts[1:]:
+        payload = payload.get(part) if isinstance(payload, dict) else None
+    return payload
 
 
 __all__ = [

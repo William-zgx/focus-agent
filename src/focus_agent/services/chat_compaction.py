@@ -51,13 +51,12 @@ class ChatContextCompactionMixin:
         draft_message: str | None = None,
         force: bool = True,
     ) -> dict[str, Any]:
-        context, branch_meta, values = self._preflight_thread_access(
+        _context, branch_meta, values = self._preflight_thread_access(
             thread_id=thread_id,
             user_id=user_id,
             require_writable=True,
         )
-        self._acquire_thread_turn(thread_id=thread_id)
-        try:
+        with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
             self._compact_thread_context_locked(
                 thread_id=thread_id,
                 values=values,
@@ -65,6 +64,7 @@ class ChatContextCompactionMixin:
                 draft_message=draft_message,
                 force=force,
             )
+            turn_lease.raise_if_lost()
             latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
             return self._response_payload(
                 thread_id=thread_id,
@@ -74,9 +74,6 @@ class ChatContextCompactionMixin:
                 interrupts=self._safe_get_interrupts(thread_id),
                 trace_correlation=None,
             )
-        finally:
-            del context
-            self._release_thread_turn(thread_id=thread_id)
 
     def _compact_thread_context_locked(
         self,
@@ -151,6 +148,21 @@ class ChatContextCompactionMixin:
         if not bool(getattr(self.runtime.settings, "context_auto_compaction_enabled", True)):
             return
         job_key = background_job_key(kind="context_compaction", thread_id=thread_id)
+        durable_enqueued = self._enqueue_durable_background_job(
+            kind="context_compaction",
+            key=job_key,
+            payload={
+                "thread_id": thread_id,
+                "user_id": user_id,
+                "trigger": "auto_post_turn",
+                "force": False,
+            },
+            delay_seconds=0.05,
+            max_attempts=3,
+            dedupe_policy="replace",
+        )
+        if durable_enqueued is not None:
+            return
 
         def schedule_compact_later(*, delay: float, attempt: int) -> None:
             submit_background = getattr(self, "_submit_background_work", None)

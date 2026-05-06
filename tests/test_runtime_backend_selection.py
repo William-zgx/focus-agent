@@ -6,6 +6,8 @@ import types
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 import focus_agent.engine.runtime as runtime_mod
 from focus_agent.config import Settings, ensure_runtime_directories
 from focus_agent.services.coordination import (
@@ -284,6 +286,18 @@ def test_create_runtime_uses_postgres_background_jobs_only_when_opted_in(monkeyp
         assert runtime.coordination_backend.job_deduper.claim_ttl_seconds == 12.0
     finally:
         runtime.close()
+
+
+def test_create_runtime_rejects_durable_background_execution_without_postgres(monkeypatch, tmp_path):
+    settings = _make_settings(
+        tmp_path,
+        database_uri=None,
+        trajectory_enabled=False,
+    )
+    settings.background_job_execution = "durable"
+
+    with pytest.raises(ValueError, match="BACKGROUND_JOB_EXECUTION=durable"):
+        runtime_mod.create_runtime(settings)
 
 
 def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):

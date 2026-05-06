@@ -120,8 +120,10 @@ class Settings:
     background_worker_max_concurrency: int = 2
     background_queue_max_size: int = 1000
     background_job_backend: str = "memory"
+    background_job_execution: str = "best_effort"
     background_job_claim_ttl_seconds: float = 300.0
     runtime_thread_lock_ttl_seconds: float = 300.0
+    runtime_thread_lock_heartbeat_seconds: float = 30.0
     local_checkpoint_path: str | None = None
     local_store_path: str | None = None
     branch_max_depth: int = 5

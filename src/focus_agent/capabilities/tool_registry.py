@@ -50,6 +50,8 @@ class ToolRuntimeMeta:
     requires_workspace_write: bool = False
     intent_policies: tuple[str, ...] = ()
     intent_tags: tuple[str, ...] = ()
+    sensitive_args: tuple[str, ...] = ()
+    redaction_policy: str = "mask"
     provider_id: str | None = None
 
     @classmethod
@@ -115,6 +117,12 @@ class ToolRuntimeMeta:
                 for tag in (normalized.get("intent_tags") or ())
                 if str(tag)
             ),
+            sensitive_args=tuple(
+                str(arg)
+                for arg in (normalized.get("sensitive_args") or ())
+                if str(arg)
+            ),
+            redaction_policy=str(normalized.get("redaction_policy") or "mask"),
             provider_id=(
                 str(normalized["provider_id"])
                 if normalized.get("provider_id")
@@ -182,6 +190,7 @@ def build_tool_registry(
     all_manifests = _merge_tool_provider_manifests(
         providers,
         provider_metadata_overlay_for=settings.tool_catalog.provider_metadata_overlay_for,
+        provider_overrides_for=settings.tool_catalog.provider_overrides_for,
         metadata_overlay_for=settings.tool_catalog.metadata_overlay_for,
     )
     ordered_names = tuple(
@@ -293,15 +302,29 @@ def _merge_tool_provider_manifests(
     providers: Iterable[ToolProvider],
     *,
     provider_metadata_overlay_for: Callable[[str], Mapping[str, Any]],
+    provider_overrides_for: Callable[[str], Iterable[str]],
     metadata_overlay_for: Callable[[str], Mapping[str, Any]],
 ) -> dict[str, ToolManifest]:
     manifests: dict[str, ToolManifest] = {}
     for provider in providers:
+        provider_id = _normalize_provider_id(provider.provider_id)
+        provider_overlay = provider_metadata_overlay_for(provider_id)
+        provider_overrides = set(provider_overrides_for(provider_id))
         for manifest in provider.tool_manifests():
-            provider_overlay = provider_metadata_overlay_for(provider.provider_id)
             provider_manifest = manifest.with_overlay(provider_overlay)
-            manifests[manifest.name] = provider_manifest.with_overlay(
-                metadata_overlay_for(manifest.name)
+            existing = manifests.get(provider_manifest.name)
+            if (
+                existing is not None
+                and existing.provider_id != provider_manifest.provider_id
+                and provider_manifest.name not in provider_overrides
+            ):
+                raise ValueError(
+                    f"Tool provider {provider_id!r} cannot override tool "
+                    f"{provider_manifest.name!r} from provider {existing.provider_id!r} "
+                    "without declaring it in overrides."
+                )
+            manifests[provider_manifest.name] = provider_manifest.with_overlay(
+                metadata_overlay_for(provider_manifest.name)
             )
     return manifests
 

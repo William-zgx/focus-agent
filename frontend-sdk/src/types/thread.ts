@@ -40,15 +40,22 @@ export interface ThreadContextPreviewResponse {
 
 export interface FocusAgentToolApprovalInterrupt {
   kind: "tool_approval";
+  interrupt_id: string;
   tool_name: string;
   tool_call_id: string;
   args: Record<string, unknown>;
+  redacted_args: Record<string, unknown>;
   risk_level: string;
+  policy_version: string;
+  created_at: string;
 }
 
 export interface FocusAgentToolApprovalDecision {
   kind: "tool_approval";
+  interrupt_id: string;
+  tool_call_id: string;
   approved: boolean;
+  reason?: string | null;
 }
 
 export type ThreadContextCompactTrigger =

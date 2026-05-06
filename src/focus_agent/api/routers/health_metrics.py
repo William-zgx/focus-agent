@@ -58,14 +58,22 @@ def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextR
 
 
 def _background_metrics(runtime: AppRuntime) -> dict[str, int]:
+    combined: dict[str, int] = {}
     background_work = getattr(runtime, "background_work", None)
     snapshot = getattr(background_work, "snapshot", None)
-    if not callable(snapshot):
-        return {}
-    try:
-        return dict(snapshot())
-    except Exception:  # noqa: BLE001
-        return {}
+    if callable(snapshot):
+        try:
+            combined.update(dict(snapshot()))
+        except Exception:  # noqa: BLE001
+            combined["job_backend_error"] = 1
+    durable_worker = getattr(runtime, "durable_background_worker", None)
+    durable_snapshot = getattr(durable_worker, "snapshot", None)
+    if callable(durable_snapshot):
+        try:
+            combined.update(dict(durable_snapshot()))
+        except Exception:  # noqa: BLE001
+            combined["durable_worker_snapshot_error"] = 1
+    return combined
 
 
 def _metrics_trajectory_data(*, runtime: AppRuntime, repo: Any | None) -> dict[str, Any]:

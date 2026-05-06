@@ -231,6 +231,7 @@ def test_load_tool_catalog_document_reads_provider_registry_config(tmp_path):
                 'id = "local_tools"',
                 "enabled = true",
                 "order = 20",
+                'overrides = ["search_code", "shared_lookup"]',
                 "[providers.metadata]",
                 'toolset = "local"',
                 'risk_level = "medium"',
@@ -244,6 +245,7 @@ def test_load_tool_catalog_document_reads_provider_registry_config(tmp_path):
     assert tuple(provider.id for provider in loaded.providers) == ("skill", "local_tools")
     assert loaded.providers[0].enabled is False
     assert loaded.providers[0].order == 5
+    assert loaded.providers[1].overrides == ("search_code", "shared_lookup")
     assert loaded.provider_metadata_overlay_for("local_tools") == {
         "risk_level": "medium",
         "toolset": "local",

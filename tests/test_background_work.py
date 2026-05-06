@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import time
 
-from focus_agent.services.background_work import BoundedBackgroundQueue
+import pytest
+
+from focus_agent.services.background_work import (
+    BackgroundJobHandlerRegistry,
+    BoundedBackgroundQueue,
+    DurableBackgroundWorker,
+    register_default_background_job_handlers,
+)
+from focus_agent.services.coordination import BackgroundJobClaim, BackgroundJobSpec
 
 
 def test_background_queue_deduplicates_pending_keys_and_tracks_metrics() -> None:
@@ -119,3 +127,154 @@ def test_background_queue_records_durable_job_lifecycle_and_snapshot() -> None:
         assert snapshot["job_attempt_total"] == 1
     finally:
         queue.close()
+
+
+def test_background_queue_uses_claim_token_lifecycle_when_backend_supports_it() -> None:
+    class ClaimingDeduper:
+        def __init__(self):
+            self.claim = BackgroundJobClaim(claim_token="claim-1", owner="worker-1", attempt=1)
+            self.events: list[tuple[str, str, str]] = []
+
+        def claim_job_key(self, key: str):
+            self.events.append(("claim", key, self.claim.claim_token))
+            return self.claim
+
+        def try_claim_job_key(self, key: str) -> bool:
+            return False
+
+        def mark_job_claim_running(self, key: str, claim: BackgroundJobClaim) -> None:
+            self.events.append(("running", key, claim.claim_token))
+
+        def mark_job_claim_succeeded(self, key: str, claim: BackgroundJobClaim) -> None:
+            self.events.append(("succeeded", key, claim.claim_token))
+
+        def release_job_claim(self, key: str, claim: BackgroundJobClaim) -> None:
+            self.events.append(("release", key, claim.claim_token))
+
+        def release_job_key(self, key: str) -> None:
+            self.events.append(("release-key", key, ""))
+
+    deduper = ClaimingDeduper()
+    calls: list[str] = []
+    queue = BoundedBackgroundQueue(name="claiming", max_concurrency=1, max_size=2, job_deduper=deduper)
+    try:
+        assert queue.submit(key="job-claim", func=lambda: calls.append("ran"))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and not calls:
+            time.sleep(0.01)
+
+        assert calls == ["ran"]
+        assert ("claim", "job-claim", "claim-1") in deduper.events
+        assert ("running", "job-claim", "claim-1") in deduper.events
+        assert ("succeeded", "job-claim", "claim-1") in deduper.events
+        assert ("release", "job-claim", "claim-1") in deduper.events
+        assert not any(event[0] == "release-key" for event in deduper.events)
+    finally:
+        queue.close()
+
+
+def test_durable_background_handler_registry_rejects_unregistered_kinds() -> None:
+    registry = BackgroundJobHandlerRegistry()
+    registry.register("context_compaction", lambda payload: None)
+
+    assert registry.kinds() == ("context_compaction",)
+    assert registry.get("context_compaction") is not None
+    with pytest.raises(ValueError):
+        registry.register("arbitrary_python_callable", lambda payload: None)
+
+
+def test_durable_background_worker_runs_registered_handler_with_claim() -> None:
+    claim = BackgroundJobClaim(claim_token="claim-1", owner="worker-1", attempt=1)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-1",
+        payload={"root_thread_id": "thread-1", "user_id": "user-1"},
+        max_attempts=2,
+    )
+
+    class Backend:
+        def __init__(self):
+            self.claimed = False
+            self.events: list[tuple[str, str, str]] = []
+
+        def claim_next_job(self, *, allowed_kinds, claim_ttl_seconds=None):
+            assert tuple(allowed_kinds) == ("conversation_title",)
+            if self.claimed:
+                return None
+            self.claimed = True
+            return spec, claim
+
+        def mark_job_claim_running(self, key: str, job_claim: BackgroundJobClaim) -> None:
+            self.events.append(("running", key, job_claim.claim_token))
+
+        def mark_job_claim_succeeded(self, key: str, job_claim: BackgroundJobClaim) -> None:
+            self.events.append(("succeeded", key, job_claim.claim_token))
+
+        def mark_job_claim_failed(self, key: str, job_claim: BackgroundJobClaim, error: str) -> None:
+            self.events.append(("failed", key, job_claim.claim_token))
+
+    backend = Backend()
+    calls: list[dict[str, str]] = []
+    registry = BackgroundJobHandlerRegistry(
+        {
+            "conversation_title": lambda payload: calls.append(dict(payload)),
+        }
+    )
+    worker = DurableBackgroundWorker(name="test", job_backend=backend, handlers=registry)
+
+    assert worker.run_once()
+    assert not worker.run_once()
+    assert calls == [{"root_thread_id": "thread-1", "user_id": "user-1"}]
+    assert backend.events == [
+        ("running", "chat:conversation_title:thread-1", "claim-1"),
+        ("succeeded", "chat:conversation_title:thread-1", "claim-1"),
+    ]
+    assert worker.snapshot()["durable_worker_completed_total"] == 1
+
+
+def test_default_durable_handlers_call_fixed_service_methods() -> None:
+    class ChatService:
+        def __init__(self):
+            self.calls: list[dict[str, object]] = []
+
+        def compact_thread_context(self, **kwargs):
+            self.calls.append(kwargs)
+
+    class BranchService:
+        def __init__(self):
+            self.calls: list[tuple[str, dict[str, str]]] = []
+
+        def refresh_conversation_title_after_first_turn(self, **kwargs):
+            self.calls.append(("conversation_title", kwargs))
+
+        def refresh_branch_metadata_after_first_turn(self, **kwargs):
+            self.calls.append(("branch_title", kwargs))
+
+    chat_service = ChatService()
+    branch_service = BranchService()
+    registry = BackgroundJobHandlerRegistry()
+
+    register_default_background_job_handlers(
+        registry,
+        chat_service=chat_service,
+        branch_service=branch_service,
+    )
+
+    registry.get("context_compaction")(
+        {"thread_id": "thread-1", "user_id": "user-1", "trigger": "auto_post_turn"}
+    )
+    registry.get("conversation_title")({"root_thread_id": "root-1", "user_id": "user-1"})
+    registry.get("branch_title")({"child_thread_id": "child-1", "user_id": "user-1"})
+
+    assert chat_service.calls == [
+        {
+            "thread_id": "thread-1",
+            "user_id": "user-1",
+            "trigger": "auto_post_turn",
+            "force": False,
+        }
+    ]
+    assert branch_service.calls == [
+        ("conversation_title", {"root_thread_id": "root-1", "user_id": "user-1"}),
+        ("branch_title", {"child_thread_id": "child-1", "user_id": "user-1"}),
+    ]

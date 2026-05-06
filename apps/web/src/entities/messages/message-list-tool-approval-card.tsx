@@ -40,7 +40,7 @@ export function ToolApprovalCard({
 					<div className="fa-tool-approval-card-title">{title}</div>
 					<div className="fa-tool-approval-card-meta">
 						<code>{interrupt.tool_name}</code>
-						<span>{interrupt.tool_call_id}</span>
+						<span>{interrupt.interrupt_id}</span>
 					</div>
 				</div>
 				<span className="fa-tool-approval-card-badge">
@@ -49,7 +49,7 @@ export function ToolApprovalCard({
 			</div>
 			<div className="fa-tool-approval-card-body">
 				<span>{argsLabel}</span>
-				<pre>{formatApprovalArgs(interrupt.args)}</pre>
+				<pre>{formatApprovalArgs(interrupt.redacted_args)}</pre>
 			</div>
 			{errorMessage ? (
 				<div className="fa-tool-approval-card-error">{errorMessage}</div>

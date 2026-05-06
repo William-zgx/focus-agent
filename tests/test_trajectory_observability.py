@@ -130,6 +130,7 @@ def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
         final_values={
             "messages": [HumanMessage(content="route tools"), AIMessage(content="done")],
             "llm_calls": 1,
+            "tool_route_plan": {"enabled": True, "denied_tools": ["legacy_tool"], "enforce": False},
             "governance_records": [
                 make_agent_state_record(
                     "tool_route_plan",
@@ -146,6 +147,7 @@ def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
 
     assert record.plan_meta["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
     assert record.plan_meta["governance_records"][0]["name"] == "tool_route_plan"
+    assert record.plan_meta["governance_records"][0]["schema_version"] == 2
     assert record.metrics["tool_router_denied"] == 1
     assert record.metrics["tool_router_enforced"] == 1
 
@@ -165,6 +167,8 @@ def test_build_turn_trajectory_record_includes_tool_approval_governance_record()
         },
         source="tool_executor:call-approval",
         metadata={"tool_call_id": "call-approval"},
+        request_id="req-approval",
+        actor="tool_executor",
     )
 
     record = build_turn_trajectory_record(
@@ -189,6 +193,8 @@ def test_build_turn_trajectory_record_includes_tool_approval_governance_record()
     assert stored_record["payload"]["approved"] is False
     assert stored_record["payload"]["tool_call_id"] == "call-approval"
     assert stored_record["metadata"]["tool_call_id"] == "call-approval"
+    assert stored_record["request_id"] == "req-approval"
+    assert stored_record["actor"] == "tool_executor"
 
 
 def test_postgres_trajectory_repository_executes_setup_and_insert(monkeypatch):

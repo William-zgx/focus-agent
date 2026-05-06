@@ -5,7 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def ensure_app_postgres_schema(database_uri: str) -> None:
@@ -430,6 +430,27 @@ def _run_migration_v6(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v7(execute: Callable[..., object]) -> None:
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'legacy'")
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb")
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS run_at TIMESTAMPTZ NOT NULL DEFAULT now()")
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS max_attempts INT NOT NULL DEFAULT 1")
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS dedupe_policy TEXT NOT NULL DEFAULT 'skip'")
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS claim_token TEXT")
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_background_jobs_due
+        ON focus_background_jobs(status, run_at ASC, updated_at ASC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_background_jobs_claim_token
+        ON focus_background_jobs(claim_token)
+        """
+    )
+
+
 _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (1, _run_migration_v1),
     (2, _run_migration_v2),
@@ -437,4 +458,5 @@ _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (4, _run_migration_v4),
     (5, _run_migration_v5),
     (6, _run_migration_v6),
+    (7, _run_migration_v7),
 )

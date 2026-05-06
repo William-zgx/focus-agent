@@ -42,17 +42,30 @@ export function isToolApprovalInterrupt(
   const payload = interrupt as Record<string, unknown>;
   return (
     payload.kind === "tool_approval" &&
+    typeof payload.interrupt_id === "string" &&
     typeof payload.tool_name === "string" &&
     typeof payload.tool_call_id === "string" &&
-    !!payload.args &&
-    typeof payload.args === "object" &&
-    !Array.isArray(payload.args) &&
-    typeof payload.risk_level === "string"
+    !!payload.redacted_args &&
+    typeof payload.redacted_args === "object" &&
+    !Array.isArray(payload.redacted_args) &&
+    typeof payload.risk_level === "string" &&
+    typeof payload.policy_version === "string" &&
+    typeof payload.created_at === "string"
   );
 }
 
-export function createToolApprovalDecision(approved: boolean): FocusAgentToolApprovalDecision {
-  return { kind: "tool_approval", approved };
+export function createToolApprovalDecision(
+  interrupt: FocusAgentToolApprovalInterrupt,
+  approved: boolean,
+  reason?: string | null,
+): FocusAgentToolApprovalDecision {
+  return {
+    kind: "tool_approval",
+    interrupt_id: interrupt.interrupt_id,
+    tool_call_id: interrupt.tool_call_id,
+    approved,
+    reason: reason ?? null,
+  };
 }
 
 export function isTerminalEvent(event: FocusAgentEvent): boolean {

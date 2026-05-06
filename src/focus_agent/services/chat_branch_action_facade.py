@@ -89,17 +89,16 @@ class ChatBranchActionFacadeMixin:
         request_id: str | None = None,
         user_message: str | None = None,
     ) -> dict[str, Any]:
-        self._acquire_thread_turn(thread_id=thread_id)
-        try:
-            return self._execute_branch_action_locked(
+        with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
+            result = self._execute_branch_action_locked(
                 thread_id=thread_id,
                 action_id=action_id,
                 user_id=user_id,
                 request_id=request_id,
                 user_message=user_message,
             )
-        finally:
-            self._release_thread_turn(thread_id=thread_id)
+            turn_lease.raise_if_lost()
+            return result
 
     def _dismiss_branch_action_locked(
         self,
@@ -128,17 +127,16 @@ class ChatBranchActionFacadeMixin:
         request_id: str | None = None,
         user_message: str | None = None,
     ) -> dict[str, Any]:
-        self._acquire_thread_turn(thread_id=thread_id)
-        try:
-            return self._dismiss_branch_action_locked(
+        with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
+            result = self._dismiss_branch_action_locked(
                 thread_id=thread_id,
                 action_id=action_id,
                 user_id=user_id,
                 request_id=request_id,
                 user_message=user_message,
             )
-        finally:
-            self._release_thread_turn(thread_id=thread_id)
+            turn_lease.raise_if_lost()
+            return result
 
     def _branch_action_dismissal_message(self, message: str) -> str:
         return dismissal_message(is_chinese=self._is_chinese_text(message))

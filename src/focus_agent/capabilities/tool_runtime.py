@@ -9,8 +9,11 @@ from .tool_execution_types import (
     ToolExecutionInput,
     ToolExecutionResult,
     ToolParallelClassification,
+    build_tool_approval_interrupt_id,
     build_tool_approval_interrupt_payload,
     is_tool_approval_approved,
+    redact_tool_args,
+    tool_approval_response_error,
 )
 from .tool_invocation import ToolInvocationTimeoutError, ToolParameterValidationError
 from .tool_messages import build_tool_error_message
@@ -24,11 +27,14 @@ __all__ = [
     "ToolParameterValidationError",
     "ToolResultCacheStore",
     "build_cache_scope_key",
+    "build_tool_approval_interrupt_id",
     "build_tool_approval_interrupt_payload",
     "build_tool_error_message",
     "classify_tool_parallel_execution",
     "execute_tool_calls",
     "is_tool_approval_approved",
+    "redact_tool_args",
+    "tool_approval_response_error",
 ]
 
 

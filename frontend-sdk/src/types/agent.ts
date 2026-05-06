@@ -57,6 +57,9 @@ export interface FocusAgentCapability {
   requires_network: boolean;
   requires_workspace_write: boolean;
   requires_approval: boolean;
+  sensitive_args?: string[];
+  redaction_policy?: string;
+  provider_id?: string | null;
 }
 
 export interface FocusAgentCapabilityListResponse {

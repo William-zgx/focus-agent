@@ -2,6 +2,7 @@ import {
   createToolApprovalDecision,
   createInitialStreamState,
   reduceStreamEvent,
+  type FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -232,7 +233,10 @@ export function useThreadStream(options: UseThreadStreamOptions) {
     });
   }
 
-  async function resumeToolApproval(approved: boolean): Promise<SendMessageResult> {
+  async function resumeToolApproval(
+    interrupt: FocusAgentToolApprovalInterrupt,
+    approved: boolean,
+  ): Promise<SendMessageResult> {
     const requestThreadId = options.threadId;
     const requestRootThreadId = options.rootThreadId;
     const { requestId, controller } = requestRegistry.beginStreamRequest(requestThreadId);
@@ -246,7 +250,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         client.streamResume(
           {
             thread_id: requestThreadId,
-            resume: createToolApprovalDecision(approved),
+            resume: createToolApprovalDecision(interrupt, approved),
           },
           { signal: controller.signal },
         ),

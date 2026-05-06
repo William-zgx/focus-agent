@@ -19,7 +19,12 @@ from ..repositories.sqlite_branch_repository import SQLiteBranchRepository
 from ..repositories.sqlite_user_repository import SQLiteUserRepository
 from ..repositories.user_repository import UserRepository
 from ..services.agent_team import AgentTeamService
-from ..services.background_work import BoundedBackgroundQueue
+from ..services.background_work import (
+    BackgroundJobHandlerRegistry,
+    BoundedBackgroundQueue,
+    DurableBackgroundWorker,
+    register_default_background_job_handlers,
+)
 from ..services.branches import BranchService
 from ..services.coordination import CoordinationBackend, create_coordination_backend
 from ..services.users import UserService
@@ -84,6 +89,7 @@ class AppRuntime:
     artifact_metadata_repository: object | None
     otel_runtime: OTelRuntime
     background_work: BoundedBackgroundQueue
+    durable_background_worker: DurableBackgroundWorker | None
     coordination_backend: CoordinationBackend
     _exit_stack: ExitStack
 
@@ -93,9 +99,43 @@ class AppRuntime:
     def conversation_store_namespace(self, context: RequestContext) -> tuple[str, ...]:
         return conversation_namespace_for_context(context)
 
+    def start_durable_background_worker(self, chat_service: object) -> DurableBackgroundWorker | None:
+        if str(getattr(self.settings, "background_job_execution", "best_effort")).strip().lower() != "durable":
+            return None
+        if self.durable_background_worker is not None:
+            return self.durable_background_worker
+        if not self.settings.database_uri or str(self.settings.background_job_backend).lower() != "postgres":
+            raise RuntimeError(
+                "BACKGROUND_JOB_EXECUTION=durable requires DATABASE_URI and "
+                "BACKGROUND_JOB_BACKEND=postgres."
+            )
+        registry = BackgroundJobHandlerRegistry()
+        register_default_background_job_handlers(
+            registry,
+            chat_service=chat_service,
+            branch_service=self.branch_service,
+        )
+        worker = DurableBackgroundWorker(
+            name="runtime",
+            job_backend=self.coordination_backend.job_deduper,
+            handlers=registry,
+            claim_ttl_seconds=self.settings.background_job_claim_ttl_seconds,
+        )
+        worker.start()
+        self.durable_background_worker = worker
+        self._exit_stack.callback(worker.close)
+        return worker
+
 
 def create_runtime(settings: Settings | None = None) -> AppRuntime:
     settings = settings or Settings.from_env()
+    if (
+        str(getattr(settings, "background_job_execution", "best_effort")).strip().lower() == "durable"
+        and (not settings.database_uri or str(settings.background_job_backend).lower() != "postgres")
+    ):
+        raise ValueError(
+            "BACKGROUND_JOB_EXECUTION=durable requires DATABASE_URI and BACKGROUND_JOB_BACKEND=postgres."
+        )
     ensure_runtime_directories(settings)
     exit_stack = ExitStack()
     otel_runtime = initialize_otel_runtime(settings)
@@ -152,6 +192,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         artifact_metadata_repository=persistence.artifact_metadata_repository,
         otel_runtime=otel_runtime,
         background_work=background_work,
+        durable_background_worker=None,
         coordination_backend=coordination_backend,
         _exit_stack=exit_stack,
     )

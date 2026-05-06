@@ -15,9 +15,19 @@ _BOOL_METADATA_FIELDS = frozenset(
         "requires_approval",
     }
 )
-_TUPLE_METADATA_FIELDS = frozenset({"allowed_roles", "intent_policies", "intent_tags"})
+_TUPLE_METADATA_FIELDS = frozenset(
+    {"allowed_roles", "intent_policies", "intent_tags", "sensitive_args"}
+)
 _STRING_METADATA_FIELDS = frozenset(
-    {"cache_scope", "fallback_group", "toolset", "risk_level", "side_effect_kind", "provider_id"}
+    {
+        "cache_scope",
+        "fallback_group",
+        "toolset",
+        "risk_level",
+        "side_effect_kind",
+        "provider_id",
+        "redaction_policy",
+    }
 )
 _INT_METADATA_FIELDS = frozenset({"max_observation_chars"})
 _FLOAT_METADATA_FIELDS = frozenset({"timeout_seconds"})
@@ -249,6 +259,8 @@ def normalize_tool_metadata(
         merged["intent_policies"] = _split_listish(merged.get("intent_policies"))
     if "intent_tags" in merged:
         merged["intent_tags"] = _split_listish(merged.get("intent_tags"))
+    if "sensitive_args" in merged:
+        merged["sensitive_args"] = _split_listish(merged.get("sensitive_args"))
     return merged
 
 

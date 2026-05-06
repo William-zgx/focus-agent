@@ -11,6 +11,7 @@ from focus_agent.capabilities.tool_router import build_capability_registry, buil
 from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.request_context import RequestContext
+from focus_agent.core.state import make_agent_state_record
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.memory.curator import MemoryCurator
 
@@ -45,12 +46,39 @@ class _DecisionRepo:
                 "root_thread_id": "root-1",
                 "status": "succeeded",
                 "plan_meta": {
+                    "governance_records": [
+                        make_agent_state_record(
+                            "tool_route_plan",
+                            {
+                                "enabled": True,
+                                "role": "critic",
+                                "tool_policy": "execution",
+                                "allowed_tools": ["search_code"],
+                                "denied_tools": ["write_text_artifact"],
+                                "decisions": [],
+                            },
+                            source="test",
+                            request_id="req-1",
+                            actor="agent_f",
+                        ),
+                        make_agent_state_record(
+                            "memory_curator_decision",
+                            {
+                                "enabled": True,
+                                "branch_id": "branch-1",
+                                "status": "needs_review",
+                                "promoted_memory_ids": [],
+                                "conflicts": [{"candidate_id": "branch-1:0"}],
+                            },
+                            source="test",
+                        ),
+                    ],
                     "tool_route_plan": {
                         "enabled": True,
                         "role": "critic",
                         "tool_policy": "execution",
                         "allowed_tools": ["search_code"],
-                        "denied_tools": ["write_text_artifact"],
+                        "denied_tools": ["legacy_tool"],
                         "decisions": [],
                     },
                     "memory_curator_decision": {
@@ -58,7 +86,7 @@ class _DecisionRepo:
                         "branch_id": "branch-1",
                         "status": "needs_review",
                         "promoted_memory_ids": [],
-                        "conflicts": [{"candidate_id": "branch-1:0"}],
+                        "conflicts": [],
                     },
                     "agent_delegation_plan": {
                         "enabled": True,
@@ -429,7 +457,9 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     assert memory_policy.json()["enabled"] is True
     assert memory_eval.json()["decision"]["status"] == "ready"
     assert tool_decisions.json()["count"] == 1
+    assert tool_decisions.json()["items"][0]["denied_tools"] == ["write_text_artifact"]
     assert memory_decisions.json()["count"] == 1
+    assert memory_decisions.json()["items"][0]["conflicts"] == [{"candidate_id": "branch-1:0"}]
     assert delegation_policy.json()["enabled"] is True
     assert delegation_plan.json()["plan"]["enabled"] is True
     assert delegation_runs.json()["items"][0]["run_id"] == "run-1"

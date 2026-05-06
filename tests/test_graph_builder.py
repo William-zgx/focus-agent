@@ -1754,17 +1754,26 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
 
     assert call_count == 0
     assert interrupted.interrupts
-    assert getattr(interrupted.interrupts[0], "value", None) == {
-        "kind": "tool_approval",
-        "tool_name": "approval_lookup",
-        "tool_call_id": "approval-1",
-        "args": {"name": "focus"},
-        "risk_level": "high",
-    }
+    interrupt_payload = getattr(interrupted.interrupts[0], "value", None)
+    assert interrupt_payload["kind"] == "tool_approval"
+    assert interrupt_payload["interrupt_id"].startswith("tool-approval:approval-1:")
+    assert interrupt_payload["tool_name"] == "approval_lookup"
+    assert interrupt_payload["tool_call_id"] == "approval-1"
+    assert interrupt_payload["args"] == {"name": "focus"}
+    assert interrupt_payload["redacted_args"] == {"name": "focus"}
+    assert interrupt_payload["risk_level"] == "high"
+    assert interrupt_payload["policy_version"] == "tool_approval.v2"
     assert "approval_lookup" in interrupted.value["tool_route_plan"]["allowed_tools"]
 
     resumed = graph.invoke(
-        Command(resume={"kind": "tool_approval", "approved": True}),
+        Command(
+            resume={
+                "kind": "tool_approval",
+                "interrupt_id": interrupt_payload["interrupt_id"],
+                "tool_call_id": "approval-1",
+                "approved": True,
+            }
+        ),
         config=config,
         context=context,
         version="v2",
@@ -1820,7 +1829,7 @@ def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatc
     )
     config = {"configurable": {"thread_id": "thread-approval-deny"}}
     context = RequestContext(user_id="user-1", root_thread_id="thread-approval-deny")
-    graph.invoke(
+    interrupted = graph.invoke(
         {
             "messages": [HumanMessage(content="run approval lookup")],
             "selected_model": "openai:deepseek-reasoner",
@@ -1829,9 +1838,17 @@ def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatc
         context=context,
         version="v2",
     )
+    interrupt_payload = getattr(interrupted.interrupts[0], "value", None)
 
     resumed = graph.invoke(
-        Command(resume={"kind": "tool_approval", "approved": False}),
+        Command(
+            resume={
+                "kind": "tool_approval",
+                "interrupt_id": interrupt_payload["interrupt_id"],
+                "tool_call_id": "approval-deny-1",
+                "approved": False,
+            }
+        ),
         config=config,
         context=context,
         version="v2",

@@ -23,6 +23,9 @@ class CapabilityDescriptor(StateModel):
     requires_approval: bool = False
     intent_policies: list[str] = Field(default_factory=list)
     intent_tags: list[str] = Field(default_factory=list)
+    sensitive_args: list[str] = Field(default_factory=list)
+    redaction_policy: str = "mask"
+    provider_id: str | None = None
 
 
 class ToolRouteDecision(StateModel):
@@ -70,6 +73,9 @@ def capability_from_tool(*, name: str, description: str, runtime: ToolRuntimeMet
         requires_approval=runtime.requires_approval,
         intent_policies=list(runtime.intent_policies),
         intent_tags=list(runtime.intent_tags),
+        sensitive_args=list(runtime.sensitive_args),
+        redaction_policy=runtime.redaction_policy,
+        provider_id=runtime.provider_id,
     )
 
 

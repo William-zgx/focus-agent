@@ -394,21 +394,28 @@ test("tool approval helpers and reducer preserve interrupt compatibility", () =>
   const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
   const interrupt = {
     kind: "tool_approval",
+    interrupt_id: "tool-approval:call-approval:abc123",
     tool_name: "write_file",
     tool_call_id: "call-approval",
-    args: { path: "README.md" },
+    args: { path: "README.md", api_token: "[REDACTED]" },
+    redacted_args: { path: "README.md", api_token: "[REDACTED]" },
     risk_level: "high",
+    policy_version: "tool_approval.v2",
+    created_at: "2026-05-06T00:00:00+00:00",
   };
 
   assert.equal(
-    JSON.stringify(createToolApprovalDecision(true)),
+    JSON.stringify(createToolApprovalDecision(interrupt, true)),
     JSON.stringify({
       kind: "tool_approval",
+      interrupt_id: "tool-approval:call-approval:abc123",
+      tool_call_id: "call-approval",
       approved: true,
+      reason: null,
     }),
   );
   assert.equal(isToolApprovalInterrupt(interrupt), true);
-  assert.equal(isToolApprovalInterrupt({ ...interrupt, args: [] }), false);
+  assert.equal(isToolApprovalInterrupt({ ...interrupt, redacted_args: [] }), false);
 
   const interrupted = reduceStreamEvent(createInitialStreamState(), {
     event: "turn.interrupt",
@@ -439,9 +446,10 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(messageListSource.includes("toolApprovalInterrupts.map"), true);
   assert.equal(approvalCardSource.includes("onDecide?.(interrupt, true)"), true);
   assert.equal(approvalCardSource.includes("onDecide?.(interrupt, false)"), true);
+  assert.equal(approvalCardSource.includes("interrupt.redacted_args"), true);
   assert.equal(threadPageSource.includes("handleDecideToolApproval"), true);
   assert.equal(streamHookSource.includes("client.streamResume"), true);
-  assert.equal(streamHookSource.includes("createToolApprovalDecision(approved)"), true);
+  assert.equal(streamHookSource.includes("createToolApprovalDecision(interrupt, approved)"), true);
 });
 
 test("stream reducer tracks branch action lifecycle events", () => {

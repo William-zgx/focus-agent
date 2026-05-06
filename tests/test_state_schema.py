@@ -14,12 +14,18 @@ from focus_agent.core.state import (
     ALL_AGENT_STATE_FIELDS,
     BRANCH_STATE_FIELDS,
     CONVERSATION_STATE_FIELDS,
+    GOVERNANCE_RECORD_MIRROR_KEYS,
+    GOVERNANCE_RECORD_SCHEMA_VERSION,
     GOVERNANCE_STATE_FIELDS,
+    GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST,
     MEMORY_STATE_FIELDS,
     OBSERVABILITY_STATE_FIELDS,
     STATE_DOMAIN_FIELDS,
+    agent_state_record_payloads,
+    append_agent_state_record,
     default_agent_state_slice,
     initial_agent_state,
+    latest_agent_state_record_payload,
     make_agent_state_record,
     normalize_agent_state,
     serialize_agent_state,
@@ -169,11 +175,36 @@ def test_agent_state_domains_cover_existing_wire_fields():
     )
 
 
+def test_governance_schema_guard_blocks_new_top_level_fields():
+    assert frozenset(GOVERNANCE_STATE_FIELDS) == GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST
+    assert set(GOVERNANCE_RECORD_MIRROR_KEYS.values()) == {
+        "role_route_plan",
+        "memory_curator_decision",
+        "tool_route_plan",
+        "agent_delegation_plan",
+        "agent_runs",
+        "model_route_decision",
+        "agent_failure_records",
+        "agent_review_queue",
+        "context_budget_decision",
+        "context_compression_plan",
+        "context_artifact_refs",
+        "role_context_views",
+        "context_compaction",
+        "agent_task_ledger",
+        "delegated_artifacts",
+        "artifact_synthesis_result",
+        "critic_gate_result",
+    }
+
+
 def test_governance_records_backfill_legacy_mirror_fields():
     record = make_agent_state_record(
         "tool_route_plan",
         {"enabled": True, "allowed_tools": ["search_code"]},
         source="test",
+        request_id="req-1",
+        actor="agent_f",
     )
 
     normalized = normalize_agent_state({"governance_records": [record]})
@@ -183,10 +214,68 @@ def test_governance_records_backfill_legacy_mirror_fields():
         "enabled": True,
         "allowed_tools": ["search_code"],
     }
-    assert normalized["governance_records"][0]["schema_version"] == 1
+    assert normalized["governance_records"][0]["schema_version"] == GOVERNANCE_RECORD_SCHEMA_VERSION
+    assert normalized["governance_records"][0]["schema_version"] == 2
+    assert normalized["governance_records"][0]["request_id"] == "req-1"
+    assert normalized["governance_records"][0]["actor"] == "agent_f"
+    assert normalized["governance_records"][0]["created_at"]
     assert normalized["governance_records"][0]["domain"] == "governance"
     assert normalized["governance_records"][0]["mirror_key"] == "tool_route_plan"
     assert payload["tool_route_plan"]["allowed_tools"] == ["search_code"]
+
+
+def test_agent_state_record_accessors_prefer_latest_record_then_legacy_mirror():
+    legacy_v1_record = {
+        "schema_version": 1,
+        "record_id": "legacy:governance:tool_route_plan",
+        "domain": "governance",
+        "name": "tool_route_plan",
+        "source": "legacy",
+        "payload": {"enabled": True, "denied_tools": ["old_tool"]},
+    }
+    latest_record = make_agent_state_record(
+        "tool_route_plan",
+        {"enabled": True, "denied_tools": ["new_tool"]},
+        source="test",
+    )
+    state = {
+        "tool_route_plan": {"enabled": True, "denied_tools": ["legacy_mirror"]},
+        "governance_records": [legacy_v1_record, latest_record],
+    }
+
+    normalized = normalize_agent_state(state)
+
+    assert latest_agent_state_record_payload(normalized, "tool_route_plan") == {
+        "enabled": True,
+        "denied_tools": ["new_tool"],
+    }
+    assert agent_state_record_payloads(normalized, "tool_route_plan") == [
+        {"enabled": True, "denied_tools": ["old_tool"]},
+        {"enabled": True, "denied_tools": ["new_tool"]},
+    ]
+    assert normalized["tool_route_plan"]["denied_tools"] == ["new_tool"]
+    assert latest_agent_state_record_payload({"tool_route_plan": {"enabled": False}}, "tool_route_plan") == {
+        "enabled": False
+    }
+
+
+def test_append_agent_state_record_accepts_request_id_and_actor():
+    updates = {}
+
+    record = append_agent_state_record(
+        updates,
+        "tool_route_plan",
+        {"enabled": True, "denied_tools": ["write_text_artifact"]},
+        source="test",
+        request_id="req-append",
+        actor="agent_f",
+    )
+
+    assert record["schema_version"] == 2
+    assert record["request_id"] == "req-append"
+    assert record["actor"] == "agent_f"
+    assert updates["governance_records"] == [record]
+    assert updates["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
 
 
 def test_slice_agent_state_exposes_normalized_domain_defaults_without_mutating_input():

@@ -15,6 +15,7 @@ from ..capabilities.tool_runtime import (
     build_tool_error_message,
     execute_tool_calls,
     is_tool_approval_approved,
+    tool_approval_response_error,
 )
 from ..core.request_context import RequestContext
 from ..core.state import AgentState, append_agent_state_record
@@ -133,26 +134,41 @@ def make_tool_executor_node(
             if runtime_meta.requires_approval:
                 approval_payload = build_tool_approval_interrupt_payload(execution_input)
                 approval_response = interrupt(approval_payload)
-                approved = is_tool_approval_approved(approval_response)
+                approval_error = tool_approval_response_error(
+                    approval_response,
+                    interrupt_id=str(approval_payload.get("interrupt_id") or ""),
+                    tool_call_id=tool_call_id,
+                )
+                approved = is_tool_approval_approved(
+                    approval_response,
+                    interrupt_id=str(approval_payload.get("interrupt_id") or ""),
+                    tool_call_id=tool_call_id,
+                )
                 append_agent_state_record(
                     updates,
                     "tool_approval_decision",
                     {
                         **approval_payload,
                         "approved": approved,
+                        "approval_error": approval_error,
                         "decision": "approved" if approved else "denied",
                     },
                     source=f"tool_executor:{tool_call_id}",
-                    metadata={"tool_call_id": tool_call_id},
+                    metadata={
+                        "interrupt_id": str(approval_payload.get("interrupt_id") or ""),
+                        "tool_call_id": tool_call_id,
+                    },
                 )
                 if not approved:
+                    error = approval_error or f"Tool execution denied by approval response: {tool_name}"
                     messages_by_index[index] = build_tool_error_message(
                         tool_call_id=tool_call_id,
                         tool_name=tool_name,
-                        args=tool_args,
-                        error=f"Tool execution denied by approval response: {tool_name}",
+                        args=dict(approval_payload.get("redacted_args") or {}),
+                        error=error,
                         runtime_info={
                             "tool_approval_denied": True,
+                            "tool_approval_invalid": approval_error is not None,
                             "requires_approval": True,
                             "risk_level": runtime_meta.risk_level or "low",
                         },

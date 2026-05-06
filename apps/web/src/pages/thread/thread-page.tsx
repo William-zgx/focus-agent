@@ -144,7 +144,7 @@ export function ThreadPage() {
 		setToolApprovalErrorId(null);
 		setToolApprovalError("");
 		followAndScrollToBottom();
-		const result = await resumeToolApproval(approved);
+		const result = await resumeToolApproval(interrupt, approved);
 		if (!result.ok) {
 			setToolApprovalErrorId(interrupt.tool_call_id);
 			setToolApprovalError(

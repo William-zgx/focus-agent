@@ -4134,6 +4134,20 @@
           "default": false,
           "type": "boolean"
         },
+        "provider_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redaction_policy": {
+          "default": "mask",
+          "type": "string"
+        },
         "requires_approval": {
           "default": false,
           "type": "boolean"
@@ -4149,6 +4163,12 @@
         "risk_level": {
           "default": "low",
           "type": "string"
+        },
+        "sensitive_args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "side_effect": {
           "default": false,

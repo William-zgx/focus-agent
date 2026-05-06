@@ -34,6 +34,7 @@ def _ensure_chat_service(request: Request) -> ChatService:
     if chat_service is None:
         chat_service = ChatService(ChatServicePorts.from_runtime(runtime))
         request.app.state.chat_service = chat_service
+        runtime.start_durable_background_worker(chat_service)
     return chat_service
 
 

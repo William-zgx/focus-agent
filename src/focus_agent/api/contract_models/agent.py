@@ -46,6 +46,9 @@ class AgentCapabilityResponse(BaseModel):
     requires_network: bool = False
     requires_workspace_write: bool = False
     requires_approval: bool = False
+    sensitive_args: list[str] = Field(default_factory=list)
+    redaction_policy: str = "mask"
+    provider_id: str | None = None
 
 
 class AgentCapabilityListResponse(BaseModel):

@@ -42,6 +42,10 @@ def load_runtime_config(
             env.get("BACKGROUND_QUEUE_MAX_SIZE", str(defaults.background_queue_max_size))
         ),
         "background_job_backend": env.get("BACKGROUND_JOB_BACKEND", defaults.background_job_backend),
+        "background_job_execution": env.get(
+            "BACKGROUND_JOB_EXECUTION",
+            defaults.background_job_execution,
+        ),
         "background_job_claim_ttl_seconds": float(
             env.get(
                 "BACKGROUND_JOB_CLAIM_TTL_SECONDS",
@@ -52,6 +56,12 @@ def load_runtime_config(
             env.get(
                 "RUNTIME_THREAD_LOCK_TTL_SECONDS",
                 str(defaults.runtime_thread_lock_ttl_seconds),
+            )
+        ),
+        "runtime_thread_lock_heartbeat_seconds": float(
+            env.get(
+                "RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS",
+                str(defaults.runtime_thread_lock_heartbeat_seconds),
             )
         ),
         "skill_directories": (

@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 import threading
+import time
 
 import pytest
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
@@ -12,12 +13,23 @@ from focus_agent.services.branch_actions import is_branch_action_request
 from focus_agent.services.coordination import (
     CoordinationBackend,
     InMemoryBackgroundJobDeduperBackend,
+    InMemoryThreadTurnLockBackend,
     InMemoryRateLimitBackend,
 )
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
-from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
 from focus_agent.skills.registry import SkillRegistry
+
+
+class SettingsOverlay:
+    def __init__(self, base: Settings, **overrides):
+        self._base = base
+        for key, value in overrides.items():
+            setattr(self, key, value)
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
 
 
 class FakeGraph:
@@ -308,6 +320,88 @@ def test_branch_action_execute_uses_thread_turn_lock(tmp_path: Path):
         chat._release_thread_turn(thread_id="child-1")
 
 
+def test_thread_turn_lock_heartbeat_interval_uses_ttl_third_cap():
+    runtime = SimpleNamespace(
+        settings=SettingsOverlay(
+            Settings(runtime_thread_lock_ttl_seconds=9.0),
+            runtime_thread_lock_heartbeat_seconds=10.0,
+        ),
+        graph=FakeGraph(),
+        repo=SimpleNamespace(),
+    )
+    chat = ChatService(runtime)
+
+    assert chat._thread_turn_lock_heartbeat_seconds() == 3.0
+
+    runtime.settings = SettingsOverlay(
+        Settings(runtime_thread_lock_ttl_seconds=9.0),
+        runtime_thread_lock_heartbeat_seconds=2.0,
+    )
+    chat = ChatService(runtime)
+
+    assert chat._thread_turn_lock_heartbeat_seconds() == 2.0
+
+
+def test_branch_action_execute_heartbeats_thread_turn_lock(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？")],
+        }
+    )
+
+    class RecordingThreadLocks:
+        def __init__(self):
+            self.acquired: list[tuple[str, str, float]] = []
+            self.heartbeats: list[tuple[str, str, float]] = []
+            self.released: list[tuple[str, str]] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.acquired.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.heartbeats.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            self.released.append((thread_id, owner))
+
+    class SlowBranchActionBranchService(BranchActionBranchService):
+        def fork_branch(self, **kwargs):
+            time.sleep(0.03)
+            return super().fork_branch(**kwargs)
+
+    locks = RecordingThreadLocks()
+    runtime = SimpleNamespace(
+        settings=SettingsOverlay(
+            Settings(runtime_thread_lock_ttl_seconds=9.0),
+            runtime_thread_lock_heartbeat_seconds=0.01,
+        ),
+        graph=graph,
+        repo=repo,
+        branch_service=SlowBranchActionBranchService(),
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+    action_id = graph.values["branch_actions"][0]["action_id"]
+    locks.acquired.clear()
+    locks.heartbeats.clear()
+    locks.released.clear()
+
+    chat.execute_branch_action(thread_id="child-1", action_id=action_id, user_id="owner-1")
+
+    assert locks.acquired
+    assert locks.heartbeats
+    assert locks.heartbeats[0][2] == 9.0
+    assert locks.released == [("child-1", locks.acquired[0][1])]
+
+
 def test_send_message_rejects_merged_branch(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -494,6 +588,211 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
     assert payload["context_usage"]["last_compacted_at"] == graph.values["context_compaction"]["last_compacted_at"]
 
 
+def test_compact_thread_context_heartbeats_thread_turn_lock(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class RecordingThreadLocks:
+        def __init__(self):
+            self.acquired: list[tuple[str, str, float]] = []
+            self.heartbeats: list[tuple[str, str, float]] = []
+            self.released: list[tuple[str, str]] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.acquired.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.heartbeats.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            self.released.append((thread_id, owner))
+
+    class SlowCompactGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [
+                    HumanMessage(content="Original user goal"),
+                    AIMessage(content="Original assistant answer"),
+                ],
+                "context_budget": {"prompt_token_limit": 10000, "chars_per_token": 4},
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+        def update_state(self, _config, values, as_node=None):
+            del _config, as_node
+            time.sleep(0.03)
+            self.values = {**self.values, **dict(values)}
+
+    locks = RecordingThreadLocks()
+    runtime = SimpleNamespace(
+        settings=SettingsOverlay(
+            Settings(runtime_thread_lock_ttl_seconds=9.0),
+            runtime_thread_lock_heartbeat_seconds=0.01,
+        ),
+        graph=SlowCompactGraph(),
+        repo=repo,
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    chat.compact_thread_context(thread_id="root-1", user_id="owner-1", trigger="manual")
+
+    assert locks.acquired
+    assert locks.heartbeats
+    assert locks.heartbeats[0][2] == 9.0
+    assert locks.released == [("root-1", locks.acquired[0][1])]
+
+
+def test_post_turn_context_compaction_uses_durable_background_job_when_enabled(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class RecordingJobDeduper(InMemoryBackgroundJobDeduperBackend):
+        def __init__(self):
+            super().__init__()
+            self.enqueued = []
+
+        def enqueue_job(self, spec):
+            self.enqueued.append(spec)
+            return True
+
+    class RecordingBackgroundWork:
+        def __init__(self):
+            self.submitted: list[str] = []
+
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del func, delay_seconds, kwargs
+            self.submitted.append(key)
+            return True
+
+    job_deduper = RecordingJobDeduper()
+    background_work = RecordingBackgroundWork()
+    runtime = SimpleNamespace(
+        settings=Settings(background_job_execution="durable"),
+        graph=FakeGraph(),
+        repo=repo,
+        background_work=background_work,
+        coordination_backend=CoordinationBackend(
+            thread_turns=InMemoryThreadTurnLockBackend(),
+            job_deduper=job_deduper,
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    chat._schedule_post_turn_context_compaction(thread_id="root-1", user_id="owner-1", kind="chat.turn")
+
+    assert background_work.submitted == []
+    assert len(job_deduper.enqueued) == 1
+    spec = job_deduper.enqueued[0]
+    assert spec.kind == "context_compaction"
+    assert spec.key == "chat:context_compaction:root-1"
+    assert spec.payload == {
+        "thread_id": "root-1",
+        "user_id": "owner-1",
+        "trigger": "auto_post_turn",
+        "force": False,
+    }
+    assert spec.max_attempts == 3
+    assert spec.dedupe_policy == "replace"
+
+
+def test_branch_title_refresh_uses_durable_background_jobs_when_enabled(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class RecordingJobDeduper(InMemoryBackgroundJobDeduperBackend):
+        def __init__(self):
+            super().__init__()
+            self.enqueued = []
+
+        def enqueue_job(self, spec):
+            self.enqueued.append(spec)
+            return True
+
+    class RecordingBackgroundWork:
+        def __init__(self):
+            self.submitted: list[str] = []
+
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del func, delay_seconds, kwargs
+            self.submitted.append(key)
+            return True
+
+    class RecordingBranchService:
+        def __init__(self):
+            self.calls: list[tuple[str, dict[str, str]]] = []
+
+        def refresh_conversation_title_after_first_turn(self, **kwargs):
+            self.calls.append(("conversation_title", kwargs))
+
+        def refresh_branch_metadata_after_first_turn(self, **kwargs):
+            self.calls.append(("branch_title", kwargs))
+
+    job_deduper = RecordingJobDeduper()
+    background_work = RecordingBackgroundWork()
+    branch_service = RecordingBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(background_job_execution="durable"),
+        graph=FakeGraph(),
+        repo=repo,
+        branch_service=branch_service,
+        background_work=background_work,
+        coordination_backend=CoordinationBackend(
+            thread_turns=InMemoryThreadTurnLockBackend(),
+            job_deduper=job_deduper,
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    chat._schedule_branch_name_refresh_after_first_turn(
+        thread_id="root-1",
+        user_id="owner-1",
+        branch_meta=None,
+        kind="chat.turn",
+    )
+    chat._schedule_branch_name_refresh_after_first_turn(
+        thread_id="child-1",
+        user_id="owner-1",
+        branch_meta=BranchMeta(
+            branch_id="branch-1",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            return_thread_id="root-1",
+            branch_name="Deep Dive",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+        ),
+        kind="chat.turn",
+    )
+
+    assert branch_service.calls == []
+    assert background_work.submitted == []
+    assert [(spec.kind, spec.key, spec.payload) for spec in job_deduper.enqueued] == [
+        (
+            "conversation_title",
+            "chat:conversation_title:root-1",
+            {"root_thread_id": "root-1", "user_id": "owner-1"},
+        ),
+        (
+            "branch_title",
+            "chat:branch_title:child-1",
+            {"child_thread_id": "child-1", "user_id": "owner-1"},
+        ),
+    ]
+    assert all(spec.max_attempts == 3 for spec in job_deduper.enqueued)
+    assert all(spec.dedupe_policy == "replace" for spec in job_deduper.enqueued)
+
+
 def test_sse_frame_serializes_message_objects():
     frame = ChatService._sse_frame(
         event="agent.update",
@@ -585,7 +884,10 @@ def test_stream_message_heartbeats_and_releases_coordination_lock(tmp_path: Path
 
     locks = RecordingThreadLocks()
     runtime = SimpleNamespace(
-        settings=Settings(sse_heartbeat_seconds=0.01, runtime_thread_lock_ttl_seconds=17.0),
+        settings=SettingsOverlay(
+            Settings(sse_heartbeat_seconds=60.0, runtime_thread_lock_ttl_seconds=17.0),
+            runtime_thread_lock_heartbeat_seconds=0.01,
+        ),
         graph=SlowStreamingGraph(),
         repo=repo,
         branch_service=SimpleNamespace(
@@ -605,11 +907,83 @@ def test_stream_message_heartbeats_and_releases_coordination_lock(tmp_path: Path
 
     frames = asyncio.run(collect_frames())
 
-    assert any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
+    assert not any("event: status" in frame and '"stage": "heartbeat"' in frame for frame in frames)
     assert locks.acquired
     assert locks.heartbeats
     assert locks.acquired[0][2] == 17.0
     assert locks.heartbeats[0][2] == 17.0
+    assert locks.released == [("root-1", locks.acquired[0][1])]
+
+
+def test_stream_message_emits_failed_when_thread_turn_heartbeat_is_lost(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class LosingThreadLocks:
+        def __init__(self):
+            self.acquired: list[tuple[str, str, float]] = []
+            self.heartbeats: list[tuple[str, str, float]] = []
+            self.released: list[tuple[str, str]] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.acquired.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.heartbeats.append((thread_id, owner, ttl_seconds))
+            return False
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            self.released.append((thread_id, owner))
+
+    class BlockingStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            await asyncio.sleep(10.0)
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    locks = LosingThreadLocks()
+    runtime = SimpleNamespace(
+        settings=SettingsOverlay(
+            Settings(sse_heartbeat_seconds=60.0, runtime_thread_lock_ttl_seconds=9.0),
+            runtime_thread_lock_heartbeat_seconds=0.01,
+        ),
+        graph=BlockingStreamingGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    async def run_test():
+        return await asyncio.wait_for(collect_frames(), timeout=1.0)
+
+    frames = asyncio.run(run_test())
+
+    assert locks.heartbeats
+    assert any("event: turn.failed" in frame and "heartbeat was lost" in frame for frame in frames)
+    assert not any("event: turn.completed" in frame for frame in frames)
     assert locks.released == [("root-1", locks.acquired[0][1])]
 
 
@@ -1041,6 +1415,82 @@ def test_send_message_rejects_concurrent_turn_on_same_thread(tmp_path: Path):
     graph.release.set()
     assert completed.wait(timeout=2.0)
     worker.join(timeout=2.0)
+
+
+def test_send_message_skips_post_turn_side_effects_when_thread_turn_heartbeat_is_lost(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class LosingThreadLocks:
+        def __init__(self):
+            self.acquired: list[tuple[str, str, float]] = []
+            self.heartbeats: list[tuple[str, str, float]] = []
+            self.released: list[tuple[str, str]] = []
+
+        def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.acquired.append((thread_id, owner, ttl_seconds))
+            return True
+
+        def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
+            self.heartbeats.append((thread_id, owner, ttl_seconds))
+            return False
+
+        def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
+            self.released.append((thread_id, owner))
+
+    class SlowInvokeGraph:
+        def __init__(self):
+            self.values = {}
+
+        def invoke(self, payload, *, config, context, version):
+            del config, context, version
+            time.sleep(0.03)
+            self.values = {
+                "messages": [payload["messages"][-1], AIMessage(content="done")],
+                "selected_model": payload["selected_model"],
+                "selected_thinking_mode": payload["selected_thinking_mode"],
+            }
+            return {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    class RecordingBackgroundWork:
+        def __init__(self):
+            self.submitted: list[str] = []
+
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del func, delay_seconds, kwargs
+            self.submitted.append(key)
+            return True
+
+        def release_job_key(self, key: str) -> None:
+            del key
+
+    locks = LosingThreadLocks()
+    background_work = RecordingBackgroundWork()
+    runtime = SimpleNamespace(
+        settings=SettingsOverlay(
+            Settings(runtime_thread_lock_ttl_seconds=9.0),
+            runtime_thread_lock_heartbeat_seconds=0.01,
+        ),
+        graph=SlowInvokeGraph(),
+        repo=repo,
+        background_work=background_work,
+        coordination_backend=CoordinationBackend(
+            thread_turns=locks,
+            job_deduper=InMemoryBackgroundJobDeduperBackend(),
+            rate_limiter=InMemoryRateLimitBackend(),
+        ),
+    )
+    chat = ChatService(runtime)
+
+    with pytest.raises(ConcurrentTurnError, match="heartbeat was lost"):
+        chat.send_message(thread_id="root-1", user_id="owner-1", message="hello")
+
+    assert locks.heartbeats
+    assert background_work.submitted == []
+    assert locks.released == [("root-1", locks.acquired[0][1])]
 
 
 def test_stream_message_reports_busy_thread_failure(tmp_path: Path):

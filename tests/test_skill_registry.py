@@ -360,7 +360,84 @@ def test_tool_registry_skips_disabled_builtin_provider(tmp_path, monkeypatch):
     assert all(manifest.provider_id != "builtin" for manifest in manifests)
 
 
-def test_tool_registry_uses_provider_order_for_manifest_merge(tmp_path):
+def test_tool_registry_rejects_duplicate_provider_tool_without_override(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    first_provider = StaticToolProvider(
+        provider_id="first_tools",
+        tools=(_make_string_tool("shared_lookup", "first"),),
+    )
+    second_provider = StaticToolProvider(
+        provider_id="second_tools",
+        tools=(_make_string_tool("shared_lookup", "second"),),
+    )
+
+    try:
+        build_tool_registry(
+            settings=Settings(),
+            skill_registry=registry,
+            explicit_providers=(first_provider, second_provider),
+        )
+    except ValueError as exc:
+        message = str(exc)
+        assert "second_tools" in message
+        assert "shared_lookup" in message
+        assert "first_tools" in message
+        assert "overrides" in message
+    else:
+        raise AssertionError("expected duplicate provider tool validation failure")
+
+
+def test_tool_registry_allows_explicit_provider_tool_override(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    first_provider = StaticToolProvider(
+        provider_id="first_tools",
+        tools=(_make_string_tool("shared_lookup", "first"),),
+    )
+    second_provider = StaticToolProvider(
+        provider_id="second_tools",
+        tools=(_make_string_tool("shared_lookup", "second"),),
+    )
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(ToolProviderConfig(id="second_tools", overrides=("shared_lookup",)),)
+            )
+        ),
+        skill_registry=registry,
+        explicit_providers=(first_provider, second_provider),
+    )
+
+    assert tool_registry.by_name["shared_lookup"].invoke({}) == "second"
+    assert tool_registry.manifest_by_name["shared_lookup"].provider_id == "second_tools"
+
+
+def test_tool_registry_skips_disabled_provider_before_duplicate_check(tmp_path):
+    registry = SkillRegistry([tmp_path])
+    enabled_provider = StaticToolProvider(
+        provider_id="enabled_tools",
+        tools=(_make_string_tool("shared_lookup", "enabled"),),
+    )
+    disabled_provider = StaticToolProvider(
+        provider_id="disabled_tools",
+        tools=(_make_string_tool("shared_lookup", "disabled"),),
+    )
+
+    tool_registry = build_tool_registry(
+        settings=Settings(
+            tool_catalog=ToolCatalogConfig(
+                providers=(ToolProviderConfig(id="disabled_tools", enabled=False),)
+            )
+        ),
+        skill_registry=registry,
+        explicit_providers=(enabled_provider, disabled_provider),
+    )
+
+    assert tool_registry.by_name["shared_lookup"].invoke({}) == "enabled"
+    assert tool_registry.manifest_by_name["shared_lookup"].provider_id == "enabled_tools"
+
+
+def test_tool_registry_uses_provider_order_for_explicit_manifest_override(tmp_path):
     registry = SkillRegistry([tmp_path])
     lower_provider = StaticToolProvider(
         provider_id="lower_tools",
@@ -375,7 +452,11 @@ def test_tool_registry_uses_provider_order_for_manifest_merge(tmp_path):
         settings=Settings(
             tool_catalog=ToolCatalogConfig(
                 providers=(
-                    ToolProviderConfig(id="lower_tools", order=300),
+                    ToolProviderConfig(
+                        id="lower_tools",
+                        order=300,
+                        overrides=("shared_lookup",),
+                    ),
                     ToolProviderConfig(id="higher_tools", order=200),
                 )
             )

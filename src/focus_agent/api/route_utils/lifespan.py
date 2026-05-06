@@ -14,6 +14,7 @@ async def app_lifespan(app: FastAPI):
     runtime = create_runtime(Settings.from_env())
     app.state.runtime = runtime
     app.state.chat_service = ChatService(runtime)
+    runtime.start_durable_background_worker(app.state.chat_service)
     try:
         yield
     finally:

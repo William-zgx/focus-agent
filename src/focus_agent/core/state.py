@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import operator
+from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Annotated, Any, Literal, Mapping, TypeAlias, TypedDict
 
@@ -249,6 +250,9 @@ AgentStateRecordName: TypeAlias = Literal[
 class AgentStateRecord(TypedDict, total=False):
     schema_version: int
     record_id: str
+    created_at: str
+    request_id: str | None
+    actor: str
     domain: AgentStateRecordDomain
     name: AgentStateRecordName | str
     source: str
@@ -257,7 +261,7 @@ class AgentStateRecord(TypedDict, total=False):
     metadata: dict[str, Any]
 
 
-GOVERNANCE_RECORD_SCHEMA_VERSION = 1
+GOVERNANCE_RECORD_SCHEMA_VERSION = 2
 
 GOVERNANCE_RECORD_MIRROR_KEYS: Mapping[str, AgentStateKey] = MappingProxyType(
     {
@@ -404,6 +408,35 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "current_step_id",
     "reflection",
 )
+GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST: frozenset[AgentStateKey] = frozenset(
+    {
+        "context_budget",
+        "prompt_mode",
+        "selected_model",
+        "selected_thinking_mode",
+        "role_route_plan",
+        "governance_records",
+        "memory_curator_decision",
+        "tool_route_plan",
+        "agent_delegation_plan",
+        "agent_runs",
+        "model_route_decision",
+        "agent_failure_records",
+        "agent_review_queue",
+        "context_budget_decision",
+        "context_compression_plan",
+        "context_artifact_refs",
+        "role_context_views",
+        "context_compaction",
+        "agent_task_ledger",
+        "delegated_artifacts",
+        "artifact_synthesis_result",
+        "critic_gate_result",
+        "plan",
+        "current_step_id",
+        "reflection",
+    }
+)
 OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "llm_calls",
     "branch_action_audit",
@@ -543,11 +576,17 @@ def make_agent_state_record(
     domain: AgentStateRecordDomain = "governance",
     mirror_key: AgentStateKey | str | None = None,
     metadata: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    actor: str | None = None,
+    created_at: datetime | str | None = None,
 ) -> AgentStateRecord:
     resolved_mirror_key = mirror_key or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(name))
     record: AgentStateRecord = {
         "schema_version": GOVERNANCE_RECORD_SCHEMA_VERSION,
         "record_id": f"{source}:{domain}:{name}",
+        "created_at": _record_created_at(created_at),
+        "request_id": request_id,
+        "actor": actor or source,
         "domain": domain,
         "name": name,
         "source": source,
@@ -569,6 +608,8 @@ def append_agent_state_record(
     domain: AgentStateRecordDomain = "governance",
     mirror_key: AgentStateKey | str | None = None,
     metadata: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    actor: str | None = None,
 ) -> AgentStateRecord:
     record = make_agent_state_record(
         name,
@@ -577,6 +618,8 @@ def append_agent_state_record(
         domain=domain,
         mirror_key=mirror_key,
         metadata=metadata,
+        request_id=request_id,
+        actor=actor,
     )
     updates.setdefault("governance_records", []).append(record)
     resolved_mirror_key = record.get("mirror_key")
@@ -591,26 +634,86 @@ def with_agent_state_record_mirrors(state: Mapping[str, Any]) -> dict[str, Any]:
     return mirrored
 
 
+def agent_state_record_payloads(
+    state: Mapping[str, Any],
+    name_or_mirror_key: AgentStateRecordName | str,
+    *,
+    domain: AgentStateRecordDomain | None = None,
+) -> list[Any]:
+    records = state.get("governance_records") or []
+    if not isinstance(records, list):
+        return []
+    return [
+        record.get("payload")
+        for record in records
+        if isinstance(record, Mapping)
+        and _agent_state_record_matches(record, name_or_mirror_key, domain=domain)
+    ]
+
+
+def latest_agent_state_record_payload(
+    state: Mapping[str, Any],
+    name_or_mirror_key: AgentStateRecordName | str,
+    *,
+    domain: AgentStateRecordDomain | None = None,
+    default: Any = None,
+) -> Any:
+    records = state.get("governance_records") or []
+    if isinstance(records, list):
+        for record in reversed(records):
+            if not isinstance(record, Mapping):
+                continue
+            if _agent_state_record_matches(record, name_or_mirror_key, domain=domain):
+                return record.get("payload")
+
+    legacy_key = _legacy_mirror_key_for(name_or_mirror_key)
+    if legacy_key in state:
+        return state.get(legacy_key)
+    return default
+
+
 def _apply_governance_record_mirrors(state: dict[str, Any]) -> None:
     records = state.get("governance_records") or []
     if not isinstance(records, list):
         return
-    protected_keys = {
-        key
-        for key in GOVERNANCE_RECORD_MIRROR_KEYS.values()
-        if state.get(key) not in (None, [], {})
-    }
     for record in records:
         if not isinstance(record, Mapping):
             continue
-        mirror_key = str(
-            record.get("mirror_key") or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(record.get("name")))
-        )
+        mirror_key = _agent_state_record_mirror_key(record)
         if mirror_key not in ALL_AGENT_STATE_FIELDS:
             continue
-        payload = record.get("payload")
-        if mirror_key not in protected_keys:
-            state[mirror_key] = payload
+        state[mirror_key] = record.get("payload")
+
+
+def _agent_state_record_matches(
+    record: Mapping[str, Any],
+    name_or_mirror_key: AgentStateRecordName | str,
+    *,
+    domain: AgentStateRecordDomain | None,
+) -> bool:
+    record_domain = record.get("domain")
+    if domain is not None and record_domain not in (None, domain):
+        return False
+    expected = str(name_or_mirror_key)
+    record_name = str(record.get("name") or "")
+    return expected == record_name or expected == _agent_state_record_mirror_key(record)
+
+
+def _agent_state_record_mirror_key(record: Mapping[str, Any]) -> str:
+    return str(record.get("mirror_key") or GOVERNANCE_RECORD_MIRROR_KEYS.get(str(record.get("name"))) or "")
+
+
+def _legacy_mirror_key_for(name_or_mirror_key: AgentStateRecordName | str) -> str:
+    return str(GOVERNANCE_RECORD_MIRROR_KEYS.get(str(name_or_mirror_key)) or name_or_mirror_key)
+
+
+def _record_created_at(value: datetime | str | None) -> str:
+    if isinstance(value, datetime):
+        timestamp = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return timestamp.astimezone(timezone.utc).isoformat()
+    if value:
+        return str(value)
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _serialize_value(value: Any) -> Any:

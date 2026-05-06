@@ -245,31 +245,34 @@ def handle_branch_action_turn(
     intent = branch_action_intent(values=values, message=message)
     if intent is None:
         return None
-    service._acquire_thread_turn(thread_id=thread_id)
-    try:
+    with service._thread_turn_lease(thread_id=thread_id) as turn_lease:
         context, branch_meta, values = service._context_for_thread(thread_id=thread_id, user_id=user_id)
         service._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
         intent = branch_action_intent(values=values, message=message)
         if intent is None:
             return None
         if intent == "propose":
-            return service._build_branch_action_proposal(
+            result = service._build_branch_action_proposal(
                 thread_id=thread_id,
                 user_id=user_id,
                 message=message,
                 request_id=request_id,
             )
+            turn_lease.raise_if_lost()
+            return result
         pending = latest_pending_branch_action(values.get("branch_actions"))
         if pending is None:
             return None
         if intent == "execute":
-            return service._execute_branch_action_locked(
+            result = service._execute_branch_action_locked(
                 thread_id=thread_id,
                 action_id=pending.action_id,
                 user_id=user_id,
                 request_id=request_id,
                 user_message=message,
             )
+            turn_lease.raise_if_lost()
+            return result
         if intent == "dismiss":
             thread_state = service._dismiss_branch_action_locked(
                 thread_id=thread_id,
@@ -278,7 +281,7 @@ def handle_branch_action_turn(
                 request_id=request_id,
                 user_message=message,
             )
-            return {
+            result = {
                 "kind": "dismissed",
                 "message": service._branch_action_dismissal_message(message),
                 "thread_state": thread_state,
@@ -291,9 +294,9 @@ def handle_branch_action_turn(
                     None,
                 ),
             }
+            turn_lease.raise_if_lost()
+            return result
         return None
-    finally:
-        service._release_thread_turn(thread_id=thread_id)
 
 
 async def stream_branch_action_result(

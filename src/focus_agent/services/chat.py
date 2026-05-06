@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+import logging
 import threading
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
@@ -31,14 +33,16 @@ from .chat_compaction import ChatContextCompactionMixin
 from .chat_stream_lifecycle import ChatStreamLifecycleMixin
 from .chat_thread_state import effective_thinking_mode, response_payload
 from .chat_thread_access import ChatThreadAccessMixin
-from .chat_turn_errors import ConcurrentTurnError
+from .chat_turn_errors import ConcurrentTurnError as ConcurrentTurnError
 from .chat_turn_recording import ChatTurnRecordingMixin
 from .coordination import (
+    BackgroundJobSpec,
     CoordinationBackend,
-    ThreadTurnLease,
     create_in_memory_coordination_backend,
-    new_thread_turn_owner,
 )
+from .thread_turn_lease import ThreadTurnLeaseLost, ThreadTurnLeaseManager
+
+logger = logging.getLogger("focus_agent.chat")
 
 
 @dataclass(frozen=True)
@@ -83,24 +87,21 @@ class ChatService(
         self.ports = runtime if isinstance(runtime, ChatServicePorts) else ChatServicePorts.from_runtime(runtime)
         self.runtime = self.ports
         self._coordination_backend = self.ports.coordination_backend or create_in_memory_coordination_backend()
-        self._active_turn_leases: dict[str, ThreadTurnLease] = {}
+        self._active_turn_leases: dict[str, ThreadTurnLeaseManager] = {}
         self._active_turns_lock = threading.Lock()
         self._background_work = self.ports.background_work
 
-    def _acquire_thread_turn(self, *, thread_id: str) -> None:
-        owner = new_thread_turn_owner()
-        ttl_seconds = self._thread_turn_lock_ttl_seconds()
-        acquired = self._coordination_backend.thread_turns.acquire_thread_turn(
+    def _thread_turn_lease(self, *, thread_id: str) -> ThreadTurnLeaseManager:
+        return ThreadTurnLeaseManager(
+            backend=self._coordination_backend.thread_turns,
             thread_id=thread_id,
-            owner=owner,
-            ttl_seconds=ttl_seconds,
+            ttl_seconds=self._thread_turn_lock_ttl_seconds(),
+            heartbeat_interval_seconds=self._thread_turn_lock_heartbeat_seconds(),
         )
-        if not acquired:
-            raise ConcurrentTurnError(
-                "This thread is still processing the previous turn. "
-                "Please wait for it to finish before sending another message."
-            )
-        lease = ThreadTurnLease(thread_id=thread_id, owner=owner)
+
+    def _acquire_thread_turn(self, *, thread_id: str) -> None:
+        lease = self._thread_turn_lease(thread_id=thread_id)
+        lease.acquire()
         with self._active_turns_lock:
             self._active_turn_leases[thread_id] = lease
 
@@ -109,23 +110,23 @@ class ChatService(
             lease = self._active_turn_leases.get(thread_id)
         if lease is None:
             return False
-        return self._coordination_backend.thread_turns.heartbeat_thread_turn(
-            thread_id=thread_id,
-            owner=lease.owner,
-            ttl_seconds=self._thread_turn_lock_ttl_seconds(),
-        )
+        return lease.heartbeat_once()
 
     def _release_thread_turn(self, *, thread_id: str) -> None:
         with self._active_turns_lock:
             lease = self._active_turn_leases.pop(thread_id, None)
         if lease is not None:
-            self._coordination_backend.thread_turns.release_thread_turn(
-                thread_id=thread_id,
-                owner=lease.owner,
-            )
+            lease.close()
 
     def _thread_turn_lock_ttl_seconds(self) -> float:
         return max(float(getattr(self.runtime.settings, "runtime_thread_lock_ttl_seconds", 300.0) or 300.0), 1.0)
+
+    def _thread_turn_lock_heartbeat_seconds(self) -> float:
+        ttl_seconds = self._thread_turn_lock_ttl_seconds()
+        configured_seconds = float(
+            getattr(self.runtime.settings, "runtime_thread_lock_heartbeat_seconds", 30.0) or 30.0
+        )
+        return max(min(ttl_seconds / 3.0, configured_seconds), 0.001)
 
     def _submit_background_work(self, *, key: str, func, delay_seconds: float = 0.0, **kwargs: Any) -> bool:
         if self._background_work is None:
@@ -151,6 +152,48 @@ class ChatService(
             release(key)
             return
         self._coordination_backend.job_deduper.release_job_key(key)
+
+    def _durable_background_execution_enabled(self) -> bool:
+        return (
+            str(getattr(self.runtime.settings, "background_job_execution", "best_effort")).strip().lower()
+            == "durable"
+        )
+
+    def _enqueue_durable_background_job(
+        self,
+        *,
+        kind: str,
+        key: str,
+        payload: dict[str, Any],
+        delay_seconds: float = 0.0,
+        max_attempts: int = 3,
+        dedupe_policy: str = "replace",
+    ) -> bool | None:
+        if not self._durable_background_execution_enabled():
+            return None
+        enqueue = getattr(self._coordination_backend.job_deduper, "enqueue_job", None)
+        if not callable(enqueue):
+            return None
+        try:
+            return bool(
+                enqueue(
+                    BackgroundJobSpec(
+                        kind=kind,
+                        key=key,
+                        payload=payload,
+                        run_at=utc_now() + timedelta(seconds=max(float(delay_seconds or 0.0), 0.0)),
+                        max_attempts=max_attempts,
+                        dedupe_policy=dedupe_policy,
+                    )
+                )
+            )
+        except Exception:  # noqa: BLE001 - post-turn scheduling must not fail the completed turn
+            logger.warning(
+                "failed to enqueue durable background job; falling back to best-effort scheduling",
+                extra={"job_key": key, "job_kind": kind},
+                exc_info=True,
+            )
+            return None
 
     @staticmethod
     def _message_content_to_text(content: Any) -> str:
@@ -257,104 +300,107 @@ class ChatService(
         initial_llm_calls = int(initial_values.get('llm_calls') or 0)
         started_at = utc_now()
         trace_correlation: TraceCorrelation | None = None
-        self._acquire_thread_turn(thread_id=thread_id)
-        try:
-            draft_message = self._draft_message_from_payload(payload)
-            self._auto_compact_context_before_turn(
-                thread_id=thread_id,
-                values=initial_values,
-                draft_message=draft_message,
-            )
-            trace_correlation = build_trace_correlation(
-                settings=self.runtime.settings,
-                request_id=request_id,
-            )
-            with start_trace_span(
-                name=run_name,
-                settings=self.runtime.settings,
-                trace_correlation=trace_correlation,
-                span_id=trace_correlation.root_span_id,
-                attributes=self._turn_span_attributes(
+        with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
+            try:
+                draft_message = self._draft_message_from_payload(payload)
+                self._auto_compact_context_before_turn(
                     thread_id=thread_id,
-                    user_id=user_id,
-                    root_thread_id=context.root_thread_id,
-                    kind=kind,
-                    branch_meta=branch_meta,
-                ),
-            ):
-                config = build_invoke_config(
+                    values=initial_values,
+                    draft_message=draft_message,
+                )
+                trace_correlation = build_trace_correlation(
                     settings=self.runtime.settings,
+                    request_id=request_id,
+                )
+                with start_trace_span(
+                    name=run_name,
+                    settings=self.runtime.settings,
+                    trace_correlation=trace_correlation,
+                    span_id=trace_correlation.root_span_id,
+                    attributes=self._turn_span_attributes(
+                        thread_id=thread_id,
+                        user_id=user_id,
+                        root_thread_id=context.root_thread_id,
+                        kind=kind,
+                        branch_meta=branch_meta,
+                    ),
+                ):
+                    config = build_invoke_config(
+                        settings=self.runtime.settings,
+                        thread_id=thread_id,
+                        user_id=user_id,
+                        root_thread_id=context.root_thread_id,
+                        branch_meta=branch_meta,
+                        trace_correlation=trace_correlation,
+                        run_name=run_name,
+                    )
+                    result = self.runtime.graph.invoke(
+                        payload,
+                        config=config,
+                        context=context,
+                        version='v2',
+                    )
+                turn_lease.raise_if_lost()
+                _, interrupts = self._normalize_result(result)
+                latest_context, latest_branch_meta, final_values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+                response = self._response_payload(
                     thread_id=thread_id,
                     user_id=user_id,
-                    root_thread_id=context.root_thread_id,
-                    branch_meta=branch_meta,
+                    context=latest_context,
+                    branch_meta=latest_branch_meta,
+                    interrupts=interrupts,
                     trace_correlation=trace_correlation,
-                    run_name=run_name,
                 )
-                result = self.runtime.graph.invoke(
-                    payload,
-                    config=config,
-                    context=context,
-                    version='v2',
+                turn_lease.raise_if_lost()
+                self._record_turn_trajectory_best_effort(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    root_thread_id=latest_context.root_thread_id,
+                    kind=kind,
+                    status='succeeded',
+                    final_values=final_values,
+                    initial_message_count=initial_message_count,
+                    initial_llm_calls=initial_llm_calls,
+                    started_at=started_at,
+                    finished_at=utc_now(),
+                    branch_meta=latest_branch_meta,
+                    trace_correlation=trace_correlation,
+                    input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
+                    answer=response.get('assistant_message'),
                 )
-            _, interrupts = self._normalize_result(result)
-            latest_context, latest_branch_meta, final_values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
-            response = self._response_payload(
-                thread_id=thread_id,
-                user_id=user_id,
-                context=latest_context,
-                branch_meta=latest_branch_meta,
-                interrupts=interrupts,
-                trace_correlation=trace_correlation,
-            )
-            self._record_turn_trajectory_best_effort(
-                thread_id=thread_id,
-                user_id=user_id,
-                root_thread_id=latest_context.root_thread_id,
-                kind=kind,
-                status='succeeded',
-                final_values=final_values,
-                initial_message_count=initial_message_count,
-                initial_llm_calls=initial_llm_calls,
-                started_at=started_at,
-                finished_at=utc_now(),
-                branch_meta=latest_branch_meta,
-                trace_correlation=trace_correlation,
-                input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
-                answer=response.get('assistant_message'),
-            )
-            self._schedule_post_turn_context_compaction(
-                thread_id=thread_id,
-                user_id=user_id,
-                kind=kind,
-            )
-            self._schedule_branch_name_refresh_after_first_turn(
-                thread_id=thread_id,
-                user_id=user_id,
-                branch_meta=latest_branch_meta,
-                kind=kind,
-            )
-            return response
-        except Exception as exc:
-            self._record_turn_trajectory_best_effort(
-                thread_id=thread_id,
-                user_id=user_id,
-                root_thread_id=context.root_thread_id,
-                kind=kind,
-                status='failed',
-                final_values=self._safe_get_values(thread_id),
-                initial_message_count=initial_message_count,
-                initial_llm_calls=initial_llm_calls,
-                started_at=started_at,
-                finished_at=utc_now(),
-                branch_meta=branch_meta,
-                trace_correlation=trace_correlation,
-                input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
-                error=str(exc),
-            )
-            raise
-        finally:
-            self._release_thread_turn(thread_id=thread_id)
+                turn_lease.raise_if_lost()
+                self._schedule_post_turn_context_compaction(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    kind=kind,
+                )
+                turn_lease.raise_if_lost()
+                self._schedule_branch_name_refresh_after_first_turn(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    branch_meta=latest_branch_meta,
+                    kind=kind,
+                )
+                return response
+            except Exception as exc:
+                if not isinstance(exc, ThreadTurnLeaseLost):
+                    self._record_turn_trajectory_best_effort(
+                        thread_id=thread_id,
+                        user_id=user_id,
+                        root_thread_id=context.root_thread_id,
+                        kind=kind,
+                        status='failed',
+                        final_values=self._safe_get_values(thread_id),
+                        initial_message_count=initial_message_count,
+                        initial_llm_calls=initial_llm_calls,
+                        started_at=started_at,
+                        finished_at=utc_now(),
+                        branch_meta=branch_meta,
+                        trace_correlation=trace_correlation,
+                        input_messages=list(payload.get('messages', []) if isinstance(payload, dict) else []),
+                        error=str(exc),
+                    )
+                raise
 
     def send_message(
         self,

@@ -42,9 +42,19 @@ class ChatTurnRecordingMixin:
             refresh_title = getattr(branch_service, 'refresh_conversation_title_after_first_turn', None)
             if refresh_title is None:
                 return
+            task_key = background_job_key(kind="conversation_title", thread_id=thread_id)
+            durable_enqueued = self._enqueue_durable_background_job(
+                kind="conversation_title",
+                key=task_key,
+                payload={"root_thread_id": thread_id, "user_id": user_id},
+                max_attempts=3,
+                dedupe_policy="replace",
+            )
+            if durable_enqueued is not None:
+                return
             dispatch_background(
                 refresh_title,
-                _background_task_key=background_job_key(kind="conversation_title", thread_id=thread_id),
+                _background_task_key=task_key,
                 root_thread_id=thread_id,
                 user_id=user_id,
             )
@@ -54,9 +64,19 @@ class ChatTurnRecordingMixin:
             refresh_branch = getattr(branch_service, 'refresh_branch_name_after_first_turn', None)
         if refresh_branch is None:
             return
+        task_key = background_job_key(kind="branch_title", thread_id=thread_id)
+        durable_enqueued = self._enqueue_durable_background_job(
+            kind="branch_title",
+            key=task_key,
+            payload={"child_thread_id": thread_id, "user_id": user_id},
+            max_attempts=3,
+            dedupe_policy="replace",
+        )
+        if durable_enqueued is not None:
+            return
         dispatch_background(
             refresh_branch,
-            _background_task_key=background_job_key(kind="branch_title", thread_id=thread_id),
+            _background_task_key=task_key,
             child_thread_id=thread_id,
             user_id=user_id,
         )

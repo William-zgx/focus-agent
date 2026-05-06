@@ -34,7 +34,7 @@ _TOOL_METADATA_OVERLAY_KEYS = frozenset(
         "toolset",
     }
 )
-_TOOL_PROVIDER_CONFIG_KEYS = frozenset({"id", "enabled", "order", "metadata"})
+_TOOL_PROVIDER_CONFIG_KEYS = frozenset({"id", "enabled", "order", "metadata", "overrides"})
 
 
 class ModelCatalogValidationError(ValueError):
@@ -380,6 +380,7 @@ class ToolProviderConfig:
     enabled: bool = True
     order: int | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+    overrides: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -463,6 +464,10 @@ class ToolCatalogConfig:
     def provider_metadata_overlay_for(self, provider_id: str) -> dict[str, object]:
         provider = self.provider_config_for(provider_id)
         return dict(provider.metadata) if provider is not None else {}
+
+    def provider_overrides_for(self, provider_id: str) -> tuple[str, ...]:
+        provider = self.provider_config_for(provider_id)
+        return provider.overrides if provider is not None else ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -740,6 +745,7 @@ def _load_tool_provider_configs(
                 enabled=enabled,
                 order=int(order_raw) if order_raw is not None else None,
                 metadata=_copy_toml_mapping(item.get("metadata")),
+                overrides=tuple(dict.fromkeys(_split_listish(item.get("overrides")))),
             )
         )
     return tuple(providers)
