@@ -208,12 +208,13 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 14. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
 
 ```bash
-uv run pytest tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
 make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
 make agent-governance-report
+uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 ```
 
 15. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
@@ -225,6 +226,16 @@ uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+```
+
+项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke` 和
+`golden_multi_agent` 是 release-blocking suite；`model_matrix` 和
+`trajectory_failures` 是 nightly 非阻断信号。改动模型路由或多 Agent 行为时，也建议跑：
+
+```bash
+uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
+uv run python -m tests.eval --suite trajectory_failures --concurrency 1 --max-cases 1
 ```
 
 工作区查询和 graph builder 回归还应覆盖 local-first 工具路径：

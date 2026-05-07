@@ -319,12 +319,24 @@ uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+```
+
+`golden_multi_agent` is the release-blocking multi-agent contract suite. It
+uses the extended eval case taxonomy from [agent-evaluation.md](agent-evaluation.md)
+to assert capability, risk level, topology, environment state, and model-routing
+expectations. `model_matrix` and `trajectory_failures` provide nightly,
+non-blocking signals:
+
+```bash
+uv run python -m tests.eval --suite model_matrix --concurrency 1
+uv run python -m tests.eval --suite trajectory_failures --concurrency 1
 ```
 
 For framework-only validation without provider credentials:
 
 ```bash
-uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
+uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py tests/eval/test_framework_self.py
 ```
 
 If the Web console or SDK contract changed, pair the gate with:

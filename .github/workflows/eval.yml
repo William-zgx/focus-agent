@@ -43,7 +43,16 @@ jobs:
         run: uv pip install --system -e '.[openai,dev]'
 
       - name: Run deterministic eval framework tests
-        run: uv run pytest tests/test_eval_framework.py tests/eval/test_framework_self.py tests/eval/test_plan_act_reflect.py
+        run: |
+          mapfile -t discovered_tests < <(
+            find tests/eval -maxdepth 1 -type f \( \
+              -name 'test_*framework*.py' -o \
+              -name 'test_golden_multi_agent*.py' -o \
+              -name 'test_model_matrix*.py' -o \
+              -name 'test_trajectory_failures*.py' \
+            \) | sort
+          )
+          uv run pytest tests/test_eval_framework.py tests/eval/test_plan_act_reflect.py "${discovered_tests[@]}"
 
       - name: Run provider-backed smoke eval
         env:

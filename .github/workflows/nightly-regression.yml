@@ -77,6 +77,30 @@ jobs:
           fi
           make nightly-regression NIGHTLY_REGRESSION_ARGS="${extra_args[*]}"
 
+      - name: Build nightly model matrix eval report
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p reports/nightly
+          uv run python -m tests.eval \
+            --suite model_matrix \
+            --concurrency 1 \
+            --report-json reports/nightly/eval-model-matrix.json \
+            --report-jsonl reports/nightly/eval-model-matrix.jsonl \
+            --report-html reports/nightly/eval-model-matrix.html
+
+      - name: Build nightly trajectory failures eval report
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p reports/nightly
+          uv run python -m tests.eval \
+            --suite trajectory_failures \
+            --concurrency 1 \
+            --report-json reports/nightly/eval-trajectory-failures.json \
+            --report-jsonl reports/nightly/eval-trajectory-failures.jsonl \
+            --report-html reports/nightly/eval-trajectory-failures.html
+
       - name: Build Agent governance quality report
         run: make agent-governance-report
 

@@ -217,12 +217,13 @@ When the Web login surface, account shell, admin route protection, or token stor
 14. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
 
 ```bash
-uv run pytest tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
 make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
 make agent-governance-report
+uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 ```
 
 15. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
@@ -234,6 +235,17 @@ uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+```
+
+The project-level eval policy is documented in `docs/agent-evaluation.md`.
+`smoke` and `golden_multi_agent` are release-blocking suites; `model_matrix`
+and `trajectory_failures` are nightly, non-blocking signal suites. When changing
+model routing or multi-agent behavior, also run:
+
+```bash
+uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
+uv run python -m tests.eval --suite trajectory_failures --concurrency 1 --max-cases 1
 ```
 
 Workspace lookup and graph-builder regressions should also cover the local-first tool path:

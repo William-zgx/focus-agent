@@ -196,17 +196,7 @@ def trajectory_record_failed(record: dict[str, Any]) -> bool:
 
 
 def _case_to_dict(case: EvalCase) -> dict[str, Any]:
-    return {
-        "id": case.id,
-        "input": case.input,
-        "expected": case.expected,
-        "tags": case.tags,
-        "scene": case.scene,
-        "skill_hints": case.skill_hints,
-        "setup": case.setup,
-        "judge": case.judge,
-        "origin": case.origin,
-    }
+    return case.to_dict()
 
 
 def _extract_records(payload: Any) -> list[dict[str, Any]]:

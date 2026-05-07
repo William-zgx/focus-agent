@@ -12,7 +12,8 @@ from pathlib import Path
 from langchain.messages import AIMessage
 from langchain.tools import tool as langchain_tool
 
-from .judges import RuleJudge, TrajectoryJudge
+from .cli import _case_model_variants, _load_model_matrix, _write_failed_cases_dataset
+from .judges import EnvironmentJudge, RuleJudge, TrajectoryJudge
 from .metrics import aggregate_metrics, compare_baselines
 from .reporting import (
     load_metric_summary,
@@ -172,6 +173,104 @@ def test_dataset_loader_parses_jsonl():
     assert all(c.id for c in cases)
 
 
+def test_eval_case_parses_extended_schema_without_migrating_old_cases():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_extended_schema",
+            "capability": "delegation",
+            "risk_level": "medium",
+            "agent_topology": {"roles": ["planner", "critic"], "critic_required": True},
+            "environment": {"assertions": [{"path": "agent_team_tasks", "min_len": 2}]},
+            "model_matrix": [{"label": "strong", "model": "openai:gpt-4.1"}],
+            "model_policy": {"fallback": "openai:gpt-4.1-mini"},
+            "retries": 1,
+            "flakiness_budget": {"max_flaky_rate": 0.1},
+            "acceptance": {"min_success_rate": 0.95},
+            "input": {"user_message": "x"},
+            "expected": {},
+        }
+    )
+
+    assert case.capability == "delegation"
+    assert case.agent_topology["roles"] == ["planner", "critic"]
+    assert case.model_matrix[0]["label"] == "strong"
+    assert case.retries == 1
+    assert "capability" in case.to_dict()
+
+
+def test_environment_judge_checks_final_state_and_initial_state_fallback():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_env",
+            "input": {
+                "user_message": "x",
+                "initial_state": {"model_route_decision": {"effective_model": "openai:fast"}},
+            },
+            "expected": {},
+            "environment": {
+                "assertions": [
+                    {"path": "model_route_decision.effective_model", "equals": "openai:fast"},
+                    {"path": "agent_team_tasks", "min_len": 2},
+                    {"path": "answer_quality", "contains": "approved"},
+                ]
+            },
+        }
+    )
+
+    verdict = EnvironmentJudge().evaluate(
+        case=case,
+        answer="",
+        trajectory=[],
+        state={
+            "agent_team_tasks": [{"role": "planner"}, {"role": "critic"}],
+            "answer_quality": ["approved", "reviewed"],
+        },
+    )
+
+    assert verdict.passed, verdict.reasoning
+    assert "environment_assertions" in verdict.details["checks_run"]
+
+
+def test_trajectory_judge_enforces_multi_agent_role_expectations():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_traj_roles",
+            "input": {"user_message": "x"},
+            "expected": {
+                "must_delegate_to_roles_sequence": ["planner", "executor", "critic"],
+                "must_record_handoffs_any_order": ["planner->executor", "executor->critic"],
+                "max_duplicate_tool_calls": 0,
+                "max_repeated_role_runs": 1,
+            },
+        }
+    )
+    steps = [
+        TrajectoryStep(
+            tool="agent_run",
+            args={"role": "planner"},
+            observation="",
+            runtime={"handoff_to": "executor"},
+        ),
+        TrajectoryStep(
+            tool="agent_run",
+            args={"role": "executor"},
+            observation="",
+            runtime={"handoff_from": "planner", "handoff_to": "critic"},
+        ),
+        TrajectoryStep(
+            tool="agent_review",
+            args={"role": "critic"},
+            observation="",
+            runtime={"handoff_from": "executor"},
+        ),
+    ]
+
+    verdict = TrajectoryJudge().evaluate(case=case, answer="", trajectory=steps)
+
+    assert verdict.passed, verdict.reasoning
+    assert "must_delegate_to_roles_sequence" in verdict.details["checks_run"]
+
+
 def test_run_case_direct_answer(eval_runtime_factory):
     case = EvalCase.from_dict(
         {
@@ -266,6 +365,60 @@ def test_run_suite_aggregates_metrics(eval_runtime_factory):
     assert summary.total == 3
     assert summary.passed == 3
     assert summary.task_success == 1.0
+
+
+def test_run_suite_supports_retries_and_attempt_metadata(eval_runtime_factory):
+    case = EvalCase.from_dict(
+        {
+            "id": "retry_case",
+            "input": {"user_message": "hi"},
+            "expected": {"answer_contains_any": ["reasoning", "act"]},
+            "judge": {"rule": True, "llm": {"enabled": False}},
+        }
+    )
+    runtime = eval_runtime_factory(script=_direct_answer_script)
+
+    results = run_suite([case], runtime=runtime, concurrency=1, retries=1)
+
+    assert [result.metrics["attempt"] for result in results] == [1, 2]
+    assert all(result.metrics["attempts"] == 2 for result in results)
+    assert results[1].case_id.endswith("::attempt-2")
+
+
+def test_model_matrix_helpers_and_failed_dataset(tmp_path, eval_runtime_factory):
+    matrix_path = tmp_path / "models.toml"
+    matrix_path.write_text(
+        '[[models]]\nlabel = "low_cost"\nmodel = "openai:gpt-4.1-mini"\n',
+        encoding="utf-8",
+    )
+    variants = _load_model_matrix(str(matrix_path))
+    assert variants == [{"label": "low_cost", "model": "openai:gpt-4.1-mini"}]
+
+    case = EvalCase.from_dict(
+        {
+            "id": "matrix_case",
+            "input": {"user_message": "x"},
+            "expected": {},
+            "model_matrix": [{"label": "fallback", "model": "openai:gpt-4.1"}],
+        }
+    )
+    assert _case_model_variants(case, default_model="default")[0]["label"] == "fallback"
+
+    failed_result = run_case(
+        case,
+        runtime=eval_runtime_factory(script=_direct_answer_script),
+        model_label="fallback",
+        model_name="openai:gpt-4.1",
+    )
+    failed_result.passed = False
+    failed_path = _write_failed_cases_dataset(
+        str(tmp_path / "failed.jsonl"),
+        cases=[case],
+        results=[failed_result],
+        suite_label="unit",
+    )
+    payload = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert payload["origin"]["type"] == "eval_failure"
 
 
 def test_compare_baselines_flags_regression():

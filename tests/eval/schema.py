@@ -14,6 +14,15 @@ class EvalCase:
     input: dict[str, Any]
     expected: dict[str, Any]
     tags: list[str] = field(default_factory=list)
+    capability: str | None = None
+    risk_level: str | None = None
+    agent_topology: dict[str, Any] = field(default_factory=dict)
+    environment: dict[str, Any] = field(default_factory=dict)
+    model_matrix: list[dict[str, Any]] = field(default_factory=list)
+    model_policy: dict[str, Any] = field(default_factory=dict)
+    retries: int = 0
+    flakiness_budget: dict[str, Any] = field(default_factory=dict)
+    acceptance: dict[str, Any] = field(default_factory=dict)
     scene: str = "long_dialog_research"
     skill_hints: list[str] = field(default_factory=list)
     setup: list[dict[str, str]] = field(default_factory=list)
@@ -27,12 +36,53 @@ class EvalCase:
             input=dict(raw.get("input") or {}),
             expected=dict(raw.get("expected") or {}),
             tags=list(raw.get("tags") or []),
+            capability=_optional_str(raw.get("capability")),
+            risk_level=_optional_str(raw.get("risk_level")),
+            agent_topology=dict(raw.get("agent_topology") or {}),
+            environment=dict(raw.get("environment") or {}),
+            model_matrix=[
+                dict(item)
+                for item in list(raw.get("model_matrix") or [])
+                if isinstance(item, dict)
+            ],
+            model_policy=dict(raw.get("model_policy") or {}),
+            retries=max(0, int(raw.get("retries") or 0)),
+            flakiness_budget=dict(raw.get("flakiness_budget") or {}),
+            acceptance=dict(raw.get("acceptance") or {}),
             scene=str(raw.get("scene") or "long_dialog_research"),
             skill_hints=list(raw.get("skill_hints") or []),
             setup=list(raw.get("setup") or []),
             judge=dict(raw.get("judge") or {"rule": True, "llm": {"enabled": False}}),
             origin=raw.get("origin"),
         )
+
+    def to_dict(self, *, include_empty: bool = False) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "id": self.id,
+            "input": self.input,
+            "expected": self.expected,
+            "tags": list(self.tags),
+            "scene": self.scene,
+            "skill_hints": list(self.skill_hints),
+            "setup": list(self.setup),
+            "judge": self.judge,
+            "origin": self.origin,
+        }
+        optional = {
+            "capability": self.capability,
+            "risk_level": self.risk_level,
+            "agent_topology": self.agent_topology,
+            "environment": self.environment,
+            "model_matrix": self.model_matrix,
+            "model_policy": self.model_policy,
+            "retries": self.retries,
+            "flakiness_budget": self.flakiness_budget,
+            "acceptance": self.acceptance,
+        }
+        for key, value in optional.items():
+            if include_empty or value not in (None, "", [], {}, 0):
+                payload[key] = value
+        return payload
 
 
 @dataclass(slots=True)
@@ -75,3 +125,10 @@ class EvalResult:
             "error": self.error,
             "tags": self.tags,
         }
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None

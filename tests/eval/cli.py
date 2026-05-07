@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
+import inspect
 import json
 from pathlib import Path
 import sys
+import tomllib
 from typing import Sequence
 
 from focus_agent.config import Settings
@@ -46,6 +49,18 @@ def _run_suite_command(argv: Sequence[str]) -> int:
     parser.add_argument("--dataset", help="Explicit dataset path (.jsonl)")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--model", help="Override Settings.model for this run")
+    parser.add_argument("--matrix", help="TOML/JSON model matrix file for cross-model eval")
+    parser.add_argument(
+        "--retries",
+        type=int,
+        help="Additional attempts per case. Overrides case-level retries when set.",
+    )
+    parser.add_argument("--only-capability", help="Only run cases with this capability value")
+    parser.add_argument("--risk-level", help="Only run cases with this risk_level value")
+    parser.add_argument(
+        "--emit-failures-dataset",
+        help="Write failed base cases as replayable EvalCase JSONL skeletons.",
+    )
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--baseline", help="Path to a prior JSON report for regression comparison")
     parser.add_argument(
@@ -69,6 +84,11 @@ def _run_suite_command(argv: Sequence[str]) -> int:
         suite_label=args.suite,
         concurrency=args.concurrency,
         model=args.model,
+        matrix=args.matrix,
+        retries=args.retries,
+        only_capability=args.only_capability,
+        risk_level=args.risk_level,
+        emit_failures_dataset=args.emit_failures_dataset,
         baseline=args.baseline,
         fail_if_regression=args.fail_if_regression,
         report_json=args.report_json,
@@ -85,27 +105,33 @@ def _execute_eval_cases(
     suite_label: str,
     concurrency: int,
     model: str | None,
-    baseline: str | None,
-    fail_if_regression: bool,
-    report_json: str | None,
-    report_jsonl: str | None,
-    report_html: str | None,
+    matrix: str | None = None,
+    retries: int | None = None,
+    only_capability: str | None = None,
+    risk_level: str | None = None,
+    emit_failures_dataset: str | None = None,
+    baseline: str | None = None,
+    fail_if_regression: bool = False,
+    report_json: str | None = None,
+    report_jsonl: str | None = None,
+    report_html: str | None = None,
 ) -> tuple[int, list[EvalResult]]:
+    cases = _filter_cases(cases, only_capability=only_capability, risk_level=risk_level)
     settings = Settings.from_env()
     if model:
         settings.model = model
-    runtime = build_default_runtime(settings=settings)
 
-    print(f"[eval] dataset={dataset_label} cases={len(cases)} model={settings.model}")
-    results = run_suite(
-        cases,
-        runtime=runtime,
+    global_matrix = _load_model_matrix(matrix) if matrix else []
+    print(
+        f"[eval] dataset={dataset_label} cases={len(cases)} model={settings.model} "
+        f"matrix={len(global_matrix) or 'case/default'} retries={retries if retries is not None else 'case/default'}"
+    )
+    results = _execute_model_runs(
+        cases=cases,
+        base_settings=settings,
+        global_matrix=global_matrix,
         concurrency=max(1, concurrency),
-        progress=lambda result: print(
-            f"[{'PASS' if result.passed else 'FAIL'}] {result.case_id} "
-            f"tools={result.metrics.get('tool_calls', 0)} "
-            f"latency_ms={round(float(result.metrics.get('latency_ms', 0.0)), 1)}"
-        ),
+        retries=retries,
     )
     summary = aggregate_metrics(results)
     baseline_summary = load_metric_summary(baseline) if baseline else None
@@ -128,6 +154,10 @@ def _execute_eval_cases(
         "suite": suite_label,
         "model": settings.model,
         "concurrency": max(1, concurrency),
+        "matrix": matrix,
+        "retries": retries,
+        "only_capability": only_capability,
+        "risk_level": risk_level,
     }
     if report_json:
         write_json_report(
@@ -150,6 +180,14 @@ def _execute_eval_cases(
             title=f"Focus Agent Eval Report - {suite_label}",
         )
         print(f"[eval] wrote HTML report to {report_html}")
+    if emit_failures_dataset:
+        target = _write_failed_cases_dataset(
+            emit_failures_dataset,
+            cases=cases,
+            results=results,
+            suite_label=suite_label,
+        )
+        print(f"[eval] wrote failed cases dataset to {target}")
 
     if comparison.get("regressions") and (fail_if_regression or baseline):
         return 2, results
@@ -258,6 +296,11 @@ def _run_trajectory_replay(args: argparse.Namespace) -> int:
         suite_label="trajectory-replay",
         concurrency=args.concurrency,
         model=args.model,
+        matrix=None,
+        retries=None,
+        only_capability=None,
+        risk_level=None,
+        emit_failures_dataset=None,
         baseline=args.baseline,
         fail_if_regression=args.fail_if_regression,
         report_json=args.report_json,
@@ -355,6 +398,170 @@ def _resolve_dataset_path(suite: str, explicit_path: str | None) -> Path:
         return Path(explicit_path).expanduser()
     dataset_dir = Path(__file__).resolve().parent / "datasets"
     return dataset_dir / f"{suite}.jsonl"
+
+
+def _filter_cases(
+    cases: list[EvalCase],
+    *,
+    only_capability: str | None,
+    risk_level: str | None,
+) -> list[EvalCase]:
+    filtered = cases
+    if only_capability:
+        filtered = [case for case in filtered if case.capability == only_capability]
+    if risk_level:
+        filtered = [case for case in filtered if case.risk_level == risk_level]
+    return filtered
+
+
+def _execute_model_runs(
+    *,
+    cases: list[EvalCase],
+    base_settings: Settings,
+    global_matrix: list[dict[str, str]],
+    concurrency: int,
+    retries: int | None,
+) -> list[EvalResult]:
+    if not cases:
+        return []
+    if global_matrix:
+        results: list[EvalResult] = []
+        for variant in global_matrix:
+            runtime = _runtime_for_model(base_settings, variant["model"])
+            results.extend(
+                _run_suite_compat(
+                    cases,
+                    runtime=runtime,
+                    concurrency=concurrency,
+                    retries=retries,
+                    model_label=variant["label"],
+                    model_name=variant["model"],
+                    progress=_print_progress,
+                )
+            )
+        return results
+
+    if any(case.model_matrix for case in cases):
+        results = []
+        for case in cases:
+            variants = _case_model_variants(case, default_model=base_settings.model)
+            for variant in variants:
+                runtime = _runtime_for_model(base_settings, variant["model"])
+                results.extend(
+                    _run_suite_compat(
+                        [case],
+                        runtime=runtime,
+                        concurrency=1,
+                        retries=retries,
+                        model_label=variant["label"],
+                        model_name=variant["model"],
+                        progress=_print_progress,
+                    )
+                )
+        return results
+
+    runtime = build_default_runtime(settings=base_settings)
+    return _run_suite_compat(
+        cases,
+        runtime=runtime,
+        concurrency=concurrency,
+        retries=retries,
+        progress=_print_progress,
+    )
+
+
+def _runtime_for_model(base_settings: Settings, model: str):
+    settings = Settings.from_env()
+    settings.model = model or base_settings.model
+    return build_default_runtime(settings=settings)
+
+
+def _run_suite_compat(cases: list[EvalCase], **kwargs) -> list[EvalResult]:
+    """Call run_suite while tolerating tests that monkey-patch the old signature."""
+    signature = inspect.signature(run_suite)
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        return run_suite(cases, **kwargs)
+    supported = {key: value for key, value in kwargs.items() if key in signature.parameters}
+    return run_suite(cases, **supported)
+
+
+def _print_progress(result: EvalResult) -> None:
+    print(
+        f"[{'PASS' if result.passed else 'FAIL'}] {result.case_id} "
+        f"model={result.metrics.get('model') or '-'} "
+        f"tools={result.metrics.get('tool_calls', 0)} "
+        f"latency_ms={round(float(result.metrics.get('latency_ms', 0.0)), 1)}"
+    )
+
+
+def _case_model_variants(case: EvalCase, *, default_model: str) -> list[dict[str, str]]:
+    if not case.model_matrix:
+        return [{"label": "default", "model": default_model}]
+    variants: list[dict[str, str]] = []
+    for index, item in enumerate(case.model_matrix, start=1):
+        model = str(item.get("model") or default_model).strip()
+        label = str(item.get("label") or item.get("role") or f"model_{index}").strip()
+        variants.append({"label": label or f"model_{index}", "model": model})
+    return variants
+
+
+def _load_model_matrix(path: str) -> list[dict[str, str]]:
+    source = Path(path).expanduser()
+    if source.suffix.lower() == ".json":
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    else:
+        payload = tomllib.loads(source.read_text(encoding="utf-8"))
+    raw_items: object
+    if isinstance(payload, dict):
+        raw_items = payload.get("models") or payload.get("model_matrix") or payload.get("matrix")
+    else:
+        raw_items = payload
+    if not isinstance(raw_items, list):
+        raise ValueError(f"model matrix must contain a list under models/model_matrix/matrix: {source}")
+    variants: list[dict[str, str]] = []
+    for index, item in enumerate(raw_items, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"model matrix item #{index} must be an object")
+        model_name = str(item.get("model") or "").strip()
+        if not model_name:
+            raise ValueError(f"model matrix item #{index} is missing model")
+        label = str(item.get("label") or item.get("role") or f"model_{index}").strip()
+        variants.append({"label": label or f"model_{index}", "model": model_name})
+    return variants
+
+
+def _write_failed_cases_dataset(
+    path: str,
+    *,
+    cases: list[EvalCase],
+    results: list[EvalResult],
+    suite_label: str,
+) -> Path:
+    case_by_id = {case.id: case for case in cases}
+    failed_base_ids = []
+    for result in results:
+        if result.passed:
+            continue
+        base_id = str(result.metrics.get("base_case_id") or result.case_id).split("::", 1)[0]
+        if base_id not in failed_base_ids:
+            failed_base_ids.append(base_id)
+    failed_cases: list[EvalCase] = []
+    for base_id in failed_base_ids:
+        case = case_by_id.get(base_id)
+        if case is None:
+            continue
+        failed_cases.append(
+            replace(
+                case,
+                origin={
+                    **dict(case.origin or {}),
+                    "type": "eval_failure",
+                    "suite": suite_label,
+                    "source_case_id": case.id,
+                },
+            )
+        )
+    return write_eval_cases_jsonl(path, failed_cases)
 
 
 if __name__ == "__main__":

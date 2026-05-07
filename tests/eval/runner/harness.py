@@ -25,7 +25,7 @@ from focus_agent.engine.graph_builder import build_graph
 from focus_agent.observability.trajectory import extract_trajectory_steps
 from focus_agent.skills import SkillRegistry
 
-from ..judges import LLMJudge, RuleJudge, TrajectoryJudge
+from ..judges import EnvironmentJudge, LLMJudge, RuleJudge, TrajectoryJudge
 from ..schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
 
 
@@ -49,6 +49,7 @@ class EvalRuntime:
     rule_judge: RuleJudge = field(default_factory=RuleJudge)
     llm_judge: LLMJudge = field(default_factory=LLMJudge)
     trajectory_judge: TrajectoryJudge = field(default_factory=TrajectoryJudge)
+    environment_judge: EnvironmentJudge = field(default_factory=EnvironmentJudge)
     cost_per_1k_input: float = 0.0
     cost_per_1k_output: float = 0.0
 
@@ -93,7 +94,17 @@ def load_dataset(path: str | Path) -> list[EvalCase]:
     return cases
 
 
-def run_case(case: EvalCase, *, runtime: EvalRuntime, timeout_s: float = 120.0) -> EvalResult:
+def run_case(
+    case: EvalCase,
+    *,
+    runtime: EvalRuntime,
+    timeout_s: float = 120.0,
+    model_label: str | None = None,
+    model_name: str | None = None,
+    base_case_id: str | None = None,
+    attempt: int = 1,
+    attempts: int = 1,
+) -> EvalResult:
     del timeout_s  # reserved for a future process-level watchdog
     started = time.perf_counter()
     try:
@@ -123,9 +134,12 @@ def run_case(case: EvalCase, *, runtime: EvalRuntime, timeout_s: float = 120.0) 
                 "task_brief": user_message[:200],
                 "selected_model": runtime.settings.model,
             }
+            if case.agent_topology:
+                payload.update(_topology_initial_state(case.agent_topology))
             initial_state = case.input.get("initial_state") or {}
             if isinstance(initial_state, dict):
                 payload.update(initial_state)
+            before_state = dict(payload)
 
             result = graph.invoke(payload, context=context, version="v2")
         state = _state_from_result(result)
@@ -133,17 +147,37 @@ def run_case(case: EvalCase, *, runtime: EvalRuntime, timeout_s: float = 120.0) 
         trajectory = _extract_trajectory(state.get("messages", []))
         latency_ms = (time.perf_counter() - started) * 1000.0
 
-        verdicts = _run_judges(case=case, answer=answer, trajectory=trajectory, runtime=runtime)
+        verdicts = _run_judges(
+            case=case,
+            answer=answer,
+            trajectory=trajectory,
+            runtime=runtime,
+            state=state,
+            before_state=before_state,
+        )
         passed = all(v.passed for v in verdicts)
 
         metrics = _build_metrics(
+            case=case,
             state=state,
             trajectory=trajectory,
             latency_ms=latency_ms,
             runtime=runtime,
+            verdicts=verdicts,
+            model_label=model_label,
+            model_name=model_name or runtime.settings.model,
+            base_case_id=base_case_id or case.id,
+            attempt=attempt,
+            attempts=attempts,
+        )
+        result_case_id = _result_case_id(
+            case.id,
+            model_label=model_label,
+            attempt=attempt,
+            attempts=attempts,
         )
         return EvalResult(
-            case_id=case.id,
+            case_id=result_case_id,
             passed=passed,
             answer=answer,
             verdicts=verdicts,
@@ -153,8 +187,14 @@ def run_case(case: EvalCase, *, runtime: EvalRuntime, timeout_s: float = 120.0) 
         )
     except Exception as exc:  # noqa: BLE001
         latency_ms = (time.perf_counter() - started) * 1000.0
+        result_case_id = _result_case_id(
+            case.id,
+            model_label=model_label,
+            attempt=attempt,
+            attempts=attempts,
+        )
         return EvalResult(
-            case_id=case.id,
+            case_id=result_case_id,
             passed=False,
             answer="",
             verdicts=[
@@ -166,7 +206,18 @@ def run_case(case: EvalCase, *, runtime: EvalRuntime, timeout_s: float = 120.0) 
                 )
             ],
             trajectory=[],
-            metrics={"latency_ms": latency_ms, "tool_calls": 0, "llm_calls": 0},
+            metrics={
+                "latency_ms": latency_ms,
+                "tool_calls": 0,
+                "llm_calls": 0,
+                "model_label": model_label,
+                "model": model_name or runtime.settings.model,
+                "base_case_id": base_case_id or case.id,
+                "attempt": attempt,
+                "attempts": attempts,
+                "capability": case.capability,
+                "risk_level": case.risk_level,
+            },
             error=repr(exc),
             tags=list(case.tags),
         )
@@ -177,13 +228,25 @@ def run_suite(
     *,
     runtime: EvalRuntime,
     concurrency: int = 4,
+    retries: int | None = None,
+    model_label: str | None = None,
+    model_name: str | None = None,
     progress: Callable[[EvalResult], None] | None = None,
 ) -> list[EvalResult]:
     cases = list(cases)
-    if concurrency <= 1 or len(cases) <= 1:
+    work_items = _expand_attempts(cases, retries=retries)
+    if concurrency <= 1 or len(work_items) <= 1:
         results = []
-        for case in cases:
-            r = run_case(case, runtime=runtime)
+        for case, attempt, attempts in work_items:
+            r = run_case(
+                case,
+                runtime=runtime,
+                model_label=model_label,
+                model_name=model_name,
+                base_case_id=case.id,
+                attempt=attempt,
+                attempts=attempts,
+            )
             if progress:
                 progress(r)
             results.append(r)
@@ -191,14 +254,31 @@ def run_suite(
 
     results_by_id: dict[str, EvalResult] = {}
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = {pool.submit(run_case, case, runtime=runtime): case for case in cases}
+        futures = {
+            pool.submit(
+                run_case,
+                case,
+                runtime=runtime,
+                model_label=model_label,
+                model_name=model_name,
+                base_case_id=case.id,
+                attempt=attempt,
+                attempts=attempts,
+            ): (case, attempt, attempts)
+            for case, attempt, attempts in work_items
+        }
         for fut in as_completed(futures):
-            case = futures[fut]
+            case, attempt, attempts = futures[fut]
             try:
                 r = fut.result()
             except Exception as exc:  # noqa: BLE001
                 r = EvalResult(
-                    case_id=case.id,
+                    case_id=_result_case_id(
+                        case.id,
+                        model_label=model_label,
+                        attempt=attempt,
+                        attempts=attempts,
+                    ),
                     passed=False,
                     answer="",
                     verdicts=[
@@ -210,7 +290,17 @@ def run_suite(
             results_by_id[r.case_id] = r
             if progress:
                 progress(r)
-    return [results_by_id[c.id] for c in cases]
+    return [
+        results_by_id[
+            _result_case_id(
+                case.id,
+                model_label=model_label,
+                attempt=attempt,
+                attempts=attempts,
+            )
+        ]
+        for case, attempt, attempts in work_items
+    ]
 
 
 def _build_isolated_graph(runtime: EvalRuntime) -> Any:
@@ -283,6 +373,8 @@ def _run_judges(
     answer: str,
     trajectory: list[TrajectoryStep],
     runtime: EvalRuntime,
+    state: dict[str, Any],
+    before_state: dict[str, Any],
 ) -> list[JudgeVerdict]:
     verdicts: list[JudgeVerdict] = []
     if case.judge.get("rule", True):
@@ -297,15 +389,32 @@ def _run_judges(
         verdicts.append(
             runtime.trajectory_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
+    if _has_environment_expectations(case.environment):
+        verdicts.append(
+            runtime.environment_judge.evaluate(
+                case=case,
+                answer=answer,
+                trajectory=trajectory,
+                state=state,
+                before_state=before_state,
+            )
+        )
     return verdicts
 
 
 def _build_metrics(
     *,
+    case: EvalCase,
     state: dict[str, Any],
     trajectory: list[TrajectoryStep],
     latency_ms: float,
     runtime: EvalRuntime,
+    verdicts: list[JudgeVerdict],
+    model_label: str | None,
+    model_name: str,
+    base_case_id: str,
+    attempt: int,
+    attempts: int,
 ) -> dict[str, Any]:
     llm_calls = int(state.get("llm_calls") or 0)
     tool_calls = len(trajectory)
@@ -325,6 +434,14 @@ def _build_metrics(
     cache_hits = sum(1 for step in trajectory if step.cache_hit)
     fallback_uses = sum(1 for step in trajectory if step.fallback_used)
     parallel_tool_calls = sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1)
+    role_hits = _delegation_role_hits(trajectory)
+    handoff_hits = _handoff_hits(trajectory)
+    critic_gate_hits = _critic_gate_hits(state, trajectory)
+    environment_failures = sum(
+        len(verdict.details.get("failures", []))
+        for verdict in verdicts
+        if verdict.kind == "environment"
+    )
     return {
         "latency_ms": latency_ms,
         "tool_calls": tool_calls,
@@ -335,6 +452,17 @@ def _build_metrics(
         "cache_hits": cache_hits,
         "fallback_uses": fallback_uses,
         "parallel_tool_calls": parallel_tool_calls,
+        "delegation_role_hits": role_hits,
+        "handoff_hits": handoff_hits,
+        "critic_gate_hits": critic_gate_hits,
+        "environment_assertions_failed": environment_failures,
+        "model_label": model_label,
+        "model": model_name,
+        "base_case_id": base_case_id,
+        "attempt": attempt,
+        "attempts": attempts,
+        "capability": case.capability,
+        "risk_level": case.risk_level,
     }
 
 
@@ -351,5 +479,91 @@ def _has_trajectory_expectations(expected: dict[str, Any]) -> bool:
         "must_hit_cache_tools_any_order",
         "must_use_fallback_tools_any_order",
         "must_parallelize_tools_any_order",
+        "must_delegate_to_roles_any_order",
+        "must_delegate_to_roles_sequence",
+        "must_not_delegate_to_roles",
+        "must_record_handoffs_any_order",
+        "max_duplicate_tool_calls",
+        "max_repeated_role_runs",
     }
     return any(expected.get(key) is not None for key in keys)
+
+
+def _has_environment_expectations(environment: dict[str, Any]) -> bool:
+    return bool((environment or {}).get("assertions"))
+
+
+def _expand_attempts(
+    cases: list[EvalCase],
+    *,
+    retries: int | None,
+) -> list[tuple[EvalCase, int, int]]:
+    work_items: list[tuple[EvalCase, int, int]] = []
+    for case in cases:
+        retry_count = case.retries if retries is None else max(0, int(retries))
+        attempts = max(1, retry_count + 1)
+        for attempt in range(1, attempts + 1):
+            work_items.append((case, attempt, attempts))
+    return work_items
+
+
+def _result_case_id(
+    case_id: str,
+    *,
+    model_label: str | None,
+    attempt: int,
+    attempts: int,
+) -> str:
+    result_id = case_id
+    if model_label:
+        result_id = f"{result_id}::{model_label}"
+    if attempts > 1:
+        result_id = f"{result_id}::attempt-{attempt}"
+    return result_id
+
+
+def _topology_initial_state(topology: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {"agent_topology": dict(topology)}
+    roles = list(topology.get("roles") or [])
+    if roles:
+        payload["agent_team_tasks"] = [
+            {"role": str(role), "status": "planned"} for role in roles
+        ]
+    if topology.get("critic_required"):
+        payload.setdefault("agent_governance_requirements", {})["critic_required"] = True
+    if topology.get("handoff_required"):
+        payload.setdefault("agent_governance_requirements", {})["handoff_required"] = True
+    return payload
+
+
+def _delegation_role_hits(trajectory: list[TrajectoryStep]) -> int:
+    roles: set[str] = set()
+    for step in trajectory:
+        for key in ("role", "agent_role", "branch_role"):
+            value = step.args.get(key) or step.runtime.get(key)
+            if value:
+                roles.add(str(value))
+    return len(roles)
+
+
+def _handoff_hits(trajectory: list[TrajectoryStep]) -> int:
+    hits = 0
+    for step in trajectory:
+        runtime = step.runtime or {}
+        if runtime.get("handoff_to") or runtime.get("handoff_from"):
+            hits += 1
+        if step.args.get("handoff_to") or step.args.get("handoff_from"):
+            hits += 1
+    return hits
+
+
+def _critic_gate_hits(state: dict[str, Any], trajectory: list[TrajectoryStep]) -> int:
+    hits = 0
+    records = state.get("agent_review_queue") or state.get("critic_gate_records") or []
+    if isinstance(records, list):
+        hits += len(records)
+    for step in trajectory:
+        role = step.args.get("role") or step.runtime.get("role") or step.runtime.get("branch_role")
+        if str(role or "").lower() == "critic":
+            hits += 1
+    return hits
