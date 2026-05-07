@@ -39,6 +39,8 @@ flowchart LR
 - Confirm trajectory failure promotion preview and batch replay workflow still match the API and eval CLI
 - Confirm OTel exporter env vars and runtime readiness docs still match the live tracing behavior
 - Confirm alert guidance uses the existing `/metrics` endpoint and current metric names
+- Confirm Memory v2 docs match the live PostgreSQL canonical store, pgvector embedding readiness, memory API authorization, forget tombstone/erasure behavior, and Memory Console fields
+- Confirm runtime coordination docs match thread turn lease behavior, durable background job claim heartbeat, and first-turn branch title/metadata refresh after lease release
 - Confirm Agent governance expectations still match `docs/agent-role-routing.md`, `/v1/agent/*`, and `/app/agent/governance`
 - If Agent governance changed, confirm `/v1/agent/capabilities`, `/v1/agent/tool-router/*`, `/v1/agent/memory/curator/*`, and `/app/agent/governance`
 - If Context Engineering changed, confirm `/v1/agent/context/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_context.jsonl`
@@ -51,6 +53,9 @@ flowchart LR
 - Decide which settings are development-only versus production-ready
 - Confirm non-development startup fails when auth is disabled, `AUTH_JWT_SECRET` is missing/default, demo tokens are enabled, or rate limiting is disabled
 - Review persistence-related settings such as `DATABASE_URI`, managed local Postgres runtime files, trajectory settings, and artifact paths
+- Review memory embedding and pgvector settings: `AGENT_MEMORY_EMBEDDING_ENABLED`, `AGENT_MEMORY_EMBEDDING_BACKEND`, `AGENT_MEMORY_EMBEDDING_MODEL`, `AGENT_MEMORY_EMBEDDING_DIMENSIONS`, `AGENT_MEMORY_EMBEDDING_BASE_URL`, `AGENT_MEMORY_EMBEDDING_API_KEY_ENV`, `AGENT_MEMORY_EMBEDDING_API_KEY`, `AGENT_MEMORY_EMBEDDING_BATCH_SIZE`, `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS`, `AGENT_MEMORY_VECTOR_SEARCH_MODE`, `AGENT_MEMORY_VECTOR_INDEX_ENABLED`, and `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE`
+- Review memory governance settings: `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED`, `AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES`, `AGENT_MEMORY_CURATOR_ENABLED`, and `AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE`
+- Review runtime coordination settings: `BACKGROUND_JOB_EXECUTION`, `BACKGROUND_JOB_BACKEND`, `BACKGROUND_JOB_CLAIM_TTL_SECONDS`, `RUNTIME_THREAD_LOCK_TTL_SECONDS`, and `RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS`
 
 ## Quality Checks
 
@@ -87,6 +92,7 @@ uv run python scripts/ui_smoke_test.py
 uv run python -m tests.eval --suite smoke --concurrency 1 --report-json reports/release-gate/eval-smoke.json
 uv run python -m tests.eval --suite observability --concurrency 1 --report-json reports/release-gate/eval-observability.json
 uv run python scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
+focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 uv run python scripts/agent_governance_report.py --report-json reports/agent-governance/latest.json
 uv run python scripts/release_health_check.py --mode local --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/memory-context-eval.json --governance-report-json reports/agent-governance/latest.json --report-json reports/release-gate/release-health.json
 ```
@@ -97,6 +103,7 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
+- `focus-agent-memory-embedding doctor` is the memory embedding/pgvector release preflight. Include its JSON output as release evidence when PostgreSQL memory embedding is enabled; it should show provider readiness, table dimension compatibility, extension status, and vector index state without exposing API keys or vector values.
 - `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, Agent governance quality, baseline eval reports, and current eval JSON reports into release-blocking health signals. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real `--readyz-json` or `--ready-url`, `--trajectory-stats-json` or `--trajectory-stats-url`, `--replay-comparisons-json`, `--eval-report-json`, `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json` inputs. Missing required inputs fail closed with exit code 1; dry-run smoke / ops / OTel reports are rejected in production unless the caller explicitly uses the deterministic evidence-pack escape hatch `--allow-dry-run-reports`.
 - `make release-evidence` builds the production evidence pack. Use it for production release review after collecting real deployment signals; the manifest is written to `reports/release-gate/<release-id>/manifest.json` and includes artifact hashes, artifact summary, failure summary, retention metadata, approval metadata, storage verification metadata, release-health summary, and missing-required-artifact checks. Production packs require an explicit `--release-id`, approved deployment-platform `--approval-status approved` with `--approval-id`, plus readyz, trajectory stats, replay comparison, eval report, baseline eval report, production smoke, Postgres ops, OTel smoke, and governance report artifacts. Add `--storage-dir` when the release job should copy the evidence pack to a retained artifact location; the manifest records whether the stored manifest and summary matched local hashes.
 - CI provider binding lives in `docs/ci/github-actions-release-gate.md` and `.github/workflows/release-gate.yml`. Keep provider-specific approval metadata, artifact upload, retention, and generic CI command skeletons in that CI document; this checklist only records the release-blocking evidence that must be present before tagging.

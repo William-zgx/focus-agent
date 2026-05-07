@@ -2,7 +2,7 @@
 
 Updated: 2026-04-24
 
-This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system.md](memory-system.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
+This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
 ## 1. Purpose
 

@@ -1,13 +1,13 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-05
+更新时间：2026-05-07
 
 本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
 - Agent governance：[agent-role-routing.md](agent-role-routing.md)
 - Agent Team Workbench：[agent-team-workbench.md](agent-team-workbench.md)
 - Context Window：[context-window.md](context-window.md)
-- Memory：[memory-system.md](memory-system.md)
+- Memory：[memory-system-v2.md](memory-system-v2.md)
 - Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
 - Docker / Compose：[docker-deployment.md](docker-deployment.md)
 - Observability 操作手册：[observability-runbook.md](observability-runbook.md)
@@ -51,10 +51,11 @@ flowchart LR
     Graph --> Memory["Memory Pipeline"]
     Graph --> Trace["Trajectory Recorder"]
     Branch --> Repo["Branch Repository"]
-    Memory --> Store["LangGraph Store"]
+    Memory --> MemoryRepo["Postgres Memory Repository"]
+    MemoryRepo --> MemoryTables["focus_memories / focus_memory_embeddings"]
     Trace --> PG["Postgres"]
     Repo --> PG
-    Store --> PG
+    MemoryTables --> PG
     Tools --> Artifacts["Filesystem Artifacts"]
 ```
 
@@ -100,7 +101,7 @@ Persistence
 | `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review |
 | `src/focus_agent/services/` | ChatService、BranchService、AgentTeamService 等 API-facing 业务服务；大型服务按 branch action facade、stream lifecycle、thread access、compaction、recording、agent-team session/merge/dispatch 等 helper 拆分 |
 | `src/focus_agent/repositories/` | Postgres / SQLite repository、schema、trajectory、artifact metadata |
-| `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe |
+| `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe、embedding provider/service/policy |
 | `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime facade、tool execution/cache/messages/parallel helpers、tool router；default tools 按 workspace、git、web、artifact、memory、conversation 模块拆分 |
 | `src/focus_agent/skills/` | skill registry、skill metadata、skill view rendering |
 | `src/focus_agent/observability/` | trajectory record、actions、tracing facade、OTel runtime |
@@ -113,7 +114,7 @@ Persistence
 `src/focus_agent/engine/runtime.py` 中的 `create_runtime()` 是后端运行态装配点。它先调用 `ensure_runtime_directories(settings)` 创建运行时目录，再按小型 factory 组装运行态：
 
 - `RuntimePersistence`：`checkpointer`、`store`、branch repository、trajectory recorder、artifact metadata repository。
-- `RuntimeMemoryComponents`：`memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`。
+- `RuntimeMemoryComponents`：`memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`、`memory_embedding_service`。
 - `RuntimeRegistries`：`skill_registry`、`tool_registry`。
 - `RuntimeServices`：`branch_service`、`agent_team_service`。
 
@@ -124,14 +125,16 @@ Persistence
 - `branch_service`：fork、merge 和 branch tree 业务服务。
 - `agent_team_service`：Agent Team session / task / output 业务服务。
 - `checkpointer`：LangGraph checkpoint persistence。
-- `store`：LangGraph store，用于 memory。
+- `store`：LangGraph store，用于 checkpoint/graph 兼容路径和无数据库 local fallback。
+- `memory_repository`：PostgreSQL canonical memory repository，读写 `focus_memories`、audit/tombstone/candidate 和可重建的 `focus_memory_embeddings`。
 - `memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`。
+- `memory_embedding_service`、`memory_embedding_provider`、`memory_embedding_backend_error`。
 - `skill_registry`、`tool_registry`。
 - `trajectory_recorder`。
 - `artifact_metadata_repository`。
 - `otel_runtime`。
 
-当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence；否则选择 local fallback persistence。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
+当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence，并初始化 `PostgresMemoryRepository`。默认 memory embedding backend 为 `auto`，会优先探测本地 Ollama `embeddinggemma`，并按 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 管理 pgvector v10 schema；无 `DATABASE_URI` 时使用 local fallback，memory repository 和 pgvector shadow 不可用。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
 
 ## 5. 模型 Provider 与 Catalog
 
@@ -305,11 +308,12 @@ main thread
 
 ## 11. Memory 概览
 
-Memory 的 canonical 文档是 [memory-system.md](memory-system.md)。架构层只保留边界：
+Memory 的 canonical 文档是 [memory-system-v2.md](memory-system-v2.md)。架构层只保留边界：
 
-- `MemoryRetriever`：根据 RequestContext、state、query 和 prompt mode 检索。
+- `MemoryRetriever`：根据 RequestContext、state、query 和 prompt mode 检索，Postgres 模式下先按 namespace/status 权限过滤，再结合 FTS/ILIKE 与可选 pgvector hybrid。
 - `MemoryExtractor`：从 turn 中提取候选记忆。
-- `MemoryWriter`：按 policy、dedupe、semantic key 和 conflict 规则写入。
+- `MemoryWriter`：按 policy、dedupe、semantic key 和 conflict 规则写入；Postgres 模式下委托 `MemoryService` 和 `MemoryRepository`。
+- `MemoryEmbeddingService`：对长期语义 memory best-effort 写入 `focus_memory_embeddings`；短期上下文、规则、工作记忆、artifact/citation/tool observation 默认不进入向量索引。
 - `MemoryCurator`：只治理 branch-local finding 是否 promotion 到主线。
 
 Namespace 由 `src/focus_agent/storage/namespaces.py` 管理，区分 root thread、conversation main、branch local memory 等作用域。

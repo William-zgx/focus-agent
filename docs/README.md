@@ -1,6 +1,6 @@
 # Focus Agent Docs Index / 文档索引
 
-更新时间：2026-05-03
+更新时间：2026-05-07
 
 This is the canonical navigation entry for `docs/`. Root README files stay lightweight; deeper guides live here and are grouped by use case.
 
@@ -21,7 +21,7 @@ flowchart LR
     Topics --> Governance["Agent Governance"]
     Topics --> AgentTeam["Agent Team Workbench"]
     Topics --> ContextWindow["Context Window"]
-    Topics --> Memory["Memory"]
+    Topics --> Memory["Memory v2"]
     Topics --> Tools["Tool / Skill"]
     Ops --> Docker["Docker Deployment"]
     Ops --> Observability["Observability Runbook"]
@@ -49,7 +49,8 @@ flowchart LR
 - [agent-role-routing.md](agent-role-routing.md)：Agent Governance、role routing、tool routing、delegation、context、task ledger、critic gate 和 eval gate。
 - [agent-team-workbench.md](agent-team-workbench.md)：Agent Team Mission Runner 的目标驱动规划、DAG 执行、最终答案、API、持久化边界和多 Agent 开发验收口径。
 - [context-window.md](context-window.md)：当前上下文窗口用量、发送栏 Context Meter、手动/自动压缩、API/SDK 和 `token_usage` 边界。
-- [memory-system.md](memory-system.md)：记忆生命周期、namespace、检索、写入、去重、冲突和 branch promotion。
+- [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget 和 branch promotion。
+- [memory-system.md](memory-system.md)：旧版 memory 设计背景，保留作历史参考。
 - [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、运行时策略和扩展检查项。
 
 ## Operations And Release / 运维发布

@@ -12,7 +12,8 @@ flowchart LR
     Postgres -- "Yes" --> External["Use provided database"]
     Managed --> App["Open /app"]
     External --> App
-    App --> Observe["Check /readyz, /metrics, observability pages"]
+    App --> Ready["Check /readyz"]
+    Ready --> Observe["Open /metrics and observability pages"]
 ```
 
 ## 1. Local Setup
@@ -21,7 +22,6 @@ flowchart LR
 uv venv
 source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
-cp .env.example .env
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```
@@ -32,11 +32,9 @@ pnpm install --registry=https://registry.npmjs.org
 - `.focus_agent/models.toml`
 - `.focus_agent/tools.toml`
 
-Keep provider credentials in `.focus_agent/local.env` or other untracked local configuration.
-To add an OpenAI-compatible model for one deployment, add the provider/model
-metadata to `.focus_agent/models.toml` and put only the secret endpoint values in
-`.focus_agent/local.env`. Add entries to `src/focus_agent/defaults/models.toml`
-only when the model should become built-in for every fresh setup.
+Keep provider credentials in `.focus_agent/local.env` or another untracked local config file. The root `.env.example` is a reference for Docker Compose or manual shell exports; the local API startup path reads `.focus_agent/local.env` and process environment variables.
+
+To add an OpenAI-compatible chat model for one deployment, add provider/model metadata to `.focus_agent/models.toml` and put only secret endpoint values in `.focus_agent/local.env`. Add entries to `src/focus_agent/defaults/models.toml` only when a model should become built-in for every fresh setup.
 
 ## 2. Start The API
 
@@ -54,11 +52,11 @@ Open:
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-For observability, `/healthz` is a simple liveness check, `/readyz` reports runtime component readiness, and `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through the trajectory data captured in Postgres.
+`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend` and `memory_pgvector` when PostgreSQL memory embedding is configured. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
 
 ## 3. Managed Local PostgreSQL
 
-If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) manage a repo-local PostgreSQL for you and inject `DATABASE_URI` into the API process automatically.
+If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) manage a repo-local PostgreSQL and inject `DATABASE_URI` into the API process automatically.
 
 That managed path:
 
@@ -71,14 +69,78 @@ If you explicitly export `DATABASE_URI` before startup, that value is preserved 
 
 If you prefer to launch `.venv/bin/focus-agent-api` directly, export `DATABASE_URI` yourself first. The raw binary does not start the managed local PostgreSQL helper for you.
 
-The startup scripts also persist the runtime settings to `.focus_agent/postgres/runtime.env` so ad-hoc commands can inspect the same database:
+The startup scripts also persist runtime settings to `.focus_agent/postgres/runtime.env` so ad-hoc commands can inspect the same database:
 
 ```bash
 source .focus_agent/postgres/runtime.env
 psql "$DATABASE_URI"
 ```
 
-## 4. Frontend Development
+## 4. Memory Embedding And pgvector
+
+PostgreSQL memory is the production canonical memory store. Memory embedding is enabled by default for Postgres-backed runs:
+
+- `AGENT_MEMORY_EMBEDDING_ENABLED=true`
+- `AGENT_MEMORY_EMBEDDING_BACKEND=auto`
+- `AGENT_MEMORY_EMBEDDING_MODEL=embeddinggemma`
+- `AGENT_MEMORY_EMBEDDING_DIMENSIONS=768`
+- `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid`
+
+Local auto mode prefers Ollama `embeddinggemma`. The app does not run `ollama pull` for you:
+
+```bash
+ollama pull embeddinggemma
+```
+
+The chat provider may use `OLLAMA_BASE_URL=http://127.0.0.1:11434/v1`; the embedding provider normalizes that to Ollama native `http://127.0.0.1:11434` and calls `/api/tags` and `/api/embed`.
+
+For cloud embeddings, configure an explicit OpenAI-compatible embedding backend instead of relying on the chat model provider:
+
+```env
+AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible
+AGENT_MEMORY_EMBEDDING_MODEL=text-embedding-3-small
+AGENT_MEMORY_EMBEDDING_DIMENSIONS=1536
+AGENT_MEMORY_EMBEDDING_BASE_URL=https://api.openai.com/v1
+AGENT_MEMORY_EMBEDDING_API_KEY_ENV=OPENAI_API_KEY
+# or set AGENT_MEMORY_EMBEDDING_API_KEY directly in a local secret file
+```
+
+Use the maintenance CLI for read-only diagnostics and controlled index rebuilds:
+
+```bash
+focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
+```
+
+`rebuild` drops and recreates only `focus_memory_embeddings`; it does not delete `focus_memories`, audit events, tombstones, candidates, or checkpoints.
+
+Production environments should usually preinstall the Postgres `vector` extension with a privileged migration role and run the app with:
+
+```env
+AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
+```
+
+## 5. Runtime Coordination
+
+Default local coordination is local-first:
+
+- `BACKGROUND_JOB_EXECUTION=best_effort`
+- `BACKGROUND_JOB_BACKEND=memory`
+- `RUNTIME_THREAD_LOCK_TTL_SECONDS=300`
+- `RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS=30`
+- `BACKGROUND_JOB_CLAIM_TTL_SECONDS=300`
+
+Durable background execution is useful for shared Postgres deployments and must be configured together:
+
+```env
+BACKGROUND_JOB_EXECUTION=durable
+BACKGROUND_JOB_BACKEND=postgres
+DATABASE_URI=postgresql://user:pass@host:5432/focus_agent
+```
+
+Durable jobs use claim tokens and claim heartbeats; thread turns use per-thread leases. Post-turn branch title/metadata refresh is scheduled after the chat turn lease is released, so immediate background workers should not contend with the active turn lock.
+
+## 6. Frontend Development
 
 To develop the frontend against the local API:
 
@@ -97,13 +159,13 @@ In that mode:
 - frontend: `http://127.0.0.1:5173/app/`
 - API: `http://127.0.0.1:8000`
 
-## 5. One-Command Local Modes
+## 7. One-Command Local Modes
 
 - `make serve` / `make serve-dev`: frontend Vite dev server + backend API with reload
 - `make serve-prod`: build the static frontend bundle first, then start only the backend without reload
 - `make dev`: backend only with `API_RELOAD=1`
 
-## 6. Local Auth
+## 8. Local Auth
 
 The built-in app routes unauthenticated users to `/app/auth/login` and preserves the protected target in `return_to`. In local development, the fastest browser path is:
 
@@ -132,7 +194,7 @@ Registration and test-account notes:
 - Admin user creation in `/app/admin/users` creates the user record; reset that user's password before testing username/password login.
 - Logout clears the Web app's stored token, clears auth cookies, and revokes the refresh session. Access tokens and demo tokens are stateless, so a copied token remains usable until expiry or key rotation.
 
-## 7. Browser Smoke Testing
+## 9. Browser Smoke Testing
 
 The default `make ui-smoke` target expects the app URL from `scripts/ui_smoke_test.py`, which is usually the Vite dev URL. When you want to test the backend-served static bundle or disable auth for local debugging, start the API explicitly and pass the app URL:
 
@@ -148,8 +210,9 @@ Use a real, tool-using prompt when changing streaming, transport validation, or 
 
 For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`; `http://127.0.0.1:5173/app` may be handled differently by the dev server. The smoke script launches Chrome with a temporary user data directory, which avoids stale localStorage, extensions, and personal-profile auth state. If a manual browser opens a blank login page while the smoke script passes, retry with a clean profile or clear site data for `127.0.0.1` before treating it as an app regression.
 
-## 8. Next Docs
+## 10. Next Docs
 
+- [Memory System v2](memory-system-v2.md)
 - [Observability Runbook](observability-runbook.md)
 - [Development Guide](development.md)
 - [Docker Deployment](docker-deployment.md)

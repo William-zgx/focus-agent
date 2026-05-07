@@ -38,17 +38,21 @@ Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式
 uv venv
 source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
-cp .env.example .env
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 pnpm web:build
 make api
 ```
 
+`make setup-local` 会创建 `.focus_agent/local.env`、`.focus_agent/models.toml` 和 `.focus_agent/tools.toml`。
+根目录 `.env.example` 主要供 Compose 或手动 shell export 参考；本地 API 启动路径读取 `.focus_agent/local.env` 和进程环境变量。
+
 模型和 provider 元数据会先读取包内默认 catalog，也可以通过
 `.focus_agent/models.toml` 做本地覆盖；provider 密钥请放在
 `.focus_agent/local.env`。新增自定义 OpenAI-compatible 模型的路径见
 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
+
+PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优先 Ollama `embeddinggemma`，请显式执行 `ollama pull embeddinggemma`，或配置 OpenAI-compatible embedding endpoint。
 
 启动后可访问：
 

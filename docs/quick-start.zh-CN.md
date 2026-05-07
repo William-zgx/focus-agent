@@ -12,7 +12,8 @@ flowchart LR
     Postgres -- "是" --> External["使用外部数据库"]
     Managed --> App["打开 /app"]
     External --> App
-    App --> Observe["检查 /readyz, /metrics 和观测页面"]
+    App --> Ready["检查 /readyz"]
+    Ready --> Observe["打开 /metrics 和观测页面"]
 ```
 
 ## 1. 本地初始化
@@ -21,7 +22,6 @@ flowchart LR
 uv venv
 source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
-cp .env.example .env
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```
@@ -32,10 +32,9 @@ pnpm install --registry=https://registry.npmjs.org
 - `.focus_agent/models.toml`
 - `.focus_agent/tools.toml`
 
-Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配置文件里。
-如果只是给某个部署新增 OpenAI-compatible 模型，请在 `.focus_agent/models.toml`
-里增加 provider/model 元数据，并只把密钥和 endpoint 放到 `.focus_agent/local.env`。
-只有当模型需要成为所有新环境的内置默认支持时，才修改 `src/focus_agent/defaults/models.toml`。
+Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配置文件里。根目录 `.env.example` 主要供 Docker Compose 或手动 shell export 参考；本地 API 启动路径读取 `.focus_agent/local.env` 和进程环境变量。
+
+如果只是给某个部署新增 OpenAI-compatible chat 模型，请在 `.focus_agent/models.toml` 里增加 provider/model 元数据，并只把密钥和 endpoint 放到 `.focus_agent/local.env`。只有当模型需要成为所有新环境的内置默认支持时，才修改 `src/focus_agent/defaults/models.toml`。
 
 ## 2. 启动 API
 
@@ -53,7 +52,7 @@ make api
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness，`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
+其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和 `memory_pgvector`。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
 
 ## 3. 本地托管 PostgreSQL
 
@@ -76,7 +75,71 @@ source .focus_agent/postgres/runtime.env
 psql "$DATABASE_URI"
 ```
 
-## 4. 前端开发模式
+## 4. Memory Embedding 与 pgvector
+
+PostgreSQL memory 是生产 canonical memory store。Postgres-backed 运行默认启用 Memory Embedding：
+
+- `AGENT_MEMORY_EMBEDDING_ENABLED=true`
+- `AGENT_MEMORY_EMBEDDING_BACKEND=auto`
+- `AGENT_MEMORY_EMBEDDING_MODEL=embeddinggemma`
+- `AGENT_MEMORY_EMBEDDING_DIMENSIONS=768`
+- `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid`
+
+本地 auto 模式优先使用 Ollama `embeddinggemma`。应用不会自动执行 `ollama pull`，需要你显式安装：
+
+```bash
+ollama pull embeddinggemma
+```
+
+Chat provider 可以继续使用 `OLLAMA_BASE_URL=http://127.0.0.1:11434/v1`；embedding provider 会把它规范化为 Ollama native `http://127.0.0.1:11434`，并调用 `/api/tags` 和 `/api/embed`。
+
+如果使用云端 embedding，请显式配置 OpenAI-compatible embedding backend，不要依赖 chat model provider：
+
+```env
+AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible
+AGENT_MEMORY_EMBEDDING_MODEL=text-embedding-3-small
+AGENT_MEMORY_EMBEDDING_DIMENSIONS=1536
+AGENT_MEMORY_EMBEDDING_BASE_URL=https://api.openai.com/v1
+AGENT_MEMORY_EMBEDDING_API_KEY_ENV=OPENAI_API_KEY
+# 也可以在本地 secret 文件中直接设置 AGENT_MEMORY_EMBEDDING_API_KEY
+```
+
+维护 CLI 可用于只读诊断和受控重建：
+
+```bash
+focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
+```
+
+`rebuild` 只会删除并重建 `focus_memory_embeddings`，不会删除 `focus_memories`、audit events、tombstones、candidates 或 checkpoints。
+
+生产环境建议由 DBA 或迁移账号预装 Postgres `vector` extension，并让应用以校验模式启动：
+
+```env
+AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
+```
+
+## 5. Runtime 协调
+
+默认本地协调是 local-first：
+
+- `BACKGROUND_JOB_EXECUTION=best_effort`
+- `BACKGROUND_JOB_BACKEND=memory`
+- `RUNTIME_THREAD_LOCK_TTL_SECONDS=300`
+- `RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS=30`
+- `BACKGROUND_JOB_CLAIM_TTL_SECONDS=300`
+
+共享 Postgres 部署可以开启 durable background execution，必须同时配置：
+
+```env
+BACKGROUND_JOB_EXECUTION=durable
+BACKGROUND_JOB_BACKEND=postgres
+DATABASE_URI=postgresql://user:pass@host:5432/focus_agent
+```
+
+Durable jobs 使用 claim token 和 claim heartbeat；chat/branch 写操作使用 per-thread lease。首轮 branch title/metadata refresh 会在 chat turn lease release 后再调度，避免 immediate background worker 和当前 turn lock 竞争。
+
+## 6. 前端开发模式
 
 如果你要本地联调前端：
 
@@ -95,13 +158,13 @@ WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app
 - 前端：`http://127.0.0.1:5173/app/`
 - API：`http://127.0.0.1:8000`
 
-## 5. 一键本地模式
+## 7. 一键本地模式
 
 - `make serve` / `make serve-dev`：启动前端 Vite dev server 和带热重载的后端 API
 - `make serve-prod`：先构建静态前端，再以非 reload 模式启动后端
 - `make dev`：只启动后端，并启用 `API_RELOAD=1`
 
-## 6. 本地鉴权
+## 8. 本地鉴权
 
 内置 `/app` 会把未登录用户引导到 `/app/auth/login`，并通过 `return_to` 保留原本要访问的受保护页面。本地开发最快的浏览器路径是：
 
@@ -130,7 +193,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
 - 在 `/app/admin/users` 创建用户只会创建用户记录；验证用户名密码登录前，需要先为该用户 reset password。
 - 退出登录会清掉 Web App 本地 token、清掉 auth cookie，并撤销 refresh session。Access token 和 demo token 是无状态 token，已经复制出去的 token 在过期或密钥轮换前仍可再次粘贴使用。
 
-## 7. 浏览器 Smoke 测试
+## 9. 浏览器 Smoke 测试
 
 `make ui-smoke` 默认使用 `scripts/ui_smoke_test.py` 中配置的 app URL，通常对应 Vite dev server。当你想验证后端托管的静态 bundle，或本地调试时临时关闭鉴权，可以显式启动 API 并传入页面地址：
 
@@ -144,8 +207,11 @@ uv run python scripts/ui_smoke_test.py \
 
 如果改动涉及 streaming、transport validation 或 web search，不要只用默认 OK 消息；应使用真实工具调用问题。Smoke 脚本会等待流式 assistant 回复稳定后再断言最终文本。
 
-## 8. 下一步文档
+如果使用 Vite dev server，请保留 `http://127.0.0.1:5173/app/` 末尾的斜杠；`http://127.0.0.1:5173/app` 在 dev server 下可能有不同处理。Smoke 脚本会用临时 Chrome profile，避免本地 localStorage、扩展和个人 profile 中的登录态影响结果。如果手动浏览器打开空白登录页而 smoke 通过，请先清理 `127.0.0.1` 站点数据或使用干净 profile，再判断是否是 UI 回归。
 
+## 10. 下一步文档
+
+- [Memory System v2](memory-system-v2.md)
 - [Observability Runbook](observability-runbook.md)
 - [开发指南](development.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)

@@ -73,6 +73,14 @@ flowchart TD
   - PostgreSQL 数据：`focus_agent_pgdata`
 - 默认 `DATABASE_URI` 指向 `postgres` service
 
+注意：官方 `postgres:16-bookworm` 镜像通常不预装 `pgvector`。当前 Memory v2 在 Postgres-backed 运行下默认启用 pgvector embedding/hybrid；如果继续使用该默认 Compose 数据库，请选择下面之一：
+
+- 换成已包含 `vector` extension 的 PostgreSQL 镜像或自建镜像。
+- 在外部 PostgreSQL 预装 `vector`，并通过 `FOCUS_AGENT_DATABASE_URI` 指向它。
+- 本地容器只验证非 embedding 路径时，在 `/data/local.env` 中临时设置 `AGENT_MEMORY_EMBEDDING_ENABLED=false`、`AGENT_MEMORY_EMBEDDING_BACKEND=disabled`，并把 `AGENT_MEMORY_VECTOR_SEARCH_MODE=off`。
+
+生产/预发不建议让应用账号创建 extension；应先由 DBA 或迁移账号执行 `CREATE EXTENSION IF NOT EXISTS vector`，再在应用环境中设置 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required`。
+
 启动：
 
 ```bash
@@ -129,6 +137,8 @@ docker compose logs -f focus-agent postgres
 - 未显式设置 `FOCUS_AGENT_DATABASE_URI` 时，Compose 默认连接本文件内的 `postgres` service
 - 如果显式设置 `FOCUS_AGENT_DATABASE_URI`，应用会优先使用该值
 - provider 密钥和 Base URL 默认来自 `/data/local.env`，新增 OpenAI-compatible provider 通常只需要在 `/data/models.toml` 和 `/data/local.env` 增加对应配置；如果想临时覆盖内置常用 provider，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`MIMO_API_KEY`、`MIMO_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
+- 本地 embedding auto 模式优先 Ollama `embeddinggemma`。如果 Ollama 跑在宿主机上，容器内通常需要把 `/data/local.env` 里的 `OLLAMA_BASE_URL` 指到宿主机可达地址，例如 Docker Desktop 的 `http://host.docker.internal:11434/v1`；embedding provider 会规范化成 native Ollama base URL 并调用 `/api/tags`、`/api/embed`
+- Memory embedding、pgvector、runtime lease 和 durable jobs 读取的是应用内 `AGENT_MEMORY_*`、`RUNTIME_THREAD_LOCK_*`、`BACKGROUND_JOB_*` 变量。默认容器入口会从 `/data/local.env` 读取这些变量；如果要通过 Compose host env 控制它们，需要在 `compose.yaml` 的 `environment` 中显式增加映射
 - 如果要在 readiness、metrics 和 trajectory correlation 中标记版本或部署批次，可在 Compose environment 中显式传入 `APP_VERSION`、`APP_ENVIRONMENT` 或 `DEPLOYMENT_NAME`
 - 本地 Docker 路径下建议继续保留 demo token，方便 Web App 直接调试
 
@@ -159,6 +169,19 @@ export FOCUS_AGENT_RATE_LIMIT_ENABLED=true
 docker compose -f compose.prod.yaml up -d
 ```
 
+生产 memory embedding / pgvector / durable job 配置建议写入挂载卷里的 `/data/local.env`，或在 `compose.prod.yaml` 中显式映射为应用读取的变量：
+
+```env
+AGENT_MEMORY_EMBEDDING_ENABLED=true
+AGENT_MEMORY_EMBEDDING_BACKEND=auto
+AGENT_MEMORY_EMBEDDING_MODEL=embeddinggemma
+AGENT_MEMORY_EMBEDDING_DIMENSIONS=768
+AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid
+AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
+BACKGROUND_JOB_EXECUTION=durable
+BACKGROUND_JOB_BACKEND=postgres
+```
+
 如果你保留 `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`，内置 `/app` 首次打开时不会再自动申请 demo token，而是会显示 Bearer Token 登录卡片。此时需要提供一个已有的访问令牌，或在你的部署层接入自定义登录 / JWT 分发能力。
 
 生产 Auth / Access Model 边界：
@@ -185,6 +208,7 @@ docker compose -f compose.prod.yaml up -d
 - `FOCUS_AGENT_RATE_LIMIT_ENABLED=true`
 - `API_RELOAD=0`
 - `DATABASE_URI` 必须指向外部 PostgreSQL
+- 外部 PostgreSQL 必须完成应用需要的 schema migration；如果启用默认 Memory Embedding，必须已安装 `vector` extension，并保持 `focus_memory_embeddings.embedding` 维度与当前 embedding provider/model 一致
 - provider secrets 不写入镜像
 - 应用容器只保留 `/data` 作为本地文件目录（artifact 正文、默认配置拷贝等）
 - 建议显式设置 `APP_VERSION`、`APP_ENVIRONMENT`、`DEPLOYMENT_NAME`，便于 `/readyz`、`/metrics` 和 trajectory 记录定位发布批次
@@ -202,6 +226,8 @@ docker compose -f compose.prod.yaml up -d
 - `focus_agent_team_outputs`
 - LangGraph checkpoint/store
 - trajectory 观测表
+- Memory v2 业务表：`focus_memories`、`focus_memory_audit_events`、`focus_memory_tombstones`、`focus_memory_candidates`
+- Memory embedding shadow：`focus_memory_embeddings`，只保存可重建向量索引，不是 canonical memory truth
 
 artifact 正文文件继续保留在文件系统，不直接入库。
 

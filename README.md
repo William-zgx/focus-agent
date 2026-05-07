@@ -38,17 +38,21 @@ Requirements:
 uv venv
 source .venv/bin/activate
 uv pip install -e '.[openai,dev]'
-cp .env.example .env
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 pnpm web:build
 make api
 ```
 
+`make setup-local` creates `.focus_agent/local.env`, `.focus_agent/models.toml`, and `.focus_agent/tools.toml`.
+The root `.env.example` is a reference for Compose or manual shell exports; the local API startup path reads `.focus_agent/local.env` and process environment variables.
+
 Model/provider metadata is loaded from the packaged default catalog and can be
 overridden locally through `.focus_agent/models.toml`; keep provider secrets in
 `.focus_agent/local.env`. See [docs/quick-start.md](docs/quick-start.md) for the
 custom OpenAI-compatible model path.
+
+Memory embedding is enabled by default when PostgreSQL memory is available. Local auto mode prefers Ollama `embeddinggemma`; install it explicitly with `ollama pull embeddinggemma`, or configure an OpenAI-compatible embedding endpoint.
 
 Then open:
 

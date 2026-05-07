@@ -1,6 +1,6 @@
 # Focus Agent Memory System v2
 
-更新时间：2026-05-06
+更新时间：2026-05-07
 
 本文是 PostgreSQL canonical memory 架构的系统设计文档。它描述当前仓库中的真实实现，而不是未来设想。旧版 `docs/memory-system.md` 仍可作为演进背景阅读；本文件重点整理 v2 后的设计边界、数据模型、运行时链路、pgvector embedding、审计治理和后续风险。
 
@@ -72,7 +72,8 @@ flowchart TD
 | `src/focus_agent/repositories/memory_repository.py` | canonical memory repository protocol。 |
 | `src/focus_agent/repositories/postgres_memory_repository.py` | PostgreSQL 实现，读写 `focus_memories`、`focus_memory_embeddings` 等业务表。 |
 | `src/focus_agent/repositories/postgres_schema.py` | schema v8-v10，创建 memory/audit/tombstone/candidate/embedding 表和索引。 |
-| `src/focus_agent/memory/embedding.py` | `EmbeddingProvider`、OpenAI-compatible provider、deterministic test provider、embedding text/hash。 |
+| `src/focus_agent/memory/embedding.py` | `EmbeddingProvider`、Ollama native provider、OpenAI-compatible provider、deterministic test provider、provider auto detection、embedding text/hash。 |
+| `src/focus_agent/memory/embedding_policy.py` | `MemoryEmbeddingPolicy`，统一判断长期语义 memory 是否进入 pgvector shadow。 |
 | `src/focus_agent/memory/embedding_service.py` | `MemoryEmbeddingService` re-export，供 runtime/writer/tools/迁移引用。 |
 | `src/focus_agent/memory/retriever.py` | namespace 选择、query 构造、repository FTS search、可选 vector search、shadow/hybrid 计划、rerank、dedupe、retrieval plan。 |
 | `src/focus_agent/memory/policy.py` | 自动写入准入、读取 namespace、PromptMode 过滤和 section budget。 |
@@ -83,6 +84,7 @@ flowchart TD
 | `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前保持 FTS/rerank/dedupe。 |
 | `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/candidates/forget surface。 |
 | `src/focus_agent/migrate_local_state.py` | legacy LangGraph Store memory backfill 到 `focus_memories`，可选补齐 memory embeddings。 |
+| `src/focus_agent/memory_embedding_cli.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
 
 ## 3. 数据模型
 
@@ -291,7 +293,8 @@ pgvector 默认启用，但它仍只是 canonical memory 的可重建语义索�
 - embedding 表只保存按 `memory_id` 关联的向量和索引 metadata，不能成为权限、forget、audit 或 migration 的唯一事实源。
 - API/SDK/Web 只返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`；不会返回 `embedding`、`embedding_vector`、`vector` 等向量字段。
 - 检索仍必须先应用 namespace/read policy；embedding recall 只能在同一权限边界内补充召回或排序。
-- provider/model/dimensions/content_hash 是幂等和多模型并存边界；维度变化应通过新 model/version 和重建流程处理。
+- provider/model/dimensions/content_hash 是幂等和多模型并存边界；同一 memory 内容变化时 repository 会先使同 provider/model 的旧 active embedding 失效，再写入新 hash，避免 stale vector 继续参与召回。
+- `OllamaEmbeddingProvider` 使用 native `/api/embed`；如果 `OLLAMA_BASE_URL` 或 `AGENT_MEMORY_EMBEDDING_BASE_URL` 以 `/v1` 结尾，会先规范化为 native base URL，再调用 `/api/tags` 和 `/api/embed`。
 - embedding 缺失、过期、provider 失败或模型不匹配时，系统应继续走 PostgreSQL FTS + `ILIKE` fallback。
 
 ### 4.2 Embedding 分层策略
@@ -413,12 +416,22 @@ flowchart TD
 | `AGENT_MEMORY_EMBEDDING_DIMENSIONS` | `768` | pgvector 列维度和 provider 输出维度校验。维度变化应走新 model/version + rebuild。 |
 | `AGENT_MEMORY_EMBEDDING_BASE_URL` | unset | Ollama native base URL 或 OpenAI-compatible endpoint；auto 模式未设置时使用 `OLLAMA_BASE_URL` 或 `http://127.0.0.1:11434`。 |
 | `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` | `OPENAI_API_KEY` | 云端 OpenAI-compatible embedding 从哪个环境变量读取 API key；Ollama native 不需要真实 key。 |
+| `AGENT_MEMORY_EMBEDDING_API_KEY` | unset | 直接传入 OpenAI-compatible embedding API key；存在时优先于 `*_API_KEY_ENV`。 |
 | `AGENT_MEMORY_EMBEDDING_BATCH_SIZE` | `32` | embedding service 批量大小上限。 |
-| `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS` | `30.0` | OpenAI-compatible provider 请求超时。 |
+| `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS` | `30.0` | Ollama native 和 OpenAI-compatible provider 请求超时。 |
 | `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `hybrid` | 默认使用 RRF 合并 FTS/vector；`shadow` 只记录 vector candidates；无 provider 时回退到 FTS。 |
 | `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | v10 schema 中是否创建 HNSW vector index。 |
 
-本地默认路线需要显式安装模型：`ollama pull embeddinggemma`。应用启动不会静默下载模型；缺失时 readiness 和 `focus-agent-memory-embedding doctor` 会给出安装提示。auto 不会把 chat model 凭据当作默认 embedding fallback；若使用云端 embedding endpoint，显式设置 `AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible`、`AGENT_MEMORY_EMBEDDING_MODEL`、`AGENT_MEMORY_EMBEDDING_BASE_URL`、`AGENT_MEMORY_EMBEDDING_API_KEY_ENV` 或 `AGENT_MEMORY_EMBEDDING_API_KEY`。provider 请求失败不会回滚 memory 写入，但 readiness 会把 `memory_embedding_backend` 标成 degraded。
+本地默认路线需要显式安装模型：`ollama pull embeddinggemma`。应用启动不会静默下载模型；缺失时 readiness 和 `focus-agent-memory-embedding doctor` 会给出安装提示。auto 首先探测 Ollama，只有显式配置了 cloud embedding fallback 信号时才尝试 OpenAI-compatible fallback；这些信号包括 `AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible`、`AGENT_MEMORY_EMBEDDING_PROVIDER=openai_compatible`、`AGENT_MEMORY_EMBEDDING_BASE_URL`、`AGENT_MEMORY_EMBEDDING_API_KEY`、非默认的 `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` 或非 `embeddinggemma` 的 explicit model。显式 cloud fallback 可以使用 memory embedding 专用 endpoint/key，也可以在缺省时复用已解析的模型 catalog client kwargs。provider 请求失败不会回滚 memory 写入，但 readiness 会把 `memory_embedding_backend` 标成 degraded。
+
+维护命令：
+
+```bash
+focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
+```
+
+`doctor` 是只读检查；`rebuild` 只删除并重建 `focus_memory_embeddings` 和它的索引，不删除 `focus_memories` canonical 数据。维度从当前 provider 或 `AGENT_MEMORY_EMBEDDING_DIMENSIONS` 解析；旧 `vector(1536)` 表切到 `embeddinggemma` 的 `vector(768)` 时应走这个显式重建流程。
 
 ## 6. Namespace 与隔离
 
@@ -822,7 +835,7 @@ flowchart TD
 - dry-run 只解析和计数，不写 Postgres。
 - schema v9 会幂等清理历史 forgotten rows，把遗留 `content/summary/data_json` 正文替换为空正文和 `[forgotten]` 摘要。
 - `--backfill-memory-embeddings` 会扫描 `status=active` 的 canonical memory，并按当前 env 中的 embedding provider/model/dimensions best-effort 补齐 shadow，报告 `scanned/written/skipped/failed`。
-- embedding backfill 依赖目标数据库已具备 v10 pgvector schema。生产通常由 runtime 在 embedding enabled 或 hybrid 时 setup；离线迁移前也可以先用相同配置启动一次 schema setup。当前 backfill 不会把 local fallback 当 embedding 事实源。
+- embedding backfill 会在执行前用当前 provider dimensions 调用 repository setup，确保 fresh database 也能创建 v10 pgvector schema。生产环境仍应先由 DBA/迁移账号预装 `vector` extension，并把应用设为 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required`。当前 backfill 不会把 local fallback 当 embedding 事实源。
 - tombstone 防回填仍需在更完整 dual read/backfill 阶段继续补强。
 
 ## 15. Observability 与 AgentState
@@ -986,7 +999,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 - Postgres 是 production canonical。
 - local fallback 可用于裸跑、单测、离线迁移。
 - local fallback 不维护 pgvector shadow，不保证 `embedding_*` metadata；缺失 metadata 不应影响本地 search/write/forget 基础路径。
-- 离线 embedding backfill 依赖 v10 pgvector schema 已存在；如果单独跑 `--backfill-memory-embeddings`，需要先确认数据库已用 embedding/hybrid 配置完成 schema setup。
+- 离线 embedding backfill 会尝试按当前 provider dimensions 初始化 v10 pgvector schema；生产仍需要提前安装 `vector` extension，避免应用账号在 `required` 模式下创建 extension。
 - migration/backfill 完成后应尽量避免 dual truth 长期存在。
 
 ## 19. 文件导航
@@ -996,6 +1009,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 - `src/focus_agent/memory/models.py`
 - `src/focus_agent/memory/service.py`
 - `src/focus_agent/memory/embedding.py`
+- `src/focus_agent/memory/embedding_policy.py`
 - `src/focus_agent/memory/embedding_service.py`
 - `src/focus_agent/memory/retriever.py`
 - `src/focus_agent/memory/writer.py`
@@ -1011,12 +1025,14 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 - `src/focus_agent/engine/runtime.py`
 - `src/focus_agent/engine/graph_memory_nodes.py`
+- `src/focus_agent/api/route_utils/readiness.py`
 - `src/focus_agent/core/state.py`
 - `src/focus_agent/services/branch_memory_promotion.py`
 
 工具、API、SDK、Web：
 
 - `src/focus_agent/capabilities/default_tool_modules/memory.py`
+- `src/focus_agent/memory_embedding_cli.py`
 - `src/focus_agent/api/routers/memory.py`
 - `src/focus_agent/api/contract_models/memory.py`
 - `frontend-sdk/src/client/memory.ts`
@@ -1027,6 +1043,8 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 - `src/focus_agent/migrate_local_state.py`
 - `tests/test_memory_service.py`
+- `tests/test_memory_embedding_policy.py`
+- `tests/test_memory_embedding_cli.py`
 - `tests/test_memory_embedding_provider.py`
 - `tests/test_postgres_memory_repository.py`
 - `tests/test_memory_retriever.py`
