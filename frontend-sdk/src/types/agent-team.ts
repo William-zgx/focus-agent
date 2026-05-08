@@ -19,6 +19,7 @@ export type FocusAgentAgentTeamTaskRole =
 
 export type FocusAgentAgentTeamTaskStatus =
   | "pending"
+  | "queued"
   | "running"
   | "blocked"
   | "done"
@@ -54,6 +55,13 @@ export interface FocusAgentAgentTeamPlanningMetadata {
   plan_hash?: string | null;
   error?: string | null;
   task_count: number;
+}
+
+export interface FocusAgentAgentTeamRunMetadata {
+  execution_mode?: string | null;
+  scheduled_task_ids?: string[];
+  running_task_ids?: string[];
+  max_parallel_runs?: number;
 }
 
 export interface FocusAgentAgentTeamSession {
@@ -105,6 +113,14 @@ export interface FocusAgentAgentTeamTask {
   started_at?: string | null;
   finished_at?: string | null;
   last_error?: string | null;
+  attempt?: number;
+  max_attempts?: number;
+  claim_owner?: string | null;
+  claimed_until?: string | null;
+  queued_at?: string | null;
+  heartbeat_at?: string | null;
+  execution_mode?: string | null;
+  cancel_requested_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -196,6 +212,7 @@ export interface FocusAgentAgentTeamSessionView {
   artifacts: FocusAgentAgentTeamArtifact[];
   merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
   planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  run?: FocusAgentAgentTeamRunMetadata | null;
 }
 
 export interface FocusAgentAgentTeamSessionRunRequest {
@@ -221,6 +238,7 @@ export interface FocusAgentAgentTeamSessionRunResponse {
   artifacts: FocusAgentAgentTeamArtifact[];
   merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
   planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  run?: FocusAgentAgentTeamRunMetadata | null;
   count: number;
 }
 
@@ -244,6 +262,7 @@ export interface FocusAgentAgentTeamRunTaskResponse {
   artifacts: FocusAgentAgentTeamArtifact[];
   merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
   planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  run?: FocusAgentAgentTeamRunMetadata | null;
   count: number;
 }
 

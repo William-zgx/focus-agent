@@ -29,6 +29,13 @@ class AgentTeamPlanningMetadata(BaseModel):
     task_count: int = 0
 
 
+class AgentTeamRunMetadata(BaseModel):
+    execution_mode: str | None = None
+    scheduled_task_ids: list[str] = Field(default_factory=list)
+    running_task_ids: list[str] = Field(default_factory=list)
+    max_parallel_runs: int = 1
+
+
 class AgentTeamSessionContract(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -82,6 +89,14 @@ class AgentTeamTaskContract(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     last_error: str | None = None
+    attempt: int = 0
+    max_attempts: int = 2
+    claim_owner: str | None = None
+    claimed_until: str | None = None
+    queued_at: str | None = None
+    heartbeat_at: str | None = None
+    execution_mode: str | None = None
+    cancel_requested_at: str | None = None
     created_at: str
     updated_at: str
 
@@ -150,6 +165,15 @@ class AgentTeamPlanSessionRequest(DispatchAgentTeamSessionRequest):
     max_tasks: int | None = Field(default=None, ge=1)
 
 
+class RunAgentTeamSessionRequest(BaseModel):
+    task_ids: list[str] = Field(default_factory=list)
+    run_ready_only: bool | None = None
+    metadata: dict[str, Any] | None = None
+    create_branches: bool | None = None
+    auto_fork_branch: bool | None = None
+    parent_thread_id: str | None = None
+
+
 class UpdateAgentTeamTaskRequest(BaseModel):
     status: AgentTeamTaskStatus | None = None
     goal: str | None = None
@@ -196,6 +220,7 @@ class AgentTeamSessionViewResponse(BaseModel):
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
     merge_bundle: AgentTeamMergeBundleContract | None = None
     planning: AgentTeamPlanningMetadata | None = None
+    run: AgentTeamRunMetadata | None = None
 
 
 class RecordAgentTeamTaskOutputRequest(BaseModel):
@@ -242,6 +267,8 @@ __all__ = [
     "AgentTeamPlanGranularity",
     "AgentTeamPlanFocus",
     "AgentTeamPlanningMetadata",
+    "AgentTeamRunMetadata",
+    "RunAgentTeamSessionRequest",
     "AgentTeamFinalAnswerStatus",
     "AgentTeamSessionContract",
     "AgentTeamTaskContract",

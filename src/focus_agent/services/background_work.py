@@ -18,6 +18,8 @@ logger = logging.getLogger("focus_agent.background")
 
 REGISTERED_BACKGROUND_JOB_KINDS = frozenset(
     {
+        "agent_team_run_session",
+        "agent_team_run_task",
         "context_compaction",
         "conversation_title",
         "branch_title",
@@ -73,7 +75,27 @@ def register_default_background_job_handlers(
     *,
     chat_service: Any | None = None,
     branch_service: Any | None = None,
+    agent_team_service: Any | None = None,
 ) -> None:
+    if agent_team_service is not None:
+        run_session = getattr(agent_team_service, "run_ready_tasks_once", None)
+        if callable(run_session):
+            registry.register(
+                "agent_team_run_session",
+                lambda payload: run_session(
+                    session_id=_required_payload_string(payload, "session_id"),
+                    user_id=_required_payload_string(payload, "user_id"),
+                ),
+            )
+        run_task = getattr(agent_team_service, "run_task_claimed", None)
+        if callable(run_task):
+            registry.register(
+                "agent_team_run_task",
+                lambda payload: run_task(
+                    task_id=_required_payload_string(payload, "task_id"),
+                    user_id=_required_payload_string(payload, "user_id"),
+                ),
+            )
     if chat_service is not None and callable(getattr(chat_service, "compact_thread_context", None)):
         registry.register(
             "context_compaction",

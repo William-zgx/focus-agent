@@ -4,6 +4,7 @@ import {
   deriveTaskDisplayStates,
   isFallbackPlan,
   isTaskDone,
+  isTaskQueued,
   isTaskReady,
   isTaskRunning,
   normalizeMergeBundle,
@@ -27,10 +28,6 @@ export function useAgentTeamWorkbenchViewModel({
   const view = normalizeSessionView(sessionData);
   const tasks = view?.tasks ?? [];
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const selectedTask = useMemo(() => {
-    if (!tasks.length) return null;
-    return tasks.find((task) => task.task_id === selectedTaskId) ?? tasks[0];
-  }, [selectedTaskId, tasks]);
   const pendingBundle = normalizeMergeBundle(mergeProposalData);
   const activeBundle = pendingBundle ?? view?.merge_bundle ?? null;
   const changedFiles = uniqueNonEmptyStrings(tasks.flatMap((task) => task.changed_files ?? []));
@@ -49,6 +46,7 @@ export function useAgentTeamWorkbenchViewModel({
   ]);
   const readyTasks = tasks.filter((task) => isTaskReady(task, tasks));
   const runningTasks = tasks.filter(isTaskRunning);
+  const queuedTasks = tasks.filter(isTaskQueued);
   const doneTasks = tasks.filter(isTaskDone);
   const taskDisplayStates = deriveTaskDisplayStates(tasks, isChineseUi);
   const taskDisplayState = taskDisplayStates.reduce<Record<string, AgentTeamTaskDisplayState>>((states, state) => {
@@ -57,6 +55,16 @@ export function useAgentTeamWorkbenchViewModel({
   }, {});
   const needsAttentionTaskStates = taskDisplayStates.filter(isActionableTaskState);
   const waitingDependencyTaskStates = taskDisplayStates.filter((state) => state.kind === "waiting_dependency");
+  const selectedTask = useMemo(() => {
+    if (!tasks.length) return null;
+    const explicitTask = selectedTaskId ? tasks.find((task) => task.task_id === selectedTaskId) : null;
+    if (explicitTask) return explicitTask;
+    const recommendedTaskState =
+      needsAttentionTaskStates[0] ??
+      taskDisplayStates.find((state) => state.kind === "ready") ??
+      taskDisplayStates.find((state) => state.kind === "running" || state.kind === "queued");
+    return tasks.find((task) => task.task_id === recommendedTaskState?.taskId) ?? tasks[0];
+  }, [needsAttentionTaskStates, selectedTaskId, taskDisplayStates, tasks]);
   const session = view?.session ?? null;
   const displayTitle = session?.title && session.title !== session.goal ? session.title : titleFromGoal(session?.goal ?? "");
   const fallbackPlan = isFallbackPlan(session, tasks);
@@ -71,6 +79,7 @@ export function useAgentTeamWorkbenchViewModel({
     done: doneTasks.length,
     completed: doneTasks.length,
     running: runningTasks.length,
+    queued: queuedTasks.length,
     blocked: needsAttentionTaskStates.length,
     needsAttention: needsAttentionTaskStates.length,
     ready: readyTasks.length,
@@ -87,6 +96,7 @@ export function useAgentTeamWorkbenchViewModel({
     doneTasksCount: doneTasks.length,
     isChineseUi,
     readyTasksCount: readyTasks.length,
+    queuedTasksCount: queuedTasks.length,
     runningTasksCount: runningTasks.length,
     taskDisplayStates,
     tasks,
@@ -97,6 +107,7 @@ export function useAgentTeamWorkbenchViewModel({
     doneTasksCount: doneTasks.length,
     isChineseUi,
     readyTasksCount: readyTasks.length,
+    queuedTasksCount: queuedTasks.length,
     runningTasksCount: runningTasks.length,
     taskDisplayStates,
     tasks,
@@ -151,6 +162,7 @@ export function useAgentTeamWorkbenchViewModel({
     pendingBundle,
     planningMetadata,
     primaryAction,
+    queuedTasks,
     readyTasks,
     riskItems,
     runningTasks,
@@ -171,6 +183,7 @@ function primaryActionForWorkbench({
   doneTasksCount,
   isChineseUi,
   readyTasksCount,
+  queuedTasksCount,
   runningTasksCount,
   taskDisplayStates,
   tasks,
@@ -180,6 +193,7 @@ function primaryActionForWorkbench({
   doneTasksCount: number;
   isChineseUi: boolean;
   readyTasksCount: number;
+  queuedTasksCount: number;
   runningTasksCount: number;
   taskDisplayStates: AgentTeamTaskDisplayState[];
   tasks: AgentTeamTask[];
@@ -196,14 +210,14 @@ function primaryActionForWorkbench({
     };
   }
 
-  if (runningTasksCount) {
+  if (runningTasksCount || queuedTasksCount) {
     return {
       kind: "running",
-      label: isChineseUi ? "执行中..." : "Running...",
+      label: queuedTasksCount && !runningTasksCount ? (isChineseUi ? "排队中..." : "Queued...") : isChineseUi ? "执行中..." : "Running...",
       help: isChineseUi
-        ? "Mission 正在执行，等待任务回传产出、依据和需要注意的事项。"
-        : "The mission is running; wait for task outputs, evidence, and risks.",
-      disabledReason: isChineseUi ? "当前已有任务执行中" : "A task is already running",
+        ? "Mission 正在执行或排队，等待任务回传产出、依据和需要注意的事项。"
+        : "The mission is running or queued; wait for task outputs, evidence, and risks.",
+      disabledReason: isChineseUi ? "当前已有任务执行中或排队中" : "A task is already running or queued",
     };
   }
 
@@ -267,6 +281,7 @@ function missionStageForWorkbench({
   doneTasksCount,
   isChineseUi,
   readyTasksCount,
+  queuedTasksCount,
   runningTasksCount,
   taskDisplayStates,
   tasks,
@@ -276,6 +291,7 @@ function missionStageForWorkbench({
   doneTasksCount: number;
   isChineseUi: boolean;
   readyTasksCount: number;
+  queuedTasksCount: number;
   runningTasksCount: number;
   taskDisplayStates: AgentTeamTaskDisplayState[];
   tasks: AgentTeamTask[];
@@ -291,11 +307,11 @@ function missionStageForWorkbench({
     };
   }
 
-  if (runningTasksCount) {
+  if (runningTasksCount || queuedTasksCount) {
     return {
-      kind: "running",
-      label: isChineseUi ? "执行中" : "Running",
-      help: isChineseUi ? "任务正在执行，等待产出回传。" : "Tasks are running; wait for outputs to return.",
+      kind: queuedTasksCount && !runningTasksCount ? "queued" : "running",
+      label: queuedTasksCount && !runningTasksCount ? (isChineseUi ? "排队中" : "Queued") : isChineseUi ? "执行中" : "Running",
+      help: isChineseUi ? "任务正在执行或排队，等待产出回传。" : "Tasks are running or queued; wait for outputs to return.",
       tone: "neutral",
     };
   }

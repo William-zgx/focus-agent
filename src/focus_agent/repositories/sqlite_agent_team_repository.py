@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 
-from focus_agent.core.agent_team import AgentTeamSession, AgentTeamTask, AgentTeamTaskOutput
+from focus_agent.core.agent_team import (
+    AgentTeamSession,
+    AgentTeamTask,
+    AgentTeamTaskOutput,
+    AgentTeamTaskStatus,
+)
 
-from .agent_team_repository import AgentTeamRepository
+from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
 
 
 class SQLiteAgentTeamRepository(AgentTeamRepository):
@@ -62,6 +69,9 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_team_tasks_session_created ON agent_team_tasks(session_id, created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_team_tasks_session_updated ON agent_team_tasks(session_id, updated_at)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_team_outputs_task_created ON agent_team_outputs(task_id, created_at)"
@@ -186,6 +196,142 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                 (session_id,),
             ).fetchall()
         return [self._task_from_row(row) for row in rows]
+
+    def claim_task(
+        self, *, task_id: str, owner: str, ttl_seconds: float
+    ) -> AgentTeamTask | None:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT data_json FROM agent_team_tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                conn.rollback()
+                raise KeyError(f"Unknown agent team task: {task_id}")
+            task = self._task_from_row(row)
+            now = _now()
+            if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
+                conn.rollback()
+                return None
+            if task.claimed_until and task.claim_token and _parse_time(task.claimed_until) > now:
+                conn.rollback()
+                return None
+            claim_token = uuid4().hex
+            updated = task.model_copy(
+                update={
+                    "status": AgentTeamTaskStatus.RUNNING,
+                    "attempt": max(0, int(task.attempt or 0)) + 1,
+                    "claim_token": claim_token,
+                    "claim_owner": str(owner or "agent-team-worker"),
+                    "claimed_until": _format_time(
+                        now + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+                    ),
+                    "heartbeat_at": _format_time(now),
+                    "started_at": task.started_at or _format_time(now),
+                    "updated_at": _format_time(now),
+                }
+            )
+            conn.execute(
+                """
+                UPDATE agent_team_tasks
+                SET updated_at = ?, data_json = ?
+                WHERE task_id = ?
+                """,
+                (updated.updated_at, updated.model_dump_json(), task_id),
+            )
+            conn.commit()
+            return updated
+
+    def heartbeat_task_claim(
+        self, *, task_id: str, claim_token: str, ttl_seconds: float
+    ) -> bool:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT data_json FROM agent_team_tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                conn.rollback()
+                raise KeyError(f"Unknown agent team task: {task_id}")
+            task = self._task_from_row(row)
+            now = _now()
+            if (
+                task.claim_token != claim_token
+                or (task.claimed_until and _parse_time(task.claimed_until) <= now)
+            ):
+                conn.rollback()
+                return False
+            updated = task.model_copy(
+                update={
+                    "claimed_until": _format_time(
+                        now + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+                    ),
+                    "heartbeat_at": _format_time(now),
+                    "updated_at": _format_time(now),
+                }
+            )
+            conn.execute(
+                "UPDATE agent_team_tasks SET updated_at = ?, data_json = ? WHERE task_id = ?",
+                (updated.updated_at, updated.model_dump_json(), task_id),
+            )
+            conn.commit()
+            return True
+
+    def release_task_claim(
+        self,
+        *,
+        task_id: str,
+        claim_token: str,
+        final_status: AgentTeamTaskStatus | str,
+        error: str | None = None,
+    ) -> AgentTeamTask:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT data_json FROM agent_team_tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                conn.rollback()
+                raise KeyError(f"Unknown agent team task: {task_id}")
+            task = self._task_from_row(row)
+            now_dt = _now()
+            if (
+                task.claim_token != claim_token
+                or (task.claimed_until and _parse_time(task.claimed_until) <= now_dt)
+            ):
+                conn.rollback()
+                return task
+            now = _format_time(now_dt)
+            status = AgentTeamTaskStatus(final_status)
+            updated = task.model_copy(
+                update={
+                    "status": status,
+                    "claim_token": None,
+                    "claim_owner": None,
+                    "claimed_until": None,
+                    "heartbeat_at": now,
+                    "finished_at": now
+                    if status
+                    in {
+                        AgentTeamTaskStatus.DONE,
+                        AgentTeamTaskStatus.FAILED,
+                        AgentTeamTaskStatus.CANCELLED,
+                        AgentTeamTaskStatus.BLOCKED,
+                    }
+                    else task.finished_at,
+                    "last_error": error if error is not None else task.last_error,
+                    "updated_at": now,
+                }
+            )
+            conn.execute(
+                "UPDATE agent_team_tasks SET updated_at = ?, data_json = ? WHERE task_id = ?",
+                (updated.updated_at, updated.model_dump_json(), task_id),
+            )
+            conn.commit()
+            return updated
 
     def add_task_output(self, output: AgentTeamTaskOutput) -> None:
         with self._connect() as conn:

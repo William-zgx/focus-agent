@@ -48,6 +48,7 @@ def agent_role_for_team_task_role(role: AgentTeamTaskRole | str) -> AgentRole:
 
 class AgentTeamTaskStatus(str, Enum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
     BLOCKED = "blocked"
     DONE = "done"
@@ -124,6 +125,15 @@ class AgentTeamTask(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     verification_summary: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
+    attempt: int = 0
+    max_attempts: int = 2
+    claim_token: str | None = None
+    claim_owner: str | None = None
+    claimed_until: str | None = None
+    queued_at: str | None = None
+    heartbeat_at: str | None = None
+    execution_mode: str | None = None
+    cancel_requested_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
     last_error: str | None = None

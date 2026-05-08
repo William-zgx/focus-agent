@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable
@@ -17,7 +18,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
-from focus_agent.repositories.agent_team_repository import AgentTeamRepository
+from focus_agent.repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
 from focus_agent.repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 
@@ -88,9 +89,18 @@ def _output(
     )
 
 
-@pytest.fixture(params=["sqlite", "postgres"])
+@pytest.fixture(params=["memory", "sqlite", "postgres"])
 def agent_team_repo_factory(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[RepositoryFactory]:
     backend = str(request.param)
+    if backend == "memory":
+        repo = InMemoryAgentTeamRepository()
+
+        def factory() -> AgentTeamRepository:
+            return repo
+
+        yield factory
+        return
+
     if backend == "sqlite":
         db_path = tmp_path / "agent-team.sqlite3"
 
@@ -305,3 +315,106 @@ def test_agent_team_repository_contract_round_trips_execution_links(
     assert loaded.delegated_task_id == "delegated-task-1"
     assert loaded.artifact_ids == ["artifact-1"]
     assert loaded.execution_status == "completed"
+
+
+def test_agent_team_repository_contract_claim_heartbeat_release_roundtrip(
+    agent_team_repo_factory: RepositoryFactory,
+) -> None:
+    repo = agent_team_repo_factory()
+    session = _session(session_id="session-claim")
+    task = _task(
+        task_id="task-claim",
+        session_id=session.session_id,
+        status=AgentTeamTaskStatus.QUEUED,
+    )
+    repo.create_session(session)
+    repo.create_task(task)
+
+    claimed = repo.claim_task(task_id=task.task_id, owner="worker-a", ttl_seconds=30)
+
+    assert claimed is not None
+    assert claimed.status == AgentTeamTaskStatus.RUNNING
+    assert claimed.attempt == 1
+    assert claimed.claim_token
+    assert claimed.claim_owner == "worker-a"
+    assert claimed.claimed_until is not None
+    assert claimed.heartbeat_at is not None
+    assert claimed.started_at is not None
+    assert repo.claim_task(task_id=task.task_id, owner="worker-b", ttl_seconds=30) is None
+
+    reloaded_claim = agent_team_repo_factory().get_task(task.task_id)
+    assert reloaded_claim.claim_token == claimed.claim_token
+    assert reloaded_claim.claim_owner == "worker-a"
+    assert reloaded_claim.status == AgentTeamTaskStatus.RUNNING
+
+    assert (
+        repo.heartbeat_task_claim(
+            task_id=task.task_id,
+            claim_token="wrong-token",
+            ttl_seconds=30,
+        )
+        is False
+    )
+    assert (
+        repo.heartbeat_task_claim(
+            task_id=task.task_id,
+            claim_token=claimed.claim_token or "",
+            ttl_seconds=30,
+        )
+        is True
+    )
+    heartbeat = repo.get_task(task.task_id)
+    assert heartbeat.claim_token == claimed.claim_token
+    assert heartbeat.status == AgentTeamTaskStatus.RUNNING
+    assert heartbeat.heartbeat_at is not None
+
+    ignored_release = repo.release_task_claim(
+        task_id=task.task_id,
+        claim_token="wrong-token",
+        final_status=AgentTeamTaskStatus.DONE,
+    )
+    assert ignored_release.claim_token == claimed.claim_token
+    assert ignored_release.status == AgentTeamTaskStatus.RUNNING
+
+    released = repo.release_task_claim(
+        task_id=task.task_id,
+        claim_token=claimed.claim_token or "",
+        final_status=AgentTeamTaskStatus.DONE,
+    )
+
+    assert released.status == AgentTeamTaskStatus.DONE
+    assert released.claim_token is None
+    assert released.claim_owner is None
+    assert released.claimed_until is None
+    assert released.finished_at is not None
+    persisted_release = agent_team_repo_factory().get_task(task.task_id)
+    assert persisted_release.status == AgentTeamTaskStatus.DONE
+    assert persisted_release.claim_token is None
+
+
+def test_agent_team_repository_contract_expired_claim_cannot_release(
+    agent_team_repo_factory: RepositoryFactory,
+) -> None:
+    repo = agent_team_repo_factory()
+    session = _session(session_id="session-expired-claim")
+    task = _task(
+        task_id="task-expired-claim",
+        session_id=session.session_id,
+        status=AgentTeamTaskStatus.QUEUED,
+    )
+    repo.create_session(session)
+    repo.create_task(task)
+    claimed = repo.claim_task(task_id=task.task_id, owner="worker-a", ttl_seconds=0.001)
+    assert claimed is not None
+    assert claimed.claim_token
+    time.sleep(0.01)
+
+    released = repo.release_task_claim(
+        task_id=task.task_id,
+        claim_token=claimed.claim_token or "",
+        final_status=AgentTeamTaskStatus.DONE,
+    )
+
+    assert released.status == AgentTeamTaskStatus.RUNNING
+    assert released.claim_token == claimed.claim_token
+    assert repo.get_task(task.task_id).status == AgentTeamTaskStatus.RUNNING

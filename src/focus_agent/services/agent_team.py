@@ -34,12 +34,16 @@ class AgentTeamService(
         settings: object | None = None,
         model_factory: object | None = None,
         executor: object | None = None,
+        coordination_backend: object | None = None,
+        background_work: object | None = None,
     ):
         self.branch_service = branch_service
         self.repository = repository or InMemoryAgentTeamRepository()
         self.settings = settings
         self.model_factory = model_factory
         self.executor = executor
+        self.coordination_backend = coordination_backend
+        self.background_work = background_work
         self._lock = RLock()
 
 

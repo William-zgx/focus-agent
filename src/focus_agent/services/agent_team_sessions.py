@@ -275,11 +275,15 @@ class AgentTeamSessionTaskMixin:
         )
 
     def _refresh_session_status(self, session_id: str) -> None:
+        session = self.repository.get_session(session_id)
+        if session.status == AgentTeamSessionStatus.CANCELLED:
+            self._touch_session(session_id, status=AgentTeamSessionStatus.CANCELLED)
+            return
         tasks = self.repository.list_tasks(session_id=session_id)
         if not tasks:
             self._touch_session(session_id)
             return
-        if any(task.status == AgentTeamTaskStatus.RUNNING for task in tasks):
+        if any(task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING} for task in tasks):
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
         elif any(task.status == AgentTeamTaskStatus.FAILED for task in tasks):
             self._touch_session(session_id, status=AgentTeamSessionStatus.FAILED)

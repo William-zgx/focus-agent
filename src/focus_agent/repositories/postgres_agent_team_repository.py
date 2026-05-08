@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from focus_agent.core.agent_team import AgentTeamSession, AgentTeamTask, AgentTeamTaskOutput
+from focus_agent.core.agent_team import (
+    AgentTeamSession,
+    AgentTeamTask,
+    AgentTeamTaskOutput,
+    AgentTeamTaskStatus,
+)
 
-from .agent_team_repository import AgentTeamRepository
+from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
 from .postgres_schema import ensure_app_postgres_schema_on_connection
 
 
@@ -171,6 +178,155 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                 )
                 rows = cur.fetchall()
         return [self._task_from_row(row) for row in rows]
+
+    def claim_task(
+        self, *, task_id: str, owner: str, ttl_seconds: float
+    ) -> AgentTeamTask | None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT data_json FROM focus_agent_team_tasks WHERE task_id = %s FOR UPDATE",
+                    (task_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise KeyError(f"Unknown agent team task: {task_id}")
+                task = self._task_from_row(row)
+                now = _now()
+                if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
+                    return None
+                if task.claimed_until and task.claim_token and _parse_time(task.claimed_until) > now:
+                    return None
+                claim_token = uuid4().hex
+                updated = task.model_copy(
+                    update={
+                        "status": AgentTeamTaskStatus.RUNNING,
+                        "attempt": max(0, int(task.attempt or 0)) + 1,
+                        "claim_token": claim_token,
+                        "claim_owner": str(owner or "agent-team-worker"),
+                        "claimed_until": _format_time(
+                            now + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+                        ),
+                        "heartbeat_at": _format_time(now),
+                        "started_at": task.started_at or _format_time(now),
+                        "updated_at": _format_time(now),
+                    }
+                )
+                cur.execute(
+                    """
+                    UPDATE focus_agent_team_tasks
+                    SET updated_at = %(updated_at)s, data_json = %(data_json)s
+                    WHERE task_id = %(task_id)s
+                    """,
+                    {
+                        "task_id": task_id,
+                        "updated_at": updated.updated_at,
+                        "data_json": Jsonb(self._model_payload(updated)),
+                    },
+                )
+        return updated
+
+    def heartbeat_task_claim(
+        self, *, task_id: str, claim_token: str, ttl_seconds: float
+    ) -> bool:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT data_json FROM focus_agent_team_tasks WHERE task_id = %s FOR UPDATE",
+                    (task_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise KeyError(f"Unknown agent team task: {task_id}")
+                task = self._task_from_row(row)
+                now = _now()
+                if (
+                    task.claim_token != claim_token
+                    or (task.claimed_until and _parse_time(task.claimed_until) <= now)
+                ):
+                    return False
+                updated = task.model_copy(
+                    update={
+                        "claimed_until": _format_time(
+                            now + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+                        ),
+                        "heartbeat_at": _format_time(now),
+                        "updated_at": _format_time(now),
+                    }
+                )
+                cur.execute(
+                    """
+                    UPDATE focus_agent_team_tasks
+                    SET updated_at = %(updated_at)s, data_json = %(data_json)s
+                    WHERE task_id = %(task_id)s
+                    """,
+                    {
+                        "task_id": task_id,
+                        "updated_at": updated.updated_at,
+                        "data_json": Jsonb(self._model_payload(updated)),
+                    },
+                )
+        return True
+
+    def release_task_claim(
+        self,
+        *,
+        task_id: str,
+        claim_token: str,
+        final_status: AgentTeamTaskStatus | str,
+        error: str | None = None,
+    ) -> AgentTeamTask:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT data_json FROM focus_agent_team_tasks WHERE task_id = %s FOR UPDATE",
+                    (task_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise KeyError(f"Unknown agent team task: {task_id}")
+                task = self._task_from_row(row)
+                now_dt = _now()
+                if (
+                    task.claim_token != claim_token
+                    or (task.claimed_until and _parse_time(task.claimed_until) <= now_dt)
+                ):
+                    return task
+                now = _format_time(now_dt)
+                status = AgentTeamTaskStatus(final_status)
+                updated = task.model_copy(
+                    update={
+                        "status": status,
+                        "claim_token": None,
+                        "claim_owner": None,
+                        "claimed_until": None,
+                        "heartbeat_at": now,
+                        "finished_at": now
+                        if status
+                        in {
+                            AgentTeamTaskStatus.DONE,
+                            AgentTeamTaskStatus.FAILED,
+                            AgentTeamTaskStatus.CANCELLED,
+                            AgentTeamTaskStatus.BLOCKED,
+                        }
+                        else task.finished_at,
+                        "last_error": error if error is not None else task.last_error,
+                        "updated_at": now,
+                    }
+                )
+                cur.execute(
+                    """
+                    UPDATE focus_agent_team_tasks
+                    SET updated_at = %(updated_at)s, data_json = %(data_json)s
+                    WHERE task_id = %(task_id)s
+                    """,
+                    {
+                        "task_id": task_id,
+                        "updated_at": updated.updated_at,
+                        "data_json": Jsonb(self._model_payload(updated)),
+                    },
+                )
+        return updated
 
     def add_task_output(self, output: AgentTeamTaskOutput) -> None:
         with self._connect() as conn:

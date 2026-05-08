@@ -12,6 +12,7 @@ import { errorMessage } from "./agent-team-workbench-utils";
 import {
   useAgentTeamMergeProposal,
   useAgentTeamSession,
+  useCancelAgentTeamSession,
   usePlanAgentTeamSession,
   useRunAgentTeamSession,
 } from "./use-agent-team";
@@ -32,16 +33,23 @@ type MissionProgressState = {
   done?: number;
   completed?: number;
   running?: number;
+  queued?: number;
   blocked?: number;
   ready?: number;
   percent?: number;
 };
+
+type MissionRefineRequest = Partial<{
+  focus: string;
+  granularity: string;
+}>;
 
 export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) {
   const { isChineseUi } = useShellUi();
   const sessionQuery = useAgentTeamSession(sessionId);
   const planSession = usePlanAgentTeamSession(sessionId);
   const runSession = useRunAgentTeamSession(sessionId);
+  const cancelSession = useCancelAgentTeamSession(sessionId);
   const mergeProposal = useAgentTeamMergeProposal(sessionId);
   const workbenchVm = useAgentTeamWorkbenchViewModel({
     isChineseUi,
@@ -59,6 +67,7 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
     nextStep,
     planningMetadata,
     primaryAction,
+    queuedTasks,
     readyTasks,
     riskItems,
     selectedTask,
@@ -109,10 +118,10 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
   };
   const refineOptions = isChineseUi
     ? [
-        { label: "更细", request: { granularity: "detailed" } },
-        { label: "更粗", request: { granularity: "coarse" } },
-        { label: "偏实现", request: { focus: "implementation" } },
-        { label: "偏验证", request: { focus: "verification" } },
+        { label: "调整为更细拆解", request: { granularity: "detailed" } },
+        { label: "调整为更粗拆解", request: { granularity: "coarse" } },
+        { label: "调整为偏实现", request: { focus: "implementation" } },
+        { label: "调整为偏验证", request: { focus: "verification" } },
       ]
     : [
         { label: "More detailed", request: { granularity: "detailed" } },
@@ -125,6 +134,39 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
   const adjustMissionBreakdown = () =>
     planSession.mutate({ create_branches: true, replace_existing: true, granularity: "balanced", focus: "auto" });
   const runMission = () => runSession.mutate({ run_ready_only: true, task_ids: readyTasks.map((task) => task.task_id) });
+  const cancelMission = () => cancelSession.mutate();
+  const confirmAndReplanMission = () => {
+    const message = isChineseUi
+      ? "重新拆解会替换当前任务列表，已完成的任务产出仍会留在高级详情中。确定继续？"
+      : "Replanning will replace the current task list. Completed outputs remain in advanced details. Continue?";
+    if (!window.confirm(message)) return;
+    replanMission();
+  };
+  const confirmAndAdjustMissionBreakdown = () => {
+    const message = isChineseUi
+      ? "调整拆解会重新生成任务列表。确定继续？"
+      : "Adjusting the breakdown will regenerate the task list. Continue?";
+    if (!window.confirm(message)) return;
+    adjustMissionBreakdown();
+  };
+  const confirmAndCancelMission = () => {
+    const message = isChineseUi
+      ? "取消 Mission 会停止继续调度任务；已在模型调用中的任务会合作式结束。确定取消？"
+      : "Cancelling stops further scheduling; tasks already in a model call finish cooperatively. Cancel mission?";
+    if (!window.confirm(message)) return;
+    cancelMission();
+  };
+  const refineMission = (request: MissionRefineRequest) => {
+    const message = isChineseUi
+      ? "这会按新的偏好重新拆解任务。确定继续？"
+      : "This will replan tasks with the new preference. Continue?";
+    if (!window.confirm(message)) return;
+    planSession.mutate({
+      create_branches: true,
+      replace_existing: true,
+      ...request,
+    });
+  };
   const generateResult = () => mergeProposal.mutate();
   const toggleAdvancedDetails = () => setAdvancedDetailsOpen((open) => !open);
   const primaryActionBusy =
@@ -150,24 +192,22 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
     help: activeBundle ? nextStep.help : primaryAction.help,
   });
   const guidedMissionProgress = normalizeMissionProgress(uxState.missionProgress, missionProgress);
+  const canCancelMission =
+    !cancelSession.isPending &&
+    (session.status === "planning" ||
+      session.status === "running" ||
+      (queuedTasks?.length ?? 0) > 0 ||
+      (guidedMissionProgress.running ?? 0) > 0 ||
+      (guidedMissionProgress.queued ?? 0) > 0);
   const missionStatusText = nextStepHint.label;
   const missionStatusHelp = nextStepHint.help ?? primaryAction.help;
-  const executionMode = executionModeForWorkbench(view.outputs ?? [], isChineseUi);
+  const executionMode = executionModeForWorkbench(view.outputs ?? [], isChineseUi, view.run);
   const allTasksComplete =
     (guidedMissionProgress.total ?? 0) > 0 &&
     (guidedMissionProgress.done ?? 0) >= (guidedMissionProgress.total ?? 0) &&
     !(guidedMissionProgress.running ?? 0) &&
     !(guidedMissionProgress.blocked ?? 0);
   const canGenerateResult = Boolean(activeBundle) || allTasksComplete;
-  const primaryActionClassName = [
-    "fa-agent-team-button",
-    "fa-agent-team-primary-action",
-    "is-primary",
-    primaryActionBusy ? "is-loading" : "",
-    primaryActionDisabled ? "is-disabled" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
   const runPrimaryAction = () => {
     if (primaryActionDisabled) return;
     if (primaryAction.kind === "generate_plan") {
@@ -199,16 +239,6 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
           <span className="fa-agent-team-execution-mode">{executionMode}</span>
         </div>
         <div className="fa-agent-team-mission-actions">
-          <button
-            aria-busy={primaryActionBusy}
-            className={primaryActionClassName}
-            disabled={primaryActionDisabled}
-            onClick={runPrimaryAction}
-            type="button"
-            {...tooltipProps(primaryAction.disabledReason ?? primaryAction.help)}
-          >
-            {primaryActionLabel}
-          </button>
           <details className="fa-agent-team-more-menu">
             <summary className="fa-agent-team-button is-secondary">{isChineseUi ? "更多" : "More"}</summary>
             <div className="fa-agent-team-more-menu-panel">
@@ -221,26 +251,29 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
               <button
                 className="is-danger"
                 disabled={planSession.isPending || !tasks.length}
-                onClick={replanMission}
+                onClick={confirmAndReplanMission}
                 type="button"
               >
                 {isChineseUi ? "重新拆解" : "Replan"}
               </button>
-              <button disabled={planSession.isPending} onClick={adjustMissionBreakdown} type="button">
+              <button disabled={planSession.isPending} onClick={confirmAndAdjustMissionBreakdown} type="button">
                 {isChineseUi ? "调整拆解" : "Adjust breakdown"}
+              </button>
+              <div className="fa-agent-team-menu-divider" role="separator" />
+              <button
+                className="is-danger"
+                disabled={!canCancelMission}
+                onClick={confirmAndCancelMission}
+                type="button"
+              >
+                {cancelSession.isPending ? (isChineseUi ? "取消中..." : "Cancelling...") : isChineseUi ? "取消 Mission" : "Cancel mission"}
               </button>
               <div className="fa-agent-team-menu-divider" role="separator" />
               {refineOptions.map((option) => (
                 <button
                   disabled={planSession.isPending}
                   key={option.label}
-                  onClick={() =>
-                    planSession.mutate({
-                      create_branches: true,
-                      replace_existing: true,
-                      ...option.request,
-                    })
-                  }
+                  onClick={() => refineMission(option.request)}
                   type="button"
                 >
                   {option.label}
@@ -259,6 +292,25 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
           </details>
         </div>
       </section>
+
+      {cancelSession.error ? (
+        <div className="fa-inline-notice is-danger">
+          {errorMessage(cancelSession.error, isChineseUi ? "取消 Mission 失败。" : "Failed to cancel mission.")}
+        </div>
+      ) : null}
+
+      <MissionStudioRail
+        blocked={guidedMissionProgress.blocked ?? 0}
+        done={guidedMissionProgress.done ?? 0}
+        isChineseUi={isChineseUi}
+        primaryActionDisabled={primaryActionDisabled}
+        primaryActionLabel={primaryActionLabel}
+        primaryActionBusy={primaryActionBusy}
+        ready={guidedMissionProgress.ready ?? 0}
+        runningOrQueued={(guidedMissionProgress.running ?? 0) + (guidedMissionProgress.queued ?? 0)}
+        total={guidedMissionProgress.total ?? 0}
+        onPrimaryAction={runPrimaryAction}
+      />
 
       <section className={`fa-agent-team-mission-progress is-${missionStage.tone ?? "neutral"}`.trim()}>
         <div className="fa-agent-team-progress-lead">
@@ -279,8 +331,8 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
             <strong>{guidedMissionProgress.ready ?? 0}</strong>
           </div>
           <div>
-            <span>{isChineseUi ? "正在运行" : "Running"}</span>
-            <strong>{guidedMissionProgress.running ?? 0}</strong>
+            <span>{isChineseUi ? "运行/排队" : "Run/queue"}</span>
+            <strong>{(guidedMissionProgress.running ?? 0) + (guidedMissionProgress.queued ?? 0)}</strong>
           </div>
           <div>
             <span>{isChineseUi ? "需要处理" : "Needs attention"}</span>
@@ -368,6 +420,69 @@ export function AgentTeamWorkbench({ sessionId }: { sessionId: string | null }) 
   );
 }
 
+function MissionStudioRail({
+  blocked,
+  done,
+  isChineseUi,
+  onPrimaryAction,
+  primaryActionBusy,
+  primaryActionDisabled,
+  primaryActionLabel,
+  ready,
+  runningOrQueued,
+  total,
+}: {
+  blocked: number;
+  done: number;
+  isChineseUi: boolean;
+  onPrimaryAction: () => void;
+  primaryActionBusy: boolean;
+  primaryActionDisabled: boolean;
+  primaryActionLabel: string;
+  ready: number;
+  runningOrQueued: number;
+  total: number;
+}) {
+  const currentIndex = blocked ? 2 : done >= total && total > 0 ? 3 : runningOrQueued ? 2 : ready ? 2 : total ? 1 : 0;
+  const steps = isChineseUi
+    ? [
+        { label: "确认拆解", meta: total ? `${total} 个任务` : "等待任务" },
+        { label: "启动可运行任务", meta: runningOrQueued ? `${runningOrQueued} 个进行中` : ready ? `${ready} 个就绪` : "等待依赖" },
+        { label: "收束最终结果", meta: blocked ? `${blocked} 个需处理` : done ? `${done}/${total}` : "等待产出" },
+      ]
+    : [
+        { label: "Confirm plan", meta: total ? `${total} tasks` : "Waiting" },
+        { label: "Run ready work", meta: runningOrQueued ? `${runningOrQueued} active` : ready ? `${ready} ready` : "Waiting" },
+        { label: "Synthesize result", meta: blocked ? `${blocked} attention` : done ? `${done}/${total}` : "Waiting" },
+      ];
+
+  return (
+    <section className="fa-agent-team-studio-rail" aria-label={isChineseUi ? "Mission 操作台" : "Mission command rail"}>
+      <div className="fa-agent-team-studio-rail-main">
+        {steps.map((step, index) => (
+          <div
+            className={`fa-agent-team-studio-rail-step ${index + 1 <= currentIndex ? "is-active" : ""}`.trim()}
+            key={step.label}
+          >
+            <span>{index + 1}</span>
+            <strong>{step.label}</strong>
+            <small>{step.meta}</small>
+          </div>
+        ))}
+      </div>
+      <button
+        aria-busy={primaryActionBusy}
+        className="fa-agent-team-button is-primary fa-agent-team-studio-rail-action"
+        disabled={primaryActionDisabled}
+        onClick={onPrimaryAction}
+        type="button"
+      >
+        {primaryActionLabel}
+      </button>
+    </section>
+  );
+}
+
 function normalizeMissionStage(value: string | MissionStageState | undefined, fallback: MissionStageState) {
   if (typeof value === "string") {
     const label = value.trim();
@@ -401,6 +516,7 @@ function normalizeMissionProgress(value: MissionProgressState | undefined, fallb
     total: numberFromUnknown(source.total, fallback.total ?? 0),
     done: numberFromUnknown(source.done ?? source.completed, fallback.done ?? 0),
     running: numberFromUnknown(source.running, fallback.running ?? 0),
+    queued: numberFromUnknown(source.queued, fallback.queued ?? 0),
     blocked: numberFromUnknown(source.blocked, fallback.blocked ?? 0),
     ready: numberFromUnknown(source.ready, fallback.ready ?? 0),
     percent: numberFromUnknown(source.percent, fallback.percent),
@@ -428,6 +544,7 @@ function fallbackMissionStage({
   const total = progress.total ?? 0;
   const done = progress.done ?? 0;
   const running = progress.running ?? 0;
+  const queued = progress.queued ?? 0;
   const blocked = progress.blocked ?? 0;
   const ready = progress.ready ?? 0;
 
@@ -438,9 +555,9 @@ function fallbackMissionStage({
       tone: "planning",
     };
   }
-  if (running) {
+  if (running || queued) {
     return {
-      label: isChineseUi ? "Mission 正在执行" : "Mission is running",
+      label: queued && !running ? (isChineseUi ? "Mission 正在排队" : "Mission is queued") : isChineseUi ? "Mission 正在执行" : "Mission is running",
       help: isChineseUi ? "任务产出、依据和风险会随运行回传。" : "Task outputs, evidence, and risks will appear as work returns.",
       tone: "running",
     };
@@ -496,8 +613,12 @@ function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
-function executionModeForWorkbench(outputs: Array<{ metadata?: Record<string, unknown> }>, isChineseUi: boolean) {
-  const mode = outputs
+function executionModeForWorkbench(
+  outputs: Array<{ metadata?: Record<string, unknown> }>,
+  isChineseUi: boolean,
+  runMetadata?: { execution_mode?: unknown } | null,
+) {
+  const mode = stringFromUnknown(runMetadata?.execution_mode) || outputs
     .map((output) => {
       const metadata = isRecord(output.metadata) ? output.metadata : {};
       const execution = isRecord(metadata.execution) ? metadata.execution : {};

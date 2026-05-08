@@ -9,6 +9,7 @@ export type AgentTeamSessionStatus =
 
 export type AgentTeamTaskStatus =
   | "pending"
+  | "queued"
   | "ready"
   | "running"
   | "blocked"
@@ -91,8 +92,23 @@ export interface AgentTeamTask {
   started_at?: string | null;
   finished_at?: string | null;
   last_error?: string | null;
+  attempt?: number;
+  max_attempts?: number;
+  claim_owner?: string | null;
+  claimed_until?: string | null;
+  queued_at?: string | null;
+  heartbeat_at?: string | null;
+  execution_mode?: string | null;
+  cancel_requested_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface AgentTeamRunMetadata {
+  execution_mode?: string | null;
+  scheduled_task_ids?: string[];
+  running_task_ids?: string[];
+  max_parallel_runs?: number;
 }
 
 export interface AgentTeamArtifact {
@@ -159,6 +175,7 @@ export interface AgentTeamSessionView {
   risks?: string[];
   dag?: Record<string, unknown> | null;
   merge_suggestion?: AgentTeamMergeBundle | null;
+  run?: AgentTeamRunMetadata | null;
 }
 
 export interface AgentTeamCreateSessionRequest {
@@ -216,12 +233,15 @@ export interface AgentTeamRunSessionRequest {
   parent_thread_id?: string | null;
   task_ids?: string[];
   run_ready_only?: boolean;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface AgentTeamRunTaskRequest {
   force?: boolean;
   create_branch?: boolean;
   auto_fork_branch?: boolean | null;
+  parent_thread_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export type AgentTeamActionResponse =
@@ -238,6 +258,7 @@ export type AgentTeamActionResponse =
       artifacts?: AgentTeamArtifact[];
       merge_bundle?: AgentTeamMergeBundle | null;
       bundle?: AgentTeamMergeBundle;
+      run?: AgentTeamRunMetadata | null;
       count?: number;
     };
 
@@ -255,6 +276,9 @@ export interface AgentTeamClientContract {
   planAgentTeamSession?: (sessionId: string, request?: AgentTeamPlanSessionRequest) => Promise<AgentTeamActionResponse>;
   runAgentTeamSession?: (sessionId: string, request?: AgentTeamRunSessionRequest) => Promise<AgentTeamActionResponse>;
   runAgentTeamTask?: (taskId: string, request?: AgentTeamRunTaskRequest) => Promise<AgentTeamActionResponse>;
+  retryAgentTeamTask?: (taskId: string) => Promise<AgentTeamActionResponse>;
+  cancelAgentTeamTask?: (taskId: string) => Promise<AgentTeamActionResponse>;
+  cancelAgentTeamSession?: (sessionId: string) => Promise<AgentTeamActionResponse>;
   listAgentTeamTasks?: (
     sessionId: string,
     request?: Record<string, unknown>,

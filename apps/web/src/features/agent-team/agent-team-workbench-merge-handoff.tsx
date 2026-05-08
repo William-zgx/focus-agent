@@ -69,12 +69,12 @@ export function PreMergeCheckPanel({
       ) : (
         <div className="fa-agent-team-detail fa-agent-team-result-placeholder">
           <section>
-            <h3>{isChineseUi ? "模拟执行提示" : "Simulated execution note"}</h3>
+            <h3>{isChineseUi ? "还没有最终结果" : "No final result yet"}</h3>
             <p>
               {nextStepHint?.label ||
                 (isChineseUi
-                  ? "运行完成后将生成 Agent Team 最终答案；模拟执行只展示任务推进提示。"
-                  : "After the run completes, Agent Team will generate the final answer; simulated execution only shows progress hints.")}
+                  ? "任务完成后，可以把产出、依据和风险整理成最终答案。"
+                  : "After tasks complete, Agent Team can package outputs, evidence, and risks into the final answer.")}
             </p>
             {nextStepHint?.help ? <HelpText>{nextStepHint.help}</HelpText> : null}
           </section>

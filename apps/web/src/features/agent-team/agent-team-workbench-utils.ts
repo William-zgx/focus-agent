@@ -22,12 +22,14 @@ export const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "ne
   cancelled: "danger",
   planning: "neutral",
   pending: "neutral",
+  queued: "neutral",
   ready: "neutral",
   running: "neutral",
 };
 
 export type AgentTeamTaskDisplayStateKind =
   | "completed"
+  | "queued"
   | "running"
   | "waiting_dependency"
   | "ready"
@@ -104,11 +106,21 @@ export function runStatusDetails(task: AgentTeamTask): string[] {
 }
 
 export function isTaskRunning(task: AgentTeamTask) {
+  if (task.status === "running") return true;
   if (typeof task.run_status === "string") return task.run_status === "running";
   if (isRecord(task.run_status)) {
     return task.run_status.status === "running" || task.run_status.state === "running";
   }
   return task.execution_status === "running";
+}
+
+export function isTaskQueued(task: AgentTeamTask) {
+  if (task.status === "queued") return true;
+  if (typeof task.run_status === "string") return task.run_status === "queued";
+  if (isRecord(task.run_status)) {
+    return task.run_status.status === "queued" || task.run_status.state === "queued";
+  }
+  return task.execution_status === "queued";
 }
 
 export function isTaskDone(task: AgentTeamTask) {
@@ -149,6 +161,18 @@ export function deriveTaskDisplayState(
       kind: "running",
       label: isChineseUi ? "执行中" : "Running",
       help: isChineseUi ? "Agent 正在执行此任务。" : "An agent is running this task.",
+      tone: "neutral",
+      incompleteDependencies,
+      lastError,
+    };
+  }
+
+  if (isTaskQueued(task)) {
+    return {
+      taskId: task.task_id,
+      kind: "queued",
+      label: isChineseUi ? "排队中" : "Queued",
+      help: isChineseUi ? "任务已进入执行队列，等待 worker 领取。" : "The task is queued and waiting for a worker claim.",
       tone: "neutral",
       incompleteDependencies,
       lastError,
@@ -249,6 +273,7 @@ export function statusLabel(status: string, isChineseUi: boolean) {
         discard: "放弃",
         pending: "等待开始",
         planning: "规划中",
+        queued: "排队中",
         ready: "可运行",
         running: "执行中",
         waiting_dependency: "等待前置任务",
@@ -268,6 +293,7 @@ export function statusLabel(status: string, isChineseUi: boolean) {
         discard: "Discard",
         pending: "Waiting to start",
         planning: "Planning",
+        queued: "Queued",
         ready: "Ready",
         running: "Running",
         waiting_dependency: "Waiting for dependencies",
@@ -294,6 +320,7 @@ export function normalizeSessionView(data: AgentTeamSession | AgentTeamSessionVi
       risks: data.risks ?? [],
       dag: data.dag ?? null,
       merge_suggestion: data.merge_suggestion ?? null,
+      run: data.run ?? null,
     };
   }
 
@@ -309,6 +336,7 @@ export function normalizeSessionView(data: AgentTeamSession | AgentTeamSessionVi
     risks: asStringArray(dataRecord.risks),
     dag: isRecord(dataRecord.dag) ? dataRecord.dag : null,
     merge_suggestion: asMergeBundle(dataRecord.merge_suggestion),
+    run: isRecord(dataRecord.run) ? dataRecord.run : null,
   };
 }
 

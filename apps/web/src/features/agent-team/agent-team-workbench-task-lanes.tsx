@@ -6,6 +6,7 @@ import {
   defaultTaskActionLabel,
   errorMessage,
   isTaskDone,
+  isTaskQueued,
   isTaskReady,
   isTaskRunning,
   runStatusDetails,
@@ -14,7 +15,7 @@ import {
   taskTitle,
 } from "./agent-team-workbench-utils";
 import { EmptyList, FieldList, HelpText } from "./agent-team-workbench-shared";
-import { useRunAgentTeamTask } from "./use-agent-team";
+import { useCancelAgentTeamTask, useRetryAgentTeamTask, useRunAgentTeamTask } from "./use-agent-team";
 import type { AgentTeamArtifact, AgentTeamTask, AgentTeamTaskOutput } from "./types";
 
 function shortText(value: string | null | undefined, fallback = "—") {
@@ -179,12 +180,14 @@ type UserTaskState =
   | "needs_attention"
   | "failed"
   | "ready"
+  | "queued"
   | "running"
   | "done"
   | "waiting_start";
 
 function userTaskState(task: AgentTeamTask, tasks: AgentTeamTask[]): UserTaskState {
   if (isTaskRunning(task)) return "running";
+  if (isTaskQueued(task)) return "queued";
   if (isTaskDone(task)) return "done";
   if (task.status === "failed") return "failed";
   if (task.status === "blocked" || task.status === "cancelled" || task.last_error) return "needs_attention";
@@ -200,6 +203,7 @@ function userTaskStateLabel(state: UserTaskState, isChineseUi: boolean) {
       needs_attention: "Needs attention",
       failed: "Failed",
       ready: "Ready to run",
+      queued: "Queued",
       running: "Running",
       done: "Completed",
       waiting_start: "Waiting to start",
@@ -211,6 +215,7 @@ function userTaskStateLabel(state: UserTaskState, isChineseUi: boolean) {
     needs_attention: "需要处理",
     failed: "执行失败",
     ready: "可运行",
+    queued: "排队中",
     running: "执行中",
     done: "已完成",
     waiting_start: "等待开始",
@@ -223,6 +228,39 @@ function userTaskStateTone(state: UserTaskState) {
   if (state === "failed") return "danger";
   if (state === "waiting_dependency" || state === "needs_attention") return "warning";
   return "neutral";
+}
+
+function canCancelTask(task: AgentTeamTask) {
+  return !task.cancel_requested_at && (isTaskQueued(task) || isTaskRunning(task));
+}
+
+function canRetryTask(task: AgentTeamTask) {
+  return task.status === "failed" || task.status === "blocked" || task.status === "cancelled";
+}
+
+function taskExecutionMetadataItems(task: AgentTeamTask, isChineseUi: boolean) {
+  return uniqueStrings([
+    typeof task.attempt === "number" || typeof task.max_attempts === "number"
+      ? `${isChineseUi ? "尝试" : "Attempt"}: ${task.attempt ?? 0}/${task.max_attempts ?? "?"}`
+      : null,
+    task.execution_mode ? `${isChineseUi ? "模式" : "Mode"}: ${task.execution_mode}` : null,
+    task.claim_owner ? `${isChineseUi ? "领取者" : "Claim owner"}: ${task.claim_owner}` : null,
+    task.claimed_until ? `${isChineseUi ? "领取到期" : "Claimed until"}: ${task.claimed_until}` : null,
+    task.queued_at ? `${isChineseUi ? "排队时间" : "Queued at"}: ${task.queued_at}` : null,
+    task.heartbeat_at ? `${isChineseUi ? "心跳" : "Heartbeat"}: ${task.heartbeat_at}` : null,
+    task.cancel_requested_at ? `${isChineseUi ? "取消请求" : "Cancel requested"}: ${task.cancel_requested_at}` : null,
+    task.last_error ? `${isChineseUi ? "错误" : "Last error"}: ${task.last_error}` : null,
+  ]);
+}
+
+function taskInlineExecutionSummary(task: AgentTeamTask, isChineseUi: boolean) {
+  return uniqueStrings([
+    typeof task.attempt === "number" || typeof task.max_attempts === "number"
+      ? `${isChineseUi ? "尝试" : "attempt"} ${task.attempt ?? 0}/${task.max_attempts ?? "?"}`
+      : null,
+    task.heartbeat_at ? `${isChineseUi ? "心跳" : "heartbeat"} ${task.heartbeat_at}` : null,
+    task.last_error ? `${isChineseUi ? "错误" : "error"} ${shortText(task.last_error, "")}` : null,
+  ]).join(" · ");
 }
 
 function UserTaskStatusPill({ state, isChineseUi }: { isChineseUi: boolean; state: UserTaskState }) {
@@ -289,6 +327,15 @@ function taskRunAffordance({
       stateLabel: isChineseUi ? "运行此任务：运行中" : "Run task: running",
       disabledReason: isChineseUi ? "任务正在执行。" : "The task is currently running.",
       nextStep: isChineseUi ? "等待结果和需要注意的事项回传。" : "Wait for results and notes to return.",
+    };
+  }
+
+  if (state === "queued") {
+    return {
+      canRun: false,
+      stateLabel: isChineseUi ? "运行此任务：排队中" : "Run task: queued",
+      disabledReason: isChineseUi ? "任务已进入后台队列。" : "The task is already queued.",
+      nextStep: isChineseUi ? "等待 worker 领取任务。" : "Wait for a worker to claim the task.",
     };
   }
 
@@ -521,6 +568,7 @@ export function TaskBoard({
           const taskRiskCount = uniqueStrings([...(task.risk_notes ?? []), ...taskOutputRisks(taskOutputs)]).length;
           const isSelected = selectedTaskId === task.task_id;
           const state = userTaskState(task, tasks);
+          const executionSummary = taskInlineExecutionSummary(task, isChineseUi);
           return (
             <article
               className={`fa-agent-team-task-card fa-agent-team-task-step ${isSelected ? "is-selected" : ""}`.trim()}
@@ -554,6 +602,7 @@ export function TaskBoard({
                       ? `依据 ${taskEvidence.length} 条 · 风险 ${taskRiskCount} 条`
                       : `${taskEvidence.length} evidence · ${taskRiskCount} risk${taskRiskCount === 1 ? "" : "s"}`}
                   </small>
+                  {executionSummary ? <small>{executionSummary}</small> : null}
                 </div>
               </button>
             </article>
@@ -625,6 +674,24 @@ export function TaskDetail({
             <span>{isChineseUi ? "运行状态" : "Run status"}</span>
             <code>{runStatusText(task)}</code>
           </div>
+          <div>
+            <span>{isChineseUi ? "尝试次数" : "Attempts"}</span>
+            <code>
+              {task.attempt ?? 0}/{task.max_attempts ?? 0}
+            </code>
+          </div>
+          <div>
+            <span>{isChineseUi ? "队列时间" : "Queued at"}</span>
+            <code>{task.queued_at ?? "—"}</code>
+          </div>
+          <div>
+            <span>{isChineseUi ? "心跳" : "Heartbeat"}</span>
+            <code>{task.heartbeat_at ?? task.claimed_until ?? "—"}</code>
+          </div>
+          <div>
+            <span>{isChineseUi ? "执行模式" : "Execution mode"}</span>
+            <code>{task.execution_mode ?? "—"}</code>
+          </div>
         </div>
         <section>
           <h3>{isChineseUi ? "目标" : "Goal"}</h3>
@@ -668,7 +735,7 @@ export function TaskDetail({
         </section>
         <section>
           <h3>{isChineseUi ? "原始运行状态" : "Raw run status"}</h3>
-          <FieldList items={runStatusDetails(task)} />
+          <FieldList items={[...runStatusDetails(task), ...taskExecutionMetadataItems(task, isChineseUi)]} />
         </section>
         <TaskReturnedSections artifacts={returnedArtifacts} outputs={taskOutputs} />
         <section>
@@ -761,6 +828,8 @@ export function TaskDetailPanel({
 }) {
   const { isChineseUi } = useShellUi();
   const runTask = useRunAgentTeamTask(selectedTask?.session_id ?? null);
+  const retryTask = useRetryAgentTeamTask(selectedTask?.session_id ?? null);
+  const cancelTask = useCancelAgentTeamTask(selectedTask?.session_id ?? null);
   const taskList = tasks.length ? tasks : selectedTask ? [selectedTask] : [];
   const action = selectedTask
     ? taskRunAffordance({
@@ -770,6 +839,9 @@ export function TaskDetailPanel({
         tasks: taskList,
       })
     : null;
+  const canRetry = selectedTask ? canRetryTask(selectedTask) : false;
+  const canCancel = selectedTask ? canCancelTask(selectedTask) : false;
+  const taskActionPending = runTask.isPending || retryTask.isPending || cancelTask.isPending;
 
   return (
     <section className="fa-agent-team-panel">
@@ -784,15 +856,33 @@ export function TaskDetailPanel({
           </HelpText>
         </div>
         {selectedTask ? (
-          <button
-            className="fa-observability-preset"
-            disabled={!action?.canRun}
-            onClick={() => runTask.mutate({ taskId: selectedTask.task_id })}
-            title={action?.disabledReason ?? action?.nextStep ?? undefined}
-            type="button"
-          >
-            {action?.stateLabel}
-          </button>
+          <div className="fa-agent-team-task-actions">
+            <button
+              className="fa-observability-preset"
+              disabled={!action?.canRun || taskActionPending}
+              onClick={() => runTask.mutate({ taskId: selectedTask.task_id })}
+              title={action?.disabledReason ?? action?.nextStep ?? undefined}
+              type="button"
+            >
+              {action?.stateLabel}
+            </button>
+            <button
+              className="fa-observability-preset"
+              disabled={!canRetry || taskActionPending}
+              onClick={() => retryTask.mutate({ taskId: selectedTask.task_id })}
+              type="button"
+            >
+              {retryTask.isPending ? (isChineseUi ? "重试中..." : "Retrying...") : isChineseUi ? "重试" : "Retry"}
+            </button>
+            <button
+              className="fa-observability-preset is-danger"
+              disabled={!canCancel || taskActionPending}
+              onClick={() => cancelTask.mutate({ taskId: selectedTask.task_id })}
+              type="button"
+            >
+              {cancelTask.isPending ? (isChineseUi ? "取消中..." : "Cancelling...") : isChineseUi ? "取消" : "Cancel"}
+            </button>
+          </div>
         ) : null}
       </div>
       {action?.disabledReason ? (
@@ -803,6 +893,16 @@ export function TaskDetailPanel({
       {runTask.error ? (
         <div className="fa-inline-notice is-danger">
           {errorMessage(runTask.error, isChineseUi ? "执行失败。" : "Failed to run task.")}
+        </div>
+      ) : null}
+      {retryTask.error ? (
+        <div className="fa-inline-notice is-danger">
+          {errorMessage(retryTask.error, isChineseUi ? "重试失败。" : "Failed to retry task.")}
+        </div>
+      ) : null}
+      {cancelTask.error ? (
+        <div className="fa-inline-notice is-danger">
+          {errorMessage(cancelTask.error, isChineseUi ? "取消失败。" : "Failed to cancel task.")}
         </div>
       ) : null}
       <TaskDetail artifacts={artifacts} outputs={outputs} task={selectedTask} tasks={taskList} />

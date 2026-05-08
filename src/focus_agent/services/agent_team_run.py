@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from focus_agent.agent_delegation import AgentDelegationPlan, AgentTask, build_agent_delegation_plan
 from focus_agent.agent_execution import (
@@ -16,17 +18,31 @@ from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
     AgentTeamArtifactKind,
     AgentTeamSession,
+    AgentTeamSessionStatus,
     AgentTeamTask,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
     agent_role_for_team_task_role,
 )
+from focus_agent.services.coordination import BackgroundJobSpec
 
 from .agent_team_helpers import _dedupe, _now
 
 
 _MAX_MISSION_SCHEDULER_WAVES = 16
 _MAX_MISSION_SCHEDULER_TASKS = 64
+_AGENT_TEAM_TASK_CLAIM_TTL_SECONDS = 300.0
+
+
+@dataclass(frozen=True)
+class _TaskExecutionResult:
+    session_id: str
+    final_status: AgentTeamTaskStatus
+    run_status: str
+    execution_status: str
+    last_error: str
+    task_updates: dict[str, Any]
+    output: dict[str, Any] | None = None
 
 _AGENT_ROLE_TO_TEAM_ROLE: dict[AgentRole, AgentTeamTaskRole] = {
     AgentRole.ORCHESTRATOR: AgentTeamTaskRole.ARCHITECT,
@@ -42,6 +58,8 @@ class AgentTeamRunMixin:
     settings: Any | None
     model_factory: Any | None
     executor: DelegatedRunExecutor | None
+    coordination_backend: Any | None
+    background_work: Any | None
 
     def plan_session(
         self,
@@ -98,41 +116,55 @@ class AgentTeamRunMixin:
         return session, tasks
 
     def run_ready_tasks(
-        self, *, session_id: str, user_id: str
+        self, *, session_id: str, user_id: str, task_ids: list[str] | None = None
     ) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
-        self.get_session(session_id, user_id=user_id)
-        waves = 0
-        started = 0
+        return self.run_ready_tasks_once(session_id=session_id, user_id=user_id, task_ids=task_ids)
 
-        while waves < _MAX_MISSION_SCHEDULER_WAVES and started < _MAX_MISSION_SCHEDULER_TASKS:
-            tasks = self.list_tasks(session_id=session_id, user_id=user_id)
-            if any(_is_terminal_blocker(task) for task in tasks):
-                break
-
-            done_ids = {task.task_id for task in tasks if task.status == AgentTeamTaskStatus.DONE}
-            runnable = [
-                task
+    def run_ready_tasks_once(
+        self, *, session_id: str, user_id: str, task_ids: list[str] | None = None
+    ) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
+        session = self.get_session(session_id, user_id=user_id)
+        if session.status == AgentTeamSessionStatus.CANCELLED:
+            return session, self.list_tasks(session_id=session_id, user_id=user_id)
+        max_parallel = _max_parallel_runs_for(self.settings)
+        selected_task_ids = {task_id for task_id in task_ids or [] if task_id}
+        with self._lock:
+            tasks = self.repository.list_tasks(session_id=session_id)
+            active_count = sum(
+                1
                 for task in tasks
-                if _is_runnable_task(task)
-                and all(dependency in done_ids for dependency in task.dependencies)
-            ]
-            if not runnable:
-                break
-
-            remaining = _MAX_MISSION_SCHEDULER_TASKS - started
-            wave = runnable[:remaining]
-            waves += 1
-            before = {task.task_id: task.status for task in wave}
-            results = [
-                self.run_task(task_id=task.task_id, user_id=user_id, scheduler_wave=waves)
-                for task in wave
-            ]
-            started += len(wave)
-            if any(_is_terminal_blocker(task) for task in results):
-                break
-            if all(before.get(task.task_id) == task.status for task in results):
-                break
-
+                if task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
+            )
+            remaining_capacity = max(0, max_parallel - active_count)
+            if remaining_capacity <= 0:
+                self._refresh_session_status(session_id)
+                session = self.repository.get_session(session_id)
+                return session, self.repository.list_tasks(session_id=session_id)
+            runnable = self.repository.list_runnable_tasks(
+                session_id=session_id,
+                limit=_MAX_MISSION_SCHEDULER_TASKS,
+            )
+            if selected_task_ids:
+                runnable = [task for task in runnable if task.task_id in selected_task_ids]
+            runnable = runnable[: min(remaining_capacity, _MAX_MISSION_SCHEDULER_TASKS)]
+            for task in runnable:
+                queued = task.model_copy(
+                    update={
+                        "status": AgentTeamTaskStatus.QUEUED,
+                        "run_status": "queued",
+                        "execution_status": "queued",
+                        "queued_at": task.queued_at or _now(),
+                        "execution_mode": _agent_team_execution_mode(self.settings),
+                        "last_error": "",
+                        "updated_at": _now(),
+                    }
+                )
+                self.repository.save_task(queued)
+                self._enqueue_task_run(task_id=queued.task_id, user_id=user_id)
+            if runnable:
+                self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
+            else:
+                self._refresh_session_status(session_id)
         session = self.get_session(session_id, user_id=user_id)
         return session, self.list_tasks(session_id=session_id, user_id=user_id)
 
@@ -150,12 +182,271 @@ class AgentTeamRunMixin:
         ]
         if unfinished:
             return task
-        if task.status not in {AgentTeamTaskStatus.PENDING, AgentTeamTaskStatus.RUNNING}:
+        if task.status not in {
+            AgentTeamTaskStatus.PENDING,
+            AgentTeamTaskStatus.QUEUED,
+            AgentTeamTaskStatus.RUNNING,
+        }:
             return task
+        if task.cancel_requested_at:
+            return self.update_task(
+                task_id=task_id,
+                user_id=user_id,
+                status=AgentTeamTaskStatus.CANCELLED,
+                run_status="cancelled",
+                execution_status="cancelled",
+                finished_at=_now(),
+                last_error="Task was cancelled before execution.",
+            )
+
+        queued = self.update_task(
+            task_id=task_id,
+            user_id=user_id,
+            status=AgentTeamTaskStatus.QUEUED,
+            run_status="queued",
+            execution_status="queued",
+            started_at=None,
+            finished_at=None,
+            last_error="",
+        )
+        queued = queued.model_copy(
+            update={
+                "queued_at": queued.queued_at or _now(),
+                "execution_mode": _agent_team_execution_mode(self.settings),
+                "updated_at": _now(),
+            }
+        )
+        with self._lock:
+            self.repository.save_task(queued)
+            self._touch_session(queued.session_id, status=AgentTeamSessionStatus.RUNNING)
+        self._enqueue_task_run(task_id=task_id, user_id=user_id)
+        return self.get_task(task_id, user_id=user_id)
+
+    def run_task_claimed(self, *, task_id: str, user_id: str) -> AgentTeamTask:
+        owner = f"agent-team:{uuid4().hex}"
+        with self._lock:
+            claimed = self.repository.claim_task(
+                task_id=task_id,
+                owner=owner,
+                ttl_seconds=_AGENT_TEAM_TASK_CLAIM_TTL_SECONDS,
+            )
+        if claimed is None:
+            return self.get_task(task_id, user_id=user_id)
+        try:
+            result = self._execute_task_body(claimed, user_id=user_id)
+        except Exception as exc:  # noqa: BLE001
+            current = self.get_task(task_id, user_id=user_id)
+            final_status = (
+                AgentTeamTaskStatus.FAILED
+                if current.attempt >= max(1, int(current.max_attempts or 1))
+                else AgentTeamTaskStatus.QUEUED
+            )
+            with self._lock:
+                task = self.repository.release_task_claim(
+                    task_id=task_id,
+                    claim_token=claimed.claim_token or "",
+                    final_status=final_status,
+                    error=str(exc),
+                )
+                if final_status == AgentTeamTaskStatus.QUEUED:
+                    self._enqueue_task_run(task_id=task_id, user_id=user_id)
+                self._refresh_session_status(task.session_id)
+            return task
+
+        latest = self.get_task(task_id, user_id=user_id)
+        final_status = result.final_status
+        if latest.cancel_requested_at:
+            final_status = AgentTeamTaskStatus.CANCELLED
+        with self._lock:
+            claim_alive = self.repository.heartbeat_task_claim(
+                task_id=task_id,
+                claim_token=claimed.claim_token or "",
+                ttl_seconds=_AGENT_TEAM_TASK_CLAIM_TTL_SECONDS,
+            )
+            if not claim_alive:
+                current = self.get_task(task_id, user_id=user_id)
+                stale_status = (
+                    AgentTeamTaskStatus.FAILED
+                    if current.attempt >= max(1, int(current.max_attempts or 1))
+                    else AgentTeamTaskStatus.QUEUED
+                )
+                released = self.repository.release_task_claim(
+                    task_id=task_id,
+                    claim_token=claimed.claim_token or "",
+                    final_status=stale_status,
+                    error="Task claim was lost before completion could be committed.",
+                )
+                if released.claim_token is None and stale_status == AgentTeamTaskStatus.QUEUED:
+                    self._enqueue_task_run(task_id=task_id, user_id=user_id)
+                self._refresh_session_status(released.session_id)
+                return self.get_task(task_id, user_id=user_id)
+            if result.output is not None and final_status != AgentTeamTaskStatus.CANCELLED:
+                self.record_task_output(task_id=task_id, user_id=user_id, **result.output)
+            if final_status == AgentTeamTaskStatus.CANCELLED:
+                latest = self.update_task(
+                    task_id=task_id,
+                    user_id=user_id,
+                    status=AgentTeamTaskStatus.CANCELLED,
+                    run_status="cancelled",
+                    execution_status="cancelled",
+                    finished_at=_now(),
+                    last_error=latest.last_error or "Task was cancelled before completion.",
+                )
+            else:
+                latest = self.update_task(
+                    task_id=task_id,
+                    user_id=user_id,
+                    status=final_status,
+                    run_status=result.run_status,
+                    execution_status=result.execution_status,
+                    last_error=result.last_error,
+                    **result.task_updates,
+                )
+            released = self.repository.release_task_claim(
+                task_id=task_id,
+                claim_token=claimed.claim_token or "",
+                final_status=final_status,
+                error=latest.last_error,
+            )
+            self._refresh_session_status(released.session_id)
+        if final_status == AgentTeamTaskStatus.DONE:
+            self.maybe_schedule_next_wave(session_id=released.session_id, user_id=user_id)
+        return released
+
+    def maybe_schedule_next_wave(self, *, session_id: str, user_id: str) -> None:
+        session = self.get_session(session_id, user_id=user_id)
+        if session.status == AgentTeamSessionStatus.CANCELLED:
+            return
+        tasks = self.list_tasks(session_id=session_id, user_id=user_id)
+        if any(task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING} for task in tasks):
+            return
+        if any(_is_runnable_task(task) for task in tasks):
+            self.run_ready_tasks_once(session_id=session_id, user_id=user_id)
+
+    def cancel_session(self, *, session_id: str, user_id: str) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
+        session = self.get_session(session_id, user_id=user_id)
+        now = _now()
+        with self._lock:
+            for task in self.repository.list_tasks(session_id=session_id):
+                if task.status in {
+                    AgentTeamTaskStatus.PENDING,
+                    AgentTeamTaskStatus.QUEUED,
+                    AgentTeamTaskStatus.RUNNING,
+                }:
+                    self.repository.save_task(
+                        task.model_copy(
+                            update={
+                                "status": AgentTeamTaskStatus.CANCELLED
+                                if task.status != AgentTeamTaskStatus.RUNNING
+                                else task.status,
+                                "cancel_requested_at": task.cancel_requested_at or now,
+                                "run_status": "cancelled"
+                                if task.status != AgentTeamTaskStatus.RUNNING
+                                else task.run_status,
+                                "execution_status": "cancel_requested",
+                                "updated_at": now,
+                            }
+                        )
+                    )
+            session = session.model_copy(
+                update={"status": AgentTeamSessionStatus.CANCELLED, "updated_at": now}
+            )
+            self.repository.save_session(session)
+        return session, self.list_tasks(session_id=session_id, user_id=user_id)
+
+    def retry_task(self, *, task_id: str, user_id: str) -> AgentTeamTask:
+        task = self.get_task(task_id, user_id=user_id)
+        if task.status not in {
+            AgentTeamTaskStatus.FAILED,
+            AgentTeamTaskStatus.BLOCKED,
+            AgentTeamTaskStatus.CANCELLED,
+        }:
+            return task
+        tasks = self.list_tasks(session_id=task.session_id, user_id=user_id)
+        done_ids = {item.task_id for item in tasks if item.status == AgentTeamTaskStatus.DONE}
+        dependencies_satisfied = all(dependency in done_ids for dependency in task.dependencies)
+        now = _now()
+        status = AgentTeamTaskStatus.QUEUED if dependencies_satisfied else AgentTeamTaskStatus.PENDING
+        with self._lock:
+            reset = task.model_copy(
+                update={
+                    "status": status,
+                    "run_status": "queued" if dependencies_satisfied else None,
+                    "execution_status": "queued" if dependencies_satisfied else None,
+                    "claim_token": None,
+                    "claim_owner": None,
+                    "claimed_until": None,
+                    "queued_at": now if dependencies_satisfied else None,
+                    "heartbeat_at": None,
+                    "cancel_requested_at": None,
+                    "agent_run_id": None,
+                    "delegated_task_id": None,
+                    "artifact_ids": [],
+                    "changed_files": [],
+                    "verification_summary": None,
+                    "risk_notes": [],
+                    "finished_at": None,
+                    "last_error": "",
+                    "updated_at": now,
+                }
+            )
+            self.repository.save_task(reset)
+            if dependencies_satisfied:
+                self._touch_session(reset.session_id, status=AgentTeamSessionStatus.RUNNING)
+            else:
+                self._refresh_session_status(reset.session_id)
+        if dependencies_satisfied:
+            self._enqueue_task_run(task_id=task_id, user_id=user_id)
+        return self.get_task(task_id, user_id=user_id)
+
+    def cancel_task(self, *, task_id: str, user_id: str) -> AgentTeamTask:
+        task = self.get_task(task_id, user_id=user_id)
+        if task.status not in {
+            AgentTeamTaskStatus.PENDING,
+            AgentTeamTaskStatus.QUEUED,
+            AgentTeamTaskStatus.RUNNING,
+        }:
+            return task
+        now = _now()
+        status = (
+            AgentTeamTaskStatus.RUNNING
+            if task.status == AgentTeamTaskStatus.RUNNING
+            else AgentTeamTaskStatus.CANCELLED
+        )
+        with self._lock:
+            updated = task.model_copy(
+                update={
+                    "status": status,
+                    "cancel_requested_at": task.cancel_requested_at or now,
+                    "run_status": "cancelled" if status == AgentTeamTaskStatus.CANCELLED else task.run_status,
+                    "execution_status": "cancel_requested",
+                    "finished_at": now if status == AgentTeamTaskStatus.CANCELLED else task.finished_at,
+                    "updated_at": now,
+                }
+            )
+            self.repository.save_task(updated)
+            self._refresh_session_status(updated.session_id)
+        return self.get_task(task_id, user_id=user_id)
+
+    def _execute_task_body(
+        self, task: AgentTeamTask, *, user_id: str, scheduler_wave: int | None = None
+    ) -> _TaskExecutionResult:
+        task = self.get_task(task.task_id, user_id=user_id)
+        if scheduler_wave is None:
+            scheduler_wave = _task_wave(task, self.list_tasks(session_id=task.session_id, user_id=user_id))
+        if task.cancel_requested_at:
+            return _TaskExecutionResult(
+                session_id=task.session_id,
+                final_status=AgentTeamTaskStatus.CANCELLED,
+                run_status="cancelled",
+                execution_status="cancelled",
+                last_error="Task was cancelled before execution.",
+                task_updates={"finished_at": _now()},
+            )
 
         started_at = _now()
         task = self.update_task(
-            task_id=task_id,
+            task_id=task.task_id,
             user_id=user_id,
             status=AgentTeamTaskStatus.RUNNING,
             run_status="running",
@@ -174,14 +465,13 @@ class AgentTeamRunMixin:
         )
         if not result:
             finished_at = _now()
-            return self.update_task(
-                task_id=task_id,
-                user_id=user_id,
-                status=AgentTeamTaskStatus.BLOCKED,
+            return _TaskExecutionResult(
+                session_id=task.session_id,
+                final_status=AgentTeamTaskStatus.BLOCKED,
                 run_status="skipped",
                 execution_status="skipped",
-                finished_at=finished_at,
                 last_error="Delegated execution is disabled.",
+                task_updates={"finished_at": finished_at},
             )
 
         run = result[0]
@@ -190,16 +480,14 @@ class AgentTeamRunMixin:
         changed_files = _changed_files_for_run(run)
         test_evidence = _test_evidence_for_run(run)
         risk_notes = _risk_notes_for_run(run)
-        self.record_task_output(
-            task_id=task_id,
-            user_id=user_id,
-            kind=_artifact_kind_for_task(task),
-            artifact_id=artifact_ids[0] if artifact_ids else None,
-            summary=run.summary,
-            changed_files=changed_files,
-            test_evidence=test_evidence,
-            risk_notes=risk_notes,
-            metadata={
+        output = {
+            "kind": _artifact_kind_for_task(task),
+            "artifact_id": artifact_ids[0] if artifact_ids else None,
+            "summary": run.summary,
+            "changed_files": changed_files,
+            "test_evidence": test_evidence,
+            "risk_notes": risk_notes,
+            "metadata": {
                 "execution": {
                     "agent_run_id": run.run_id,
                     "delegated_task_id": run.task_id,
@@ -218,23 +506,79 @@ class AgentTeamRunMixin:
                 "artifacts": [artifact.model_dump(mode="json") for artifact in run.artifacts],
                 "run": run.model_dump(mode="json"),
             },
-        )
-        return self.update_task(
-            task_id=task_id,
-            user_id=user_id,
-            status=status,
+        }
+        return _TaskExecutionResult(
+            session_id=task.session_id,
+            final_status=status,
             run_status=run.status,
-            agent_run_id=run.run_id,
-            delegated_task_id=run.task_id,
-            artifact_ids=artifact_ids,
             execution_status=run.status,
-            changed_files=changed_files,
-            verification_summary=run.summary,
-            risk_notes=risk_notes,
-            started_at=run.started_at or started_at,
-            finished_at=run.finished_at or _now(),
             last_error=run.error or "",
+            task_updates={
+                "agent_run_id": run.run_id,
+                "delegated_task_id": run.task_id,
+                "artifact_ids": artifact_ids,
+                "changed_files": changed_files,
+                "verification_summary": run.summary,
+                "risk_notes": risk_notes,
+                "started_at": run.started_at or started_at,
+                "finished_at": run.finished_at or _now(),
+            },
+            output=output,
         )
+
+    def _enqueue_task_run(self, *, task_id: str, user_id: str) -> bool:
+        key = f"agent-team:task:{task_id}"
+        payload = {"task_id": task_id, "user_id": user_id}
+        if self._enqueue_durable_job(
+            kind="agent_team_run_task",
+            key=key,
+            payload=payload,
+            max_attempts=2,
+            dedupe_policy="replace",
+        ):
+            return True
+        submit = getattr(self.background_work, "submit", None)
+        if callable(submit):
+            return bool(
+                submit(
+                    key=key,
+                    func=self.run_task_claimed,
+                    task_id=task_id,
+                    user_id=user_id,
+                )
+            )
+        self.run_task_claimed(task_id=task_id, user_id=user_id)
+        return True
+
+    def _enqueue_durable_job(
+        self,
+        *,
+        kind: str,
+        key: str,
+        payload: dict[str, Any],
+        max_attempts: int = 1,
+        dedupe_policy: str = "skip",
+    ) -> bool:
+        if _agent_team_execution_mode(self.settings).strip().lower() != "durable":
+            return False
+        backend = getattr(self.coordination_backend, "job_deduper", None)
+        enqueue = getattr(backend, "enqueue_job", None)
+        if not callable(enqueue):
+            return False
+        try:
+            return bool(
+                enqueue(
+                    BackgroundJobSpec(
+                        kind=kind,
+                        key=key,
+                        payload=payload,
+                        max_attempts=max_attempts,
+                        dedupe_policy=dedupe_policy,
+                    )
+                )
+            )
+        except Exception:  # noqa: BLE001
+            return False
 
     def get_session_view(self, *, session_id: str, user_id: str) -> dict[str, Any]:
         session = self.get_session(session_id, user_id=user_id)
@@ -259,6 +603,7 @@ class AgentTeamRunMixin:
             "outputs": [output.model_dump(mode="json") for output in outputs],
             "artifacts": artifacts,
             "merge_bundle": merge_bundle,
+            "run": _run_metadata(tasks=tasks, settings=self.settings),
             "planning": {
                 "source": session.planning_source,
                 "rationale": session.planning_rationale,
@@ -315,6 +660,29 @@ def _is_runnable_task(task: AgentTeamTask) -> bool:
         and not task.execution_status
         and not task.agent_run_id
     )
+
+
+def _max_parallel_runs_for(settings: Any | None) -> int:
+    return max(1, min(16, int(getattr(settings, "agent_role_max_parallel_runs", 2) or 2)))
+
+
+def _agent_team_execution_mode(settings: Any | None) -> str:
+    return str(getattr(settings, "background_job_execution", "best_effort") or "best_effort")
+
+
+def _run_metadata(*, tasks: list[AgentTeamTask], settings: Any | None) -> dict[str, Any]:
+    return {
+        "execution_mode": _agent_team_execution_mode(settings),
+        "scheduled_task_ids": [
+            task.task_id
+            for task in tasks
+            if task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
+        ],
+        "running_task_ids": [
+            task.task_id for task in tasks if task.status == AgentTeamTaskStatus.RUNNING
+        ],
+        "max_parallel_runs": _max_parallel_runs_for(settings),
+    }
 
 
 def _is_terminal_blocker(task: AgentTeamTask) -> bool:
@@ -401,6 +769,22 @@ def _scheduler_state(tasks: list[AgentTeamTask]) -> dict[str, object]:
         "max_waves": _MAX_MISSION_SCHEDULER_WAVES,
         "max_tasks": _MAX_MISSION_SCHEDULER_TASKS,
     }
+
+
+def _task_wave(task: AgentTeamTask, tasks: list[AgentTeamTask]) -> int:
+    by_id = {item.task_id: item for item in tasks}
+    seen: set[str] = set()
+
+    def depth(item: AgentTeamTask) -> int:
+        if item.task_id in seen:
+            return 1
+        seen.add(item.task_id)
+        parents = [by_id[dependency] for dependency in item.dependencies if dependency in by_id]
+        if not parents:
+            return 1
+        return 1 + max(depth(parent) for parent in parents)
+
+    return depth(task)
 
 
 __all__ = ["AgentTeamRunMixin"]

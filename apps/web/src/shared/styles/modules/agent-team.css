@@ -311,6 +311,13 @@
   gap: 10px;
 }
 
+.fa-agent-team-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .fa-agent-team-panel-header > div,
 .fa-agent-team-detail-heading > div {
   display: grid;
@@ -759,6 +766,219 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.fa-agent-team-studio {
+  gap: 14px;
+}
+
+.fa-agent-team-studio-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--fa-panel-2) 72%, transparent 28%);
+}
+
+.fa-agent-team-studio-header > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fa-agent-team-studio-header h1 {
+  margin: 0;
+  color: var(--fa-text);
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  line-height: 1.15;
+}
+
+.fa-agent-team-studio-header p {
+  margin: 0;
+  max-width: 760px;
+  color: var(--fa-text-muted);
+  line-height: 1.45;
+}
+
+.fa-agent-team-studio-meter {
+  display: grid;
+  grid-template-columns: auto 38px auto 38px auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fa-agent-team-studio-meter span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--fa-accent) 42%, var(--fa-border-subtle));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fa-accent) 20%, var(--fa-panel-1) 80%);
+  color: var(--fa-text);
+  font-weight: 800;
+}
+
+.fa-agent-team-studio-meter i {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fa-accent) 36%, var(--fa-border-subtle));
+}
+
+.fa-agent-team-studio-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.1fr) minmax(320px, 0.72fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.fa-agent-team-studio-form {
+  gap: 14px;
+}
+
+.fa-agent-team-studio-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fa-agent-team-studio-section-heading {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-right: 28px;
+}
+
+.fa-agent-team-studio-section-heading > span {
+  color: var(--fa-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.fa-agent-team-studio-section-heading strong {
+  color: var(--fa-text);
+}
+
+.fa-agent-team-studio-section-heading .fa-agent-team-help-tip {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.fa-agent-team-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fa-agent-team-preset {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 11px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+  color: var(--fa-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.fa-agent-team-preset:hover,
+.fa-agent-team-preset.is-selected {
+  border-color: color-mix(in srgb, var(--fa-accent) 52%, var(--fa-border-strong));
+  background: color-mix(in srgb, var(--fa-accent) 13%, var(--fa-panel-1) 87%);
+}
+
+.fa-agent-team-preset strong {
+  color: var(--fa-text);
+}
+
+.fa-agent-team-preset span {
+  color: var(--fa-text-muted);
+  line-height: 1.35;
+  font-size: 0.82rem;
+}
+
+.fa-agent-team-studio-rail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--fa-panel-2) 58%, transparent 42%);
+}
+
+.fa-agent-team-studio-rail-main {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.fa-agent-team-studio-rail-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--fa-panel-1) 72%, transparent 28%);
+  opacity: 0.72;
+}
+
+.fa-agent-team-studio-rail-step.is-active {
+  border-color: color-mix(in srgb, var(--fa-accent) 42%, var(--fa-border-subtle));
+  opacity: 1;
+}
+
+.fa-agent-team-studio-rail-step span {
+  display: grid;
+  grid-row: 1 / span 2;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--fa-border-subtle);
+  border-radius: 999px;
+  color: var(--fa-text);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.fa-agent-team-studio-rail-step strong,
+.fa-agent-team-studio-rail-step small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.fa-agent-team-studio-rail-step strong {
+  color: var(--fa-text);
+  font-size: 0.88rem;
+}
+
+.fa-agent-team-studio-rail-step small {
+  color: var(--fa-text-muted);
+  font-size: 0.74rem;
+}
+
+.fa-agent-team-studio-rail-action {
+  min-width: 150px;
+}
+
 .fa-agent-team-compact-header {
   padding: 10px 12px;
   border-radius: 20px;
@@ -901,9 +1121,8 @@
 .fa-agent-team-next-step > strong {
   min-width: 0;
   flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .fa-agent-team-progress-strip {
@@ -1483,7 +1702,8 @@
 @media (max-width: 1280px) {
   .fa-agent-team-workbench-grid,
   .fa-agent-team-guided-grid,
-  .fa-agent-team-create-grid {
+  .fa-agent-team-create-grid,
+  .fa-agent-team-studio-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1498,6 +1718,8 @@
 
 @media (max-width: 900px) {
   .fa-agent-team-compact-header .fa-chat-header-top,
+  .fa-agent-team-studio-header,
+  .fa-agent-team-studio-rail,
   .fa-agent-team-mission-header,
   .fa-agent-team-mission-progress,
   .fa-agent-team-next-step {
@@ -1536,6 +1758,14 @@
   .fa-agent-team-guide.is-compact {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .fa-agent-team-studio-meter {
+    width: min(100%, 260px);
+  }
+
+  .fa-agent-team-studio-rail-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 560px) {
@@ -1555,5 +1785,13 @@
 
   .fa-agent-team-output-columns {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fa-agent-team-preset-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fa-agent-team-studio-meter {
+    grid-template-columns: auto 1fr auto 1fr auto;
   }
 }

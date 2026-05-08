@@ -19,7 +19,7 @@ import type {
   AgentTeamSessionView,
   AgentTeamTask,
 } from "./types";
-import { isTaskRunning, normalizeSessionView } from "./agent-team-workbench-utils";
+import { isTaskQueued, isTaskRunning, normalizeSessionView } from "./agent-team-workbench-utils";
 
 function agentTeamClient(client: unknown): Partial<AgentTeamClientContract> {
   return client as Partial<AgentTeamClientContract>;
@@ -32,7 +32,11 @@ function missingSdkMethod(method: keyof AgentTeamClientContract): Error {
 function shouldPollSessionView(data: AgentTeamSession | AgentTeamSessionView | undefined) {
   const view = normalizeSessionView(data);
   if (!view) return false;
-  return view.session.status === "running" || view.tasks.some(isTaskRunning);
+  return (
+    view.session.status === "planning" ||
+    view.session.status === "running" ||
+    view.tasks.some((task) => isTaskQueued(task) || isTaskRunning(task))
+  );
 }
 
 function coerceViewResponse(
@@ -51,6 +55,7 @@ function coerceViewResponse(
       outputs: responseView.outputs?.length ? responseView.outputs : previousView?.outputs ?? [],
       artifacts: responseView.artifacts?.length ? responseView.artifacts : previousView?.artifacts ?? [],
       merge_bundle: responseView.merge_bundle ?? previousView?.merge_bundle ?? null,
+      run: responseView.run ?? previousView?.run ?? null,
     };
   }
 
@@ -120,6 +125,7 @@ async function getLegacySessionView(
     tasks,
     artifacts: [],
     merge_bundle: null,
+    run: null,
   };
 }
 
@@ -135,7 +141,7 @@ export function useAgentTeamSession(sessionId: string | null) {
       return getLegacySessionView(agentTeam, sessionId);
     },
     enabled: ready && Boolean(sessionId),
-    refetchInterval: (query) => (shouldPollSessionView(query.state.data) ? 3000 : false),
+    refetchInterval: (query) => (shouldPollSessionView(query.state.data) ? 1500 : false),
   });
 }
 
@@ -246,6 +252,61 @@ export function useRunAgentTeamTask(sessionId: string | null) {
     },
     onSuccess: (data) => {
       updateSessionCache(queryClient, sessionId, data);
+    },
+  });
+}
+
+export function useRetryAgentTeamTask(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamActionResponse, Error, { taskId: string }>({
+    mutationFn: async ({ taskId }) => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (!agentTeam.retryAgentTeamTask) throw missingSdkMethod("retryAgentTeamTask");
+      return agentTeam.retryAgentTeamTask(taskId);
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId ?? "") });
+    },
+  });
+}
+
+export function useCancelAgentTeamTask(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamActionResponse, Error, { taskId: string }>({
+    mutationFn: async ({ taskId }) => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (!agentTeam.cancelAgentTeamTask) throw missingSdkMethod("cancelAgentTeamTask");
+      return agentTeam.cancelAgentTeamTask(taskId);
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId ?? "") });
+    },
+  });
+}
+
+export function useCancelAgentTeamSession(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamActionResponse, Error>({
+    mutationFn: async () => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (!agentTeam.cancelAgentTeamSession) throw missingSdkMethod("cancelAgentTeamSession");
+      return agentTeam.cancelAgentTeamSession(sessionId);
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId ?? "") });
+      void queryClient.invalidateQueries({ queryKey: ["agent-team-sessions"] });
     },
   });
 }

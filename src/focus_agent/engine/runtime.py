@@ -136,6 +136,7 @@ class AppRuntime:
             registry,
             chat_service=chat_service,
             branch_service=self.branch_service,
+            agent_team_service=self.agent_team_service,
         )
         worker = DurableBackgroundWorker(
             name="runtime",
@@ -207,6 +208,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_writer=memory.memory_writer,
         memory_repository=persistence.memory_repository,
         coordination_backend=coordination_backend,
+        background_work=background_work,
     )
 
     return AppRuntime(
@@ -403,6 +405,7 @@ def _create_runtime_services(
     memory_writer: MemoryWriter,
     memory_repository: object | None,
     coordination_backend: CoordinationBackend,
+    background_work: BoundedBackgroundQueue,
 ) -> RuntimeServices:
     branch_service = BranchService(
         settings=settings,
@@ -416,6 +419,8 @@ def _create_runtime_services(
         branch_service=branch_service,
         repository=_create_agent_team_repository(settings),
         settings=settings,
+        coordination_backend=coordination_backend,
+        background_work=background_work,
     )
     user_service = UserService(
         user_repository,

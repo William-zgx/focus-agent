@@ -696,6 +696,34 @@
     },
     {
       "method": "POST",
+      "operation_id": "cancel_agent_team_session_v1_agent_team_sessions__session_id__cancel_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/cancel",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamSessionViewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
       "operation_id": "dispatch_agent_team_session_v1_agent_team_sessions__session_id__dispatch_post",
       "parameters": [
         {
@@ -902,7 +930,16 @@
         }
       ],
       "path": "/v1/agent-team/sessions/{session_id}/run",
-      "request": null,
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RunAgentTeamSessionRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamSessionViewResponse"
@@ -1058,6 +1095,34 @@
     },
     {
       "method": "POST",
+      "operation_id": "cancel_agent_team_task_v1_agent_team_tasks__task_id__cancel_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}/cancel",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
       "operation_id": "record_agent_team_task_output_v1_agent_team_tasks__task_id__outputs_post",
       "parameters": [
         {
@@ -1080,6 +1145,34 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamTaskOutputResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "retry_agent_team_task_v1_agent_team_tasks__task_id__retry_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/tasks/{task_id}/retry",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -5896,6 +5989,37 @@
       ],
       "type": "string"
     },
+    "AgentTeamRunMetadata": {
+      "properties": {
+        "execution_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_parallel_runs": {
+          "default": 1,
+          "type": "integer"
+        },
+        "running_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scheduled_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "AgentTeamSessionContract": {
       "properties": {
         "created_at": {
@@ -6116,6 +6240,16 @@
             }
           ]
         },
+        "run": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamRunMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "session": {
           "$ref": "#/components/schemas/AgentTeamSessionContract"
         },
@@ -6155,7 +6289,21 @@
           },
           "type": "array"
         },
+        "attempt": {
+          "default": 0,
+          "type": "integer"
+        },
         "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancel_requested_at": {
           "anyOf": [
             {
               "type": "string"
@@ -6172,6 +6320,26 @@
           "type": "array"
         },
         "child_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claim_owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claimed_until": {
           "anyOf": [
             {
               "type": "string"
@@ -6207,6 +6375,16 @@
           },
           "type": "array"
         },
+        "execution_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "execution_status": {
           "anyOf": [
             {
@@ -6230,6 +6408,16 @@
         "goal": {
           "type": "string"
         },
+        "heartbeat_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "last_error": {
           "anyOf": [
             {
@@ -6239,6 +6427,10 @@
               "type": "null"
             }
           ]
+        },
+        "max_attempts": {
+          "default": 2,
+          "type": "integer"
         },
         "output_artifact_ids": {
           "items": {
@@ -6257,6 +6449,16 @@
           ]
         },
         "planning_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queued_at": {
           "anyOf": [
             {
               "type": "string"
@@ -6492,6 +6694,7 @@
     "AgentTeamTaskStatus": {
       "enum": [
         "pending",
+        "queued",
         "running",
         "blocked",
         "done",
@@ -9021,6 +9224,68 @@
       "required": [
         "session_id"
       ],
+      "type": "object"
+    },
+    "RunAgentTeamSessionRequest": {
+      "properties": {
+        "auto_fork_branch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "create_branches": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_ready_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
       "type": "object"
     },
     "RuntimeComponentStatusResponse": {

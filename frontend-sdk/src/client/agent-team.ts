@@ -14,6 +14,7 @@ import type {
   FocusAgentAgentTeamRunSessionResponse,
   FocusAgentAgentTeamRunTaskResponse,
   FocusAgentAgentTeamTaskRunRequest,
+  FocusAgentAgentTeamRunMetadata,
   FocusAgentAgentTeamMergeBundle,
   FocusAgentAgentTeamMergeDecisionRequest,
   FocusAgentAgentTeamMergeDecisionResponse,
@@ -39,6 +40,7 @@ type AgentTeamSessionActionResponse = {
   artifacts?: FocusAgentAgentTeamArtifact[];
   merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
   planning?: FocusAgentAgentTeamPlanningMetadata | null;
+  run?: FocusAgentAgentTeamRunMetadata | null;
   count?: number;
 };
 
@@ -58,6 +60,7 @@ function normalizeAgentTeamSessionActionResponse<T extends AgentTeamSessionActio
     outputs: response.outputs ?? [],
     artifacts: response.artifacts ?? [],
     planning: response.planning ?? response.session.planning ?? null,
+    run: response.run ?? null,
     count: response.count ?? items.length,
   };
 }
@@ -71,6 +74,7 @@ function normalizeAgentTeamTaskActionResponse(response: AgentTeamTaskActionRespo
     outputs: response.outputs ?? [],
     artifacts: response.artifacts ?? [],
     planning: response.planning ?? response.session?.planning ?? null,
+    run: response.run ?? null,
     count: response.count ?? items.length,
   };
 }
@@ -134,6 +138,7 @@ async function getAgentTeamSessionView(
     outputs: response.outputs ?? [],
     merge_bundle: response.merge_bundle ?? response.session.latest_merge_bundle ?? null,
     planning: response.planning ?? response.session.planning ?? { task_count: response.tasks?.length ?? 0 },
+    run: response.run ?? null,
   };
 }
 
@@ -284,6 +289,62 @@ async function runAgentTeamTask(
   return normalizeAgentTeamTaskActionResponse(response);
 }
 
+async function retryAgentTeamTask(
+  this: FocusAgentEndpointContext,
+  taskId: string,
+): Promise<FocusAgentAgentTeamRunTaskResponse> {
+  const response = await this.requestJson<AgentTeamTaskActionResponse>(
+    `/v1/agent-team/tasks/${encodeURIComponent(taskId)}/retry`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+    true,
+  );
+  return normalizeAgentTeamTaskActionResponse(response);
+}
+
+async function cancelAgentTeamTask(
+  this: FocusAgentEndpointContext,
+  taskId: string,
+): Promise<FocusAgentAgentTeamRunTaskResponse> {
+  const response = await this.requestJson<AgentTeamTaskActionResponse>(
+    `/v1/agent-team/tasks/${encodeURIComponent(taskId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+    true,
+  );
+  return normalizeAgentTeamTaskActionResponse(response);
+}
+
+async function cancelAgentTeamSession(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+): Promise<FocusAgentAgentTeamSessionView> {
+  const response = await this.requestJson<FocusAgentAgentTeamSessionView>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+    true,
+  );
+  return {
+    ...response,
+    tasks: response.tasks ?? [],
+    artifacts: response.artifacts ?? [],
+    outputs: response.outputs ?? [],
+    merge_bundle: response.merge_bundle ?? response.session.latest_merge_bundle ?? null,
+    planning: response.planning ?? response.session.planning ?? { task_count: response.tasks?.length ?? 0 },
+    run: response.run ?? null,
+  };
+}
+
 async function recordAgentTeamTaskOutput(
   this: FocusAgentEndpointContext,
   taskId: string,
@@ -357,6 +418,9 @@ export interface AgentTeamEndpoints {
   getAgentTeamTaskStatus: OmitThisParameter<typeof getAgentTeamTaskStatus>;
   updateAgentTeamTask: OmitThisParameter<typeof updateAgentTeamTask>;
   runAgentTeamTask: OmitThisParameter<typeof runAgentTeamTask>;
+  retryAgentTeamTask: OmitThisParameter<typeof retryAgentTeamTask>;
+  cancelAgentTeamTask: OmitThisParameter<typeof cancelAgentTeamTask>;
+  cancelAgentTeamSession: OmitThisParameter<typeof cancelAgentTeamSession>;
   recordAgentTeamTaskOutput: OmitThisParameter<typeof recordAgentTeamTaskOutput>;
   prepareAgentTeamMergeBundle: OmitThisParameter<typeof prepareAgentTeamMergeBundle>;
   recordAgentTeamMergeDecision: OmitThisParameter<typeof recordAgentTeamMergeDecision>;
@@ -375,6 +439,9 @@ const agentTeamEndpoints: FocusAgentEndpointMethodMap<AgentTeamEndpoints> = {
   getAgentTeamTaskStatus,
   updateAgentTeamTask,
   runAgentTeamTask,
+  retryAgentTeamTask,
+  cancelAgentTeamTask,
+  cancelAgentTeamSession,
   recordAgentTeamTaskOutput,
   prepareAgentTeamMergeBundle,
   recordAgentTeamMergeDecision,

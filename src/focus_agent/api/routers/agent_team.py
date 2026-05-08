@@ -25,6 +25,7 @@ from ..contracts import (
     CreateAgentTeamTaskRequest,
     DispatchAgentTeamSessionRequest,
     RecordAgentTeamTaskOutputRequest,
+    RunAgentTeamSessionRequest,
     UpdateAgentTeamTaskRequest,
 )
 from ..deps import get_app_runtime, get_current_principal
@@ -212,6 +213,7 @@ def plan_agent_team_session(
 @router.post('/v1/agent-team/sessions/{session_id}/run', response_model=AgentTeamSessionViewResponse)
 def run_agent_team_session(
     session_id: str,
+    payload: RunAgentTeamSessionRequest | None = None,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionViewResponse:
@@ -220,6 +222,7 @@ def run_agent_team_session(
         service.run_ready_tasks(
             session_id=session_id,
             user_id=principal.user_id,
+            task_ids=payload.task_ids if payload else None,
         )
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
@@ -331,6 +334,45 @@ def run_agent_team_task(
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
+
+@router.post('/v1/agent-team/tasks/{task_id}/retry', response_model=AgentTeamTaskResponse)
+def retry_agent_team_task(
+    task_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamTaskResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        task = service.retry_task(task_id=task_id, user_id=principal.user_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamTaskResponse(task=task)
+
+@router.post('/v1/agent-team/tasks/{task_id}/cancel', response_model=AgentTeamTaskResponse)
+def cancel_agent_team_task(
+    task_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamTaskResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        task = service.cancel_task(task_id=task_id, user_id=principal.user_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamTaskResponse(task=task)
+
+@router.post('/v1/agent-team/sessions/{session_id}/cancel', response_model=AgentTeamSessionViewResponse)
+def cancel_agent_team_session(
+    session_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamSessionViewResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        service.cancel_session(session_id=session_id, user_id=principal.user_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return _view_response(service.get_session_view(session_id=session_id, user_id=principal.user_id))
 
 @router.post('/v1/agent-team/tasks/{task_id}/outputs', response_model=AgentTeamTaskOutputResponse)
 def record_agent_team_task_output(
