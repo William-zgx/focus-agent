@@ -849,6 +849,92 @@ test("message transcript shows only the latest visible assistant answer per turn
 	assert.equal(toolItems.length, 2);
 });
 
+test("message transcript keeps historical tool results inside one tool activity", () => {
+  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+  const largeToolResult = JSON.stringify({
+    answer: "tool-result-unique-large-payload",
+    rows: Array.from({ length: 40 }, (_, index) => ({
+      id: `row-${index}`,
+      value: "x".repeat(80),
+    })),
+  });
+  const failedToolResult = JSON.stringify({
+    message: "lookup failed with timeout",
+    retryable: true,
+  });
+
+  const items = buildTranscriptItems([
+    { id: "user-1", type: "human", content: "Gather evidence." },
+    {
+      id: "assistant-tools-1",
+      type: "ai",
+      content: "",
+      tool_calls: [
+        {
+          id: "call-search",
+          function: {
+            name: "web_search",
+            arguments: JSON.stringify({ query: "focus-agent regression" }),
+          },
+        },
+        {
+          id: "call-fetch",
+          name: "web_fetch",
+          args: { url: "https://example.test/large-result" },
+        },
+      ],
+    },
+    {
+      id: "tool-result-search",
+      type: "tool",
+      tool_call_id: "call-search",
+      name: "web_search",
+      content: largeToolResult,
+    },
+    {
+      id: "tool-result-fetch",
+      type: "tool",
+      tool_call_id: "call-fetch",
+      name: "web_fetch",
+      status: "error",
+      content: failedToolResult,
+    },
+  ]);
+
+  const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
+  const toolItems = items.filter((item) => item.kind === "tool-activity");
+
+  assert.equal(assistantItems.length, 0);
+  assert.equal(toolItems.length, 1);
+  assert.equal(
+    JSON.stringify(toolItems[0].toolNames),
+    JSON.stringify(["web_search", "web_fetch"]),
+  );
+  assert.equal(toolItems[0].details.length, 2);
+  assert.equal(toolItems[0].details[0].label, "web_search");
+  assert.equal(toolItems[0].details[0].language, "json");
+  assert.match(toolItems[0].details[0].content, /tool-result-unique-large-payload/);
+  assert.equal(toolItems[0].details[1].label, "web_fetch");
+  assert.equal(toolItems[0].details[1].language, "json");
+
+  assert.equal(toolItems[0].steps.length, 2);
+  assert.equal(toolItems[0].steps[0].id, "call-search");
+  assert.equal(toolItems[0].steps[0].status, "completed");
+  assert.equal(toolItems[0].steps[0].detail.id, toolItems[0].details[0].id);
+  assert.equal(toolItems[0].steps[1].id, "call-fetch");
+  assert.equal(toolItems[0].steps[1].status, "failed");
+  assert.equal(toolItems[0].steps[1].tone, "danger");
+  assert.equal(toolItems[0].steps[1].detail.id, toolItems[0].details[1].id);
+  assert.equal(
+    items.some(
+      (item) =>
+        item.kind === "message" &&
+        String(item.content).includes("tool-result-unique-large-payload"),
+    ),
+    false,
+  );
+});
+
 test("trajectory previews hide internal tool and reasoning artifacts", () => {
 	const { compactSnippet, extractStructuredSummary } =
 		loadTrajectoryUtilityFunctions();
