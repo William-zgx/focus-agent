@@ -56,7 +56,7 @@ Open:
 
 ## 3. Managed Local PostgreSQL
 
-If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) manage a repo-local PostgreSQL and inject `DATABASE_URI` into the API process automatically.
+If `DATABASE_URI` is not already set, the local startup commands (`make api`, `make dev`, `make serve`, `make serve-dev`, and `make serve-prod`) manage a repo-local PostgreSQL for you and inject `DATABASE_URI` into the API process automatically.
 
 That managed path:
 
