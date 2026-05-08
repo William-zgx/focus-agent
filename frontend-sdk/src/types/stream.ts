@@ -187,6 +187,44 @@ export interface FocusAgentEventPayloadMap {
 
 export type FocusAgentEventPayload = FocusAgentEventPayloadMap[FocusAgentEventName];
 
+export type FocusAgentStreamStepStatus = "pending" | "running" | "completed" | "failed";
+
+export interface FocusAgentStreamStepBase {
+  id: string;
+  kind: "reasoning" | "tool" | "task" | "agent";
+  label: string;
+  status: FocusAgentStreamStepStatus;
+  content?: string;
+  name?: string;
+  argsText?: string;
+  result?: unknown;
+  metadata?: FocusAgentStreamMetadata;
+  namespace?: string[];
+  eventName?: FocusAgentEventName;
+}
+
+export interface FocusAgentReasoningStreamStep extends FocusAgentStreamStepBase {
+  kind: "reasoning";
+}
+
+export interface FocusAgentToolStreamStep extends FocusAgentStreamStepBase {
+  kind: "tool";
+}
+
+export interface FocusAgentTaskStreamStep extends FocusAgentStreamStepBase {
+  kind: "task";
+}
+
+export interface FocusAgentAgentStreamStep extends FocusAgentStreamStepBase {
+  kind: "agent";
+}
+
+export type FocusAgentStreamStep =
+  | FocusAgentReasoningStreamStep
+  | FocusAgentToolStreamStep
+  | FocusAgentTaskStreamStep
+  | FocusAgentAgentStreamStep;
+
 export type FocusAgentEvent<K extends FocusAgentEventName = FocusAgentEventName> =
   K extends FocusAgentEventName
     ? {
@@ -221,6 +259,8 @@ export interface FocusAgentStreamHandlers {
 export interface FocusAgentStreamState {
   visibleText: string;
   reasoningText: string;
+  processingSteps: FocusAgentStreamStep[];
+  activePhase?: string;
   toolCalls: FocusAgentToolCallEvent[];
   toolEvents: FocusAgentToolEvent[];
   interrupts: unknown[];

@@ -77,13 +77,19 @@ export function ThreadPage() {
 		dismissBranchAction,
 		executeBranchAction,
 	} = useThreadBranchActions(threadId);
-	const { followAndScrollToBottom, historyRef } = useThreadAutoFollow({
+	const { followAndScrollToBottom, stickToBottom } = useThreadAutoFollow({
 		branchActionCount: branchActions.length,
 		hasTranscriptContent,
 		isStreaming,
 		lastTranscriptMessageContent: lastTranscriptMessage?.content,
 		lastTranscriptMessageId: lastTranscriptMessage?.id,
 		streamFailedMessage: streamState?.failed?.message,
+		streamProcessingStepSignal: streamState?.processingSteps
+			.map(
+				(step) =>
+					`${step.kind}:${step.id}:${step.status}:${step.content ?? ""}:${step.argsText ?? ""}`,
+			)
+			.join("\n"),
 		streamReasoningText: streamState?.reasoningText,
 		streamToolCallCount,
 		streamToolEventCount,
@@ -166,7 +172,6 @@ export function ThreadPage() {
 			contextUsage={data?.context_usage ?? null}
 			editDraft={editDraft}
 			hasTranscriptContent={hasTranscriptContent}
-			historyRef={historyRef}
 			isChineseUi={isChineseUi}
 			isCompactingContext={compactThreadContext.isPending}
 			isContextUsageLoading={previewThreadContext.isPending}
@@ -189,6 +194,7 @@ export function ThreadPage() {
 			previewContextUsage={previewContextUsage}
 			selectedModel={data?.selected_model}
 			selectedThinkingMode={data?.selected_thinking_mode}
+			stickToBottom={stickToBottom}
 			streamState={streamState}
 			threadError={error}
 			toolApprovalError={toolApprovalError}

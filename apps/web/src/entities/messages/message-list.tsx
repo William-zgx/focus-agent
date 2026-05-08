@@ -1,5 +1,6 @@
 import type {
 	FocusAgentBranchActionProposal,
+	FocusAgentStreamStep,
 	FocusAgentToolApprovalInterrupt,
 	FocusAgentToolCallEvent,
 	FocusAgentToolEvent,
@@ -29,6 +30,7 @@ interface MessageListProps {
 	assistantMessage?: string | null;
 	streamVisibleText?: string;
 	streamReasoningText?: string;
+	streamProcessingSteps?: FocusAgentStreamStep[];
 	streamToolCalls?: FocusAgentToolCallEvent[];
 	streamToolEvents?: FocusAgentToolEvent[];
 	streamFailed?: TurnFailedPayload;
@@ -56,6 +58,7 @@ export function MessageList({
 	assistantMessage,
 	streamVisibleText,
 	streamReasoningText,
+	streamProcessingSteps,
 	streamToolCalls,
 	streamToolEvents,
 	streamFailed,
@@ -143,6 +146,7 @@ export function MessageList({
 			<AgentRunBubble
 				isStreaming={isStreaming}
 				isChineseUi={isChineseUi}
+				processingSteps={streamProcessingSteps}
 				reasoningText={streamReasoningText}
 				toolCalls={streamToolCalls}
 				toolEvents={streamToolEvents}

@@ -165,6 +165,19 @@ def _tool_call_chunk_payload(*, raw: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _tool_identity_payload(*, tool_call_id: Any = None, name: Any = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if tool_call_id is not None:
+        call_id = str(tool_call_id)
+        payload["id"] = call_id
+        payload["tool_call_id"] = call_id
+    if name is not None:
+        tool_name = str(name)
+        payload["name"] = tool_name
+        payload["tool_name"] = tool_name
+    return payload
+
+
 def extract_tool_call_chunks(message_chunk: Any) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     for chunk in getattr(message_chunk, "tool_call_chunks", []) or []:
@@ -212,7 +225,14 @@ def map_custom_payload_to_event(payload: Any) -> tuple[str, dict[str, Any]]:
                 "end": "tool.end",
                 "error": "tool.error",
             }.get(stage, "tool.delta")
-            return event_name, dict(payload)
+            normalized = dict(payload)
+            normalized.update(
+                _tool_identity_payload(
+                    tool_call_id=payload.get("tool_call_id") or payload.get("id") or payload.get("call_id"),
+                    name=payload.get("tool_name") or payload.get("name"),
+                )
+            )
+            return event_name, normalized
         if payload.get("event") == "status":
             return "status", dict(payload)
         return "custom", dict(payload)
@@ -231,7 +251,9 @@ def extract_tool_requests_from_updates(data: dict[str, Any]) -> list[dict[str, A
                     {
                         "node": node_name,
                         "tool_name": tool_call.get("name"),
+                        "name": tool_call.get("name"),
                         "tool_call_id": tool_call.get("id"),
+                        "id": tool_call.get("id"),
                         "args": tool_call.get("args"),
                     }
                 )
@@ -252,8 +274,10 @@ def extract_tool_results_from_updates(data: dict[str, Any]) -> list[dict[str, An
                 {
                     "node": node_name,
                     "tool_call_id": getattr(message, "tool_call_id", None),
+                    "id": getattr(message, "tool_call_id", None),
                     "content": _stringify(getattr(message, "content", "")),
                     "name": getattr(message, "name", None),
+                    "tool_name": getattr(message, "name", None),
                 }
             )
     return results

@@ -6,6 +6,8 @@ export {
 export type {
 	ToolActivityItem,
 	ToolDetailEntry,
+	ProcessingStepEntry,
+	ProcessingStepTone,
 	TranscriptDisplayMessage,
 	TranscriptItem,
 } from "./message-transcript-types";

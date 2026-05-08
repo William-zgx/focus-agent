@@ -926,12 +926,65 @@
   box-shadow: var(--fa-shadow);
 }
 
+.fa-conversation-viewport {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .fa-chat-history {
   display: flex;
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
   padding: 20px;
+}
+
+.fa-scroll-bottom-button {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 13px;
+  border: 1px solid rgba(129, 140, 248, 0.34);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(37, 37, 48, 0.96), rgba(18, 18, 26, 0.96)),
+    radial-gradient(
+      circle at top right,
+      rgba(56, 189, 248, 0.16),
+      transparent 42%
+    );
+  color: #f8fafc;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.fa-scroll-bottom-button:hover,
+.fa-scroll-bottom-button:focus-visible {
+  border-color: rgba(129, 140, 248, 0.54);
+  background:
+    linear-gradient(180deg, rgba(49, 49, 64, 0.98), rgba(24, 24, 34, 0.98)),
+    radial-gradient(
+      circle at top right,
+      rgba(56, 189, 248, 0.22),
+      transparent 42%
+    );
+}
+
+.fa-scroll-bottom-button:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.5);
+  outline-offset: 2px;
 }
 
 .fa-chat-history-shell {
@@ -1098,6 +1151,30 @@
   min-width: 0;
 }
 
+.fa-chat-main-body .fa-tool-activity-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.fa-chat-main-body .fa-tool-activity-preview-step {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
+  color: var(--fa-text-muted);
+  font-size: 11px;
+}
+
+.fa-chat-main-body .fa-tool-activity-preview-step.is-danger {
+  border-color: color-mix(in srgb, var(--fa-danger) 36%, var(--fa-border) 64%);
+  color: var(--fa-danger);
+}
+
 .fa-chat-main-body .fa-tool-activity-title {
   color: var(--fa-text);
   font-size: 13px;
@@ -1132,6 +1209,79 @@
 .fa-chat-main-body .fa-tool-activity-detail {
   display: grid;
   gap: 6px;
+}
+
+.fa-chat-main-body .fa-tool-activity-steps {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.fa-chat-main-body .fa-tool-activity-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
+  background: color-mix(in srgb, var(--fa-panel-3) 30%, transparent);
+}
+
+.fa-chat-main-body .fa-tool-activity-step.is-danger {
+  border-color: color-mix(in srgb, var(--fa-danger) 36%, var(--fa-border) 64%);
+  background: color-mix(in srgb, var(--fa-danger) 10%, transparent);
+}
+
+.fa-chat-main-body .fa-tool-activity-step-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fa-text-muted) 72%, transparent);
+}
+
+.fa-chat-main-body .fa-tool-activity-step.is-warn .fa-tool-activity-step-dot {
+  background: var(--fa-warning);
+}
+
+.fa-chat-main-body .fa-tool-activity-step.is-success .fa-tool-activity-step-dot {
+  background: var(--fa-success);
+}
+
+.fa-chat-main-body .fa-tool-activity-step.is-danger .fa-tool-activity-step-dot {
+  background: var(--fa-danger);
+}
+
+.fa-chat-main-body .fa-tool-activity-step-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fa-chat-main-body .fa-tool-activity-step-title {
+  color: var(--fa-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.fa-chat-main-body .fa-tool-activity-step-content {
+  overflow: hidden;
+  color: var(--fa-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fa-chat-main-body .fa-tool-activity-step-status {
+  color: var(--fa-text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .fa-chat-main-body .fa-tool-activity-summary-block p {

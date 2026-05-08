@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import threading
@@ -150,6 +151,21 @@ class BranchActionBranchService:
 class FailingBranchActionBranchService:
     def fork_branch(self, **_kwargs):
         raise ValueError("fork failed for test")
+
+
+def _decode_sse_frames(frames: list[str]) -> list[tuple[str, dict[str, object]]]:
+    decoded: list[tuple[str, dict[str, object]]] = []
+    for frame in frames:
+        event = ""
+        data_lines: list[str] = []
+        for line in frame.splitlines():
+            if line.startswith("event: "):
+                event = line.removeprefix("event: ")
+            elif line.startswith("data: "):
+                data_lines.append(line.removeprefix("data: "))
+        if event:
+            decoded.append((event, json.loads("\n".join(data_lines))))
+    return decoded
 
 
 def _repo_with_child_branch(tmp_path: Path) -> SQLiteBranchRepository:
@@ -1256,6 +1272,219 @@ def test_stream_message_falls_back_to_sync_stream_when_checkpointer_lacks_async_
 
     assert any("event: visible_text.delta" in frame and '"delta": "Hi"' in frame for frame in frames)
     assert any("event: turn.completed" in frame for frame in frames)
+
+
+def test_stream_message_keeps_backend_sse_event_names_and_json_safe_payloads(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class RichStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del config, context, stream_mode, version
+            human = payload["messages"][-1]
+            self.values = {
+                "messages": [
+                    human,
+                    AIMessage(content="final answer"),
+                ],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+            yield {
+                "type": "messages",
+                "ns": ("agent_loop",),
+                "data": (
+                    AIMessageChunk(content="hello"),
+                    {"langgraph_node": "agent_loop", "run_id": "run-1", "secret": "drop-me"},
+                ),
+            }
+            yield {
+                "type": "messages",
+                "ns": ("agent_loop",),
+                "data": (
+                    SimpleNamespace(
+                        content=[{"type": "reasoning_delta", "text": "thinking"}],
+                        type="ai",
+                    ),
+                    {"langgraph_node": "agent_loop", "run_id": "run-1"},
+                ),
+            }
+            yield {
+                "type": "messages",
+                "ns": ("agent_loop",),
+                "data": (
+                    AIMessageChunk(
+                        content=[
+                            {
+                                "type": "tool_call_chunk",
+                                "id": "call-1",
+                                "name": "search_web",
+                                "args": '{"q":"agent"}',
+                            }
+                        ]
+                    ),
+                    {"langgraph_node": "agent_loop", "run_id": "run-1"},
+                ),
+            }
+            yield {
+                "type": "custom",
+                "ns": ("agent_loop",),
+                "metadata": {"langgraph_node": "agent_loop", "run_id": "run-1", "secret": "drop-me"},
+                "data": {
+                    "event": "tool",
+                    "stage": "start",
+                    "tool_call_id": "call-1",
+                    "tool_name": "search_web",
+                },
+            }
+            yield {
+                "type": "updates",
+                "ns": ("agent_loop",),
+                "metadata": {"langgraph_node": "agent_loop", "run_id": "run-1"},
+                "data": {
+                    "agent_loop": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                tool_calls=[
+                                    {
+                                        "id": "call-1",
+                                        "name": "search_web",
+                                        "args": {"q": "agent"},
+                                    }
+                                ],
+                            ),
+                            ToolMessage(
+                                content='{"ok":true}',
+                                tool_call_id="call-1",
+                                name="search_web",
+                            ),
+                        ]
+                    }
+                },
+            }
+            yield {
+                "type": "tasks",
+                "ns": ("agent_loop",),
+                "metadata": {"langgraph_node": "agent_loop", "run_id": "run-1"},
+                "data": {"event": "on_task_started", "id": "task-1", "name": "agent_loop"},
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=RichStreamingGraph(),
+        repo=repo,
+        branch_service=SimpleNamespace(
+            refresh_conversation_title_after_first_turn=lambda **kwargs: None,
+            refresh_branch_name_after_first_turn=lambda **kwargs: None,
+        ),
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    events = _decode_sse_frames(asyncio.run(collect_frames()))
+    names = [event for event, _payload in events]
+
+    assert "visible_text.delta" in names
+    assert "message.delta" in names
+    assert "reasoning.delta" in names
+    assert "tool_call.delta" in names
+    assert "tool.call.delta" in names
+    assert "tool.start" in names
+    assert "tool.requested" in names
+    assert "tool.result" in names
+    assert "agent.update" in names
+    assert "task.started" in names
+    assert "visible_text.completed" in names
+    assert "message.completed" in names
+    assert "reasoning.completed" in names
+    assert "turn.completed" in names
+
+    by_name = {event: payload for event, payload in events}
+    assert by_name["visible_text.delta"]["metadata"] == {
+        "langgraph_node": "agent_loop",
+        "run_id": "run-1",
+    }
+    assert by_name["tool_call.delta"]["id"] == "call-1"
+    assert by_name["tool_call.delta"]["name"] == "search_web"
+    assert by_name["tool.start"]["tool_call_id"] == "call-1"
+    assert by_name["tool.start"]["id"] == "call-1"
+    assert by_name["tool.start"]["tool_name"] == "search_web"
+    assert by_name["tool.start"]["name"] == "search_web"
+    assert by_name["tool.start"]["metadata"] == {
+        "langgraph_node": "agent_loop",
+        "run_id": "run-1",
+    }
+    assert by_name["tool.requested"]["tool_call_id"] == "call-1"
+    assert by_name["tool.requested"]["id"] == "call-1"
+    assert by_name["tool.requested"]["tool_name"] == "search_web"
+    assert by_name["tool.requested"]["name"] == "search_web"
+    assert by_name["tool.result"]["tool_call_id"] == "call-1"
+    assert by_name["tool.result"]["id"] == "call-1"
+    assert by_name["tool.result"]["tool_name"] == "search_web"
+    assert by_name["tool.result"]["name"] == "search_web"
+    assert by_name["agent.update"]["metadata"] == {
+        "langgraph_node": "agent_loop",
+        "run_id": "run-1",
+    }
+    assert by_name["task.started"]["metadata"] == {
+        "langgraph_node": "agent_loop",
+        "run_id": "run-1",
+    }
+
+
+def test_stream_message_keeps_turn_failed_event_name_and_json_safe_payload(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class FailingStreamingGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [],
+                "selected_model": "openai:gpt-4.1-mini",
+                "selected_thinking_mode": "disabled",
+            }
+
+        async def astream(self, payload, *, config, context, stream_mode, version):
+            del payload, config, context, stream_mode, version
+            raise RuntimeError("stream failed for test")
+            if False:
+                yield {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=FailingStreamingGraph(),
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    async def collect_frames():
+        return [frame async for frame in chat.stream_message(thread_id="root-1", user_id="owner-1", message="hello")]
+
+    events = _decode_sse_frames(asyncio.run(collect_frames()))
+    by_name = {event: payload for event, payload in events}
+
+    assert "turn.failed" in by_name
+    assert by_name["turn.failed"] == {
+        "error": "RuntimeError",
+        "message": "stream failed for test",
+        "thread_id": "root-1",
+    }
 
 
 def test_stream_message_hides_internal_plan_chunks_but_keeps_answer_stream(tmp_path: Path):

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 
 interface UseThreadAutoFollowOptions {
   branchActionCount: number;
@@ -7,6 +8,7 @@ interface UseThreadAutoFollowOptions {
   lastTranscriptMessageContent?: unknown;
   lastTranscriptMessageId?: unknown;
   streamFailedMessage?: string;
+  streamProcessingStepSignal?: string;
   streamReasoningText?: string;
   streamToolCallCount: number;
   streamToolEventCount: number;
@@ -16,11 +18,6 @@ interface UseThreadAutoFollowOptions {
   transcriptMessageCount: number;
 }
 
-function isNearBottom(element: HTMLElement) {
-  const distance = element.scrollHeight - element.clientHeight - element.scrollTop;
-  return distance <= 48;
-}
-
 export function useThreadAutoFollow({
   branchActionCount,
   hasTranscriptContent,
@@ -28,6 +25,7 @@ export function useThreadAutoFollow({
   lastTranscriptMessageContent,
   lastTranscriptMessageId,
   streamFailedMessage,
+  streamProcessingStepSignal,
   streamReasoningText,
   streamToolCallCount,
   streamToolEventCount,
@@ -36,41 +34,52 @@ export function useThreadAutoFollow({
   threadId,
   transcriptMessageCount,
 }: UseThreadAutoFollowOptions) {
-  const historyRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottom = useStickToBottom({
+    initial: "instant",
+    resize: "smooth",
+  });
+  const {
+    escapedFromLock,
+    isNearBottom,
+    scrollToBottom: scrollStickToBottom,
+  } = stickToBottom;
   const shouldAutoFollowRef = useRef(true);
 
   const scrollToBottom = useCallback(() => {
-    const history = historyRef.current;
-    if (!history) return;
-    history.scrollTop = history.scrollHeight;
-  }, []);
+    void scrollStickToBottom({
+      animation: "smooth",
+      wait: true,
+    });
+  }, [scrollStickToBottom]);
 
   const followAndScrollToBottom = useCallback(() => {
     shouldAutoFollowRef.current = true;
-    scrollToBottom();
-  }, [scrollToBottom]);
+    void scrollStickToBottom({
+      animation: "smooth",
+      duration: 250,
+      ignoreEscapes: true,
+    });
+  }, [scrollStickToBottom]);
 
   useEffect(() => {
-    const history = historyRef.current;
-    if (!history) return;
-
-    const handleScroll = () => {
-      shouldAutoFollowRef.current = isNearBottom(history);
-    };
-
-    handleScroll();
-    history.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      history.removeEventListener("scroll", handleScroll);
-    };
-  }, [threadId]);
+    if (escapedFromLock) {
+      shouldAutoFollowRef.current = false;
+    }
+    if (isNearBottom) {
+      shouldAutoFollowRef.current = true;
+    }
+  }, [escapedFromLock, isNearBottom]);
 
   useEffect(() => {
     shouldAutoFollowRef.current = true;
-  }, [threadId]);
+    void scrollStickToBottom("instant");
+  }, [scrollStickToBottom, threadId]);
 
   useLayoutEffect(() => {
-    if (!hasTranscriptContent || !shouldAutoFollowRef.current) {
+    if (
+      !hasTranscriptContent ||
+      (!shouldAutoFollowRef.current && !isNearBottom)
+    ) {
       return;
     }
     scrollToBottom();
@@ -80,8 +89,10 @@ export function useThreadAutoFollow({
     isStreaming,
     lastTranscriptMessageContent,
     lastTranscriptMessageId,
+    isNearBottom,
     scrollToBottom,
     streamFailedMessage,
+    streamProcessingStepSignal,
     streamReasoningText,
     streamToolCallCount,
     streamToolEventCount,
@@ -93,7 +104,7 @@ export function useThreadAutoFollow({
 
   return {
     followAndScrollToBottom,
-    historyRef,
     scrollToBottom,
+    stickToBottom,
   };
 }

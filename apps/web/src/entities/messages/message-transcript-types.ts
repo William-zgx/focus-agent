@@ -13,12 +13,25 @@ export interface ToolDetailEntry {
 	language: string;
 }
 
+export type ProcessingStepTone = "neutral" | "warn" | "success" | "danger";
+
+export interface ProcessingStepEntry {
+	id: string;
+	kind: "reasoning" | "tool" | "task" | "agent";
+	label: string;
+	status: "pending" | "running" | "completed" | "failed";
+	tone: ProcessingStepTone;
+	content?: string;
+	detail?: ToolDetailEntry;
+}
+
 export interface ToolActivityItem {
 	kind: "tool-activity";
 	id: string;
 	toolNames: string[];
 	summaryText: string;
 	details: ToolDetailEntry[];
+	steps: ProcessingStepEntry[];
 }
 
 export type TranscriptItem = TranscriptDisplayMessage | ToolActivityItem;

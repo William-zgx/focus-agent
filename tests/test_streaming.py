@@ -228,6 +228,23 @@ def test_map_custom_payload_to_tool_event():
     assert payload["tool_name"] == "write_text_artifact"
 
 
+def test_map_custom_payload_to_tool_event_preserves_tool_identity_aliases():
+    event_name, payload = map_custom_payload_to_event(
+        {
+            "event": "tool",
+            "stage": "start",
+            "tool_call_id": "call-1",
+            "tool_name": "search_web",
+        }
+    )
+
+    assert event_name == "tool.start"
+    assert payload["tool_call_id"] == "call-1"
+    assert payload["id"] == "call-1"
+    assert payload["tool_name"] == "search_web"
+    assert payload["name"] == "search_web"
+
+
 def test_extract_tool_requests_from_updates():
     updates = {
         "agent_loop": {
@@ -244,7 +261,9 @@ def test_extract_tool_requests_from_updates():
         {
             "node": "agent_loop",
             "tool_name": "search_web",
+            "name": "search_web",
             "tool_call_id": "call-1",
+            "id": "call-1",
             "args": {"q": "branch tree"},
         }
     ]

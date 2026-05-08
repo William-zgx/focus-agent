@@ -113,6 +113,22 @@ function loadSdkStreamFunctions() {
   const reducerSnippet = [
     "createInitialStreamState",
     "upsertBranchAction",
+    "isRecord",
+    "stringValue",
+    "stringifyValue",
+    "compactText",
+    "namespaceKey",
+    "upsertProcessingStep",
+    "stepStatusForTask",
+    "stepStatusForToolEvent",
+    "toolNameForEvent",
+    "toolStepIdForEvent",
+    "upsertReasoningStep",
+    "upsertToolCallStep",
+    "upsertToolLifecycleStep",
+    "upsertTaskStep",
+    "upsertAgentStep",
+    "failOpenProcessingSteps",
     "applyVisibleTextDelta",
     "applyVisibleTextCompleted",
     "reduceStreamEvent",
@@ -384,6 +400,214 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withArtifactCompleted.visibleText, "");
+});
+
+test("stream reducer maintains processing steps alongside legacy fields", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+
+  let state = createInitialStreamState();
+  assert.equal(Array.isArray(state.processingSteps), true);
+  assert.equal(state.processingSteps.length, 0);
+  assert.equal(state.activePhase, undefined);
+
+  state = reduceStreamEvent(state, {
+    event: "turn.status",
+    data: { thread_id: "thread-1", phase: "thinking" },
+  });
+  assert.equal(state.activePhase, "thinking");
+
+  state = reduceStreamEvent(state, {
+    event: "reasoning.delta",
+    data: {
+      thread_id: "thread-1",
+      delta: "Looking",
+      channel: "reasoning_tool_call",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "reasoning.delta",
+    data: {
+      thread_id: "thread-1",
+      delta: " closer.",
+      channel: "reasoning_tool_call",
+    },
+  });
+  assert.equal(state.reasoningText, "Looking closer.");
+  assert.equal(state.processingSteps.length, 1);
+  assert.equal(state.processingSteps[0].kind, "reasoning");
+  assert.equal(state.processingSteps[0].content, "Looking closer.");
+  assert.equal(state.processingSteps[0].status, "running");
+
+  state = reduceStreamEvent(state, {
+    event: "reasoning.completed",
+    data: {
+      thread_id: "thread-1",
+      content: "Done reasoning.",
+    },
+  });
+  const reasoningStep = state.processingSteps.find((step) => step.kind === "reasoning");
+  assert.equal(state.reasoningText, "Done reasoning.");
+  assert.equal(reasoningStep.status, "completed");
+  assert.equal(reasoningStep.content, "Done reasoning.");
+
+  state = reduceStreamEvent(state, {
+    event: "tool_call.delta",
+    data: {
+      thread_id: "thread-1",
+      id: "call-1",
+      name: "web_search",
+      args_delta: '{"query"',
+      channel: "reasoning_tool_call",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.call.delta",
+    data: {
+      thread_id: "thread-1",
+      id: "call-1",
+      name: "web_search",
+      args_delta: ':"focus"}',
+      channel: "reasoning_tool_call",
+    },
+  });
+  assert.equal(state.toolCalls.length, 2);
+  let toolStep = state.processingSteps.find((step) => step.kind === "tool" && step.id === "call-1");
+  assert.equal(toolStep.name, "web_search");
+  assert.equal(toolStep.argsText, '{"query":"focus"}');
+  assert.equal(toolStep.status, "running");
+
+  state = reduceStreamEvent(state, {
+    event: "tool.requested",
+    data: {
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      args: { query: "focus" },
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.start",
+    data: {
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      message: "Searching",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.result",
+    data: {
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      output: { title: "Focus Agent" },
+    },
+  });
+  assert.equal(state.toolEvents.length, 3);
+  toolStep = state.processingSteps.find((step) => step.kind === "tool" && step.id === "call-1");
+  assert.equal(toolStep.status, "completed");
+  assert.equal(toolStep.content, '{"title":"Focus Agent"}');
+  assert.equal(toolStep.result.title, "Focus Agent");
+
+  state = reduceStreamEvent(state, {
+    event: "task.started",
+    data: {
+      thread_id: "thread-1",
+      id: "task-1",
+      event: "collect_sources",
+      status: "running",
+      value: "Collect sources",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "task.finished",
+    data: {
+      thread_id: "thread-1",
+      id: "task-1",
+      event: "collect_sources",
+      status: "completed",
+      value: "Sources collected",
+    },
+  });
+  const taskStep = state.processingSteps.find((step) => step.kind === "task" && step.id === "task-1");
+  assert.equal(taskStep.label, "collect_sources");
+  assert.equal(taskStep.status, "completed");
+  assert.equal(taskStep.content, "Sources collected");
+
+  state = reduceStreamEvent(state, {
+    event: "agent.update",
+    data: {
+      thread_id: "thread-1",
+      data: {
+        id: "agent-a",
+        name: "Agent A",
+        status: "running",
+        message: "Implementing SDK contract",
+      },
+    },
+  });
+  const agentStep = state.processingSteps.find((step) => step.kind === "agent" && step.id === "agent-a");
+  assert.equal(agentStep.label, "Agent A");
+  assert.equal(agentStep.status, "running");
+  assert.equal(agentStep.content, "Implementing SDK contract");
+
+  state = reduceStreamEvent(state, {
+    event: "turn.completed",
+    data: {
+      thread_id: "thread-1",
+      thread_state: { done: true },
+    },
+  });
+  assert.equal(state.processingSteps.length, 4);
+  assert.equal(state.latestTurnState.done, true);
+
+  state = reduceStreamEvent(state, {
+    event: "turn.failed",
+    data: {
+      thread_id: "thread-1",
+      error: "boom",
+      message: "failed",
+    },
+  });
+  const failedAgentStep = state.processingSteps.find(
+    (step) => step.kind === "agent" && step.id === "agent-a",
+  );
+  assert.equal(state.activePhase, "failed");
+  assert.equal(state.failed.error, "boom");
+  assert.equal(state.isClosed, true);
+  assert.equal(failedAgentStep.status, "failed");
+  assert.equal(toolStep.status, "completed");
+});
+
+test("stream reducer merges tool lifecycle events by namespace and name fallback", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+
+  let state = reduceStreamEvent(createInitialStreamState(), {
+    event: "tool.start",
+    data: {
+      thread_id: "thread-1",
+      namespace: ["planner", "tools"],
+      tool_name: "search",
+      message: "starting",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.error",
+    data: {
+      thread_id: "thread-1",
+      namespace: ["planner", "tools"],
+      tool_name: "search",
+      message: "network failed",
+    },
+  });
+
+  assert.equal(state.toolEvents.length, 2);
+  assert.equal(state.processingSteps.length, 1);
+  assert.equal(state.processingSteps[0].id, "planner/tools:search");
+  assert.equal(state.processingSteps[0].kind, "tool");
+  assert.equal(state.processingSteps[0].name, "search");
+  assert.equal(state.processingSteps[0].status, "failed");
+  assert.equal(state.processingSteps[0].content, "network failed");
 });
 
 test("tool approval helpers and reducer preserve interrupt compatibility", () => {

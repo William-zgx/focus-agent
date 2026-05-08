@@ -28,6 +28,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.5(react@19.2.5)
+      use-stick-to-bottom:
+        specifier: ^1.1.4
+        version: 1.1.4(react@19.2.5)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.0.0
@@ -696,6 +699,11 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  use-stick-to-bottom@1.1.4:
+    resolution: {integrity: sha512-2w/lydkrwhWMv1vCaEhYbzMDhgbwIodHpAHPV0/xKJErRkbjDEUe1EWmvr6Fwb+qhiERjc1EWgAEZaSaF69CpA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   use-sync-external-store@1.6.0:
     resolution: {integrity: sha512-Pp6GSwGP/NrPIrxVFAIkOQeyw8lFenOHijQWkUTrDvrF4ALqylP2C/KCkeS9dpUM3KvYRQhna5vt7IL95+ZQ9w==}
     peerDependencies:
@@ -1302,6 +1310,10 @@ snapshots:
       browserslist: 4.28.2
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  use-stick-to-bottom@1.1.4(react@19.2.5):
+    dependencies:
+      react: 19.2.5
 
   use-sync-external-store@1.6.0(react@19.2.5):
     dependencies:

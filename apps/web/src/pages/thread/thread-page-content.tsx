@@ -4,10 +4,12 @@ import type {
 	FocusAgentStreamState,
 	FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
-import type { RefObject } from "react";
+import type { StickToBottomInstance } from "use-stick-to-bottom";
 
 import { MessageList } from "@/entities/messages/message-list";
 import { MessageComposer } from "@/features/thread-stream/message-composer";
+
+import { ConversationViewport } from "./conversation-viewport";
 
 interface ThreadPageContentProps {
 	assistantMessage?: string | null;
@@ -18,7 +20,6 @@ interface ThreadPageContentProps {
 	contextUsage?: ContextUsageResponse | null;
 	editDraft: { id: string; content: string } | null;
 	hasTranscriptContent: boolean;
-	historyRef: RefObject<HTMLDivElement | null>;
 	isChineseUi: boolean;
 	isCompactingContext: boolean;
 	isContextUsageLoading: boolean;
@@ -48,6 +49,7 @@ interface ThreadPageContentProps {
 	previewContextUsage?: ContextUsageResponse | null;
 	selectedModel?: string;
 	selectedThinkingMode?: string;
+	stickToBottom: StickToBottomInstance;
 	streamState: FocusAgentStreamState | null;
 	threadContextUsage?: ContextUsageResponse | null;
 	threadError?: unknown;
@@ -66,7 +68,6 @@ export function ThreadPageContent({
 	contextUsage,
 	editDraft,
 	hasTranscriptContent,
-	historyRef,
 	isChineseUi,
 	isCompactingContext,
 	isContextUsageLoading,
@@ -87,6 +88,7 @@ export function ThreadPageContent({
 	previewContextUsage,
 	selectedModel,
 	selectedThinkingMode,
+	stickToBottom,
 	streamState,
 	threadContextUsage,
 	threadError,
@@ -98,62 +100,60 @@ export function ThreadPageContent({
 	const composerContextUsage =
 		previewContextUsage ?? contextUsage ?? threadContextUsage ?? null;
 	const contextUsageError = previewContextError || compactContextError;
+	const messageListProps = {
+		assistantMessage,
+		isReadOnly: isMergedReadOnlyThread,
+		isStreaming,
+		messages,
+		branchActions,
+		branchActionErrors,
+		branchActionInFlightId,
+		toolApprovalInterrupts,
+		toolApprovalError,
+		toolApprovalErrorId,
+		toolApprovalInFlightId,
+		isChineseUi,
+		onEditMessage,
+		onExecuteBranchAction,
+		onDismissBranchAction,
+		onDecideToolApproval,
+		streamFailed: streamState?.failed,
+		streamToolCalls: streamState?.toolCalls,
+		streamToolEvents: streamState?.toolEvents,
+		streamVisibleText: streamState?.visibleText,
+		streamReasoningText: streamState?.reasoningText,
+		streamProcessingSteps: streamState?.processingSteps,
+	};
 
 	return (
 		<div className="fa-thread-layout">
 			<div className="fa-transcript-panel">
 				<section className="fa-chat-transcript">
-					<div className="fa-chat-history" ref={historyRef}>
-						<div
-							className={`fa-chat-history-content ${hasTranscriptContent ? "is-populated" : ""}`.trim()}
-						>
-							{isLoading ? (
-								<div className="fa-inline-notice">
-									{isChineseUi
-										? "正在加载线程状态..."
-										: "Loading thread state..."}
-								</div>
-							) : null}
-							{threadError ? (
-								<div className="fa-inline-notice is-danger">
-									{isChineseUi
-										? "加载线程状态失败。"
-										: "Failed to load thread state."}
-								</div>
-							) : null}
-							{hasTranscriptContent ? (
-								<MessageList
-									assistantMessage={assistantMessage}
-									isReadOnly={isMergedReadOnlyThread}
-									isStreaming={isStreaming}
-									messages={messages}
-									branchActions={branchActions}
-									branchActionErrors={branchActionErrors}
-									branchActionInFlightId={branchActionInFlightId}
-									toolApprovalInterrupts={toolApprovalInterrupts}
-									toolApprovalError={toolApprovalError}
-									toolApprovalErrorId={toolApprovalErrorId}
-									toolApprovalInFlightId={toolApprovalInFlightId}
-									isChineseUi={isChineseUi}
-									onEditMessage={onEditMessage}
-									onExecuteBranchAction={onExecuteBranchAction}
-									onDismissBranchAction={onDismissBranchAction}
-									onDecideToolApproval={onDecideToolApproval}
-									streamFailed={streamState?.failed}
-									streamToolCalls={streamState?.toolCalls}
-									streamToolEvents={streamState?.toolEvents}
-									streamVisibleText={streamState?.visibleText}
-									streamReasoningText={streamState?.reasoningText}
-								/>
-							) : (
-								<div className="fa-chat-empty">
-									{isChineseUi
-										? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
-										: "Start chatting here. Branches appear on the left whenever the agent forks work."}
-								</div>
-							)}
-						</div>
-					</div>
+					<ConversationViewport
+						hasTranscriptContent={hasTranscriptContent}
+						isChineseUi={isChineseUi}
+						stickToBottom={stickToBottom}
+					>
+						{isLoading ? (
+							<div className="fa-inline-notice">
+								{isChineseUi ? "正在加载线程状态..." : "Loading thread state..."}
+							</div>
+						) : null}
+						{threadError ? (
+							<div className="fa-inline-notice is-danger">
+								{isChineseUi ? "加载线程状态失败。" : "Failed to load thread state."}
+							</div>
+						) : null}
+						{hasTranscriptContent ? (
+							<MessageList {...messageListProps} />
+						) : (
+							<div className="fa-chat-empty">
+								{isChineseUi
+									? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
+									: "Start chatting here. Branches appear on the left whenever the agent forks work."}
+							</div>
+						)}
+					</ConversationViewport>
 				</section>
 
 				<section className="fa-composer-slot">

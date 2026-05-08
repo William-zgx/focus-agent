@@ -258,6 +258,10 @@ class ChatStreamLifecycleMixin:
                 chunk_type = chunk.get('type')
                 data = chunk.get('data')
                 namespace = list(chunk.get('ns') or ())
+                chunk_metadata = sanitize_stream_metadata(chunk.get('metadata'))
+                event_context = {'namespace': namespace}
+                if chunk_metadata:
+                    event_context['metadata'] = chunk_metadata
 
                 if chunk_type == 'messages':
                     message_chunk, metadata = data
@@ -318,17 +322,17 @@ class ChatStreamLifecycleMixin:
 
                 if chunk_type == 'custom':
                     event_name, payload_data = map_custom_payload_to_event(data)
-                    yield self._sse_frame(event=event_name, data={**payload_data, 'namespace': namespace})
+                    yield self._sse_frame(event=event_name, data={**payload_data, **event_context})
                     continue
 
                 if chunk_type == 'updates':
                     for item in extract_tool_requests_from_updates(data):
-                        yield self._sse_frame(event='tool.requested', data={**item, 'namespace': namespace})
+                        yield self._sse_frame(event='tool.requested', data={**item, **event_context})
                     for item in extract_tool_results_from_updates(data):
-                        yield self._sse_frame(event='tool.result', data={**item, 'namespace': namespace})
+                        yield self._sse_frame(event='tool.result', data={**item, **event_context})
                     yield self._sse_frame(
                         event='agent.update',
-                        data={'namespace': namespace, 'data': data},
+                        data={**event_context, 'data': data},
                     )
                     continue
 
@@ -343,7 +347,7 @@ class ChatStreamLifecycleMixin:
                         payload_data = dict(data)
                     else:
                         payload_data = {'value': data}
-                    yield self._sse_frame(event=event_name, data={**payload_data, 'namespace': namespace})
+                    yield self._sse_frame(event=event_name, data={**payload_data, **event_context})
                     continue
 
                 yield self._sse_frame(

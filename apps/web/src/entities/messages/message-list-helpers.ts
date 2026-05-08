@@ -144,7 +144,7 @@ export function failureText(failed: TurnFailedPayload, isChineseUi: boolean) {
 
 export function toolActivityTitle(toolNames: string[], isChineseUi: boolean) {
 	if (toolNames.length === 0) {
-		return isChineseUi ? "工具调用已完成" : "Tool activity completed";
+		return isChineseUi ? "处理过程" : "Processing";
 	}
 	if (toolNames.length === 1) {
 		return isChineseUi ? `已调用 ${toolNames[0]}` : `Used ${toolNames[0]}`;
@@ -159,8 +159,8 @@ export function toolActivityNote(toolNames: string[], isChineseUi: boolean) {
 		return toolNames.join(" · ");
 	}
 	return isChineseUi
-		? "结果已收集，可展开查看详情。"
-		: "Results captured. Expand for details.";
+		? "默认折叠，可展开查看处理步骤。"
+		: "Folded by default. Expand for processing details.";
 }
 
 export function toolDetailsToggleLabel(isChineseUi: boolean, isOpen: boolean) {
