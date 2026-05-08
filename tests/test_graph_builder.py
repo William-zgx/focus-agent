@@ -782,6 +782,8 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
         _classify_turn_tool_policy("请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")
         == "live_web_research"
     )
+    assert _classify_turn_tool_policy("帮我看一下最近哪些AI项目比较火？都是做什么的?") == "live_web_research"
+    assert _classify_turn_tool_policy("当前项目里 web_search 工具在哪里？") == "workspace_lookup"
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
 
 
@@ -816,6 +818,11 @@ def test_live_web_research_starts_stock_queries_with_web_search():
         [HumanMessage(content="请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")],
         [web_search, current_utc_time],
     )
+    assert _live_web_research_should_start_with_search(
+        "帮我看一下最近哪些AI项目比较火？都是做什么的?",
+        [HumanMessage(content="帮我看一下最近哪些AI项目比较火？都是做什么的?")],
+        [web_search, current_utc_time],
+    )
     assert not _live_web_research_should_start_with_search(
         "现在几点？",
         [HumanMessage(content="现在几点？")],
@@ -829,6 +836,292 @@ def test_live_web_research_starts_stock_queries_with_web_search():
         ],
         [web_search, current_utc_time],
     )
+
+
+def _first_tool_call(messages):
+    tool_call_messages = [
+        message
+        for message in messages
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None)
+    ]
+    assert tool_call_messages
+    return tool_call_messages[0].tool_calls[0]
+
+
+def test_graph_routes_external_ai_trend_queries_to_web_search_first(monkeypatch):
+    prompts = [
+        "帮我看一下最近哪些AI项目比较火？都是做什么的?",
+        "What are the latest popular AI tools for coding?",
+    ]
+
+    def make_web_search(calls):
+        @tool
+        def web_search(query: str) -> str:
+            """Search the live web."""
+            calls.append(query)
+            return '{"answer":"local web-search fixture"}'
+
+        return web_search
+
+    for prompt in prompts:
+        web_calls = []
+
+        class FakeRunnable:
+            def with_config(self, _config):
+                return self
+
+            def invoke(self, _prompt_messages):
+                return AIMessage(content="trend summary")
+
+        class FakeModel:
+            def bind_tools(self, _tools):
+                return FakeRunnable()
+
+            def with_config(self, _config):
+                return FakeRunnable()
+
+        monkeypatch.setattr(
+            "focus_agent.engine.graph_builder.create_chat_model",
+            lambda *args, **kwargs: FakeModel(),
+        )
+
+        web_search = make_web_search(web_calls)
+
+        graph = build_graph(
+            settings=Settings(
+                agent_tool_router_enabled=True,
+                agent_tool_router_enforce=True,
+            ),
+            tool_registry=ToolRegistry(tools=(web_search,)),
+        )
+
+        result = graph.invoke(
+            {
+                "messages": [HumanMessage(content=prompt)],
+                "selected_model": "openai:fake",
+            },
+            context=RequestContext(
+                user_id="user-1",
+                root_thread_id=f"route-web-{len(web_calls)}",
+            ),
+            version="v2",
+        )
+
+        first_call = _first_tool_call(result.value["messages"])
+        assert first_call["name"] == "web_search"
+        assert first_call["args"] == {"query": prompt}
+        assert web_calls == [prompt]
+
+
+def test_graph_routes_project_web_search_location_to_search_code_without_web_exposure(monkeypatch):
+    captured = {"bound_tools": []}
+    web_calls = 0
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="web_search is defined in the workspace tools.")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        return (
+            '{"results":[{"path":"src/focus_agent/capabilities/default_tool_modules/web.py",'
+            '"line_number":12,"line":"def web_search(query: str) -> str:"}]}'
+        )
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a workspace file."""
+        return path
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        nonlocal web_calls
+        web_calls += 1
+        return query
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(search_code, read_file, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="当前项目里 web_search 工具在哪里？")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-workspace"),
+        version="v2",
+    )
+
+    first_call = _first_tool_call(result.value["messages"])
+    assert first_call["name"] == "search_code"
+    assert first_call["args"] == {"query": "web_search"}
+    assert captured["bound_tools"] == [["search_code", "read_file"]]
+    assert web_calls == 0
+
+
+def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(monkeypatch):
+    captured = {"bound_tools": []}
+    web_calls = 0
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="不联网也可以概括常见 AI 工具类别。")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        nonlocal web_calls
+        web_calls += 1
+        return query
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(web_search,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="不要联网。最近哪些 AI 工具比较火？")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-no-web"),
+        version="v2",
+    )
+
+    tool_call_messages = [
+        message
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None)
+    ]
+    assert tool_call_messages == []
+    assert captured["bound_tools"] == []
+    assert web_calls == 0
+
+
+def test_graph_exposes_mixed_readonly_web_and_workspace_tools_without_write_tools(monkeypatch):
+    captured = {"bound_tools": []}
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="comparison ready")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        return query
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a workspace file."""
+        return path
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return query
+
+    @tool
+    def web_fetch(url: str) -> str:
+        """Fetch a web page."""
+        return url
+
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        return "2026-01-01T00:00:00Z"
+
+    @tool
+    def write_text_artifact(title: str, content: str) -> str:
+        """Write an artifact."""
+        return f"{title}:{content}"
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(
+            tools=(
+                search_code,
+                read_file,
+                web_search,
+                web_fetch,
+                current_utc_time,
+                write_text_artifact,
+            )
+        ),
+    )
+
+    graph.invoke(
+        {
+            "messages": [HumanMessage(content="对比仓库里的 web_search 实现和最新 Tavily API 文档")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-mixed-readonly"),
+        version="v2",
+    )
+
+    assert captured["bound_tools"]
+    exposed = set(captured["bound_tools"][0])
+    assert {
+        "search_code",
+        "read_file",
+        "web_search",
+        "web_fetch",
+        "current_utc_time",
+    } <= exposed
+    assert "write_text_artifact" not in exposed
 
 
 def test_fallback_answer_from_tool_results_preserves_workspace_findings():
@@ -1759,6 +2052,168 @@ def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypa
     assert tool_messages[-1].status == "error"
     assert isinstance(messages[-1], AIMessage)
     assert messages[-1].content == "handled"
+
+
+def test_graph_tool_executor_backstop_denies_unexposed_web_search_for_direct_and_workspace_turns(monkeypatch):
+    prompts = [
+        "不要联网。最近哪些 AI 工具比较火？",
+        "列出当前项目的文件结构概况。",
+    ]
+
+    for prompt in prompts:
+        web_calls = 0
+
+        class FakeModel:
+            def bind_tools(self, _tools):
+                return self
+
+            def with_config(self, _config):
+                return self
+
+            def invoke(self, prompt_messages):
+                if any(isinstance(message, ToolMessage) for message in prompt_messages):
+                    return AIMessage(content="handled denied tool")
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "hallucinated-web",
+                            "name": "web_search",
+                            "args": {"query": "should not execute"},
+                        }
+                    ],
+                )
+
+        monkeypatch.setattr(
+            "focus_agent.engine.graph_builder.create_chat_model",
+            lambda *args, **kwargs: FakeModel(),
+        )
+
+        @tool
+        def list_files(path: str = ".") -> str:
+            """List workspace files."""
+            return path
+
+        @tool
+        def search_code(query: str) -> str:
+            """Search repository code."""
+            return query
+
+        @tool
+        def read_file(path: str) -> str:
+            """Read a workspace file."""
+            return path
+
+        @tool
+        def web_search(query: str) -> str:
+            """Search the live web."""
+            nonlocal web_calls
+            web_calls += 1
+            raise AssertionError(f"web_search should not execute for {query}")
+
+        graph = build_graph(
+            settings=Settings(
+                agent_tool_router_enabled=True,
+                agent_tool_router_enforce=True,
+            ),
+            tool_registry=ToolRegistry(
+                tools=(list_files, search_code, read_file, web_search),
+            ),
+        )
+
+        result = graph.invoke(
+            {
+                "messages": [HumanMessage(content=prompt)],
+                "selected_model": "openai:fake",
+            },
+            context=RequestContext(
+                user_id="user-1",
+                root_thread_id=f"backstop-web-{len(prompt)}",
+            ),
+            version="v2",
+        )
+
+        tool_messages = [
+            message
+            for message in result.value["messages"]
+            if isinstance(message, ToolMessage) and message.tool_call_id == "hallucinated-web"
+        ]
+        assert web_calls == 0
+        assert tool_messages
+        assert tool_messages[-1].status == "error"
+
+
+def test_graph_tool_executor_backstop_denies_live_web_write_hallucination(monkeypatch):
+    write_calls = 0
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return self
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            tool_messages = [
+                message for message in prompt_messages if isinstance(message, ToolMessage)
+            ]
+            if any(message.tool_call_id == "hallucinated-write" for message in tool_messages):
+                return AIMessage(content="handled denied write")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "hallucinated-write",
+                        "name": "write_text_artifact",
+                        "args": {"title": "web", "content": "should not write"},
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return '{"answer":"local web-search fixture"}'
+
+    @tool
+    def write_text_artifact(title: str, content: str) -> str:
+        """Write an artifact."""
+        nonlocal write_calls
+        write_calls += 1
+        raise AssertionError(
+            f"write_text_artifact should not execute for {title}:{content}"
+        )
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(web_search, write_text_artifact)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下最近 AI 编程工具有哪些更新。")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="backstop-live-web-write"),
+        version="v2",
+    )
+
+    tool_messages = [
+        message
+        for message in result.value["messages"]
+        if isinstance(message, ToolMessage) and message.tool_call_id == "hallucinated-write"
+    ]
+    assert write_calls == 0
+    assert tool_messages
+    assert tool_messages[-1].status == "error"
 
 
 def test_graph_adds_reasoning_content_before_followup_thinking_invoke(monkeypatch):

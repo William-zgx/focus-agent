@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Sequence
 from typing import Any
 
 from langchain.messages import AIMessage, SystemMessage
 from langgraph.runtime import Runtime
 
+from ..agent_roles import AgentRole
 from ..agent_delegation import build_failure_records, build_review_queue
 from ..capabilities import ToolRegistry
 from ..capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
@@ -14,6 +16,7 @@ from ..core.context_policy import apply_prompt_budget_guard
 from ..core.request_context import RequestContext
 from ..core.state import AgentState, append_agent_state_record
 from ..core.types import Plan
+from . import graph_tool_policy as _graph_tool_policy
 from .graph_plan_nodes import _format_plan_block
 from .graph_turn_helpers import (
     _TOOL_EXHAUSTION_NOTE,
@@ -64,15 +67,30 @@ def make_agent_loop_node(
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
         context_budget = _context_budget_from_state(state)
         tool_policy = _classify_turn_tool_policy(latest_user)
-        available_tools = _tools_for_policy(tool_policy, all_tools, latest_user)
+        tool_exposure = _classify_turn_tool_exposure_if_available(
+            latest_user,
+            tool_policy=tool_policy,
+        )
+        available_tools = _tools_for_policy_compat(
+            tool_policy,
+            all_tools,
+            latest_user,
+            exposure=tool_exposure,
+        )
         tool_route_plan = None
         if settings.agent_tool_router_enabled:
-            router_role = infer_tool_router_role(state.get("role_route_plan"))
+            router_role = infer_tool_router_role(
+                state.get("role_route_plan"),
+                fallback=_tool_router_fallback_role(tool_policy, tool_exposure),
+            )
             tool_route_plan = build_tool_route_plan(
                 tool_registry=tool_registry,
                 role=router_role,
                 tool_policy=tool_policy,
-                available_tool_names=[str(getattr(tool, "name", "")) for tool in available_tools],
+                available_tool_names=_registered_tool_names(tool_registry, all_tools),
+                exposed_tool_names=[str(getattr(tool, "name", "")) for tool in available_tools],
+                confidence=getattr(tool_exposure, "confidence", None),
+                reason_codes=getattr(tool_exposure, "reason_codes", None),
                 enforce=bool(settings.agent_tool_router_enforce),
             )
             if settings.agent_tool_router_enforce:
@@ -136,10 +154,11 @@ def make_agent_loop_node(
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=model_for,
             )
-        elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search(
+        elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search_compat(
             latest_user,
             state_messages,
             available_tools,
+            exposure=tool_exposure,
         ):
             response = AIMessage(
                 content="",
@@ -151,10 +170,11 @@ def make_agent_loop_node(
                     }
                 ],
             )
-        elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
+        elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search_compat(
             latest_user,
             state_messages,
             available_tools,
+            exposure=tool_exposure,
         ):
             response = AIMessage(
                 content="",
@@ -279,6 +299,143 @@ def make_agent_loop_node(
         return updates
 
     return agent_loop
+
+
+def _classify_turn_tool_exposure_if_available(
+    latest_user: str,
+    *,
+    tool_policy: str,
+) -> Any | None:
+    classifier = getattr(_graph_tool_policy, "_classify_turn_tool_exposure", None)
+    if not callable(classifier):
+        return None
+    if _accepts_keyword(classifier, "tool_policy"):
+        return classifier(latest_user, tool_policy=tool_policy)
+    if _accepts_keyword(classifier, "policy"):
+        return classifier(latest_user, policy=tool_policy)
+    if _requires_positional_count(classifier, 2):
+        return classifier(latest_user, tool_policy)
+    return classifier(latest_user)
+
+
+def _tools_for_policy_compat(
+    tool_policy: str,
+    tools: list[Any],
+    latest_user: str,
+    *,
+    exposure: Any | None,
+) -> list[Any]:
+    if exposure is not None and _accepts_keyword(_tools_for_policy, "exposure"):
+        return _tools_for_policy(tool_policy, tools, latest_user, exposure=exposure)
+    return _tools_for_policy(tool_policy, tools, latest_user)
+
+
+def _live_web_research_should_start_with_search_compat(
+    latest_user: str,
+    state_messages: list[Any],
+    available_tools: list[Any],
+    *,
+    exposure: Any | None,
+) -> bool:
+    if exposure is not None and _accepts_keyword(
+        _live_web_research_should_start_with_search,
+        "exposure",
+    ):
+        return _live_web_research_should_start_with_search(
+            latest_user,
+            state_messages,
+            available_tools,
+            exposure=exposure,
+        )
+    return _live_web_research_should_start_with_search(
+        latest_user,
+        state_messages,
+        available_tools,
+    )
+
+
+def _workspace_lookup_should_start_with_search_compat(
+    latest_user: str,
+    state_messages: list[Any],
+    available_tools: list[Any],
+    *,
+    exposure: Any | None,
+) -> bool:
+    if exposure is not None and _accepts_keyword(
+        _workspace_lookup_should_start_with_search,
+        "exposure",
+    ):
+        return _workspace_lookup_should_start_with_search(
+            latest_user,
+            state_messages,
+            available_tools,
+            exposure=exposure,
+        )
+    return _workspace_lookup_should_start_with_search(
+        latest_user,
+        state_messages,
+        available_tools,
+    )
+
+
+def _tool_router_fallback_role(tool_policy: str, exposure: Any | None) -> AgentRole:
+    if tool_policy == "live_web_research":
+        return AgentRole.PLANNER
+    if (
+        tool_policy == "execution"
+        and set(getattr(exposure, "allowed_toolsets", ()) or ()) == {"web", "workspace"}
+    ):
+        return AgentRole.PLANNER
+    return AgentRole.EXECUTOR
+
+
+def _registered_tool_names(tool_registry: ToolRegistry, tools: Sequence[Any]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw_name: Any) -> None:
+        name = str(raw_name or "").strip()
+        if not name or name in seen:
+            return
+        seen.add(name)
+        names.append(name)
+
+    for tool in tuple(getattr(tool_registry, "tools", ()) or ()):
+        add(getattr(tool, "name", ""))
+    for mapping_name in ("by_name", "runtime_by_name", "manifest_by_name"):
+        mapping = getattr(tool_registry, mapping_name, None)
+        if isinstance(mapping, dict):
+            for name in mapping:
+                add(name)
+    for tool in tools:
+        add(getattr(tool, "name", ""))
+    return names
+
+
+def _accepts_keyword(function: Callable[..., Any], keyword: str) -> bool:
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return False
+    return keyword in signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+def _requires_positional_count(function: Callable[..., Any], count: int) -> bool:
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return False
+    required = [
+        parameter
+        for parameter in signature.parameters.values()
+        if parameter.kind
+        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        and parameter.default is inspect.Parameter.empty
+    ]
+    return len(required) >= count
 
 
 __all__ = ["make_agent_loop_node"]

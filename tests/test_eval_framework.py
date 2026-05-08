@@ -435,3 +435,19 @@ def test_smoke_dataset_guards_tool_policy_regressions():
     workspace_lookup = cases["gt_workspace_lookup_no_web_for_tool_name"]
     assert workspace_lookup.expected["must_call_tools_any_order"] == ["search_code"]
     assert "web_search" in workspace_lookup.expected["must_not_call_tools"]
+
+    trending_ai = cases["gt_live_web_trending_ai_projects_uses_web_search"]
+    assert trending_ai.expected["must_call_tools_any_order"] == ["web_search"]
+    assert "write_text_artifact" in trending_ai.expected["must_not_call_tools"]
+
+    current_project_lookup = cases["gt_workspace_lookup_current_project_no_web"]
+    assert current_project_lookup.expected["must_call_tools_any_order"] == ["search_code"]
+    assert "web_search" in current_project_lookup.expected["must_not_call_tools"]
+
+    no_web_trends = cases["gt_no_web_overrides_external_trend_words"]
+    assert no_web_trends.expected["max_tool_calls"] == 0
+    assert "web_search" in no_web_trends.expected["must_not_call_tools"]
+
+    mixed_readonly = cases["gt_mixed_workspace_and_latest_docs_readonly_tools"]
+    assert mixed_readonly.expected["must_call_tools_any_order"] == ["search_code", "web_search"]
+    assert "write_text_artifact" in mixed_readonly.expected["must_not_call_tools"]

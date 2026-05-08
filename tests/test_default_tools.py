@@ -1,9 +1,11 @@
+from io import BytesIO
 import json
 import subprocess
 import sys
 import types
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import HTTPError
 
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -56,11 +58,22 @@ class _FakeHttpResponse:
         return False
 
 
+def _fake_tavily_http_error(status_code: int, body: str = '{"error":"tavily failed"}') -> HTTPError:
+    return HTTPError(
+        "https://api.tavily.com/search",
+        status_code,
+        "Tavily failed",
+        {},
+        BytesIO(body.encode("utf-8")),
+    )
+
+
 class _FakeDDGS:
     results = []
     raised = None
     last_query = None
     last_max_results = None
+    call_count = 0
 
     def __init__(self, timeout=30):
         self.timeout = timeout
@@ -74,6 +87,7 @@ class _FakeDDGS:
     def text(self, query, region="wt-wt", safesearch="moderate", max_results=5):
         _FakeDDGS.last_query = query
         _FakeDDGS.last_max_results = max_results
+        _FakeDDGS.call_count += 1
         if _FakeDDGS.raised is not None:
             raise _FakeDDGS.raised
         return list(_FakeDDGS.results)
@@ -83,6 +97,15 @@ def _install_fake_ddgs(monkeypatch):
     fake_module = types.ModuleType("ddgs")
     fake_module.DDGS = _FakeDDGS
     monkeypatch.setitem(sys.modules, "ddgs", fake_module)
+
+
+def _prepare_fake_ddgs(monkeypatch, *, results=None, raised=None):
+    _install_fake_ddgs(monkeypatch)
+    _FakeDDGS.results = list(results or [])
+    _FakeDDGS.raised = raised
+    _FakeDDGS.last_query = None
+    _FakeDDGS.last_max_results = None
+    _FakeDDGS.call_count = 0
 
 
 class _FakeArtifactMetadataRepository:
@@ -276,6 +299,36 @@ def _runtime_invoke(tool_obj, args: dict[str, object]) -> tuple[str, str]:
     return result.message.status, str(result.message.content)
 
 
+def _invoke_web_search_direct_and_runtime(tool_obj, args: dict[str, object]) -> dict[str, object]:
+    direct_payload = json.loads(tool_obj.invoke(dict(args)))
+    status, content = _runtime_invoke(tool_obj, dict(args))
+    runtime_payload = json.loads(content)
+
+    assert status == "success"
+    assert runtime_payload == direct_payload
+    return direct_payload
+
+
+def _assert_web_search_stability_fields(
+    payload: dict[str, object],
+    *,
+    provider: str,
+    fallback_used: bool,
+    attempted_providers: list[str],
+) -> None:
+    assert payload["provider"] == provider
+    assert payload["fallback_used"] is fallback_used
+    assert payload["attempted_providers"] == attempted_providers
+    assert isinstance(payload["errors"], list)
+
+
+def _assert_web_search_error_mentions(payload: dict[str, object], *fragments: str) -> None:
+    errors = payload["errors"]
+    assert isinstance(errors, list)
+    haystacks = [json.dumps(error, sort_keys=True).lower() for error in errors]
+    assert any(all(fragment.lower() in haystack for fragment in fragments) for haystack in haystacks)
+
+
 def _init_git_repo(path: Path) -> None:
     subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Focus Agent"], cwd=path, check=True, capture_output=True)
@@ -284,7 +337,7 @@ def _init_git_repo(path: Path) -> None:
 
 def test_web_search_prefers_tavily_when_available(monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "test-key")
-    _install_fake_ddgs(monkeypatch)
+    _prepare_fake_ddgs(monkeypatch)
 
     def fake_urlopen(request, timeout=0):
         assert request.full_url == "https://api.tavily.com/search"
@@ -307,12 +360,24 @@ def test_web_search_prefers_tavily_when_available(monkeypatch):
     monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
 
     tools = _tool_map(Settings())
-    payload = json.loads(tools["web_search"].invoke({"query": "latest model release", "max_results": 3}))
+    payload = _invoke_web_search_direct_and_runtime(
+        tools["web_search"],
+        {"query": "latest model release", "max_results": 3},
+    )
 
     assert payload["query"] == "latest model release"
-    assert payload["provider"] == "tavily"
     assert payload["answer"] == "A concise answer"
     assert payload["results"][0]["title"] == "Official docs"
+    assert payload["results"][0]["url"] == "https://example.com/docs"
+    assert payload["results"][0]["content"] == "doc"
+    _assert_web_search_stability_fields(
+        payload,
+        provider="tavily",
+        fallback_used=False,
+        attempted_providers=["tavily"],
+    )
+    assert payload["errors"] == []
+    assert _FakeDDGS.call_count == 0
 
 
 def test_web_search_uses_configured_api_key_env_from_settings(monkeypatch):
@@ -377,44 +442,141 @@ def test_tool_runtime_metadata_marks_parallel_cacheable_and_fallback_capabilitie
 
 def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-    _install_fake_ddgs(monkeypatch)
-    _FakeDDGS.results = [
-        {"title": "DDG result", "href": "https://example.com/ddg", "body": "fallback content"},
-    ]
-    _FakeDDGS.raised = None
+    _prepare_fake_ddgs(
+        monkeypatch,
+        results=[
+            {"title": "DDG result", "href": "https://example.com/ddg", "body": "fallback content"},
+        ],
+    )
     tools = _tool_map(Settings())
 
-    status, content = _runtime_invoke(tools["web_search"], {"query": "hello", "max_results": 4})
-    payload = json.loads(content)
+    payload = _invoke_web_search_direct_and_runtime(
+        tools["web_search"],
+        {"query": "hello", "max_results": 4},
+    )
 
-    assert status == "success"
-    assert payload["provider"] == "duckduckgo"
+    _assert_web_search_stability_fields(
+        payload,
+        provider="duckduckgo",
+        fallback_used=True,
+        attempted_providers=["tavily", "duckduckgo"],
+    )
     assert payload["answer"] is None
     assert payload["results"][0]["url"] == "https://example.com/ddg"
+    _assert_web_search_error_mentions(payload, "tavily", "key")
     assert _FakeDDGS.last_query == "hello"
     assert _FakeDDGS.last_max_results == 4
+    assert _FakeDDGS.call_count == 2
 
 
-def test_web_search_falls_back_to_duckduckgo_when_tavily_fails(monkeypatch):
+@pytest.mark.parametrize(
+    ("failure_kind", "expected_error_fragment"),
+    [
+        ("http_500", "500"),
+        ("http_429", "429"),
+        ("oserror", "temporary tavily outage"),
+    ],
+)
+def test_web_search_retries_retryable_tavily_failures_then_falls_back(
+    monkeypatch,
+    failure_kind,
+    expected_error_fragment,
+):
     monkeypatch.setenv("TAVILY_API_KEY", "test-key")
-    _install_fake_ddgs(monkeypatch)
-    _FakeDDGS.results = [
-        {"title": "Fallback", "link": "https://example.com/fallback", "snippet": "backup"},
-    ]
-    _FakeDDGS.raised = None
+    _prepare_fake_ddgs(
+        monkeypatch,
+        results=[
+            {"title": "Fallback", "link": "https://example.com/fallback", "snippet": "backup"},
+        ],
+    )
+    tavily_attempts = 0
 
     def failing_urlopen(_request, timeout=0):
-        raise OSError("dns failed")
+        nonlocal tavily_attempts
+        tavily_attempts += 1
+        if failure_kind == "http_500":
+            raise _fake_tavily_http_error(500)
+        if failure_kind == "http_429":
+            raise _fake_tavily_http_error(429)
+        raise OSError("temporary tavily outage")
 
     monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", failing_urlopen)
     tools = _tool_map(Settings())
 
-    status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
-    payload = json.loads(content)
+    payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
 
-    assert status == "success"
-    assert payload["provider"] == "duckduckgo"
+    _assert_web_search_stability_fields(
+        payload,
+        provider="duckduckgo",
+        fallback_used=True,
+        attempted_providers=["tavily", "duckduckgo"],
+    )
     assert payload["results"][0]["title"] == "Fallback"
+    _assert_web_search_error_mentions(payload, "tavily", expected_error_fragment)
+    assert tavily_attempts > 2
+    assert _FakeDDGS.call_count == 2
+
+
+def test_web_search_falls_back_to_duckduckgo_when_tavily_returns_empty_results(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    _prepare_fake_ddgs(
+        monkeypatch,
+        results=[
+            {"title": "Fallback", "href": "https://example.com/empty-fallback", "body": "backup"},
+        ],
+    )
+
+    def empty_urlopen(_request, timeout=0):
+        return _FakeHttpResponse(json.dumps({"answer": "No useful hits", "results": []}))
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", empty_urlopen)
+    tools = _tool_map(Settings())
+
+    payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
+
+    _assert_web_search_stability_fields(
+        payload,
+        provider="duckduckgo",
+        fallback_used=True,
+        attempted_providers=["tavily", "duckduckgo"],
+    )
+    assert payload["answer"] is None
+    assert payload["results"][0]["url"] == "https://example.com/empty-fallback"
+    _assert_web_search_error_mentions(payload, "tavily", "result")
+    assert _FakeDDGS.call_count == 2
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_web_search_does_not_retry_tavily_auth_failures_before_fallback(monkeypatch, status_code):
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    _prepare_fake_ddgs(
+        monkeypatch,
+        results=[
+            {"title": "Auth fallback", "href": "https://example.com/auth-fallback", "body": "backup"},
+        ],
+    )
+    tavily_attempts = 0
+
+    def auth_urlopen(_request, timeout=0):
+        nonlocal tavily_attempts
+        tavily_attempts += 1
+        raise _fake_tavily_http_error(status_code)
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", auth_urlopen)
+    tools = _tool_map(Settings())
+
+    payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
+
+    _assert_web_search_stability_fields(
+        payload,
+        provider="duckduckgo",
+        fallback_used=True,
+        attempted_providers=["tavily", "duckduckgo"],
+    )
+    assert payload["results"][0]["title"] == "Auth fallback"
+    _assert_web_search_error_mentions(payload, "tavily", str(status_code))
+    assert tavily_attempts == 2
+    assert _FakeDDGS.call_count == 2
 
 
 def test_web_search_raises_when_both_providers_fail(monkeypatch):
@@ -467,22 +629,32 @@ def test_disabled_tools_are_removed_from_registry(monkeypatch):
 
 def test_web_search_respects_duckduckgo_only_configuration(monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "test-key")
-    _install_fake_ddgs(monkeypatch)
-    _FakeDDGS.results = [
-        {"title": "DDG only", "href": "https://example.com/ddg-only", "body": "fallback content"},
-    ]
-    _FakeDDGS.raised = None
+    _prepare_fake_ddgs(
+        monkeypatch,
+        results=[
+            {"title": "DDG only", "href": "https://example.com/ddg-only", "body": "fallback content"},
+        ],
+    )
 
     def unexpected_urlopen(_request, timeout=0):
         raise AssertionError("Tavily should not be called when provider=duckduckgo")
 
     monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", unexpected_urlopen)
 
-    tools = _tool_map(Settings(web_search=WebSearchConfig(provider="duckduckgo")))
-    payload = json.loads(tools["web_search"].invoke({"query": "hello"}))
+    tools = _tool_map(
+        Settings(web_search=WebSearchConfig(provider="duckduckgo", fallback_provider="tavily"))
+    )
+    payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
 
-    assert payload["provider"] == "duckduckgo"
+    _assert_web_search_stability_fields(
+        payload,
+        provider="duckduckgo",
+        fallback_used=False,
+        attempted_providers=["duckduckgo"],
+    )
+    assert payload["errors"] == []
     assert payload["results"][0]["title"] == "DDG only"
+    assert _FakeDDGS.call_count == 2
 
 
 def test_web_search_respects_disabled_configuration(monkeypatch):

@@ -28,7 +28,9 @@ from .graph_plan_nodes import (
 )
 from .graph_tool_executor_node import make_tool_executor_node
 from .graph_turn_helpers import (
+    TurnToolExposure,
     _canonicalize_tool_call_args,
+    _classify_turn_tool_exposure,
     _classify_turn_tool_policy,
     _count_tool_call_rounds_since_latest_human,
     _ensure_reasoning_content_for_tool_call_history,
@@ -192,7 +194,9 @@ def build_graph(
 
 
 __all__ = [
+    "TurnToolExposure",
     "_canonicalize_tool_call_args",
+    "_classify_turn_tool_exposure",
     "_classify_turn_tool_policy",
     "_count_tool_call_rounds_since_latest_human",
     "_ensure_reasoning_content_for_tool_call_history",

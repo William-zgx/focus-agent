@@ -71,6 +71,7 @@ def make_tool_executor_node(
         messages_by_index: dict[int, ToolMessage] = {}
         seen_tool_call_signatures: set[str] = set()
         updates: dict[str, Any] = {}
+        route_plan = _route_plan_mapping(state.get("tool_route_plan"))
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
             tool_name = str(tool_call.get("name") or "").strip()
             tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
@@ -110,23 +111,6 @@ def make_tool_executor_node(
                 )
                 continue
             tool_args = authorized_args or tool_args
-            route_plan = state.get("tool_route_plan") or {}
-            denied_tools = (
-                set(route_plan.get("denied_tools") or []) if isinstance(route_plan, dict) else set()
-            )
-            if (
-                tool_name in denied_tools
-                and bool(route_plan.get("enforce", True))
-                and not _denial_is_approval_required(route_plan, tool_name)
-            ):
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=f"Forbidden tool by Tool Router policy: {tool_name}",
-                    runtime_info={"forbidden_by_tool_router": True},
-                )
-                continue
             tool = tools_by_name.get(tool_name)
             if tool is None:
                 messages_by_index[index] = build_tool_error_message(
@@ -136,8 +120,24 @@ def make_tool_executor_node(
                     error=f"Unknown tool: {tool_name}",
                 )
                 continue
+            if _forbidden_by_route_plan(route_plan, tool_name):
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=f"Forbidden tool by Tool Router policy: {tool_name}",
+                    runtime_info={"forbidden_by_tool_router": True},
+                )
+                continue
             runtime_meta = tool_runtime_by_name.get(tool_name)
             if runtime_meta is None:
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=f"Tool runtime metadata is missing: {tool_name}",
+                    runtime_info={"missing_tool_runtime_metadata": True},
+                )
                 continue
             execution_input = ToolExecutionInput(
                 index=index,
@@ -213,16 +213,25 @@ def make_tool_executor_node(
     return tool_executor
 
 
-def _denial_is_approval_required(route_plan: Any, tool_name: str) -> bool:
-    if not isinstance(route_plan, dict):
+def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:
+    if isinstance(route_plan, Mapping):
+        return route_plan
+    model_dump = getattr(route_plan, "model_dump", None)
+    if not callable(model_dump):
+        return None
+    dumped = model_dump(mode="json")
+    return dumped if isinstance(dumped, Mapping) else None
+
+
+def _forbidden_by_route_plan(
+    route_plan: Mapping[str, Any] | None,
+    tool_name: str,
+) -> bool:
+    if not route_plan or not bool(route_plan.get("enforce", True)):
         return False
-    for decision in route_plan.get("decisions") or []:
-        if not isinstance(decision, dict):
-            continue
-        if str(decision.get("name") or "") != tool_name:
-            continue
-        return str(decision.get("reason") or "") == "approval_required"
-    return False
+    allowed_tools = {str(name) for name in route_plan.get("allowed_tools") or []}
+    denied_tools = {str(name) for name in route_plan.get("denied_tools") or []}
+    return tool_name in denied_tools or tool_name not in allowed_tools
 
 
 __all__ = ["make_tool_executor_node"]

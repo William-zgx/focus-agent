@@ -160,6 +160,12 @@ def search_code(query: str) -> str:
 
 
 @tool
+def read_file(path: str) -> str:
+    """Read a workspace file."""
+    return path
+
+
+@tool
 def write_text_artifact(title: str, content: str) -> str:
     """Write an artifact."""
     return f"{title}:{content}"
@@ -169,6 +175,18 @@ def write_text_artifact(title: str, content: str) -> str:
 def web_search(query: str) -> str:
     """Search the web."""
     return query
+
+
+@tool
+def web_fetch(url: str) -> str:
+    """Fetch a web page."""
+    return url
+
+
+@tool
+def current_utc_time() -> str:
+    """Return current UTC time."""
+    return "2026-01-01T00:00:00Z"
 
 
 @tool
@@ -185,7 +203,10 @@ def skill_view(name: str) -> str:
 
 write_text_artifact.metadata = {"side_effect": True, "side_effect_kind": "workspace_write"}
 web_search.metadata = {"parallel_safe": True}
+web_fetch.metadata = {"parallel_safe": True}
+current_utc_time.metadata = {"parallel_safe": True}
 search_code.metadata = {"parallel_safe": True}
+read_file.metadata = {"parallel_safe": True}
 skills_list.metadata = {"parallel_safe": True}
 skill_view.metadata = {"parallel_safe": True}
 
@@ -244,7 +265,15 @@ def test_tool_router_matches_graph_policy_filtering_for_core_policies():
         "allowed_roles": ("executor",),
     }
 
-    tools = [search_code, write_text_artifact, web_search, approval_lookup]
+    tools = [
+        search_code,
+        read_file,
+        write_text_artifact,
+        web_search,
+        web_fetch,
+        current_utc_time,
+        approval_lookup,
+    ]
     registry = ToolRegistry(tools=tuple(tools))
 
     for policy, role in (
@@ -261,6 +290,39 @@ def test_tool_router_matches_graph_policy_filtering_for_core_policies():
             available_tool_names=[item.name for item in tools],
         )
         assert route_plan.allowed_tools == graph_allowed
+
+    live_web_plan = build_tool_route_plan(
+        tool_registry=registry,
+        role="planner",
+        tool_policy="live_web_research",
+        available_tool_names=[item.name for item in tools],
+    )
+    assert live_web_plan.allowed_tools == ["web_search", "web_fetch", "current_utc_time"]
+
+    mixed_readonly_names = [
+        "search_code",
+        "read_file",
+        "web_search",
+        "web_fetch",
+        "current_utc_time",
+        "write_text_artifact",
+    ]
+    mixed_graph_allowed = [
+        item.name
+        for item in _tools_for_policy("execution", tools, role="planner")
+        if item.name in mixed_readonly_names
+    ]
+    mixed_plan = build_tool_route_plan(
+        tool_registry=registry,
+        role="planner",
+        tool_policy="execution",
+        available_tool_names=mixed_readonly_names,
+    )
+    assert mixed_plan.allowed_tools == mixed_graph_allowed
+    assert {"search_code", "read_file", "web_search", "web_fetch", "current_utc_time"} <= set(
+        mixed_plan.allowed_tools
+    )
+    assert "write_text_artifact" in mixed_plan.denied_tools
 
     execution_plan = build_tool_route_plan(
         tool_registry=registry,

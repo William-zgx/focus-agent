@@ -41,6 +41,8 @@ class ToolRoutePlan(StateModel):
     enforce: bool = True
     role: str = AgentRole.EXECUTOR.value
     tool_policy: str = "execution"
+    confidence: float | None = None
+    reason_codes: list[str] = Field(default_factory=list)
     allowed_tools: list[str] = Field(default_factory=list)
     denied_tools: list[str] = Field(default_factory=list)
     decisions: list[ToolRouteDecision] = Field(default_factory=list)
@@ -134,10 +136,18 @@ def build_tool_route_plan(
     role: AgentRole | str,
     tool_policy: str,
     available_tool_names: Iterable[str],
+    exposed_tool_names: Iterable[str] | None = None,
+    confidence: float | None = None,
+    reason_codes: Iterable[str] | None = None,
     enforce: bool = True,
 ) -> ToolRoutePlan:
     normalized_role = normalize_agent_role(role)
-    available = [str(name).strip() for name in available_tool_names if str(name).strip()]
+    available = _normalized_tool_names(available_tool_names)
+    exposed = (
+        set(_normalized_tool_names(exposed_tool_names))
+        if exposed_tool_names is not None
+        else None
+    )
     capabilities = {item.name: item for item in build_capability_registry(tool_registry)}
     policy_engine = CapabilityPolicyEngine()
     decisions: list[ToolRouteDecision] = []
@@ -151,6 +161,9 @@ def build_tool_route_plan(
             role=normalized_role,
             tool_policy=tool_policy,
         )
+        if allowed and exposed is not None and name not in exposed:
+            allowed = False
+            reason = "not_exposed_by_turn_policy"
         decisions.append(
             ToolRouteDecision(
                 name=name,
@@ -165,10 +178,24 @@ def build_tool_route_plan(
         enforce=enforce,
         role=normalized_role.value,
         tool_policy=tool_policy,
+        confidence=confidence,
+        reason_codes=[str(item) for item in reason_codes or () if str(item).strip()],
         allowed_tools=[item.name for item in decisions if item.allowed],
         denied_tools=[item.name for item in decisions if not item.allowed],
         decisions=decisions,
     )
+
+
+def _normalized_tool_names(names: Iterable[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_name in names or ():
+        name = str(raw_name).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        normalized.append(name)
+    return normalized
 
 
 def infer_tool_router_role(role_route_plan: dict[str, Any] | None, *, fallback: AgentRole = AgentRole.EXECUTOR) -> AgentRole:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from typing import Any, Literal
 
@@ -35,6 +36,20 @@ _BRANCH_ACTION_GUARD_NOTE = (
 
 
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
+
+
+@dataclass(frozen=True, slots=True)
+class TurnToolExposure:
+    policy: _ToolPolicy
+    confidence: float
+    reason_codes: tuple[str, ...]
+    preferred_first_tool: str | None
+    allowed_toolsets: tuple[str, ...]
+    hard_denied_toolsets: tuple[str, ...]
+
+
+_ALL_FILTERABLE_TOOLSETS = ("web", "workspace", "artifact", "memory", "skill")
+_WEAK_WORKSPACE_CONTEXT_MARKERS = frozenset({"项目"})
 
 
 _NO_TOOL_INTENT_MARKERS = (
@@ -176,6 +191,8 @@ _LIVE_WEB_INTENT_MARKERS = (
     "查下",
     "搜一下",
     "最新",
+    "最近",
+    "近期",
     "今天",
     "现在",
     "当前",
@@ -211,16 +228,24 @@ _LIVE_WEB_INTENT_MARKERS = (
     "过去",
     "年内",
     "今年",
+    "热门",
+    "比较火",
+    "火",
+    "流行",
     "browse",
     "web",
     "search",
     "latest",
+    "recent",
     "today",
     "current",
     "now",
     "weather",
     "news",
     "price",
+    "trending",
+    "popular",
+    "hot",
 )
 
 
@@ -229,6 +254,8 @@ _LIVE_WEB_SEARCH_FIRST_MARKERS = (
     "查下",
     "搜一下",
     "搜索",
+    "最近",
+    "近期",
     "新闻",
     "价格",
     "股价",
@@ -258,11 +285,38 @@ _LIVE_WEB_SEARCH_FIRST_MARKERS = (
     "过去",
     "年内",
     "今年",
+    "热门",
+    "比较火",
+    "火",
+    "流行",
     "browse",
     "search",
     "latest",
+    "recent",
     "news",
     "price",
+    "trending",
+    "popular",
+    "hot",
+)
+
+
+_LOCAL_WORKSPACE_QUALIFIERS = (
+    "当前仓库",
+    "这个仓库",
+    "本仓库",
+    "仓库里",
+    "当前项目",
+    "这个项目",
+    "本项目",
+    "项目里",
+    "代码里",
+    "this repo",
+    "current repo",
+    "this repository",
+    "current repository",
+    "this codebase",
+    "current codebase",
 )
 
 
@@ -296,38 +350,347 @@ _EXECUTION_INTENT_MARKERS = (
 )
 
 
+_FRESH_EXTERNAL_INTENT_MARKERS = (
+    "最新",
+    "最近",
+    "近期",
+    "今天",
+    "现在",
+    "当前",
+    "实时",
+    "新闻",
+    "天气",
+    "价格",
+    "汇率",
+    "股价",
+    "股票",
+    "行情",
+    "走势",
+    "波动",
+    "涨跌",
+    "涨跌幅",
+    "涨幅",
+    "跌幅",
+    "收盘价",
+    "开盘价",
+    "最高价",
+    "最低价",
+    "成交量",
+    "龙头股",
+    "个股",
+    "板块",
+    "a股",
+    "港股",
+    "美股",
+    "财报",
+    "基本面",
+    "估值",
+    "近一",
+    "过去",
+    "年内",
+    "今年",
+    "热门",
+    "比较火",
+    "很火",
+    "流行",
+    "榜单",
+    "排行",
+    "latest",
+    "recent",
+    "today",
+    "current",
+    "now",
+    "weather",
+    "news",
+    "price",
+    "trending",
+    "popular",
+    "hot",
+)
+
+
+_WEB_LOOKUP_ACTION_MARKERS = (
+    "联网",
+    "上网",
+    "搜索",
+    "查一下",
+    "查下",
+    "搜一下",
+    "实际检索",
+    "引用来源",
+    "数据来源",
+    "browse",
+    "web",
+    "search",
+)
+
+
+_SYMBOL_LOOKUP_INTENT_MARKERS = (
+    "定义",
+    "调用",
+    "引用",
+    "位置",
+    "使用",
+    "函数",
+    "类",
+    "symbol",
+    "function",
+    "class",
+    "definition",
+    "usage",
+    "reference",
+    "where is",
+    "find usage",
+)
+
+
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
     lowered = text.lower()
-    return any(marker in lowered for marker in markers)
+    return any(_marker_matches(lowered, marker) for marker in markers)
+
+
+def _marker_matches(lowered_text: str, marker: str) -> bool:
+    normalized_marker = marker.strip().lower()
+    if not normalized_marker:
+        return False
+    if re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", normalized_marker):
+        pattern = r"(?<![a-z0-9_])" + r"\s+".join(
+            re.escape(part) for part in normalized_marker.split()
+        ) + r"(?![a-z0-9_])"
+        return re.search(pattern, lowered_text) is not None
+    return normalized_marker in lowered_text
+
+
+def _matched_markers(text: str, markers: tuple[str, ...]) -> tuple[str, ...]:
+    lowered = text.lower()
+    return tuple(marker for marker in markers if _marker_matches(lowered, marker))
 
 
 def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
+    return _classify_turn_tool_exposure(text).policy
+
+
+def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     normalized = " ".join(text.strip().split())
     if not normalized:
-        return "direct_answer"
+        return _exposure(
+            "direct_answer",
+            confidence=1.0,
+            reason_codes=("empty_turn",),
+        )
 
-    has_no_tool_intent = _contains_any(normalized, _NO_TOOL_INTENT_MARKERS)
-    if has_no_tool_intent:
-        return "direct_answer"
+    no_tool_hits = _matched_markers(normalized, _NO_TOOL_INTENT_MARKERS)
+    if no_tool_hits:
+        return _exposure(
+            "direct_answer",
+            confidence=1.0,
+            reason_codes=("explicit_no_tool",),
+        )
 
-    has_live_web_intent = _contains_any(normalized, _LIVE_WEB_INTENT_MARKERS)
-    has_workspace_intent = _contains_any(normalized, _WORKSPACE_INTENT_MARKERS)
-    has_explicit_workspace_context = _contains_any(
-        normalized,
-        _EXPLICIT_WORKSPACE_CONTEXT_MARKERS,
+    local_context_hits = _matched_markers(normalized, _LOCAL_WORKSPACE_QUALIFIERS)
+    explicit_workspace_hits = _matched_markers(normalized, _EXPLICIT_WORKSPACE_CONTEXT_MARKERS)
+    workspace_hits = _matched_markers(normalized, _WORKSPACE_INTENT_MARKERS)
+    symbol_hits = _matched_markers(normalized, _SYMBOL_LOOKUP_INTENT_MARKERS)
+    file_browse_hits = _matched_markers(normalized, _FILE_BROWSE_INTENT_MARKERS)
+    live_hits = _matched_markers(normalized, _LIVE_WEB_INTENT_MARKERS)
+    fresh_external_hits = _matched_markers(normalized, _FRESH_EXTERNAL_INTENT_MARKERS)
+    web_lookup_hits = _matched_markers(normalized, _WEB_LOOKUP_ACTION_MARKERS)
+    if _contains_any(normalized, ("引用来源", "引用数据来源", "cite source", "cite sources")):
+        symbol_hits = tuple(hit for hit in symbol_hits if hit not in {"引用", "reference"})
+    execution_hits = _matched_markers(normalized, _EXECUTION_INTENT_MARKERS)
+    creative_hits = _matched_markers(normalized, _CREATIVE_DIRECT_MARKERS)
+    strong_explicit_workspace_hits = tuple(
+        hit for hit in explicit_workspace_hits if hit not in _WEAK_WORKSPACE_CONTEXT_MARKERS
+    )
+    strong_workspace_hits = tuple(
+        dict.fromkeys(
+            [
+                *local_context_hits,
+                *strong_explicit_workspace_hits,
+                *symbol_hits,
+                *file_browse_hits,
+            ]
+        )
     )
 
-    if _contains_any(normalized, _EXECUTION_INTENT_MARKERS):
-        return "execution"
-    if has_live_web_intent and (not has_workspace_intent or not has_explicit_workspace_context):
-        return "live_web_research"
-    if has_workspace_intent:
-        return "workspace_lookup"
-    if has_live_web_intent:
-        return "live_web_research"
-    if _contains_any(normalized, _CREATIVE_DIRECT_MARKERS):
-        return "direct_answer"
-    return "direct_answer"
+    workspace_score = (
+        len(local_context_hits) * 4
+        + len(symbol_hits) * 3
+        + len(file_browse_hits) * 3
+        + len(explicit_workspace_hits) * 2
+        + len(workspace_hits)
+    )
+    live_web_score = (
+        len(web_lookup_hits) * 3
+        + len(fresh_external_hits) * 2
+        + len(live_hits)
+    )
+    execution_score = len(execution_hits) * 3
+    direct_score = len(creative_hits) * 2
+
+    if local_context_hits:
+        current_only_hits = {"当前", "current"} & set(fresh_external_hits)
+        live_web_score = max(0, live_web_score - len(current_only_hits) * 3)
+
+    has_workspace_signal = workspace_score > 0
+    has_strong_workspace_signal = bool(strong_workspace_hits)
+    has_live_web_signal = live_web_score > 0
+
+    reason_codes: list[str] = []
+    if creative_hits:
+        reason_codes.append("creative_direct_signal")
+    if strong_workspace_hits:
+        reason_codes.append("local_workspace_context")
+    if has_strong_workspace_signal or (workspace_hits and not has_live_web_signal):
+        reason_codes.append("workspace_lookup_signal")
+    if fresh_external_hits and has_live_web_signal:
+        reason_codes.append("fresh_external_signal")
+    if (web_lookup_hits or live_hits) and has_live_web_signal:
+        reason_codes.append("live_web_signal")
+    if execution_hits:
+        reason_codes.append("execution_signal")
+
+    if has_strong_workspace_signal and has_live_web_signal:
+        reason_codes.append("mixed_live_web_workspace")
+        return _exposure(
+            "execution",
+            confidence=_confidence(max(workspace_score, live_web_score), min(workspace_score, live_web_score)),
+            reason_codes=tuple(reason_codes),
+            preferred_first_tool=_preferred_first_tool(
+                normalized,
+                policy="execution",
+                symbol_hits=symbol_hits,
+                file_browse_hits=file_browse_hits,
+                web_lookup_hits=web_lookup_hits,
+                fresh_external_hits=fresh_external_hits,
+            ),
+            allowed_toolsets=("web", "workspace"),
+            hard_denied_toolsets=("artifact", "memory", "skill"),
+        )
+
+    if execution_score and execution_score >= max(workspace_score, live_web_score, direct_score):
+        reason_codes.append("policy_execution")
+        return _exposure(
+            "execution",
+            confidence=_confidence(execution_score, max(workspace_score, live_web_score, direct_score)),
+            reason_codes=tuple(reason_codes),
+        )
+
+    if has_live_web_signal and live_web_score >= max(workspace_score, direct_score):
+        reason_codes.append("policy_live_web_research")
+        return _exposure(
+            "live_web_research",
+            confidence=_confidence(live_web_score, max(workspace_score, direct_score)),
+            reason_codes=tuple(reason_codes),
+            preferred_first_tool=_preferred_first_tool(
+                normalized,
+                policy="live_web_research",
+                symbol_hits=symbol_hits,
+                file_browse_hits=file_browse_hits,
+                web_lookup_hits=web_lookup_hits,
+                fresh_external_hits=fresh_external_hits,
+            ),
+        )
+
+    if has_workspace_signal:
+        reason_codes.append("policy_workspace_lookup")
+        return _exposure(
+            "workspace_lookup",
+            confidence=_confidence(workspace_score, max(live_web_score, direct_score)),
+            reason_codes=tuple(reason_codes),
+            preferred_first_tool=_preferred_first_tool(
+                normalized,
+                policy="workspace_lookup",
+                symbol_hits=symbol_hits,
+                file_browse_hits=file_browse_hits,
+                web_lookup_hits=web_lookup_hits,
+                fresh_external_hits=fresh_external_hits,
+            ),
+        )
+
+    if direct_score:
+        reason_codes.append("policy_direct_answer")
+        return _exposure(
+            "direct_answer",
+            confidence=_confidence(direct_score, max(workspace_score, live_web_score, execution_score)),
+            reason_codes=tuple(reason_codes),
+        )
+
+    return _exposure(
+        "direct_answer",
+        confidence=0.55,
+        reason_codes=("default_direct_answer",),
+    )
+
+
+def _exposure(
+    policy: _ToolPolicy,
+    *,
+    confidence: float,
+    reason_codes: tuple[str, ...],
+    preferred_first_tool: str | None = None,
+    allowed_toolsets: tuple[str, ...] | None = None,
+    hard_denied_toolsets: tuple[str, ...] | None = None,
+) -> TurnToolExposure:
+    if allowed_toolsets is None:
+        allowed_toolsets = _allowed_toolsets_for_policy(policy)
+    if hard_denied_toolsets is None and policy == "direct_answer":
+        hard_denied_toolsets = _ALL_FILTERABLE_TOOLSETS
+    elif hard_denied_toolsets is None and allowed_toolsets:
+        hard_denied_toolsets = tuple(
+            toolset for toolset in _ALL_FILTERABLE_TOOLSETS if toolset not in allowed_toolsets
+        )
+    elif hard_denied_toolsets is None:
+        hard_denied_toolsets = ()
+    return TurnToolExposure(
+        policy=policy,
+        confidence=round(max(0.0, min(confidence, 1.0)), 2),
+        reason_codes=tuple(dict.fromkeys(reason_codes)),
+        preferred_first_tool=preferred_first_tool,
+        allowed_toolsets=allowed_toolsets,
+        hard_denied_toolsets=hard_denied_toolsets,
+    )
+
+
+def _allowed_toolsets_for_policy(policy: _ToolPolicy) -> tuple[str, ...]:
+    if policy == "workspace_lookup":
+        return ("workspace",)
+    if policy == "live_web_research":
+        return ("web",)
+    return ()
+
+
+def _confidence(top_score: int, runner_up_score: int) -> float:
+    if top_score <= 0:
+        return 0.55
+    return 0.6 + min(0.3, top_score * 0.04) + min(0.1, max(0, top_score - runner_up_score) * 0.03)
+
+
+def _preferred_first_tool(
+    text: str,
+    *,
+    policy: _ToolPolicy,
+    symbol_hits: tuple[str, ...],
+    file_browse_hits: tuple[str, ...],
+    web_lookup_hits: tuple[str, ...],
+    fresh_external_hits: tuple[str, ...],
+) -> str | None:
+    if policy == "workspace_lookup":
+        if file_browse_hits and not symbol_hits:
+            return "list_files"
+        if symbol_hits or _contains_any(text, _CODE_SEARCH_TOOL_INTENT_MARKERS):
+            return "search_code"
+    if policy == "live_web_research":
+        if web_lookup_hits or _contains_any(text, _LIVE_WEB_SEARCH_FIRST_MARKERS):
+            return "web_search"
+    if policy == "execution":
+        wants_workspace_first = bool(symbol_hits) and not file_browse_hits
+        wants_web_first = bool(web_lookup_hits or fresh_external_hits)
+        if wants_workspace_first and not wants_web_first:
+            return "search_code"
+        if wants_web_first and not wants_workspace_first:
+            return "web_search"
+    return None
 
 
 def _tools_for_policy(
@@ -336,15 +699,22 @@ def _tools_for_policy(
     latest_user: str = "",
     *,
     role: AgentRole | str | None = None,
+    exposure: TurnToolExposure | None = None,
 ) -> list[Any]:
+    effective_policy = exposure.policy if exposure is not None else policy
     policy_engine = CapabilityPolicyEngine()
-    effective_role = role or _default_role_for_policy(policy)
+    roles = _roles_for_policy(effective_policy, role=role, exposure=exposure)
     candidates = [
         tool
         for tool in tools
-        if policy_engine.tool_allowed(tool, role=effective_role, tool_policy=policy)[0]
+        if any(
+            policy_engine.tool_allowed(tool, role=effective_role, tool_policy=effective_policy)[0]
+            for effective_role in roles
+        )
     ]
-    if policy == "workspace_lookup":
+    if exposure is not None:
+        candidates = _filter_tools_by_exposure(candidates, exposure)
+    if effective_policy == "workspace_lookup":
         normalized = " ".join(latest_user.strip().split())
         if _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS) and not _contains_any(
             normalized, _FILE_BROWSE_INTENT_MARKERS
@@ -359,6 +729,40 @@ def _tools_for_policy(
     return candidates
 
 
+def _roles_for_policy(
+    policy: _ToolPolicy,
+    *,
+    role: AgentRole | str | None,
+    exposure: TurnToolExposure | None,
+) -> tuple[AgentRole | str, ...]:
+    if role is not None:
+        return (role,)
+    if (
+        exposure is not None
+        and policy == "execution"
+        and set(exposure.allowed_toolsets) == {"web", "workspace"}
+    ):
+        return (AgentRole.PLANNER, AgentRole.EXECUTOR)
+    return (_default_role_for_policy(policy),)
+
+
+def _filter_tools_by_exposure(tools: list[Any], exposure: TurnToolExposure) -> list[Any]:
+    allowed_toolsets = set(exposure.allowed_toolsets)
+    hard_denied_toolsets = set(exposure.hard_denied_toolsets)
+    filtered: list[Any] = []
+    for tool in tools:
+        runtime = _tool_runtime(tool)
+        if runtime.toolset in hard_denied_toolsets:
+            continue
+        if allowed_toolsets and runtime.toolset not in allowed_toolsets:
+            continue
+        if exposure.policy == "execution" and allowed_toolsets:
+            if runtime.side_effect or runtime.requires_workspace_write:
+                continue
+        filtered.append(tool)
+    return filtered
+
+
 def _tool_runtime(tool: Any) -> ToolRuntimeMeta:
     return ToolRuntimeMeta.from_tool(tool)
 
@@ -370,7 +774,7 @@ def _default_role_for_policy(policy: _ToolPolicy) -> AgentRole:
 
 
 def _workspace_lookup_should_start_with_search(
-    text: str, messages: list[Any], tools: list[Any]
+    text: str, messages: list[Any], tools: list[Any], exposure: TurnToolExposure | None = None
 ) -> bool:
     normalized = " ".join(text.strip().split())
     if not normalized:
@@ -379,6 +783,8 @@ def _workspace_lookup_should_start_with_search(
         return False
     if not any(str(getattr(tool, "name", "")) == "search_code" for tool in tools):
         return False
+    if exposure is not None and exposure.preferred_first_tool is not None:
+        return exposure.preferred_first_tool == "search_code"
     return _contains_any(normalized, _CODE_SEARCH_TOOL_INTENT_MARKERS) and not _contains_any(
         normalized,
         _FILE_BROWSE_INTENT_MARKERS,
@@ -386,7 +792,7 @@ def _workspace_lookup_should_start_with_search(
 
 
 def _live_web_research_should_start_with_search(
-    text: str, messages: list[Any], tools: list[Any]
+    text: str, messages: list[Any], tools: list[Any], exposure: TurnToolExposure | None = None
 ) -> bool:
     normalized = " ".join(text.strip().split())
     if not normalized:
@@ -395,6 +801,8 @@ def _live_web_research_should_start_with_search(
         return False
     if not any(str(getattr(tool, "name", "")) == "web_search" for tool in tools):
         return False
+    if exposure is not None and exposure.preferred_first_tool is not None:
+        return exposure.preferred_first_tool == "web_search"
     return _contains_any(normalized, _LIVE_WEB_SEARCH_FIRST_MARKERS)
 
 
@@ -427,6 +835,8 @@ __all__ = [
     "_DIRECT_ANSWER_NOTE",
     "_LIVE_WEB_TOOL_NOTE",
     "_WORKSPACE_TOOL_NOTE",
+    "TurnToolExposure",
+    "_classify_turn_tool_exposure",
     "_classify_turn_tool_policy",
     "_live_web_research_should_start_with_search",
     "_tool_policy_note",
