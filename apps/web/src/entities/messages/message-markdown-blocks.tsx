@@ -15,7 +15,7 @@ function paragraphNode(text: string, key: string) {
 	return (
 		<p key={key}>
 			{lines.map((line, index) => (
-				<Fragment key={`${key}-line-${line}`}>
+				<Fragment key={`${key}-line-${index}`}>
 					{inlineNodes(line, `${key}-inline-${index}`)}
 					{index < lines.length - 1 ? <br /> : null}
 				</Fragment>

@@ -1,7 +1,7 @@
 import type {
 	FocusAgentBranchActionProposal,
 	FocusAgentToolEvent,
-	TurnFailedPayload,
+	RunFailedPayload,
 } from "@focus-agent/web-sdk";
 
 import { normalizeMessageType } from "./message-transcript";
@@ -79,15 +79,10 @@ export function toolEventLabel(
 	switch (event.event) {
 		case "tool.requested":
 			return isChineseUi ? `准备调用 ${toolName}` : `Preparing ${toolName}`;
-		case "tool.start":
-			return isChineseUi ? `正在执行 ${toolName}` : `Running ${toolName}`;
 		case "tool.result":
-		case "tool.end":
 			return isChineseUi ? `已完成 ${toolName}` : `Completed ${toolName}`;
 		case "tool.error":
 			return isChineseUi ? `${toolName} 执行失败` : `${toolName} failed`;
-		case "tool.delta":
-			return isChineseUi ? `${toolName} 返回中` : `${toolName} streaming`;
 		default:
 			return toolName;
 	}
@@ -99,9 +94,7 @@ export function toolEventTone(events: FocusAgentToolEvent[]) {
 	}
 	if (
 		events.length > 0 &&
-		events.every(
-			(event) => event.event === "tool.end" || event.event === "tool.result",
-		)
+		events.every((event) => event.event === "tool.result")
 	) {
 		return "success";
 	}
@@ -132,7 +125,7 @@ export function mergedBranchReadOnlyLabel(isChineseUi: boolean) {
 		: "Merged branches are read-only";
 }
 
-export function failureText(failed: TurnFailedPayload, isChineseUi: boolean) {
+export function failureText(failed: RunFailedPayload, isChineseUi: boolean) {
 	const message = String(failed.message || failed.error || "").trim();
 	if (!message) {
 		return isChineseUi ? "本轮执行失败。" : "This turn failed.";

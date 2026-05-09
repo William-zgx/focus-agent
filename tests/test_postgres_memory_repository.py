@@ -703,7 +703,7 @@ def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 10
+    assert SCHEMA_VERSION == 11
     assert len(executed) == 1
     sql = " ".join(executed[0].split())
     assert sql.startswith("UPDATE focus_memories SET")

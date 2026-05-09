@@ -24,6 +24,7 @@ from .routers import (
     branches_merge,
     conversation_chat_context,
     health_metrics,
+    harness_runs,
     memory,
     observability,
 )
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(health_metrics.router)
+    app.include_router(harness_runs.router)
     register_frontend_routes(app, settings=settings)
     app.include_router(auth_models.router)
     app.include_router(admin_users.router)

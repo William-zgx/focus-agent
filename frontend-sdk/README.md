@@ -30,7 +30,6 @@ This SDK packages those concerns into a small, typed client layer.
 - Reducer helpers for accumulating stream state
 - Type guards for common event routing paths
 - `FocusAgentRequestError` for structured HTTP failure handling
-- Compatibility support for older `message.*` event names alongside `visible_text.*`
 
 ## Package Layout
 
@@ -84,8 +83,8 @@ const stream = await client.streamTurn({
 });
 
 const finalState = await client.collectStream(stream, {
-  onVisibleTextDelta(event) {
-    console.log("visible", event.data.delta);
+  onMessageDelta(event) {
+    console.log("message", event.data.delta);
   },
   onReasoningDelta(event) {
     console.log("reasoning", event.data.delta);
@@ -148,26 +147,23 @@ You can also override `fetch` with `fetchImpl` when integrating in custom runtim
 
 Common event families:
 
-- `visible_text.*`
 - `message.*`
 - `reasoning.*`
-- `tool_call.delta`
 - `tool.call.delta`
-- `tool.*`
-- `task.*`
-- `context.compaction.*`
-- `turn.*`
-- `agent.update`
+- `tool.requested`
+- `tool.result`
+- `tool.error`
+- `task.update`
+- `state.update`
+- `run.*`
 
 Recommended usage:
 
-- Normal chat UI: render `visible_text.delta` and `visible_text.completed`
+- Normal chat UI: render `message.delta` and `message.completed`
 - Debug panels: also render `reasoning.*`
-- Tooling consoles: consume `tool_call.*`, `tool.*`, and `task.*`
-- Context meters: watch `context.compaction.started` and `context.compaction.completed` during streamed turns
-- Completion handling: watch `turn.completed`, `turn.failed`, and `turn.closed`
-
-The SDK keeps compatibility with older servers or clients by treating `message.delta` and `message.completed` as visible-text equivalents.
+- Tooling consoles: consume `tool.call.delta`, `tool.requested`, `tool.result`, `tool.error`, and `task.update`
+- State panels: watch `state.update` during streamed turns
+- Completion handling: watch `run.completed`, `run.failed`, and `run.closed`
 
 ## Reducers And Guards
 
@@ -190,7 +186,7 @@ The derived stream state tracks:
 
 Type guards:
 
-- `isVisibleTextDeltaEvent()`
+- `isMessageDeltaEvent()`
 - `isReasoningDeltaEvent()`
 - `isToolCallDeltaEvent()`
 - `isToolLifecycleEvent()`

@@ -29,19 +29,6 @@ export function createInitialStreamState(): FocusAgentStreamState {
   };
 }
 
-function upsertBranchAction(
-  state: FocusAgentStreamState,
-  action: FocusAgentStreamState["branchActions"][number] | null | undefined,
-): FocusAgentStreamState {
-  if (!action) return state;
-  const existing = state.branchActions.filter((item) => item.action_id !== action.action_id);
-  return { ...state, branchActions: [...existing, action] };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -81,13 +68,7 @@ function upsertProcessingStep(
   return { ...state, processingSteps: nextSteps };
 }
 
-function stepStatusForTask(
-  eventName: FocusAgentEventName,
-  payloadStatus: unknown,
-): FocusAgentStreamStepStatus {
-  if (eventName === "task.finished") return "completed";
-  if (eventName === "task.failed") return "failed";
-  if (eventName === "task.started") return "running";
+function stepStatusForTask(payloadStatus: unknown): FocusAgentStreamStepStatus {
   if (payloadStatus === "completed" || payloadStatus === "failed") {
     return payloadStatus;
   }
@@ -98,7 +79,7 @@ function stepStatusForTask(
 }
 
 function stepStatusForToolEvent(eventName: FocusAgentEventName): FocusAgentStreamStepStatus {
-  if (eventName === "tool.end" || eventName === "tool.result") return "completed";
+  if (eventName === "tool.result") return "completed";
   if (eventName === "tool.error") return "failed";
   if (eventName === "tool.requested") return "pending";
   return "running";
@@ -124,7 +105,7 @@ function toolStepIdForEvent(event: FocusAgentEvent): string {
 
 function upsertReasoningStep(
   state: FocusAgentStreamState,
-  event: FocusAgentEvent<"reasoning.delta" | "reasoning.completed">,
+  event: FocusAgentEvent<"reasoning.delta">,
   content: string,
   status: FocusAgentStreamStepStatus,
 ): FocusAgentStreamState {
@@ -171,7 +152,7 @@ function upsertToolLifecycleStep(
   const name = toolNameForEvent(event);
   const id = toolStepIdForEvent(event);
   const existing = state.processingSteps.find((step) => step.kind === "tool" && step.id === id);
-  const result = event.data.output ?? event.data.result;
+  const result = event.data.output ?? event.data.result ?? event.data.content;
   const summary =
     compactText(event.data.message) ??
     compactText(result) ??
@@ -197,7 +178,7 @@ function upsertToolLifecycleStep(
 
 function upsertTaskStep(
   state: FocusAgentStreamState,
-  event: FocusAgentEvent<"task.update" | "task.started" | "task.finished" | "task.failed">,
+  event: FocusAgentEvent<"task.update">,
 ): FocusAgentStreamState {
   const data = event.data;
   const namespace = namespaceKey(data.namespace);
@@ -213,42 +194,8 @@ function upsertTaskStep(
     id,
     kind: "task",
     label,
-    status: stepStatusForTask(event.event, data.status),
+    status: stepStatusForTask(data.status),
     content: compactText(data.message) ?? compactText(data.value),
-    metadata: data.metadata,
-    namespace: data.namespace,
-    eventName: event.event,
-  });
-}
-
-function upsertAgentStep(
-  state: FocusAgentStreamState,
-  event: FocusAgentEvent<"agent.update">,
-): FocusAgentStreamState {
-  const data = event.data;
-  const namespace = namespaceKey(data.namespace);
-  const agentData = isRecord(data.data) ? data.data : {};
-  const id =
-    stringValue(agentData.id) ??
-    stringValue(agentData.agent_id) ??
-    stringValue(agentData.name) ??
-    namespace ??
-    "agent";
-  const label = stringValue(agentData.label) ?? stringValue(agentData.name) ?? "Agent";
-  const statusValue = agentData.status;
-  const status =
-    statusValue === "pending" ||
-    statusValue === "running" ||
-    statusValue === "completed" ||
-    statusValue === "failed"
-      ? statusValue
-      : "running";
-  return upsertProcessingStep(state, {
-    id,
-    kind: "agent",
-    label,
-    status,
-    content: compactText(agentData.message) ?? compactText(agentData.summary),
     metadata: data.metadata,
     namespace: data.namespace,
     eventName: event.event,
@@ -258,7 +205,7 @@ function upsertAgentStep(
 function failOpenProcessingSteps(state: FocusAgentStreamState): FocusAgentStreamStep[] {
   return state.processingSteps.map((step) =>
     step.status === "running" || step.status === "pending"
-      ? { ...step, status: "failed", eventName: "turn.failed" }
+      ? { ...step, status: "failed", eventName: "run.failed" }
       : step,
   );
 }
@@ -302,33 +249,32 @@ export function reduceStreamEvent(
   event: FocusAgentEvent,
 ): FocusAgentStreamState {
   switch (event.event) {
-    case "visible_text.delta":
     case "message.delta": {
       return applyVisibleTextDelta(state, event.data.delta);
     }
-    case "visible_text.completed":
     case "message.completed": {
       return applyVisibleTextCompleted(state, event.data.content);
     }
     case "reasoning.delta": {
       const delta = typeof event.data.delta === "string" ? event.data.delta : "";
-      const reasoningText = state.reasoningText + delta;
-      return upsertReasoningStep({ ...state, reasoningText }, event, reasoningText, "running");
+      const completed = event.data.completed === true;
+      const reasoningText =
+        completed && typeof event.data.content === "string"
+          ? event.data.content
+          : state.reasoningText + delta;
+      return upsertReasoningStep(
+        { ...state, reasoningText },
+        event,
+        reasoningText,
+        completed ? "completed" : "running",
+      );
     }
-    case "reasoning.completed": {
-      const content = typeof event.data.content === "string" ? event.data.content : state.reasoningText;
-      return upsertReasoningStep({ ...state, reasoningText: content }, event, content, "completed");
-    }
-    case "tool_call.delta":
     case "tool.call.delta":
       return upsertToolCallStep(
         { ...state, toolCalls: [...state.toolCalls, event as FocusAgentToolCallEvent] },
         event as FocusAgentToolCallEvent,
       );
     case "tool.requested":
-    case "tool.start":
-    case "tool.delta":
-    case "tool.end":
     case "tool.error":
     case "tool.result":
       return upsertToolLifecycleStep(
@@ -336,27 +282,19 @@ export function reduceStreamEvent(
         event as FocusAgentToolEvent,
       );
     case "task.update":
-    case "task.started":
-    case "task.finished":
-    case "task.failed":
       return upsertTaskStep(state, event);
-    case "agent.update":
-      return upsertAgentStep(state, event);
-    case "branch.action.proposed":
-    case "branch.action.executed":
-    case "branch.action.dismissed":
-    case "branch.action.failed":
-      return upsertBranchAction(state, event.data.branch_action);
-    case "turn.interrupt":
-      return { ...state, interrupts: [...state.interrupts, event.data.interrupt] };
-    case "turn.status":
+    case "run.status":
       return { ...state, activePhase: event.data.phase };
-    case "turn.completed":
+    case "run.completed":
       return {
         ...state,
-        latestTurnState: (event.data.thread_state as Record<string, unknown>) ?? state.latestTurnState,
+        activePhase: event.data.status,
+        latestTurnState: event.data.thread_state ?? state.latestTurnState,
+        isClosed: true,
       };
-    case "turn.failed":
+    case "run.interrupt":
+      return { ...state, activePhase: event.data.action };
+    case "run.failed":
       return {
         ...state,
         processingSteps: failOpenProcessingSteps(state),
@@ -364,7 +302,7 @@ export function reduceStreamEvent(
         failed: event.data,
         isClosed: true,
       };
-    case "turn.closed":
+    case "run.closed":
       return { ...state, isClosed: true };
     default:
       return state;

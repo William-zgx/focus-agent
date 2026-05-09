@@ -88,6 +88,7 @@ def _install_postgres_modules(monkeypatch):
     trajectory_repo_cls = _make_postgres_component(with_factory=False)
     agent_team_repo_cls = _make_postgres_component(with_factory=False)
     user_repo_cls = _make_postgres_component(with_factory=False)
+    run_journal_cls = _make_postgres_component(with_factory=False)
 
     checkpoint_module = types.ModuleType("langgraph.checkpoint.postgres")
     checkpoint_module.PostgresSaver = saver_cls
@@ -114,6 +115,7 @@ def _install_postgres_modules(monkeypatch):
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_user_repository", user_module)
+    monkeypatch.setattr(runtime_mod, "PostgresRunJournal", run_journal_cls)
 
     return {
         "saver": saver_cls,
@@ -124,10 +126,23 @@ def _install_postgres_modules(monkeypatch):
         "trajectory_repo": trajectory_repo_cls,
         "agent_team_repo": agent_team_repo_cls,
         "user_repo": user_repo_cls,
+        "run_journal": run_journal_cls,
     }
 
 
 def _patch_runtime_collaborators(monkeypatch, *, build_tool_registry):
+    local_run_journal_cls = _make_postgres_component(with_factory=False)
+
+    def fake_create_focus_agent(config, **kwargs):
+        return types.SimpleNamespace(
+            config=config,
+            graph={"graph": kwargs},
+            run_manager=types.SimpleNamespace(store=kwargs.get("event_store")),
+            stream_bridge=types.SimpleNamespace(event_store=kwargs.get("event_store")),
+            event_store=kwargs.get("event_store"),
+            tool_registry=kwargs.get("tool_registry"),
+        )
+
     monkeypatch.setattr(runtime_mod, "MemoryPolicy", _FakeMemoryPolicy)
     monkeypatch.setattr(runtime_mod, "MemoryRetriever", _FakeMemoryComponent)
     monkeypatch.setattr(runtime_mod, "MemoryWriter", _FakeMemoryComponent)
@@ -136,6 +151,9 @@ def _patch_runtime_collaborators(monkeypatch, *, build_tool_registry):
     monkeypatch.setattr(runtime_mod, "build_graph", lambda **kwargs: {"graph": kwargs})
     monkeypatch.setattr(runtime_mod, "BranchService", _FakeBranchService)
     monkeypatch.setattr(runtime_mod, "build_tool_registry", build_tool_registry)
+    monkeypatch.setattr(runtime_mod, "SQLiteRunJournal", local_run_journal_cls)
+    monkeypatch.setattr(runtime_mod, "create_focus_agent", fake_create_focus_agent)
+    return {"local_run_journal": local_run_journal_cls}
 
 
 def _make_settings(tmp_path: Path, *, database_uri: str | None, trajectory_enabled: bool | None) -> Settings:
@@ -189,9 +207,11 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         trajectory_repo = fake_modules["trajectory_repo"].instances[0]
         agent_team_repo = fake_modules["agent_team_repo"].instances[0]
         user_repo = fake_modules["user_repo"].instances[0]
+        run_journal = fake_modules["run_journal"].instances[0]
 
         assert runtime.checkpointer is saver
         assert runtime.store is store
+        assert runtime.event_store is run_journal
         assert runtime.repo is repo
         assert runtime.user_repository is user_repo
         assert runtime.memory_repository is memory_repo
@@ -209,6 +229,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         assert trajectory_repo.setup_calls == 1
         assert agent_team_repo.setup_calls == 1
         assert user_repo.setup_calls == 1
+        assert run_journal.setup_calls == 1
         assert captured["artifact_metadata_repository"] is artifact_repo
         assert captured["memory_repository"] is memory_repo
         assert runtime.memory_retriever.kwargs["repository"] is memory_repo
@@ -248,7 +269,7 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         def __init__(self, path: str):
             self.path = path
 
-    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+    fakes = _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
@@ -261,6 +282,9 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
     try:
         assert runtime.checkpointer.path == tmp_path / "langgraph-checkpoints.pkl"
         assert runtime.store.path == tmp_path / "langgraph-store.pkl"
+        assert runtime.event_store is fakes["local_run_journal"].instances[0]
+        assert runtime.event_store.value == tmp_path / "harness_runs.sqlite3"
+        assert runtime.event_store.setup_calls == 1
         assert runtime.repo.path == str(tmp_path / "branches.sqlite3")
         assert runtime.user_repository.path == str(tmp_path / "branches.sqlite3")
         assert runtime.agent_team_service.repository.path == str(tmp_path / "branches.sqlite3")

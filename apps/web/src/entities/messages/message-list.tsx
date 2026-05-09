@@ -4,7 +4,7 @@ import type {
 	FocusAgentToolApprovalInterrupt,
 	FocusAgentToolCallEvent,
 	FocusAgentToolEvent,
-	TurnFailedPayload,
+	RunFailedPayload,
 } from "@focus-agent/web-sdk";
 import { useMemo } from "react";
 
@@ -33,7 +33,7 @@ interface MessageListProps {
 	streamProcessingSteps?: FocusAgentStreamStep[];
 	streamToolCalls?: FocusAgentToolCallEvent[];
 	streamToolEvents?: FocusAgentToolEvent[];
-	streamFailed?: TurnFailedPayload;
+	streamFailed?: RunFailedPayload;
 	branchActions?: FocusAgentBranchActionProposal[];
 	branchActionErrors?: Record<string, string>;
 	branchActionInFlightId?: string | null;

@@ -3,6 +3,10 @@ import { applyEndpointMethods } from "./endpoint.js";
 import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
 import type {
   FocusAgentEvent,
+  FocusAgentHarnessResumeRequest,
+  FocusAgentHarnessRunCancelRequest,
+  FocusAgentHarnessRunRequest,
+  FocusAgentHarnessRunResponse,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
   FocusAgentTurnRequest,
@@ -15,7 +19,17 @@ async function streamTurn(
   request: FocusAgentTurnRequest,
   options: { signal?: AbortSignal } = {},
 ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
-  return this.stream("/v1/chat/turns/stream", request, options);
+  return streamHarnessRun.call(
+    this,
+    request.thread_id,
+    {
+      message: request.message,
+      model: request.model,
+      thinking_mode: request.thinking_mode,
+      skill_hints: request.skill_hints,
+    },
+    options,
+  );
 }
 
 async function streamResume(
@@ -23,7 +37,46 @@ async function streamResume(
   request: FocusAgentResumeRequest,
   options: { signal?: AbortSignal } = {},
 ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
-  return this.stream("/v1/chat/resume/stream", request, options);
+  const harnessRequest: FocusAgentHarnessResumeRequest = {
+    resume: request.resume,
+    metadata: request.metadata,
+    on_disconnect: request.on_disconnect,
+    multitask_strategy: request.multitask_strategy,
+  };
+  return this.stream(
+    `/v2/threads/${encodeURIComponent(request.thread_id)}/runs/resume/stream`,
+    harnessRequest,
+    options,
+  );
+}
+
+async function streamHarnessRun(
+  this: FocusAgentEndpointContext,
+  threadId: string,
+  request: FocusAgentHarnessRunRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+  return this.stream(
+    `/v2/threads/${encodeURIComponent(threadId)}/runs/stream`,
+    request,
+    options,
+  );
+}
+
+async function cancelHarnessRun(
+  this: FocusAgentEndpointContext,
+  runId: string,
+  request: FocusAgentHarnessRunCancelRequest = {},
+): Promise<FocusAgentHarnessRunResponse> {
+  return this.requestJson<FocusAgentHarnessRunResponse>(
+    `/v2/runs/${encodeURIComponent(runId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
 }
 
 async function collectStream(
@@ -36,29 +89,24 @@ async function collectStream(
     state = reduceStreamEvent(state, event);
     handlers.onEvent?.(event);
     switch (event.event) {
-      case "visible_text.delta":
       case "message.delta":
-        handlers.onVisibleTextDelta?.(event as FocusAgentEvent<"visible_text.delta">);
+        handlers.onMessageDelta?.(event as FocusAgentEvent<"message.delta">);
         break;
       case "reasoning.delta":
         handlers.onReasoningDelta?.(event);
         break;
-      case "tool_call.delta":
       case "tool.call.delta":
-        handlers.onToolCallDelta?.(event as FocusAgentEvent<"tool_call.delta">);
+        handlers.onToolCallDelta?.(event as FocusAgentEvent<"tool.call.delta">);
         break;
       case "tool.requested":
-      case "tool.start":
-      case "tool.delta":
-      case "tool.end":
       case "tool.error":
       case "tool.result":
         handlers.onToolEvent?.(event as FocusAgentToolEvent);
         break;
-      case "turn.completed":
+      case "run.completed":
         handlers.onCompleted?.(event);
         break;
-      case "turn.failed":
+      case "run.failed":
         handlers.onFailed?.(event);
         break;
       default:
@@ -71,12 +119,16 @@ async function collectStream(
 export interface StreamingEndpoints {
   streamTurn: OmitThisParameter<typeof streamTurn>;
   streamResume: OmitThisParameter<typeof streamResume>;
+  streamHarnessRun: OmitThisParameter<typeof streamHarnessRun>;
+  cancelHarnessRun: OmitThisParameter<typeof cancelHarnessRun>;
   collectStream: OmitThisParameter<typeof collectStream>;
 }
 
 const streamingEndpoints: FocusAgentEndpointMethodMap<StreamingEndpoints> = {
   streamTurn,
   streamResume,
+  streamHarnessRun,
+  cancelHarnessRun,
   collectStream,
 };
 

@@ -76,6 +76,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'base: "/app/"' in vite_text
     assert 'process.env.API_PORT || "8000"' in vite_text
     assert '"/v1": apiTarget' in vite_text
+    assert '"/v2": apiTarget' in vite_text
 
     index_html_text = (web_root / "index.html").read_text()
     assert 'rel="icon"' in index_html_text
@@ -271,7 +272,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "failed: {" in stream_errors_text
     assert "resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted)" in stream_hook_text
     assert "pendingUserMessage: cleanup.clearPendingUserMessage" in stream_hook_text
-    assert 'event.event === "turn.completed"' in stream_hook_text
+    assert 'event.event === "run.completed"' in stream_hook_text
     assert "queryClient.setQueryData(" in stream_cache_text
     assert "queryKeys.thread(threadId)" in stream_cache_text
     assert "Promise.allSettled([" in stream_cache_text

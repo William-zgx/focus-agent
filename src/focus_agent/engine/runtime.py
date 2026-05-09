@@ -10,6 +10,7 @@ from typing import Callable
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings, ensure_runtime_directories
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
+from ..harness import HarnessConfig, PostgresRunJournal, SQLiteRunJournal, create_focus_agent
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..memory.embedding import (
     MemoryEmbeddingError,
@@ -50,6 +51,7 @@ class RuntimePersistence:
     memory_repository: object | None
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
+    run_journal: object
 
 
 @dataclass(slots=True)
@@ -88,7 +90,11 @@ class RuntimeServices:
 @dataclass(slots=True)
 class AppRuntime:
     settings: Settings
+    harness: object
     graph: object
+    run_manager: object
+    stream_bridge: object
+    event_store: object
     repo: BranchRepository
     user_repository: UserRepository
     branch_service: BranchService
@@ -193,12 +199,13 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         persistence=persistence,
         memory=memory,
     )
-    graph = _create_runtime_graph(
+    harness = _create_runtime_harness(
         settings=settings,
         persistence=persistence,
         memory=memory,
         registries=registries,
     )
+    graph = harness.graph
     services = _create_runtime_services(
         settings=settings,
         graph=graph,
@@ -213,7 +220,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
 
     return AppRuntime(
         settings=settings,
+        harness=harness,
         graph=graph,
+        run_manager=harness.run_manager,
+        stream_bridge=harness.stream_bridge,
+        event_store=harness.event_store,
         repo=persistence.repo,
         user_repository=persistence.user_repository,
         branch_service=services.branch_service,
@@ -258,6 +269,7 @@ def _create_runtime_persistence(
             memory_repository,
             trajectory_recorder,
             artifact_metadata_repository,
+            run_journal,
         ) = (
             _create_postgres_primary_persistence(
                 settings=settings,
@@ -275,6 +287,7 @@ def _create_runtime_persistence(
             memory_repository,
             trajectory_recorder,
             artifact_metadata_repository,
+            run_journal,
         ) = (
             _create_local_fallback_persistence(settings)
         )
@@ -287,6 +300,7 @@ def _create_runtime_persistence(
         memory_repository=memory_repository,
         trajectory_recorder=trajectory_recorder,
         artifact_metadata_repository=artifact_metadata_repository,
+        run_journal=run_journal,
     )
 
 
@@ -395,6 +409,37 @@ def _create_runtime_graph(
     )
 
 
+def _create_runtime_harness(
+    *,
+    settings: Settings,
+    persistence: RuntimePersistence,
+    memory: RuntimeMemoryComponents,
+    registries: RuntimeRegistries,
+) -> object:
+    harness_config = HarnessConfig(
+        name="focus-agent",
+        model=settings.model,
+        streaming={"heartbeat_seconds": settings.sse_heartbeat_seconds},
+        subagents={
+            "enabled": bool(settings.agent_delegation_enabled),
+            "max_concurrent_subagents": max(1, int(settings.agent_role_max_parallel_runs or 1)),
+        },
+    )
+    return create_focus_agent(
+        harness_config,
+        settings=settings,
+        checkpointer=persistence.checkpointer,
+        store=persistence.store,
+        memory_retriever=memory.memory_retriever,
+        memory_policy=memory.memory_policy,
+        memory_writer=memory.memory_writer,
+        memory_extractor=memory.memory_extractor,
+        skill_registry=registries.skill_registry,
+        tool_registry=registries.tool_registry,
+        event_store=persistence.run_journal,
+    )
+
+
 def _create_runtime_services(
     *,
     settings: Settings,
@@ -438,7 +483,7 @@ def _create_postgres_primary_persistence(
     settings: Settings,
     exit_stack: ExitStack,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object, object]:
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
 
@@ -481,6 +526,9 @@ def _create_postgres_primary_persistence(
         else:
             trajectory_recorder = candidate
 
+    run_journal = PostgresRunJournal(settings.database_uri)
+    _setup_component_if_available(run_journal)
+
     return (
         checkpointer,
         store,
@@ -489,12 +537,13 @@ def _create_postgres_primary_persistence(
         memory_repository,
         trajectory_recorder,
         artifact_metadata_repository,
+        run_journal,
     )
 
 
 def _create_local_fallback_persistence(
     settings: Settings,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object | None]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object | None, object]:
     persistence_dir = Path(settings.branch_db_path).expanduser().parent
     checkpoint_path = (
         Path(settings.local_checkpoint_path).expanduser()
@@ -510,7 +559,9 @@ def _create_local_fallback_persistence(
     store = PersistentInMemoryStore(store_path)
     repo = SQLiteBranchRepository(settings.branch_db_path)
     user_repository = SQLiteUserRepository(settings.branch_db_path)
-    return checkpointer, store, repo, user_repository, None, None, None
+    run_journal = SQLiteRunJournal(persistence_dir / "harness_runs.sqlite3")
+    _setup_component_if_available(run_journal)
+    return checkpointer, store, repo, user_repository, None, None, None, run_journal
 
 
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:

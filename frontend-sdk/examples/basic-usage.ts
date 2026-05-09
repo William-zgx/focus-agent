@@ -17,7 +17,7 @@ async function main() {
   });
 
   const finalState = await client.collectStream(stream, {
-    onVisibleTextDelta(event) {
+    onMessageDelta(event) {
       process.stdout.write(event.data.delta);
     },
     onToolEvent(event) {

@@ -77,7 +77,7 @@ def test_validation_error_envelope_shape(
     app = create_app()
     client = TestClient(app)
 
-    response = client.post("/v1/chat/turns", json={"message": "hi"})
+    response = client.post("/v2/threads/thread-1/runs", json={"model": 123})
     assert response.status_code == 422
     body = response.json()
     assert body["code"] == 422
@@ -225,9 +225,9 @@ def test_auth_disabled_development_mode_allows_required_dependencies_without_tok
 def test_rate_limiter_blocks_after_threshold() -> None:
     limiter = SlidingWindowRateLimiter(window_seconds=60.0)
     for _ in range(3):
-        result = limiter.check(key="user-1:/v1/chat/turns", limit=3)
+        result = limiter.check(key="user-1:/v2/threads/thread-1/runs", limit=3)
         assert result.allowed is True
-    blocked = limiter.check(key="user-1:/v1/chat/turns", limit=3)
+    blocked = limiter.check(key="user-1:/v2/threads/thread-1/runs", limit=3)
     assert blocked.allowed is False
     assert blocked.retry_after_seconds >= 0.0
 
@@ -272,7 +272,7 @@ def test_rate_limit_middleware_uses_runtime_coordination_backend() -> None:
     app = FastAPI()
     app.state.runtime = SimpleNamespace(coordination_backend=SimpleNamespace(rate_limiter=backend))
 
-    @app.get("/v1/chat/turns")
+    @app.get("/v2/threads/thread-1/runs")
     def chat_turns() -> dict[str, bool]:
         return {"ok": True}
 
@@ -283,10 +283,10 @@ def test_rate_limit_middleware_uses_runtime_coordination_backend() -> None:
         settings=settings,
     )
 
-    response = TestClient(app).get("/v1/chat/turns")
+    response = TestClient(app).get("/v2/threads/thread-1/runs")
 
     assert response.status_code == 429
-    assert backend.calls == [{"key": "ip:testclient:/v1/chat/turns", "limit": 3, "window_seconds": 60.0}]
+    assert backend.calls == [{"key": "ip:testclient:/v2/threads/thread-1/runs", "limit": 3, "window_seconds": 60.0}]
 
 
 def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

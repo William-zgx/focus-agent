@@ -2,10 +2,12 @@ import {
   createToolApprovalDecision,
   createInitialStreamState,
   reduceStreamEvent,
+  type FocusAgentBranchActionNavigation,
   type FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
@@ -22,6 +24,7 @@ import {
 import { useStreamRequestRegistry } from "./use-stream-request-registry";
 import {
   applyTurnCompletedCacheUpdate,
+  invalidateBranchActionNavigationSurfaces,
   invalidateThreadStreamSurfaces,
 } from "./use-thread-stream-cache";
 import {
@@ -29,7 +32,6 @@ import {
   isAbortError,
   resolveStreamRequestCleanup,
 } from "./use-thread-stream-errors";
-import { useThreadStreamNavigation } from "./use-thread-stream-navigation";
 
 interface UseThreadStreamOptions {
   threadId: string;
@@ -39,6 +41,17 @@ interface UseThreadStreamOptions {
 }
 
 const STREAM_STATE_BATCH_MS = 40;
+
+function isBranchActionNavigation(value: unknown): value is FocusAgentBranchActionNavigation {
+  if (!value || typeof value !== "object") return false;
+  const navigation = value as Record<string, unknown>;
+  return (
+    typeof navigation.root_thread_id === "string" &&
+    typeof navigation.thread_id === "string" &&
+    navigation.root_thread_id.length > 0 &&
+    navigation.thread_id.length > 0
+  );
+}
 
 export {
   createOptimisticThreadStreamEntry,
@@ -57,14 +70,14 @@ export {
   messageFromStreamError,
   resolveStreamRequestCleanup,
 } from "./use-thread-stream-errors";
-export { navigationFromBranchActionPayload } from "./use-thread-stream-navigation";
 
 export function useThreadStream(options: UseThreadStreamOptions) {
   const { client } = useFocusAgent();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const requestRegistry = useStreamRequestRegistry();
-  const { handleBranchActionExecuted } = useThreadStreamNavigation();
   const [threadEntries, setThreadEntries] = useState<Record<string, ThreadStreamEntry>>({});
+  const activeRunIdsRef = useRef<Map<string, string>>(new Map());
 
   async function runStreamRequest({
     requestThreadId,
@@ -142,17 +155,32 @@ export function useThreadStream(options: UseThreadStreamOptions) {
         }
 
         nextState = reduceStreamEvent(nextState, event);
+        const runId = typeof event.data.run_id === "string" ? event.data.run_id : null;
+        if (runId) {
+          activeRunIdsRef.current.set(requestThreadId, runId);
+        }
 
-        if (event.event === "turn.completed") {
+        if (event.event === "run.completed" && event.data.thread_state) {
           applyTurnCompletedCacheUpdate(
             queryClient,
             requestThreadId,
             event.data.thread_state,
           );
         }
-
-        if (event.event === "branch.action.executed") {
-          handleBranchActionExecuted(event.data, requestThreadId);
+        if (event.event === "run.completed" && isBranchActionNavigation(event.data.navigation)) {
+          invalidateBranchActionNavigationSurfaces(
+            queryClient,
+            event.data.navigation.root_thread_id,
+            requestThreadId,
+            event.data.navigation.thread_id,
+          );
+          void navigate({
+            to: "/c/$conversationId/t/$threadId",
+            params: {
+              conversationId: event.data.navigation.root_thread_id,
+              threadId: event.data.navigation.thread_id,
+            },
+          });
         }
 
         if (!requestRegistry.isCurrentStreamRequest(requestThreadId, requestId, controller)) {
@@ -179,6 +207,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
       }
       const isLatestRequest = requestRegistry.completeStreamRequest(requestThreadId, requestId);
       if (isLatestRequest) {
+        activeRunIdsRef.current.delete(requestThreadId);
         const cleanup = resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted);
         setThreadEntries((current) =>
           patchThreadEntry(current, requestThreadId, {
@@ -258,7 +287,12 @@ export function useThreadStream(options: UseThreadStreamOptions) {
   }
 
   function stopStreaming() {
+    const runId = activeRunIdsRef.current.get(options.threadId);
     requestRegistry.stopStreamRequest(options.threadId);
+    if (runId) {
+      activeRunIdsRef.current.delete(options.threadId);
+      void client.cancelHarnessRun(runId, { action: "interrupt" }).catch(() => undefined);
+    }
   }
 
   const currentEntry = threadEntries[options.threadId] ?? createThreadStreamEntry();

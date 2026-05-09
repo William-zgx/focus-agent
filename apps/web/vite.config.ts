@@ -45,6 +45,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/v1": apiTarget,
+      "/v2": apiTarget,
       "/healthz": apiTarget,
       "/readyz": apiTarget,
       "/metrics": apiTarget,

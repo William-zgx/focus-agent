@@ -1,4 +1,4 @@
-import type { TurnFailedPayload } from "@focus-agent/web-sdk";
+import type { RunFailedPayload } from "@focus-agent/web-sdk";
 
 import {
 	bubbleClass,
@@ -90,7 +90,7 @@ export function SystemFailureRow({
 	failed,
 	isChineseUi,
 }: {
-	failed: TurnFailedPayload;
+	failed: RunFailedPayload;
 	isChineseUi: boolean;
 }) {
 	return (

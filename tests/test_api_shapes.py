@@ -605,5 +605,27 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/observability/trajectory/batch/promote-preview" in route_paths
     assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
+    assert "/v2/threads/{thread_id:path}/runs" in route_paths
+    assert "/v2/threads/{thread_id:path}/runs/stream" in route_paths
+    assert "/v2/threads/{thread_id:path}/runs/resume/stream" in route_paths
+    assert "/v2/runs/{run_id}" in route_paths
+    assert "/v2/runs/{run_id}/cancel" in route_paths
+    assert "/v1/chat/turns" not in route_paths
+    assert "/v1/chat/turns/stream" not in route_paths
+    assert "/v1/chat/resume" not in route_paths
+    assert "/v1/chat/resume/stream" not in route_paths
     assert "/v1/skills" not in route_paths
     assert "/v1/skills/{skill_id}" not in route_paths
+
+
+def test_v1_chat_routes_are_removed_after_v2_harness_cutover():
+    app = create_app()
+    route_paths = {route.path for route in app.routes}
+
+    for path in (
+        "/v1/chat/turns",
+        "/v1/chat/turns/stream",
+        "/v1/chat/resume",
+        "/v1/chat/resume/stream",
+    ):
+        assert path not in route_paths

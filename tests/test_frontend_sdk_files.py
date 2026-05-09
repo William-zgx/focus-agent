@@ -38,9 +38,19 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'export type FocusAgentEventName' not in types_barrel_text
 
     types_text = _sdk_types_text(root)
-    assert 'visible_text.delta' in types_text
+    assert 'visible_text.delta' not in types_text
+    assert 'tool_call.delta' not in types_text
+    assert 'message.delta' in types_text
+    assert 'message.completed' in types_text
+    assert 'run.status' in types_text
+    assert 'run.completed' in types_text
+    assert 'run.failed' in types_text
+    assert 'run.interrupt' in types_text
+    assert 'run.closed' in types_text
     assert 'reasoning.delta' in types_text
-    assert 'tool_call.delta' in types_text
+    assert 'tool.call.delta' in types_text
+    assert 'FocusAgentHarnessRunRequest' in types_text
+    assert 'FocusAgentHarnessRunCancelRequest' in types_text
     assert 'ConclusionPolicy' not in types_text
     assert 'archived_branches' in types_text
     assert 'selected_model' in types_text
@@ -74,7 +84,7 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'FocusAgentBranchActionProposal' in types_text
     assert 'FocusAgentBranchActionExecuteResponse' in types_text
     assert 'FocusAgentToolApprovalInterrupt' in types_text
-    assert 'branch.action.executed' in types_text
+    assert 'branch.action.executed' not in types_text
 
     client_text = _sdk_client_text(root)
     assert 'class FocusAgentClient' in client_text
@@ -102,6 +112,12 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'getBranchTree' in client_text
     assert 'streamTurn' in client_text
     assert 'streamResume' in client_text
+    assert 'streamHarnessRun' in client_text
+    assert '/v2/threads/${encodeURIComponent(threadId)}/runs/stream' in client_text
+    assert '/v2/threads/${encodeURIComponent(request.thread_id)}/runs/resume/stream' in client_text
+    assert '/v1/chat/' not in client_text
+    assert 'cancelHarnessRun' in client_text
+    assert '/v2/runs/${encodeURIComponent(runId)}/cancel' in client_text
     assert 'forkBranch' in client_text
     assert 'executeBranchAction' in client_text
     assert 'dismissBranchAction' in client_text

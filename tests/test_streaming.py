@@ -224,7 +224,7 @@ def test_map_custom_payload_to_tool_event():
             "output": "artifact_saved:/tmp/a.md",
         }
     )
-    assert event_name == "tool.end"
+    assert event_name == "tool.result"
     assert payload["tool_name"] == "write_text_artifact"
 
 
@@ -238,7 +238,7 @@ def test_map_custom_payload_to_tool_event_preserves_tool_identity_aliases():
         }
     )
 
-    assert event_name == "tool.start"
+    assert event_name == "tool.requested"
     assert payload["tool_call_id"] == "call-1"
     assert payload["id"] == "call-1"
     assert payload["tool_name"] == "search_web"

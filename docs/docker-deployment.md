@@ -285,7 +285,7 @@ focus-agent-migrate-local-state \
   - `/readyz`
   - `/metrics`
   - 会话创建
-  - `/v1/chat/turns`
+  - `/v2/threads/{thread_id}/runs`
   - trajectory 入库
   - `/v1/observability/overview` 能返回 runtime 与 trajectory stats
   - `/app/observability/trajectory` 能读取 trajectory list / detail / stats

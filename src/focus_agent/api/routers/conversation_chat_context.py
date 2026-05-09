@@ -3,7 +3,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.runtime import AppRuntime
@@ -12,8 +11,6 @@ from focus_agent.services.chat import ChatService, ConcurrentTurnError
 
 from ..contracts import (
     BranchActionExecuteResponse,
-    ChatResumeRequest,
-    ChatTurnRequest,
     ConversationListResponse,
     ConversationSummaryResponse,
     CreateConversationRequest,
@@ -26,7 +23,6 @@ from ..contracts import (
 )
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
 from ..route_utils.conversations import _conversation_response, _list_or_bootstrap_conversations
-from ..route_utils.streaming import _event_stream_response
 from ..route_utils.token_usage import _normalize_token_usage, _token_usage_for_root_thread
 
 router = APIRouter()
@@ -148,88 +144,6 @@ def activate_conversation(
             update={"token_usage": _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)}
         )
     )
-
-@router.post('/v1/chat/turns', response_model=ThreadStateResponse)
-def post_chat_turn(
-    payload: ChatTurnRequest,
-    request: Request,
-    chat: ChatService = Depends(get_chat_service),
-    principal: Principal = Depends(get_current_principal),
-) -> ThreadStateResponse:
-    try:
-        result = chat.send_message(
-            thread_id=payload.thread_id,
-            user_id=principal.user_id,
-            message=payload.message,
-            model=payload.model,
-            thinking_mode=payload.thinking_mode,
-            request_id=getattr(request.state, "request_id", None),
-            skill_hints=tuple(payload.skill_hints),
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return ThreadStateResponse.model_validate(result)
-
-@router.post('/v1/chat/turns/stream')
-def stream_chat_turn(
-    payload: ChatTurnRequest,
-    request: Request,
-    chat: ChatService = Depends(get_chat_service),
-    principal: Principal = Depends(get_current_principal),
-) -> StreamingResponse:
-    try:
-        stream = chat.stream_message(
-            thread_id=payload.thread_id,
-            user_id=principal.user_id,
-            message=payload.message,
-            model=payload.model,
-            thinking_mode=payload.thinking_mode,
-            request_id=getattr(request.state, "request_id", None),
-            skill_hints=tuple(payload.skill_hints),
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return _event_stream_response(stream)
-
-@router.post('/v1/chat/resume', response_model=ThreadStateResponse)
-def resume_chat_turn(
-    payload: ChatResumeRequest,
-    request: Request,
-    chat: ChatService = Depends(get_chat_service),
-    principal: Principal = Depends(get_current_principal),
-) -> ThreadStateResponse:
-    try:
-        result = chat.resume(
-            thread_id=payload.thread_id,
-            user_id=principal.user_id,
-            resume=payload.resume,
-            request_id=getattr(request.state, "request_id", None),
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return ThreadStateResponse.model_validate(result)
-
-@router.post('/v1/chat/resume/stream')
-def stream_resumed_chat_turn(
-    payload: ChatResumeRequest,
-    request: Request,
-    chat: ChatService = Depends(get_chat_service),
-    principal: Principal = Depends(get_current_principal),
-) -> StreamingResponse:
-    try:
-        stream = chat.stream_resume(
-            thread_id=payload.thread_id,
-            user_id=principal.user_id,
-            resume=payload.resume,
-            request_id=getattr(request.state, "request_id", None),
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return _event_stream_response(stream)
 
 @router.get('/v1/threads/{thread_id:path}', response_model=ThreadStateResponse)
 def get_thread_snapshot(

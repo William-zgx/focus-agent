@@ -59,8 +59,8 @@ def test_production_smoke_v2_stream_graph_and_thresholds(
         json.dumps(
             {
                 "events": [
-                    {"event": "visible_text.delta", "data": {"delta": "hello"}},
-                    {"event": "turn.completed", "data": {"thread_id": "production-smoke"}},
+                    {"event": "message.delta", "data": {"delta": "hello"}},
+                    {"event": "run.completed", "data": {"thread_id": "production-smoke", "status": "succeeded"}},
                 ]
             }
         ),
@@ -106,7 +106,7 @@ def test_production_smoke_v2_stream_graph_and_thresholds(
     assert report["passed"] is True
     assert report["report_version"] == 2
     assert report["stream_events"]["status"] == "passed"
-    assert report["stream_events"]["events_seen"] == ["turn.completed", "visible_text.delta"]
+    assert report["stream_events"]["events_seen"] == ["message.delta", "run.completed"]
     assert report["graph_turn"]["status"] == "passed"
     assert report["thresholds"]["rate_limit"]["observed"]["limit"] == 20
     assert report["thresholds"]["rate_limit"]["min_limit"] == 10
@@ -151,7 +151,7 @@ def test_production_smoke_live_requires_stream_contract_input(monkeypatch) -> No
 def test_production_smoke_graph_auth_failure_blocks_graph_turn(monkeypatch, tmp_path: Path) -> None:
     stream_path = tmp_path / "stream-events.json"
     stream_path.write_text(
-        json.dumps({"events": [{"event": "turn.completed", "data": {"thread_id": "production-smoke"}}]}),
+        json.dumps({"events": [{"event": "run.completed", "data": {"thread_id": "production-smoke", "status": "succeeded"}}]}),
         encoding="utf-8",
     )
 

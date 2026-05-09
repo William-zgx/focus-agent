@@ -5,7 +5,7 @@ import { applyAgentTeamEndpoints, type AgentTeamEndpoints } from "./client/agent
 import { applyAuthEndpoints, type AuthEndpoints } from "./client/auth.js";
 import { applyMemoryEndpoints, type MemoryEndpoints } from "./client/memory.js";
 import { applyObservabilityEndpoints, type ObservabilityEndpoints } from "./client/observability.js";
-import { dedupeAndCanonicalizeAliasEvents } from "./client/stream.js";
+import { canonicalizeStreamEvents } from "./client/stream.js";
 import { applyStreamingEndpoints, type StreamingEndpoints } from "./client/streaming.js";
 import { applyThreadBranchEndpoints, type ThreadBranchEndpoints } from "./client/thread-branch.js";
 import type { FocusAgentEvent } from "./types.js";
@@ -68,7 +68,7 @@ export class FocusAgentClient {
     if (!response.body) {
       throw new Error("FocusAgent stream response did not include a body.");
     }
-    return dedupeAndCanonicalizeAliasEvents(iterValidatedSSEEvents(response.body));
+    return canonicalizeStreamEvents(iterValidatedSSEEvents(response.body));
   }
 
   private async requestJson<T>(path: string, init: RequestInit, auth: boolean): Promise<T> {

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ..config import Settings
+from ..harness.tools import tools_schema_fingerprint
 from ..model_registry import create_chat_model
 
 
@@ -50,7 +51,7 @@ class GraphModelFactory:
         available_tools: list[Any] | None = None,
     ):
         selected_tools = list(default_tools if available_tools is None else available_tools)
-        tool_key = ",".join(sorted(str(getattr(tool, "name", "")) for tool in selected_tools))
+        tool_key = tools_schema_fingerprint(selected_tools)
         cache_key = f"{model_id}|{thinking_mode or ''}|{tool_key}"
         cached = self._model_with_tools_cache.get(cache_key)
         if cached is not None:

@@ -181,7 +181,7 @@ function stepsFromLegacyStreamEvents({
 		const status =
 			event.event === "tool.error"
 				? "failed"
-				: event.event === "tool.end" || event.event === "tool.result"
+				: event.event === "tool.result"
 					? "completed"
 					: "running";
 		const output =

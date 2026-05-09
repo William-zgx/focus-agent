@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from typing import Any
 
 from .branch_actions import dismissal_message, normalize_branch_actions, serialize_branch_actions
 from .chat_branch_actions import (
@@ -9,7 +9,6 @@ from .chat_branch_actions import (
     dismiss_branch_action_locked,
     execute_branch_action_locked,
     handle_branch_action_turn,
-    stream_branch_action_result,
 )
 
 
@@ -156,20 +155,3 @@ class ChatBranchActionFacadeMixin:
             message=message,
             request_id=request_id,
         )
-
-    async def _astream_branch_action_result(
-        self,
-        *,
-        thread_id: str,
-        user_id: str,
-        message: str,
-        request_id: str | None,
-    ) -> AsyncIterator[str]:
-        async for event in stream_branch_action_result(
-            service=self,
-            thread_id=thread_id,
-            user_id=user_id,
-            message=message,
-            request_id=request_id,
-        ):
-            yield event

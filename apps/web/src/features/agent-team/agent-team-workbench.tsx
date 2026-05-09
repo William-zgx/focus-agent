@@ -472,7 +472,7 @@ function MissionStudioRail({
       </div>
       <button
         aria-busy={primaryActionBusy}
-        className="fa-agent-team-button is-primary fa-agent-team-studio-rail-action"
+        className="fa-agent-team-button is-primary fa-agent-team-primary-action fa-agent-team-studio-rail-action"
         disabled={primaryActionDisabled}
         onClick={onPrimaryAction}
         type="button"

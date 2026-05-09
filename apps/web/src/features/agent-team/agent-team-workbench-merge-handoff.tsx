@@ -408,7 +408,7 @@ function finalAnswerWarnings(bundle: AgentTeamMergeBundle, isChineseUi: boolean)
   if (isPlaceholderBundle(bundle)) {
     return [
       isChineseUi
-        ? "模拟执行只验证流程，不会作为用户态可交付最终答案展示。"
+        ? "模拟执行提示：模拟执行只验证流程，不会作为用户态可交付最终答案展示。"
         : "Simulated execution validates the workflow only; it is not a deliverable final answer.",
       isChineseUi
         ? "请切换到真实模型执行后，再生成 Agent Team 最终答案。"

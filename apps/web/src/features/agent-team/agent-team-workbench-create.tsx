@@ -333,10 +333,10 @@ export function CreateSessionPanel() {
             >
               {createSession.isPending || isPlanningNewSession
                 ? isChineseUi
-                  ? "正在开 Mission..."
+                  ? "生成方案中..."
                   : "Starting mission..."
                 : isChineseUi
-                  ? "开 Mission 并自动拆解"
+                  ? "开 Mission 并生成协作方案"
                   : "Start mission and plan"}
             </button>
             {!goal.trim() || !rootThreadId.trim() ? (

@@ -18,7 +18,7 @@ from focus_agent.services.coordination import InMemoryRateLimitBackend, RateLimi
 
 
 REQUEST_ID_HEADER = "X-Request-ID"
-RATE_LIMITED_PATH_PREFIXES = ("/v1/chat",)
+RATE_LIMITED_PATH_PREFIXES = ("/v2/threads",)
 logger = logging.getLogger("focus_agent.api")
 
 

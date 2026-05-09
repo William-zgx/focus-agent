@@ -5,7 +5,7 @@ from collections.abc import Callable
 import psycopg
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def ensure_app_postgres_schema(
@@ -814,6 +814,99 @@ def _run_migration_v10(
         )
 
 
+def _run_migration_v11(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_harness_runs (
+            run_id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            assistant_id TEXT,
+            user_id TEXT,
+            status TEXT NOT NULL,
+            on_disconnect TEXT NOT NULL DEFAULT 'cancel',
+            multitask_strategy TEXT NOT NULL,
+            metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            kwargs_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            error TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completion_json JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_harness_run_events (
+            event_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES focus_harness_runs(run_id) ON DELETE CASCADE,
+            event TEXT NOT NULL,
+            data_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            sequence INT NOT NULL,
+            stream_event_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (run_id, sequence)
+        )
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_harness_tool_events (
+            event_id TEXT PRIMARY KEY
+                REFERENCES focus_harness_run_events(event_id) ON DELETE CASCADE,
+            run_id TEXT NOT NULL REFERENCES focus_harness_runs(run_id) ON DELETE CASCADE,
+            tool_call_id TEXT,
+            tool_name TEXT,
+            status TEXT NOT NULL,
+            sequence INT NOT NULL,
+            args_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            result_json JSONB,
+            error TEXT,
+            duration_ms DOUBLE PRECISION,
+            metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_harness_runs_thread_created
+        ON focus_harness_runs(thread_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_harness_runs_status_updated
+        ON focus_harness_runs(status, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_harness_run_events_run_sequence
+        ON focus_harness_run_events(run_id, sequence)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_harness_run_events_stream_event
+        ON focus_harness_run_events(stream_event_id)
+        WHERE stream_event_id IS NOT NULL
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_harness_tool_events_run_sequence
+        ON focus_harness_tool_events(run_id, sequence)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_harness_tool_events_tool_name
+        ON focus_harness_tool_events(tool_name, created_at DESC)
+        WHERE tool_name IS NOT NULL
+        """
+    )
+
+
 def _normalize_pgvector_extension_mode(value: object) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in {"auto", "auto_create", "create", "create_if_missing"}:
@@ -834,4 +927,5 @@ _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (8, _run_migration_v8),
     (9, _run_migration_v9),
     (10, _run_migration_v10),
+    (11, _run_migration_v11),
 )

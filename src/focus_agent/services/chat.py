@@ -4,7 +4,7 @@ from datetime import timedelta
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.types import Command
@@ -30,7 +30,6 @@ from .chat_serialization import (
     thread_state_messages,
 )
 from .chat_compaction import ChatContextCompactionMixin
-from .chat_stream_lifecycle import ChatStreamLifecycleMixin
 from .chat_thread_state import effective_thinking_mode, response_payload
 from .chat_thread_access import ChatThreadAccessMixin
 from .chat_turn_errors import ConcurrentTurnError as ConcurrentTurnError
@@ -76,7 +75,6 @@ class ChatService(
     ChatBranchActionFacadeMixin,
     ChatTurnRecordingMixin,
     ChatContextCompactionMixin,
-    ChatStreamLifecycleMixin,
     ChatThreadAccessMixin,
 ):
     _THREAD_STATE_MESSAGE_LIMIT = 200
@@ -505,79 +503,3 @@ class ChatService(
     @staticmethod
     def _sse_frame(*, event: str, data: dict[str, Any]) -> str:
         return sse_frame(event=event, data=data)
-
-    def stream_message(
-        self,
-        *,
-        thread_id: str,
-        user_id: str,
-        message: str,
-        model: str | None = None,
-        thinking_mode: str | None = None,
-        request_id: str | None = None,
-        skill_hints: tuple[str, ...] = (),
-    ) -> AsyncIterator[str]:
-        context, branch_meta, values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
-        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
-        if self._branch_action_intent(values=values, branch_meta=branch_meta, message=message) is not None:
-            return self._astream_branch_action_result(
-                thread_id=thread_id,
-                user_id=user_id,
-                message=message,
-                request_id=request_id,
-            )
-
-        selection = self._select_skills_for_message(
-            message=message,
-            explicit_skill_hints=skill_hints,
-        )
-        selected_model = model or self.runtime.settings.model
-        payload: dict[str, Any] = {
-            'messages': [HumanMessage(content=message)],
-            'task_brief': selection.stripped_message or message,
-            'active_skill_ids': list(selection.skill_ids),
-            'selected_model': selected_model,
-            'selected_thinking_mode': self._effective_thinking_mode(
-                model_id=selected_model,
-                thinking_mode=thinking_mode,
-            ),
-        }
-        if selection.prompt_mode is not None:
-            payload['prompt_mode'] = selection.prompt_mode
-        self._preflight_thread_access(
-            thread_id=thread_id,
-            user_id=user_id,
-            explicit_skill_hints=selection.skill_ids,
-            require_writable=True,
-        )
-        return self._astream_result(
-            thread_id=thread_id,
-            user_id=user_id,
-            payload=payload,
-            run_name='focus_agent_turn',
-            kind='chat.turn',
-            request_id=request_id,
-            context_skill_hints=selection.skill_ids,
-        )
-
-    def stream_resume(
-        self,
-        *,
-        thread_id: str,
-        user_id: str,
-        resume: Any,
-        request_id: str | None = None,
-    ) -> AsyncIterator[str]:
-        self._preflight_thread_access(
-            thread_id=thread_id,
-            user_id=user_id,
-            require_writable=True,
-        )
-        return self._astream_result(
-            thread_id=thread_id,
-            user_id=user_id,
-            payload=Command(resume=resume),
-            run_name='focus_agent_resume',
-            kind='chat.resume',
-            request_id=request_id,
-        )

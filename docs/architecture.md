@@ -171,7 +171,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Auth | `POST /v1/auth/demo-token`、`GET /v1/auth/me` | demo token 和当前 principal |
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
-| Chat | `POST /v1/chat/turns`、stream、resume | 非流式和流式 turn |
+| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`GET/POST /v2/runs/{run_id}` | V2 harness run、流式 run、resume、查询与取消 |
 | Threads | `GET /v1/threads/{thread_id}`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、当前上下文窗口预览和非破坏式压缩 |
 | Branches | fork、archive、activate、rename、proposal、merge、tree | 分支生命周期 |
 | Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
@@ -186,13 +186,13 @@ API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业�
 - `require_scopes()` / `require_roles()` 为路由级 scope / role enforcement 提供 dependency helper。
 - `get_chat_service()` 通过 `ChatServicePorts.from_runtime(runtime)` 创建 `ChatService`，避免 ChatService 直接依赖完整 runtime 对象。
 
-## 7. Chat Turn 数据流
+## 7. Harness Run 数据流
 
-Chat turn 的关键不是入口数量，而是非流式和流式入口最终都会汇入同一个 graph 执行、状态落盘和 trajectory 记录路径。下图把共享生命周期和分支点压缩在一起：
+Harness run 是默认聊天入口。非流式、流式和 resume 入口最终都会汇入 V2 harness runtime、RunManager、StreamBridge、graph 执行、状态落盘和 trajectory 记录路径。下图把共享生命周期和分支点压缩在一起：
 
 ```mermaid
 flowchart TD
-    Client["Browser / SDK"] --> Entry{"Turn endpoint"}
+    Client["Browser / SDK"] --> Entry{"V2 harness endpoint"}
     Entry -- "Non-stream" --> Preflight["Auth and thread access preflight"]
     Entry -- "Stream" --> Lock["Per-thread active turn lock"]
     Lock --> Preflight
@@ -204,12 +204,13 @@ flowchart TD
     Trace --> Response["Thread response or SSE final event"]
 ```
 
-### 7.1 非流式 turn
+### 7.1 非流式 run
 
 ```text
-POST /v1/chat/turns
+POST /v2/threads/{thread_id}/runs
   -> authenticate principal
-  -> ChatService preflight access
+  -> harness request preflight access
+  -> RunManager create run record
   -> RequestContext
   -> graph.invoke
   -> final AgentState
@@ -217,15 +218,15 @@ POST /v1/chat/turns
   -> ThreadStateResponse
 ```
 
-### 7.2 流式 turn
+### 7.2 流式 run
 
 ```text
-POST /v1/chat/turns/stream
+POST /v2/threads/{thread_id}/runs/stream
   -> authenticate principal
-  -> acquire per-thread active turn lock
+  -> RunManager create run record
   -> graph stream
-  -> map LangGraph updates to SSE events
-  -> text / reasoning / tool events / metadata
+  -> map LangGraph updates to canonical SSE events
+  -> message / reasoning / tool / task / state / run events
   -> final thread state
   -> trajectory record
 ```
@@ -433,7 +434,7 @@ shared/                   config, query keys, SDK provider, UI, styles
 - `/app/observability/trajectory`
 - `/app/agent/governance`
 
-`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端 `stream_events.py` 必须发送符合 SDK validator 的 SSE payload，例如 `tool_call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端必须发送符合 SDK validator 的 canonical SSE payload，例如 `tool.call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
 
 Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
 
@@ -589,7 +590,8 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - OpenAI-compatible reasoning adapter：`src/focus_agent/providers/reasoning_openai.py`
 - State：`src/focus_agent/core/state.py`
 - Chat service orchestration：`src/focus_agent/services/chat.py`
-- Chat streaming lifecycle：`src/focus_agent/services/chat_stream_lifecycle.py`
+- Harness run API：`src/focus_agent/api/routers/harness_runs.py`
+- Harness runtime：`src/focus_agent/harness/`
 - Chat branch action facade：`src/focus_agent/services/chat_branch_action_facade.py`
 - Branch service：`src/focus_agent/services/branches.py`
 - Branch naming / memory promotion：`src/focus_agent/services/branch_naming_policy.py`、`src/focus_agent/services/branch_memory_promotion.py`

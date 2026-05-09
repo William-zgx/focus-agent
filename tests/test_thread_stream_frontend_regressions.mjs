@@ -112,8 +112,6 @@ function loadSdkStreamFunctions() {
   ];
   const reducerSnippet = [
     "createInitialStreamState",
-    "upsertBranchAction",
-    "isRecord",
     "stringValue",
     "stringifyValue",
     "compactText",
@@ -127,7 +125,6 @@ function loadSdkStreamFunctions() {
     "upsertToolCallStep",
     "upsertToolLifecycleStep",
     "upsertTaskStep",
-    "upsertAgentStep",
     "failOpenProcessingSteps",
     "applyVisibleTextDelta",
     "applyVisibleTextCompleted",
@@ -336,59 +333,59 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     event: "message.delta",
     data: {
       delta: "[web_fetch] 尝试获取沪指数据，请稍等。",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   assert.equal(withArtifactDelta.visibleText, "");
 
   let withSplitArtifact = reduceStreamEvent(createInitialStreamState(), {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: {
       delta: "function",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   assert.equal(withSplitArtifact.visibleText, "");
   withSplitArtifact = reduceStreamEvent(withSplitArtifact, {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: {
       delta:
         "=web_search>\n<parameter=query>比亚迪 002594 2026年4月 单日涨幅 最大</parameter>",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   assert.equal(withSplitArtifact.visibleText, "");
 
   let withNaturalFunctionText = reduceStreamEvent(createInitialStreamState(), {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: {
       delta: "function",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   withNaturalFunctionText = reduceStreamEvent(withNaturalFunctionText, {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: {
       delta: " 是 JavaScript 中声明函数的关键字。",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   assert.equal(withNaturalFunctionText.visibleText, "function 是 JavaScript 中声明函数的关键字。");
 
   const withPlainDelta = reduceStreamEvent(withArtifactDelta, {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: {
       delta: "沪指本周震荡回稳。",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   assert.equal(withPlainDelta.visibleText, "沪指本周震荡回稳。");
 
   const withInternalProcessDelta = reduceStreamEvent(withPlainDelta, {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: {
       delta: "我来帮你查询华钰矿业（601020）近一周的行情数据。请确认是否继续。",
-      channel: "visible_text",
+      channel: "message",
     },
   });
   assert.equal(withInternalProcessDelta.visibleText, "沪指本周震荡回稳。");
@@ -402,7 +399,7 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
   assert.equal(withArtifactCompleted.visibleText, "");
 });
 
-test("stream reducer maintains processing steps alongside legacy fields", () => {
+test("stream reducer maintains processing steps alongside canonical run fields", () => {
   const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
 
   let state = createInitialStreamState();
@@ -411,7 +408,7 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
   assert.equal(state.activePhase, undefined);
 
   state = reduceStreamEvent(state, {
-    event: "turn.status",
+    event: "run.status",
     data: { thread_id: "thread-1", phase: "thinking" },
   });
   assert.equal(state.activePhase, "thinking");
@@ -439,9 +436,11 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
   assert.equal(state.processingSteps[0].status, "running");
 
   state = reduceStreamEvent(state, {
-    event: "reasoning.completed",
+    event: "reasoning.delta",
     data: {
       thread_id: "thread-1",
+      delta: "",
+      completed: true,
       content: "Done reasoning.",
     },
   });
@@ -451,7 +450,7 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
   assert.equal(reasoningStep.content, "Done reasoning.");
 
   state = reduceStreamEvent(state, {
-    event: "tool_call.delta",
+    event: "tool.call.delta",
     data: {
       thread_id: "thread-1",
       id: "call-1",
@@ -486,15 +485,6 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
     },
   });
   state = reduceStreamEvent(state, {
-    event: "tool.start",
-    data: {
-      thread_id: "thread-1",
-      tool_call_id: "call-1",
-      tool_name: "web_search",
-      message: "Searching",
-    },
-  });
-  state = reduceStreamEvent(state, {
     event: "tool.result",
     data: {
       thread_id: "thread-1",
@@ -503,14 +493,14 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
       output: { title: "Focus Agent" },
     },
   });
-  assert.equal(state.toolEvents.length, 3);
+  assert.equal(state.toolEvents.length, 2);
   toolStep = state.processingSteps.find((step) => step.kind === "tool" && step.id === "call-1");
   assert.equal(toolStep.status, "completed");
   assert.equal(toolStep.content, '{"title":"Focus Agent"}');
   assert.equal(toolStep.result.title, "Focus Agent");
 
   state = reduceStreamEvent(state, {
-    event: "task.started",
+    event: "task.update",
     data: {
       thread_id: "thread-1",
       id: "task-1",
@@ -520,7 +510,7 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
     },
   });
   state = reduceStreamEvent(state, {
-    event: "task.finished",
+    event: "task.update",
     data: {
       thread_id: "thread-1",
       id: "task-1",
@@ -535,60 +525,204 @@ test("stream reducer maintains processing steps alongside legacy fields", () => 
   assert.equal(taskStep.content, "Sources collected");
 
   state = reduceStreamEvent(state, {
-    event: "agent.update",
+    event: "run.completed",
     data: {
       thread_id: "thread-1",
-      data: {
-        id: "agent-a",
-        name: "Agent A",
-        status: "running",
-        message: "Implementing SDK contract",
-      },
-    },
-  });
-  const agentStep = state.processingSteps.find((step) => step.kind === "agent" && step.id === "agent-a");
-  assert.equal(agentStep.label, "Agent A");
-  assert.equal(agentStep.status, "running");
-  assert.equal(agentStep.content, "Implementing SDK contract");
-
-  state = reduceStreamEvent(state, {
-    event: "turn.completed",
-    data: {
-      thread_id: "thread-1",
+      status: "succeeded",
       thread_state: { done: true },
     },
   });
-  assert.equal(state.processingSteps.length, 4);
+  assert.equal(state.processingSteps.length, 3);
   assert.equal(state.latestTurnState.done, true);
 
   state = reduceStreamEvent(state, {
-    event: "turn.failed",
+    event: "run.failed",
     data: {
       thread_id: "thread-1",
       error: "boom",
       message: "failed",
     },
   });
-  const failedAgentStep = state.processingSteps.find(
-    (step) => step.kind === "agent" && step.id === "agent-a",
-  );
+  const failedReasoningStep = state.processingSteps.find((step) => step.kind === "reasoning");
   assert.equal(state.activePhase, "failed");
   assert.equal(state.failed.error, "boom");
   assert.equal(state.isClosed, true);
-  assert.equal(failedAgentStep.status, "failed");
+  assert.equal(failedReasoningStep.status, "completed");
   assert.equal(toolStep.status, "completed");
+});
+
+test("SDK stream preserves canonical v2 events without legacy alias rewriting", async () => {
+  const { canonicalizeStreamEvents } = loadModule("frontend-sdk/src/client/stream.ts");
+  async function* rawEvents() {
+    yield {
+      event: "message.delta",
+      data: { delta: "hello", channel: "message" },
+    };
+    yield {
+      event: "message.delta",
+      data: { delta: "hello", channel: "message" },
+    };
+    yield {
+      event: "message.delta",
+      data: { delta: " world", channel: "message" },
+    };
+    yield {
+      event: "tool.call.delta",
+      data: { id: "call-1", name: "search", args_delta: '{"q"', channel: "reasoning_tool_call" },
+    };
+  }
+
+  const events = [];
+  for await (const event of canonicalizeStreamEvents(rawEvents())) {
+    events.push(event);
+  }
+
+  assert.deepEqual(
+    events.map((event) => [event.event, event.data.delta ?? event.data.args_delta]),
+    [
+      ["message.delta", "hello"],
+      ["message.delta", "hello"],
+      ["message.delta", " world"],
+      ["tool.call.delta", '{"q"'],
+    ],
+  );
+});
+
+test("SDK streaming exposes only v2 harness endpoints for chat streams", () => {
+  const streamingSource = readFileSync(
+    path.join(repoRoot, "frontend-sdk/src/client/streaming.ts"),
+    "utf8",
+  );
+
+  assert.equal(streamingSource.includes("return streamHarnessRun.call("), true);
+  assert.equal(
+    streamingSource.includes("/v2/threads/${encodeURIComponent(request.thread_id)}/runs/resume/stream"),
+    true,
+  );
+  assert.equal(streamingSource.includes("async function streamLegacyTurn"), false);
+  assert.equal(streamingSource.includes("/v1/chat/turns/stream"), false);
+  assert.equal(streamingSource.includes("async function streamLegacyResume"), false);
+  assert.equal(streamingSource.includes("/v1/chat/resume/stream"), false);
+});
+
+test("stream reducer consumes v2 harness run events without visible_text dependencies", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+
+  let state = reduceStreamEvent(createInitialStreamState(), {
+    event: "run.status",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      turn_id: "run-1",
+      sequence: 1,
+      source_node: "harness",
+      phase: "running",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "message.delta",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      turn_id: "run-1",
+      sequence: 2,
+      source_node: "agent",
+      delta: "Canonical",
+      message_id: "msg-1",
+      channel: "message",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "message.delta",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      turn_id: "run-1",
+      sequence: 3,
+      source_node: "agent",
+      delta: " answer.",
+      message_id: "msg-1",
+      channel: "message",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.requested",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      args: { query: "focus" },
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.call.delta",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      id: "call-1",
+      tool_call_id: "call-1",
+      name: "web_search",
+      args_delta: '{"query":"focus"}',
+      channel: "reasoning_tool_call",
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.result",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      content: '{"ok":true}',
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "run.closed",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      turn_id: "run-1",
+      sequence: 7,
+      source_node: "harness",
+      status: "closed",
+    },
+  });
+
+  assert.equal(state.activePhase, "running");
+  assert.equal(state.visibleText, "Canonical answer.");
+  assert.equal(state.toolCalls.length, 1);
+  assert.equal(state.toolEvents.length, 2);
+  assert.equal(state.processingSteps.length, 1);
+  assert.equal(state.processingSteps[0].id, "call-1");
+  assert.equal(state.processingSteps[0].status, "completed");
+  assert.equal(state.processingSteps[0].result, '{"ok":true}');
+  assert.equal(state.isClosed, true);
+
+  const interrupted = reduceStreamEvent(createInitialStreamState(), {
+    event: "run.interrupt",
+    data: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      turn_id: "run-1",
+      sequence: 4,
+      source_node: "harness",
+      action: "interrupt",
+    },
+  });
+  assert.equal(interrupted.activePhase, "interrupt");
 });
 
 test("stream reducer merges tool lifecycle events by namespace and name fallback", () => {
   const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
 
   let state = reduceStreamEvent(createInitialStreamState(), {
-    event: "tool.start",
+    event: "tool.requested",
     data: {
       thread_id: "thread-1",
       namespace: ["planner", "tools"],
       tool_name: "search",
-      message: "starting",
+      args: { query: "focus" },
     },
   });
   state = reduceStreamEvent(state, {
@@ -610,12 +744,11 @@ test("stream reducer merges tool lifecycle events by namespace and name fallback
   assert.equal(state.processingSteps[0].content, "network failed");
 });
 
-test("tool approval helpers and reducer preserve interrupt compatibility", () => {
+test("tool approval helpers preserve resume decision compatibility", () => {
   const { createToolApprovalDecision, isToolApprovalInterrupt } = loadFunctions(
     "frontend-sdk/src/guards.ts",
     ["createToolApprovalDecision", "isToolApprovalInterrupt"],
   );
-  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
   const interrupt = {
     kind: "tool_approval",
     interrupt_id: "tool-approval:call-approval:abc123",
@@ -640,13 +773,6 @@ test("tool approval helpers and reducer preserve interrupt compatibility", () =>
   assert.equal(isToolApprovalInterrupt(interrupt), true);
   assert.equal(isToolApprovalInterrupt({ ...interrupt, args: { path: "README.md" } }), false);
   assert.equal(isToolApprovalInterrupt({ ...interrupt, redacted_args: [] }), false);
-
-  const interrupted = reduceStreamEvent(createInitialStreamState(), {
-    event: "turn.interrupt",
-    data: { thread_id: "thread-1", interrupt },
-  });
-  assert.equal(interrupted.interrupts.length, 1);
-  assert.equal(JSON.stringify(interrupted.interrupts[0]), JSON.stringify(interrupt));
 });
 
 test("web thread UI wires tool approval rendering to stream resume decisions", () => {
@@ -675,55 +801,19 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(threadPageSource.includes("handleDecideToolApproval"), true);
   assert.equal(streamHookSource.includes("client.streamResume"), true);
   assert.equal(streamHookSource.includes("createToolApprovalDecision(interrupt, approved)"), true);
-});
-
-test("stream reducer tracks branch action lifecycle events", () => {
-  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
-  const proposed = {
-    action_id: "branch-action-1",
-    kind: "fork_sibling_branch",
-    status: "pending",
-    root_thread_id: "root-1",
-    source_thread_id: "child-1",
-    target_parent_thread_id: "root-1",
-    suggested_branch_name: "华英农业",
-    branch_role: "explore_alternatives",
-    reason: "User requested branch switch.",
-    created_at: "2026-04-26T00:00:00+00:00",
-  };
-
-  const pending = reduceStreamEvent(createInitialStreamState(), {
-    event: "branch.action.proposed",
-    data: { thread_id: "child-1", branch_action: proposed },
-  });
-  assert.equal(pending.branchActions.length, 1);
-  assert.equal(pending.branchActions[0].status, "pending");
-
-  const executed = reduceStreamEvent(pending, {
-    event: "branch.action.executed",
-    data: {
-      thread_id: "child-1",
-      branch_action: {
-        ...proposed,
-        status: "executed",
-        navigation: { root_thread_id: "root-1", thread_id: "child-2" },
-      },
-    },
-  });
-  assert.equal(executed.branchActions.length, 1);
-  assert.equal(executed.branchActions[0].status, "executed");
-  assert.equal(executed.branchActions[0].navigation.thread_id, "child-2");
+  assert.equal(streamHookSource.includes("activeRunIdsRef"), true);
+  assert.equal(streamHookSource.includes("client.cancelHarnessRun(runId, { action: \"interrupt\" })"), true);
 });
 
 test("SSE parser ignores trailing blank frames after stream completion", () => {
   const { parseSSEFrames } = loadModule("frontend-sdk/src/parser.ts");
 
   const parsed = parseSSEFrames(
-    'event: visible_text.completed\r\ndata: {"content":"done"}\r\n\r\n\r\n\r\n',
+    'event: message.completed\r\ndata: {"content":"done"}\r\n\r\n\r\n\r\n',
   );
 
   assert.equal(parsed.frames.length, 1);
-  assert.equal(parsed.frames[0].event, "visible_text.completed");
+  assert.equal(parsed.frames[0].event, "message.completed");
   assert.equal(parsed.frames[0].data, '{"content":"done"}');
   assert.equal(parseSSEFrames("\n\n").frames.length, 0);
 });
@@ -731,9 +821,9 @@ test("SSE parser ignores trailing blank frames after stream completion", () => {
 test("SSE decode errors include raw frame context", () => {
   const { decodeEvent, FocusAgentSSEDecodeError } = loadModule("frontend-sdk/src/parser.ts");
   const frame = {
-    event: "visible_text.delta",
+    event: "message.delta",
     data: '{"delta":',
-    raw: 'event: visible_text.delta\ndata: {"delta":',
+    raw: 'event: message.delta\ndata: {"delta":',
   };
 
   assert.throws(
@@ -741,7 +831,7 @@ test("SSE decode errors include raw frame context", () => {
     (error) =>
       error instanceof FocusAgentSSEDecodeError &&
       error.frame.raw === frame.raw &&
-      error.frame.event === "visible_text.delta",
+      error.frame.event === "message.delta",
   );
 });
 
@@ -751,7 +841,7 @@ test("SSE iterator cancels the reader when the consumer exits early", async () =
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(
-        new TextEncoder().encode('event: visible_text.delta\ndata: {"delta":"hello"}\n\n'),
+        new TextEncoder().encode('event: message.delta\ndata: {"delta":"hello"}\n\n'),
       );
     },
     cancel() {
@@ -762,7 +852,7 @@ test("SSE iterator cancels the reader when the consumer exits early", async () =
 
   const first = await iterator.next();
   assert.equal(first.done, false);
-  assert.equal(first.value.event, "visible_text.delta");
+  assert.equal(first.value.event, "message.delta");
   await iterator.return();
   assert.equal(canceled, true);
 });
@@ -1026,4 +1116,14 @@ test("context meter formats current context usage separately from token spend", 
   assert.equal(shouldShowContextCompactAction({ ...usage, used_ratio: 0.86, status: "hot" }), true);
   assert.equal(contextUsageTone({ ...usage, used_ratio: 0.72, status: "warm" }), "is-warm");
   assert.equal(contextUsageTone({ ...usage, used_ratio: 0.93, status: "over" }), "is-over");
+});
+
+test("markdown paragraph line keys are index-based for repeated tool markup lines", () => {
+  const source = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-markdown-blocks.tsx"),
+    "utf8",
+  );
+
+  assert.equal(source.includes("key={`${key}-line-${line}`}"), false);
+  assert.equal(source.includes("key={`${key}-line-${index}`}"), true);
 });

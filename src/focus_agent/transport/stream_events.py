@@ -219,12 +219,12 @@ def map_custom_payload_to_event(payload: Any) -> tuple[str, dict[str, Any]]:
         if payload.get("event") == "tool":
             stage = str(payload.get("stage") or "delta")
             event_name = {
-                "start": "tool.start",
-                "delta": "tool.delta",
-                "progress": "tool.delta",
-                "end": "tool.end",
+                "start": "tool.requested",
+                "delta": "state.update",
+                "progress": "state.update",
+                "end": "tool.result",
                 "error": "tool.error",
-            }.get(stage, "tool.delta")
+            }.get(stage, "state.update")
             normalized = dict(payload)
             normalized.update(
                 _tool_identity_payload(
@@ -234,9 +234,9 @@ def map_custom_payload_to_event(payload: Any) -> tuple[str, dict[str, Any]]:
             )
             return event_name, normalized
         if payload.get("event") == "status":
-            return "status", dict(payload)
-        return "custom", dict(payload)
-    return "custom", {"value": payload}
+            return "run.status", dict(payload)
+        return "state.update", dict(payload)
+    return "state.update", {"value": payload}
 
 
 def extract_tool_requests_from_updates(data: dict[str, Any]) -> list[dict[str, Any]]:

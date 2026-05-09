@@ -111,7 +111,7 @@
     <text x="908" y="257" fill="#24476B" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Research the trade-offs.</text>
 
     <rect x="966" y="280" width="154" height="46" rx="16" fill="#12304D"/>
-    <text x="980" y="300" fill="#84CFFF" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="10" font-weight="700">visible_text.delta</text>
+    <text x="980" y="300" fill="#84CFFF" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="10" font-weight="700">message.delta</text>
     <text x="980" y="315" fill="#F4FAFF" font-family="Avenir Next, Nunito Sans, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">Streaming answer chunks...</text>
 
     <rect x="894" y="356" width="242" height="58" rx="18" fill="#F2F7FD"/>

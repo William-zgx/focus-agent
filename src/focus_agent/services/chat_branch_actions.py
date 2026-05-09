@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage
 
@@ -25,7 +25,6 @@ from .branch_actions import (
     target_parent_thread_id,
 )
 from .chat_branch_execution import execute_branch_action_navigation
-from .chat_serialization import sse_frame
 
 
 def branch_action_intent(*, values: dict[str, Any], message: str) -> str | None:
@@ -297,66 +296,3 @@ def handle_branch_action_turn(
             turn_lease.raise_if_lost()
             return result
         return None
-
-
-async def stream_branch_action_result(
-    *,
-    service: Any,
-    thread_id: str,
-    user_id: str,
-    message: str,
-    request_id: str | None,
-) -> AsyncIterator[str]:
-    try:
-        result = service._handle_branch_action_turn(
-            thread_id=thread_id,
-            user_id=user_id,
-            message=message,
-            request_id=request_id,
-        )
-        if result is None:
-            raise RuntimeError("No branch action intent was available.")
-        yield sse_frame(
-            event="turn.status",
-            data={"phase": "accepted", "thread_id": thread_id, "kind": "chat.turn"},
-        )
-        event_name = f"branch.action.{result['kind']}"
-        payload = {
-            "thread_id": thread_id,
-            "branch_action": result.get("branch_action"),
-        }
-        if result.get("branch_record") is not None:
-            payload["branch_record"] = result["branch_record"]
-        if result.get("navigation") is not None:
-            payload["navigation"] = result["navigation"]
-        yield sse_frame(event=event_name, data=payload)
-        if result.get("message"):
-            yield sse_frame(
-                event="visible_text.completed",
-                data={"content": result["message"], "thread_id": thread_id},
-            )
-            yield sse_frame(
-                event="message.completed",
-                data={"content": result["message"], "thread_id": thread_id},
-            )
-        yield sse_frame(event="turn.completed", data={"thread_state": result["thread_state"]})
-    except Exception as exc:  # noqa: BLE001
-        failed_action = next(
-            (
-                action
-                for action in reversed(normalize_branch_actions(service._safe_get_values(thread_id).get("branch_actions")))
-                if action.status.value == "failed"
-            ),
-            None,
-        )
-        if failed_action is not None:
-            yield sse_frame(
-                event="branch.action.failed",
-                data={"thread_id": thread_id, "branch_action": failed_action.model_dump(mode="json")},
-            )
-        yield sse_frame(
-            event="turn.failed",
-            data={"error": exc.__class__.__name__, "message": str(exc), "thread_id": thread_id},
-        )
-    finally:
-        yield sse_frame(event="turn.closed", data={"status": "ok", "thread_id": thread_id})

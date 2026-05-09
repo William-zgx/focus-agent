@@ -2258,70 +2258,6 @@
       }
     },
     {
-      "method": "POST",
-      "operation_id": "resume_chat_turn_v1_chat_resume_post",
-      "parameters": [],
-      "path": "/v1/chat/resume",
-      "request": {
-        "$ref": "#/components/schemas/ChatResumeRequest"
-      },
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/ThreadStateResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
-      "method": "POST",
-      "operation_id": "stream_resumed_chat_turn_v1_chat_resume_stream_post",
-      "parameters": [],
-      "path": "/v1/chat/resume/stream",
-      "request": {
-        "$ref": "#/components/schemas/ChatResumeRequest"
-      },
-      "responses": {
-        "200": {},
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
-      "method": "POST",
-      "operation_id": "post_chat_turn_v1_chat_turns_post",
-      "parameters": [],
-      "path": "/v1/chat/turns",
-      "request": {
-        "$ref": "#/components/schemas/ChatTurnRequest"
-      },
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/ThreadStateResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
-      "method": "POST",
-      "operation_id": "stream_chat_turn_v1_chat_turns_stream_post",
-      "parameters": [],
-      "path": "/v1/chat/turns/stream",
-      "request": {
-        "$ref": "#/components/schemas/ChatTurnRequest"
-      },
-      "responses": {
-        "200": {},
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
       "method": "GET",
       "operation_id": "list_conversations_v1_conversations_get",
       "parameters": [],
@@ -4551,6 +4487,150 @@
         "200": {
           "$ref": "#/components/schemas/ThreadContextPreviewResponse"
         },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_harness_run_v2_runs__run_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/runs/{run_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/HarnessRunResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "cancel_harness_run_v2_runs__run_id__cancel_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/runs/{run_id}/cancel",
+      "request": {
+        "$ref": "#/components/schemas/HarnessRunCancelRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/HarnessRunResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_harness_run_v2_threads__thread_id__runs_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/threads/{thread_id}/runs",
+      "request": {
+        "$ref": "#/components/schemas/HarnessRunRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/HarnessRunResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "stream_harness_resume_v2_threads__thread_id__runs_resume_stream_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/threads/{thread_id}/runs/resume/stream",
+      "request": {
+        "$ref": "#/components/schemas/HarnessResumeRequest"
+      },
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "stream_harness_run_v2_threads__thread_id__runs_stream_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/threads/{thread_id}/runs/stream",
+      "request": {
+        "$ref": "#/components/schemas/HarnessRunRequest"
+      },
+      "responses": {
+        "200": {},
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
         }
@@ -7523,82 +7603,6 @@
       ],
       "type": "object"
     },
-    "ChatResumeRequest": {
-      "properties": {
-        "resume": {
-          "title": "Resume"
-        },
-        "thread_id": {
-          "type": "string"
-        },
-        "user_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "thread_id",
-        "resume"
-      ],
-      "type": "object"
-    },
-    "ChatTurnRequest": {
-      "properties": {
-        "message": {
-          "type": "string"
-        },
-        "model": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "skill_hints": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "thinking_mode": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "thread_id": {
-          "type": "string"
-        },
-        "user_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "thread_id",
-        "message"
-      ],
-      "type": "object"
-    },
     "ContextUsageResponse": {
       "properties": {
         "last_compacted_at": {
@@ -8136,6 +8140,153 @@
           "type": "array"
         }
       },
+      "type": "object"
+    },
+    "HarnessResumeRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "multitask_strategy": {
+          "default": "reject",
+          "enum": [
+            "reject",
+            "interrupt",
+            "rollback",
+            "enqueue"
+          ],
+          "type": "string"
+        },
+        "on_disconnect": {
+          "default": "cancel",
+          "enum": [
+            "cancel",
+            "continue",
+            "rollback"
+          ],
+          "type": "string"
+        },
+        "resume": {
+          "title": "Resume"
+        }
+      },
+      "required": [
+        "resume"
+      ],
+      "type": "object"
+    },
+    "HarnessRunCancelRequest": {
+      "properties": {
+        "action": {
+          "default": "interrupt",
+          "enum": [
+            "interrupt",
+            "rollback"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "HarnessRunRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "input": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "multitask_strategy": {
+          "default": "reject",
+          "enum": [
+            "reject",
+            "interrupt",
+            "rollback",
+            "enqueue"
+          ],
+          "type": "string"
+        },
+        "on_disconnect": {
+          "default": "cancel",
+          "enum": [
+            "cancel",
+            "continue",
+            "rollback"
+          ],
+          "type": "string"
+        },
+        "skill_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "thinking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "HarnessRunResponse": {
+      "properties": {
+        "run": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "thread_state": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "run"
+      ],
       "type": "object"
     },
     "ImportedConclusion": {

@@ -451,3 +451,25 @@ def test_smoke_dataset_guards_tool_policy_regressions():
     mixed_readonly = cases["gt_mixed_workspace_and_latest_docs_readonly_tools"]
     assert mixed_readonly.expected["must_call_tools_any_order"] == ["search_code", "web_search"]
     assert "write_text_artifact" in mixed_readonly.expected["must_not_call_tools"]
+
+
+def test_harness_stability_dataset_covers_runtime_failure_modes():
+    cases = {
+        case.id: case
+        for case in load_dataset(Path("tests/eval/datasets/harness_stability.jsonl"))
+    }
+
+    assert {
+        "hs_tool_loop_hard_stop",
+        "hs_malformed_json_structured_output",
+        "hs_network_tool_timeout_dedup",
+        "hs_parallel_subagents_bounded",
+        "hs_guardrail_denied_tool_envelope",
+        "hs_checkpoint_rollback_stream_contract",
+    } <= set(cases)
+    assert "loop" in cases["hs_tool_loop_hard_stop"].tags
+    assert "schema" in cases["hs_malformed_json_structured_output"].tags
+    assert "network" in cases["hs_network_tool_timeout_dedup"].tags
+    assert "subagent" in cases["hs_parallel_subagents_bounded"].tags
+    assert "guardrail" in cases["hs_guardrail_denied_tool_envelope"].tags
+    assert "checkpoint" in cases["hs_checkpoint_rollback_stream_contract"].tags
