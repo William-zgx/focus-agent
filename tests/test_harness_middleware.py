@@ -1,13 +1,20 @@
+import asyncio
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
+from focus_agent.harness.agents import FocusAgentHarness
 from focus_agent.harness.middleware import (
+    BaseAgentMiddleware,
     CircuitBreaker,
     CircuitBreakerOpenError,
     DanglingToolCallMiddleware,
     LLMErrorHandlingMiddleware,
     LoopDetectedError,
     LoopDetectionMiddleware,
+    MiddlewareStack,
 )
 
 
@@ -131,3 +138,64 @@ def test_loop_detection_raises_on_hard_stop():
         middleware.wrap(lambda state: {"messages": [AIMessage(content="again")]})(
             {"messages": [HumanMessage(content="say it"), AIMessage(content="again")]}
         )
+
+
+def test_focus_agent_harness_stream_chunks_applies_middleware(monkeypatch):
+    graph = object()
+    observed = {}
+
+    async def fake_stream_graph_chunks(
+        *,
+        graph: Any,
+        checkpointer: Any,
+        settings: Any,
+        payload: Any,
+        config: dict[str, Any],
+        context: Any,
+    ):
+        observed["graph"] = graph
+        observed["payload"] = payload
+        yield {"type": "messages", "data": (AIMessage(content="ok"), {"langgraph_node": "agent"}), "ns": ()}
+
+    class MarkPayloadMiddleware(BaseAgentMiddleware):
+        def wrap(self, handler):
+            def wrapped(state, *args: Any, **kwargs: Any):
+                updated = dict(state)
+                updated["middleware_applied"] = True
+                return handler(updated, *args, **kwargs)
+
+            return wrapped
+
+    monkeypatch.setattr(
+        "focus_agent.services.chat_streaming.stream_graph_chunks",
+        fake_stream_graph_chunks,
+    )
+
+    harness = FocusAgentHarness(
+        config=None,
+        graph=graph,
+        run_manager=None,
+        stream_bridge=None,
+        middleware=MiddlewareStack((MarkPayloadMiddleware(),)),
+        event_store=None,
+    )
+
+    async def collect() -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        async for chunk in harness.stream_chunks(
+            settings=SimpleNamespace(sse_heartbeat_seconds=0),
+            payload={"messages": []},
+            config={},
+            context=SimpleNamespace(root_thread_id="root-1"),
+            checkpointer=None,
+        ):
+            result.append(chunk)
+        return result
+
+    chunks = asyncio.run(collect())
+
+    assert observed["graph"] is graph
+    assert observed["payload"]["middleware_applied"] is True
+    assert len(chunks) == 1
+    assert chunks[0]["type"] == "messages"
+    assert chunks[0]["data"][0].content == "ok"

@@ -7,12 +7,13 @@ from langchain.messages import AIMessage, AIMessageChunk
 from langgraph.types import Command
 
 import focus_agent.api.routers.harness_runs as harness_runs
+from focus_agent.harness.observability import InMemoryRunJournal, JournaledStreamBridge
 from focus_agent.harness.runtime import RunStatus
 from focus_agent.harness.runtime.rollback import (
     ROLLBACK_TARGET_METADATA_KEY,
     CheckpointRollbackTarget,
 )
-from focus_agent.harness.streaming import END_SENTINEL, StreamEvent
+from focus_agent.harness.streaming import END_SENTINEL, InMemoryStreamBridge, StreamEvent
 
 
 def test_prepare_resume_payload_uses_langgraph_command_resume():
@@ -101,6 +102,148 @@ def test_create_run_record_persists_user_id():
             "checkpoint_ns": "",
             "checkpoint_id": "checkpoint-1",
         }
+
+    asyncio.run(scenario())
+
+
+def test_create_run_record_rejects_enqueue_with_422():
+    class _RunManager:
+        async def create_or_reject(self, *args, **kwargs):
+            raise harness_runs.UnsupportedStrategyError("Multitask strategy 'enqueue' is not supported yet.")
+
+    async def scenario():
+        payload = harness_runs.HarnessRunRequest(message="hello", multitask_strategy="enqueue")
+        try:
+            await harness_runs._create_run_record(
+                runtime=SimpleNamespace(run_manager=_RunManager()),
+                payload=payload,
+                thread_id="thread-1",
+                user_id="user-1",
+                graph_payload={"messages": []},
+            )
+        except harness_runs.HTTPException as exc:
+            assert exc.status_code == 422
+            assert "enqueue" in str(exc.detail)
+        else:  # pragma: no cover
+            raise AssertionError("expected unsupported strategy to map to HTTP 422")
+
+    asyncio.run(scenario())
+
+
+def test_create_run_record_marks_branch_action_rollback_partial():
+    class _RunManager:
+        async def create_or_reject(self, *args, **kwargs):
+            self.kwargs = kwargs
+            return SimpleNamespace(run_id="run-1")
+
+    async def scenario():
+        manager = _RunManager()
+        payload = harness_runs.HarnessRunRequest(message="hello")
+
+        await harness_runs._create_run_record(
+            runtime=SimpleNamespace(run_manager=manager),
+            payload=payload,
+            thread_id="thread-1",
+            user_id="user-1",
+            graph_payload={"messages": []},
+            rollback_partial=True,
+            rollback_unreverted_scopes=("branch_action",),
+        )
+
+        assert manager.kwargs["metadata"]["harness.rollback_partial"] is True
+        assert manager.kwargs["metadata"]["harness.rollback_unreverted_scopes"] == ["branch_action"]
+
+    asyncio.run(scenario())
+
+
+def test_create_harness_run_uses_harness_invoke_adapter(monkeypatch):
+    class _Selection:
+        stripped_message = "hello"
+        skill_ids = ()
+        prompt_mode = None
+
+    class _Chat:
+        runtime = SimpleNamespace(settings=SimpleNamespace(model="model-1"))
+
+        def _select_skills_for_message(self, **kwargs):
+            self.selection_kwargs = kwargs
+            return _Selection()
+
+        def _preflight_thread_access(self, **kwargs):
+            self.preflight_kwargs = kwargs
+            return SimpleNamespace(root_thread_id="root-1"), {"branch": "main"}, {"messages": []}
+
+        def _effective_thinking_mode(self, **kwargs):
+            return "auto"
+
+        def _branch_action_intent(self, **kwargs):
+            return None
+
+        def _context_for_thread(self, **kwargs):
+            return SimpleNamespace(root_thread_id="root-1"), {"branch": "main"}, {"messages": []}
+
+        def _safe_get_interrupts(self, thread_id: str):
+            return []
+
+        def _response_payload(self, **kwargs):
+            return {"thread_id": kwargs["thread_id"]}
+
+    class _RunManager:
+        def __init__(self):
+            self.record = SimpleNamespace(
+                run_id="run-1",
+                to_dict=lambda: {"run_id": "run-1", "thread_id": "thread-1", "status": "success"},
+            )
+            self.statuses = []
+
+        async def create_or_reject(self, *args, **kwargs):
+            return self.record
+
+        async def set_status(self, run_id, status, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+        def get(self, run_id):
+            return self.record
+
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.invocations = []
+
+        def invoke(self, payload, **kwargs):
+            self.invocations.append((payload, kwargs))
+            return {"messages": [AIMessage(content="done")]}
+
+    class _GraphShouldNotRun:
+        def invoke(self, *args, **kwargs):  # pragma: no cover
+            raise AssertionError("API must invoke through runtime.harness")
+
+    async def scenario():
+        harness = _Harness()
+        manager = _RunManager()
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(model="model-1"),
+            harness=harness,
+            graph=_GraphShouldNotRun(),
+            run_manager=manager,
+        )
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+
+        response = await harness_runs.create_harness_run(
+            thread_id="thread-1",
+            payload=harness_runs.HarnessRunRequest(message="hello"),
+            request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
+            runtime=runtime,
+            chat=_Chat(),
+            principal=SimpleNamespace(user_id="user-1"),
+        )
+
+        assert response.thread_state == {"thread_id": "thread-1"}
+        assert harness.invocations
+        assert harness.invocations[0][0]["task_brief"] == "hello"
+        assert manager.statuses[-1][1] is RunStatus.SUCCESS
 
     asyncio.run(scenario())
 
@@ -212,6 +355,77 @@ def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelli
     asyncio.run(scenario())
 
 
+def test_harness_observability_endpoints_read_authorized_journal():
+    class _Run:
+        def to_dict(self):
+            return {
+                "run_id": "run-1",
+                "thread_id": "thread-1",
+                "user_id": "user-1",
+                "status": "success",
+            }
+
+    class _RunManager:
+        def get(self, run_id: str):
+            assert run_id == "run-1"
+            return _Run()
+
+    class _Event:
+        def to_dict(self):
+            return {"event_id": "event-1", "run_id": "run-1", "event": "run.completed"}
+
+    class _EventStore:
+        async def list_events(self, run_id: str, *, event=None, limit=None):
+            assert (run_id, event, limit) == ("run-1", "run.completed", 10)
+            return [_Event()]
+
+        async def snapshot(self, run_id: str):
+            assert run_id == "run-1"
+            return {"run": {"run_id": "run-1"}, "events": [{"event": "run.completed"}]}
+
+        async def trajectory_summary(self, run_id: str):
+            assert run_id == "run-1"
+            return {"id": "run-1", "kind": "harness_run"}
+
+    class _Chat:
+        def _preflight_thread_access(self, **kwargs):
+            self.kwargs = kwargs
+            return SimpleNamespace(), None, {}
+
+    async def scenario():
+        runtime = SimpleNamespace(run_manager=_RunManager(), event_store=_EventStore())
+        chat = _Chat()
+        principal = SimpleNamespace(user_id="user-1")
+
+        events = await harness_runs.list_harness_run_events(
+            "run-1",
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+            event="run.completed",
+            limit=10,
+        )
+        snapshot = await harness_runs.get_harness_run_snapshot(
+            "run-1",
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+        )
+        trajectory = await harness_runs.get_harness_run_trajectory(
+            "run-1",
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+        )
+
+        assert events["events"] == [{"event_id": "event-1", "run_id": "run-1", "event": "run.completed"}]
+        assert snapshot["run"]["run_id"] == "run-1"
+        assert trajectory == {"id": "run-1", "kind": "harness_run"}
+        assert chat.kwargs["thread_id"] == "thread-1"
+
+    asyncio.run(scenario())
+
+
 class _CollectingBridge:
     def __init__(self):
         self.events = []
@@ -264,24 +478,35 @@ class _ProducerChat:
 
 
 async def _collect_produced_events(monkeypatch, chunks, *, final_messages=None, error: Exception | None = None):
-    async def fake_stream_graph_chunks(**kwargs):
+    async def fake_stream_chunks(**kwargs):
         del kwargs
         if error is not None:
             raise error
         for chunk in chunks:
             yield chunk
 
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.called = False
+
+        async def stream_chunks(self, **kwargs):
+            self.called = True
+            assert kwargs["payload"] == {"messages": []}
+            async for chunk in fake_stream_chunks(**kwargs):
+                yield chunk
+
     bridge = _CollectingBridge()
     manager = _CollectingRunManager()
     runtime = SimpleNamespace(
-        graph=object(),
+        harness=_Harness(),
         checkpointer=None,
         settings=SimpleNamespace(sse_heartbeat_seconds=0),
         run_manager=manager,
         stream_bridge=bridge,
     )
 
-    monkeypatch.setattr(harness_runs, "stream_graph_chunks", fake_stream_graph_chunks)
     monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
     monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
 
@@ -301,7 +526,7 @@ async def _collect_produced_events(monkeypatch, chunks, *, final_messages=None, 
 
 
 def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
-    async def fake_stream_graph_chunks(**kwargs):
+    async def fake_stream_chunks(**kwargs):
         del kwargs
         yield {
             "type": "messages",
@@ -311,6 +536,18 @@ def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
             ),
             "ns": [],
         }
+
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.called = False
+
+        async def stream_chunks(self, **kwargs):
+            self.called = True
+            assert kwargs["payload"] == {"messages": []}
+            async for chunk in fake_stream_chunks(**kwargs):
+                yield chunk
 
     class _Bridge:
         def __init__(self):
@@ -360,15 +597,15 @@ def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
     async def scenario():
         bridge = _Bridge()
         manager = _Manager()
+        harness = _Harness()
         runtime = SimpleNamespace(
-            graph=object(),
+            harness=harness,
             checkpointer=None,
             settings=SimpleNamespace(sse_heartbeat_seconds=0),
             run_manager=manager,
             stream_bridge=bridge,
         )
 
-        monkeypatch.setattr(harness_runs, "stream_graph_chunks", fake_stream_graph_chunks)
         monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
         monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
 
@@ -401,6 +638,7 @@ def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
         assert bridge.events[4][1]["thread_state"]["thread_id"] == "thread-1"
         assert bridge.events[-1][1]["source_node"] == "harness"
         assert bridge.ended is True
+        assert harness.called is True
         assert manager.statuses[-1][0] is RunStatus.SUCCESS
 
     asyncio.run(scenario())
@@ -646,11 +884,18 @@ def test_produce_run_stream_reports_exception_as_run_failed(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_produce_run_stream_reports_cancel_as_interrupt(monkeypatch):
-    async def fake_stream_graph_chunks(**kwargs):
+def test_produce_run_stream_does_not_duplicate_manager_interrupt(monkeypatch):
+    async def fake_stream_chunks(**kwargs):
         del kwargs
         raise asyncio.CancelledError
         yield  # pragma: no cover
+
+    class _Harness:
+        graph = object()
+
+        async def stream_chunks(self, **kwargs):
+            async for chunk in fake_stream_chunks(**kwargs):
+                yield chunk
 
     class _Bridge:
         def __init__(self):
@@ -679,14 +924,13 @@ def test_produce_run_stream_reports_cancel_as_interrupt(monkeypatch):
     async def scenario():
         bridge = _Bridge()
         runtime = SimpleNamespace(
-            graph=object(),
+            harness=_Harness(),
             checkpointer=None,
             settings=SimpleNamespace(sse_heartbeat_seconds=0),
             run_manager=_Manager(),
             stream_bridge=bridge,
         )
 
-        monkeypatch.setattr(harness_runs, "stream_graph_chunks", fake_stream_graph_chunks)
         monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
         monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
 
@@ -705,7 +949,93 @@ def test_produce_run_stream_reports_cancel_as_interrupt(monkeypatch):
 
         event_names = [event for event, _data in bridge.events]
         assert "run.failed" not in event_names
-        assert event_names[-2:] == ["run.interrupt", "run.closed"]
-        assert bridge.events[-2][1]["action"] == "interrupt"
+        assert event_names[-1] == "run.closed"
+        assert "run.interrupt" not in event_names
+
+    asyncio.run(scenario())
+
+
+def test_produce_run_stream_keeps_closed_sequence_after_lifecycle_event(monkeypatch):
+    async def fake_stream_chunks(**kwargs):
+        del kwargs
+        raise asyncio.CancelledError
+        yield  # pragma: no cover
+
+    class _Harness:
+        graph = object()
+
+        async def stream_chunks(self, **kwargs):
+            async for chunk in fake_stream_chunks(**kwargs):
+                yield chunk
+
+    class _Manager:
+        def __init__(self, bridge, journal):
+            abort_event = asyncio.Event()
+            abort_event.set()
+            self.record = SimpleNamespace(abort_event=abort_event, abort_action="interrupt")
+            self.bridge = bridge
+            self.journal = journal
+            self.published_interrupt = False
+
+        def get(self, run_id: str):
+            return self.record
+
+        async def set_status(self, run_id: str, status: RunStatus, **kwargs):
+            del kwargs
+            if status is RunStatus.INTERRUPTED and not self.published_interrupt:
+                self.published_interrupt = True
+                sequence = await self.journal.count_events(run_id) + 1
+                await self.bridge.publish(
+                    run_id,
+                    "run.interrupt",
+                    harness_runs.canonical_event_payload(
+                        run_id=run_id,
+                        thread_id="thread-1",
+                        turn_id=run_id,
+                        sequence=sequence,
+                        action="interrupt",
+                    ),
+                )
+
+    async def scenario():
+        journal = InMemoryRunJournal()
+        await journal.put("run-1", thread_id="thread-1", status="running")
+        bridge = JournaledStreamBridge(
+            journal=journal,
+            bridge=InMemoryStreamBridge(max_buffer_size=10),
+        )
+        runtime = SimpleNamespace(
+            event_store=journal,
+            harness=_Harness(),
+            checkpointer=None,
+            settings=SimpleNamespace(sse_heartbeat_seconds=0),
+            stream_bridge=bridge,
+        )
+        runtime.run_manager = _Manager(bridge, journal)
+
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+
+        await harness_runs._produce_run_stream(
+            runtime=runtime,
+            chat=SimpleNamespace(),
+            run_id="run-1",
+            thread_id="thread-1",
+            user_id="user-1",
+            payload={"messages": []},
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
+            request_id="request-1",
+        )
+
+        events = await journal.list_events("run-1")
+        assert [event.event for event in events] == [
+            "run.metadata",
+            "run.status",
+            "run.interrupt",
+            "run.closed",
+        ]
+        assert [event.data["sequence"] for event in events] == [1, 2, 3, 4]
 
     asyncio.run(scenario())

@@ -11,7 +11,16 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .rollback import CheckpointRollbackResult
+
 logger = logging.getLogger("focus_agent.harness.runtime")
+_ROLLBACK_READY_WAIT_SECONDS = 10.0
+
+
+def _completed_event() -> asyncio.Event:
+    event = asyncio.Event()
+    event.set()
+    return event
 
 
 class RunStatus(str, Enum):
@@ -56,6 +65,7 @@ class MultitaskStrategy(str, Enum):
 
 RunCancelAction = Literal["interrupt", "rollback"]
 RollbackHandler = Callable[["RunRecord"], Awaitable[Any]]
+RunLifecyclePublisher = Callable[["RunRecord", str, dict[str, Any]], Awaitable[None]]
 
 
 class RunRequest(BaseModel):
@@ -157,7 +167,10 @@ class RunRecord:
     task: asyncio.Task[Any] | None = field(default=None, repr=False)
     abort_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     abort_action: RunCancelAction = "interrupt"
+    rollback_ready: asyncio.Event = field(default_factory=_completed_event, repr=False)
+    rollback_completed: asyncio.Event = field(default_factory=_completed_event, repr=False)
     error: str | None = None
+    rollback_result: dict[str, Any] | None = None
 
     @property
     def inflight(self) -> bool:
@@ -177,6 +190,7 @@ class RunRecord:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "error": self.error,
+            "rollback_result": self.rollback_result,
         }
 
 
@@ -188,11 +202,13 @@ class RunManager:
         store: RunStore | None = None,
         *,
         rollback_handler: RollbackHandler | None = None,
+        lifecycle_publisher: RunLifecyclePublisher | None = None,
     ) -> None:
         self._runs: dict[str, RunRecord] = {}
         self._lock = asyncio.Lock()
         self._store = store
         self._rollback_handler = rollback_handler
+        self._lifecycle_publisher = lifecycle_publisher
 
     async def create(
         self,
@@ -283,11 +299,17 @@ class RunManager:
                     interrupted.append(run)
             self._runs[record.run_id] = record
 
+        for run in interrupted:
+            await self._publish_lifecycle(
+                run,
+                "run.interrupt",
+                {"action": run.abort_action},
+            )
+        await self._rollback_records([run for run in interrupted if run.abort_action == "rollback"])
         await self._settle_records(interrupted)
         await self._persist_created(record)
         for run in interrupted:
             await self._persist_status(run)
-        await self._rollback_records(interrupted)
         logger.info("Harness run created: run_id=%s thread_id=%s", record.run_id, thread_id)
         return record
 
@@ -365,10 +387,11 @@ class RunManager:
                 return False
             self._cancel_record(record, action=action)
         await self._persist_status(record)
-        if wait or action == "rollback":
-            await self._settle_records([record])
+        await self._publish_lifecycle(record, "run.interrupt", {"action": record.abort_action})
         if action == "rollback":
             await self._rollback_records([record])
+        if wait or action == "rollback":
+            await self._settle_records([record])
         logger.info("Harness run %s cancelled (action=%s)", run_id, action)
         return True
 
@@ -410,8 +433,18 @@ class RunManager:
     def _cancel_record(self, record: RunRecord, *, action: str) -> None:
         record.abort_action = "rollback" if action == "rollback" else "interrupt"
         record.abort_event.set()
-        if record.task is not None and not record.task.done():
+        task_running = record.task is not None and not record.task.done()
+        if task_running:
             record.task.cancel()
+        if action == "rollback":
+            if task_running:
+                record.rollback_ready.clear()
+            else:
+                record.rollback_ready.set()
+            record.rollback_completed.clear()
+        else:
+            record.rollback_ready.set()
+            record.rollback_completed.set()
         record.status = RunStatus.INTERRUPTED
         record.updated_at = _now_iso()
 
@@ -422,19 +455,112 @@ class RunManager:
         await asyncio.gather(*(asyncio.shield(task) for task in tasks), return_exceptions=True)
 
     async def _rollback_records(self, records: Sequence[RunRecord]) -> None:
-        if self._rollback_handler is None:
-            return
         for record in records:
             if record.abort_action != "rollback":
+                record.rollback_ready.set()
+                record.rollback_completed.set()
+                continue
+            record.rollback_completed.clear()
+            await self._await_rollback_ready(record)
+            await self._publish_lifecycle(record, "run.rollback.started", {})
+            if self._rollback_handler is None:
+                result = CheckpointRollbackResult(
+                    requested=True,
+                    applied=False,
+                    reason="rollback_handler_unavailable",
+                )
+                await self._record_rollback_result(record, result)
+                await self._publish_lifecycle(
+                    record,
+                    "run.rollback.failed",
+                    {"rollback_result": record.rollback_result},
+                )
+                record.rollback_completed.set()
                 continue
             try:
-                await self._rollback_handler(record)
-            except Exception:  # noqa: BLE001
+                result = await self._rollback_handler(record)
+                if not isinstance(result, CheckpointRollbackResult):
+                    result = CheckpointRollbackResult(
+                        requested=True,
+                        applied=False,
+                        reason="rollback_handler_returned_none",
+                    )
+                await self._record_rollback_result(record, result)
+                event = (
+                    "run.rollback.succeeded"
+                    if record.rollback_result
+                    and record.rollback_result.get("applied") is True
+                    and not record.rollback_result.get("error")
+                    else "run.rollback.failed"
+                )
+                await self._publish_lifecycle(
+                    record,
+                    event,
+                    {"rollback_result": record.rollback_result},
+                )
+            except Exception as exc:  # noqa: BLE001
+                result = CheckpointRollbackResult(
+                    requested=True,
+                    applied=False,
+                    reason="rollback_handler_error",
+                    error=str(exc),
+                )
+                await self._record_rollback_result(record, result)
+                await self._publish_lifecycle(
+                    record,
+                    "run.rollback.failed",
+                    {"rollback_result": record.rollback_result},
+                )
                 logger.warning(
                     "Failed to rollback harness run %s",
                     record.run_id,
                     exc_info=True,
                 )
+            finally:
+                record.rollback_completed.set()
+
+    async def _await_rollback_ready(self, record: RunRecord) -> None:
+        if record.rollback_ready.is_set():
+            return
+        try:
+            await asyncio.wait_for(
+                record.rollback_ready.wait(),
+                timeout=_ROLLBACK_READY_WAIT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out waiting for run %s to reach rollback-safe finalization",
+                record.run_id,
+            )
+
+    async def _record_rollback_result(
+        self,
+        record: RunRecord,
+        result: CheckpointRollbackResult,
+    ) -> None:
+        augmented = _augment_rollback_result(result, record.metadata)
+        payload = augmented.to_dict()
+        record.rollback_result = payload
+        record.updated_at = _now_iso()
+        await self.update_run_completion(record.run_id, rollback_result=payload)
+
+    async def _publish_lifecycle(
+        self,
+        record: RunRecord,
+        event: str,
+        data: dict[str, Any],
+    ) -> None:
+        if self._lifecycle_publisher is None:
+            return
+        try:
+            await self._lifecycle_publisher(record, event, data)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Failed to publish harness lifecycle event %s for run %s",
+                event,
+                record.run_id,
+                exc_info=True,
+            )
 
     async def _persist_created(self, record: RunRecord) -> None:
         if self._store is None:
@@ -496,12 +622,38 @@ def _coerce_multitask_strategy(value: MultitaskStrategy | str) -> MultitaskStrat
     return value if isinstance(value, MultitaskStrategy) else MultitaskStrategy(value)
 
 
+def _augment_rollback_result(
+    result: CheckpointRollbackResult,
+    metadata: dict[str, Any],
+) -> CheckpointRollbackResult:
+    raw_scopes = metadata.get("harness.rollback_unreverted_scopes", ())
+    if isinstance(raw_scopes, str):
+        metadata_scopes = (raw_scopes,)
+    else:
+        try:
+            metadata_scopes = tuple(str(scope) for scope in raw_scopes)
+        except TypeError:
+            metadata_scopes = ()
+    scopes = tuple(dict.fromkeys((*result.unreverted_scopes, *metadata_scopes)))
+    partial = result.partial or bool(metadata.get("harness.rollback_partial")) or bool(scopes)
+    return CheckpointRollbackResult(
+        requested=result.requested,
+        applied=result.applied,
+        reason=result.reason,
+        checkpoint_id=result.checkpoint_id,
+        error=result.error,
+        partial=partial,
+        unreverted_scopes=scopes,
+    )
+
+
 __all__ = [
     "ConflictError",
     "DisconnectMode",
     "MultitaskStrategy",
     "RunConflictError",
     "RunCancelAction",
+    "RunLifecyclePublisher",
     "RunManager",
     "RunRecord",
     "RunRequest",

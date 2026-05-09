@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import time
 
 from langchain.messages import AIMessage
 from langchain.tools import tool as langchain_tool
@@ -21,7 +22,7 @@ from .reporting import (
     write_json_report,
     write_jsonl_results,
 )
-from .runner import load_dataset, run_case, run_suite
+from .runner import build_harness_stability_runtime, load_dataset, run_case, run_suite
 from .schema import EvalCase, TrajectoryStep
 
 
@@ -383,6 +384,41 @@ def test_run_suite_supports_retries_and_attempt_metadata(eval_runtime_factory):
     assert [result.metrics["attempt"] for result in results] == [1, 2]
     assert all(result.metrics["attempts"] == 2 for result in results)
     assert results[1].case_id.endswith("::attempt-2")
+
+
+def test_run_case_timeout_returns_failed_result(eval_runtime_factory):
+    def _slow_script(messages, allow_tools):  # noqa: ARG001
+        time.sleep(0.2)
+        return AIMessage(content="too late")
+
+    case = EvalCase.from_dict(
+        {
+            "id": "timeout_case",
+            "input": {"user_message": "hi"},
+            "expected": {"answer_contains_any": ["too late"]},
+            "judge": {"rule": True, "llm": {"enabled": False}},
+        }
+    )
+    result = run_case(case, runtime=eval_runtime_factory(script=_slow_script), timeout_s=0.01)
+
+    assert not result.passed
+    assert "timed out" in (result.error or "")
+    assert result.verdicts[0].kind == "harness"
+    assert result.metrics["timeout_s"] == 0.01
+    time.sleep(0.25)
+
+
+def test_harness_stability_suite_runs_offline_with_fake_runtime():
+    cases = load_dataset(Path(__file__).parent / "datasets" / "harness_stability.jsonl")
+    runtime = build_harness_stability_runtime()
+
+    results = run_suite(cases, runtime=runtime, concurrency=1, timeout_s=5.0)
+
+    assert len(results) == len(cases)
+    assert all(result.passed for result in results), [
+        (result.case_id, [verdict.reasoning for verdict in result.verdicts])
+        for result in results
+    ]
 
 
 def test_model_matrix_helpers_and_failed_dataset(tmp_path, eval_runtime_factory):

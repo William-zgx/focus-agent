@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,7 +16,7 @@ from ..observability import InMemoryRunJournal, JournaledStreamBridge, RunJourna
 from ..runtime import RunManager
 from ..runtime.rollback import rollback_handler_for_graph
 from ..schemas import HarnessConfig
-from ..streaming import InMemoryStreamBridge
+from ..streaming import InMemoryStreamBridge, canonical_event_payload
 from ..subagents import AgentTeamSubagentRunner, SubagentExecutor
 from ..tools import create_subagent_task_tool
 
@@ -30,6 +31,38 @@ class FocusAgentHarness:
     event_store: RunJournal
     subagent_executor: SubagentExecutor | None = None
     tool_registry: Any = None
+
+    def invoke(self, payload: Any, **kwargs: Any) -> Any:
+        """Invoke the graph through the harness middleware stack."""
+
+        return self.middleware.invoke(self.graph.invoke, payload, **kwargs)
+
+    async def stream_chunks(
+        self,
+        *,
+        settings: Any,
+        payload: Any,
+        config: Any,
+        context: Any,
+        checkpointer: Any | None = None,
+    ) -> AsyncIterator[dict[str, Any] | None]:
+        """Stream graph chunks through the harness execution adapter."""
+
+        from ...services.chat_streaming import stream_graph_chunks
+
+        def _run_stream(state: Any) -> AsyncIterator[dict[str, Any] | None]:
+            return stream_graph_chunks(
+                graph=self.graph,
+                checkpointer=checkpointer,
+                settings=settings,
+                payload=state,
+                config=config,
+                context=context,
+            )
+
+        chunks = self.middleware.invoke(_run_stream, payload)
+        async for chunk in chunks:
+            yield chunk
 
 
 def create_focus_agent(
@@ -103,6 +136,7 @@ def create_focus_agent(
         run_manager=RunManager(
             store=journal,
             rollback_handler=rollback_handler_for_graph(graph, checkpointer),
+            lifecycle_publisher=_lifecycle_publisher_for_bridge(journal, stream_bridge),
         ),
         stream_bridge=stream_bridge,
         middleware=MiddlewareStack(tuple(middleware)),
@@ -110,6 +144,28 @@ def create_focus_agent(
         subagent_executor=effective_subagent_executor,
         tool_registry=effective_tool_registry,
     )
+
+
+def _lifecycle_publisher_for_bridge(
+    journal: RunJournal,
+    stream_bridge: InMemoryStreamBridge | JournaledStreamBridge,
+):
+    async def publish(record: Any, event: str, data: dict[str, Any]) -> None:
+        sequence = await journal.count_events(record.run_id) + 1
+        await stream_bridge.publish(
+            record.run_id,
+            event,
+            canonical_event_payload(
+                run_id=record.run_id,
+                thread_id=record.thread_id,
+                turn_id=record.run_id,
+                sequence=sequence,
+                source_node="harness",
+                **data,
+            ),
+        )
+
+    return publish
 
 
 def _subagent_executor_for_config(

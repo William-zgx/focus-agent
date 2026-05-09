@@ -1,6 +1,7 @@
 from .harness import (
     EvalRuntime,
     build_default_runtime,
+    build_harness_stability_runtime,
     run_case,
     run_suite,
     load_dataset,
@@ -9,6 +10,7 @@ from .harness import (
 __all__ = [
     "EvalRuntime",
     "build_default_runtime",
+    "build_harness_stability_runtime",
     "run_case",
     "run_suite",
     "load_dataset",

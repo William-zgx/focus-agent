@@ -21,7 +21,12 @@ from .reporting import (
     write_json_report,
     write_jsonl_results,
 )
-from .runner import build_default_runtime, load_dataset, run_suite
+from .runner import (
+    build_default_runtime,
+    build_harness_stability_runtime,
+    load_dataset,
+    run_suite,
+)
 from .schema import EvalCase, EvalResult
 from .trajectory_replay import (
     ConvertedTrajectoryCase,
@@ -48,6 +53,12 @@ def _run_suite_command(argv: Sequence[str]) -> int:
     parser.add_argument("--suite", default="smoke", help="Named dataset under tests/eval/datasets/")
     parser.add_argument("--dataset", help="Explicit dataset path (.jsonl)")
     parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument(
+        "--case-timeout",
+        type=float,
+        default=120.0,
+        help="Per-case timeout in seconds. Use <=0 to disable.",
+    )
     parser.add_argument("--model", help="Override Settings.model for this run")
     parser.add_argument("--matrix", help="TOML/JSON model matrix file for cross-model eval")
     parser.add_argument(
@@ -83,6 +94,7 @@ def _run_suite_command(argv: Sequence[str]) -> int:
         dataset_label=str(dataset_path),
         suite_label=args.suite,
         concurrency=args.concurrency,
+        case_timeout=args.case_timeout,
         model=args.model,
         matrix=args.matrix,
         retries=args.retries,
@@ -104,7 +116,8 @@ def _execute_eval_cases(
     dataset_label: str,
     suite_label: str,
     concurrency: int,
-    model: str | None,
+    case_timeout: float = 120.0,
+    model: str | None = None,
     matrix: str | None = None,
     retries: int | None = None,
     only_capability: str | None = None,
@@ -131,6 +144,7 @@ def _execute_eval_cases(
         base_settings=settings,
         global_matrix=global_matrix,
         concurrency=max(1, concurrency),
+        timeout_s=case_timeout,
         retries=retries,
     )
     summary = aggregate_metrics(results)
@@ -154,6 +168,7 @@ def _execute_eval_cases(
         "suite": suite_label,
         "model": settings.model,
         "concurrency": max(1, concurrency),
+        "case_timeout_s": case_timeout,
         "matrix": matrix,
         "retries": retries,
         "only_capability": only_capability,
@@ -420,6 +435,7 @@ def _execute_model_runs(
     base_settings: Settings,
     global_matrix: list[dict[str, str]],
     concurrency: int,
+    timeout_s: float,
     retries: int | None,
 ) -> list[EvalResult]:
     if not cases:
@@ -434,6 +450,7 @@ def _execute_model_runs(
                     runtime=runtime,
                     concurrency=concurrency,
                     retries=retries,
+                    timeout_s=timeout_s,
                     model_label=variant["label"],
                     model_name=variant["model"],
                     progress=_print_progress,
@@ -453,6 +470,7 @@ def _execute_model_runs(
                         runtime=runtime,
                         concurrency=1,
                         retries=retries,
+                        timeout_s=timeout_s,
                         model_label=variant["label"],
                         model_name=variant["model"],
                         progress=_print_progress,
@@ -460,14 +478,21 @@ def _execute_model_runs(
                 )
         return results
 
-    runtime = build_default_runtime(settings=base_settings)
+    runtime = _runtime_for_suite(cases=cases, base_settings=base_settings)
     return _run_suite_compat(
         cases,
         runtime=runtime,
         concurrency=concurrency,
         retries=retries,
+        timeout_s=timeout_s,
         progress=_print_progress,
     )
+
+
+def _runtime_for_suite(*, cases: list[EvalCase], base_settings: Settings):
+    if cases and all("harness" in case.tags and "stability" in case.tags for case in cases):
+        return build_harness_stability_runtime(settings=base_settings)
+    return build_default_runtime(settings=base_settings)
 
 
 def _runtime_for_model(base_settings: Settings, model: str):

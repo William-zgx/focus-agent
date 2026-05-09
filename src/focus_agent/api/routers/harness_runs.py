@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, AsyncIterator, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
 from focus_agent.engine.runtime import AppRuntime
-from focus_agent.harness.runtime import DisconnectMode, MultitaskStrategy, RunConflictError, RunStatus
+from focus_agent.harness.runtime import (
+    DisconnectMode,
+    MultitaskStrategy,
+    RunConflictError,
+    RunStatus,
+    UnsupportedStrategyError,
+)
 from focus_agent.harness.runtime.rollback import (
     ROLLBACK_TARGET_METADATA_KEY,
     CheckpointRollbackTarget,
@@ -20,7 +27,6 @@ from focus_agent.harness.streaming import END_SENTINEL, HEARTBEAT_SENTINEL, cano
 from focus_agent.observability.tracing import build_invoke_config, build_trace_correlation
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
-from focus_agent.services.chat_streaming import stream_graph_chunks
 from focus_agent.transport.stream_events import (
     extract_reasoning_delta,
     extract_tool_call_chunks,
@@ -34,6 +40,9 @@ from focus_agent.transport.stream_events import (
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
 
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
+logger = logging.getLogger("focus_agent.api.harness_runs")
+
+_ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
 _TOOL_RESULT_FALLBACK_VISIBLE_PREFIX = "我先根据已拿到的工具结果给出一个保守整理："
@@ -87,6 +96,12 @@ async def create_harness_run(
     )
     rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
     message = _message_from_payload(payload)
+    is_branch_action = _branch_action_intent_for_run(
+        chat=chat,
+        initial_values=initial_values,
+        branch_meta=branch_meta,
+        message=message,
+    )
     run_record = await _create_run_record(
         runtime=runtime,
         payload=payload,
@@ -94,14 +109,11 @@ async def create_harness_run(
         user_id=principal.user_id,
         graph_payload=graph_payload,
         rollback_target=rollback_target,
+        rollback_partial=is_branch_action,
+        rollback_unreverted_scopes=("branch_action",) if is_branch_action else (),
     )
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
-    if _branch_action_intent_for_run(
-        chat=chat,
-        initial_values=initial_values,
-        branch_meta=branch_meta,
-        message=message,
-    ):
+    if is_branch_action:
         try:
             result = await asyncio.to_thread(
                 chat._handle_branch_action_turn,
@@ -136,7 +148,7 @@ async def create_harness_run(
     )
     try:
         await asyncio.to_thread(
-            runtime.graph.invoke,
+            runtime.harness.invoke,
             graph_payload,
             config=config,
             context=context,
@@ -182,6 +194,12 @@ async def stream_harness_run(
     )
     rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
     message = _message_from_payload(payload)
+    is_branch_action = _branch_action_intent_for_run(
+        chat=chat,
+        initial_values=initial_values,
+        branch_meta=branch_meta,
+        message=message,
+    )
     run_record = await _create_run_record(
         runtime=runtime,
         payload=payload,
@@ -189,13 +207,10 @@ async def stream_harness_run(
         user_id=principal.user_id,
         graph_payload=graph_payload,
         rollback_target=rollback_target,
+        rollback_partial=is_branch_action,
+        rollback_unreverted_scopes=("branch_action",) if is_branch_action else (),
     )
-    if _branch_action_intent_for_run(
-        chat=chat,
-        initial_values=initial_values,
-        branch_meta=branch_meta,
-        message=message,
-    ):
+    if is_branch_action:
         producer = asyncio.create_task(
             _produce_branch_action_run_stream(
                 runtime=runtime,
@@ -303,6 +318,64 @@ async def stream_existing_harness_run(
     )
 
 
+@router.get("/runs/{run_id}/events")
+async def list_harness_run_events(
+    run_id: str,
+    runtime: AppRuntime = Depends(get_app_runtime),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+    event: str | None = None,
+    limit: int | None = Query(default=None, ge=1, le=5000),
+) -> dict[str, Any]:
+    run_payload = await _load_authorized_run_payload(
+        runtime=runtime,
+        chat=chat,
+        principal=principal,
+        run_id=run_id,
+    )
+    list_events = _journal_method(runtime, "list_events")
+    events = await list_events(run_id, event=event, limit=limit)
+    return {
+        "run_id": run_id,
+        "thread_id": run_payload["thread_id"],
+        "events": [_json_safe(item.to_dict() if hasattr(item, "to_dict") else item) for item in events],
+    }
+
+
+@router.get("/runs/{run_id}/snapshot")
+async def get_harness_run_snapshot(
+    run_id: str,
+    runtime: AppRuntime = Depends(get_app_runtime),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    await _load_authorized_run_payload(
+        runtime=runtime,
+        chat=chat,
+        principal=principal,
+        run_id=run_id,
+    )
+    snapshot = await _journal_method(runtime, "snapshot")(run_id)
+    return _json_safe(snapshot)
+
+
+@router.get("/runs/{run_id}/trajectory")
+async def get_harness_run_trajectory(
+    run_id: str,
+    runtime: AppRuntime = Depends(get_app_runtime),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    await _load_authorized_run_payload(
+        runtime=runtime,
+        chat=chat,
+        principal=principal,
+        run_id=run_id,
+    )
+    trajectory = await _journal_method(runtime, "trajectory_summary")(run_id)
+    return _json_safe(trajectory)
+
+
 @router.get("/runs/{run_id}", response_model=HarnessRunResponse)
 async def get_harness_run(
     run_id: str,
@@ -400,10 +473,16 @@ async def _create_run_record(
     user_id: str,
     graph_payload: Any,
     rollback_target: CheckpointRollbackTarget | None = None,
+    rollback_partial: bool = False,
+    rollback_unreverted_scopes: tuple[str, ...] = (),
 ) -> Any:
     metadata = dict(payload.metadata)
     if rollback_target is not None:
         metadata[ROLLBACK_TARGET_METADATA_KEY] = rollback_target.to_metadata()
+    if rollback_partial:
+        metadata["harness.rollback_partial"] = True
+    if rollback_unreverted_scopes:
+        metadata["harness.rollback_unreverted_scopes"] = list(rollback_unreverted_scopes)
     try:
         return await runtime.run_manager.create_or_reject(
             thread_id,
@@ -417,6 +496,8 @@ async def _create_run_record(
         )
     except RunConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except UnsupportedStrategyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _capture_run_rollback_target(
@@ -425,7 +506,13 @@ def _capture_run_rollback_target(
     thread_id: str,
 ) -> CheckpointRollbackTarget | None:
     try:
-        return capture_checkpoint_rollback_target(runtime.graph, thread_id)
+        harness = getattr(runtime, "harness", None)
+        graph = getattr(harness, "graph", None)
+        if graph is None:
+            graph = getattr(runtime, "graph", None)
+        if graph is None:
+            return None
+        return capture_checkpoint_rollback_target(graph, thread_id)
     except Exception:  # noqa: BLE001
         return None
 
@@ -471,7 +558,11 @@ async def _produce_run_stream(
 
     async def publish(event_name: str, source_node_name: str | None = None, **data: Any) -> None:
         nonlocal sequence
-        sequence += 1
+        sequence = await _next_run_sequence(
+            runtime=runtime,
+            run_id=run_id,
+            current_sequence=sequence,
+        )
         await runtime.stream_bridge.publish(
             run_id,
             event_name,
@@ -489,8 +580,7 @@ async def _produce_run_stream(
         await runtime.run_manager.set_status(run_id, RunStatus.RUNNING)
         await publish("run.metadata")
         await publish("run.status", phase="running")
-        async for chunk in stream_graph_chunks(
-            graph=runtime.graph,
+        async for chunk in runtime.harness.stream_chunks(
             checkpointer=getattr(runtime, "checkpointer", None),
             settings=runtime.settings,
             payload=payload,
@@ -571,12 +661,7 @@ async def _produce_run_stream(
                 await publish("task.update", source_node, **task_payload, metadata=chunk_metadata, namespace=namespace)
 
         if cancelled:
-            record = runtime.run_manager.get(run_id)
             await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-            await publish(
-                "run.interrupt",
-                action=getattr(record, "abort_action", "interrupt") if record is not None else "interrupt",
-            )
             return
 
         latest_context, latest_branch_meta, final_values = chat._context_for_thread(
@@ -611,15 +696,19 @@ async def _produce_run_stream(
     except asyncio.CancelledError:
         await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
         record = runtime.run_manager.get(run_id)
-        if record is not None and record.abort_event.is_set():
-            await publish("run.interrupt", action=record.abort_action)
-        else:
+        if record is None or not record.abort_event.is_set():
             await publish("run.failed", error="CancelledError", message="Run was cancelled.")
     except Exception as exc:  # noqa: BLE001
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
         await publish("run.failed", error=exc.__class__.__name__, message=str(exc))
     finally:
-        sequence += 1
+        _signal_rollback_ready(runtime=runtime, run_id=run_id)
+        await _await_rollback_completion(runtime=runtime, run_id=run_id)
+        sequence = await _next_run_sequence(
+            runtime=runtime,
+            run_id=run_id,
+            current_sequence=sequence,
+        )
         await runtime.stream_bridge.publish(
             run_id,
             "run.closed",
@@ -649,7 +738,11 @@ async def _produce_branch_action_run_stream(
 
     async def publish(event_name: str, source_node_name: str = "harness", **data: Any) -> None:
         nonlocal sequence
-        sequence += 1
+        sequence = await _next_run_sequence(
+            runtime=runtime,
+            run_id=run_id,
+            current_sequence=sequence,
+        )
         await runtime.stream_bridge.publish(
             run_id,
             event_name,
@@ -694,15 +787,19 @@ async def _produce_branch_action_run_stream(
     except asyncio.CancelledError:
         await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
         record = runtime.run_manager.get(run_id)
-        if record is not None and record.abort_event.is_set():
-            await publish("run.interrupt", action=record.abort_action)
-        else:
+        if record is None or not record.abort_event.is_set():
             await publish("run.failed", error="CancelledError", message="Run was cancelled.")
     except Exception as exc:  # noqa: BLE001
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
         await publish("run.failed", error=exc.__class__.__name__, message=str(exc))
     finally:
-        sequence += 1
+        _signal_rollback_ready(runtime=runtime, run_id=run_id)
+        await _await_rollback_completion(runtime=runtime, run_id=run_id)
+        sequence = await _next_run_sequence(
+            runtime=runtime,
+            run_id=run_id,
+            current_sequence=sequence,
+        )
         await runtime.stream_bridge.publish(
             run_id,
             "run.closed",
@@ -724,6 +821,62 @@ def _message_from_payload(payload: HarnessRunRequest) -> str:
     if payload.input and payload.input.get("message") is not None:
         return str(payload.input["message"])
     raise HTTPException(status_code=400, detail="Harness run requires a message.")
+
+
+async def _next_run_sequence(
+    *,
+    runtime: Any,
+    run_id: str,
+    current_sequence: int,
+) -> int:
+    count_events = getattr(_event_store_for_runtime(runtime), "count_events", None)
+    if callable(count_events):
+        try:
+            journal_sequence = int(await count_events(run_id)) + 1
+            return max(current_sequence + 1, journal_sequence)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to read harness journal sequence for run %s", run_id, exc_info=True)
+    return current_sequence + 1
+
+
+def _signal_rollback_ready(
+    *,
+    runtime: Any,
+    run_id: str,
+) -> None:
+    record = runtime.run_manager.get(run_id)
+    if record is None or getattr(record, "abort_action", "interrupt") != "rollback":
+        return
+    rollback_ready = getattr(record, "rollback_ready", None)
+    if rollback_ready is not None:
+        rollback_ready.set()
+
+
+async def _await_rollback_completion(
+    *,
+    runtime: Any,
+    run_id: str,
+) -> None:
+    record = runtime.run_manager.get(run_id)
+    if record is None:
+        return
+    if getattr(record, "abort_action", "interrupt") != "rollback":
+        return
+    rollback_completed = getattr(record, "rollback_completed", None)
+    if rollback_completed is None:
+        return
+    if rollback_completed.is_set():
+        return
+    try:
+        await asyncio.wait_for(
+            rollback_completed.wait(),
+            timeout=_ROLLBACK_CLOSE_WAIT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Timed out waiting for rollback completion before closing run stream %s",
+            run_id,
+        )
 
 
 def _source_node(metadata: dict[str, Any], namespace: list[str]) -> str:
@@ -786,6 +939,36 @@ async def _load_run_payload(runtime: AppRuntime, run_id: str) -> dict[str, Any] 
     if record is not None:
         return _run_record_payload(record)
     return await _get_persisted_run(runtime, run_id)
+
+
+async def _load_authorized_run_payload(
+    *,
+    runtime: AppRuntime,
+    chat: ChatService,
+    principal: Principal,
+    run_id: str,
+) -> dict[str, Any]:
+    run_payload = await _load_run_payload(runtime, run_id)
+    if run_payload is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    return run_payload
+
+
+def _event_store_for_runtime(runtime: AppRuntime) -> Any:
+    return getattr(runtime, "event_store", None) or getattr(
+        getattr(runtime, "harness", None),
+        "event_store",
+        None,
+    )
+
+
+def _journal_method(runtime: AppRuntime, name: str) -> Any:
+    event_store = _event_store_for_runtime(runtime)
+    method = getattr(event_store, name, None)
+    if not callable(method):
+        raise HTTPException(status_code=503, detail="Harness run journal is unavailable.")
+    return method
 
 
 def _authorize_run_access(

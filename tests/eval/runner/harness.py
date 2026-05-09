@@ -8,6 +8,7 @@ can plug in fakes (the unit tests do).
 from __future__ import annotations
 
 import json
+import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from langchain.messages import AIMessage, HumanMessage
+from langchain.tools import tool as langchain_tool
 
 from focus_agent.capabilities import build_tool_registry
 from focus_agent.capabilities.tool_registry import ToolRegistry
@@ -77,6 +79,16 @@ def build_default_runtime(
     )
 
 
+def build_harness_stability_runtime(*, settings: Settings | None = None) -> EvalRuntime:
+    """Build an offline runtime for the harness_stability release-gate suite."""
+
+    return build_default_runtime(
+        settings=settings,
+        tools=_harness_stability_tools(),
+        model_factory=_make_harness_stability_model,
+    )
+
+
 def load_dataset(path: str | Path) -> list[EvalCase]:
     cases: list[EvalCase] = []
     p = Path(path)
@@ -105,7 +117,38 @@ def run_case(
     attempt: int = 1,
     attempts: int = 1,
 ) -> EvalResult:
-    del timeout_s  # reserved for a future process-level watchdog
+    if timeout_s and timeout_s > 0:
+        return _run_case_with_timeout(
+            case,
+            runtime=runtime,
+            timeout_s=float(timeout_s),
+            model_label=model_label,
+            model_name=model_name,
+            base_case_id=base_case_id,
+            attempt=attempt,
+            attempts=attempts,
+        )
+    return _run_case_inner(
+        case,
+        runtime=runtime,
+        model_label=model_label,
+        model_name=model_name,
+        base_case_id=base_case_id,
+        attempt=attempt,
+        attempts=attempts,
+    )
+
+
+def _run_case_inner(
+    case: EvalCase,
+    *,
+    runtime: EvalRuntime,
+    model_label: str | None = None,
+    model_name: str | None = None,
+    base_case_id: str | None = None,
+    attempt: int = 1,
+    attempts: int = 1,
+) -> EvalResult:
     started = time.perf_counter()
     try:
         with _model_factory_patch(runtime.model_factory):
@@ -223,6 +266,83 @@ def run_case(
         )
 
 
+def _run_case_with_timeout(
+    case: EvalCase,
+    *,
+    runtime: EvalRuntime,
+    timeout_s: float,
+    model_label: str | None,
+    model_name: str | None,
+    base_case_id: str | None,
+    attempt: int,
+    attempts: int,
+) -> EvalResult:
+    started = time.perf_counter()
+    results: queue.Queue[EvalResult] = queue.Queue(maxsize=1)
+
+    def _target() -> None:
+        result = _run_case_inner(
+            case,
+            runtime=runtime,
+            model_label=model_label,
+            model_name=model_name,
+            base_case_id=base_case_id,
+            attempt=attempt,
+            attempts=attempts,
+        )
+        try:
+            results.put_nowait(result)
+        except queue.Full:
+            pass
+
+    thread = threading.Thread(
+        target=_target,
+        name=f"eval-case-{case.id}",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        return results.get(timeout=timeout_s)
+    except queue.Empty:
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        result_case_id = _result_case_id(
+            case.id,
+            model_label=model_label,
+            attempt=attempt,
+            attempts=attempts,
+        )
+        return EvalResult(
+            case_id=result_case_id,
+            passed=False,
+            answer="",
+            verdicts=[
+                JudgeVerdict(
+                    kind="harness",
+                    passed=False,
+                    reasoning=f"case timed out after {timeout_s:g}s",
+                    confidence=1.0,
+                    details={"timeout_s": timeout_s},
+                )
+            ],
+            trajectory=[],
+            metrics={
+                "latency_ms": latency_ms,
+                "tool_calls": 0,
+                "llm_calls": 0,
+                "model_label": model_label,
+                "model": model_name or runtime.settings.model,
+                "base_case_id": base_case_id or case.id,
+                "attempt": attempt,
+                "attempts": attempts,
+                "capability": case.capability,
+                "risk_level": case.risk_level,
+                "timeout_s": timeout_s,
+            },
+            error=f"case timed out after {timeout_s:g}s",
+            tags=list(case.tags),
+        )
+
+
 def run_suite(
     cases: Iterable[EvalCase],
     *,
@@ -231,6 +351,7 @@ def run_suite(
     retries: int | None = None,
     model_label: str | None = None,
     model_name: str | None = None,
+    timeout_s: float = 120.0,
     progress: Callable[[EvalResult], None] | None = None,
 ) -> list[EvalResult]:
     cases = list(cases)
@@ -241,6 +362,7 @@ def run_suite(
             r = run_case(
                 case,
                 runtime=runtime,
+                timeout_s=timeout_s,
                 model_label=model_label,
                 model_name=model_name,
                 base_case_id=case.id,
@@ -259,6 +381,7 @@ def run_suite(
                 run_case,
                 case,
                 runtime=runtime,
+                timeout_s=timeout_s,
                 model_label=model_label,
                 model_name=model_name,
                 base_case_id=case.id,
@@ -309,6 +432,127 @@ def _build_isolated_graph(runtime: EvalRuntime) -> Any:
         settings=runtime.settings,
         tool_registry=runtime.tool_registry,
     )
+
+
+def _make_harness_stability_model(*_args, **_kwargs):
+    """Scripted fake model used by the harness_stability dataset."""
+
+    class HarnessStabilityRunnable:
+        def __init__(self, allow_tools: bool):
+            self.allow_tools = allow_tools
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, messages):
+            return _harness_stability_response(list(messages), allow_tools=self.allow_tools)
+
+    class HarnessStabilityModel:
+        def bind_tools(self, _tools):
+            return HarnessStabilityRunnable(allow_tools=True)
+
+        def with_config(self, _config):
+            return HarnessStabilityRunnable(allow_tools=False)
+
+    return HarnessStabilityModel()
+
+
+def _harness_stability_response(messages: list[Any], *, allow_tools: bool) -> AIMessage:
+    latest_user = _latest_human_text(messages)
+    tool_names = _ai_tool_call_names(messages)
+
+    if allow_tools and "lookup" in latest_user and tool_names.count("lookup") < 1:
+        return AIMessage(
+            content="",
+            tool_calls=[{"id": "hs-lookup-1", "name": "lookup", "args": {"query": "bounded"}}],
+        )
+    if allow_tools and "超时" in latest_user and tool_names.count("web_search") < 1:
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "hs-web-1",
+                    "name": "web_search",
+                    "args": {"query": "timeout fixture"},
+                }
+            ],
+        )
+    if allow_tools and "并行拆" in latest_user and tool_names.count("task") < 1:
+        return AIMessage(
+            content="",
+            tool_calls=[{"id": "hs-task-1", "name": "task", "args": {"count": 3}}],
+        )
+
+    if "lookup" in latest_user:
+        return AIMessage(content="检测到重复 lookup 风险，已停止循环并给出当前可用结论。")
+    if "坏 JSON" in latest_user:
+        return AIMessage(content="计划下一步：坏 JSON 无法解析时先修复结构，失败则降级为文本计划。")
+    if "超时" in latest_user:
+        return AIMessage(content="web_search 超时失败，已去重 fallback，建议稍后重试。")
+    if "并行拆" in latest_user:
+        return AIMessage(content="并行任务已受限制，最多 3 个同时运行。")
+    if "不要联网" in latest_user:
+        return AIMessage(content="遵循不联网要求，web_search 无法调用，已拒绝该工具请求。")
+    if "rollback" in latest_user:
+        return AIMessage(content="rollback 后恢复连接，重复 message.delta 已处理。")
+    return AIMessage(content="harness stability fixture completed.")
+
+
+def _harness_stability_tools() -> tuple[Any, ...]:
+    @langchain_tool
+    def lookup(query: str = "") -> str:
+        """Deterministic lookup fixture for harness stability evals."""
+        return json.dumps({"query": query, "status": "ok"}, ensure_ascii=False)
+
+    @langchain_tool
+    def web_search(query: str = "") -> str:
+        """Deterministic web search timeout fixture."""
+        return json.dumps({"query": query, "error": "timeout"}, ensure_ascii=False)
+
+    @langchain_tool
+    def task(count: int = 1) -> str:
+        """Deterministic bounded subtask fixture."""
+        bounded = min(max(int(count or 1), 1), 3)
+        return json.dumps({"requested": count, "started": bounded}, ensure_ascii=False)
+
+    lookup.metadata = {
+        "toolset": "workspace",
+        "intent_policies": ("workspace_lookup", "execution"),
+        "allowed_roles": ("executor", "critic"),
+        "max_calls_per_turn": 4,
+    }
+    web_search.metadata = {
+        "toolset": "web",
+        "requires_network": True,
+        "intent_policies": ("live_web_research", "execution"),
+        "allowed_roles": ("planner",),
+        "timeout_seconds": 0.01,
+        "max_calls_per_turn": 3,
+    }
+    task.metadata = {
+        "toolset": "workspace",
+        "parallel_safe": True,
+        "intent_policies": ("workspace_lookup", "execution"),
+        "allowed_roles": ("executor", "critic"),
+        "max_calls_per_turn": 4,
+    }
+    return (lookup, web_search, task)
+
+
+def _latest_human_text(messages: list[Any]) -> str:
+    for msg in reversed(messages or []):
+        if isinstance(msg, HumanMessage):
+            return str(msg.content or "")
+    return ""
+
+
+def _ai_tool_call_names(messages: list[Any]) -> list[str]:
+    names: list[str] = []
+    for msg in messages or []:
+        if isinstance(msg, AIMessage):
+            for call in getattr(msg, "tool_calls", None) or []:
+                names.append(str(call.get("name") or ""))
+    return names
 
 
 class _model_factory_patch:  # noqa: N801 — context-manager style, lowercase on purpose

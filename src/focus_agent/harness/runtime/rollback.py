@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 ROLLBACK_TARGET_METADATA_KEY = "harness.rollback_target"
@@ -27,9 +27,24 @@ class CheckpointRollbackTarget:
 
 @dataclass(frozen=True, slots=True)
 class CheckpointRollbackResult:
-    applied: bool
+    applied: bool = False
+    requested: bool = True
     reason: str | None = None
     checkpoint_id: str | None = None
+    error: str | None = None
+    partial: bool = False
+    unreverted_scopes: tuple[str, ...] = field(default_factory=tuple)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "requested": self.requested,
+            "applied": self.applied,
+            "reason": self.reason,
+            "checkpoint_id": self.checkpoint_id,
+            "error": self.error,
+            "partial": self.partial,
+            "unreverted_scopes": list(self.unreverted_scopes),
+        }
 
 
 RollbackHandler = Callable[[Any], Awaitable[CheckpointRollbackResult | None]]
@@ -59,7 +74,7 @@ async def restore_graph_rollback_target(
     """Restore a thread to a previously captured checkpoint target."""
 
     if target is None:
-        return CheckpointRollbackResult(applied=False, reason="missing_rollback_target")
+        return CheckpointRollbackResult(requested=True, applied=False, reason="missing_rollback_target")
     return await asyncio.to_thread(_restore_graph_rollback_target_sync, graph, checkpointer, target)
 
 
@@ -81,16 +96,16 @@ def _restore_graph_rollback_target_sync(
 ) -> CheckpointRollbackResult:
     if target.checkpoint_id is None:
         if checkpointer is None:
-            return CheckpointRollbackResult(applied=False, reason="missing_checkpointer")
+            return CheckpointRollbackResult(requested=True, applied=False, reason="missing_checkpointer")
         delete_thread = getattr(checkpointer, "delete_thread", None)
         if not callable(delete_thread):
-            return CheckpointRollbackResult(applied=False, reason="delete_thread_unavailable")
+            return CheckpointRollbackResult(requested=True, applied=False, reason="delete_thread_unavailable")
         delete_thread(target.thread_id)
-        return CheckpointRollbackResult(applied=True, reason="deleted_thread")
+        return CheckpointRollbackResult(requested=True, applied=True, reason="deleted_thread")
 
     update_state = getattr(graph, "update_state", None)
     if not callable(update_state):
-        return CheckpointRollbackResult(applied=False, reason="update_state_unavailable")
+        return CheckpointRollbackResult(requested=True, applied=False, reason="update_state_unavailable")
     config = {
         "configurable": {
             "thread_id": target.thread_id,
@@ -102,7 +117,7 @@ def _restore_graph_rollback_target_sync(
     checkpoint_id = None
     if isinstance(next_config, dict):
         checkpoint_id = str(next_config.get("configurable", {}).get("checkpoint_id") or "") or None
-    return CheckpointRollbackResult(applied=True, checkpoint_id=checkpoint_id)
+    return CheckpointRollbackResult(requested=True, applied=True, checkpoint_id=checkpoint_id)
 
 
 __all__ = [

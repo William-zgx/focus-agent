@@ -761,36 +761,6 @@
     },
     {
       "method": "POST",
-      "operation_id": "apply_agent_team_merge_decision_v1_agent_team_sessions__session_id__merge_post",
-      "parameters": [
-        {
-          "content": null,
-          "deprecated": false,
-          "explode": null,
-          "in": "path",
-          "name": "session_id",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "style": null
-        }
-      ],
-      "path": "/v1/agent-team/sessions/{session_id}/merge",
-      "request": {
-        "$ref": "#/components/schemas/ApplyAgentTeamMergeDecisionRequest"
-      },
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/AgentTeamMergeDecisionResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
-      "method": "POST",
       "operation_id": "prepare_agent_team_merge_bundle_v1_agent_team_sessions__session_id__merge_bundle_post",
       "parameters": [
         {
@@ -841,34 +811,6 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamMergeDecisionResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
-      "method": "POST",
-      "operation_id": "prepare_agent_team_merge_bundle_v1_agent_team_sessions__session_id__merge_proposal_post",
-      "parameters": [
-        {
-          "content": null,
-          "deprecated": false,
-          "explode": null,
-          "in": "path",
-          "name": "session_id",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "style": null
-        }
-      ],
-      "path": "/v1/agent-team/sessions/{session_id}/merge-proposal",
-      "request": null,
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/AgentTeamMergeBundleResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -1198,36 +1140,6 @@
       ],
       "path": "/v1/agent-team/tasks/{task_id}/run",
       "request": null,
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/AgentTeamTaskResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
-      "method": "POST",
-      "operation_id": "update_agent_team_task_status_v1_agent_team_tasks__task_id__status_post",
-      "parameters": [
-        {
-          "content": null,
-          "deprecated": false,
-          "explode": null,
-          "in": "path",
-          "name": "task_id",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "style": null
-        }
-      ],
-      "path": "/v1/agent-team/tasks/{task_id}/status",
-      "request": {
-        "$ref": "#/components/schemas/UpdateAgentTeamTaskRequest"
-      },
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamTaskResponse"
@@ -4551,6 +4463,104 @@
       }
     },
     {
+      "method": "GET",
+      "operation_id": "list_harness_run_events_v2_runs__run_id__events_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "event",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maximum": 5000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/runs/{run_id}/events",
+      "request": null,
+      "responses": {
+        "200": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_harness_run_snapshot_v2_runs__run_id__snapshot_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/runs/{run_id}/snapshot",
+      "request": null,
+      "responses": {
+        "200": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
       "method": "POST",
       "operation_id": "stream_existing_harness_run_v2_runs__run_id__stream_post",
       "parameters": [
@@ -4571,6 +4581,35 @@
       "request": null,
       "responses": {
         "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_harness_run_trajectory_v2_runs__run_id__trajectory_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/runs/{run_id}/trajectory",
+      "request": null,
+      "responses": {
+        "200": {
+          "additionalProperties": true,
+          "type": "object"
+        },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
         }

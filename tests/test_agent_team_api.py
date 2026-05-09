@@ -78,13 +78,13 @@ def test_agent_team_api_session_task_output_merge_flow(
     )
     assert output_response.status_code == 200
 
-    update_response = client.post(
-        f"/v1/agent-team/tasks/{task_id}/status",
+    update_response = client.patch(
+        f"/v1/agent-team/tasks/{task_id}",
         json={"status": "done"},
     )
     assert update_response.status_code == 200
 
-    bundle_response = client.post(f"/v1/agent-team/sessions/{session_id}/merge-proposal")
+    bundle_response = client.post(f"/v1/agent-team/sessions/{session_id}/merge-bundle")
     assert bundle_response.status_code == 200
     bundle = bundle_response.json()["bundle"]
     assert bundle["accepted_tasks"] == [task_id]
@@ -92,13 +92,68 @@ def test_agent_team_api_session_task_output_merge_flow(
     assert bundle["execution_evidence"] == []
 
     decision_response = client.post(
-        f"/v1/agent-team/sessions/{session_id}/merge",
+        f"/v1/agent-team/sessions/{session_id}/merge-decision",
         json={"apply": False, "next_action": "split_followup", "rationale": "MVP backend accepted"},
     )
     assert decision_response.status_code == 200
     assert decision_response.json()["decision"]["accepted_tasks"] == [task_id]
     assert decision_response.json()["applied"] is False
     assert decision_response.json()["decision"]["action"] == "split_followup"
+
+
+def test_agent_team_legacy_aliases_are_deprecated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+
+    created = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-1", "goal": "Check compatibility aliases"},
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session"]["session_id"]
+
+    task_response = client.post(
+        f"/v1/agent-team/sessions/{session_id}/tasks",
+        json={"role": "backend_executor", "goal": "Implement backend", "create_branch": False},
+    )
+    assert task_response.status_code == 200
+    task_id = task_response.json()["task"]["task_id"]
+
+    status_response = client.post(
+        f"/v1/agent-team/tasks/{task_id}/status",
+        json={"status": "done"},
+    )
+    assert status_response.status_code == 200
+    assert status_response.headers["Deprecation"] == "true"
+    assert status_response.headers["X-Focus-Agent-Canonical-Path"] == (
+        f"/v1/agent-team/tasks/{task_id}"
+    )
+
+    bundle_response = client.post(f"/v1/agent-team/sessions/{session_id}/merge-proposal")
+    assert bundle_response.status_code == 200
+    assert bundle_response.headers["Deprecation"] == "true"
+    assert bundle_response.headers["X-Focus-Agent-Canonical-Path"] == (
+        f"/v1/agent-team/sessions/{session_id}/merge-bundle"
+    )
+
+    merge_response = client.post(
+        f"/v1/agent-team/sessions/{session_id}/merge",
+        json={"apply": False, "next_action": "request_changes"},
+    )
+    assert merge_response.status_code == 200
+    assert merge_response.headers["Deprecation"] == "true"
+    assert merge_response.headers["X-Focus-Agent-Canonical-Path"] == (
+        f"/v1/agent-team/sessions/{session_id}/merge-decision"
+    )
+
+    openapi_paths = client.get("/openapi.json").json()["paths"]
+    assert "/v1/agent-team/tasks/{task_id}/status" not in openapi_paths
+    assert "/v1/agent-team/sessions/{session_id}/merge-proposal" not in openapi_paths
+    assert "/v1/agent-team/sessions/{session_id}/merge" not in openapi_paths
+    assert "/v1/agent-team/tasks/{task_id}" in openapi_paths
+    assert "/v1/agent-team/sessions/{session_id}/merge-bundle" in openapi_paths
+    assert "/v1/agent-team/sessions/{session_id}/merge-decision" in openapi_paths
 
 
 def test_agent_team_api_dispatches_default_tasks(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from inspect import Parameter, signature
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
@@ -32,6 +32,14 @@ from ..deps import get_app_runtime, get_current_principal
 from ..route_utils.agent_team import _agent_team_error, _agent_team_service_or_503
 
 router = APIRouter()
+
+_DEPRECATED_ROUTE_LINK_REL = "successor-version"
+
+
+def _mark_deprecated_route(response: Response, *, canonical_path: str) -> None:
+    response.headers["Deprecation"] = "true"
+    response.headers["Link"] = f'<{canonical_path}>; rel="{_DEPRECATED_ROUTE_LINK_REL}"'
+    response.headers["X-Focus-Agent-Canonical-Path"] = canonical_path
 
 
 def _model_payload(value: Any) -> dict[str, Any]:
@@ -293,12 +301,47 @@ def get_agent_team_task(
     return AgentTeamTaskResponse(task=task)
 
 @router.patch('/v1/agent-team/tasks/{task_id}', response_model=AgentTeamTaskResponse)
-@router.post('/v1/agent-team/tasks/{task_id}/status', response_model=AgentTeamTaskResponse)
 def update_agent_team_task_status(
     task_id: str,
     payload: UpdateAgentTeamTaskRequest,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamTaskResponse:
+    return _update_agent_team_task_status(
+        task_id=task_id,
+        payload=payload,
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+@router.post(
+    '/v1/agent-team/tasks/{task_id}/status',
+    response_model=AgentTeamTaskResponse,
+    include_in_schema=False,
+)
+def update_agent_team_task_status_legacy(
+    task_id: str,
+    payload: UpdateAgentTeamTaskRequest,
+    response: Response,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamTaskResponse:
+    _mark_deprecated_route(response, canonical_path=f"/v1/agent-team/tasks/{task_id}")
+    return _update_agent_team_task_status(
+        task_id=task_id,
+        payload=payload,
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+def _update_agent_team_task_status(
+    *,
+    task_id: str,
+    payload: UpdateAgentTeamTaskRequest,
+    principal: Principal,
+    runtime: AppRuntime,
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
     try:
@@ -400,11 +443,45 @@ def record_agent_team_task_output(
     return AgentTeamTaskOutputResponse(output=output, task=task)
 
 @router.post('/v1/agent-team/sessions/{session_id}/merge-bundle', response_model=AgentTeamMergeBundleResponse)
-@router.post('/v1/agent-team/sessions/{session_id}/merge-proposal', response_model=AgentTeamMergeBundleResponse)
 def prepare_agent_team_merge_bundle(
     session_id: str,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeBundleResponse:
+    return _prepare_agent_team_merge_bundle(
+        session_id=session_id,
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge-proposal',
+    response_model=AgentTeamMergeBundleResponse,
+    include_in_schema=False,
+)
+def prepare_agent_team_merge_bundle_legacy(
+    session_id: str,
+    response: Response,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeBundleResponse:
+    _mark_deprecated_route(
+        response,
+        canonical_path=f"/v1/agent-team/sessions/{session_id}/merge-bundle",
+    )
+    return _prepare_agent_team_merge_bundle(
+        session_id=session_id,
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+def _prepare_agent_team_merge_bundle(
+    *,
+    session_id: str,
+    principal: Principal,
+    runtime: AppRuntime,
 ) -> AgentTeamMergeBundleResponse:
     service = _agent_team_service_or_503(runtime)
     try:
@@ -414,12 +491,50 @@ def prepare_agent_team_merge_bundle(
     return AgentTeamMergeBundleResponse(bundle=bundle)
 
 @router.post('/v1/agent-team/sessions/{session_id}/merge-decision', response_model=AgentTeamMergeDecisionResponse)
-@router.post('/v1/agent-team/sessions/{session_id}/merge', response_model=AgentTeamMergeDecisionResponse)
 def apply_agent_team_merge_decision(
     session_id: str,
     payload: ApplyAgentTeamMergeDecisionRequest,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeDecisionResponse:
+    return _apply_agent_team_merge_decision(
+        session_id=session_id,
+        payload=payload,
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge',
+    response_model=AgentTeamMergeDecisionResponse,
+    include_in_schema=False,
+)
+def apply_agent_team_merge_decision_legacy(
+    session_id: str,
+    payload: ApplyAgentTeamMergeDecisionRequest,
+    response: Response,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeDecisionResponse:
+    _mark_deprecated_route(
+        response,
+        canonical_path=f"/v1/agent-team/sessions/{session_id}/merge-decision",
+    )
+    return _apply_agent_team_merge_decision(
+        session_id=session_id,
+        payload=payload,
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+def _apply_agent_team_merge_decision(
+    *,
+    session_id: str,
+    payload: ApplyAgentTeamMergeDecisionRequest,
+    principal: Principal,
+    runtime: AppRuntime,
 ) -> AgentTeamMergeDecisionResponse:
     service = _agent_team_service_or_503(runtime)
     try:

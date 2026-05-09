@@ -715,6 +715,10 @@ class JournaledStreamBridge:
         if history and history[-1].event == "run.closed":
             yield END_SENTINEL
             return
+        bridge_ended = await _bridge_stream_ended(self.bridge, run_id)
+        if await _journal_run_is_terminal(self.journal, run_id) and bridge_ended is not False:
+            yield END_SENTINEL
+            return
 
         async for event in self.bridge.subscribe(
             run_id,
@@ -771,6 +775,24 @@ def _stream_event_from_journal_event(event: JournalEvent) -> StreamEvent:
         event=event.event,
         data=event.data,
     )
+
+
+async def _journal_run_is_terminal(journal: RunJournal, run_id: str) -> bool:
+    get_run = getattr(journal, "get_run", None)
+    if not callable(get_run):
+        return False
+    run = await get_run(run_id)
+    if run is None:
+        return False
+    status = getattr(run, "status", None)
+    return str(status) in {"success", "error", "timeout", "interrupted"}
+
+
+async def _bridge_stream_ended(bridge: InMemoryStreamBridge, run_id: str) -> bool | None:
+    stream_ended = getattr(bridge, "stream_ended", None)
+    if not callable(stream_ended):
+        return None
+    return await stream_ended(run_id)
 
 
 def _trajectory_summary(snapshot: dict[str, Any]) -> dict[str, Any]:

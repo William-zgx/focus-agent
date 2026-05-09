@@ -128,6 +128,13 @@ class InMemoryStreamBridge:
         async with stream.condition:
             return list(stream.events)
 
+    async def stream_ended(self, run_id: str) -> bool | None:
+        stream = self._streams.get(run_id)
+        if stream is None:
+            return None
+        async with stream.condition:
+            return stream.ended
+
     async def cleanup(self, run_id: str, *, delay: float = 0.0) -> None:
         if delay > 0:
             await asyncio.sleep(delay)

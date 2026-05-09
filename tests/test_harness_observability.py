@@ -6,7 +6,12 @@ from focus_agent.harness.observability import (
     SQLiteRunJournal,
 )
 from focus_agent.harness.runtime import RunManager, RunStatus
-from focus_agent.harness.streaming import END_SENTINEL, InMemoryStreamBridge, canonical_event_payload
+from focus_agent.harness.streaming import (
+    END_SENTINEL,
+    HEARTBEAT_SENTINEL,
+    InMemoryStreamBridge,
+    canonical_event_payload,
+)
 
 
 def test_in_memory_run_journal_records_runs_events_and_tool_events():
@@ -148,6 +153,70 @@ def test_journaled_stream_bridge_replays_after_last_event_id_from_journal():
 
         assert [event.id for event in replayed] == [second.id, closed.id]
         assert [event.data["sequence"] for event in replayed] == [2, 3]
+
+    asyncio.run(scenario())
+
+
+def test_journaled_stream_bridge_closes_replay_for_terminal_run_without_closed_event():
+    async def scenario():
+        journal = InMemoryRunJournal()
+        await journal.put("run-1", thread_id="thread-1", status="running")
+        bridge = JournaledStreamBridge(
+            journal=journal,
+            bridge=InMemoryStreamBridge(max_buffer_size=1),
+        )
+        first = await bridge.publish(
+            "run-1",
+            "run.completed",
+            canonical_event_payload(
+                run_id="run-1",
+                thread_id="thread-1",
+                turn_id="turn-1",
+                sequence=1,
+                status="succeeded",
+            ),
+        )
+        await journal.update_status("run-1", "success")
+        await bridge.publish_end("run-1")
+
+        replayed = []
+        async for event in bridge.subscribe("run-1", last_event_id=None, heartbeat_interval=0):
+            replayed.append(event)
+            if event is END_SENTINEL:
+                break
+
+        assert replayed == [first, END_SENTINEL]
+
+    asyncio.run(scenario())
+
+
+def test_journaled_stream_bridge_does_not_end_active_terminal_run_before_closed_event():
+    async def scenario():
+        journal = InMemoryRunJournal()
+        await journal.put("run-1", thread_id="thread-1", status="running")
+        bridge = JournaledStreamBridge(
+            journal=journal,
+            bridge=InMemoryStreamBridge(max_buffer_size=10),
+        )
+        first = await bridge.publish(
+            "run-1",
+            "run.interrupt",
+            canonical_event_payload(
+                run_id="run-1",
+                thread_id="thread-1",
+                turn_id="turn-1",
+                sequence=1,
+                action="rollback",
+            ),
+        )
+        await journal.update_status("run-1", "interrupted")
+
+        subscription = bridge.subscribe("run-1", last_event_id=None, heartbeat_interval=0)
+        try:
+            assert await anext(subscription) == first
+            assert await asyncio.wait_for(anext(subscription), timeout=1) is HEARTBEAT_SENTINEL
+        finally:
+            await subscription.aclose()
 
     asyncio.run(scenario())
 

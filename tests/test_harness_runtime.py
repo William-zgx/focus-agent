@@ -13,8 +13,10 @@ from focus_agent.harness.runtime import (
     RunConflictError,
     RunManager,
     RunStatus,
+    UnsupportedStrategyError,
 )
 from focus_agent.harness.runtime.rollback import (
+    CheckpointRollbackResult,
     CheckpointRollbackTarget,
     capture_checkpoint_rollback_target,
     restore_graph_rollback_target,
@@ -175,12 +177,14 @@ def test_run_manager_interrupt_settle_still_persists_status():
     asyncio.run(scenario())
 
 
-def test_run_manager_rollback_waits_for_settle_before_handler():
+def test_run_manager_rollback_handler_runs_before_task_cleanup():
     async def scenario():
         rolled_back = []
+        rollback_started = asyncio.Event()
 
         async def rollback_handler(record):
             rolled_back.append(record.run_id)
+            rollback_started.set()
 
         manager = RunManager(rollback_handler=rollback_handler)
         first = await manager.create_or_reject(
@@ -194,6 +198,7 @@ def test_run_manager_rollback_waits_for_settle_before_handler():
             ),
         )
         await manager.set_status(first.run_id, RunStatus.RUNNING)
+        finalize_lock = asyncio.Event()
         cleanup_started = asyncio.Event()
         cleanup_release = asyncio.Event()
 
@@ -201,6 +206,8 @@ def test_run_manager_rollback_waits_for_settle_before_handler():
             try:
                 await asyncio.Event().wait()
             finally:
+                first.rollback_ready.set()
+                await finalize_lock.wait()
                 cleanup_started.set()
                 await cleanup_release.wait()
 
@@ -215,15 +222,131 @@ def test_run_manager_rollback_waits_for_settle_before_handler():
             )
         )
 
-        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
-        await asyncio.sleep(0)
-        assert rolled_back == []
+        await asyncio.wait_for(rollback_started.wait(), timeout=1)
+        assert rolled_back == [first.run_id]
+        assert not cleanup_started.is_set()
 
+        finalize_lock.set()
         cleanup_release.set()
         second = await asyncio.wait_for(create_task, timeout=1)
 
         assert second.run_id != first.run_id
-        assert rolled_back == [first.run_id]
+        assert cleanup_started.is_set()
+
+    asyncio.run(scenario())
+
+
+def test_run_manager_records_and_publishes_rollback_result():
+    class Store:
+        def __init__(self):
+            self.completions = []
+
+        async def put(self, run_id, **kwargs):
+            del run_id, kwargs
+
+        async def update_status(self, run_id, status, *, error=None):
+            del run_id, status, error
+
+        async def update_run_completion(self, run_id, **kwargs):
+            self.completions.append((run_id, kwargs))
+
+    async def scenario():
+        events = []
+        store = Store()
+
+        async def rollback_handler(record):
+            assert record.rollback_target.checkpoint_id == "checkpoint-1"
+            return CheckpointRollbackResult(applied=True, checkpoint_id="checkpoint-rollback")
+
+        async def lifecycle_publisher(record, event, data):
+            events.append((record.run_id, event, data))
+
+        manager = RunManager(
+            store=store,
+            rollback_handler=rollback_handler,
+            lifecycle_publisher=lifecycle_publisher,
+        )
+        first = await manager.create_or_reject(
+            "thread-1",
+            "focus-agent",
+            rollback_target=CheckpointRollbackTarget(
+                thread_id="thread-1",
+                checkpoint_ns="",
+                checkpoint_id="checkpoint-1",
+                metadata={},
+            ),
+        )
+        await manager.set_status(first.run_id, RunStatus.RUNNING)
+
+        await manager.create_or_reject(
+            "thread-1",
+            "focus-agent",
+            multitask_strategy=MultitaskStrategy.ROLLBACK,
+        )
+
+        expected = {
+            "requested": True,
+            "applied": True,
+            "reason": None,
+            "checkpoint_id": "checkpoint-rollback",
+            "error": None,
+            "partial": False,
+            "unreverted_scopes": [],
+        }
+        assert first.rollback_result == expected
+        assert store.completions[-1] == (first.run_id, {"rollback_result": expected})
+        assert [event for _run_id, event, _data in events] == [
+            "run.interrupt",
+            "run.rollback.started",
+            "run.rollback.succeeded",
+        ]
+        assert events[-1][2]["rollback_result"] == expected
+
+    asyncio.run(scenario())
+
+
+def test_run_manager_marks_branch_action_rollback_partial_from_metadata():
+    async def scenario():
+        async def rollback_handler(record):
+            del record
+            return CheckpointRollbackResult(applied=True, checkpoint_id="checkpoint-rollback")
+
+        manager = RunManager(rollback_handler=rollback_handler)
+        first = await manager.create_or_reject(
+            "thread-1",
+            "focus-agent",
+            metadata={
+                "harness.rollback_partial": True,
+                "harness.rollback_unreverted_scopes": ["branch_action"],
+            },
+        )
+        await manager.set_status(first.run_id, RunStatus.RUNNING)
+
+        await manager.create_or_reject(
+            "thread-1",
+            "focus-agent",
+            multitask_strategy=MultitaskStrategy.ROLLBACK,
+        )
+
+        assert first.rollback_result["partial"] is True
+        assert first.rollback_result["unreverted_scopes"] == ["branch_action"]
+
+    asyncio.run(scenario())
+
+
+def test_run_manager_enqueue_is_explicitly_unsupported():
+    async def scenario():
+        manager = RunManager()
+        try:
+            await manager.create_or_reject(
+                "thread-1",
+                "focus-agent",
+                multitask_strategy=MultitaskStrategy.ENQUEUE,
+            )
+        except UnsupportedStrategyError as exc:
+            assert "enqueue" in str(exc)
+        else:  # pragma: no cover
+            raise AssertionError("expected enqueue to be unsupported")
 
     asyncio.run(scenario())
 
