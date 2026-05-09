@@ -11,6 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.harness.runtime import DisconnectMode, MultitaskStrategy, RunConflictError, RunStatus
+from focus_agent.harness.runtime.rollback import (
+    ROLLBACK_TARGET_METADATA_KEY,
+    CheckpointRollbackTarget,
+    capture_checkpoint_rollback_target,
+)
 from focus_agent.harness.streaming import END_SENTINEL, HEARTBEAT_SENTINEL, canonical_event_payload, sse_frame
 from focus_agent.observability.tracing import build_invoke_config, build_trace_correlation
 from focus_agent.security.tokens import Principal
@@ -80,6 +85,7 @@ async def create_harness_run(
         payload=payload,
         chat=chat,
     )
+    rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
     message = _message_from_payload(payload)
     run_record = await _create_run_record(
         runtime=runtime,
@@ -87,6 +93,7 @@ async def create_harness_run(
         thread_id=thread_id,
         user_id=principal.user_id,
         graph_payload=graph_payload,
+        rollback_target=rollback_target,
     )
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
     if _branch_action_intent_for_run(
@@ -173,6 +180,7 @@ async def stream_harness_run(
         payload=payload,
         chat=chat,
     )
+    rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
     message = _message_from_payload(payload)
     run_record = await _create_run_record(
         runtime=runtime,
@@ -180,6 +188,7 @@ async def stream_harness_run(
         thread_id=thread_id,
         user_id=principal.user_id,
         graph_payload=graph_payload,
+        rollback_target=rollback_target,
     )
     if _branch_action_intent_for_run(
         chat=chat,
@@ -239,12 +248,14 @@ async def stream_harness_resume(
         payload=payload,
         chat=chat,
     )
+    rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
     run_record = await _create_run_record(
         runtime=runtime,
         payload=payload,
         thread_id=thread_id,
         user_id=principal.user_id,
         graph_payload=command,
+        rollback_target=rollback_target,
     )
     producer = asyncio.create_task(
         _produce_run_stream(
@@ -388,19 +399,35 @@ async def _create_run_record(
     thread_id: str,
     user_id: str,
     graph_payload: Any,
+    rollback_target: CheckpointRollbackTarget | None = None,
 ) -> Any:
+    metadata = dict(payload.metadata)
+    if rollback_target is not None:
+        metadata[ROLLBACK_TARGET_METADATA_KEY] = rollback_target.to_metadata()
     try:
         return await runtime.run_manager.create_or_reject(
             thread_id,
             assistant_id=payload.metadata.get("assistant_id"),
             on_disconnect=DisconnectMode(payload.on_disconnect),
-            metadata=dict(payload.metadata),
+            metadata=metadata,
             kwargs={"input": _json_safe(graph_payload)},
             multitask_strategy=MultitaskStrategy(payload.multitask_strategy),
             user_id=user_id,
+            rollback_target=rollback_target,
         )
     except RunConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+def _capture_run_rollback_target(
+    *,
+    runtime: AppRuntime,
+    thread_id: str,
+) -> CheckpointRollbackTarget | None:
+    try:
+        return capture_checkpoint_rollback_target(runtime.graph, thread_id)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _branch_action_intent_for_run(

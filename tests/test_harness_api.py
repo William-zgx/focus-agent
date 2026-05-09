@@ -8,6 +8,10 @@ from langgraph.types import Command
 
 import focus_agent.api.routers.harness_runs as harness_runs
 from focus_agent.harness.runtime import RunStatus
+from focus_agent.harness.runtime.rollback import (
+    ROLLBACK_TARGET_METADATA_KEY,
+    CheckpointRollbackTarget,
+)
 from focus_agent.harness.streaming import END_SENTINEL, StreamEvent
 
 
@@ -81,10 +85,22 @@ def test_create_run_record_persists_user_id():
             thread_id="thread-1",
             user_id="user-1",
             graph_payload={"messages": []},
+            rollback_target=CheckpointRollbackTarget(
+                thread_id="thread-1",
+                checkpoint_ns="",
+                checkpoint_id="checkpoint-1",
+                metadata={},
+            ),
         )
 
         assert manager.args == ("thread-1",)
         assert manager.kwargs["user_id"] == "user-1"
+        assert manager.kwargs["rollback_target"].checkpoint_id == "checkpoint-1"
+        assert manager.kwargs["metadata"][ROLLBACK_TARGET_METADATA_KEY] == {
+            "thread_id": "thread-1",
+            "checkpoint_ns": "",
+            "checkpoint_id": "checkpoint-1",
+        }
 
     asyncio.run(scenario())
 

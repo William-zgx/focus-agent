@@ -13,12 +13,20 @@ from .runs import (
     RunStatus,
     UnsupportedStrategyError,
 )
+from .rollback import (
+    CheckpointRollbackResult,
+    CheckpointRollbackTarget,
+    capture_checkpoint_rollback_target,
+    restore_graph_rollback_target,
+)
 
 __all__ = [
     "ConflictError",
     "DisconnectMode",
     "HarnessRunStore",
     "HarnessConfig",
+    "CheckpointRollbackResult",
+    "CheckpointRollbackTarget",
     "MultitaskStrategy",
     "RunManager",
     "RunRecord",
@@ -27,4 +35,6 @@ __all__ = [
     "RunStatus",
     "RuntimeFeatures",
     "UnsupportedStrategyError",
+    "capture_checkpoint_rollback_target",
+    "restore_graph_rollback_target",
 ]

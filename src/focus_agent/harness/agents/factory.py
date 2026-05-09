@@ -13,6 +13,7 @@ from ..middleware import (
 )
 from ..observability import InMemoryRunJournal, JournaledStreamBridge, RunJournal
 from ..runtime import RunManager
+from ..runtime.rollback import rollback_handler_for_graph
 from ..schemas import HarnessConfig
 from ..streaming import InMemoryStreamBridge
 from ..subagents import AgentTeamSubagentRunner, SubagentExecutor
@@ -99,7 +100,10 @@ def create_focus_agent(
     return FocusAgentHarness(
         config=config,
         graph=graph,
-        run_manager=RunManager(store=journal),
+        run_manager=RunManager(
+            store=journal,
+            rollback_handler=rollback_handler_for_graph(graph, checkpointer),
+        ),
         stream_bridge=stream_bridge,
         middleware=MiddlewareStack(tuple(middleware)),
         event_store=journal,

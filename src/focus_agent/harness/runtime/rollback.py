@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+ROLLBACK_TARGET_METADATA_KEY = "harness.rollback_target"
+
+
+@dataclass(slots=True)
+class CheckpointRollbackTarget:
+    """Checkpoint state captured before a run mutates a thread."""
+
+    thread_id: str
+    checkpoint_ns: str
+    checkpoint_id: str | None
+    metadata: dict[str, Any]
+
+    def to_metadata(self) -> dict[str, str | None]:
+        return {
+            "thread_id": self.thread_id,
+            "checkpoint_ns": self.checkpoint_ns,
+            "checkpoint_id": self.checkpoint_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CheckpointRollbackResult:
+    applied: bool
+    reason: str | None = None
+    checkpoint_id: str | None = None
+
+
+RollbackHandler = Callable[[Any], Awaitable[CheckpointRollbackResult | None]]
+
+
+def capture_checkpoint_rollback_target(graph: Any, thread_id: str) -> CheckpointRollbackTarget:
+    """Capture the current thread checkpoint before a harness run starts."""
+
+    snapshot = graph.get_state({"configurable": {"thread_id": thread_id}})
+    config = dict(getattr(snapshot, "config", {}) or {})
+    configurable = dict(config.get("configurable") or {})
+    checkpoint_ns = str(configurable.get("checkpoint_ns") or "")
+    checkpoint_id = configurable.get("checkpoint_id")
+    return CheckpointRollbackTarget(
+        thread_id=thread_id,
+        checkpoint_ns=checkpoint_ns,
+        checkpoint_id=str(checkpoint_id) if checkpoint_id else None,
+        metadata=dict(getattr(snapshot, "metadata", {}) or {}),
+    )
+
+
+async def restore_graph_rollback_target(
+    graph: Any,
+    checkpointer: Any | None,
+    target: CheckpointRollbackTarget | None,
+) -> CheckpointRollbackResult:
+    """Restore a thread to a previously captured checkpoint target."""
+
+    if target is None:
+        return CheckpointRollbackResult(applied=False, reason="missing_rollback_target")
+    return await asyncio.to_thread(_restore_graph_rollback_target_sync, graph, checkpointer, target)
+
+
+def rollback_handler_for_graph(graph: Any, checkpointer: Any | None = None) -> RollbackHandler:
+    async def handler(record: Any) -> CheckpointRollbackResult:
+        return await restore_graph_rollback_target(
+            graph,
+            checkpointer,
+            getattr(record, "rollback_target", None),
+        )
+
+    return handler
+
+
+def _restore_graph_rollback_target_sync(
+    graph: Any,
+    checkpointer: Any | None,
+    target: CheckpointRollbackTarget,
+) -> CheckpointRollbackResult:
+    if target.checkpoint_id is None:
+        if checkpointer is None:
+            return CheckpointRollbackResult(applied=False, reason="missing_checkpointer")
+        delete_thread = getattr(checkpointer, "delete_thread", None)
+        if not callable(delete_thread):
+            return CheckpointRollbackResult(applied=False, reason="delete_thread_unavailable")
+        delete_thread(target.thread_id)
+        return CheckpointRollbackResult(applied=True, reason="deleted_thread")
+
+    update_state = getattr(graph, "update_state", None)
+    if not callable(update_state):
+        return CheckpointRollbackResult(applied=False, reason="update_state_unavailable")
+    config = {
+        "configurable": {
+            "thread_id": target.thread_id,
+            "checkpoint_ns": target.checkpoint_ns,
+            "checkpoint_id": target.checkpoint_id,
+        }
+    }
+    next_config = update_state(config, [], as_node="__copy__")
+    checkpoint_id = None
+    if isinstance(next_config, dict):
+        checkpoint_id = str(next_config.get("configurable", {}).get("checkpoint_id") or "") or None
+    return CheckpointRollbackResult(applied=True, checkpoint_id=checkpoint_id)
+
+
+__all__ = [
+    "CheckpointRollbackResult",
+    "CheckpointRollbackTarget",
+    "ROLLBACK_TARGET_METADATA_KEY",
+    "RollbackHandler",
+    "capture_checkpoint_rollback_target",
+    "restore_graph_rollback_target",
+    "rollback_handler_for_graph",
+]

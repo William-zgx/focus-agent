@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import logging
-from typing import Any, Literal, Protocol
+from typing import Any, Awaitable, Callable, Literal, Protocol
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,6 +55,7 @@ class MultitaskStrategy(str, Enum):
 
 
 RunCancelAction = Literal["interrupt", "rollback"]
+RollbackHandler = Callable[["RunRecord"], Awaitable[Any]]
 
 
 class RunRequest(BaseModel):
@@ -150,6 +151,7 @@ class RunRecord:
     metadata: dict[str, Any] = field(default_factory=dict)
     kwargs: dict[str, Any] = field(default_factory=dict)
     user_id: str | None = None
+    rollback_target: Any | None = field(default=None, repr=False)
     created_at: str = ""
     updated_at: str = ""
     task: asyncio.Task[Any] | None = field(default=None, repr=False)
@@ -181,10 +183,16 @@ class RunRecord:
 class RunManager:
     """In-memory run registry with optional best-effort persistence."""
 
-    def __init__(self, store: RunStore | None = None) -> None:
+    def __init__(
+        self,
+        store: RunStore | None = None,
+        *,
+        rollback_handler: RollbackHandler | None = None,
+    ) -> None:
         self._runs: dict[str, RunRecord] = {}
         self._lock = asyncio.Lock()
         self._store = store
+        self._rollback_handler = rollback_handler
 
     async def create(
         self,
@@ -196,6 +204,7 @@ class RunManager:
         kwargs: dict[str, Any] | None = None,
         multitask_strategy: MultitaskStrategy | str = MultitaskStrategy.REJECT,
         user_id: str | None = None,
+        rollback_target: Any | None = None,
     ) -> RunRecord:
         record = self._new_record(
             thread_id=thread_id,
@@ -205,6 +214,7 @@ class RunManager:
             kwargs=kwargs,
             multitask_strategy=multitask_strategy,
             user_id=user_id,
+            rollback_target=rollback_target,
         )
         async with self._lock:
             self._runs[record.run_id] = record
@@ -227,6 +237,7 @@ class RunManager:
             kwargs=request.run_kwargs(),
             multitask_strategy=multitask_strategy or request.multitask_strategy,
             user_id=request.user_id,
+            rollback_target=None,
         )
 
     async def create_or_reject(
@@ -239,6 +250,7 @@ class RunManager:
         kwargs: dict[str, Any] | None = None,
         multitask_strategy: MultitaskStrategy | str = MultitaskStrategy.REJECT,
         user_id: str | None = None,
+        rollback_target: Any | None = None,
     ) -> RunRecord:
         strategy = _coerce_multitask_strategy(multitask_strategy)
         if strategy == MultitaskStrategy.ENQUEUE:
@@ -252,6 +264,7 @@ class RunManager:
             kwargs=kwargs,
             multitask_strategy=strategy,
             user_id=user_id,
+            rollback_target=rollback_target,
         )
         interrupted: list[RunRecord] = []
         async with self._lock:
@@ -270,9 +283,11 @@ class RunManager:
                     interrupted.append(run)
             self._runs[record.run_id] = record
 
+        await self._settle_records(interrupted)
         await self._persist_created(record)
         for run in interrupted:
             await self._persist_status(run)
+        await self._rollback_records(interrupted)
         logger.info("Harness run created: run_id=%s thread_id=%s", record.run_id, thread_id)
         return record
 
@@ -337,13 +352,23 @@ class RunManager:
         except Exception:  # noqa: BLE001
             logger.warning("Failed to persist harness run completion for %s", run_id, exc_info=True)
 
-    async def cancel(self, run_id: str, *, action: RunCancelAction = "interrupt") -> bool:
+    async def cancel(
+        self,
+        run_id: str,
+        *,
+        action: RunCancelAction = "interrupt",
+        wait: bool = False,
+    ) -> bool:
         async with self._lock:
             record = self._runs.get(run_id)
             if record is None or not record.inflight:
                 return False
             self._cancel_record(record, action=action)
         await self._persist_status(record)
+        if wait or action == "rollback":
+            await self._settle_records([record])
+        if action == "rollback":
+            await self._rollback_records([record])
         logger.info("Harness run %s cancelled (action=%s)", run_id, action)
         return True
 
@@ -364,6 +389,7 @@ class RunManager:
         kwargs: dict[str, Any] | None,
         multitask_strategy: MultitaskStrategy | str,
         user_id: str | None,
+        rollback_target: Any | None,
     ) -> RunRecord:
         now = _now_iso()
         return RunRecord(
@@ -376,6 +402,7 @@ class RunManager:
             metadata=dict(metadata or {}),
             kwargs=dict(kwargs or {}),
             user_id=user_id,
+            rollback_target=rollback_target,
             created_at=now,
             updated_at=now,
         )
@@ -387,6 +414,27 @@ class RunManager:
             record.task.cancel()
         record.status = RunStatus.INTERRUPTED
         record.updated_at = _now_iso()
+
+    async def _settle_records(self, records: Sequence[RunRecord]) -> None:
+        tasks = [record.task for record in records if record.task is not None]
+        if not tasks:
+            return
+        await asyncio.gather(*(asyncio.shield(task) for task in tasks), return_exceptions=True)
+
+    async def _rollback_records(self, records: Sequence[RunRecord]) -> None:
+        if self._rollback_handler is None:
+            return
+        for record in records:
+            if record.abort_action != "rollback":
+                continue
+            try:
+                await self._rollback_handler(record)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Failed to rollback harness run %s",
+                    record.run_id,
+                    exc_info=True,
+                )
 
     async def _persist_created(self, record: RunRecord) -> None:
         if self._store is None:
