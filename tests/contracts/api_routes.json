@@ -4552,6 +4552,32 @@
     },
     {
       "method": "POST",
+      "operation_id": "stream_existing_harness_run_v2_runs__run_id__stream_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/runs/{run_id}/stream",
+      "request": null,
+      "responses": {
+        "200": {},
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
       "operation_id": "create_harness_run_v2_threads__thread_id__runs_post",
       "parameters": [
         {

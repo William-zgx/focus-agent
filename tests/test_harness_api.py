@@ -8,6 +8,7 @@ from langgraph.types import Command
 
 import focus_agent.api.routers.harness_runs as harness_runs
 from focus_agent.harness.runtime import RunStatus
+from focus_agent.harness.streaming import END_SENTINEL, StreamEvent
 
 
 def test_prepare_resume_payload_uses_langgraph_command_resume():
@@ -59,6 +60,138 @@ def test_get_persisted_run_reads_runtime_event_store_when_manager_misses():
             "thread_id": "thread-1",
             "status": "success",
         }
+
+    asyncio.run(scenario())
+
+
+def test_create_run_record_persists_user_id():
+    class _RunManager:
+        async def create_or_reject(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            return SimpleNamespace(run_id="run-1")
+
+    async def scenario():
+        manager = _RunManager()
+        payload = harness_runs.HarnessRunRequest(message="hello")
+
+        await harness_runs._create_run_record(
+            runtime=SimpleNamespace(run_manager=manager),
+            payload=payload,
+            thread_id="thread-1",
+            user_id="user-1",
+            graph_payload={"messages": []},
+        )
+
+        assert manager.args == ("thread-1",)
+        assert manager.kwargs["user_id"] == "user-1"
+
+    asyncio.run(scenario())
+
+
+def test_authorize_run_access_rejects_mismatched_user():
+    class _Chat:
+        def _preflight_thread_access(self, **kwargs):
+            raise AssertionError("thread access should not run after user mismatch")
+
+    principal = SimpleNamespace(user_id="user-2")
+
+    try:
+        harness_runs._authorize_run_access(
+            chat=_Chat(),
+            principal=principal,
+            run_payload={"run_id": "run-1", "thread_id": "thread-1", "user_id": "user-1"},
+        )
+    except harness_runs.HTTPException as exc:
+        assert exc.status_code == 403
+    else:  # pragma: no cover
+        raise AssertionError("expected authorization failure")
+
+
+def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelling():
+    class _Run:
+        def to_dict(self):
+            return {
+                "run_id": "run-1",
+                "thread_id": "thread-1",
+                "user_id": "user-1",
+                "status": "running",
+            }
+
+    class _RunManager:
+        def __init__(self):
+            self.cancelled = False
+
+        def get(self, run_id: str):
+            assert run_id == "run-1"
+            return _Run()
+
+        async def cancel(self, *args, **kwargs):
+            self.cancelled = True
+            return True
+
+    class _Bridge:
+        def __init__(self):
+            self.subscription = None
+
+        async def subscribe(self, run_id: str, *, last_event_id: str | None, heartbeat_interval: float):
+            self.subscription = {
+                "run_id": run_id,
+                "last_event_id": last_event_id,
+                "heartbeat_interval": heartbeat_interval,
+            }
+            yield StreamEvent(
+                id="evt-2",
+                event="message.delta",
+                data={
+                    "run_id": "run-1",
+                    "thread_id": "thread-1",
+                    "turn_id": "run-1",
+                    "sequence": 2,
+                    "source_node": "agent",
+                    "delta": "continued",
+                },
+            )
+            yield END_SENTINEL
+
+    class _Chat:
+        def _preflight_thread_access(self, **kwargs):
+            self.kwargs = kwargs
+            return SimpleNamespace(), None, {}
+
+    async def scenario():
+        manager = _RunManager()
+        bridge = _Bridge()
+        chat = _Chat()
+        request = SimpleNamespace(headers={"last-event-id": "evt-1"})
+        runtime = SimpleNamespace(
+            run_manager=manager,
+            event_store=None,
+            stream_bridge=bridge,
+            settings=SimpleNamespace(sse_heartbeat_seconds=7),
+        )
+
+        response = await harness_runs.stream_existing_harness_run(
+            run_id="run-1",
+            request=request,
+            runtime=runtime,
+            chat=chat,
+            principal=SimpleNamespace(user_id="user-1"),
+        )
+
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
+
+        assert bridge.subscription == {
+            "run_id": "run-1",
+            "last_event_id": "evt-1",
+            "heartbeat_interval": 7,
+        }
+        assert chat.kwargs["thread_id"] == "thread-1"
+        assert "event: message.delta" in "".join(chunks)
+        assert "continued" in "".join(chunks)
+        assert manager.cancelled is False
 
     asyncio.run(scenario())
 

@@ -1,12 +1,17 @@
 import type { FocusAgentEvent } from "../types.js";
 
+export interface FocusAgentStreamOptions {
+  signal?: AbortSignal;
+  lastEventId?: string;
+}
+
 export interface FocusAgentEndpointContext {
   requestJson<T>(path: string, init: RequestInit, auth: boolean): Promise<T>;
   setToken(token: string | undefined): void;
   stream(
     path: string,
     body: unknown,
-    options?: { signal?: AbortSignal },
+    options?: FocusAgentStreamOptions,
   ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>>;
 }
 

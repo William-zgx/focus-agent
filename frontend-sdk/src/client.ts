@@ -8,6 +8,7 @@ import { applyObservabilityEndpoints, type ObservabilityEndpoints } from "./clie
 import { canonicalizeStreamEvents } from "./client/stream.js";
 import { applyStreamingEndpoints, type StreamingEndpoints } from "./client/streaming.js";
 import { applyThreadBranchEndpoints, type ThreadBranchEndpoints } from "./client/thread-branch.js";
+import type { FocusAgentStreamOptions } from "./client/endpoint.js";
 import type { FocusAgentEvent } from "./types.js";
 
 export interface FocusAgentClientOptions {
@@ -18,6 +19,7 @@ export interface FocusAgentClientOptions {
 }
 
 export { FocusAgentRequestError } from "./errors.js";
+export type { FocusAgentStreamOptions } from "./client/endpoint.js";
 
 export interface FocusAgentClient
   extends AuthEndpoints,
@@ -53,14 +55,21 @@ export class FocusAgentClient {
   private async stream(
     path: string,
     body: unknown,
-    options: { signal?: AbortSignal } = {},
+    options: FocusAgentStreamOptions = {},
   ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+    const headers = new Headers({
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    });
+    if (options.lastEventId) {
+      headers.set("Last-Event-ID", options.lastEventId);
+    }
     const response = await this.transport.fetch({
       path,
       auth: true,
       init: {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        headers,
         body: JSON.stringify(body),
         signal: options.signal,
       },

@@ -595,6 +595,8 @@ test("SDK streaming exposes only v2 harness endpoints for chat streams", () => {
   );
 
   assert.equal(streamingSource.includes("return streamHarnessRun.call("), true);
+  assert.equal(streamingSource.includes("async function streamHarnessRunEvents"), true);
+  assert.equal(streamingSource.includes("/v2/runs/${encodeURIComponent(runId)}/stream"), true);
   assert.equal(
     streamingSource.includes("/v2/threads/${encodeURIComponent(request.thread_id)}/runs/resume/stream"),
     true,

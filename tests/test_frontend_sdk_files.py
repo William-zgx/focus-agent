@@ -90,6 +90,7 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'class FocusAgentClient' in client_text
     assert 'FocusAgentRequestError' in client_text
     assert 'FocusAgentTransport' in client_text
+    assert 'FocusAgentStreamOptions' in client_text
 
     errors_text = (root / 'src' / 'errors.ts').read_text()
     assert 'class FocusAgentRequestError' in errors_text
@@ -113,8 +114,11 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert 'streamTurn' in client_text
     assert 'streamResume' in client_text
     assert 'streamHarnessRun' in client_text
+    assert 'streamHarnessRunEvents' in client_text
+    assert 'Last-Event-ID' in client_text
     assert '/v2/threads/${encodeURIComponent(threadId)}/runs/stream' in client_text
     assert '/v2/threads/${encodeURIComponent(request.thread_id)}/runs/resume/stream' in client_text
+    assert '/v2/runs/${encodeURIComponent(runId)}/stream' in client_text
     assert '/v1/chat/' not in client_text
     assert 'cancelHarnessRun' in client_text
     assert '/v2/runs/${encodeURIComponent(runId)}/cancel' in client_text

@@ -1,6 +1,11 @@
 import { reduceStreamEvent, createInitialStreamState } from "../reducers.js";
 import { applyEndpointMethods } from "./endpoint.js";
-import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./endpoint.js";
+import type {
+  EndpointClientConstructor,
+  FocusAgentEndpointContext,
+  FocusAgentEndpointMethodMap,
+  FocusAgentStreamOptions,
+} from "./endpoint.js";
 import type {
   FocusAgentEvent,
   FocusAgentHarnessResumeRequest,
@@ -17,7 +22,7 @@ import type {
 async function streamTurn(
   this: FocusAgentEndpointContext,
   request: FocusAgentTurnRequest,
-  options: { signal?: AbortSignal } = {},
+  options: FocusAgentStreamOptions = {},
 ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
   return streamHarnessRun.call(
     this,
@@ -35,7 +40,7 @@ async function streamTurn(
 async function streamResume(
   this: FocusAgentEndpointContext,
   request: FocusAgentResumeRequest,
-  options: { signal?: AbortSignal } = {},
+  options: FocusAgentStreamOptions = {},
 ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
   const harnessRequest: FocusAgentHarnessResumeRequest = {
     resume: request.resume,
@@ -54,11 +59,23 @@ async function streamHarnessRun(
   this: FocusAgentEndpointContext,
   threadId: string,
   request: FocusAgentHarnessRunRequest,
-  options: { signal?: AbortSignal } = {},
+  options: FocusAgentStreamOptions = {},
 ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
   return this.stream(
     `/v2/threads/${encodeURIComponent(threadId)}/runs/stream`,
     request,
+    options,
+  );
+}
+
+async function streamHarnessRunEvents(
+  this: FocusAgentEndpointContext,
+  runId: string,
+  options: FocusAgentStreamOptions = {},
+): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+  return this.stream(
+    `/v2/runs/${encodeURIComponent(runId)}/stream`,
+    {},
     options,
   );
 }
@@ -120,6 +137,7 @@ export interface StreamingEndpoints {
   streamTurn: OmitThisParameter<typeof streamTurn>;
   streamResume: OmitThisParameter<typeof streamResume>;
   streamHarnessRun: OmitThisParameter<typeof streamHarnessRun>;
+  streamHarnessRunEvents: OmitThisParameter<typeof streamHarnessRunEvents>;
   cancelHarnessRun: OmitThisParameter<typeof cancelHarnessRun>;
   collectStream: OmitThisParameter<typeof collectStream>;
 }
@@ -128,6 +146,7 @@ const streamingEndpoints: FocusAgentEndpointMethodMap<StreamingEndpoints> = {
   streamTurn,
   streamResume,
   streamHarnessRun,
+  streamHarnessRunEvents,
   cancelHarnessRun,
   collectStream,
 };

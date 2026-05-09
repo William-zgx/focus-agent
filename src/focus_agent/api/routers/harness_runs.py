@@ -85,6 +85,7 @@ async def create_harness_run(
         runtime=runtime,
         payload=payload,
         thread_id=thread_id,
+        user_id=principal.user_id,
         graph_payload=graph_payload,
     )
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
@@ -177,6 +178,7 @@ async def stream_harness_run(
         runtime=runtime,
         payload=payload,
         thread_id=thread_id,
+        user_id=principal.user_id,
         graph_payload=graph_payload,
     )
     if _branch_action_intent_for_run(
@@ -213,47 +215,12 @@ async def stream_harness_run(
         )
     await runtime.run_manager.attach_task(run_record.run_id, producer)
 
-    async def event_stream() -> AsyncIterator[str]:
-        last_event_id = request.headers.get("last-event-id")
-        heartbeat_sequence = 0
-        try:
-            async for event in runtime.stream_bridge.subscribe(
-                run_record.run_id,
-                last_event_id=last_event_id,
-                heartbeat_interval=runtime.settings.sse_heartbeat_seconds,
-            ):
-                if event is HEARTBEAT_SENTINEL:
-                    heartbeat_sequence += 1
-                    yield sse_frame(
-                        event="heartbeat",
-                        data={
-                            "run_id": run_record.run_id,
-                            "thread_id": thread_id,
-                            "turn_id": run_record.run_id,
-                            "sequence": heartbeat_sequence,
-                            "source_node": "harness",
-                        },
-                    )
-                    continue
-                if event is END_SENTINEL:
-                    break
-                yield sse_frame(event=event.event, event_id=event.id, data=event.data)
-        finally:
-            record = runtime.run_manager.get(run_record.run_id)
-            if record is not None and record.inflight:
-                if record.on_disconnect is DisconnectMode.CANCEL:
-                    await runtime.run_manager.cancel(run_record.run_id, action="interrupt")
-                elif record.on_disconnect is DisconnectMode.ROLLBACK:
-                    await runtime.run_manager.cancel(run_record.run_id, action="rollback")
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    return _run_event_streaming_response(
+        runtime=runtime,
+        run_id=run_record.run_id,
+        thread_id=thread_id,
+        request=request,
+        cancel_on_disconnect=True,
     )
 
 
@@ -276,6 +243,7 @@ async def stream_harness_resume(
         runtime=runtime,
         payload=payload,
         thread_id=thread_id,
+        user_id=principal.user_id,
         graph_payload=command,
     )
     producer = asyncio.create_task(
@@ -294,47 +262,33 @@ async def stream_harness_resume(
     )
     await runtime.run_manager.attach_task(run_record.run_id, producer)
 
-    async def event_stream() -> AsyncIterator[str]:
-        last_event_id = request.headers.get("last-event-id")
-        heartbeat_sequence = 0
-        try:
-            async for event in runtime.stream_bridge.subscribe(
-                run_record.run_id,
-                last_event_id=last_event_id,
-                heartbeat_interval=runtime.settings.sse_heartbeat_seconds,
-            ):
-                if event is HEARTBEAT_SENTINEL:
-                    heartbeat_sequence += 1
-                    yield sse_frame(
-                        event="heartbeat",
-                        data={
-                            "run_id": run_record.run_id,
-                            "thread_id": thread_id,
-                            "turn_id": run_record.run_id,
-                            "sequence": heartbeat_sequence,
-                            "source_node": "harness",
-                        },
-                    )
-                    continue
-                if event is END_SENTINEL:
-                    break
-                yield sse_frame(event=event.event, event_id=event.id, data=event.data)
-        finally:
-            record = runtime.run_manager.get(run_record.run_id)
-            if record is not None and record.inflight:
-                if record.on_disconnect is DisconnectMode.CANCEL:
-                    await runtime.run_manager.cancel(run_record.run_id, action="interrupt")
-                elif record.on_disconnect is DisconnectMode.ROLLBACK:
-                    await runtime.run_manager.cancel(run_record.run_id, action="rollback")
+    return _run_event_streaming_response(
+        runtime=runtime,
+        run_id=run_record.run_id,
+        thread_id=thread_id,
+        request=request,
+        cancel_on_disconnect=True,
+    )
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+
+@router.post("/runs/{run_id}/stream")
+async def stream_existing_harness_run(
+    run_id: str,
+    request: Request,
+    runtime: AppRuntime = Depends(get_app_runtime),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+) -> StreamingResponse:
+    run_payload = await _load_run_payload(runtime, run_id)
+    if run_payload is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    return _run_event_streaming_response(
+        runtime=runtime,
+        run_id=run_id,
+        thread_id=str(run_payload["thread_id"]),
+        request=request,
+        cancel_on_disconnect=False,
     )
 
 
@@ -342,15 +296,14 @@ async def stream_harness_resume(
 async def get_harness_run(
     run_id: str,
     runtime: AppRuntime = Depends(get_app_runtime),
-    _principal: Principal = Depends(get_current_principal),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
-    record = runtime.run_manager.get(run_id)
-    if record is not None:
-        return HarnessRunResponse(run=_run_record_payload(record), thread_state=None)
-    persisted = await _get_persisted_run(runtime, run_id)
-    if persisted is None:
+    run_payload = await _load_run_payload(runtime, run_id)
+    if run_payload is None:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-    return HarnessRunResponse(run=persisted, thread_state=None)
+    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    return HarnessRunResponse(run=run_payload, thread_state=None)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=HarnessRunResponse)
@@ -358,8 +311,13 @@ async def cancel_harness_run(
     run_id: str,
     payload: HarnessRunCancelRequest,
     runtime: AppRuntime = Depends(get_app_runtime),
-    _principal: Principal = Depends(get_current_principal),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
+    run_payload = await _load_run_payload(runtime, run_id)
+    if run_payload is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
     action = "rollback" if payload.action == "rollback" else "interrupt"
     cancelled = await runtime.run_manager.cancel(run_id, action=action)
     if not cancelled:
@@ -428,6 +386,7 @@ async def _create_run_record(
     runtime: AppRuntime,
     payload: HarnessRunRequest | HarnessResumeRequest,
     thread_id: str,
+    user_id: str,
     graph_payload: Any,
 ) -> Any:
     try:
@@ -438,6 +397,7 @@ async def _create_run_record(
             metadata=dict(payload.metadata),
             kwargs={"input": _json_safe(graph_payload)},
             multitask_strategy=MultitaskStrategy(payload.multitask_strategy),
+            user_id=user_id,
         )
     except RunConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -794,6 +754,36 @@ def _run_record_payload(record: Any) -> dict[str, Any]:
     return _json_safe(record)
 
 
+async def _load_run_payload(runtime: AppRuntime, run_id: str) -> dict[str, Any] | None:
+    record = runtime.run_manager.get(run_id)
+    if record is not None:
+        return _run_record_payload(record)
+    return await _get_persisted_run(runtime, run_id)
+
+
+def _authorize_run_access(
+    *,
+    chat: ChatService,
+    principal: Principal,
+    run_payload: dict[str, Any],
+) -> None:
+    run_user_id = run_payload.get("user_id")
+    if run_user_id is not None and str(run_user_id) != principal.user_id:
+        raise HTTPException(status_code=403, detail="Run belongs to another user.")
+    thread_id = run_payload.get("thread_id")
+    if not isinstance(thread_id, str) or not thread_id:
+        raise HTTPException(status_code=404, detail="Run thread not found.")
+    try:
+        chat._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=principal.user_id,
+            explicit_skill_hints=(),
+            require_writable=False,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 async def _get_persisted_run(runtime: AppRuntime, run_id: str) -> dict[str, Any] | None:
     event_store = getattr(runtime, "event_store", None)
     get_run = getattr(event_store, "get_run", None)
@@ -805,3 +795,56 @@ async def _get_persisted_run(runtime: AppRuntime, run_id: str) -> dict[str, Any]
     if hasattr(run, "to_dict"):
         return _json_safe(run.to_dict())
     return _json_safe(run)
+
+
+def _run_event_streaming_response(
+    *,
+    runtime: AppRuntime,
+    run_id: str,
+    thread_id: str,
+    request: Request,
+    cancel_on_disconnect: bool,
+) -> StreamingResponse:
+    async def event_stream() -> AsyncIterator[str]:
+        last_event_id = request.headers.get("last-event-id")
+        heartbeat_sequence = 0
+        try:
+            async for event in runtime.stream_bridge.subscribe(
+                run_id,
+                last_event_id=last_event_id,
+                heartbeat_interval=runtime.settings.sse_heartbeat_seconds,
+            ):
+                if event is HEARTBEAT_SENTINEL:
+                    heartbeat_sequence += 1
+                    yield sse_frame(
+                        event="heartbeat",
+                        data={
+                            "run_id": run_id,
+                            "thread_id": thread_id,
+                            "turn_id": run_id,
+                            "sequence": heartbeat_sequence,
+                            "source_node": "harness",
+                        },
+                    )
+                    continue
+                if event is END_SENTINEL:
+                    break
+                yield sse_frame(event=event.event, event_id=event.id, data=event.data)
+        finally:
+            if cancel_on_disconnect:
+                record = runtime.run_manager.get(run_id)
+                if record is not None and record.inflight:
+                    if record.on_disconnect is DisconnectMode.CANCEL:
+                        await runtime.run_manager.cancel(run_id, action="interrupt")
+                    elif record.on_disconnect is DisconnectMode.ROLLBACK:
+                        await runtime.run_manager.cancel(run_id, action="rollback")
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
