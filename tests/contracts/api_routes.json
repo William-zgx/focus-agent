@@ -4772,8 +4772,34 @@
           "default": "",
           "type": "string"
         },
+        "max_calls_per_turn": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "name": {
           "type": "string"
+        },
+        "negative_examples": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "output_summary_contract": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "parallel_safe": {
           "default": false,
@@ -4828,6 +4854,12 @@
               "type": "null"
             }
           ]
+        },
+        "usage_examples": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [

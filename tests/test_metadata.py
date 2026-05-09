@@ -127,3 +127,21 @@ def test_tool_runtime_adds_span_metadata_when_tracing_enabled():
     assert runtime["parent_span_id"] == correlation.root_span_id
     assert len(runtime["span_id"]) == 16
     assert runtime["duration_ms"] >= 0
+
+
+def test_tool_runtime_meta_parses_quality_and_budget_metadata():
+    class RichTool:
+        name = "rich_lookup"
+        metadata = {
+            "usage_examples": ["Use for repository symbol lookup."],
+            "negative_examples": ["Do not use for live web research."],
+            "max_calls_per_turn": 2,
+            "output_summary_contract": "Return path, line, and short snippet.",
+        }
+
+    runtime = ToolRuntimeMeta.from_tool(RichTool())
+
+    assert runtime.usage_examples == ("Use for repository symbol lookup.",)
+    assert runtime.negative_examples == ("Do not use for live web research.",)
+    assert runtime.max_calls_per_turn == 2
+    assert runtime.output_summary_contract == "Return path, line, and short snippet."

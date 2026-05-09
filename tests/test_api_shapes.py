@@ -294,6 +294,10 @@ def test_agent_role_contract_shapes():
                 toolset="workspace",
                 allowed_roles=["executor", "critic"],
                 parallel_safe=True,
+                usage_examples=["Find a symbol definition in the workspace."],
+                negative_examples=["Do not use for live web research."],
+                max_calls_per_turn=3,
+                output_summary_contract="Return path, line, and snippet.",
             )
         ],
         count=1,
@@ -311,6 +315,8 @@ def test_agent_role_contract_shapes():
     memory_decisions = AgentMemoryCuratorDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
 
     assert capabilities.items[0].name == "search_code"
+    assert capabilities.items[0].max_calls_per_turn == 3
+    assert capabilities.items[0].output_summary_contract == "Return path, line, and snippet."
     assert route_request.role == "critic"
     assert route_response.plan["allowed_tools"] == ["search_code"]
     assert memory_policy.conflict_strategy == "needs_review"

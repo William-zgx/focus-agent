@@ -16,6 +16,7 @@ from focus_agent.engine.graph_builder import (
     _count_tool_call_rounds_since_latest_human,
     _ensure_reasoning_content_for_tool_call_history,
     _fallback_answer_from_tool_results,
+    build_tool_intent_plan,
     _live_web_research_should_start_with_search,
     _looks_like_textual_tool_call_artifact,
     _messages_for_model,
@@ -765,6 +766,7 @@ def test_detects_textual_tool_call_artifacts():
 
 def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
     assert _classify_turn_tool_policy("帮我写一篇300字左右描述小猫可爱的作文。直接发给我。") == "direct_answer"
+    assert _classify_turn_tool_policy("帮我写一段说明通用 Agent 工具调用优化的价值，直接回复。") == "direct_answer"
     assert _classify_turn_tool_policy("不要联网。简单解释 LangGraph 的 checkpointer 是什么。") == "direct_answer"
     assert _classify_turn_tool_policy("找到仓库里使用 assemble_context 的位置。") == "workspace_lookup"
     assert _classify_turn_tool_policy("北京和上海哪个今天天气好？") == "live_web_research"
@@ -782,9 +784,38 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
         _classify_turn_tool_policy("请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")
         == "live_web_research"
     )
+    assert (
+        _classify_turn_tool_policy(
+            '帮我找到 "Memory in the Age of AI Agents" 这篇论文的下载链接（arXiv 最好），并告诉我如何获取 PDF'
+        )
+        == "live_web_research"
+    )
+    assert _classify_turn_tool_policy("帮我下载 Memory in the Age of AI Agents 这篇论文") == "live_web_research"
+    assert _classify_turn_tool_policy("Find the PDF for Memory in the Age of AI Agents") == "live_web_research"
     assert _classify_turn_tool_policy("帮我看一下最近哪些AI项目比较火？都是做什么的?") == "live_web_research"
     assert _classify_turn_tool_policy("当前项目里 web_search 工具在哪里？") == "workspace_lookup"
+    assert _classify_turn_tool_policy("当前项目里下载 README 文件") == "workspace_lookup"
+    assert _classify_turn_tool_policy("download the README file from the current repo") == "workspace_lookup"
+    assert _classify_turn_tool_policy("当前项目里 DOI parser 在哪里？") == "workspace_lookup"
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
+
+
+def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
+    research = build_tool_intent_plan(
+        '帮我找到 "Memory in the Age of AI Agents" 这篇论文的下载链接',
+        active_skill_ids=["research"],
+    )
+    plan = build_tool_intent_plan("查一下最近 AI 工具，但不要联网", active_skill_ids=["research"])
+    review = build_tool_intent_plan("看看这个实现是否安全", active_skill_ids=["review"])
+
+    assert research.policy == "live_web_research"
+    assert research.preferred_first_tool == "web_search"
+    assert research.preferred_first_args["query"].startswith("帮我找到")
+    assert research.source == "skill:research"
+    assert plan.policy == "direct_answer"
+    assert "explicit_no_tool" in plan.reason_codes
+    assert review.policy == "workspace_lookup"
+    assert review.source == "skill:review"
 
 
 def test_live_web_research_starts_stock_queries_with_web_search():
@@ -911,6 +942,67 @@ def test_graph_routes_external_ai_trend_queries_to_web_search_first(monkeypatch)
         assert first_call["name"] == "web_search"
         assert first_call["args"] == {"query": prompt}
         assert web_calls == [prompt]
+
+
+def test_graph_routes_research_prefixed_academic_download_to_web_search_first(monkeypatch):
+    raw_prompt = (
+        'research: 帮我找到 "Memory in the Age of AI Agents" 这篇论文的下载链接'
+        "（arXiv 最好），并告诉我如何获取 PDF"
+    )
+    stripped_prompt = raw_prompt.removeprefix("research:").strip()
+    web_calls = []
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return '{"answer":"local arxiv fixture"}'
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="arXiv download summary")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(web_search,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content=raw_prompt)],
+            "task_brief": stripped_prompt,
+            "active_skill_ids": ["research"],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(
+            user_id="user-1",
+            root_thread_id="route-research-academic-download",
+        ),
+        version="v2",
+    )
+
+    first_call = _first_tool_call(result.value["messages"])
+    assert first_call["name"] == "web_search"
+    assert first_call["args"] == {"query": stripped_prompt}
+    assert web_calls == [stripped_prompt]
+    assert result.value["tool_intent_plan"]["policy"] == "live_web_research"
+    assert result.value["tool_intent_plan"]["source"] == "skill:research"
+    assert result.value["plan_meta"]["tool_intent_plan"]["preferred_first_tool"] == "web_search"
 
 
 def test_graph_routes_project_web_search_location_to_search_code_without_web_exposure(monkeypatch):
@@ -2052,6 +2144,56 @@ def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypa
     assert tool_messages[-1].status == "error"
     assert isinstance(messages[-1], AIMessage)
     assert messages[-1].content == "handled"
+
+
+def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):
+    lookup_calls = 0
+
+    @tool
+    def limited_lookup(query: str) -> str:
+        """Lookup with a per-turn call budget."""
+        nonlocal lookup_calls
+        lookup_calls += 1
+        return query
+
+    limited_lookup.metadata = {
+        "allowed_roles": ("executor",),
+        "intent_policies": ("execution",),
+        "max_calls_per_turn": 1,
+    }
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "limited-1", "name": "limited_lookup", "args": {"query": "alpha"}},
+            {"id": "limited-2", "name": "limited_lookup", "args": {"query": "beta"}},
+        ],
+        final_answer="handled limit",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(limited_lookup,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="run two limited lookups")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="limit-tool-calls"),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    denied_payload = json.loads(tool_messages[1].content)
+    assert lookup_calls == 1
+    assert tool_messages[0].status == "success"
+    assert tool_messages[1].status == "error"
+    assert denied_payload["runtime"]["max_calls_per_turn_exceeded"] is True
 
 
 def test_graph_tool_executor_backstop_denies_unexposed_web_search_for_direct_and_workspace_turns(monkeypatch):

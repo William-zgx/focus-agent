@@ -20,7 +20,6 @@ from . import graph_tool_policy as _graph_tool_policy
 from .graph_plan_nodes import _format_plan_block
 from .graph_turn_helpers import (
     _TOOL_EXHAUSTION_NOTE,
-    _classify_turn_tool_policy,
     _context_budget_from_state,
     _ensure_reasoning_content_for_tool_call_history,
     _invoke_with_tool_result_fallback,
@@ -65,16 +64,18 @@ def make_agent_loop_node(
         latest_user = _latest_human_message_text(state_messages)
         if not latest_user:
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
+        tool_intent_text = _tool_intent_text(state, latest_user)
         context_budget = _context_budget_from_state(state)
-        tool_policy = _classify_turn_tool_policy(latest_user)
-        tool_exposure = _classify_turn_tool_exposure_if_available(
-            latest_user,
-            tool_policy=tool_policy,
+        tool_intent_plan = _graph_tool_policy.build_tool_intent_plan(
+            tool_intent_text,
+            active_skill_ids=list(state.get("active_skill_ids", []) or ()),
         )
+        tool_policy = tool_intent_plan.policy
+        tool_exposure = _graph_tool_policy._turn_tool_exposure_from_intent_plan(tool_intent_plan)
         available_tools = _tools_for_policy_compat(
             tool_policy,
             all_tools,
-            latest_user,
+            tool_intent_text,
             exposure=tool_exposure,
         )
         tool_route_plan = None
@@ -91,6 +92,9 @@ def make_agent_loop_node(
                 exposed_tool_names=[str(getattr(tool, "name", "")) for tool in available_tools],
                 confidence=getattr(tool_exposure, "confidence", None),
                 reason_codes=getattr(tool_exposure, "reason_codes", None),
+                intent_source=tool_intent_plan.source,
+                preferred_first_tool=tool_intent_plan.preferred_first_tool,
+                preferred_first_args=tool_intent_plan.preferred_first_args,
                 enforce=bool(settings.agent_tool_router_enforce),
             )
             if settings.agent_tool_router_enforce:
@@ -155,7 +159,7 @@ def make_agent_loop_node(
                 model_for=model_for,
             )
         elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search_compat(
-            latest_user,
+            tool_intent_text,
             state_messages,
             available_tools,
             exposure=tool_exposure,
@@ -166,12 +170,13 @@ def make_agent_loop_node(
                     {
                         "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
                         "name": "web_search",
-                        "args": {"query": latest_user},
+                        "args": tool_intent_plan.preferred_first_args
+                        or {"query": tool_intent_text},
                     }
                 ],
             )
         elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search_compat(
-            latest_user,
+            tool_intent_text,
             state_messages,
             available_tools,
             exposure=tool_exposure,
@@ -182,7 +187,8 @@ def make_agent_loop_node(
                     {
                         "id": f"workspace-search-{state.get('llm_calls', 0) + 1}",
                         "name": "search_code",
-                        "args": {"query": _workspace_search_query(latest_user)},
+                        "args": tool_intent_plan.preferred_first_args
+                        or {"query": _workspace_search_query(tool_intent_text)},
                     }
                 ],
             )
@@ -231,6 +237,17 @@ def make_agent_loop_node(
             "messages": [response],
             "llm_calls": state.get("llm_calls", 0) + 1,
         }
+        intent_dumped = tool_intent_plan.model_dump(mode="json")
+        append_agent_state_record(
+            updates,
+            "tool_intent_plan",
+            intent_dumped,
+            source="agent_loop",
+        )
+        updates["plan_meta"] = {
+            **(state.get("plan_meta") or {}),
+            "tool_intent_plan": intent_dumped,
+        }
         if tool_route_plan is not None:
             dumped = tool_route_plan.model_dump(mode="json")
             append_agent_state_record(
@@ -240,7 +257,7 @@ def make_agent_loop_node(
                 source="agent_loop",
             )
             plan_meta = {
-                **(state.get("plan_meta") or {}),
+                **(updates.get("plan_meta") or state.get("plan_meta") or {}),
                 "tool_route_plan": dumped,
             }
             if settings.agent_self_repair_enabled:
@@ -387,6 +404,13 @@ def _tool_router_fallback_role(tool_policy: str, exposure: Any | None) -> AgentR
     ):
         return AgentRole.PLANNER
     return AgentRole.EXECUTOR
+
+
+def _tool_intent_text(state: AgentState, latest_user: str) -> str:
+    task_brief = str(state.get("task_brief") or "").strip()
+    if task_brief and state.get("active_skill_ids"):
+        return task_brief
+    return latest_user
 
 
 def _registered_tool_names(tool_registry: ToolRegistry, tools: Sequence[Any]) -> list[str]:

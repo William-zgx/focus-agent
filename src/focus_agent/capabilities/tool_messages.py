@@ -16,13 +16,14 @@ def build_tool_error_message(
     error: Exception | str,
     runtime_info: dict[str, Any] | None = None,
 ) -> ToolMessage:
+    merged_runtime_info = {"cache_hit": False, "fallback_used": False, **dict(runtime_info or {})}
     payload = {
         "status": "error",
         "tool": tool_name,
         "args": args,
         "error": str(error),
+        "runtime": merged_runtime_info,
     }
-    merged_runtime_info = {"cache_hit": False, "fallback_used": False, **dict(runtime_info or {})}
     return build_tool_message(
         content=json.dumps(payload, ensure_ascii=False),
         tool_call_id=tool_call_id,

@@ -46,6 +46,10 @@ class AgentCapabilityResponse(BaseModel):
     requires_network: bool = False
     requires_workspace_write: bool = False
     requires_approval: bool = False
+    usage_examples: list[str] = Field(default_factory=list)
+    negative_examples: list[str] = Field(default_factory=list)
+    max_calls_per_turn: int | None = None
+    output_summary_contract: str | None = None
     sensitive_args: list[str] = Field(default_factory=list)
     redaction_policy: str = "mask"
     provider_id: str | None = None

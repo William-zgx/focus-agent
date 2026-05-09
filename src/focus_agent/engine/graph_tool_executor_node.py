@@ -72,6 +72,7 @@ def make_tool_executor_node(
         seen_tool_call_signatures: set[str] = set()
         updates: dict[str, Any] = {}
         route_plan = _route_plan_mapping(state.get("tool_route_plan"))
+        tool_call_counts: dict[str, int] = {}
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
             tool_name = str(tool_call.get("name") or "").strip()
             tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
@@ -137,6 +138,20 @@ def make_tool_executor_node(
                     args=tool_args,
                     error=f"Tool runtime metadata is missing: {tool_name}",
                     runtime_info={"missing_tool_runtime_metadata": True},
+                )
+                continue
+            tool_call_counts[tool_name] = tool_call_counts.get(tool_name, 0) + 1
+            max_calls = getattr(runtime_meta, "max_calls_per_turn", None)
+            if max_calls is not None and tool_call_counts[tool_name] > int(max_calls):
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=f"Tool call budget exceeded for {tool_name}: max {int(max_calls)} per turn",
+                    runtime_info={
+                        "max_calls_per_turn_exceeded": True,
+                        "max_calls_per_turn": int(max_calls),
+                    },
                 )
                 continue
             execution_input = ToolExecutionInput(

@@ -7,7 +7,7 @@ from typing import Any, Literal
 from langchain.messages import ToolMessage
 
 from ..agent_roles import AgentRole
-from ..capabilities.tool_router import CapabilityPolicyEngine
+from ..capabilities.tool_router import CapabilityPolicyEngine, ToolIntentPlan
 from ..capabilities.tool_registry import ToolRuntimeMeta
 
 
@@ -67,6 +67,8 @@ _NO_TOOL_INTENT_MARKERS = (
     "不使用工具",
     "直接回答",
     "直接发给我",
+    "直接回复",
+    "直接返回",
     "只回答",
     "一句话说明",
     "一句话解释",
@@ -425,6 +427,42 @@ _WEB_LOOKUP_ACTION_MARKERS = (
 )
 
 
+_ACADEMIC_WEB_LOOKUP_MARKERS = (
+    "下载pdf",
+    "下载 pdf",
+    "获取pdf",
+    "获取 pdf",
+    "arxiv",
+    "doi for",
+    "pdf for",
+    "find the pdf",
+    "get the pdf",
+    "paper pdf",
+    "pdf link",
+)
+
+
+_RESOURCE_DOWNLOAD_ACTION_MARKERS = (
+    "下载",
+    "获取",
+    "找到",
+    "查找",
+    "download",
+    "get",
+    "find",
+)
+
+
+_ACADEMIC_RESOURCE_MARKERS = (
+    "论文",
+    "arxiv",
+    "doi",
+    "paper",
+    "preprint",
+    "pdf",
+)
+
+
 _SYMBOL_LOOKUP_INTENT_MARKERS = (
     "定义",
     "调用",
@@ -466,8 +504,88 @@ def _matched_markers(text: str, markers: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(marker for marker in markers if _marker_matches(lowered, marker))
 
 
+def _academic_web_lookup_hits(text: str) -> tuple[str, ...]:
+    direct_hits = _matched_markers(text, _ACADEMIC_WEB_LOOKUP_MARKERS)
+    action_hits = _matched_markers(text, _RESOURCE_DOWNLOAD_ACTION_MARKERS)
+    resource_hits = _matched_markers(text, _ACADEMIC_RESOURCE_MARKERS)
+    if action_hits and resource_hits:
+        return tuple(dict.fromkeys((*direct_hits, *resource_hits)))
+    return direct_hits
+
+
 def _classify_turn_tool_policy(text: str) -> _ToolPolicy:
     return _classify_turn_tool_exposure(text).policy
+
+
+def build_tool_intent_plan(
+    text: str,
+    *,
+    active_skill_ids: tuple[str, ...] | list[str] = (),
+) -> ToolIntentPlan:
+    normalized = " ".join(text.strip().split())
+    exposure = _classify_turn_tool_exposure(normalized)
+    source = "deterministic"
+
+    no_tool = "explicit_no_tool" in exposure.reason_codes
+    skill_ids = {str(skill_id).strip().lower() for skill_id in active_skill_ids if str(skill_id).strip()}
+    if not no_tool and "plan" in skill_ids:
+        exposure = _exposure(
+            "direct_answer",
+            confidence=0.95,
+            reason_codes=(*exposure.reason_codes, "skill_plan_direct_answer"),
+        )
+        source = "skill:plan"
+    elif not no_tool and ("review" in skill_ids or "security-review" in skill_ids):
+        exposure = _exposure(
+            "workspace_lookup",
+            confidence=max(exposure.confidence, 0.9),
+            reason_codes=(*exposure.reason_codes, "skill_review_workspace"),
+            preferred_first_tool=exposure.preferred_first_tool,
+        )
+        source = "skill:review"
+    elif not no_tool and ("research" in skill_ids or "web-research" in skill_ids):
+        exposure = _exposure(
+            "live_web_research",
+            confidence=max(exposure.confidence, 0.9),
+            reason_codes=(*exposure.reason_codes, "skill_research_web"),
+            preferred_first_tool=exposure.preferred_first_tool or "web_search",
+        )
+        source = "skill:research"
+
+    preferred_first_args = _preferred_first_args(exposure.preferred_first_tool, normalized)
+    return ToolIntentPlan(
+        normalized_text=normalized,
+        policy=exposure.policy,
+        confidence=exposure.confidence,
+        reason_codes=list(exposure.reason_codes),
+        preferred_first_tool=exposure.preferred_first_tool,
+        preferred_first_args=preferred_first_args,
+        allowed_toolsets=list(exposure.allowed_toolsets),
+        denied_toolsets=list(exposure.hard_denied_toolsets),
+        source=source,
+    )
+
+
+def _turn_tool_exposure_from_intent_plan(intent_plan: ToolIntentPlan) -> TurnToolExposure:
+    policy = str(intent_plan.policy or "direct_answer")
+    if policy not in {"direct_answer", "workspace_lookup", "live_web_research", "execution"}:
+        policy = "direct_answer"
+    return TurnToolExposure(
+        policy=policy,  # type: ignore[arg-type]
+        confidence=float(intent_plan.confidence or 0.55),
+        reason_codes=tuple(str(item) for item in intent_plan.reason_codes if str(item)),
+        preferred_first_tool=intent_plan.preferred_first_tool,
+        allowed_toolsets=tuple(str(item) for item in intent_plan.allowed_toolsets if str(item)),
+        hard_denied_toolsets=tuple(str(item) for item in intent_plan.denied_toolsets if str(item)),
+    )
+
+
+def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
+    if tool_name == "web_search":
+        return {"query": text}
+    if tool_name == "search_code":
+        return {"query": _workspace_search_query(text)}
+    return {}
 
 
 def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
@@ -495,6 +613,10 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     live_hits = _matched_markers(normalized, _LIVE_WEB_INTENT_MARKERS)
     fresh_external_hits = _matched_markers(normalized, _FRESH_EXTERNAL_INTENT_MARKERS)
     web_lookup_hits = _matched_markers(normalized, _WEB_LOOKUP_ACTION_MARKERS)
+    academic_lookup_hits = _academic_web_lookup_hits(normalized)
+    if academic_lookup_hits:
+        live_hits = tuple(dict.fromkeys((*live_hits, *academic_lookup_hits)))
+        web_lookup_hits = tuple(dict.fromkeys((*web_lookup_hits, *academic_lookup_hits)))
     if _contains_any(normalized, ("引用来源", "引用数据来源", "cite source", "cite sources")):
         symbol_hits = tuple(hit for hit in symbol_hits if hit not in {"引用", "reference"})
     execution_hits = _matched_markers(normalized, _EXECUTION_INTENT_MARKERS)
@@ -836,6 +958,7 @@ __all__ = [
     "_LIVE_WEB_TOOL_NOTE",
     "_WORKSPACE_TOOL_NOTE",
     "TurnToolExposure",
+    "build_tool_intent_plan",
     "_classify_turn_tool_exposure",
     "_classify_turn_tool_policy",
     "_live_web_research_should_start_with_search",

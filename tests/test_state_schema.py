@@ -65,6 +65,7 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["role_route_plan"] is None
     assert state["governance_records"] == []
     assert state["memory_curator_decision"] is None
+    assert state["tool_intent_plan"] is None
     assert state["tool_route_plan"] is None
     assert state["agent_delegation_plan"] is None
     assert state["agent_runs"] == []
@@ -122,6 +123,7 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["role_route_plan"] is None
     assert normalized["governance_records"] == []
     assert normalized["memory_curator_decision"] is None
+    assert normalized["tool_intent_plan"] is None
     assert normalized["tool_route_plan"] is None
     assert normalized["agent_delegation_plan"] is None
     assert normalized["agent_runs"] == []
@@ -164,6 +166,7 @@ def test_agent_state_domains_cover_existing_wire_fields():
     assert "branch_actions" in state_domain_fields("branch")
     assert "retrieved_memories" in state_domain_fields("memory")
     assert "tool_route_plan" in state_domain_fields("governance")
+    assert "tool_intent_plan" in state_domain_fields("governance")
     assert "governance_records" in state_domain_fields("governance")
     assert "governance_records" in state_domain_fields("observability")
     assert "llm_calls" in state_domain_fields("observability")
@@ -183,6 +186,7 @@ def test_governance_schema_guard_blocks_new_top_level_fields():
     assert set(GOVERNANCE_RECORD_MIRROR_KEYS.values()) == {
         "role_route_plan",
         "memory_curator_decision",
+        "tool_intent_plan",
         "tool_route_plan",
         "agent_delegation_plan",
         "agent_runs",
@@ -315,8 +319,14 @@ def test_unregistered_governance_record_does_not_create_top_level_mirror():
 def test_governance_descriptor_projection_and_metrics_prefer_records():
     state = {
         "tool_route_plan": {"enabled": True, "denied_tools": ["legacy"], "enforce": False},
+        "tool_intent_plan": {"policy": "workspace_lookup", "preferred_first_tool": "search_code"},
         "memory_curator_decision": {"promoted_memory_ids": ["legacy"], "conflicts": []},
         "governance_records": [
+            make_agent_state_record(
+                "tool_intent_plan",
+                {"policy": "live_web_research", "preferred_first_tool": "web_search"},
+                source="test",
+            ),
             make_agent_state_record(
                 "tool_route_plan",
                 {"enabled": True, "denied_tools": ["write_text_artifact"], "enforce": True},
@@ -334,7 +344,10 @@ def test_governance_descriptor_projection_and_metrics_prefer_records():
     metrics = governance_metrics_from_record_payloads(state)
 
     assert projection["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
+    assert projection["tool_intent_plan"]["policy"] == "live_web_research"
     assert projection["memory_curator_decision"]["promoted_memory_ids"] == ["mem-1", "mem-2"]
+    assert metrics["tool_intent_live_web_research"] == 1
+    assert metrics["tool_intent_first_tool"] == 1
     assert metrics["tool_router_denied"] == 1
     assert metrics["tool_router_enforced"] == 1
     assert metrics["memory_promotions"] == 2

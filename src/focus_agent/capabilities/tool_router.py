@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from pydantic import Field
 
@@ -23,6 +23,10 @@ class CapabilityDescriptor(StateModel):
     requires_approval: bool = False
     intent_policies: list[str] = Field(default_factory=list)
     intent_tags: list[str] = Field(default_factory=list)
+    usage_examples: list[str] = Field(default_factory=list)
+    negative_examples: list[str] = Field(default_factory=list)
+    max_calls_per_turn: int | None = None
+    output_summary_contract: str | None = None
     sensitive_args: list[str] = Field(default_factory=list)
     redaction_policy: str = "mask"
     provider_id: str | None = None
@@ -41,11 +45,26 @@ class ToolRoutePlan(StateModel):
     enforce: bool = True
     role: str = AgentRole.EXECUTOR.value
     tool_policy: str = "execution"
+    intent_source: str | None = None
     confidence: float | None = None
     reason_codes: list[str] = Field(default_factory=list)
+    preferred_first_tool: str | None = None
+    preferred_first_args: dict[str, Any] = Field(default_factory=dict)
     allowed_tools: list[str] = Field(default_factory=list)
     denied_tools: list[str] = Field(default_factory=list)
     decisions: list[ToolRouteDecision] = Field(default_factory=list)
+
+
+class ToolIntentPlan(StateModel):
+    normalized_text: str = ""
+    policy: str = "direct_answer"
+    confidence: float = 0.55
+    reason_codes: list[str] = Field(default_factory=list)
+    preferred_first_tool: str | None = None
+    preferred_first_args: dict[str, Any] = Field(default_factory=dict)
+    allowed_toolsets: list[str] = Field(default_factory=list)
+    denied_toolsets: list[str] = Field(default_factory=list)
+    source: str = "deterministic"
 
 
 class CapabilityPolicyEngine:
@@ -124,6 +143,10 @@ def capability_from_tool(*, name: str, description: str, runtime: ToolRuntimeMet
         requires_approval=runtime.requires_approval,
         intent_policies=list(runtime.intent_policies),
         intent_tags=list(runtime.intent_tags),
+        usage_examples=list(runtime.usage_examples),
+        negative_examples=list(runtime.negative_examples),
+        max_calls_per_turn=runtime.max_calls_per_turn,
+        output_summary_contract=runtime.output_summary_contract,
         sensitive_args=list(runtime.sensitive_args),
         redaction_policy=runtime.redaction_policy,
         provider_id=runtime.provider_id,
@@ -139,6 +162,9 @@ def build_tool_route_plan(
     exposed_tool_names: Iterable[str] | None = None,
     confidence: float | None = None,
     reason_codes: Iterable[str] | None = None,
+    intent_source: str | None = None,
+    preferred_first_tool: str | None = None,
+    preferred_first_args: Mapping[str, Any] | None = None,
     enforce: bool = True,
 ) -> ToolRoutePlan:
     normalized_role = normalize_agent_role(role)
@@ -178,8 +204,11 @@ def build_tool_route_plan(
         enforce=enforce,
         role=normalized_role.value,
         tool_policy=tool_policy,
+        intent_source=intent_source,
         confidence=confidence,
         reason_codes=[str(item) for item in reason_codes or () if str(item).strip()],
+        preferred_first_tool=preferred_first_tool,
+        preferred_first_args=dict(preferred_first_args or {}),
         allowed_tools=[item.name for item in decisions if item.allowed],
         denied_tools=[item.name for item in decisions if not item.allowed],
         decisions=decisions,
@@ -224,6 +253,7 @@ __all__ = [
     "CapabilityPolicyEngine",
     "CapabilityDescriptor",
     "ToolRouteDecision",
+    "ToolIntentPlan",
     "ToolRoutePlan",
     "build_capability_registry",
     "build_tool_route_plan",

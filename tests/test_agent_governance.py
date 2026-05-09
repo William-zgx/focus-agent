@@ -52,6 +52,17 @@ class _DecisionRepo:
                 "plan_meta": {
                     "governance_records": [
                         make_agent_state_record(
+                            "tool_intent_plan",
+                            {
+                                "policy": "live_web_research",
+                                "preferred_first_tool": "web_search",
+                                "source": "deterministic",
+                            },
+                            source="test",
+                            request_id="req-1",
+                            actor="agent_f",
+                        ),
+                        make_agent_state_record(
                             "tool_route_plan",
                             {
                                 "enabled": True,
@@ -84,6 +95,11 @@ class _DecisionRepo:
                         "allowed_tools": ["search_code"],
                         "denied_tools": ["legacy_tool"],
                         "decisions": [],
+                    },
+                    "tool_intent_plan": {
+                        "policy": "workspace_lookup",
+                        "preferred_first_tool": "search_code",
+                        "source": "legacy",
                     },
                     "memory_curator_decision": {
                         "enabled": True,
@@ -250,6 +266,58 @@ def test_tool_router_builds_capability_registry_and_denies_critic_writes():
     assert "search_code" in plan.allowed_tools
     assert "write_text_artifact" in plan.denied_tools
     assert "web_search" in plan.denied_tools
+
+
+def test_tool_router_respects_exposed_tool_names_for_turn_policy():
+    registry = ToolRegistry(tools=(search_code, read_file, web_search))
+
+    plan = build_tool_route_plan(
+        tool_registry=registry,
+        role="executor",
+        tool_policy="workspace_lookup",
+        available_tool_names=["search_code", "read_file", "web_search"],
+        exposed_tool_names=["search_code"],
+    )
+
+    read_file_decision = next(item for item in plan.decisions if item.name == "read_file")
+    web_search_decision = next(item for item in plan.decisions if item.name == "web_search")
+    assert plan.allowed_tools == ["search_code"]
+    assert read_file_decision.reason == "not_exposed_by_turn_policy"
+    assert web_search_decision.reason == "policy_not_allowed:workspace_lookup"
+
+
+def test_capability_registry_exposes_tool_quality_metadata():
+    @tool
+    def tuned_lookup(query: str) -> str:
+        """Lookup tuned data."""
+        return query
+
+    tuned_lookup.metadata = {
+        "toolset": "workspace",
+        "parallel_safe": True,
+        "cacheable": True,
+        "requires_network": False,
+        "sensitive_args": ("token",),
+        "provider_id": "local-fixture",
+        "usage_examples": ("Use for symbol lookup.",),
+        "negative_examples": ("Do not use for live web research.",),
+        "max_calls_per_turn": 1,
+        "output_summary_contract": "Return compact snippets.",
+        "intent_policies": ("workspace_lookup",),
+        "allowed_roles": ("executor",),
+    }
+
+    capability = build_capability_registry(ToolRegistry(tools=(tuned_lookup,)))[0]
+
+    assert capability.parallel_safe is True
+    assert capability.cacheable is True
+    assert capability.requires_network is False
+    assert capability.sensitive_args == ["token"]
+    assert capability.provider_id == "local-fixture"
+    assert capability.usage_examples == ["Use for symbol lookup."]
+    assert capability.negative_examples == ["Do not use for live web research."]
+    assert capability.max_calls_per_turn == 1
+    assert capability.output_summary_contract == "Return compact snippets."
 
 
 def test_tool_router_matches_graph_policy_filtering_for_core_policies():
@@ -458,6 +526,10 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
                     )
                 ],
                 "tool_route_plan": {"denied_tools": ["legacy_tool"], "enforce": False},
+                "tool_intent_plan": {
+                    "policy": "live_web_research",
+                    "preferred_first_tool": "web_search",
+                },
             }
         },
         {
@@ -475,6 +547,8 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
     assert _plan_meta_governance_payload(rows[0]["plan_meta"], "tool_route_plan")["denied_tools"] == ["record_tool"]
     assert metrics["tool_router_denied"] == 1
     assert metrics["tool_router_enforced"] == 1
+    assert metrics["tool_intent_live_web_research"] == 1
+    assert metrics["tool_intent_first_tool"] == 1
     assert metrics["memory_promotions"] == 1
     assert metrics["memory_conflicts"] == 1
 
@@ -621,6 +695,8 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     assert critic_verdicts.json()["items"][0]["verdict"] == "pass"
     assert critic_eval.json()["result"]["verdict"] == "pass"
     assert "focus_agent_tool_router_denied_count 1" in metrics.text
+    assert "focus_agent_tool_intent_live_web_research_count 1" in metrics.text
+    assert "focus_agent_tool_intent_first_tool_count 1" in metrics.text
     assert "focus_agent_memory_conflict_count 1" in metrics.text
     assert "focus_agent_delegation_run_count 1" in metrics.text
     assert "focus_agent_review_pending_count 1" in metrics.text

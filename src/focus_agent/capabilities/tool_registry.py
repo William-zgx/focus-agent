@@ -78,6 +78,7 @@ class ToolRuntimeMeta:
     timeout_seconds: float | None = None
     fallback_group: str | None = None
     fallback_handler: ToolFallbackHandler | None = None
+    max_calls_per_turn: int | None = None
     max_observation_chars: int | None = None
     validator: ToolArgValidator | None = None
     toolset: str | None = None
@@ -89,6 +90,9 @@ class ToolRuntimeMeta:
     requires_workspace_write: bool = False
     intent_policies: tuple[str, ...] = ()
     intent_tags: tuple[str, ...] = ()
+    usage_examples: tuple[str, ...] = ()
+    negative_examples: tuple[str, ...] = ()
+    output_summary_contract: str | None = None
     sensitive_args: tuple[str, ...] = ()
     redaction_policy: str = "mask"
     provider_id: str | None = None
@@ -132,6 +136,11 @@ class ToolRuntimeMeta:
                 if normalized.get("max_observation_chars") is not None
                 else None
             ),
+            max_calls_per_turn=(
+                int(normalized["max_calls_per_turn"])
+                if normalized.get("max_calls_per_turn") is not None
+                else None
+            ),
             validator=normalized.get("validator"),
             toolset=(str(normalized["toolset"]) if normalized.get("toolset") else None),
             risk_level=str(normalized.get("risk_level") or "low"),
@@ -155,6 +164,21 @@ class ToolRuntimeMeta:
                 str(tag)
                 for tag in (normalized.get("intent_tags") or ())
                 if str(tag)
+            ),
+            usage_examples=tuple(
+                str(example)
+                for example in (normalized.get("usage_examples") or ())
+                if str(example)
+            ),
+            negative_examples=tuple(
+                str(example)
+                for example in (normalized.get("negative_examples") or ())
+                if str(example)
+            ),
+            output_summary_contract=(
+                str(normalized["output_summary_contract"])
+                if normalized.get("output_summary_contract")
+                else None
             ),
             sensitive_args=tuple(
                 str(arg)

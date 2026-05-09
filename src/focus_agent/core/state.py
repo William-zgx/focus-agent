@@ -126,6 +126,7 @@ class AgentState(TypedDict, total=False):
 
     # Written by Tool Router before model invocation. When enforcement is enabled
     # it also controls the tools bound to the model for this turn.
+    tool_intent_plan: dict[str, Any] | None
     tool_route_plan: dict[str, Any] | None
 
     # Written by Delegation Runtime when multi-agent role runs are planned or
@@ -199,6 +200,7 @@ AgentStateKey: TypeAlias = Literal[
     "role_route_plan",
     "governance_records",
     "memory_curator_decision",
+    "tool_intent_plan",
     "tool_route_plan",
     "agent_delegation_plan",
     "agent_runs",
@@ -233,6 +235,7 @@ AgentStateRecordName: TypeAlias = Literal[
     "role_route_plan",
     "memory_curator_decision",
     "tool_route_plan",
+    "tool_intent_plan",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -294,6 +297,11 @@ GOVERNANCE_METRIC_KEYS: tuple[str, ...] = (
     "agent_failures",
     "context_artifact_refs",
     "context_over_budget",
+    "tool_intent_direct_answer",
+    "tool_intent_workspace_lookup",
+    "tool_intent_live_web_research",
+    "tool_intent_execution",
+    "tool_intent_first_tool",
     "agent_task_ledger_tasks",
     "delegated_artifacts",
     "critic_gate_rejected",
@@ -315,6 +323,20 @@ def _tool_route_metrics(payload: Any) -> Mapping[str, int]:
     return {
         "tool_router_denied": len(payload.get("denied_tools") or []),
         "tool_router_enforced": 1 if payload.get("enforce") else 0,
+    }
+
+
+def _tool_intent_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    policy = str(payload.get("policy") or "").strip()
+    preferred_first_tool = str(payload.get("preferred_first_tool") or "").strip()
+    return {
+        "tool_intent_direct_answer": 1 if policy == "direct_answer" else 0,
+        "tool_intent_workspace_lookup": 1 if policy == "workspace_lookup" else 0,
+        "tool_intent_live_web_research": 1 if policy == "live_web_research" else 0,
+        "tool_intent_execution": 1 if policy == "execution" else 0,
+        "tool_intent_first_tool": 1 if preferred_first_tool else 0,
     }
 
 
@@ -391,6 +413,11 @@ GOVERNANCE_RECORD_DESCRIPTORS: tuple[GovernanceRecordDescriptor, ...] = (
         "memory_curator_decision",
         mirror_key="memory_curator_decision",
         metric_extractor=_memory_curator_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "tool_intent_plan",
+        mirror_key="tool_intent_plan",
+        metric_extractor=_tool_intent_metrics,
     ),
     GovernanceRecordDescriptor(
         "tool_route_plan",
@@ -501,6 +528,7 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "role_route_plan",
     "governance_records",
     "memory_curator_decision",
+    "tool_intent_plan",
     "tool_route_plan",
     "agent_delegation_plan",
     "agent_runs",
@@ -572,6 +600,7 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "role_route_plan",
     "governance_records",
     "memory_curator_decision",
+    "tool_intent_plan",
     "tool_route_plan",
     "agent_delegation_plan",
     "agent_runs",
@@ -600,6 +629,7 @@ GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST: frozenset[AgentStateKey] = frozenset(
         "role_route_plan",
         "governance_records",
         "memory_curator_decision",
+        "tool_intent_plan",
         "tool_route_plan",
         "agent_delegation_plan",
         "agent_runs",
@@ -627,6 +657,7 @@ OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "role_route_plan",
     "governance_records",
     "memory_curator_decision",
+    "tool_intent_plan",
     "tool_route_plan",
     "agent_delegation_plan",
     "agent_runs",
@@ -692,6 +723,7 @@ def initial_agent_state() -> AgentState:
         "role_route_plan": None,
         "governance_records": [],
         "memory_curator_decision": None,
+        "tool_intent_plan": None,
         "tool_route_plan": None,
         "agent_delegation_plan": None,
         "agent_runs": [],

@@ -16,12 +16,20 @@ _BOOL_METADATA_FIELDS = frozenset(
     }
 )
 _TUPLE_METADATA_FIELDS = frozenset(
-    {"allowed_roles", "intent_policies", "intent_tags", "sensitive_args"}
+    {
+        "allowed_roles",
+        "intent_policies",
+        "intent_tags",
+        "negative_examples",
+        "sensitive_args",
+        "usage_examples",
+    }
 )
 _STRING_METADATA_FIELDS = frozenset(
     {
         "cache_scope",
         "fallback_group",
+        "output_summary_contract",
         "toolset",
         "risk_level",
         "side_effect_kind",
@@ -29,7 +37,7 @@ _STRING_METADATA_FIELDS = frozenset(
         "redaction_policy",
     }
 )
-_INT_METADATA_FIELDS = frozenset({"max_observation_chars"})
+_INT_METADATA_FIELDS = frozenset({"max_calls_per_turn", "max_observation_chars"})
 _FLOAT_METADATA_FIELDS = frozenset({"timeout_seconds"})
 
 
@@ -242,7 +250,7 @@ def normalize_tool_metadata(
         **_normalize_metadata(metadata),
         **_normalize_metadata(overlay),
     }
-    if provider_id:
+    if provider_id and (provider_id != "builtin" or not merged.get("provider_id")):
         merged["provider_id"] = provider_id
     if merged.get("side_effect_kind") == "workspace_write":
         merged.setdefault("requires_workspace_write", True)
@@ -280,16 +288,17 @@ class ToolManifest:
         overlay: Mapping[str, Any] | None = None,
     ) -> "ToolManifest":
         name = str(getattr(tool_obj, "name", "")).strip()
+        metadata = normalize_tool_metadata(
+            name=name,
+            metadata=getattr(tool_obj, "metadata", None),
+            overlay=overlay,
+            provider_id=provider_id,
+        )
         return cls(
             name=name,
             tool=tool_obj,
-            provider_id=provider_id,
-            metadata=normalize_tool_metadata(
-                name=name,
-                metadata=getattr(tool_obj, "metadata", None),
-                overlay=overlay,
-                provider_id=provider_id,
-            ),
+            provider_id=str(metadata.get("provider_id") or provider_id),
+            metadata=metadata,
         )
 
     def with_overlay(self, overlay: Mapping[str, Any] | None) -> "ToolManifest":

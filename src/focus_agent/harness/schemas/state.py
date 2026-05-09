@@ -73,6 +73,7 @@ class GovernanceStateSlice(HarnessSchemaModel):
     role_route_plan: dict[str, Any] | None = None
     governance_records: list[dict[str, Any]] = Field(default_factory=list)
     memory_curator_decision: dict[str, Any] | None = None
+    tool_intent_plan: dict[str, Any] | None = None
     tool_route_plan: dict[str, Any] | None = None
     agent_delegation_plan: dict[str, Any] | None = None
     agent_runs: list[dict[str, Any]] = Field(default_factory=list)
@@ -100,6 +101,7 @@ class ObservabilityStateSlice(HarnessSchemaModel):
     role_route_plan: dict[str, Any] | None = None
     governance_records: list[dict[str, Any]] = Field(default_factory=list)
     memory_curator_decision: dict[str, Any] | None = None
+    tool_intent_plan: dict[str, Any] | None = None
     tool_route_plan: dict[str, Any] | None = None
     agent_delegation_plan: dict[str, Any] | None = None
     agent_runs: list[dict[str, Any]] = Field(default_factory=list)
