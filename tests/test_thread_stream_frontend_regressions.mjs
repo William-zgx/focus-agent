@@ -236,6 +236,40 @@ function loadTrajectoryUtilityFunctions() {
   return context.module.exports;
 }
 
+function loadMarkdownParagraphFunction() {
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-markdown-blocks.tsx"),
+    "utf8",
+  );
+  const snippet = extractFunction(sourceText, "paragraphNode");
+  const transpiled = ts.transpileModule(snippet, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.React,
+    },
+  }).outputText;
+  const context = {
+    exports: {},
+    module: { exports: {} },
+    React: {
+      createElement(type, props, ...children) {
+        return {
+          type,
+          key: props?.key ?? null,
+          props: { ...(props ?? {}), children },
+        };
+      },
+    },
+    Fragment: Symbol.for("react.fragment"),
+    inlineNodes(line, key) {
+      return [{ line, key }];
+    },
+  };
+  vm.runInNewContext(`${transpiled}\nmodule.exports = { paragraphNode };`, context);
+  return context.module.exports.paragraphNode;
+}
+
 test("request cleanup clears the optimistic user message after failed sends", () => {
 	const {
 		createThreadStreamEntry,
@@ -1120,12 +1154,15 @@ test("context meter formats current context usage separately from token spend", 
   assert.equal(contextUsageTone({ ...usage, used_ratio: 0.93, status: "over" }), "is-over");
 });
 
-test("markdown paragraph line keys are index-based for repeated tool markup lines", () => {
-  const source = readFileSync(
-    path.join(repoRoot, "apps/web/src/entities/messages/message-markdown-blocks.tsx"),
-    "utf8",
-  );
+test("markdown paragraph line keys avoid array index fallback for repeated tool markup lines", () => {
+  const paragraphNode = loadMarkdownParagraphFunction();
+  const paragraph = paragraphNode("same\nsame", "p-0");
+  const fragments = paragraph.props.children[0];
 
-  assert.equal(source.includes("key={`${key}-line-${line}`}"), false);
-  assert.equal(source.includes("key={`${key}-line-${index}`}"), true);
+  assert.equal(fragments.length, 2);
+  assert.equal(fragments[0].key, "p-0-line-same-0");
+  assert.equal(fragments[1].key, "p-0-line-same-1");
+  assert.notEqual(fragments[0].key, fragments[1].key);
+  assert.equal(fragments[0].props.children[0][0].key, "p-0-line-same-0-inline");
+  assert.equal(fragments[1].props.children[0][0].key, "p-0-line-same-1-inline");
 });

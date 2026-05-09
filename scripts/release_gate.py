@@ -16,12 +16,15 @@ from typing import Any, Callable, Mapping, Sequence
 TAIL_LINE_LIMIT = 80
 TAIL_CHAR_LIMIT = 12_000
 DEFAULT_REPORT_JSON = Path("reports/release-gate/latest.json")
+DEFAULT_COMMAND_TIMEOUT_S = 30 * 60
+COMMAND_TIMEOUT_ENV = "FOCUS_AGENT_RELEASE_GATE_COMMAND_TIMEOUT_S"
 
 
 @dataclass(frozen=True)
 class GateCommand:
     label: str
     command: tuple[str, ...]
+    timeout_s: float | None = DEFAULT_COMMAND_TIMEOUT_S
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,8 @@ class CommandOutcome:
     exit_code: int
     stdout: str = ""
     stderr: str = ""
+    timed_out: bool = False
+    timeout_s: float | None = None
 
 
 Runner = Callable[[GateCommand, Path], CommandOutcome]
@@ -495,6 +500,8 @@ def _empty_record(command: GateCommand, *, status: str, skip_reason: str | None)
         "stderr_tail": "",
         "stdout_summary": _stream_summary(""),
         "stderr_summary": _stream_summary(""),
+        "timed_out": False,
+        "timeout_s": command.timeout_s,
     }
 
 
@@ -510,21 +517,64 @@ def _result_record(command: GateCommand, outcome: CommandOutcome, duration_secon
         "stderr_tail": _tail_output(outcome.stderr),
         "stdout_summary": _stream_summary(outcome.stdout),
         "stderr_summary": _stream_summary(outcome.stderr),
+        "timed_out": outcome.timed_out,
+        "timeout_s": outcome.timeout_s if outcome.timeout_s is not None else command.timeout_s,
     }
 
 
+def _subprocess_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def _effective_command_timeout_s(command: GateCommand) -> float | None:
+    override = os.environ.get(COMMAND_TIMEOUT_ENV)
+    if override is None or override.strip() == "":
+        if command.timeout_s is not None and command.timeout_s <= 0:
+            return None
+        return command.timeout_s
+    try:
+        timeout_s = float(override)
+    except ValueError:
+        return command.timeout_s
+    if timeout_s <= 0:
+        return None
+    return timeout_s
+
+
 def _subprocess_runner(command: GateCommand, root: Path) -> CommandOutcome:
-    completed = subprocess.run(
-        command.command,
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    timeout_s = _effective_command_timeout_s(command)
+    try:
+        completed = subprocess.run(
+            command.command,
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stderr = _subprocess_text(exc.stderr)
+        timeout_note = f"Command timed out after {timeout_s:g}s."
+        if stderr:
+            stderr = f"{stderr.rstrip()}\n{timeout_note}"
+        else:
+            stderr = timeout_note
+        return CommandOutcome(
+            exit_code=124,
+            stdout=_subprocess_text(exc.stdout),
+            stderr=stderr,
+            timed_out=True,
+            timeout_s=timeout_s,
+        )
     return CommandOutcome(
         exit_code=int(completed.returncode),
         stdout=completed.stdout,
         stderr=completed.stderr,
+        timeout_s=timeout_s,
     )
 
 

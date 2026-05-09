@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 from scripts import release_gate
 
@@ -174,6 +175,24 @@ def test_release_gate_keep_going_runs_after_failure(tmp_path: Path) -> None:
     assert calls == ["lint", "ci-test", "sdk-check"]
     assert commands["ci-test"]["status"] == "failed"
     assert commands["sdk-check"]["status"] == "passed"
+
+
+def test_release_gate_subprocess_timeout_records_failure(tmp_path: Path) -> None:
+    command = release_gate.GateCommand(
+        "sleep",
+        (sys.executable, "-c", "import time; time.sleep(5)"),
+        timeout_s=0.01,
+    )
+
+    outcome = release_gate._subprocess_runner(command, tmp_path)
+    record = release_gate._result_record(command, outcome, duration_seconds=0.02)
+
+    assert outcome.exit_code == 124
+    assert outcome.timed_out is True
+    assert "timed out" in outcome.stderr
+    assert record["status"] == "failed"
+    assert record["timed_out"] is True
+    assert record["timeout_s"] == 0.01
 
 
 def test_release_gate_main_dry_run_uses_cli_options(tmp_path: Path) -> None:

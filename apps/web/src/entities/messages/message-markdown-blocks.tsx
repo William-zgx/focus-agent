@@ -12,14 +12,20 @@ import {
 
 function paragraphNode(text: string, key: string) {
 	const lines = text.split("\n");
+	const occurrences = new Map<string, number>();
 	return (
 		<p key={key}>
-			{lines.map((line, index) => (
-				<Fragment key={`${key}-line-${index}`}>
-					{inlineNodes(line, `${key}-inline-${index}`)}
-					{index < lines.length - 1 ? <br /> : null}
-				</Fragment>
-			))}
+			{lines.map((line, index) => {
+				const occurrence = occurrences.get(line) ?? 0;
+				occurrences.set(line, occurrence + 1);
+				const lineKey = `${key}-line-${line}-${occurrence}`;
+				return (
+					<Fragment key={lineKey}>
+						{inlineNodes(line, `${lineKey}-inline`)}
+						{index < lines.length - 1 ? <br /> : null}
+					</Fragment>
+				);
+			})}
 		</p>
 	);
 }
