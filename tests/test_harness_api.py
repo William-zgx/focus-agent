@@ -248,6 +248,106 @@ def test_create_harness_run_uses_harness_invoke_adapter(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_create_harness_run_branch_action_records_turn_trajectory(monkeypatch):
+    class _Selection:
+        stripped_message = "直接切过去"
+        skill_ids = ()
+        prompt_mode = None
+
+    class _Chat:
+        def __init__(self):
+            self.selection_kwargs = None
+            self.preflight_kwargs = None
+
+        def _select_skills_for_message(self, **kwargs):
+            self.selection_kwargs = kwargs
+            return _Selection()
+
+        def _preflight_thread_access(self, **kwargs):
+            self.preflight_kwargs = kwargs
+            return SimpleNamespace(root_thread_id="root-1"), {"branch": "main"}, {"messages": []}
+
+        def _effective_thinking_mode(self, **kwargs):
+            del kwargs
+            return "auto"
+
+        def _branch_action_intent(self, **kwargs):
+            del kwargs
+            return "execute"
+
+        def _handle_branch_action_turn(self, **kwargs):
+            return {
+                "kind": "executed",
+                "message": "已切换到新分支。",
+                "thread_state": {"thread_id": "thread-1", "branch_actions": []},
+                "branch_action": {"action_id": "action-1", "status": "executed"},
+                "branch_record": {"branch_id": "branch-2"},
+                "navigation": {"root_thread_id": "root-1", "thread_id": "thread-2"},
+            }
+
+        def _context_for_thread(self, **kwargs):
+            del kwargs
+            return SimpleNamespace(root_thread_id="root-1"), {"branch": "main"}, {"messages": []}
+
+    class _RunManager:
+        def __init__(self):
+            self.record = SimpleNamespace(
+                run_id="run-1",
+                to_dict=lambda: {"run_id": "run-1", "thread_id": "thread-1", "status": "success"},
+            )
+            self.statuses = []
+
+        async def create_or_reject(self, *args, **kwargs):
+            return self.record
+
+        async def set_status(self, run_id, status, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+        def get(self, run_id):
+            return self.record
+
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.invocations = []
+
+        def invoke(self, *args, **kwargs):  # pragma: no cover
+            self.invocations.append((args, kwargs))
+            return {"messages": []}
+
+    async def scenario():
+        recorded = []
+
+        def _capture_record_harness_turn_and_schedule(**kwargs):
+            recorded.append(kwargs)
+
+        monkeypatch.setattr(harness_runs, "_record_harness_turn_and_schedule", _capture_record_harness_turn_and_schedule)
+
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(model="model-1"),
+            harness=_Harness(),
+            graph=object(),
+            run_manager=_RunManager(),
+        )
+
+        response = await harness_runs.create_harness_run(
+            thread_id="thread-1",
+            payload=harness_runs.HarnessRunRequest(message="hello"),
+            request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
+            runtime=runtime,
+            chat=_Chat(),
+            principal=SimpleNamespace(user_id="user-1"),
+        )
+
+        assert response.thread_state["thread_id"] == "thread-1"
+        assert recorded
+        assert recorded[0]["status"] == "succeeded"
+        assert recorded[0]["kind"] == "chat.turn"
+
+    asyncio.run(scenario())
+
+
 def test_authorize_run_access_rejects_mismatched_user():
     class _Chat:
         def _preflight_thread_access(self, **kwargs):
@@ -688,6 +788,9 @@ def test_produce_branch_action_run_stream_emits_canonical_completion():
             user_id="user-1",
             message="直接切过去",
             request_id="request-1",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
         )
 
         event_names = [event for event, _data in bridge.events]
@@ -717,6 +820,61 @@ def test_produce_branch_action_run_stream_emits_canonical_completion():
     asyncio.run(scenario())
 
 
+def test_produce_branch_action_run_stream_records_turn_trajectory(monkeypatch):
+    class _Chat:
+        def _handle_branch_action_turn(self, **kwargs):
+            del kwargs
+            return {
+                "kind": "executed",
+                "message": "已切换到新分支。",
+                "thread_state": {"thread_id": "thread-1", "branch_actions": []},
+                "branch_action": {"action_id": "action-1", "status": "executed"},
+                "branch_record": {"branch_id": "branch-2"},
+                "navigation": {"root_thread_id": "root-1", "thread_id": "thread-2"},
+            }
+
+        def _context_for_thread(self, **kwargs):
+            del kwargs
+            return (
+                SimpleNamespace(root_thread_id="root-1"),
+                {"branch": "main"},
+                {"messages": []},
+            )
+
+    async def scenario():
+        recorded = []
+
+        def _capture_record_harness_turn_and_schedule(**kwargs):
+            recorded.append(kwargs)
+
+        monkeypatch.setattr(harness_runs, "_record_harness_turn_and_schedule", _capture_record_harness_turn_and_schedule)
+
+        bridge = _CollectingBridge()
+        manager = _CollectingRunManager()
+        runtime = SimpleNamespace(run_manager=manager, stream_bridge=bridge)
+
+        await harness_runs._produce_branch_action_run_stream(
+            runtime=runtime,
+            chat=_Chat(),
+            run_id="run-1",
+            thread_id="thread-1",
+            user_id="user-1",
+            message="直接切过去",
+            request_id="request-1",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
+            kind="chat.turn",
+        )
+
+        assert recorded
+        assert recorded[0]["status"] == "succeeded"
+        assert recorded[0]["kind"] == "chat.turn"
+        assert recorded[0]["branch_meta"] == {"branch": "main"}
+
+    asyncio.run(scenario())
+
+
 def test_produce_branch_action_run_stream_drops_tool_protocol_message():
     class _Chat:
         def _handle_branch_action_turn(self, **kwargs):
@@ -740,6 +898,9 @@ def test_produce_branch_action_run_stream_drops_tool_protocol_message():
             user_id="user-1",
             message="直接切过去",
             request_id="request-1",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
         )
 
         event_names = [event for event, _data in bridge.events]

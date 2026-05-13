@@ -200,7 +200,7 @@ function loadMessageTranscriptFunctions() {
     exports: {},
     module: { exports: {} },
   };
-  vm.runInNewContext(`${transpiled}\nmodule.exports = { buildTranscriptItems };`, context);
+  vm.runInNewContext(`${transpiled}\nmodule.exports = { buildTranscriptItems, totalTokensFromUsageMetadata };`, context);
   return context.module.exports;
 }
 
@@ -1388,6 +1388,27 @@ test("message transcript fallback remains available before assistant persistence
   const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
 	assert.equal(assistantItems.length, 1);
 	assert.equal(assistantItems[0].content, "Streaming answer.");
+});
+
+test("message transcript reads OpenAI token usage aliases", () => {
+	const { buildTranscriptItems, totalTokensFromUsageMetadata } = loadMessageTranscriptFunctions();
+
+	assert.equal(
+		totalTokensFromUsageMetadata({ prompt_tokens: 12, completion_tokens: 8 }),
+		20,
+	);
+
+	const items = buildTranscriptItems([
+		{ id: "user-1", type: "human", content: "Analyze this." },
+		{
+			id: "assistant-1",
+			type: "ai",
+			content: "Done.",
+			usage_metadata: { prompt_tokens: 12, completion_tokens: 8 },
+		},
+	]);
+	const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
+	assert.equal(assistantItems[0].totalTokens, 20);
 });
 
 test("message transcript hides degraded tool protocol content from state and fallback", () => {

@@ -166,6 +166,22 @@ class BranchNamingPolicyMixin:
         return str(content).strip()
 
     @staticmethod
+    def _thread_values_after_branch_fork(thread_values: dict) -> dict:
+        branch_meta = thread_values.get("branch_meta")
+        if not isinstance(branch_meta, dict):
+            return thread_values
+        try:
+            fork_message_count = int(branch_meta.get("branch_fork_message_count"))
+        except (TypeError, ValueError):
+            return thread_values
+        messages = list(thread_values.get("messages") or [])
+        if fork_message_count <= 0:
+            return thread_values
+        values = dict(thread_values)
+        values["messages"] = messages[min(fork_message_count, len(messages)) :]
+        return values
+
+    @staticmethod
     def _detect_naming_language(raw_text: str) -> str:
         text = str(raw_text or "").strip()
         if not text:
@@ -216,6 +232,7 @@ class BranchNamingPolicyMixin:
         return cls._fallback_role_name(branch_role=branch_role, language=language)
 
     def _collect_branch_name_seed(self, *, thread_values: dict, name_source: str | None = None) -> str:
+        thread_values = self._thread_values_after_branch_fork(thread_values)
         parts: list[str] = []
         if name_source and name_source.strip():
             parts.append(name_source.strip())
@@ -238,6 +255,7 @@ class BranchNamingPolicyMixin:
         name_source: str | None = None,
         language: str = "en",
     ) -> str:
+        thread_values = self._thread_values_after_branch_fork(thread_values)
         sections: list[str] = []
         if name_source and name_source.strip():
             heading = "命名线索" if language == "zh" else "Draft focus"
@@ -312,6 +330,7 @@ class BranchNamingPolicyMixin:
         return "\n\n".join(section for section in sections if section.strip())
 
     def _fallback_branch_role(self, *, thread_values: dict, current_role: BranchRole) -> BranchRole:
+        thread_values = self._thread_values_after_branch_fork(thread_values)
         prompt_mode = getattr(thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode"))
         normalized_prompt_mode = str(prompt_mode or "").strip().lower()
         if normalized_prompt_mode == "execute":
@@ -374,10 +393,22 @@ class BranchNamingPolicyMixin:
                 logger.warning("failed to classify branch role with helper model", exc_info=True)
         return self._fallback_branch_role(thread_values=thread_values, current_role=current_role)
 
-    def _generate_branch_name(self, *, thread_values: dict, branch_role: BranchRole) -> str:
-        seed_text = self._collect_branch_name_seed(thread_values=thread_values)
-        language = self._detect_naming_language(seed_text)
-        context = self._collect_branch_name_context(thread_values=thread_values, language=language)
+    def _generate_branch_name(
+        self,
+        *,
+        thread_values: dict,
+        branch_role: BranchRole,
+        name_source: str | None = None,
+        language: str | None = None,
+    ) -> str:
+        seed_text = self._collect_branch_name_seed(thread_values=thread_values, name_source=name_source)
+        language_code = str(language or "").strip().lower()
+        language = language_code if language_code in {"en", "zh"} else self._detect_naming_language(seed_text)
+        context = self._collect_branch_name_context(
+            thread_values=thread_values,
+            name_source=name_source,
+            language=language,
+        )
         model = getattr(self, "proposal_model", None)
         if model and context:
             try:
@@ -431,10 +462,26 @@ class BranchNamingPolicyMixin:
     ) -> str:
         if preferred_name and preferred_name.strip():
             return self._sanitize_branch_name(preferred_name, branch_role=branch_role)
-        del parent_values, name_source
-        if str(language or "").strip().lower() == "zh":
-            return self._DEFAULT_PENDING_BRANCH_NAME_ZH
-        return self._DEFAULT_PENDING_BRANCH_NAME
+        if name_source and name_source.strip():
+            return self._sanitize_branch_name(name_source, branch_role=branch_role)
+        thread_values = self._thread_values_after_branch_fork(parent_values)
+        generated_name = self._generate_branch_name(
+            thread_values=thread_values,
+            branch_role=branch_role,
+            name_source=name_source,
+            language=language,
+        )
+        if not generated_name:
+            if language is None:
+                language = self._detect_naming_language(
+                    self._collect_branch_name_seed(
+                        thread_values=thread_values,
+                        name_source=name_source,
+                    )
+                )
+            seed = self._collect_branch_name_seed(thread_values=thread_values, name_source=name_source)
+            return self._fallback_branch_name(seed, branch_role, language=str(language or "en").strip() or "en")
+        return self._sanitize_branch_name(generated_name, branch_role=branch_role)
 
     def _generate_conversation_name(self, *, thread_values: dict) -> str:
         return self._generate_branch_name(thread_values=thread_values, branch_role=BranchRole.MAIN)

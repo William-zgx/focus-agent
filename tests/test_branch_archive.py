@@ -50,7 +50,9 @@ class FakeRepo:
     def __init__(self, records: list[BranchRecord]):
         self.records = {record.branch_id: record for record in records}
         self.by_thread_id = {record.child_thread_id: record.branch_id for record in records}
-        self.thread_owners = {"root-1": "user-1"} | {record.child_thread_id: record.owner_user_id for record in records}
+        self.thread_owners = {"root-1": "user-1"} | {
+            record.child_thread_id: record.owner_user_id for record in records
+        }
 
     def assert_thread_owner(self, *, thread_id: str, owner_user_id: str) -> None:
         if self.thread_owners.get(thread_id) != owner_user_id:
@@ -60,7 +62,9 @@ class FakeRepo:
         return self.thread_owners.get(thread_id)
 
     def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:
-        return [record for record in self.records.values() if record.root_thread_id == root_thread_id]
+        return [
+            record for record in self.records.values() if record.root_thread_id == root_thread_id
+        ]
 
     def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
         return deepcopy(self.records[self.by_thread_id[child_thread_id]])
@@ -68,7 +72,9 @@ class FakeRepo:
     def get(self, branch_id: str) -> BranchRecord:
         return deepcopy(self.records[branch_id])
 
-    def ensure_thread_owner(self, *, thread_id: str, root_thread_id: str, owner_user_id: str) -> None:
+    def ensure_thread_owner(
+        self, *, thread_id: str, root_thread_id: str, owner_user_id: str
+    ) -> None:
         del root_thread_id
         self.thread_owners[thread_id] = owner_user_id
 
@@ -289,7 +295,12 @@ def test_fork_branch_recovers_root_and_depth_from_repo_when_parent_meta_is_incom
     )
     service = object.__new__(BranchService)
     service.repo = FakeRepo([parent])
-    service.graph = FakeGraph({"branch_meta": {"is_archived": False}})
+    service.graph = FakeGraph(
+        {
+            "branch_meta": {"is_archived": False},
+            "messages": [HumanMessage(content="first"), AIMessage(content="reply")],
+        }
+    )
     service.thread_client = None
     service.proposal_model = None
 
@@ -302,6 +313,7 @@ def test_fork_branch_recovers_root_and_depth_from_repo_when_parent_meta_is_incom
 
     assert record.root_thread_id == "root-1"
     assert record.branch_depth == 3
+    assert service.graph.last_update["branch_meta"]["branch_fork_message_count"] == 2
 
 
 def test_fork_branch_rejects_when_max_depth_would_be_exceeded():
@@ -364,7 +376,7 @@ def test_refresh_branch_name_after_first_turn_updates_repo_and_clears_pending_fl
                 "is_archived": False,
                 "archived_at": None,
                 "branch_name_pending_ai": True,
-            }
+            },
         }
     )
 
@@ -384,6 +396,50 @@ def test_refresh_branch_name_after_first_turn_updates_repo_and_clears_pending_fl
     assert service.repo.get("b-child-rename").branch_name == "Retry Loop Hotfix"
     assert service.graph.last_update["branch_meta"]["branch_name"] == "Retry Loop Hotfix"
     assert service.graph.last_update["branch_meta"]["branch_name_pending_ai"] is False
+
+
+def test_refresh_branch_name_prefers_explicit_name_source():
+    child = _record(
+        branch_id="b-child-explicit",
+        parent_thread_id="root-1",
+        child_thread_id="child-explicit",
+        branch_name="Explicit Source Branch",
+        branch_depth=1,
+    )
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo([child])
+    service.graph = FakeGraph(
+        {
+            "messages": [],
+            "branch_meta": {
+                "branch_id": "b-child-explicit",
+                "root_thread_id": "root-1",
+                "parent_thread_id": "root-1",
+                "return_thread_id": "root-1",
+                "branch_name": "Explicit Source Branch",
+                "branch_role": "deep_dive",
+                "branch_depth": 1,
+                "branch_status": "active",
+                "branch_name_source": "历史消息里有更准确的目标",
+                "is_archived": False,
+                "archived_at": None,
+            },
+        }
+    )
+
+    service.proposal_model = None
+
+    updated = service.refresh_branch_name(
+        child_thread_id="child-explicit",
+        user_id="user-1",
+        name_source="外部传入的关键提示词",
+        force=True,
+    )
+
+    assert updated is not None
+    assert updated.branch_name == "外部传入的关键提示词"
+    assert service.repo.get("b-child-explicit").branch_name == "外部传入的关键提示词"
+    assert service.graph.last_update["branch_meta"]["branch_name"] == "外部传入的关键提示词"
 
 
 def test_refresh_branch_metadata_preserves_access_errors():

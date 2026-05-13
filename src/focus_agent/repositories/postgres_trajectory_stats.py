@@ -5,20 +5,68 @@ from typing import Any
 
 
 class PostgresTrajectoryStatsMixin:
+    _TOKEN_USAGE_INT_RE = r"^[0-9]+([.]0+)?$"
+
     _TOKEN_USAGE_SELECT_SQL = """
-        COALESCE(SUM(COALESCE(NULLIF(t.metrics ->> 'input_tokens', '')::BIGINT, 0)), 0)::BIGINT AS input_tokens,
-        COALESCE(SUM(COALESCE(NULLIF(t.metrics ->> 'output_tokens', '')::BIGINT, 0)), 0)::BIGINT AS output_tokens,
         COALESCE(
             SUM(
                 COALESCE(
-                    NULLIF(t.metrics ->> 'total_tokens', '')::BIGINT,
-                    COALESCE(NULLIF(t.metrics ->> 'input_tokens', '')::BIGINT, 0)
-                    + COALESCE(NULLIF(t.metrics ->> 'output_tokens', '')::BIGINT, 0)
+                    CASE
+                        WHEN t.metrics ->> 'input_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'input_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'prompt_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'prompt_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_token_count')::NUMERIC::BIGINT
+                        ELSE 0
+                    END,
+                    0
+                )
+            ),
+            0
+        )::BIGINT AS input_tokens,
+        COALESCE(
+            SUM(
+                COALESCE(
+                    CASE
+                        WHEN t.metrics ->> 'output_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'output_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'completion_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'completion_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_token_count')::NUMERIC::BIGINT
+                        ELSE 0
+                    END,
+                    0
+                )
+            ),
+            0
+        )::BIGINT AS output_tokens,
+        COALESCE(
+            SUM(
+                COALESCE(
+                    CASE
+                        WHEN t.metrics ->> 'total_tokens' ~ '{_token_usage_int_re}' THEN NULLIF((t.metrics ->> 'total_tokens')::NUMERIC::BIGINT, 0)
+                        WHEN t.metrics ->> 'total_token_count' ~ '{_token_usage_int_re}' THEN NULLIF((t.metrics ->> 'total_token_count')::NUMERIC::BIGINT, 0)
+                        ELSE NULL
+                    END,
+                    COALESCE(
+                        CASE
+                            WHEN t.metrics ->> 'input_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'input_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'prompt_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'prompt_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_token_count')::NUMERIC::BIGINT
+                            ELSE 0
+                        END,
+                        0
+                    )
+                    + COALESCE(
+                        CASE
+                            WHEN t.metrics ->> 'output_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'output_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'completion_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'completion_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_token_count')::NUMERIC::BIGINT
+                            ELSE 0
+                        END,
+                        0
+                    )
                 )
             ),
             0
         )::BIGINT AS total_tokens
-    """
+    """.format(_token_usage_int_re=_TOKEN_USAGE_INT_RE)
 
     def get_turn_stats(
         self,
@@ -185,9 +233,9 @@ class PostgresTrajectoryStatsMixin:
 
     @staticmethod
     def _row_to_token_usage(row: dict[str, Any]) -> dict[str, int]:
-        input_tokens = int(row.get("input_tokens") or 0)
-        output_tokens = int(row.get("output_tokens") or 0)
-        total_tokens = int(row.get("total_tokens") or (input_tokens + output_tokens))
+        input_tokens = max(int(row.get("input_tokens") or 0), 0)
+        output_tokens = max(int(row.get("output_tokens") or 0), 0)
+        total_tokens = max(int(row.get("total_tokens") or (input_tokens + output_tokens)), 0)
         return {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,

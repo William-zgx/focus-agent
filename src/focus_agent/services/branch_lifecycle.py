@@ -30,7 +30,7 @@ class BranchLifecycleCoordinator:
     ) -> BranchRecord:
         svc = self.service
         svc._ensure_parent_thread_access(parent_thread_id=parent_thread_id, user_id=user_id)
-        parent_config = {'configurable': {'thread_id': parent_thread_id}}
+        parent_config = {"configurable": {"thread_id": parent_thread_id}}
         parent_snapshot = svc.graph.get_state(parent_config)
         parent_values = deepcopy(parent_snapshot.values)
         svc._ensure_parent_branch_can_fork(
@@ -53,11 +53,11 @@ class BranchLifecycleCoordinator:
 
         if svc.thread_client and fork_checkpoint_id is None:
             copied = svc.thread_client.threads.copy(parent_thread_id)
-            child_thread_id = copied['thread_id']
-            fork_strategy = 'copy_thread'
+            child_thread_id = copied["thread_id"]
+            fork_strategy = "copy_thread"
         else:
             child_thread_id = str(uuid.uuid4())
-            fork_strategy = 'local_snapshot_seed'
+            fork_strategy = "local_snapshot_seed"
 
         branch_meta = BranchMeta(
             branch_id=branch_id,
@@ -71,9 +71,16 @@ class BranchLifecycleCoordinator:
             fork_checkpoint_id=fork_checkpoint_id,
             fork_strategy=fork_strategy,
         )
-        branch_meta_payload = branch_meta.model_dump(mode='json')
-        branch_meta_payload['branch_name_pending_ai'] = branch_name is None
-        branch_meta_payload['branch_role_pending_ai'] = branch_role == BranchRole.EXPLORE_ALTERNATIVES
+        branch_meta_payload = branch_meta.model_dump(mode="json")
+        branch_meta_payload["branch_name_pending_ai"] = branch_name is None
+        branch_meta_payload["branch_role_pending_ai"] = (
+            branch_role == BranchRole.EXPLORE_ALTERNATIVES
+        )
+        branch_meta_payload["branch_fork_message_count"] = len(
+            list(parent_values.get("messages") or [])
+        )
+        if name_source is not None:
+            branch_meta_payload["branch_name_source"] = name_source
 
         record = BranchRecord(
             branch_id=branch_id,
@@ -90,22 +97,22 @@ class BranchLifecycleCoordinator:
             fork_strategy=fork_strategy,
         )
         with svc._thread_write_lease(thread_id=child_thread_id):
-            if fork_strategy == 'local_snapshot_seed':
+            if fork_strategy == "local_snapshot_seed":
                 svc.graph.update_state(
-                    {'configurable': {'thread_id': child_thread_id}},
+                    {"configurable": {"thread_id": child_thread_id}},
                     parent_values,
-                    as_node='bootstrap_turn',
+                    as_node="bootstrap_turn",
                 )
 
             svc.graph.update_state(
-                {'configurable': {'thread_id': child_thread_id}},
+                {"configurable": {"thread_id": child_thread_id}},
                 {
-                    'branch_meta': branch_meta_payload,
-                    'merge_proposal': None,
-                    'merge_decision': None,
-                    'branch_local_findings': [],
+                    "branch_meta": branch_meta_payload,
+                    "merge_proposal": None,
+                    "merge_decision": None,
+                    "branch_local_findings": [],
                 },
-                as_node='bootstrap_turn',
+                as_node="bootstrap_turn",
             )
             svc.repo.ensure_thread_owner(
                 thread_id=child_thread_id,
@@ -125,11 +132,11 @@ class BranchLifecycleCoordinator:
         svc = self.service
         svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
         branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
-        child_config = {'configurable': {'thread_id': child_thread_id}}
+        child_config = {"configurable": {"thread_id": child_thread_id}}
         child_snapshot = svc.graph.get_state(child_config)
         child_values = deepcopy(child_snapshot.values)
-        existing_meta = dict(child_values.get('branch_meta') or {})
-        if not force and not existing_meta.get('branch_role_pending_ai'):
+        existing_meta = dict(child_values.get("branch_meta") or {})
+        if not force and not existing_meta.get("branch_role_pending_ai"):
             return branch_record
 
         next_role = svc._classify_branch_role(
@@ -140,11 +147,11 @@ class BranchLifecycleCoordinator:
             return branch_record
 
         svc.repo.update_branch_role(branch_record.branch_id, next_role)
-        updated_record = branch_record.model_copy(update={'branch_role': next_role})
+        updated_record = branch_record.model_copy(update={"branch_role": next_role})
         svc.graph.update_state(
             child_config,
-            {'branch_meta': svc._branch_meta_payload_from_record(updated_record, existing_meta)},
-            as_node='bootstrap_turn',
+            {"branch_meta": svc._branch_meta_payload_from_record(updated_record, existing_meta)},
+            as_node="bootstrap_turn",
         )
         return updated_record
 
@@ -164,24 +171,29 @@ class BranchLifecycleCoordinator:
         if svc.proposal_model is None and not force:
             return branch_record
 
-        child_config = {'configurable': {'thread_id': child_thread_id}}
+        child_config = {"configurable": {"thread_id": child_thread_id}}
         child_snapshot = svc.graph.get_state(child_config)
         child_values = deepcopy(child_snapshot.values)
+        existing_meta = dict(child_values.get("branch_meta") or {})
+        resolved_name_source = (
+            name_source if name_source is not None else existing_meta.get("branch_name_source")
+        )
         generated_name = svc._generate_branch_name(
             thread_values=child_values,
             branch_role=branch_record.branch_role,
+            name_source=resolved_name_source,
         )
         next_name = svc._sanitize_branch_name(generated_name, branch_role=branch_record.branch_role)
         if not next_name or next_name == branch_record.branch_name:
             return branch_record
 
         svc.repo.update_branch_name(branch_record.branch_id, next_name)
-        existing_meta = child_values.get('branch_meta') or {}
-        updated_record = branch_record.model_copy(update={'branch_name': next_name})
+        existing_meta = child_values.get("branch_meta") or {}
+        updated_record = branch_record.model_copy(update={"branch_name": next_name})
         svc.graph.update_state(
             child_config,
-            {'branch_meta': svc._branch_meta_payload_from_record(updated_record, existing_meta)},
-            as_node='bootstrap_turn',
+            {"branch_meta": svc._branch_meta_payload_from_record(updated_record, existing_meta)},
+            as_node="bootstrap_turn",
         )
         return updated_record
 
@@ -194,12 +206,12 @@ class BranchLifecycleCoordinator:
         svc = self.service
         try:
             svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-            child_config = {'configurable': {'thread_id': child_thread_id}}
+            child_config = {"configurable": {"thread_id": child_thread_id}}
             child_snapshot = svc.graph.get_state(child_config)
             child_values = deepcopy(child_snapshot.values)
-            existing_meta = dict(child_values.get('branch_meta') or {})
-            pending_name = bool(existing_meta.get('branch_name_pending_ai'))
-            pending_role = bool(existing_meta.get('branch_role_pending_ai'))
+            existing_meta = dict(child_values.get("branch_meta") or {})
+            pending_name = bool(existing_meta.get("branch_name_pending_ai"))
+            pending_role = bool(existing_meta.get("branch_role_pending_ai"))
             if not pending_name and not pending_role:
                 return None
 
@@ -224,13 +236,13 @@ class BranchLifecycleCoordinator:
 
             refreshed_snapshot = svc.graph.get_state(child_config)
             refreshed_values = deepcopy(refreshed_snapshot.values)
-            refreshed_meta = dict(refreshed_values.get('branch_meta') or {})
-            refreshed_meta['branch_name_pending_ai'] = False
-            refreshed_meta['branch_role_pending_ai'] = False
+            refreshed_meta = dict(refreshed_values.get("branch_meta") or {})
+            refreshed_meta["branch_name_pending_ai"] = False
+            refreshed_meta["branch_role_pending_ai"] = False
             svc.graph.update_state(
                 child_config,
-                {'branch_meta': refreshed_meta},
-                as_node='bootstrap_turn',
+                {"branch_meta": refreshed_meta},
+                as_node="bootstrap_turn",
             )
             return updated_record
         except (KeyError, PermissionError):
@@ -255,19 +267,19 @@ class BranchLifecycleCoordinator:
         branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
         next_name = svc._sanitize_branch_name(branch_name, branch_role=branch_record.branch_role)
         svc.repo.update_branch_name(branch_record.branch_id, next_name)
-        child_config = {'configurable': {'thread_id': child_thread_id}}
+        child_config = {"configurable": {"thread_id": child_thread_id}}
         snapshot = svc.graph.get_state(child_config)
         values = deepcopy(snapshot.values)
-        updated_record = branch_record.model_copy(update={'branch_name': next_name})
+        updated_record = branch_record.model_copy(update={"branch_name": next_name})
         updated_meta = svc._branch_meta_payload_from_record(
             updated_record,
-            existing_meta=dict(values.get('branch_meta') or {}),
+            existing_meta=dict(values.get("branch_meta") or {}),
         )
-        updated_meta['branch_name_pending_ai'] = False
+        updated_meta["branch_name_pending_ai"] = False
         svc.graph.update_state(
             child_config,
-            {'branch_meta': updated_meta},
-            as_node='bootstrap_turn',
+            {"branch_meta": updated_meta},
+            as_node="bootstrap_turn",
         )
         return updated_record
 
@@ -283,8 +295,8 @@ class BranchLifecycleCoordinator:
             record = svc.repo.get_conversation(root_thread_id)
             if not record.title_pending_ai:
                 return None
-            snapshot = svc.graph.get_state({'configurable': {'thread_id': root_thread_id}})
-            values = deepcopy(getattr(snapshot, 'values', {}) or {})
+            snapshot = svc.graph.get_state({"configurable": {"thread_id": root_thread_id}})
+            values = deepcopy(getattr(snapshot, "values", {}) or {})
             generated_name = svc._generate_conversation_name(thread_values=values)
             next_title = svc._sanitize_branch_name(generated_name, branch_role=BranchRole.MAIN)
             return svc.repo.update_conversation_title(

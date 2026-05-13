@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
+from focus_agent.api.routers.harness_runs import _produce_run_stream
 from focus_agent.services.branch_actions import is_branch_action_request
 from focus_agent.services.coordination import (
     CoordinationBackend,
@@ -104,7 +106,9 @@ class BackfillImportGraph:
     def update_state(self, _config, values, as_node=None):
         self.updates.append((values, as_node))
         if "messages" in values:
-            self.values["messages"] = list(self.values.get("messages", [])) + list(values["messages"])
+            self.values["messages"] = list(self.values.get("messages", [])) + list(
+                values["messages"]
+            )
         if "rolling_summary" in values:
             self.values["rolling_summary"] = values["rolling_summary"]
 
@@ -120,7 +124,9 @@ class BranchActionGraph:
     def update_state(self, _config, values, as_node=None):
         self.updates.append((values, as_node))
         if "messages" in values:
-            self.values["messages"] = list(self.values.get("messages", [])) + list(values["messages"])
+            self.values["messages"] = list(self.values.get("messages", [])) + list(
+                values["messages"]
+            )
         for key, value in values.items():
             if key != "messages":
                 self.values[key] = value
@@ -231,6 +237,31 @@ def test_send_message_creates_pending_branch_action_without_forking(tmp_path: Pa
     assert "华英农业" in payload["branch_actions"][0]["suggested_branch_name"]
     assert "已创建" not in payload["assistant_message"]
     assert graph.updates[-1][1] == "bootstrap_turn"
+
+
+def test_branch_action_execution_keeps_auto_name_pending_for_first_turn_refresh(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？")],
+        }
+    )
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+    action_id = graph.values["branch_actions"][0]["action_id"]
+
+    chat.execute_branch_action(thread_id="child-1", action_id=action_id, user_id="owner-1")
+
+    assert branch_service.fork_calls[-1]["branch_name"] is None
+    assert "华英农业" in branch_service.fork_calls[-1]["name_source"]
 
 
 def test_branch_action_intent_requires_branch_context():
@@ -439,7 +470,10 @@ def test_preview_thread_context_increases_with_draft_message(tmp_path: Path):
         def get_state(self, _config):
             return SimpleNamespace(
                 values={
-                    "messages": [HumanMessage(content="Known context"), AIMessage(content="Known answer")],
+                    "messages": [
+                        HumanMessage(content="Known context"),
+                        AIMessage(content="Known answer"),
+                    ],
                     "context_budget": {"prompt_token_limit": 10000, "chars_per_token": 4},
                 },
                 interrupts=[],
@@ -475,7 +509,9 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
                     AIMessage(content="Original assistant answer"),
                 ],
                 "rolling_summary": "Previous rolling summary.",
-                "user_constraints": [{"constraint": "Keep token usage separate from context usage."}],
+                "user_constraints": [
+                    {"constraint": "Keep token usage separate from context usage."}
+                ],
                 "context_budget": {"prompt_token_limit": 10000, "chars_per_token": 4},
             }
             self.updates = []
@@ -502,7 +538,10 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
     assert graph.values["context_compaction"]["trigger"] == "manual"
     assert graph.values["context_compaction"]["non_destructive"] is True
     assert "Context compaction snapshot:" in graph.values["rolling_summary"]
-    assert payload["context_usage"]["last_compacted_at"] == graph.values["context_compaction"]["last_compacted_at"]
+    assert (
+        payload["context_usage"]["last_compacted_at"]
+        == graph.values["context_compaction"]["last_compacted_at"]
+    )
 
 
 def test_compact_thread_context_heartbeats_thread_turn_lock(tmp_path: Path):
@@ -605,21 +644,38 @@ def test_post_turn_context_compaction_uses_durable_background_job_when_enabled(t
     )
     chat = ChatService(runtime)
 
-    chat._schedule_post_turn_context_compaction(thread_id="root-1", user_id="owner-1", kind="chat.turn")
+    chat._schedule_post_turn_context_compaction(
+        thread_id="root-1", user_id="owner-1", kind="chat.turn"
+    )
+    chat._schedule_post_turn_context_compaction(
+        thread_id="root-2", user_id="owner-1", kind="chat.resume"
+    )
 
     assert background_work.submitted == []
-    assert len(job_deduper.enqueued) == 1
-    spec = job_deduper.enqueued[0]
-    assert spec.kind == "context_compaction"
-    assert spec.key == "chat:context_compaction:root-1"
-    assert spec.payload == {
-        "thread_id": "root-1",
-        "user_id": "owner-1",
-        "trigger": "auto_post_turn",
-        "force": False,
-    }
-    assert spec.max_attempts == 3
-    assert spec.dedupe_policy == "replace"
+    assert [(spec.kind, spec.key, spec.payload) for spec in job_deduper.enqueued] == [
+        (
+            "context_compaction",
+            "chat:context_compaction:root-1",
+            {
+                "thread_id": "root-1",
+                "user_id": "owner-1",
+                "trigger": "auto_post_turn",
+                "force": False,
+            },
+        ),
+        (
+            "context_compaction",
+            "chat:context_compaction:root-2",
+            {
+                "thread_id": "root-2",
+                "user_id": "owner-1",
+                "trigger": "auto_post_turn",
+                "force": False,
+            },
+        ),
+    ]
+    assert all(spec.max_attempts == 3 for spec in job_deduper.enqueued)
+    assert all(spec.dedupe_policy == "replace" for spec in job_deduper.enqueued)
 
 
 def test_branch_title_refresh_uses_durable_background_jobs_when_enabled(tmp_path: Path):
@@ -691,6 +747,26 @@ def test_branch_title_refresh_uses_durable_background_jobs_when_enabled(tmp_path
         ),
         kind="chat.turn",
     )
+    chat._schedule_branch_name_refresh_after_first_turn(
+        thread_id="root-resume",
+        user_id="owner-1",
+        branch_meta=None,
+        kind="chat.resume",
+    )
+    chat._schedule_branch_name_refresh_after_first_turn(
+        thread_id="child-resume",
+        user_id="owner-1",
+        branch_meta=BranchMeta(
+            branch_id="branch-resume",
+            root_thread_id="root-resume",
+            parent_thread_id="root-resume",
+            return_thread_id="root-resume",
+            branch_name="Resume Deep Dive",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+        ),
+        kind="chat.resume",
+    )
 
     assert branch_service.calls == []
     assert background_work.submitted == []
@@ -704,6 +780,16 @@ def test_branch_title_refresh_uses_durable_background_jobs_when_enabled(tmp_path
             "branch_title",
             "chat:branch_title:child-1",
             {"child_thread_id": "child-1", "user_id": "owner-1"},
+        ),
+        (
+            "conversation_title",
+            "chat:conversation_title:root-resume",
+            {"root_thread_id": "root-resume", "user_id": "owner-1"},
+        ),
+        (
+            "branch_title",
+            "chat:branch_title:child-resume",
+            {"child_thread_id": "child-resume", "user_id": "owner-1"},
         ),
     ]
     assert all(spec.max_attempts == 3 for spec in job_deduper.enqueued)
@@ -759,13 +845,53 @@ def test_branch_metadata_refresh_is_scheduled_after_sync_turn_lease_release(tmp_
     assert branch_service.calls == [{"child_thread_id": "child-1", "user_id": "owner-1"}]
 
 
+def test_direct_root_turn_bootstraps_conversation_for_ai_title_refresh(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+
+    class ImmediateBackgroundWork:
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del key, delay_seconds
+            func(**kwargs)
+            return True
+
+    class RecordingBranchService:
+        def __init__(self):
+            self.calls: list[dict[str, str]] = []
+
+        def refresh_conversation_title_after_first_turn(self, **kwargs):
+            self.calls.append(dict(kwargs))
+            repo.update_conversation_title(
+                root_thread_id=kwargs["root_thread_id"],
+                owner_user_id=kwargs["user_id"],
+                title="Direct First Turn",
+                title_pending_ai=False,
+            )
+
+    branch_service = RecordingBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=RecordingGraph(),
+        repo=repo,
+        branch_service=branch_service,
+        background_work=ImmediateBackgroundWork(),
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(thread_id="root-1", user_id="owner-1", message="Plan the launch")
+
+    record = repo.get_conversation("root-1")
+    assert record.title == "Direct First Turn"
+    assert record.title_pending_ai is False
+    assert branch_service.calls == [{"root_thread_id": "root-1", "user_id": "owner-1"}]
+
+
 def test_sse_frame_serializes_message_objects():
     frame = ChatService._sse_frame(
         event="state.update",
         data={"messages": [HumanMessage(content="hello")]},
     )
 
-    assert 'event: state.update' in frame
+    assert "event: state.update" in frame
     assert '"content": "hello"' in frame
 
 
@@ -819,7 +945,9 @@ def test_send_message_rejects_concurrent_turn_on_same_thread(tmp_path: Path):
     worker.join(timeout=2.0)
 
 
-def test_send_message_skips_post_turn_side_effects_when_thread_turn_heartbeat_is_lost(tmp_path: Path):
+def test_send_message_skips_post_turn_side_effects_when_thread_turn_heartbeat_is_lost(
+    tmp_path: Path,
+):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
 
@@ -918,7 +1046,9 @@ def test_get_thread_state_falls_back_to_repo_when_branch_meta_is_incomplete(tmp_
 
     class BrokenBranchGraph:
         def get_state(self, _config):
-            return SimpleNamespace(values={"branch_meta": {"is_archived": True, "archived_at": "2026-04-12 10:00:00"}})
+            return SimpleNamespace(
+                values={"branch_meta": {"is_archived": True, "archived_at": "2026-04-12 10:00:00"}}
+            )
 
     runtime = SimpleNamespace(
         settings=Settings(),
@@ -1134,7 +1264,16 @@ def test_send_message_records_postgres_trajectory_payload(tmp_path: Path):
                             }
                         },
                     ),
-                    AIMessage(content="done"),
+                    AIMessage(
+                        content="done",
+                        response_metadata={
+                            "token_usage": {
+                                "prompt_tokens": 11,
+                                "completion_tokens": 7,
+                                "total_tokens": 18,
+                            }
+                        },
+                    ),
                 ],
                 "llm_calls": 2,
                 "task_brief": payload["task_brief"],
@@ -1190,6 +1329,123 @@ def test_send_message_records_postgres_trajectory_payload(tmp_path: Path):
     assert record.trajectory[0].parallel_batch_size == 2
     assert record.metrics["tool_calls"] == 1
     assert record.metrics["llm_calls"] == 2
+    assert record.metrics["input_tokens"] == 11
+    assert record.metrics["output_tokens"] == 7
+    assert record.metrics["total_tokens"] == 18
+
+
+def test_stream_harness_run_records_trajectory_and_schedules_title_refresh(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class StreamGraph:
+        def __init__(self):
+            self.values = {
+                "messages": [
+                    HumanMessage(content="stream this"),
+                    AIMessage(
+                        content="streamed done",
+                        usage_metadata={"input_tokens": 9, "output_tokens": 4, "total_tokens": 13},
+                    ),
+                ],
+                "llm_calls": 1,
+                "task_brief": "stream this",
+            }
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+    class EmptyHarness:
+        async def stream_chunks(self, **_kwargs):
+            if False:
+                yield {}
+
+    class RecordingRunManager:
+        def __init__(self):
+            self.record = SimpleNamespace(
+                abort_event=asyncio.Event(),
+                abort_action="interrupt",
+            )
+            self.statuses: list[object] = []
+
+        async def set_status(self, _run_id, status, error=None):
+            del error
+            self.statuses.append(status)
+
+        def get(self, _run_id):
+            return self.record
+
+    class RecordingStreamBridge:
+        def __init__(self):
+            self.events: list[tuple[str, dict[str, object]]] = []
+            self.ended = False
+
+        async def publish(self, _run_id, event_name, payload):
+            self.events.append((event_name, payload))
+
+        async def publish_end(self, _run_id):
+            self.ended = True
+
+    class RecordingTrajectoryRecorder:
+        def __init__(self):
+            self.records = []
+
+        def record_turn(self, record):
+            self.records.append(record)
+
+    class ImmediateBackgroundWork:
+        def submit(self, *, key, func, delay_seconds=0.0, **kwargs):
+            del key, delay_seconds
+            func(**kwargs)
+            return True
+
+    class RecordingBranchService:
+        def __init__(self):
+            self.calls: list[dict[str, str]] = []
+
+        def refresh_conversation_title_after_first_turn(self, **kwargs):
+            self.calls.append(dict(kwargs))
+
+    graph = StreamGraph()
+    run_manager = RecordingRunManager()
+    stream_bridge = RecordingStreamBridge()
+    recorder = RecordingTrajectoryRecorder()
+    branch_service = RecordingBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(context_auto_compaction_enabled=False),
+        graph=graph,
+        harness=EmptyHarness(),
+        checkpointer=None,
+        repo=repo,
+        run_manager=run_manager,
+        stream_bridge=stream_bridge,
+        trajectory_recorder=recorder,
+        branch_service=branch_service,
+        background_work=ImmediateBackgroundWork(),
+    )
+    chat = ChatService(runtime)
+
+    asyncio.run(
+        _produce_run_stream(
+            runtime=runtime,
+            chat=chat,
+            run_id="run-1",
+            thread_id="root-1",
+            user_id="owner-1",
+            payload={"messages": [HumanMessage(content="stream this")]},
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta=None,
+            initial_values={"messages": [], "llm_calls": 0},
+            request_id="req-stream",
+            kind="chat.turn",
+        )
+    )
+
+    assert recorder.records[0].kind == "chat.turn"
+    assert recorder.records[0].metrics["total_tokens"] == 13
+    assert branch_service.calls == [{"root_thread_id": "root-1", "user_id": "owner-1"}]
+    assert any(event_name == "run.completed" for event_name, _ in stream_bridge.events)
+    assert stream_bridge.ended is True
 
 
 def test_trajectory_recorder_failure_does_not_fail_turn(tmp_path: Path):
@@ -1222,7 +1478,9 @@ def test_trajectory_recorder_failure_does_not_fail_turn(tmp_path: Path):
 
 
 def test_serialize_message_keeps_usage_metadata():
-    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
 
     payload = service._serialize_message(
         AIMessage(
@@ -1236,14 +1494,37 @@ def test_serialize_message_keeps_usage_metadata():
     assert payload["usage_metadata"]["input_tokens"] == 21
 
 
+def test_serialize_message_normalizes_response_metadata_token_usage():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+
+    payload = service._serialize_message(
+        AIMessage(
+            content="done",
+            response_metadata={"token_usage": {"prompt_tokens": 13, "completion_tokens": 5}},
+        )
+    )
+
+    assert payload["usage_metadata"] == {
+        "input_tokens": 13,
+        "output_tokens": 5,
+        "total_tokens": 18,
+    }
+
+
 def test_latest_final_ai_text_hides_english_process_narration():
-    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
 
     assert (
         service._latest_final_ai_text(
             [
                 AIMessage(content="确认可见的最终答案。"),
-                AIMessage(content="Let me fetch the data first. I should look for: filings and price action."),
+                AIMessage(
+                    content="Let me fetch the data first. I should look for: filings and price action."
+                ),
             ]
         )
         == "确认可见的最终答案。"
@@ -1264,7 +1545,9 @@ def test_latest_final_ai_text_hides_english_process_narration():
     assert (
         service._latest_final_ai_text(
             [
-                AIMessage(content="Let me produce the final answer. Final answer: 这才是最终答案。"),
+                AIMessage(
+                    content="Let me produce the final answer. Final answer: 这才是最终答案。"
+                ),
             ]
         )
         == "这才是最终答案。"
@@ -1272,7 +1555,9 @@ def test_latest_final_ai_text_hides_english_process_narration():
 
 
 def test_thread_state_messages_hide_textual_tool_protocol_ai_messages():
-    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
 
     payload = service._thread_state_messages(
         [
@@ -1289,12 +1574,16 @@ def test_thread_state_messages_hide_textual_tool_protocol_ai_messages():
 
 
 def test_thread_state_messages_hide_english_process_narration():
-    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
 
     payload = service._thread_state_messages(
         [
             HumanMessage(content="Search this."),
-            AIMessage(content="Let me fetch the data first. I should look for: filings and price action."),
+            AIMessage(
+                content="Let me fetch the data first. I should look for: filings and price action."
+            ),
             AIMessage(
                 content=(
                     "Wait, if the current date is 2026-05-10, "
@@ -1319,7 +1608,9 @@ def test_thread_state_messages_hide_english_process_narration():
 
 
 def test_thread_state_messages_extract_visible_list_content_only():
-    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
 
     payload = service._thread_state_messages(
         [
@@ -1341,14 +1632,18 @@ def test_thread_state_messages_extract_visible_list_content_only():
 
 
 def test_thread_state_messages_clear_protocol_content_but_keep_tool_calls():
-    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
 
     payload = service._thread_state_messages(
         [
             SimpleNamespace(
                 type="ai",
                 content='="read="filepath" string="true">tool-observation://webfetch/call-1',
-                tool_calls=[{"id": "call-1", "name": "web_fetch", "args": {"url": "https://example.com"}}],
+                tool_calls=[
+                    {"id": "call-1", "name": "web_fetch", "args": {"url": "https://example.com"}}
+                ],
                 name=None,
                 id="ai-tools",
                 usage_metadata=None,
@@ -1381,7 +1676,9 @@ def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     system_messages = [message for message in payload["messages"] if message["type"] == "system"]
     assert system_messages
     assert payload["trace"]["metadata"]["request_id"] == "req-snapshot"
-    assert "Imported conclusion from branch 'explore-alternatives':" in system_messages[-1]["content"]
+    assert (
+        "Imported conclusion from branch 'explore-alternatives':" in system_messages[-1]["content"]
+    )
     assert "Recovered conclusion from child branch." in system_messages[-1]["content"]
     assert payload["rolling_summary"].endswith(
         "Imported from explore-alternatives: Recovered conclusion from child branch."

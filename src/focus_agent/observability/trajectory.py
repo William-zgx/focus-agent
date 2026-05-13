@@ -14,6 +14,7 @@ from ..core.state import (
     governance_plan_meta_projection,
     with_agent_state_record_mirrors,
 )
+from ..core.token_usage import message_token_usage
 from ..services.chat_serialization import confirmed_visible_ai_text, message_content_to_text
 from .tracing import TraceCorrelation
 
@@ -290,17 +291,20 @@ def _build_metrics(
 ) -> dict[str, Any]:
     input_tokens = 0
     output_tokens = 0
+    total_tokens = 0
     for msg in messages or []:
-        usage = getattr(msg, "usage_metadata", None) or {}
-        if isinstance(usage, dict):
+        usage = message_token_usage(msg)
+        if usage is not None:
             input_tokens += int(usage.get("input_tokens", 0) or 0)
             output_tokens += int(usage.get("output_tokens", 0) or 0)
+            total_tokens += int(usage.get("total_tokens", 0) or 0)
     return {
         "latency_ms": latency_ms,
         "tool_calls": len(trajectory),
         "llm_calls": llm_calls,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "total_tokens": total_tokens or input_tokens + output_tokens,
         "cache_hits": sum(1 for step in trajectory if step.cache_hit),
         "fallback_uses": sum(1 for step in trajectory if step.fallback_used),
         "parallel_tool_calls": sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1),

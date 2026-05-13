@@ -41,6 +41,7 @@ export interface FocusAgentTrajectoryMetrics {
   llm_calls?: number;
   input_tokens?: number;
   output_tokens?: number;
+  total_tokens?: number;
   cache_hits?: number;
   fallback_uses?: number;
   parallel_tool_calls?: number;

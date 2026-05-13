@@ -20,7 +20,8 @@ def execute_branch_action_navigation(
         branch_record = branch_service.fork_branch(
             parent_thread_id=action.target_parent_thread_id,
             user_id=user_id,
-            branch_name=action.suggested_branch_name,
+            branch_name=None,
+            name_source=action.suggested_branch_name,
             branch_role=action.branch_role,
         )
         return branch_record, BranchActionNavigation(

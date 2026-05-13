@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from ..core.token_usage import message_token_usage
 from ..transport.stream_events import (
     extract_visible_text_delta,
     sanitize_stream_visible_text,
@@ -61,6 +62,7 @@ def json_safe(value: Any) -> Any:
             'tool_calls': tool_calls,
             'name': getattr(value, 'name', None),
             'id': getattr(value, 'id', None),
+            'usage_metadata': json_safe(message_token_usage(value)),
         }
     return str(value)
 
@@ -85,7 +87,7 @@ def serialize_message(message: Any) -> dict[str, Any]:
         'tool_calls': tool_calls,
         'name': getattr(message, 'name', None),
         'id': getattr(message, 'id', None),
-        'usage_metadata': json_safe(getattr(message, 'usage_metadata', None)),
+        'usage_metadata': json_safe(message_token_usage(message)),
     }
 
 

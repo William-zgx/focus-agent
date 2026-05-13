@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from ..core.branching import BranchMeta, BranchStatus
 from ..core.request_context import RequestContext
 from ..core.state import normalize_agent_state
+from ..core.types import ConversationRecord
 
 
 class ChatThreadAccessMixin:
@@ -179,6 +180,35 @@ class ChatThreadAccessMixin:
             )
         else:
             self.runtime.repo.assert_thread_owner(thread_id=thread_id, owner_user_id=user_id)
+        if context.branch_id is None and thread_id == context.root_thread_id:
+            self._ensure_root_conversation_record(root_thread_id=context.root_thread_id, user_id=user_id)
+
+    def _ensure_root_conversation_record(self, *, root_thread_id: str, user_id: str) -> None:
+        get_conversation = getattr(self.runtime.repo, "get_conversation", None)
+        create_conversation = getattr(self.runtime.repo, "create_conversation", None)
+        if not callable(get_conversation) or not callable(create_conversation):
+            return
+        try:
+            get_conversation(root_thread_id)
+            return
+        except KeyError:
+            pass
+        try:
+            create_conversation(
+                ConversationRecord(
+                    root_thread_id=root_thread_id,
+                    owner_user_id=user_id,
+                    title="New Conversation",
+                    title_pending_ai=True,
+                )
+            )
+        except Exception:
+            # If concurrent workers race here, another session may have already persisted it.
+            # Retry the read path and only fail loudly when the conversation is still missing.
+            try:
+                get_conversation(root_thread_id)
+            except Exception:
+                raise
 
     @staticmethod
     def _ensure_thread_writable(branch_meta: BranchMeta | None) -> None:

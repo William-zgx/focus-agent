@@ -389,7 +389,7 @@
     "FocusAgentTrajectoryFilters": "export interface FocusAgentTrajectoryFilters { turn_id?: string; turn_ids?: string[]; request_id?: string; trace_id?: string; thread_id?: string; root_thread_id?: string; parent_thread_id?: string; branch_id?: string; branch_role?: string | string[]; status?: string | string[]; scene?: string | string[]; kind?: string | string[]; tool?: string | string[]; model?: string | string[]; selected_model?: string | string[]; started_after?: string; started_before?: string; since?: string; until?: string; fallback_used?: boolean; cache_hit?: boolean; has_error?: boolean; min_latency_ms?: number; max_latency_ms?: number; min_tool_calls?: number; max_tool_calls?: number; newest_first?: boolean; }",
     "FocusAgentTrajectoryListRequest": "export interface FocusAgentTrajectoryListRequest extends FocusAgentTrajectoryFilters { limit?: number; offset?: number; }",
     "FocusAgentTrajectoryListResponse": "export interface FocusAgentTrajectoryListResponse { items: FocusAgentTrajectoryTurnSummary[]; count: number; filters: FocusAgentTrajectoryFilters; limit: number; offset: number; }",
-    "FocusAgentTrajectoryMetrics": "export interface FocusAgentTrajectoryMetrics { latency_ms?: number; tool_calls?: number; llm_calls?: number; input_tokens?: number; output_tokens?: number; cache_hits?: number; fallback_uses?: number; parallel_tool_calls?: number; [key: string]: unknown; }",
+    "FocusAgentTrajectoryMetrics": "export interface FocusAgentTrajectoryMetrics { latency_ms?: number; tool_calls?: number; llm_calls?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; cache_hits?: number; fallback_uses?: number; parallel_tool_calls?: number; [key: string]: unknown; }",
     "FocusAgentTrajectoryPromotionRequest": "export interface FocusAgentTrajectoryPromotionRequest { case_id_prefix?: string; copy_tool_trajectory?: boolean; copy_answer_substring?: boolean; answer_substring_chars?: number; }",
     "FocusAgentTrajectoryPromotionResponse": "export interface FocusAgentTrajectoryPromotionResponse { source_turn_id: string; case_id: string; dataset_record: FocusAgentTrajectoryEvalCase; jsonl: string; }",
     "FocusAgentTrajectoryReplayCase": "export interface FocusAgentTrajectoryReplayCase extends FocusAgentTrajectoryEvalCase {}",
@@ -715,9 +715,7 @@
       "RunFailedPayload"
     ],
     "apps/web/src/entities/messages/message-list-streaming-bubble.tsx": [
-      "FocusAgentStreamStep",
-      "FocusAgentToolCallEvent",
-      "FocusAgentToolEvent"
+      "FocusAgentStreamStep"
     ],
     "apps/web/src/entities/messages/message-list-tool-approval-card.tsx": [
       "FocusAgentToolApprovalInterrupt"
@@ -726,9 +724,11 @@
       "FocusAgentBranchActionProposal",
       "FocusAgentStreamStep",
       "FocusAgentToolApprovalInterrupt",
-      "FocusAgentToolCallEvent",
-      "FocusAgentToolEvent",
-      "RunFailedPayload"
+      "RunFailedPayload",
+      "safeVisibleText"
+    ],
+    "apps/web/src/entities/messages/message-transcript-builder.ts": [
+      "safeVisibleText"
     ],
     "apps/web/src/entities/messages/message-transcript-visibility.ts": [
       "looksLikeTextualToolCallArtifact"

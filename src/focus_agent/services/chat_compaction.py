@@ -14,7 +14,9 @@ logger = logging.getLogger("focus_agent.chat")
 
 
 class ChatContextCompactionMixin:
-    def _context_usage_payload(self, values: dict[str, Any], *, draft_message: str | None = None) -> dict[str, Any]:
+    def _context_usage_payload(
+        self, values: dict[str, Any], *, draft_message: str | None = None
+    ) -> dict[str, Any]:
         try:
             selected_model = str(values.get("selected_model") or self.runtime.settings.model)
             return build_context_usage(
@@ -37,8 +39,12 @@ class ChatContextCompactionMixin:
                 "error": str(exc),
             }
 
-    def preview_thread_context(self, *, thread_id: str, user_id: str, draft_message: str | None = None) -> dict[str, Any]:
-        context, _branch_meta, values = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+    def preview_thread_context(
+        self, *, thread_id: str, user_id: str, draft_message: str | None = None
+    ) -> dict[str, Any]:
+        context, _branch_meta, values = self._context_for_thread(
+            thread_id=thread_id, user_id=user_id
+        )
         self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
         return {"context_usage": self._context_usage_payload(values, draft_message=draft_message)}
 
@@ -65,7 +71,9 @@ class ChatContextCompactionMixin:
                 force=force,
             )
             turn_lease.raise_if_lost()
-            latest_context, latest_branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
+            latest_context, latest_branch_meta, _ = self._context_for_thread(
+                thread_id=thread_id, user_id=user_id
+            )
             return self._response_payload(
                 thread_id=thread_id,
                 user_id=user_id,
@@ -90,7 +98,11 @@ class ChatContextCompactionMixin:
             return None
 
         messages = list(values.get("messages", []) or [])
-        previous_meta = values.get("context_compaction") if isinstance(values.get("context_compaction"), dict) else {}
+        previous_meta = (
+            values.get("context_compaction")
+            if isinstance(values.get("context_compaction"), dict)
+            else {}
+        )
         if not force and int(previous_meta.get("source_message_count") or -1) == len(messages):
             return None
 
@@ -118,7 +130,9 @@ class ChatContextCompactionMixin:
 
     def _context_compaction_threshold(self, trigger: str) -> float:
         if trigger == "auto_post_turn":
-            return float(getattr(self.runtime.settings, "context_auto_compaction_post_turn_ratio", 0.85))
+            return float(
+                getattr(self.runtime.settings, "context_auto_compaction_post_turn_ratio", 0.85)
+            )
         return float(getattr(self.runtime.settings, "context_auto_compaction_pre_send_ratio", 0.92))
 
     def _auto_compact_context_before_turn(
@@ -142,8 +156,10 @@ class ChatContextCompactionMixin:
             logger.warning("failed to auto-compact context before turn", exc_info=True)
             return None
 
-    def _schedule_post_turn_context_compaction(self, *, thread_id: str, user_id: str, kind: str) -> None:
-        if kind != "chat.turn":
+    def _schedule_post_turn_context_compaction(
+        self, *, thread_id: str, user_id: str, kind: str
+    ) -> None:
+        if kind not in {"chat.turn", "chat.resume"}:
             return
         if not bool(getattr(self.runtime.settings, "context_auto_compaction_enabled", True)):
             return
@@ -199,7 +215,9 @@ class ChatContextCompactionMixin:
 
     def _build_compacted_summary(self, values: dict[str, Any]) -> str:
         lines = ["Context compaction snapshot:"]
-        branch_meta = values.get("branch_meta") if isinstance(values.get("branch_meta"), dict) else {}
+        branch_meta = (
+            values.get("branch_meta") if isinstance(values.get("branch_meta"), dict) else {}
+        )
         if branch_meta:
             lines.append(
                 "Branch: "
@@ -215,7 +233,9 @@ class ChatContextCompactionMixin:
         active_goal = str(values.get("active_goal") or "").strip()
         if active_goal:
             lines.append(f"Active goal: {active_goal}")
-        constraints = self._compact_state_items(values.get("user_constraints"), key="constraint", limit=6)
+        constraints = self._compact_state_items(
+            values.get("user_constraints"), key="constraint", limit=6
+        )
         if constraints:
             lines.append("Constraints: " + "; ".join(constraints))
         pinned = self._compact_state_items(values.get("pinned_facts"), key="fact", limit=6)
@@ -233,8 +253,12 @@ class ChatContextCompactionMixin:
             lines.append("Previous summary: " + self._truncate_inline(previous, 900))
 
         recent_lines = []
-        for message in list(values.get("messages", []) or [])[-self._CONTEXT_COMPACTION_RECENT_MESSAGES :]:
-            role = getattr(message, "type", message.__class__.__name__.replace("Message", "").lower())
+        for message in list(values.get("messages", []) or [])[
+            -self._CONTEXT_COMPACTION_RECENT_MESSAGES :
+        ]:
+            role = getattr(
+                message, "type", message.__class__.__name__.replace("Message", "").lower()
+            )
             content = self._message_content_to_text(getattr(message, "content", ""))
             if content.strip():
                 recent_lines.append(f"{role}: {self._truncate_inline(content, 240)}")
@@ -249,7 +273,9 @@ class ChatContextCompactionMixin:
         values: list[str] = []
         for item in list(items or [])[:limit]:
             if isinstance(item, dict):
-                text = str(item.get(key) or item.get("summary") or item.get("content") or "").strip()
+                text = str(
+                    item.get(key) or item.get("summary") or item.get("content") or ""
+                ).strip()
             else:
                 text = str(getattr(item, key, "") or getattr(item, "summary", "") or item).strip()
             if text:

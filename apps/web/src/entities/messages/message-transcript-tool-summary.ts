@@ -11,9 +11,17 @@ export function totalTokensFromUsageMetadata(value: unknown) {
 	}
 	const input = Number(record.input_tokens ?? 0);
 	const output = Number(record.output_tokens ?? 0);
+	const prompt = Number(record.prompt_tokens ?? 0);
+	const completion = Number(record.completion_tokens ?? 0);
+	const normalizedInput = Number.isFinite(input) ? input : 0;
+	const normalizedOutput = Number.isFinite(output) ? output : 0;
+	const promptCompletionSum =
+		(Number.isFinite(prompt) ? prompt : 0) +
+		(Number.isFinite(completion) ? completion : 0);
 	const sum =
-		(Number.isFinite(input) ? input : 0) +
-		(Number.isFinite(output) ? output : 0);
+		normalizedInput + normalizedOutput > 0
+			? normalizedInput + normalizedOutput
+			: promptCompletionSum;
 	return sum > 0 ? Math.round(sum) : 0;
 }
 

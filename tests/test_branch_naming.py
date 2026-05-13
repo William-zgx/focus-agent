@@ -20,7 +20,7 @@ def test_initial_branch_name_defaults_to_new_branch_without_model_invoke():
         branch_role=BranchRole.EXPLORE_ALTERNATIVES,
     )
 
-    assert branch_name == "New Branch"
+    assert branch_name == "Focus on the import"
 
 
 def test_initial_branch_name_defaults_to_new_branch_in_current_language():
@@ -35,7 +35,7 @@ def test_initial_branch_name_defaults_to_new_branch_in_current_language():
         language="zh",
     )
 
-    assert branch_name == "新分支"
+    assert branch_name == "备选方案"
 
 
 def test_branch_name_preserves_explicit_preferred_name_after_sanitizing():
@@ -135,6 +135,41 @@ def test_ai_branch_role_is_classified_from_first_turn_context():
     assert role == BranchRole.EXECUTE
     assert fake_model.seen_messages is not None
     assert "return exactly one role id" in fake_model.seen_messages[0].content.lower()
+
+
+def test_branch_naming_and_role_context_ignore_pre_fork_messages():
+    service = object.__new__(BranchService)
+
+    class FakeModel:
+        def __init__(self):
+            self.seen_messages = []
+
+        def invoke(self, messages):
+            self.seen_messages.append(messages)
+            return "execute"
+
+    fake_model = FakeModel()
+    service.proposal_model = fake_model
+
+    role = service._classify_branch_role(
+        thread_values={
+            "branch_meta": {"branch_fork_message_count": 1},
+            "messages": [
+                HumanMessage(content="请先调研南网能源走势。"),
+                HumanMessage(content="帮我实现分支标题和 token 统计修复。"),
+                AIMessage(content="我会直接修改后端和前端统计链路。"),
+            ],
+            "rolling_summary": "",
+            "active_skill_ids": [],
+            "prompt_mode": "",
+        },
+        current_role=BranchRole.EXPLORE_ALTERNATIVES,
+    )
+
+    assert role == BranchRole.EXECUTE
+    model_context = fake_model.seen_messages[0][1].content
+    assert "token 统计" in model_context
+    assert "南网能源" not in model_context
 
 
 def test_branch_role_model_failure_logs_and_falls_back(caplog):

@@ -97,7 +97,7 @@ class AgentTeamSessionTaskMixin:
             branch_record = self.branch_service.fork_branch(
                 parent_thread_id=parent_thread_id or session.root_thread_id,
                 user_id=user_id,
-                branch_name=branch_name or self._default_branch_name(role_value),
+                branch_name=branch_name,
                 name_source=goal,
                 branch_role=_ROLE_TO_BRANCH_ROLE[role_value],
             )

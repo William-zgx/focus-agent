@@ -1,8 +1,17 @@
 from types import SimpleNamespace
 
+from langchain.messages import AIMessage
+
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
-from focus_agent.api.main import _aggregate_token_usage_from_turns, _annotate_branch_tree_token_usage, create_app
-from focus_agent.api.route_utils.token_usage import _token_usage_by_thread_for_root, _token_usage_for_root_thread
+from focus_agent.api.main import (
+    _aggregate_token_usage_from_turns,
+    _annotate_branch_tree_token_usage,
+    create_app,
+)
+from focus_agent.api.route_utils.token_usage import (
+    _token_usage_by_thread_for_root,
+    _token_usage_for_root_thread,
+)
 from focus_agent.api.schemas import (
     AgentRoleDecisionListResponse,
     AgentRoleDryRunRequest,
@@ -63,7 +72,16 @@ from focus_agent.api.schemas import (
     UpdateBranchNameRequest,
     UpdateConversationRequest,
 )
-from focus_agent.core.branching import BranchActionKind, BranchActionStatus, BranchRole, BranchStatus, BranchTreeNode
+from focus_agent.core.branching import (
+    BranchActionKind,
+    BranchActionStatus,
+    BranchRecord,
+    BranchRole,
+    BranchStatus,
+    BranchTreeNode,
+)
+from focus_agent.core.token_usage import message_token_usage
+from focus_agent.repositories.postgres_trajectory_stats import PostgresTrajectoryStatsMixin
 
 
 def test_branch_tree_node_shape():
@@ -312,7 +330,9 @@ def test_agent_role_contract_shapes():
     )
     memory_response = AgentMemoryCuratorEvaluateResponse(decision={"status": "ready"})
     tool_decisions = AgentToolRouteDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
-    memory_decisions = AgentMemoryCuratorDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
+    memory_decisions = AgentMemoryCuratorDecisionListResponse(
+        items=[{"turn_id": "turn-1"}], count=1
+    )
 
     assert capabilities.items[0].name == "search_code"
     assert capabilities.items[0].max_calls_per_turn == 3
@@ -325,7 +345,9 @@ def test_agent_role_contract_shapes():
     assert tool_decisions.count == 1
     assert memory_decisions.count == 1
 
-    delegation_policy = AgentDelegationPolicyResponse(enabled=True, enforce=False, max_parallel_runs=2)
+    delegation_policy = AgentDelegationPolicyResponse(
+        enabled=True, enforce=False, max_parallel_runs=2
+    )
     delegation_request = AgentDelegationPlanRequest(message="Plan, execute, and verify.")
     delegation_response = AgentDelegationPlanResponse(
         policy=delegation_policy,
@@ -342,10 +364,14 @@ def test_agent_role_contract_shapes():
     model_response = AgentModelRouteResponse(decision={"effective_model": "openai:deepseek-chat"})
     model_decisions = AgentModelRouterDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
     failures = AgentSelfRepairFailureListResponse(items=[{"failure_type": "tool_denied"}], count=1)
-    promote_request = AgentSelfRepairPromotePreviewRequest(failures=[{"failure_type": "tool_denied"}])
+    promote_request = AgentSelfRepairPromotePreviewRequest(
+        failures=[{"failure_type": "tool_denied"}]
+    )
     promote_response = AgentSelfRepairPromotePreviewResponse(preview={"candidates": []})
     review_queue = AgentReviewQueueListResponse(items=[{"item_id": "review-1"}], count=1)
-    review_response = AgentReviewQueueDecisionResponse(item={"item_id": "review-1", "status": "approved"})
+    review_response = AgentReviewQueueDecisionResponse(
+        item={"item_id": "review-1", "status": "approved"}
+    )
     context_policy = AgentContextPolicyResponse(enabled=True, artifact_min_chars=12000)
     context_preview_request = AgentContextPreviewRequest(
         state={"context_budget": {"prompt_token_limit": 1200}},
@@ -353,8 +379,12 @@ def test_agent_role_contract_shapes():
     )
     context_preview = AgentContextPreviewResponse(decision={"budget": {"prompt_chars": 12}})
     context_decisions = AgentContextDecisionListResponse(items=[{"prompt_chars": 12}], count=1)
-    context_artifacts = AgentContextArtifactListResponse(items=[{"artifact_id": "context/a.txt"}], count=1)
-    task_ledger_policy = AgentTaskLedgerPolicyResponse(enabled=True, artifact_synthesis_enabled=True)
+    context_artifacts = AgentContextArtifactListResponse(
+        items=[{"artifact_id": "context/a.txt"}], count=1
+    )
+    task_ledger_policy = AgentTaskLedgerPolicyResponse(
+        enabled=True, artifact_synthesis_enabled=True
+    )
     task_ledger_request = AgentTaskLedgerPlanRequest(message="Plan tasks")
     task_ledger_response = AgentTaskLedgerPlanResponse(
         policy=task_ledger_policy,
@@ -364,7 +394,9 @@ def test_agent_role_contract_shapes():
     task_ledger_runs = AgentTaskLedgerRunListResponse(items=[{"task_id": "task-1"}], count=1)
     artifact_list = AgentArtifactListResponse(items=[{"artifact_id": "artifact-1"}], count=1)
     synthesis_request = AgentArtifactSynthesisRequest(artifacts=[{"artifact_id": "artifact-1"}])
-    synthesis_response = AgentArtifactSynthesisResponse(result={"accepted_artifact_ids": ["artifact-1"]})
+    synthesis_response = AgentArtifactSynthesisResponse(
+        result={"accepted_artifact_ids": ["artifact-1"]}
+    )
     critic_verdicts = AgentCriticVerdictListResponse(items=[{"verdict": "pass"}], count=1)
     critic_request = AgentCriticEvaluateRequest(artifacts=[{"artifact_id": "artifact-1"}])
     critic_response = AgentCriticEvaluateResponse(result={"verdict": "pass"})
@@ -426,7 +458,7 @@ def test_conversation_contract_shapes():
 def test_api_token_usage_helpers_aggregate_and_annotate_tree():
     total = _aggregate_token_usage_from_turns(
         [
-            {"metrics": {"input_tokens": 12, "output_tokens": 8}},
+            {"metrics": {"prompt_tokens": 12, "completion_tokens": 8}},
             {"metrics": {"input_tokens": 5, "output_tokens": 7, "total_tokens": 12}},
         ]
     )
@@ -444,6 +476,130 @@ def test_api_token_usage_helpers_aggregate_and_annotate_tree():
 
     assert total == {"input_tokens": 17, "output_tokens": 15, "total_tokens": 32}
     assert annotated.token_usage["total_tokens"] == 32
+
+
+def test_api_token_usage_helpers_fall_back_to_graph_messages_without_trajectory_repo():
+    class _Graph:
+        def __init__(self):
+            self.states = {
+                "root-1": {
+                    "messages": [
+                        AIMessage(
+                            content="root",
+                            usage_metadata={
+                                "input_tokens": 6,
+                                "output_tokens": 4,
+                                "total_tokens": 10,
+                            },
+                        ),
+                    ],
+                },
+                "branch-1": {
+                    "branch_meta": {"branch_fork_message_count": 1},
+                    "messages": [
+                        AIMessage(
+                            content="copied",
+                            usage_metadata={
+                                "input_tokens": 6,
+                                "output_tokens": 4,
+                                "total_tokens": 10,
+                            },
+                        ),
+                        AIMessage(
+                            content="branch",
+                            response_metadata={
+                                "token_usage": {"prompt_tokens": 3, "completion_tokens": 2}
+                            },
+                        ),
+                    ],
+                },
+                "branch-missing-count": {
+                    "branch_meta": {},
+                    "messages": [
+                        AIMessage(
+                            content="legacy copied",
+                            usage_metadata={
+                                "input_tokens": 6,
+                                "output_tokens": 4,
+                                "total_tokens": 10,
+                            },
+                        ),
+                    ],
+                },
+                "branch-over-count": {
+                    "branch_meta": {"branch_fork_message_count": 99},
+                    "messages": [
+                        AIMessage(
+                            content="legacy copied",
+                            usage_metadata={
+                                "input_tokens": 6,
+                                "output_tokens": 4,
+                                "total_tokens": 10,
+                            },
+                        ),
+                    ],
+                },
+            }
+
+        def get_state(self, config):
+            return SimpleNamespace(values=self.states[config["configurable"]["thread_id"]])
+
+    class _Repo:
+        def list_by_root_thread_id(self, root_thread_id):
+            return [
+                BranchRecord(
+                    branch_id="b1",
+                    root_thread_id=root_thread_id,
+                    parent_thread_id=root_thread_id,
+                    child_thread_id="branch-1",
+                    return_thread_id=root_thread_id,
+                    owner_user_id="user-1",
+                    branch_name="Branch",
+                    branch_role=BranchRole.DEEP_DIVE,
+                    branch_depth=1,
+                    branch_status=BranchStatus.ACTIVE,
+                ),
+                BranchRecord(
+                    branch_id="b-missing-count",
+                    root_thread_id=root_thread_id,
+                    parent_thread_id=root_thread_id,
+                    child_thread_id="branch-missing-count",
+                    return_thread_id=root_thread_id,
+                    owner_user_id="user-1",
+                    branch_name="Legacy Missing Count",
+                    branch_role=BranchRole.DEEP_DIVE,
+                    branch_depth=1,
+                    branch_status=BranchStatus.ACTIVE,
+                ),
+                BranchRecord(
+                    branch_id="b-over-count",
+                    root_thread_id=root_thread_id,
+                    parent_thread_id=root_thread_id,
+                    child_thread_id="branch-over-count",
+                    return_thread_id=root_thread_id,
+                    owner_user_id="user-1",
+                    branch_name="Legacy Over Count",
+                    branch_role=BranchRole.DEEP_DIVE,
+                    branch_depth=1,
+                    branch_status=BranchStatus.ACTIVE,
+                ),
+            ]
+
+    runtime = SimpleNamespace(
+        settings=SimpleNamespace(database_uri=None),
+        trajectory_recorder=None,
+        graph=_Graph(),
+        repo=_Repo(),
+    )
+
+    root_usage = _token_usage_for_root_thread(runtime=runtime, root_thread_id="root-1")
+    by_thread = _token_usage_by_thread_for_root(runtime=runtime, root_thread_id="root-1")
+
+    assert by_thread["root-1"] == {"input_tokens": 6, "output_tokens": 4, "total_tokens": 10}
+    assert by_thread["branch-1"] == {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}
+    assert "branch-missing-count" not in by_thread
+    assert "branch-over-count" not in by_thread
+    assert root_usage == {"input_tokens": 9, "output_tokens": 6, "total_tokens": 15}
 
 
 def test_api_token_usage_helpers_prefer_repository_aggregation():
@@ -491,6 +647,59 @@ def test_api_token_usage_helpers_prefer_repository_aggregation():
     assert repo.thread_calls == ["root-1"]
 
 
+def test_postgres_token_usage_aggregation_accepts_provider_aliases():
+    sql = PostgresTrajectoryStatsMixin._TOKEN_USAGE_SELECT_SQL
+
+    assert "prompt_tokens" in sql
+    assert "completion_tokens" in sql
+    assert "prompt_token_count" in sql
+    assert "completion_token_count" in sql
+    assert "total_token_count" in sql
+    assert "NULLIF" in sql
+    assert "::NUMERIC::BIGINT" in sql
+
+
+def test_postgres_token_usage_row_to_token_usage_clamps_negative_values():
+    assert PostgresTrajectoryStatsMixin._TOKEN_USAGE_SELECT_SQL.count("^-?") == 0
+
+    assert PostgresTrajectoryStatsMixin._row_to_token_usage(
+        {
+            "input_tokens": -12,
+            "output_tokens": -3,
+            "total_tokens": -10,
+        },
+    ) == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+    }
+    assert PostgresTrajectoryStatsMixin._row_to_token_usage(
+        {
+            "input_tokens": 7,
+            "output_tokens": 5,
+            "total_tokens": 0,
+        },
+    ) == {
+        "input_tokens": 7,
+        "output_tokens": 5,
+        "total_tokens": 12,
+    }
+
+
+def test_message_token_usage_merges_partial_provider_candidates():
+    message = SimpleNamespace(
+        usage_metadata={"prompt_tokens": "12.0"},
+        response_metadata={"token_usage": {"completion_tokens": 8}},
+        additional_kwargs={},
+    )
+
+    assert message_token_usage(message) == {
+        "input_tokens": 12,
+        "output_tokens": 8,
+        "total_tokens": 20,
+    }
+
+
 def test_apply_merge_decision_request_allows_proposal_overrides():
     payload = ApplyMergeDecisionRequest.model_validate(
         {
@@ -510,12 +719,16 @@ def test_apply_merge_decision_request_allows_proposal_overrides():
 
 
 def test_trajectory_contract_shapes():
-    listing = TrajectoryTurnListResponse(limit=20, offset=0, count=1, filters={"status": ["failed"]})
+    listing = TrajectoryTurnListResponse(
+        limit=20, offset=0, count=1, filters={"status": ["failed"]}
+    )
     stats = TrajectoryTurnStatsEnvelopeResponse(filters={"fallback_used": True})
     replay = TrajectoryReplayRequest(copy_tool_trajectory=True)
     promote = TrajectoryPromotionRequest(copy_answer_substring=True)
     batch_promote = TrajectoryBatchPromotionPreviewRequest(status=["failed"], limit=5)
-    batch_replay = TrajectoryBatchReplayCompareRequest(model="moonshot:kimi-k2.6", turn_ids=["turn-1"])
+    batch_replay = TrajectoryBatchReplayCompareRequest(
+        model="moonshot:kimi-k2.6", turn_ids=["turn-1"]
+    )
     replay_response = TrajectoryReplayResponse(
         source_turn_id="turn-1",
         model_used="openai:gpt-4.1-mini",
@@ -564,7 +777,10 @@ def test_trajectory_contract_shapes():
     assert batch_promote.status == ["failed"]
     assert batch_promote.limit == 5
     assert batch_replay.model == "moonshot:kimi-k2.6"
-    assert replay_response.model_dump(mode="json")["replay_case"]["input"]["user_message"] == "Read README"
+    assert (
+        replay_response.model_dump(mode="json")["replay_case"]["input"]["user_message"]
+        == "Read README"
+    )
     assert replay_response.model_dump(mode="json")["comparison"]["replay_passed"] is True
     assert promote_response.model_dump(mode="json")["dataset_record"]["id"] == "traj-turn-1"
     assert batch_promote_response.model_dump(mode="json")["jsonl"] == '{"id":"traj-turn-1"}'
