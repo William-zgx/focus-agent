@@ -8,7 +8,12 @@ from focus_agent.core.branching import BranchRole
 
 def test_initial_branch_name_defaults_to_new_branch_without_model_invoke():
     service = object.__new__(BranchService)
-    service.proposal_model = None
+
+    class FailingModel:
+        def invoke(self, _messages):
+            raise AssertionError("initial branch creation must not invoke a model")
+
+    service.proposal_model = FailingModel()
 
     branch_name = service._resolve_initial_branch_name(
         preferred_name=None,
@@ -20,7 +25,7 @@ def test_initial_branch_name_defaults_to_new_branch_without_model_invoke():
         branch_role=BranchRole.EXPLORE_ALTERNATIVES,
     )
 
-    assert branch_name == "Focus on the import"
+    assert branch_name == "New Branch"
 
 
 def test_initial_branch_name_defaults_to_new_branch_in_current_language():
@@ -35,7 +40,7 @@ def test_initial_branch_name_defaults_to_new_branch_in_current_language():
         language="zh",
     )
 
-    assert branch_name == "备选方案"
+    assert branch_name == "新分支"
 
 
 def test_branch_name_preserves_explicit_preferred_name_after_sanitizing():

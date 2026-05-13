@@ -462,26 +462,10 @@ class BranchNamingPolicyMixin:
     ) -> str:
         if preferred_name and preferred_name.strip():
             return self._sanitize_branch_name(preferred_name, branch_role=branch_role)
-        if name_source and name_source.strip():
-            return self._sanitize_branch_name(name_source, branch_role=branch_role)
-        thread_values = self._thread_values_after_branch_fork(parent_values)
-        generated_name = self._generate_branch_name(
-            thread_values=thread_values,
-            branch_role=branch_role,
-            name_source=name_source,
-            language=language,
-        )
-        if not generated_name:
-            if language is None:
-                language = self._detect_naming_language(
-                    self._collect_branch_name_seed(
-                        thread_values=thread_values,
-                        name_source=name_source,
-                    )
-                )
-            seed = self._collect_branch_name_seed(thread_values=thread_values, name_source=name_source)
-            return self._fallback_branch_name(seed, branch_role, language=str(language or "en").strip() or "en")
-        return self._sanitize_branch_name(generated_name, branch_role=branch_role)
+        del parent_values, name_source, branch_role
+        if str(language or "").strip().lower() == "zh":
+            return self._DEFAULT_PENDING_BRANCH_NAME_ZH
+        return self._DEFAULT_PENDING_BRANCH_NAME
 
     def _generate_conversation_name(self, *, thread_values: dict) -> str:
         return self._generate_branch_name(thread_values=thread_values, branch_role=BranchRole.MAIN)
