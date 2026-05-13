@@ -76,13 +76,23 @@ If your change affects the frontend SDK, validate it as well:
 ```bash
 make sdk-check
 make sdk-build
+make sdk-validate-transport
 ```
 
 If your change affects the Web App, validate it as well:
 
 ```bash
+make web-lint
+make web-format-check
 make web-check
 make web-build
+```
+
+If your change affects streaming events, tool protocol filtering, or stream reducers, run the focused stream regression set:
+
+```bash
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+pnpm test:thread-stream-frontend-regressions
 ```
 
 If your change affects trajectory observability, also run the API and CLI tests around that surface:

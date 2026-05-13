@@ -6,10 +6,14 @@ from typing import Any, AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
+from focus_agent.core.tool_protocol import (
+    looks_like_textual_tool_call_artifact,
+    safe_visible_text_transition,
+)
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.harness.runtime import (
     DisconnectMode,
@@ -28,13 +32,18 @@ from focus_agent.observability.tracing import build_invoke_config, build_trace_c
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
 from focus_agent.transport.stream_events import (
+    STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,
     extract_tool_call_chunks,
     extract_tool_requests_from_updates,
     extract_tool_results_from_updates,
-    extract_visible_text_delta,
+    extract_visible_text_candidate_delta,
+    looks_like_stream_visible_text_artifact,
     map_custom_payload_to_event,
+    safe_stream_visible_text_transition,
+    sanitize_stream_visible_text,
     sanitize_stream_metadata,
+    stream_visibility_phase_from_metadata,
 )
 
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
@@ -88,7 +97,7 @@ async def create_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
-    graph_payload, context, branch_meta, initial_values, skill_hints = _prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = _prepare_run_payload(
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,
@@ -128,7 +137,6 @@ async def create_harness_run(
             await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
             raise
         await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
-        del skill_hints
         return HarnessRunResponse(
             run=_run_record_payload(runtime.run_manager.get(run_record.run_id) or run_record),
             thread_state=result["thread_state"],
@@ -170,7 +178,6 @@ async def create_harness_run(
         interrupts=chat._safe_get_interrupts(thread_id),
         trace_correlation=trace_correlation,
     )
-    del skill_hints
     return HarnessRunResponse(
         run=_run_record_payload(runtime.run_manager.get(run_record.run_id) or run_record),
         thread_state=thread_state,
@@ -186,7 +193,7 @@ async def stream_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> StreamingResponse:
-    graph_payload, context, branch_meta, initial_values, _skill_hints = _prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = _prepare_run_payload(
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,
@@ -419,7 +426,7 @@ def _prepare_run_payload(
     user_id: str,
     payload: HarnessRunRequest,
     chat: ChatService,
-) -> tuple[dict[str, Any], Any, Any, dict[str, Any], tuple[str, ...]]:
+) -> tuple[dict[str, Any], Any, Any, dict[str, Any]]:
     message = _message_from_payload(payload)
     selection = chat._select_skills_for_message(
         message=message,
@@ -446,7 +453,7 @@ def _prepare_run_payload(
         graph_payload.update(payload.input)
     if selection.prompt_mode is not None:
         graph_payload["prompt_mode"] = selection.prompt_mode
-    return graph_payload, context, branch_meta, initial_values, selection.skill_ids
+    return graph_payload, context, branch_meta, initial_values
 
 
 def _prepare_resume_payload(
@@ -542,7 +549,9 @@ async def _produce_run_stream(
 ) -> None:
     sequence = 0
     visible_text_buffer = ""
+    visible_text_pending = ""
     reasoning_buffer = ""
+    reasoning_text_pending = ""
     cancelled = False
     initial_message_count = len(list(initial_values.get("messages", []) or []))
     trace_correlation = build_trace_correlation(settings=runtime.settings, request_id=request_id)
@@ -603,36 +612,62 @@ async def _produce_run_stream(
             if chunk_type == "messages":
                 message_chunk, metadata = data
                 safe_metadata = sanitize_stream_metadata(metadata)
+                stream_phase = stream_visibility_phase_from_metadata(metadata)
                 source_node = _source_node(safe_metadata, namespace)
                 is_internal = source_node in _INTERNAL_MESSAGE_STREAM_NODES
                 tool_chunks = extract_tool_call_chunks(message_chunk)
-                visible_delta = extract_visible_text_delta(message_chunk)
+                visible_delta = extract_visible_text_candidate_delta(message_chunk)
+                safe_visible_delta = sanitize_stream_visible_text(visible_delta)
                 hide_visible_delta = (
-                    is_internal
+                    stream_phase != STREAM_VISIBILITY_VISIBLE
+                    or is_internal
                     or bool(tool_chunks)
                     or _is_tool_result_fallback_visible_delta(visible_delta)
+                    or (looks_like_stream_visible_text_artifact(visible_delta) and not safe_visible_delta)
                 )
+                if hide_visible_delta:
+                    visible_text_pending = ""
                 if visible_delta and not hide_visible_delta:
-                    visible_text_buffer += visible_delta
-                    await publish(
-                        "message.delta",
-                        source_node,
-                        delta=visible_delta,
-                        message_id=str(getattr(message_chunk, "id", None) or run_id),
-                        metadata=safe_metadata,
-                        namespace=namespace,
+                    next_visible_text, visible_text_pending = safe_stream_visible_text_transition(
+                        visible_text_buffer,
+                        visible_delta,
+                        pending_text=visible_text_pending,
                     )
+                    if next_visible_text.startswith(visible_text_buffer):
+                        publish_delta = next_visible_text[len(visible_text_buffer) :]
+                    else:
+                        publish_delta = next_visible_text
+                    visible_text_buffer = next_visible_text
+                    if publish_delta:
+                        await publish(
+                            "message.delta",
+                            source_node,
+                            delta=publish_delta,
+                            message_id=str(getattr(message_chunk, "id", None) or run_id),
+                            metadata=safe_metadata,
+                            namespace=namespace,
+                        )
                 reasoning_delta = extract_reasoning_delta(message_chunk)
                 if reasoning_delta and not is_internal:
-                    reasoning_buffer += reasoning_delta
-                    await publish(
-                        "reasoning.delta",
-                        source_node,
-                        delta=reasoning_delta,
-                        message_id=str(getattr(message_chunk, "id", None) or run_id),
-                        metadata=safe_metadata,
-                        namespace=namespace,
+                    next_reasoning_text, reasoning_text_pending = safe_visible_text_transition(
+                        reasoning_buffer,
+                        reasoning_delta,
+                        pending_text=reasoning_text_pending,
                     )
+                    if next_reasoning_text.startswith(reasoning_buffer):
+                        publish_reasoning_delta = next_reasoning_text[len(reasoning_buffer) :]
+                    else:
+                        publish_reasoning_delta = next_reasoning_text
+                    reasoning_buffer = next_reasoning_text
+                    if publish_reasoning_delta:
+                        await publish(
+                            "reasoning.delta",
+                            source_node,
+                            delta=publish_reasoning_delta,
+                            message_id=str(getattr(message_chunk, "id", None) or run_id),
+                            metadata=safe_metadata,
+                            namespace=namespace,
+                        )
                 for tool_chunk in tool_chunks:
                     await publish(
                         "tool.call.delta",
@@ -674,12 +709,20 @@ async def _produce_run_stream(
             if len(final_messages) >= initial_message_count
             else final_messages
         )
-        final_visible_text = chat._latest_final_ai_text(appended_messages) or visible_text_buffer
+        graph_final_text = chat._latest_final_ai_text(appended_messages)
+        if graph_final_text:
+            graph_final_text = _safe_completed_visible_text(graph_final_text)
+        if graph_final_text:
+            final_visible_text = graph_final_text
+            final_visible_source = "graph_state"
+        else:
+            final_visible_text = _safe_completed_visible_text(visible_text_buffer)
+            final_visible_source = "stream_buffer"
         if final_visible_text:
             await publish(
                 "message.completed",
                 content=final_visible_text,
-                source="graph_state" if _has_final_ai(appended_messages) else "stream_buffer",
+                source=final_visible_source,
             )
         if reasoning_buffer:
             await publish("reasoning.delta", delta="", completed=True, content=reasoning_buffer)
@@ -769,7 +812,7 @@ async def _produce_branch_action_run_stream(
         )
         if result is None:
             raise RuntimeError("Branch action intent disappeared before execution.")
-        if result.get("message"):
+        if result.get("message") and not looks_like_textual_tool_call_artifact(result["message"]):
             await publish(
                 "message.completed",
                 content=str(result["message"]),
@@ -903,12 +946,16 @@ def _tool_result_is_error(item: dict[str, Any]) -> bool:
     return '"status": "error"' in content or '"status":"error"' in content
 
 
-def _has_final_ai(messages: list[Any]) -> bool:
-    return any(isinstance(message, AIMessage) and not getattr(message, "tool_calls", None) for message in messages)
-
-
 def _is_tool_result_fallback_visible_delta(delta: str) -> bool:
     return delta.lstrip().startswith(_TOOL_RESULT_FALLBACK_VISIBLE_PREFIX)
+
+
+def _should_hide_completed_visible_text(text: str) -> bool:
+    return not sanitize_stream_visible_text(text)
+
+
+def _safe_completed_visible_text(text: str) -> str:
+    return sanitize_stream_visible_text(text)
 
 
 def _json_safe(value: Any) -> Any:

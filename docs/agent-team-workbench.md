@@ -281,18 +281,26 @@ GET   /v1/agent-team/sessions/{session_id}
 GET   /v1/agent-team/sessions/{session_id}/view
 POST  /v1/agent-team/sessions/{session_id}/plan
 POST  /v1/agent-team/sessions/{session_id}/run
+POST  /v1/agent-team/sessions/{session_id}/cancel
 POST  /v1/agent-team/sessions/{session_id}/dispatch        # legacy template/fallback入口
 POST  /v1/agent-team/sessions/{session_id}/tasks
 GET   /v1/agent-team/sessions/{session_id}/tasks
 GET   /v1/agent-team/tasks/{task_id}
 PATCH /v1/agent-team/tasks/{task_id}
 POST  /v1/agent-team/tasks/{task_id}/run
-POST  /v1/agent-team/tasks/{task_id}/status        # PATCH alias for compatibility
+POST  /v1/agent-team/tasks/{task_id}/retry
+POST  /v1/agent-team/tasks/{task_id}/cancel
 POST  /v1/agent-team/tasks/{task_id}/outputs
 POST  /v1/agent-team/sessions/{session_id}/merge-bundle
-POST  /v1/agent-team/sessions/{session_id}/merge-proposal # merge-bundle alias
 POST  /v1/agent-team/sessions/{session_id}/merge-decision
-POST  /v1/agent-team/sessions/{session_id}/merge          # merge-decision alias
+```
+
+Compatibility aliases still exist with deprecation headers and are hidden from the OpenAPI schema:
+
+```text
+POST  /v1/agent-team/tasks/{task_id}/status                 # use PATCH /tasks/{task_id}
+POST  /v1/agent-team/sessions/{session_id}/merge-proposal   # use /merge-bundle
+POST  /v1/agent-team/sessions/{session_id}/merge            # use /merge-decision
 ```
 
 ### 5.1 持久化仓储
@@ -436,7 +444,7 @@ Nightly / Governance Dashboard 可以额外生成质量汇总 report：
 ```bash
 make agent-governance-report
 
-python scripts/agent_governance_report.py \
+.venv/bin/python scripts/agent_governance_report.py \
   --report-json reports/agent-governance/latest.json \
   --eval-report delegation=reports/release-gate/eval-agent-delegation.json \
   --eval-report governance=reports/release-gate/eval-agent-governance.json \

@@ -24,6 +24,7 @@ Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式
 - 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、记忆链路和类型完备的前端 SDK
+- 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
 - 提供仓库、git、网页、artifact 和 memory 工具
 
 ## 快速开始
@@ -58,6 +59,7 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
+- `http://127.0.0.1:8000/app/agent/memory`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -86,6 +88,7 @@ docker compose up --build
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
 - [架构说明与模块导航](docs/architecture.md)
+- [流式事件契约](docs/streaming-contract.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)
 - [当前上下文窗口](docs/context-window.md)

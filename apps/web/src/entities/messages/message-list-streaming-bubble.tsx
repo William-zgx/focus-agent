@@ -1,11 +1,6 @@
-import type {
-	FocusAgentStreamStep,
-	FocusAgentToolCallEvent,
-	FocusAgentToolEvent,
-} from "@focus-agent/web-sdk";
+import type { FocusAgentStreamStep } from "@focus-agent/web-sdk";
 import { useMemo } from "react";
 
-import { toolEventLabel } from "./message-list-helpers";
 import { ToolActivityCard } from "./message-list-tool-activity-card";
 import type {
 	ProcessingStepEntry,
@@ -120,128 +115,12 @@ function stepFromStreamStep(step: FocusAgentStreamStep): ProcessingStepEntry {
 	};
 }
 
-function stepsFromLegacyStreamEvents({
-	isChineseUi,
-	reasoningText,
-	toolCalls,
-	toolEvents,
-}: {
-	isChineseUi: boolean;
-	reasoningText?: string;
-	toolCalls?: FocusAgentToolCallEvent[];
-	toolEvents?: FocusAgentToolEvent[];
-}) {
-	const steps = new Map<string, ProcessingStepEntry>();
-
-	if (reasoningText?.trim()) {
-		steps.set("stream-reasoning", {
-			id: "stream-reasoning",
-			kind: "reasoning",
-			label: isChineseUi ? "整理推理链路" : "Reasoning",
-			status: "running",
-			tone: "warn",
-			content: truncateText(reasoningText, 120),
-		});
-	}
-
-	for (const [index, call] of (toolCalls ?? []).entries()) {
-		const toolName = String(
-			call.data.name || call.data.tool_name || "tool",
-		).trim();
-		const namespace = Array.isArray(call.data.namespace)
-			? call.data.namespace.join("/")
-			: "";
-		const id = String(
-			call.data.tool_call_id ||
-				call.data.id ||
-				(namespace && toolName ? `${namespace}:${toolName}` : "") ||
-				`stream-tool-call-${index}`,
-		);
-		steps.set(id, {
-			id,
-			kind: "tool",
-			label: isChineseUi ? `规划调用 ${toolName}` : `Planning ${toolName}`,
-			status: "running",
-			tone: "warn",
-			content: truncateText(String(call.data.args_delta || ""), 120),
-		});
-	}
-
-	for (const [index, event] of (toolEvents ?? []).entries()) {
-		const toolName = String(event.data.tool_name || event.data.name || "tool");
-		const namespace = Array.isArray(event.data.namespace)
-			? event.data.namespace.join("/")
-			: "";
-		const id = String(
-			event.data.tool_call_id ||
-				event.data.id ||
-				(namespace && toolName ? `${namespace}:${toolName}` : "") ||
-				`stream-tool-event-${index}`,
-		);
-		const status =
-			event.event === "tool.error"
-				? "failed"
-				: event.event === "tool.result"
-					? "completed"
-					: "running";
-		const output =
-			typeof event.data.output === "string"
-				? event.data.output
-				: typeof event.data.output === "undefined"
-					? String(event.data.message || "")
-					: stringifyDetailContent(event.data.output);
-		const detail = output ? formatToolDetailContent(output) : null;
-		steps.set(id, {
-			id,
-			kind: "tool",
-			label: toolEventLabel(event, isChineseUi),
-			status,
-			tone: toneForStatus(status),
-			content: truncateText(
-				String(event.data.message || "") || summarizeToolResult(output),
-				120,
-			),
-			detail: detail?.content
-				? {
-						id: `${id}-detail`,
-						label: String(
-							event.data.tool_name ||
-								event.data.name ||
-								event.data.event ||
-								"tool",
-						),
-						content: detail.content,
-						language: detail.language,
-					}
-				: undefined,
-		});
-	}
-
-	return [...steps.values()];
-}
-
 function buildStreamActivity({
-	isChineseUi,
 	processingSteps,
-	reasoningText,
-	toolCalls,
-	toolEvents,
 }: {
-	isChineseUi: boolean;
 	processingSteps?: FocusAgentStreamStep[];
-	reasoningText?: string;
-	toolCalls?: FocusAgentToolCallEvent[];
-	toolEvents?: FocusAgentToolEvent[];
 }): ToolActivityItem {
-	const steps =
-		processingSteps && processingSteps.length > 0
-			? processingSteps.map(stepFromStreamStep)
-			: stepsFromLegacyStreamEvents({
-					isChineseUi,
-					reasoningText,
-					toolCalls,
-					toolEvents,
-				});
+	const steps = (processingSteps ?? []).map(stepFromStreamStep);
 	const toolNames = uniqueToolNames(
 		steps
 			.filter((step) => step.kind === "tool")
@@ -262,37 +141,25 @@ function buildStreamActivity({
 export function AgentRunBubble({
 	isStreaming,
 	reasoningText,
-	toolCalls,
-	toolEvents,
 	processingSteps,
 	visibleText,
 	isChineseUi,
 }: {
 	isStreaming: boolean;
 	reasoningText?: string;
-	toolCalls?: FocusAgentToolCallEvent[];
-	toolEvents?: FocusAgentToolEvent[];
 	processingSteps?: FocusAgentStreamStep[];
 	visibleText?: string;
 	isChineseUi: boolean;
 }) {
 	const hasVisibleText = Boolean(visibleText?.trim());
 	const hasReasoningText = Boolean(reasoningText?.trim());
-	const hasToolActivity = Boolean(
-		(processingSteps?.length ?? 0) ||
-			(toolCalls?.length ?? 0) ||
-			(toolEvents?.length ?? 0),
-	);
+	const hasToolActivity = Boolean(processingSteps?.length);
 	const activity = useMemo(
 		() =>
 			buildStreamActivity({
-				isChineseUi,
 				processingSteps,
-				reasoningText,
-				toolCalls,
-				toolEvents,
 			}),
-		[isChineseUi, processingSteps, reasoningText, toolCalls, toolEvents],
+		[processingSteps],
 	);
 
 	if (!isStreaming && activity.steps.length === 0) {

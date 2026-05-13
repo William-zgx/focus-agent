@@ -181,10 +181,6 @@ export function processingStepsSummaryLabel(
 	return `Processing details (${count})`;
 }
 
-export function processingStepsToggleHint(isChineseUi: boolean) {
-	return isChineseUi ? "展开查看" : "Expand";
-}
-
 export function branchActionTitle(
 	action: FocusAgentBranchActionProposal,
 	isChineseUi: boolean,

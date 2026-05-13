@@ -99,21 +99,33 @@ intentional, update snapshots with `uv run python scripts/check_contracts.py
 ```bash
 make sdk-check
 make sdk-build
+make sdk-validate-transport
 cd frontend-sdk && npm run validate:transport
 ```
 
 4. If the Web App changed:
 
 ```bash
-pnpm --filter @focus-agent/web-app lint
-pnpm --filter @focus-agent/web-app format
+make web-lint
+make web-format-check
 make web-check
 make web-build
 ```
 
 The Web lint/format scripts are intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-check` and `make web-build` remain the full app type/build gates.
 
-5. If Agent Team planning, execution, final-answer synthesis, or Mission Runner UI changed:
+5. If stream visibility, tool protocol filtering, frontend stream reducers, or processing cards changed:
+
+```bash
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+pnpm test:thread-stream-frontend-regressions
+pnpm sdk:check
+pnpm web:check
+```
+
+See [streaming-contract.md](streaming-contract.md) for the public SSE event contract and the internal `quarantine` / `visible` phase boundary. Browser checks should include a tool-using prompt and confirm that no DSML/XML/function-call text appears in the assistant bubble while tool cards still render.
+
+6. If Agent Team planning, execution, final-answer synthesis, or Mission Runner UI changed:
 
 ```bash
 .venv/bin/python -m pytest tests/test_agent_team_* -q
@@ -124,7 +136,7 @@ make web-build
 
 Fake Agent Team execution is a workflow-only validation mode. It must surface as `final_answer_status="placeholder"` and `request_changes`, not as a deliverable answer. Browser checks should confirm the default UI hides raw fake run text and keeps output ids/artifact ids inside Advanced details.
 
-6. If browser-level chat, branch tree, or merge-review flows changed:
+7. If browser-level chat, branch tree, or merge-review flows changed:
 
 ```bash
 make ui-smoke
@@ -141,7 +153,7 @@ The browser smoke waits for the assistant response to stabilize after streaming 
 
 When testing the Vite app, keep the `/app/` trailing slash. The dev server may return different results for `/app` versus `/app/`, while the backend-served static app normalizes through FastAPI. The smoke uses a temporary Chrome profile; if a manual Chrome profile shows a blank login page or stale auth state while the smoke passes, clear site data or use a clean profile before filing a UI regression.
 
-7. If observability pages or seeded trajectory browser flows changed:
+8. If observability pages or seeded trajectory browser flows changed:
 
 ```bash
 make ui-smoke-observability
@@ -154,13 +166,13 @@ pnpm --dir apps/web smoke:observability
 
 If the API redirects `/app` to the Vite server, pass `--app-base-url http://127.0.0.1:5173/app` so the browser smoke waits on the same origin it actually renders. When the page visibly renders trajectory evidence and all captured fetches return 200 but the smoke fails on missing copy or panel text, update the smoke assertion alongside the UI change; do not paper over endpoint failures, console errors, or empty evidence states.
 
-8. If trajectory observability contracts changed:
+9. If trajectory observability contracts changed:
 
 ```bash
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-9. If repository behavior changed, especially AgentTeam repository session/task/output semantics:
+10. If repository behavior changed, especially AgentTeam repository session/task/output semantics:
 
 ```bash
 uv run pytest tests/test_agent_team_repository_contract.py
@@ -168,7 +180,7 @@ uv run pytest tests/test_agent_team_repository_contract.py
 
 SQLite cases run locally by default. Postgres cases run when `DATABASE_URI` is set and otherwise skip only the Postgres backend.
 
-10. If ChatService, runtime assembly, or config/runtime directory boundaries changed:
+11. If ChatService, runtime assembly, or config/runtime directory boundaries changed:
 
 ```bash
 make test-chat-service
@@ -177,7 +189,7 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_do
 
 ChatService is intentionally split across branch action facade, streaming lifecycle, thread access, compaction, trajectory recording, and turn-error helpers. Keep behavior changes covered by service tests and browser smoke rather than relying only on import-level checks.
 
-11. If Memory v2, embedding, pgvector, migration, or memory retrieval changed:
+12. If Memory v2, embedding, pgvector, migration, or memory retrieval changed:
 
 ```bash
 uv run pytest tests/test_memory_embedding_policy.py tests/test_memory_embedding_cli.py tests/test_memory_embedding_provider.py tests/test_postgres_memory_repository.py tests/test_memory_retriever.py tests/test_migrate_local_state.py
@@ -186,7 +198,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 
 The doctor command is read-only. It expects a Postgres `DATABASE_URI`, checks provider selection, pgvector extension/table/dimensions/index state, and prints the Ollama install hint when `embeddinggemma` is missing. For fresh local shells, source `.focus_agent/postgres/runtime.env` first if the API was started through the managed Postgres helper.
 
-12. If runtime coordination, durable background jobs, thread turn leases, or branch refresh scheduling changed:
+13. If runtime coordination, durable background jobs, thread turn leases, or branch refresh scheduling changed:
 
 ```bash
 uv run pytest tests/test_coordination.py tests/test_background_work.py tests/test_chat_service.py
@@ -195,7 +207,7 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security
 
 These checks cover in-memory/Postgres thread leases, durable job claim tokens and claim heartbeat, heartbeat-lost behavior, and the rule that first-turn branch title/metadata refresh is scheduled after the active chat turn lease is released.
 
-13. If Auth / Access Model, token lifecycle, or ownership semantics changed:
+14. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
 ```bash
 uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
@@ -214,7 +226,7 @@ When the Web login surface, account shell, admin route protection, or token stor
 - After registration or admin password reset, confirm username/password login still reaches the same `return_to` target.
 - Switch back by signing out and logging in with a different method. The app has no separate account switcher; switching is logout followed by another login.
 
-14. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
+15. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
 
 ```bash
 uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
@@ -226,7 +238,7 @@ make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 ```
 
-15. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+16. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

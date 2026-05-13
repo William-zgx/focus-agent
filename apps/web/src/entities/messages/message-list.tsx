@@ -1,10 +1,9 @@
-import type {
-	FocusAgentBranchActionProposal,
-	FocusAgentStreamStep,
-	FocusAgentToolApprovalInterrupt,
-	FocusAgentToolCallEvent,
-	FocusAgentToolEvent,
-	RunFailedPayload,
+import {
+	safeVisibleText,
+	type FocusAgentBranchActionProposal,
+	type FocusAgentStreamStep,
+	type FocusAgentToolApprovalInterrupt,
+	type RunFailedPayload,
 } from "@focus-agent/web-sdk";
 import { useMemo } from "react";
 
@@ -17,11 +16,7 @@ import {
 import { AgentRunBubble } from "./message-list-streaming-bubble";
 import { ToolApprovalCard } from "./message-list-tool-approval-card";
 import { ToolActivityCard } from "./message-list-tool-activity-card";
-import {
-	buildTranscriptItems,
-	normalizeText,
-	shouldHideStreamingInternalContent,
-} from "./message-transcript";
+import { buildTranscriptItems, normalizeText } from "./message-transcript";
 
 interface MessageListProps {
 	isReadOnly?: boolean;
@@ -31,8 +26,6 @@ interface MessageListProps {
 	streamVisibleText?: string;
 	streamReasoningText?: string;
 	streamProcessingSteps?: FocusAgentStreamStep[];
-	streamToolCalls?: FocusAgentToolCallEvent[];
-	streamToolEvents?: FocusAgentToolEvent[];
 	streamFailed?: RunFailedPayload;
 	branchActions?: FocusAgentBranchActionProposal[];
 	branchActionErrors?: Record<string, string>;
@@ -59,8 +52,6 @@ export function MessageList({
 	streamVisibleText,
 	streamReasoningText,
 	streamProcessingSteps,
-	streamToolCalls,
-	streamToolEvents,
 	streamFailed,
 	branchActions = [],
 	branchActionErrors = {},
@@ -79,13 +70,10 @@ export function MessageList({
 		() => buildTranscriptItems(messages, assistantMessage),
 		[assistantMessage, messages],
 	);
-	const visibleStreamReply = shouldHideStreamingInternalContent(
-		streamVisibleText,
-	)
-		? ""
-		: normalizeText(streamVisibleText)
-			? String(streamVisibleText)
-			: "";
+	const safeStreamVisibleText = safeVisibleText(streamVisibleText ?? "");
+	const visibleStreamReply = normalizeText(safeStreamVisibleText)
+		? safeStreamVisibleText
+		: "";
 
 	return (
 		<div className="fa-message-list">
@@ -148,8 +136,6 @@ export function MessageList({
 				isChineseUi={isChineseUi}
 				processingSteps={streamProcessingSteps}
 				reasoningText={streamReasoningText}
-				toolCalls={streamToolCalls}
-				toolEvents={streamToolEvents}
 				visibleText={visibleStreamReply}
 			/>
 

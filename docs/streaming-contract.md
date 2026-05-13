@@ -1,0 +1,116 @@
+# Streaming Contract
+
+更新时间：2026-05-10
+
+This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
+
+## 1. Stream Shape
+
+Focus Agent uses authenticated POST requests that return Server-Sent Events:
+
+```text
+POST /v2/threads/{thread_id}/runs/stream
+POST /v2/threads/{thread_id}/runs/resume/stream
+POST /v2/runs/{run_id}/stream
+```
+
+The public event names are stable. Do not introduce a new public event for internal stream visibility state.
+
+```text
+run.metadata
+run.status
+run.completed
+run.failed
+run.interrupt
+run.closed
+heartbeat
+state.update
+message.delta
+message.completed
+reasoning.delta
+tool.call.delta
+tool.requested
+tool.error
+tool.result
+task.update
+```
+
+Clients should treat `run.completed`, `run.failed`, and `run.closed` as terminal turn signals. `heartbeat` is transport liveness only.
+
+## 2. Visible Text Boundary
+
+`message.delta` and `message.completed` are the only events that may carry user-visible assistant answer text.
+
+Server producers must enforce this rule:
+
+- Model streams are `quarantine` by default.
+- Only chunks explicitly marked with internal `stream_phase=visible` may become `message.delta`.
+- Tool-bound model calls, repair calls, tool planning, and missing phase metadata stay quarantined.
+- Internal graph nodes such as `plan` and `reflect` never publish `message.delta`.
+- Tool calls continue to publish `tool.call.delta`, tool lifecycle events, `reasoning.delta`, `task.update`, and `state.update` while visible text is quarantined.
+- `message.completed` prefers the final graph-state assistant answer. A dirty stream buffer must not overwrite a safe final answer.
+
+The internal phase can be carried as `stream_phase` / `focus_agent_stream_phase` metadata or as `stream_phase:*` / `focus_agent_stream_phase:*` tags. These fields are internal only and must be stripped from public event metadata.
+
+## 3. Tool Protocol Isolation
+
+Real tool calls must use the model/tool-call interface and public tool events. DSML, XML-ish function-call text, bracket tool markers, and internal process narration are not valid visible assistant text.
+
+Filtering is intentionally layered:
+
+- Graph repair prompts try to convert textual tool-call artifacts into structured tool calls or tool-free final answers.
+- The harness stream producer gates visible text by phase and filters textual artifacts from visible, reasoning, and completed content.
+- The frontend SDK reducer applies `safeVisibleTextTransition()` as a defensive layer for replayed events, older servers, and split deltas.
+- Web transcript filtering still protects historical messages that were persisted before the current contract.
+
+This layered filtering is not redundant. Each layer protects a different failure mode.
+
+## 4. Tool And Processing Events
+
+Tool activity should be rendered from structured events, not from assistant text:
+
+- `tool.call.delta` carries streamed call arguments in `args_delta`; optional `id` / `tool_call_id` and `name` / `tool_name` are included when known.
+- `tool.requested`, `tool.result`, and `tool.error` represent tool lifecycle state. If a custom payload lacks a call id, it is downgraded to `state.update`.
+- `task.update` carries process-level progress and may be shown in processing cards.
+- `state.update` is for raw state/debug panels and should not be rendered as assistant answer text.
+
+The SDK reducer derives `processingSteps` from reasoning, tool call, tool lifecycle, and task events. New UI should use `processingSteps` as the canonical processing-card input. `toolCalls`, `toolEvents`, and `reasoningText` remain available as raw/debug/backcompat state.
+
+Tool step identity is resolved in this order:
+
+```text
+tool_call_id or id
+namespace + tool name
+tool name
+namespace
+"tool"
+```
+
+Tool lifecycle status maps as:
+
+```text
+tool.requested -> pending
+tool.call.delta -> running
+tool.result -> completed
+tool.error -> failed
+```
+
+`task.update` only accepts `pending`, `running`, `completed`, and `failed`; unknown statuses are treated as `running`.
+
+## 5. Validation
+
+When stream behavior, tool protocol filtering, frontend SDK reducers, or processing cards change, run:
+
+```bash
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+pnpm test:thread-stream-frontend-regressions
+pnpm sdk:check
+pnpm web:check
+```
+
+For browser-level regressions, run a tool-using prompt through `make ui-smoke` or `scripts/ui_smoke_test.py` and confirm:
+
+- no DSML/XML/function-call text appears in the assistant bubble,
+- tool and task cards still appear before final text,
+- final `message.completed` replaces any temporary stream buffer,
+- public metadata does not expose `stream_phase`.

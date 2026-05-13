@@ -269,6 +269,19 @@ Cache scopes are intentionally conservative:
 
 Execution control is enforced by the runtime, not by individual tools. Hard deadlines and upstream cancellation are treated as release-sensitive behavior: they fail the tool call without fallback so a slow or cancelled side-effect cannot be hidden behind a secondary provider.
 
+## Tool Protocol Isolation
+
+Structured tool calls are the only supported way for a model to invoke tools. Textual DSML, XML-ish function-call snippets, bracketed tool markers, or internal process narration must not be rendered as assistant answer text.
+
+The isolation boundary is shared across backend and frontend:
+
+- `src/focus_agent/core/tool_protocol.py` identifies textual tool-call artifacts and split prefixes.
+- `src/focus_agent/transport/stream_events.py` extracts structured visible, reasoning, and tool-call payloads from provider chunks.
+- `src/focus_agent/api/routers/harness_runs.py` gates `message.delta` by internal stream phase and keeps missing phase metadata quarantined.
+- `frontend-sdk/src/toolProtocol.ts` and `frontend-sdk/src/reducers.ts` provide the SDK defensive layer for replayed streams and older servers.
+
+For the full public event contract and validation commands, see [streaming-contract.md](streaming-contract.md).
+
 ## Product Tool Taxonomy
 
 Product tools should be grouped by the kind of user-visible state or evidence they handle. This taxonomy keeps primitive operations separate from skills that decide when to combine them.

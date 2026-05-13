@@ -128,6 +128,7 @@ function loadSdkStreamFunctions() {
     "failOpenProcessingSteps",
     "applyVisibleTextDelta",
     "applyVisibleTextCompleted",
+    "applyReasoningDelta",
     "reduceStreamEvent",
   ]
     .map((name) => extractFunction(reducersSource, name))
@@ -147,6 +148,10 @@ function loadSdkStreamFunctions() {
 }
 
 function loadMessageTranscriptFunctions() {
+  const toolProtocolSource = readFileSync(
+    path.join(repoRoot, "frontend-sdk/src/toolProtocol.ts"),
+    "utf8",
+  );
   const sources = [
     readFileSync(
       path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-normalize.ts"),
@@ -183,7 +188,7 @@ function loadMessageTranscriptFunctions() {
   ];
   const snippet = functionNames.map((name) => extractFunction(sources, name)).join("\n\n");
   const transpiled = ts.transpileModule(
-    `function looksLikeTextualToolCallArtifact(value) { return String(value ?? "").includes("<tool_call"); }\n\n${snippet}`,
+    `${toolProtocolSource}\n\n${snippet}`,
     {
       compilerOptions: {
         module: ts.ModuleKind.CommonJS,
@@ -342,6 +347,70 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
 
   assert.equal(looksLikeTextualToolCallArtifact("[web_fetch] 尝试获取沪指数据，请稍等。"), true);
   assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。\n\n< | | DSML | | tool_calls>\n< | | DSML | | invoke nameweb_search">\n< | | DSML | | parameter name="query" string="true">AI breakthroughs</ | | DSML | | parameter>',
+    ),
+    true,
+  );
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      'toolcalls/invoke namewebfetch">\nparameter namemax_chars" string="false">8000</ | | DSML | | parameter>\nparameter nameurl" string="true">https://example.com</ | | DSML | | parameter>',
+    ),
+    true,
+  );
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      'invoke name">\nparameter name="" string="true">direct</ | | DSML | | parameter>\nparameter name="" string="true">https://mem0.ai/blog/state-of-ai-agent-memory-2026</ | | DSML | | parameter>',
+    ),
+    true,
+  );
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '· invoke name 2025 trends predictions multi-agent collaboration future</ | | DSML | | parameter>\nparameter name6</ | | DSML | | parameter>',
+    ),
+    true,
+  );
+  assert.equal(looksLikeTextualToolCallArtifact("invoke name"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("parameter name"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("| | DSML | |"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("</｜｜DSML｜｜parameter>"), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '<tool_c>\n<invoke="web_fetch">\n<parameterurl" string="true">https://vectorize.io/articles/best-ai-agent-memory-systems</parameter>\n<parametermax_chars" string="false">12000</parameter>\n</invoke>\n</tool_c>',
+    ),
+    true,
+  );
+  assert.equal(looksLikeTextualToolCallArtifact('alls>\n="web_search">'), true);
+  assert.equal(looksLikeTextualToolCallArtifact('="query" string="true">AI agent predictions'), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact('="web_fetch="url" string="true">https://www.gartner.com/en/articles'),
+    true,
+  );
+  assert.equal(looksLikeTextualToolCallArtifact('="max_chars" stringfalse">8000'), true);
+  assert.equal(looksLikeTextualToolCallArtifact('="query"true">AI agent frameworks comparison'), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026',
+    ),
+    true,
+  );
+  assert.equal(looksLikeTextualToolCallArtifact('="max_chars"false">6000'), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact("https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>"),
+    true,
+  );
+  assert.equal(looksLikeTextualToolCallArtifact("12000parameter>"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("invoke>"), true);
+  assert.equal(looksLikeTextualToolCallArtifact('="max_fetch_length" stringfalse8000parameter>'), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '="read="filepath" string="true">tool-observation://webfetch/2026/state-of-agents',
+    ),
+    true,
+  );
+  assert.equal(looksLikeTextualToolCallArtifact("tool-result://web_search/call-123"), true);
+  assert.equal(looksLikeTextualToolCallArtifact("DSML 是一种标记格式说明。"), false);
+  assert.equal(
     looksLikeTextualToolCallArtifact("让我尝试获取更详细的日线数据：我已经从搜索结果中获取到了关键信息。"),
     true,
   );
@@ -356,12 +425,75 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
   assert.equal(looksLikeTextualToolCallArtifact("<parameter=query>比亚迪</parameter>"), true);
   assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
   assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
+  assert.equal(looksLikeTextualToolCallArtifact("普通文本里提到 invoke name resolution。"), false);
   assert.equal(safeVisibleText("</tool_call>"), "");
   assert.equal(safeVisibleText("function=web_search>"), "");
+  assert.equal(safeVisibleText("invoke name"), "");
+  assert.equal(safeVisibleText("parameter name"), "");
+  assert.equal(safeVisibleText("| | DSML | |"), "");
+  assert.equal(safeVisibleText("</｜｜DSML｜｜parameter>"), "");
+  assert.equal(safeVisibleText('<tool_c>\n<invoke="web_fetch">'), "");
+  assert.equal(safeVisibleText('alls>\n="web_search">'), "");
+  assert.equal(safeVisibleText('="query" string="true">AI agent predictions'), "");
+  assert.equal(
+    safeVisibleText('="web_fetch="url" string="true">https://www.gartner.com/en/articles'),
+    "",
+  );
+  assert.equal(safeVisibleText('="max_chars" stringfalse">8000'), "");
+  assert.equal(safeVisibleText('="query"true">AI agent frameworks comparison'), "");
+  assert.equal(
+    safeVisibleText('="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026'),
+    "",
+  );
+  assert.equal(safeVisibleText('="max_chars"false">6000'), "");
+  assert.equal(safeVisibleText("https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>"), "");
+  assert.equal(safeVisibleText("12000parameter>"), "");
+  assert.equal(safeVisibleText("invoke>"), "");
+  assert.equal(safeVisibleText('="max_fetch_length" stringfalse8000parameter>'), "");
+  assert.equal(
+    safeVisibleText('="read="filepath" string="true">tool-observation://webfetch/2026/state-of-agents'),
+    "",
+  );
+  assert.equal(
+    safeVisibleText(
+      'toolcalls/invoke namewebfetch">\nparameter namemax_chars" string="false">8000</ | | DSML | | parameter>',
+    ),
+    "",
+  );
+  assert.equal(safeVisibleText('toolcalls/invoke namewebfetch">'), "");
+  assert.equal(
+    safeVisibleText(
+      'invoke name">\nparameter name="" string="true">direct</ | | DSML | | parameter>',
+    ),
+    "",
+  );
+  assert.equal(
+    safeVisibleText(
+      '· invoke name 2025 trends predictions multi-agent collaboration future</ | | DSML | | parameter>',
+    ),
+    "",
+  );
   assert.equal(safeVisibleText("[web_search] searching"), "");
   assert.equal(safeVisibleText("**[web_fetch]** 尝试通过东方财富API获取数据。"), "");
   assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
+  assert.equal(safeVisibleText("让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。"), "");
   assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
+  assert.equal(safeVisibleText("Let me fetch the latest sources first."), "");
+  assert.equal(safeVisibleText("I should look for a few more references."), "");
+  assert.equal(safeVisibleText("Wait, I need to call the search tool."), "");
+  assert.equal(safeVisibleText("Final answer: tool call follows"), "");
+  assert.equal(
+    safeVisibleText("Let me produce the final answer. I must not call more tools. Let's go.最终答案。"),
+    "最终答案。",
+  );
+  assert.equal(
+    safeVisibleText('{"tool_calls":[{"name":"web_search","args":{"query":"x"}}]}'),
+    "",
+  );
+  assert.equal(
+    safeVisibleText('{"function_call":{"name":"web_fetch","arguments":"{\\"url\\":\\"https://x\\"}"}}'),
+    "",
+  );
 
   const withArtifactDelta = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -389,6 +521,198 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withSplitArtifact.visibleText, "");
+
+  let withSpacedDsmlArtifact = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。",
+      channel: "message",
+    },
+  });
+  assert.equal(withSpacedDsmlArtifact.visibleText, "");
+  withSpacedDsmlArtifact = reduceStreamEvent(withSpacedDsmlArtifact, {
+    event: "message.delta",
+    data: {
+      delta:
+        '\n\n< | | DSML | | tool_calls>\n< | | DSML | | invoke nameweb_search">\n< | | DSML | | parameter name="query" string="true">AI breakthroughs</ | | DSML | | parameter>',
+      channel: "message",
+    },
+  });
+  assert.equal(withSpacedDsmlArtifact.visibleText, "");
+
+  let withCompactedDsmlArtifact = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "toolcalls/",
+      channel: "message",
+    },
+  });
+  assert.equal(withCompactedDsmlArtifact.visibleText, "");
+  withCompactedDsmlArtifact = reduceStreamEvent(withCompactedDsmlArtifact, {
+    event: "message.delta",
+    data: {
+      delta:
+        'invoke namewebfetch">\nparameter namemax_chars" string="false">8000</ | | DSML | | parameter>',
+      channel: "message",
+    },
+  });
+  assert.equal(withCompactedDsmlArtifact.visibleText, "");
+
+  let withDegradedInvokeName = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "invoke",
+      channel: "message",
+    },
+  });
+  assert.equal(withDegradedInvokeName.visibleText, "");
+  withDegradedInvokeName = reduceStreamEvent(withDegradedInvokeName, {
+    event: "message.delta",
+    data: {
+      delta:
+        " name 2025 trends predictions multi-agent collaboration future</ | | DSML | | parameter>\nparameter name6",
+      channel: "message",
+    },
+  });
+  assert.equal(withDegradedInvokeName.visibleText, "");
+
+  let withSplitBareDsml = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "< | | ",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitBareDsml.visibleText, "");
+  withSplitBareDsml = reduceStreamEvent(withSplitBareDsml, {
+    event: "message.delta",
+    data: {
+      delta: "DSML | | invoke nameweb_search",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitBareDsml.visibleText, "");
+
+  let withSplitXmlishToolC = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "<tool",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitXmlishToolC.visibleText, "");
+  withSplitXmlishToolC = reduceStreamEvent(withSplitXmlishToolC, {
+    event: "message.delta",
+    data: {
+      delta: '_c>\n<invoke="web_fetch">',
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitXmlishToolC.visibleText, "");
+
+  const withOrphanedToolTail = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta:
+        'alls>\n="web_search">\n="query" string="true">AI agent predictions\n="query"true">AI agent frameworks comparison\n="web_fetch="url" string="true">https://www.gartner.com/en/articles\n="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026\n="max_chars" stringfalse">8000\n="max_chars"false">6000',
+      channel: "message",
+    },
+  });
+  assert.equal(withOrphanedToolTail.visibleText, "");
+
+  let withBareParameterName = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "parameter",
+      channel: "message",
+    },
+  });
+  assert.equal(withBareParameterName.visibleText, "");
+
+  let withSplitObservationUri = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: '="read',
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitObservationUri.visibleText, "");
+  withSplitObservationUri = reduceStreamEvent(withSplitObservationUri, {
+    event: "message.delta",
+    data: {
+      delta: '="filepath" string="true">tool-observation://webfetch/2026/state-of-agents',
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitObservationUri.visibleText, "");
+
+  let withCompactedParameterTail = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: '="url"',
+      channel: "message",
+    },
+  });
+  assert.equal(withCompactedParameterTail.visibleText, "");
+  withCompactedParameterTail = reduceStreamEvent(withCompactedParameterTail, {
+    event: "message.delta",
+    data: {
+      delta: 'true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026',
+      channel: "message",
+    },
+  });
+  assert.equal(withCompactedParameterTail.visibleText, "");
+  withCompactedParameterTail = reduceStreamEvent(withCompactedParameterTail, {
+    event: "message.delta",
+    data: {
+      delta: "</｜｜DSML｜｜parameter>",
+      channel: "message",
+    },
+  });
+  assert.equal(withCompactedParameterTail.visibleText, "");
+
+  let withBareUrlParameterTail = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/",
+      channel: "message",
+    },
+  });
+  assert.equal(withBareUrlParameterTail.visibleText, "");
+  withBareUrlParameterTail = reduceStreamEvent(withBareUrlParameterTail, {
+    event: "message.delta",
+    data: {
+      delta: "parameter>",
+      channel: "message",
+    },
+  });
+  assert.equal(withBareUrlParameterTail.visibleText, "");
+
+  let withNormalUrl = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "https://example.com/article",
+      channel: "message",
+    },
+  });
+  assert.equal(withNormalUrl.visibleText, "");
+  withNormalUrl = reduceStreamEvent(withNormalUrl, {
+    event: "message.delta",
+    data: {
+      delta: " is a normal cited URL.",
+      channel: "message",
+    },
+  });
+  assert.equal(withNormalUrl.visibleText, "https://example.com/article is a normal cited URL.");
+
+  withBareParameterName = reduceStreamEvent(withBareParameterName, {
+    event: "message.delta",
+    data: {
+      delta: " name",
+      channel: "message",
+    },
+  });
+  assert.equal(withBareParameterName.visibleText, "");
 
   let withNaturalFunctionText = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -424,6 +748,24 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
   });
   assert.equal(withInternalProcessDelta.visibleText, "沪指本周震荡回稳。");
 
+  const withEnglishProcessDelta = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "Let me fetch more sources first.",
+      channel: "message",
+    },
+  });
+  assert.equal(withEnglishProcessDelta.visibleText, "");
+
+  const withMixedFinalDelta = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "Let me produce the final answer. I must not call more tools. Let's go.最终答案。",
+      channel: "message",
+    },
+  });
+  assert.equal(withMixedFinalDelta.visibleText, "最终答案。");
+
   const withArtifactCompleted = reduceStreamEvent(withPlainDelta, {
     event: "message.completed",
     data: {
@@ -431,6 +773,35 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withArtifactCompleted.visibleText, "");
+
+  let withReasoningArtifact = reduceStreamEvent(createInitialStreamState(), {
+    event: "reasoning.delta",
+    data: {
+      delta: "tool",
+    },
+  });
+  assert.equal(withReasoningArtifact.reasoningText, "");
+  assert.equal(withReasoningArtifact.processingSteps.length, 0);
+  withReasoningArtifact = reduceStreamEvent(withReasoningArtifact, {
+    event: "reasoning.delta",
+    data: {
+      delta: 'calls/invoke namewebfetch">\nparameter name=""',
+    },
+  });
+  assert.equal(withReasoningArtifact.reasoningText, "");
+  assert.equal(withReasoningArtifact.processingSteps.length, 0);
+
+  const withTaskArtifact = reduceStreamEvent(createInitialStreamState(), {
+    event: "task.update",
+    data: {
+      id: "task-1",
+      label: "Task",
+      status: "running",
+      value: 'invoke name">\nparameter name="" string="true">direct',
+    },
+  });
+  assert.equal(withTaskArtifact.processingSteps.length, 1);
+  assert.equal(withTaskArtifact.processingSteps[0].content, undefined);
 });
 
 test("stream reducer maintains processing steps alongside canonical run fields", () => {
@@ -749,6 +1120,93 @@ test("stream reducer consumes v2 harness run events without visible_text depende
   assert.equal(interrupted.activePhase, "interrupt");
 });
 
+test("stream reducer keeps visible text empty until message content follows tool-first events", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+
+  const toolFirstEvents = [
+    {
+      event: "tool.requested",
+      data: {
+        run_id: "run-tool-first",
+        thread_id: "thread-1",
+        turn_id: "run-tool-first",
+        sequence: 1,
+        source_node: "agent",
+        tool_call_id: "call-first",
+        tool_name: "web_search",
+        args: { query: "focus" },
+      },
+    },
+    {
+      event: "tool.result",
+      data: {
+        run_id: "run-tool-first",
+        thread_id: "thread-1",
+        turn_id: "run-tool-first",
+        sequence: 2,
+        source_node: "agent",
+        tool_call_id: "call-first",
+        tool_name: "web_search",
+        output: { title: "Focus Agent" },
+      },
+    },
+  ];
+
+  const reduceToolFirstEvents = () =>
+    toolFirstEvents.reduce(
+      (state, event) => reduceStreamEvent(state, event),
+      createInitialStreamState(),
+    );
+
+  const toolOnlyState = reduceToolFirstEvents();
+  assert.equal(toolOnlyState.visibleText, "");
+  assert.equal(
+    JSON.stringify(toolOnlyState.toolEvents.map((event) => event.event)),
+    JSON.stringify(["tool.requested", "tool.result"]),
+  );
+  assert.equal(toolOnlyState.toolEvents[0].data.tool_name, "web_search");
+  assert.equal(toolOnlyState.toolEvents[0].data.tool_call_id, "call-first");
+  assert.equal(toolOnlyState.processingSteps.length, 1);
+  assert.equal(toolOnlyState.processingSteps[0].id, "call-first");
+  assert.equal(toolOnlyState.processingSteps[0].kind, "tool");
+  assert.equal(toolOnlyState.processingSteps[0].status, "completed");
+  assert.equal(toolOnlyState.processingSteps[0].result.title, "Focus Agent");
+
+  const withFinalDelta = reduceStreamEvent(toolOnlyState, {
+    event: "message.delta",
+    data: {
+      run_id: "run-tool-first",
+      thread_id: "thread-1",
+      turn_id: "run-tool-first",
+      sequence: 3,
+      source_node: "agent",
+      delta: "Answer after tools.",
+      message_id: "msg-1",
+      channel: "message",
+    },
+  });
+  assert.equal(withFinalDelta.visibleText, "Answer after tools.");
+  assert.equal(withFinalDelta.toolEvents.length, 2);
+  assert.equal(withFinalDelta.processingSteps[0].status, "completed");
+
+  const withFinalCompleted = reduceStreamEvent(reduceToolFirstEvents(), {
+    event: "message.completed",
+    data: {
+      run_id: "run-tool-first",
+      thread_id: "thread-1",
+      turn_id: "run-tool-first",
+      sequence: 3,
+      source_node: "agent",
+      content: "Completed answer after tools.",
+      message_id: "msg-2",
+      source: "agent",
+    },
+  });
+  assert.equal(withFinalCompleted.visibleText, "Completed answer after tools.");
+  assert.equal(withFinalCompleted.toolEvents.length, 2);
+  assert.equal(withFinalCompleted.processingSteps[0].status, "completed");
+});
+
 test("stream reducer merges tool lifecycle events by namespace and name fallback", () => {
   const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
 
@@ -930,6 +1388,41 @@ test("message transcript fallback remains available before assistant persistence
   const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
 	assert.equal(assistantItems.length, 1);
 	assert.equal(assistantItems[0].content, "Streaming answer.");
+});
+
+test("message transcript hides degraded tool protocol content from state and fallback", () => {
+  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+  const protocolTexts = [
+    "invoke name\nparameter name\n| | DSML | |",
+    '<tool_c>\n<invoke="web_fetch">\n<parameterurl" string="true">https://vectorize.io/articles/best-ai-agent-memory-systems</parameter>\n</invoke>\n</tool_c>',
+    'alls>\n="web_search">\n="query" string="true">AI agent predictions',
+    '="web_fetch="url" string="true">https://www.gartner.com/en/articles\n="max_chars" stringfalse">8000',
+    '="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026\n="max_chars"false">6000',
+    "https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>\n12000parameter>\ninvoke>",
+    '="max_fetch_length" stringfalse8000parameter>',
+    '="read="filepath" string="true">tool-observation://webfetch/2026/state-of-agents',
+  ];
+
+  for (const protocolText of protocolTexts) {
+    const stateItems = buildTranscriptItems([
+      { id: "user-1", type: "human", content: "Search this." },
+      { id: "assistant-protocol", type: "ai", content: protocolText },
+    ]);
+    const fallbackItems = buildTranscriptItems(
+      [{ id: "user-1", type: "human", content: "Search this." }],
+      protocolText,
+    );
+
+    assert.equal(
+      stateItems.some((item) => item.kind === "message" && item.type === "ai"),
+      false,
+    );
+    assert.equal(
+      fallbackItems.some((item) => item.kind === "message" && item.type === "ai"),
+      false,
+    );
+  }
 });
 
 test("message transcript shows only the latest visible assistant answer per turn", () => {

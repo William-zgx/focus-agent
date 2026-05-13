@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
-from ..core.tool_protocol import looks_like_textual_tool_call_artifact
+from ..core.tool_protocol import (
+    looks_like_potential_textual_tool_call_prefix,
+    looks_like_textual_tool_call_artifact,
+    safe_visible_text_transition,
+)
 
 
 VISIBLE_TEXT_BLOCK_TYPES = {
@@ -33,6 +38,57 @@ TOOL_BLOCK_TYPES = {
     "server_tool_call",
     "server_tool_call_chunk",
 }
+
+STREAM_VISIBILITY_QUARANTINE = "quarantine"
+STREAM_VISIBILITY_VISIBLE = "visible"
+_STREAM_VISIBILITY_PHASES = {
+    STREAM_VISIBILITY_QUARANTINE,
+    STREAM_VISIBILITY_VISIBLE,
+}
+_STREAM_PHASE_METADATA_KEYS = ("stream_phase", "focus_agent_stream_phase")
+_STREAM_PHASE_TAG_PREFIXES = ("stream_phase:", "focus_agent_stream_phase:")
+_INTERNAL_ENGLISH_PROCESS_NARRATION_RE = re.compile(
+    r"(?ims)^\s*(?:"
+    r"let\s+me(?:\s+\w+){0,8}\s+"
+    r"(?:fetch|search|look|browse|check|inspect|open|query|calculate|use|call|try|"
+    r"produce\s+(?:the\s+)?final\s+answer|draft\s+(?:the\s+)?final\s+answer|write\s+(?:the\s+)?final\s+answer)|"
+    r"i\s+(?:should|need\s+to|will|can|am\s+going\s+to|must|have\s+to)\s+"
+    r"(?:fetch|search|look|browse|check|inspect|open|query|calculate|use|call|try|continue|retry)|"
+    r"i\s+must\s+not\s+call\s+more\s+tools|"
+    r"wait(?:,|\b).{0,160}(?:tool|fetch|search|look|browse|check|need|should|actually|final)|"
+    r"(?:analysis|assistant\s+final|final\s+answer)\s*[:：]\s*(?:$|<|```|tool|function)"
+    r")"
+)
+_INTERNAL_FINAL_ANSWER_BOUNDARY_RE = re.compile(
+    r"(?is)\b(?:"
+    r"let['’]s\s+go|"
+    r"final\s+answer|"
+    r"assistant\s+final|"
+    r"here(?:'s|\s+is)\s+(?:the\s+)?(?:final\s+)?answer"
+    r")\s*[:：.\-]*\s*"
+)
+_INTERNAL_FINAL_ANSWER_UNSAFE_SUFFIX_RE = re.compile(
+    r"(?is)^\s*(?:"
+    r"tool\b|"
+    r"function\b|"
+    r"call\b|"
+    r"invoke\b|"
+    r"parameter\b|"
+    r"tool_?calls?\b|"
+    r"<|```"
+    r")"
+)
+_INTERNAL_ENGLISH_PROCESS_PREFIX_RE = re.compile(
+    r"(?is)^\s*(?:"
+    r"l|le|let|let\s+m|let\s+me|"
+    r"i|i\s+(?:s|sh|sho|shou|shoul|should|n|ne|nee|need|need\s+t|need\s+to|"
+    r"w|wi|wil|will|c|ca|can|a|am|am\s+g|am\s+go|am\s+going|"
+    r"m|mu|mus|must|h|ha|hav|have|have\s+t|have\s+to)|"
+    r"w|wa|wai|wait|"
+    r"f|fi|fin|fina|final|final\s+a|final\s+an|final\s+answer|"
+    r"analysis|assistant\s+f|assistant\s+final"
+    r")$"
+)
 
 
 def _stringify(value: Any) -> str:
@@ -69,10 +125,6 @@ def _iter_blocks(message_chunk: Any) -> list[Any]:
     return []
 
 
-def _looks_like_textual_tool_artifact(text: str) -> bool:
-    return looks_like_textual_tool_call_artifact(text)
-
-
 def _message_type(message_chunk: Any) -> str:
     return str(getattr(message_chunk, "type", "") or "").strip().lower()
 
@@ -84,26 +136,114 @@ def _should_hide_visible_text(message_chunk: Any) -> bool:
     return any(token in message_type for token in ("human", "user", "system", "tool"))
 
 
-def extract_visible_text_delta(message_chunk: Any) -> str:
+def looks_like_stream_visible_text_artifact(text: Any) -> bool:
+    value = str(text or "").strip()
+    if not value:
+        return False
+    return looks_like_textual_tool_call_artifact(value) or sanitize_stream_visible_text(value) != value
+
+
+def looks_like_potential_stream_visible_text_artifact_prefix(text: Any) -> bool:
+    value = str(text or "").strip()
+    if not value or len(value) > 512:
+        return False
+    return looks_like_potential_textual_tool_call_prefix(value) or bool(
+        _INTERNAL_ENGLISH_PROCESS_PREFIX_RE.match(value)
+    )
+
+
+def _suffix_after_internal_final_answer_boundary(text: str) -> str:
+    last_suffix = ""
+    for match in _INTERNAL_FINAL_ANSWER_BOUNDARY_RE.finditer(text):
+        suffix = text[match.end() :].lstrip(".… \t\r\n")
+        if suffix:
+            last_suffix = suffix
+    return last_suffix
+
+
+def sanitize_stream_visible_text(text: Any) -> str:
+    value = text if isinstance(text, str) else ""
+    if not value.strip():
+        return ""
+    if looks_like_textual_tool_call_artifact(value):
+        return ""
+    if not _INTERNAL_ENGLISH_PROCESS_NARRATION_RE.search(value):
+        return value
+
+    suffix = _suffix_after_internal_final_answer_boundary(value)
+    if not suffix:
+        return ""
+    if (
+        looks_like_textual_tool_call_artifact(suffix)
+        or _INTERNAL_FINAL_ANSWER_UNSAFE_SUFFIX_RE.search(suffix)
+        or _INTERNAL_ENGLISH_PROCESS_NARRATION_RE.search(suffix)
+    ):
+        return ""
+    return suffix
+
+
+def safe_stream_visible_text_transition(
+    current_text: str,
+    value: object,
+    *,
+    pending_text: str = "",
+) -> tuple[str, str]:
+    delta = value if isinstance(value, str) else ""
+    if not delta:
+        return current_text, pending_text
+
+    candidate_pending = f"{pending_text}{delta}"
+    candidate_visible = f"{current_text}{candidate_pending}"
+    if looks_like_stream_visible_text_artifact(
+        candidate_pending
+    ) or looks_like_stream_visible_text_artifact(candidate_visible):
+        safe_pending = sanitize_stream_visible_text(candidate_pending)
+        if safe_pending:
+            return current_text + safe_pending, ""
+        if not current_text:
+            safe_visible = sanitize_stream_visible_text(candidate_visible)
+            if safe_visible:
+                return safe_visible, ""
+        current_looks_internal = looks_like_stream_visible_text_artifact(
+            current_text
+        ) or looks_like_potential_stream_visible_text_artifact_prefix(current_text)
+        return ("" if current_looks_internal else current_text), ""
+
+    if looks_like_potential_stream_visible_text_artifact_prefix(candidate_pending):
+        return current_text, candidate_pending
+
+    next_text, next_pending = safe_visible_text_transition(
+        current_text,
+        delta,
+        pending_text=pending_text,
+    )
+    if next_text and looks_like_stream_visible_text_artifact(next_text):
+        return "", ""
+    return next_text, next_pending
+
+
+def _extract_visible_text_delta(message_chunk: Any, *, filter_textual_artifacts: bool) -> str:
     if _should_hide_visible_text(message_chunk):
         return ""
 
     content = getattr(message_chunk, "content", None)
     if isinstance(content, str):
-        if _looks_like_textual_tool_artifact(content):
-            return ""
+        if filter_textual_artifacts:
+            return sanitize_stream_visible_text(content)
         return content
 
     parts: list[str] = []
     for block in _iter_blocks(message_chunk):
         if isinstance(block, str):
-            if _looks_like_textual_tool_artifact(block):
-                continue
-            parts.append(block)
+            text = sanitize_stream_visible_text(block) if filter_textual_artifacts else block
+            if text:
+                parts.append(text)
             continue
         if not isinstance(block, dict):
             text = _stringify(block)
-            if text and not _looks_like_textual_tool_artifact(text):
+            if filter_textual_artifacts:
+                text = sanitize_stream_visible_text(text)
+            if text:
                 parts.append(text)
             continue
         block_type = str(block.get("type") or "")
@@ -115,9 +255,19 @@ def extract_visible_text_delta(message_chunk: Any) -> str:
             "text" in block and block_type not in TOOL_BLOCK_TYPES
         ):
             text = _stringify(block.get("text") or block.get("content") or block.get("value"))
-            if text and not _looks_like_textual_tool_artifact(text):
+            if filter_textual_artifacts:
+                text = sanitize_stream_visible_text(text)
+            if text:
                 parts.append(text)
     return "".join(parts)
+
+
+def extract_visible_text_candidate_delta(message_chunk: Any) -> str:
+    return _extract_visible_text_delta(message_chunk, filter_textual_artifacts=False)
+
+
+def extract_visible_text_delta(message_chunk: Any) -> str:
+    return _extract_visible_text_delta(message_chunk, filter_textual_artifacts=True)
 
 
 def extract_reasoning_delta(message_chunk: Any) -> str:
@@ -125,7 +275,7 @@ def extract_reasoning_delta(message_chunk: Any) -> str:
     additional_reasoning = _stringify(
         getattr(message_chunk, "additional_kwargs", {}).get("reasoning_content")
     )
-    if additional_reasoning:
+    if additional_reasoning and not looks_like_textual_tool_call_artifact(additional_reasoning):
         parts.append(additional_reasoning)
     for block in _iter_blocks(message_chunk):
         if not isinstance(block, dict):
@@ -142,7 +292,7 @@ def extract_reasoning_delta(message_chunk: Any) -> str:
             or block.get("content")
             or block.get("value")
         )
-        if text:
+        if text and not looks_like_textual_tool_call_artifact(text):
             parts.append(text)
     return "".join(parts)
 
@@ -178,6 +328,56 @@ def _tool_identity_payload(*, tool_call_id: Any = None, name: Any = None) -> dic
     return payload
 
 
+def _normalize_stream_visibility_phase(value: Any) -> str | None:
+    phase = str(value or "").strip().lower()
+    return phase if phase in _STREAM_VISIBILITY_PHASES else None
+
+
+def _stream_visibility_phase_from_tag(value: Any) -> str | None:
+    tag = str(value or "").strip().lower()
+    for prefix in _STREAM_PHASE_TAG_PREFIXES:
+        if tag.startswith(prefix):
+            return _normalize_stream_visibility_phase(tag[len(prefix) :])
+    return None
+
+
+def _iter_metadata_tags(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def stream_visibility_phase_from_metadata(metadata: dict[str, Any] | None) -> str | None:
+    if not isinstance(metadata, dict):
+        return STREAM_VISIBILITY_QUARANTINE
+    for key in _STREAM_PHASE_METADATA_KEYS:
+        phase = _normalize_stream_visibility_phase(metadata.get(key))
+        if phase is not None:
+            return phase
+    for tag in _iter_metadata_tags(metadata.get("tags")):
+        phase = _stream_visibility_phase_from_tag(tag)
+        if phase is not None:
+            return phase
+    return STREAM_VISIBILITY_QUARANTINE
+
+
+def _is_internal_stream_phase_tag(value: Any) -> bool:
+    return _stream_visibility_phase_from_tag(value) is not None
+
+
+def _sanitize_metadata_tags(value: Any) -> Any:
+    if isinstance(value, str):
+        return None if _is_internal_stream_phase_tag(value) else value
+    if not isinstance(value, (list, tuple, set)):
+        return value
+    tags = [tag for tag in value if not _is_internal_stream_phase_tag(tag)]
+    return tags or None
+
+
 def extract_tool_call_chunks(message_chunk: Any) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     for chunk in getattr(message_chunk, "tool_call_chunks", []) or []:
@@ -209,9 +409,16 @@ def sanitize_stream_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
         "model_name",
         "ls_provider",
     }
-    return {
-        key: value for key, value in metadata.items() if key in allowed_keys and value is not None
-    }
+    sanitized: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if key not in allowed_keys or value is None:
+            continue
+        if key == "tags":
+            value = _sanitize_metadata_tags(value)
+            if value is None:
+                continue
+        sanitized[key] = value
+    return sanitized
 
 
 def map_custom_payload_to_event(payload: Any) -> tuple[str, dict[str, Any]]:

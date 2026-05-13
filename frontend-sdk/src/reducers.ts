@@ -11,6 +11,7 @@ import { safeVisibleText, safeVisibleTextTransition } from "./toolProtocol.js";
 
 type InternalFocusAgentStreamState = FocusAgentStreamState & {
   _visibleTextPending?: string;
+  _reasoningTextPending?: string;
 };
 
 export function createInitialStreamState(): FocusAgentStreamState {
@@ -46,6 +47,7 @@ function stringifyValue(value: unknown): string | undefined {
 function compactText(value: unknown, maxLength = 240): string | undefined {
   const text = stringifyValue(value)?.replace(/\s+/g, " ").trim();
   if (!text) return undefined;
+  if (!safeVisibleText(text)) return undefined;
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
@@ -244,6 +246,52 @@ function applyVisibleTextCompleted(
   return updated;
 }
 
+function applyReasoningDelta(
+  state: FocusAgentStreamState,
+  event: FocusAgentEvent<"reasoning.delta">,
+): FocusAgentStreamState {
+  const internalState = state as InternalFocusAgentStreamState;
+  const delta = typeof event.data.delta === "string" ? event.data.delta : "";
+  const completed = event.data.completed === true;
+
+  let updated: InternalFocusAgentStreamState;
+  if (completed) {
+    updated = {
+      ...state,
+      reasoningText:
+        typeof event.data.content === "string"
+          ? safeVisibleText(event.data.content)
+          : state.reasoningText,
+    };
+    delete updated._reasoningTextPending;
+  } else {
+    const next = safeVisibleTextTransition(
+      state.reasoningText,
+      delta,
+      internalState._reasoningTextPending ?? "",
+    );
+    updated = {
+      ...state,
+      reasoningText: next.visibleText,
+    };
+    if (next.pendingText) {
+      updated._reasoningTextPending = next.pendingText;
+    } else {
+      delete updated._reasoningTextPending;
+    }
+  }
+
+  if (!updated.reasoningText.trim()) {
+    return updated;
+  }
+  return upsertReasoningStep(
+    updated,
+    event,
+    updated.reasoningText,
+    completed ? "completed" : "running",
+  );
+}
+
 export function reduceStreamEvent(
   state: FocusAgentStreamState,
   event: FocusAgentEvent,
@@ -256,18 +304,7 @@ export function reduceStreamEvent(
       return applyVisibleTextCompleted(state, event.data.content);
     }
     case "reasoning.delta": {
-      const delta = typeof event.data.delta === "string" ? event.data.delta : "";
-      const completed = event.data.completed === true;
-      const reasoningText =
-        completed && typeof event.data.content === "string"
-          ? event.data.content
-          : state.reasoningText + delta;
-      return upsertReasoningStep(
-        { ...state, reasoningText },
-        event,
-        reasoningText,
-        completed ? "completed" : "running",
-      );
+      return applyReasoningDelta(state, event as FocusAgentEvent<"reasoning.delta">);
     }
     case "tool.call.delta":
       return upsertToolCallStep(

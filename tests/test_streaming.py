@@ -1,10 +1,18 @@
+from focus_agent.core.tool_protocol import safe_visible_text_transition
 from focus_agent.transport.stream_events import (
+    STREAM_VISIBILITY_QUARANTINE,
+    STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,
     extract_tool_call_chunks,
     extract_tool_requests_from_updates,
+    extract_visible_text_candidate_delta,
     extract_visible_text_delta,
+    looks_like_potential_stream_visible_text_artifact_prefix,
+    looks_like_stream_visible_text_artifact,
     map_custom_payload_to_event,
+    safe_stream_visible_text_transition,
     sanitize_stream_metadata,
+    stream_visibility_phase_from_metadata,
 )
 
 
@@ -55,6 +63,306 @@ def test_extract_visible_text_delta_ignores_textual_tool_call_string_payload():
     assert extract_visible_text_delta(chunk) == ""
 
 
+def test_extract_visible_text_delta_ignores_spaced_dsml_tool_call_payload():
+    chunk = DummyChunk(
+        content=(
+            "让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。\n\n"
+            "< | | DSML | | tool_calls>\n"
+            "< | | DSML | | invoke nameweb_search\">\n"
+            "< | | DSML | | parameter name=\"query\" string=\"true\">AI breakthroughs</ | | DSML | | parameter>"
+        )
+    )
+    assert extract_visible_text_delta(chunk) == ""
+
+
+def test_extract_visible_text_delta_ignores_compacted_dsml_tool_call_payload():
+    assert extract_visible_text_delta(DummyChunk(content='toolcalls/invoke namewebfetch">')) == ""
+    chunk = DummyChunk(
+        content=(
+            'toolcalls/invoke namewebfetch">\n'
+            'parameter namemax_chars" string="false">8000</ | | DSML | | parameter>\n'
+            'parameter nameurl" string="true">https://example.com</ | | DSML | | parameter>'
+        )
+    )
+    assert extract_visible_text_delta(chunk) == ""
+
+
+def test_extract_visible_text_delta_ignores_empty_name_dsml_tool_call_payload():
+    chunk = DummyChunk(
+        content=(
+            "您说得对，让我把时间校准到当下，搜一下 2026 年的最新动态。\n\n"
+            'invoke name">\n'
+            'parameter name="" string="true">direct</ | | DSML | | parameter>\n'
+            'parameter name="" string="true">https://mem0.ai/blog/state-of-ai-agent-memory-2026'
+            "</ | | DSML | | parameter>\n"
+            'parameter name="" string="false">2</ | | DSML | | parameter>\n'
+            "</ | | DSML | | invoke>"
+        )
+    )
+
+    assert extract_visible_text_delta(chunk) == ""
+
+
+def test_extract_visible_text_delta_ignores_degraded_line_protocol_payload():
+    chunk = DummyChunk(
+        content=(
+            "· invoke name 2025 trends predictions multi-agent collaboration future</ | | DSML | | parameter>\n"
+            "parameter name6</ | | DSML | | parameter>\n"
+            "</ | | DSML | | invoke>"
+        )
+    )
+
+    assert extract_visible_text_delta(chunk) == ""
+
+
+def test_extract_visible_text_delta_ignores_bare_dsml_token_payload():
+    assert extract_visible_text_delta(DummyChunk(content="| | DSML | |")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="</｜｜DSML｜｜parameter>")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="DSML 是一种标记格式说明。")) == "DSML 是一种标记格式说明。"
+
+
+def test_extract_visible_text_delta_ignores_degraded_xmlish_tool_c_payload():
+    chunk = DummyChunk(
+        content=(
+            "<tool_c>\n"
+            '<invoke="web_fetch">\n'
+            '<parameterurl" string="true">https://vectorize.io/articles/best-ai-agent-memory-systems</parameter>\n'
+            '<parametermax_chars" string="false">12000</parameter>\n'
+            "</invoke>\n"
+            "</tool_c>"
+        )
+    )
+
+    assert extract_visible_text_delta(chunk) == ""
+
+
+def test_extract_visible_text_candidate_preserves_protocol_prefix_for_stateful_filtering():
+    chunk = DummyChunk(content="<tool")
+
+    assert extract_visible_text_candidate_delta(chunk) == "<tool"
+    assert extract_visible_text_delta(chunk) == "<tool"
+
+
+def test_extract_visible_text_delta_ignores_orphaned_tool_protocol_tail_fragments():
+    assert extract_visible_text_delta(DummyChunk(content="alls>")) == ""
+    assert extract_visible_text_delta(DummyChunk(content='="web_search">')) == ""
+    assert extract_visible_text_delta(DummyChunk(content='="query" string="true">AI agent predictions')) == ""
+    assert extract_visible_text_delta(DummyChunk(content='="query"true">AI agent frameworks comparison')) == ""
+    assert (
+        extract_visible_text_delta(
+            DummyChunk(content='="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026')
+        )
+        == ""
+    )
+    assert (
+        extract_visible_text_delta(
+            DummyChunk(content='="web_fetch="url" string="true">https://www.gartner.com/en/articles')
+        )
+        == ""
+    )
+    assert extract_visible_text_delta(DummyChunk(content='="max_chars" stringfalse">8000')) == ""
+    assert extract_visible_text_delta(DummyChunk(content='="max_chars"false">6000')) == ""
+    assert extract_visible_text_delta(DummyChunk(content="https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="12000parameter>")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="invoke>")) == ""
+    assert extract_visible_text_delta(DummyChunk(content='="max_fetch_length" stringfalse8000parameter>')) == ""
+    assert (
+        extract_visible_text_delta(
+            DummyChunk(
+                content='="read="filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505'
+            )
+        )
+        == ""
+    )
+    assert extract_visible_text_delta(DummyChunk(content="tool-result://web_search/call-123")) == ""
+
+
+def test_safe_visible_text_transition_holds_split_tool_call_prefixes():
+    visible_text, pending_text = safe_visible_text_transition("", "tool")
+    assert visible_text == ""
+    assert pending_text == "tool"
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        "calls/",
+        pending_text=pending_text,
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        'invoke namewebfetch">\nparameter namemax_chars" string="false">8000',
+        pending_text=pending_text,
+    )
+
+    assert visible_text == ""
+    assert pending_text == ""
+
+
+def test_safe_visible_text_transition_drops_split_degraded_invoke_name():
+    visible_text, pending_text = safe_visible_text_transition("", "invoke")
+    assert visible_text == ""
+    assert pending_text == "invoke"
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        " name 2025 trends predictions multi-agent collaboration future",
+        pending_text=pending_text,
+    )
+
+    assert visible_text == ""
+    assert pending_text == ""
+
+
+def test_safe_visible_text_transition_drops_split_degraded_xmlish_tool_c():
+    visible_text, pending_text = safe_visible_text_transition("", "<tool")
+    assert visible_text == ""
+    assert pending_text == "<tool"
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        '_c>\n<invoke="web_fetch">',
+        pending_text=pending_text,
+    )
+
+    assert visible_text == ""
+    assert pending_text == ""
+
+
+def test_safe_visible_text_transition_drops_orphaned_protocol_tail_fragments():
+    visible_text, pending_text = safe_visible_text_transition("", "alls>")
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition("", '="web_search">')
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition("", '="query"true">AI agent frameworks comparison')
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition(
+        "",
+        '="web_fetch="url" string="true">https://www.gartner.com/en/articles',
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition("", '="max_chars" stringfalse">8000')
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition("", '="max_chars"false">6000')
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition(
+        "",
+        '="read="filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505',
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition("", "tool-result://web_search/call-123")
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition(
+        "",
+        "https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>",
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+
+def test_safe_visible_text_transition_holds_split_degraded_assignment_prefix():
+    visible_text, pending_text = safe_visible_text_transition("", "=")
+    assert visible_text == ""
+    assert pending_text == "="
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        '"read=',
+        pending_text=pending_text,
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        '"filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505',
+        pending_text=pending_text,
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition("", '="url"')
+    assert visible_text == ""
+    assert pending_text == '="url"'
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        'true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026',
+        pending_text=pending_text,
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_visible_text_transition(
+        "",
+        "https://example.com/article",
+    )
+    assert visible_text == ""
+    assert pending_text == "https://example.com/article"
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        " is a normal cited URL.",
+        pending_text=pending_text,
+    )
+    assert visible_text == "https://example.com/article is a normal cited URL."
+    assert pending_text == ""
+
+
+def test_safe_visible_text_transition_holds_split_bare_dsml_prefix():
+    visible_text, pending_text = safe_visible_text_transition("", "< | | ")
+    assert visible_text == ""
+    assert pending_text == "< | | "
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        "DSML | | invoke nameweb_search",
+        pending_text=pending_text,
+    )
+
+    assert visible_text == ""
+    assert pending_text == ""
+
+
+def test_safe_visible_text_transition_releases_natural_prefix_text():
+    visible_text, pending_text = safe_visible_text_transition("", "function")
+    assert visible_text == ""
+    assert pending_text == "function"
+
+    visible_text, pending_text = safe_visible_text_transition(
+        visible_text,
+        " calls are ordinary JavaScript text.",
+        pending_text=pending_text,
+    )
+
+    assert visible_text == "function calls are ordinary JavaScript text."
+    assert pending_text == ""
+
+
+def test_degraded_invoke_name_not_hidden_inside_natural_sentence():
+    visible_text, pending_text = safe_visible_text_transition("", "普通文本里提到 invoke name resolution。")
+
+    assert visible_text == "普通文本里提到 invoke name resolution。"
+    assert pending_text == ""
+
+
 def test_extract_visible_text_delta_ignores_bare_tool_call_close_tag():
     chunk = DummyChunk(content="</tool_call>")
     assert extract_visible_text_delta(chunk) == ""
@@ -93,6 +401,57 @@ def test_extract_visible_text_delta_ignores_internal_continuation_loop():
     assert extract_visible_text_delta(chunk) == ""
 
 
+def test_extract_visible_text_delta_ignores_english_internal_process_narration():
+    assert extract_visible_text_delta(DummyChunk(content="Let me fetch the latest tool results.")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="I should look up one more source first.")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="Wait, I need to call the search tool.")) == ""
+    assert extract_visible_text_delta(DummyChunk(content="Final answer: tool call follows")) == ""
+
+
+def test_extract_visible_text_candidate_keeps_english_process_for_phase_gate():
+    chunk = DummyChunk(content="Let me fetch the latest tool results.")
+
+    assert extract_visible_text_candidate_delta(chunk) == "Let me fetch the latest tool results."
+    assert looks_like_stream_visible_text_artifact(chunk.content)
+
+
+def test_safe_stream_visible_text_transition_holds_split_english_process_prefixes():
+    visible_text, pending_text = safe_stream_visible_text_transition("", "Let")
+    assert visible_text == ""
+    assert pending_text == "Let"
+
+    visible_text, pending_text = safe_stream_visible_text_transition(
+        visible_text,
+        " me fetch the latest source.",
+        pending_text=pending_text,
+    )
+
+    assert visible_text == ""
+    assert pending_text == ""
+
+
+def test_safe_stream_visible_text_transition_releases_plain_i_sentence():
+    visible_text, pending_text = safe_stream_visible_text_transition("", "I")
+    assert visible_text == ""
+    assert pending_text == "I"
+
+    visible_text, pending_text = safe_stream_visible_text_transition(
+        visible_text,
+        " agree with the conclusion.",
+        pending_text=pending_text,
+    )
+
+    assert visible_text == "I agree with the conclusion."
+    assert pending_text == ""
+
+
+def test_potential_stream_visible_artifact_prefix_includes_english_markers():
+    assert looks_like_potential_stream_visible_text_artifact_prefix("Let")
+    assert looks_like_potential_stream_visible_text_artifact_prefix("I should")
+    assert looks_like_potential_stream_visible_text_artifact_prefix("Wait")
+    assert not looks_like_potential_stream_visible_text_artifact_prefix("普通结论")
+
+
 def test_extract_visible_text_delta_keeps_plain_bracket_text():
     chunk = DummyChunk(content="[背景] 沪指本周围绕关键点位震荡。")
     assert extract_visible_text_delta(chunk) == "[背景] 沪指本周围绕关键点位震荡。"
@@ -129,6 +488,17 @@ def test_extract_reasoning_delta_from_content_blocks():
         ]
     )
     assert extract_reasoning_delta(chunk) == "Think step 1. Think step 2."
+
+
+def test_extract_reasoning_delta_ignores_textual_tool_call_artifacts():
+    chunk = DummyChunk(
+        content=[
+            {"type": "reasoning", "text": 'invoke name">\nparameter name="" string="true">direct'},
+            {"type": "reasoning_delta", "text": "safe reasoning"},
+        ]
+    )
+
+    assert extract_reasoning_delta(chunk) == "safe reasoning"
 
 
 def test_extract_reasoning_delta_from_reasoning_content_blocks():
@@ -277,4 +647,31 @@ def test_sanitize_stream_metadata():
             "secret": "ignore-me",
         }
     )
+    assert cleaned == {"langgraph_node": "agent_loop", "tags": ["demo"]}
+
+
+def test_stream_visibility_phase_from_metadata_accepts_internal_fields_and_tags():
+    assert stream_visibility_phase_from_metadata({"stream_phase": "visible"}) == STREAM_VISIBILITY_VISIBLE
+    assert (
+        stream_visibility_phase_from_metadata({"focus_agent_stream_phase": "quarantine"})
+        == STREAM_VISIBILITY_QUARANTINE
+    )
+    assert (
+        stream_visibility_phase_from_metadata({"tags": ["demo", "stream_phase:visible"]})
+        == STREAM_VISIBILITY_VISIBLE
+    )
+    assert stream_visibility_phase_from_metadata({}) == STREAM_VISIBILITY_QUARANTINE
+    assert stream_visibility_phase_from_metadata(None) == STREAM_VISIBILITY_QUARANTINE
+    assert stream_visibility_phase_from_metadata({"stream_phase": "unknown"}) == STREAM_VISIBILITY_QUARANTINE
+
+
+def test_sanitize_stream_metadata_strips_internal_stream_phase():
+    cleaned = sanitize_stream_metadata(
+        {
+            "langgraph_node": "agent_loop",
+            "stream_phase": "visible",
+            "tags": ["demo", "stream_phase:visible", "focus_agent_stream_phase:quarantine"],
+        }
+    )
+
     assert cleaned == {"langgraph_node": "agent_loop", "tags": ["demo"]}

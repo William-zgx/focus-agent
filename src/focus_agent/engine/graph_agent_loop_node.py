@@ -16,6 +16,7 @@ from ..core.context_policy import apply_prompt_budget_guard
 from ..core.request_context import RequestContext
 from ..core.state import AgentState, append_agent_state_record
 from ..core.types import Plan
+from ..transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
 from . import graph_tool_policy as _graph_tool_policy
 from .graph_plan_nodes import _format_plan_block
 from .graph_turn_helpers import (
@@ -38,6 +39,35 @@ from .graph_turn_helpers import (
     _workspace_lookup_should_start_with_search,
     _workspace_search_query,
 )
+
+
+def _with_stream_phase(model: Any, phase: str) -> Any:
+    with_config = getattr(model, "with_config", None)
+    if not callable(with_config):
+        return model
+    return with_config(
+        {
+            "metadata": {"stream_phase": phase},
+            "tags": [f"stream_phase:{phase}"],
+        }
+    )
+
+
+def _model_for_stream_phase(model_for: Callable[[str, str], Any], phase: str) -> Callable[[str, str], Any]:
+    def wrapped(model_id: str, thinking_mode: str) -> Any:
+        return _with_stream_phase(model_for(model_id, thinking_mode), phase)
+
+    return wrapped
+
+
+def _model_with_tools_for_stream_phase(
+    model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
+    phase: str,
+) -> Callable[[str, str, list[Any] | None], Any]:
+    def wrapped(model_id: str, thinking_mode: str, available_tools: list[Any] | None) -> Any:
+        return _with_stream_phase(model_with_tools_for(model_id, thinking_mode, available_tools), phase)
+
+    return wrapped
 
 
 def make_agent_loop_node(
@@ -103,6 +133,11 @@ def make_agent_loop_node(
                     tool for tool in available_tools if str(getattr(tool, "name", "")) in allowed
                 ]
         known_names = _known_tool_names(available_tools)
+        quarantined_model_for = _model_for_stream_phase(model_for, STREAM_VISIBILITY_QUARANTINE)
+        quarantined_model_with_tools_for = _model_with_tools_for_stream_phase(
+            model_with_tools_for,
+            STREAM_VISIBILITY_QUARANTINE,
+        )
         tool_protocol_repair_count = 0
         tool_protocol_repair_reason = ""
         policy_note = _tool_policy_note(tool_policy)
@@ -141,7 +176,10 @@ def make_agent_loop_node(
                 settings=settings,
             )
             response = _invoke_with_tool_result_fallback(
-                model_for(selected_model, selected_thinking_mode),
+                    _with_stream_phase(
+                        model_for(selected_model, selected_thinking_mode),
+                        STREAM_VISIBILITY_VISIBLE,
+                    ),
                 forced_prompt,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -156,7 +194,7 @@ def make_agent_loop_node(
                 context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
-                model_for=model_for,
+                model_for=quarantined_model_for,
             )
         elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search_compat(
             tool_intent_text,
@@ -194,7 +232,10 @@ def make_agent_loop_node(
             )
         elif not available_tools:
             response = _invoke_with_tool_result_fallback(
-                model_for(selected_model, selected_thinking_mode),
+                    _with_stream_phase(
+                        model_for(selected_model, selected_thinking_mode),
+                        STREAM_VISIBILITY_VISIBLE,
+                    ),
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -209,11 +250,14 @@ def make_agent_loop_node(
                 context_budget=context_budget,
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
-                model_for=model_for,
+                model_for=quarantined_model_for,
             )
         else:
             response = _invoke_with_tool_result_fallback(
-                model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
+                    _with_stream_phase(
+                        model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
+                        STREAM_VISIBILITY_QUARANTINE,
+                    ),
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -229,8 +273,8 @@ def make_agent_loop_node(
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 available_tools=available_tools,
-                model_for=model_for,
-                model_with_tools_for=model_with_tools_for,
+                model_for=quarantined_model_for,
+                model_with_tools_for=quarantined_model_with_tools_for,
             )
         response = _repair_and_dedupe_tool_calls(response)
         updates: dict[str, Any] = {
@@ -316,23 +360,6 @@ def make_agent_loop_node(
         return updates
 
     return agent_loop
-
-
-def _classify_turn_tool_exposure_if_available(
-    latest_user: str,
-    *,
-    tool_policy: str,
-) -> Any | None:
-    classifier = getattr(_graph_tool_policy, "_classify_turn_tool_exposure", None)
-    if not callable(classifier):
-        return None
-    if _accepts_keyword(classifier, "tool_policy"):
-        return classifier(latest_user, tool_policy=tool_policy)
-    if _accepts_keyword(classifier, "policy"):
-        return classifier(latest_user, policy=tool_policy)
-    if _requires_positional_count(classifier, 2):
-        return classifier(latest_user, tool_policy)
-    return classifier(latest_user)
 
 
 def _tools_for_policy_compat(
@@ -445,21 +472,6 @@ def _accepts_keyword(function: Callable[..., Any], keyword: str) -> bool:
         parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
     )
-
-
-def _requires_positional_count(function: Callable[..., Any], count: int) -> bool:
-    try:
-        signature = inspect.signature(function)
-    except (TypeError, ValueError):
-        return False
-    required = [
-        parameter
-        for parameter in signature.parameters.values()
-        if parameter.kind
-        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-        and parameter.default is inspect.Parameter.empty
-    ]
-    return len(required) >= count
 
 
 __all__ = ["make_agent_loop_node"]

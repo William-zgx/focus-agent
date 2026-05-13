@@ -119,6 +119,31 @@ def test_build_turn_trajectory_record_uses_only_current_turn_messages():
     assert record.trajectory[0].observation_truncated is True
 
 
+def test_build_turn_trajectory_record_hides_process_narration_answer():
+    started = utc_now()
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="succeeded",
+        final_values={
+            "messages": [
+                HumanMessage(content="search"),
+                AIMessage(content="Let me fetch one more source first."),
+                AIMessage(content="Let me produce the final answer. Final answer: 最终答案。"),
+            ],
+            "llm_calls": 2,
+        },
+        initial_message_count=0,
+        initial_llm_calls=0,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=10),
+    )
+
+    assert record.answer == "最终答案。"
+
+
 def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
     started = utc_now()
     record = build_turn_trajectory_record(

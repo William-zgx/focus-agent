@@ -46,6 +46,8 @@ make api
 Open:
 
 - `http://127.0.0.1:8000/app`
+- `http://127.0.0.1:8000/app/agent-team`
+- `http://127.0.0.1:8000/app/agent/memory`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`

@@ -95,21 +95,33 @@ uv run pytest tests/test_contract_checks.py
 ```bash
 make sdk-check
 make sdk-build
+make sdk-validate-transport
 cd frontend-sdk && npm run validate:transport
 ```
 
 4. 如果改动影响 Web App：
 
 ```bash
-pnpm --filter @focus-agent/web-app lint
-pnpm --filter @focus-agent/web-app format
+make web-lint
+make web-format-check
 make web-check
 make web-build
 ```
 
 Web lint/format 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
 
-5. 如果改动影响 Agent Team planning、execution、final-answer synthesis 或 Mission Runner UI：
+5. 如果改动影响 stream 可见性、工具协议过滤、frontend stream reducer 或处理过程卡：
+
+```bash
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+pnpm test:thread-stream-frontend-regressions
+pnpm sdk:check
+pnpm web:check
+```
+
+公开 SSE 事件契约和内部 `quarantine` / `visible` phase 边界见 [streaming-contract.md](streaming-contract.md)。浏览器检查应包含真实工具调用问题，并确认 assistant 气泡不出现 DSML/XML/function-call 文本，同时工具处理卡仍正常展示。
+
+6. 如果改动影响 Agent Team planning、execution、final-answer synthesis 或 Mission Runner UI：
 
 ```bash
 .venv/bin/python -m pytest tests/test_agent_team_* -q
@@ -120,7 +132,7 @@ make web-build
 
 Agent Team 的 fake execution 只用于验证流程，必须展示为 `final_answer_status="placeholder"` 和 `request_changes`，不能被当成可交付最终答案。浏览器检查应确认默认 UI 不显示 raw fake run text，output id / artifact id 只出现在高级详情里。
 
-6. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
+7. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 
 ```bash
 make ui-smoke
@@ -135,7 +147,7 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 
 `scripts/ui_smoke_test.py` 不会启动 API 或 Vite dev server。按默认参数运行前，请先确认 `http://127.0.0.1:8000/healthz` 和 `http://127.0.0.1:5173/app/` 已可访问。如果指向后端托管的静态 app，请先跑 `make web-build`。
 
-7. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
+8. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
 ```bash
 make ui-smoke-observability
@@ -146,13 +158,13 @@ pnpm --dir apps/web smoke:observability
 
 `scripts/observability_ui_smoke.py` 在 health probe 失败时会尝试通过 `./scripts/run-api.sh` 自动启动本地 API；如果要强制使用已运行的 API，请加 `--no-start-api`。它仍然需要 Chrome，以及 `DATABASE_URI` 或托管本地 Postgres 的 runtime file。`pnpm --dir apps/web smoke:observability` 是源码级路由和 wiring 检查，会补充真实浏览器 smoke，但不能替代它。
 
-8. 如果改动影响 trajectory observability contract：
+9. 如果改动影响 trajectory observability contract：
 
 ```bash
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-9. 如果改动影响 repository 行为，尤其是 AgentTeam repository session/task/output 语义：
+10. 如果改动影响 repository 行为，尤其是 AgentTeam repository session/task/output 语义：
 
 ```bash
 uv run pytest tests/test_agent_team_repository_contract.py
@@ -160,7 +172,7 @@ uv run pytest tests/test_agent_team_repository_contract.py
 
 SQLite 用例默认本地运行。设置 `DATABASE_URI` 时会同时运行 Postgres 用例；否则只 skip Postgres backend。
 
-10. 如果改动影响 ChatService、runtime 装配或 config/runtime 目录边界：
+11. 如果改动影响 ChatService、runtime 装配或 config/runtime 目录边界：
 
 ```bash
 make test-chat-service
@@ -169,7 +181,7 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_do
 
 ChatService 已按 branch action facade、streaming lifecycle、thread access、compaction、trajectory recording 和 turn-error helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
 
-11. 如果改动影响 Memory v2、embedding、pgvector、迁移或 memory retrieval：
+12. 如果改动影响 Memory v2、embedding、pgvector、迁移或 memory retrieval：
 
 ```bash
 uv run pytest tests/test_memory_embedding_policy.py tests/test_memory_embedding_cli.py tests/test_memory_embedding_provider.py tests/test_postgres_memory_repository.py tests/test_memory_retriever.py tests/test_migrate_local_state.py
@@ -178,7 +190,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 
 `doctor` 是只读诊断命令。它需要 Postgres `DATABASE_URI`，会检查 provider 选择、pgvector extension/table/dimensions/index 状态；本地 auto 模式缺少 `embeddinggemma` 时会输出 `ollama pull embeddinggemma` 提示。如果 API 是通过托管本地 Postgres 启动的，新 shell 里先 `source .focus_agent/postgres/runtime.env`。
 
-12. 如果改动影响 runtime coordination、durable background jobs、thread turn lease 或 branch refresh 调度：
+13. 如果改动影响 runtime coordination、durable background jobs、thread turn lease 或 branch refresh 调度：
 
 ```bash
 uv run pytest tests/test_coordination.py tests/test_background_work.py tests/test_chat_service.py
@@ -187,7 +199,7 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security
 
 这些检查覆盖 in-memory/Postgres thread lease、durable job claim token 与 claim heartbeat、heartbeat lost 行为，以及首轮 branch title/metadata refresh 在 active chat turn lease release 后再调度的边界。
 
-13. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
+14. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
 
 ```bash
 uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
@@ -205,7 +217,7 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 - 注册或 admin reset password 后，确认用户名密码登录仍能回到同一个 `return_to` 目标页面。
 - 需要切回其他账号时先退出再重新登录。当前没有独立切换器，账号切换就是 logout 后选择另一种登录方式。
 
-14. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
+15. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
 
 ```bash
 uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
@@ -217,7 +229,7 @@ make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 ```
 
-15. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+16. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py

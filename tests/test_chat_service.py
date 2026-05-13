@@ -1236,6 +1236,131 @@ def test_serialize_message_keeps_usage_metadata():
     assert payload["usage_metadata"]["input_tokens"] == 21
 
 
+def test_latest_final_ai_text_hides_english_process_narration():
+    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+
+    assert (
+        service._latest_final_ai_text(
+            [
+                AIMessage(content="确认可见的最终答案。"),
+                AIMessage(content="Let me fetch the data first. I should look for: filings and price action."),
+            ]
+        )
+        == "确认可见的最终答案。"
+    )
+    assert (
+        service._latest_final_ai_text(
+            [
+                AIMessage(
+                    content=(
+                        "Wait, if the current date is 2026-05-10, "
+                        "I should check one more source before answering."
+                    )
+                )
+            ]
+        )
+        is None
+    )
+    assert (
+        service._latest_final_ai_text(
+            [
+                AIMessage(content="Let me produce the final answer. Final answer: 这才是最终答案。"),
+            ]
+        )
+        == "这才是最终答案。"
+    )
+
+
+def test_thread_state_messages_hide_textual_tool_protocol_ai_messages():
+    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+
+    payload = service._thread_state_messages(
+        [
+            HumanMessage(content="Search this."),
+            AIMessage(
+                content='="read="filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505'
+            ),
+            AIMessage(content="最终安全回答。"),
+        ]
+    )
+
+    assert [message["type"] for message in payload] == ["human", "ai"]
+    assert [message["content"] for message in payload] == ["Search this.", "最终安全回答。"]
+
+
+def test_thread_state_messages_hide_english_process_narration():
+    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+
+    payload = service._thread_state_messages(
+        [
+            HumanMessage(content="Search this."),
+            AIMessage(content="Let me fetch the data first. I should look for: filings and price action."),
+            AIMessage(
+                content=(
+                    "Wait, if the current date is 2026-05-10, "
+                    "I should check one more source before answering."
+                )
+            ),
+            SimpleNamespace(
+                type="ai",
+                content="I should call a tool before answering.",
+                tool_calls=[{"id": "call-1", "name": "web_search", "args": {"q": "focus agent"}}],
+                name=None,
+                id="ai-tool-call",
+                usage_metadata=None,
+            ),
+            AIMessage(content="Let me produce the final answer. Final answer: 这才是最终答案。"),
+        ]
+    )
+
+    assert [message["type"] for message in payload] == ["human", "ai", "ai"]
+    assert [message["content"] for message in payload] == ["Search this.", "", "这才是最终答案。"]
+    assert payload[1]["tool_calls"][0]["name"] == "web_search"
+
+
+def test_thread_state_messages_extract_visible_list_content_only():
+    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+
+    payload = service._thread_state_messages(
+        [
+            AIMessage(
+                content=[
+                    {"type": "reasoning", "text": "hidden reasoning"},
+                    {"type": "input_text", "text": "hidden prompt"},
+                    {"type": "tool_call", "text": '{"name":"web_search"}'},
+                    {"type": "output_text", "text": "可见最终答案。"},
+                ]
+            )
+        ]
+    )
+
+    assert len(payload) == 1
+    assert payload[0]["content"] == "可见最终答案。"
+    assert "hidden" not in payload[0]["content"]
+    assert "web_search" not in payload[0]["content"]
+
+
+def test_thread_state_messages_clear_protocol_content_but_keep_tool_calls():
+    service = ChatService(ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace()))
+
+    payload = service._thread_state_messages(
+        [
+            SimpleNamespace(
+                type="ai",
+                content='="read="filepath" string="true">tool-observation://webfetch/call-1',
+                tool_calls=[{"id": "call-1", "name": "web_fetch", "args": {"url": "https://example.com"}}],
+                name=None,
+                id="ai-tools",
+                usage_metadata=None,
+            )
+        ]
+    )
+
+    assert len(payload) == 1
+    assert payload[0]["content"] == ""
+    assert payload[0]["tool_calls"][0]["name"] == "web_fetch"
+
+
 def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")

@@ -14,6 +14,7 @@ from ..core.state import (
     governance_plan_meta_projection,
     with_agent_state_record_mirrors,
 )
+from ..services.chat_serialization import confirmed_visible_ai_text, message_content_to_text
 from .tracing import TraceCorrelation
 
 
@@ -309,7 +310,9 @@ def _build_metrics(
 def _latest_final_ai_text(messages: list[Any]) -> str | None:
     for message in reversed(messages or []):
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
-            return _message_content_to_text(getattr(message, "content", ""))
+            text = confirmed_visible_ai_text(getattr(message, "content", ""))
+            if text:
+                return text
     return None
 
 
@@ -325,9 +328,7 @@ def _count_human_messages(messages: list[Any]) -> int:
 
 
 def _message_content_to_text(content: Any) -> str:
-    if isinstance(content, list):
-        return " ".join(str(item) for item in content)
-    return str(content)
+    return message_content_to_text(content)
 
 
 def _truncate_optional(value: Any, max_chars: int) -> str | None:

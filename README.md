@@ -24,6 +24,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, memory pipeline, and typed frontend SDK
+- Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
 - Built-in repo, git, web, artifact, and memory tools
 
 ## Quick Start
@@ -58,6 +59,7 @@ Then open:
 
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
+- `http://127.0.0.1:8000/app/agent/memory`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -86,6 +88,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
 - [Architecture and module map](docs/architecture.md)
+- [Streaming Contract](docs/streaming-contract.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)
 - [Current Context Window](docs/context-window.md)

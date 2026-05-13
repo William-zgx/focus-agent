@@ -665,8 +665,10 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
         def __init__(self, owner, *, allow_tools: bool):
             self.owner = owner
             self.allow_tools = allow_tools
+            self.configs = []
 
-        def with_config(self, _config):
+        def with_config(self, config):
+            self.configs.append(config)
             return self
 
         def invoke(self, prompt_messages):
@@ -674,6 +676,7 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
                 {
                     "allow_tools": self.allow_tools,
                     "messages": list(prompt_messages),
+                    "configs": list(self.configs),
                 }
             )
             if self.allow_tools:
@@ -728,6 +731,13 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
 
     assert len(tool_enabled_calls) == 2
     assert len(tool_free_calls) == 0
+    assert all(
+        any(
+            config.get("metadata", {}).get("stream_phase") == "quarantine"
+            for config in item["configs"]
+        )
+        for item in tool_enabled_calls
+    )
     assert any(
         isinstance(message, SystemMessage) and "emit a real tool call" in message.content
         for message in tool_enabled_calls[1]["messages"]
@@ -737,6 +747,35 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
 def test_detects_textual_tool_call_artifacts():
     assert _looks_like_textual_tool_call_artifact(
         AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
+    )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(
+            content=(
+                "让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。\n\n"
+                "< | | DSML | | tool_calls>\n"
+                "< | | DSML | | invoke nameweb_search\">\n"
+                "< | | DSML | | parameter name=\"query\" string=\"true\">AI breakthroughs</ | | DSML | | parameter>"
+            )
+        )
+    )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(
+            content=(
+                'toolcalls/invoke namewebfetch">\n'
+                'parameter namemax_chars" string="false">8000</ | | DSML | | parameter>\n'
+                'parameter nameurl" string="true">https://example.com</ | | DSML | | parameter>'
+            )
+        )
+    )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(
+            content=(
+                'invoke name">\n'
+                'parameter name="" string="true">direct</ | | DSML | | parameter>\n'
+                'parameter name="" string="true">https://mem0.ai/blog/state-of-ai-agent-memory-2026'
+                "</ | | DSML | | parameter>"
+            )
+        )
     )
     assert _looks_like_textual_tool_call_artifact(AIMessage(content="</tool_call>"))
     assert _looks_like_textual_tool_call_artifact(
@@ -1316,8 +1355,10 @@ def test_graph_does_not_bind_tools_for_direct_answer_turn(monkeypatch):
             self.owner = owner
             self.allow_tools = allow_tools
             self.tool_names = tool_names or []
+            self.configs = []
 
-        def with_config(self, _config):
+        def with_config(self, config):
+            self.configs.append(config)
             return self
 
         def invoke(self, prompt_messages):
@@ -1326,6 +1367,7 @@ def test_graph_does_not_bind_tools_for_direct_answer_turn(monkeypatch):
                     "allow_tools": self.allow_tools,
                     "tool_names": self.tool_names,
                     "messages": list(prompt_messages),
+                    "configs": list(self.configs),
                 }
             )
             return AIMessage(content="ReAct 是把推理和行动交替结合来完成任务的方法。")
@@ -1373,6 +1415,10 @@ def test_graph_does_not_bind_tools_for_direct_answer_turn(monkeypatch):
     assert fake_model.bound_tool_batches == []
     assert fake_model.invocations[0]["allow_tools"] is False
     assert any(
+        config.get("metadata", {}).get("stream_phase") == "visible"
+        for config in fake_model.invocations[0]["configs"]
+    )
+    assert any(
         isinstance(message, SystemMessage) and "answered directly" in message.content
         for message in fake_model.invocations[0]["messages"]
     )
@@ -1384,8 +1430,10 @@ def test_graph_binds_only_workspace_tools_for_workspace_turn(monkeypatch):
             self.owner = owner
             self.allow_tools = allow_tools
             self.tool_names = tool_names or []
+            self.configs = []
 
-        def with_config(self, _config):
+        def with_config(self, config):
+            self.configs.append(config)
             return self
 
         def invoke(self, prompt_messages):
@@ -1394,6 +1442,7 @@ def test_graph_binds_only_workspace_tools_for_workspace_turn(monkeypatch):
                     "allow_tools": self.allow_tools,
                     "tool_names": self.tool_names,
                     "messages": list(prompt_messages),
+                    "configs": list(self.configs),
                 }
             )
             return AIMessage(content="assemble_context 在 graph_builder 和 context_policy 中使用。")
@@ -1449,6 +1498,10 @@ def test_graph_binds_only_workspace_tools_for_workspace_turn(monkeypatch):
     assert fake_model.bound_tool_batches == [["search_code", "read_file"]]
     assert fake_model.invocations[0]["allow_tools"] is True
     assert fake_model.invocations[0]["tool_names"] == ["search_code", "read_file"]
+    assert any(
+        config.get("metadata", {}).get("stream_phase") == "quarantine"
+        for config in fake_model.invocations[0]["configs"]
+    )
     assert any(
         isinstance(message, SystemMessage) and "local workspace inspection tools" in message.content
         for message in fake_model.invocations[0]["messages"]

@@ -1,3 +1,5 @@
+import { safeVisibleText } from "@focus-agent/web-sdk";
+
 import {
 	normalizeMessageType,
 	normalizeText,
@@ -146,7 +148,8 @@ export function buildTranscriptItems(
 	for (let index = 0; index < messages.length; index += 1) {
 		const message = messages[index] ?? {};
 		const type = normalizeMessageType(message.type);
-		const content = String(message.content ?? "");
+		const rawContent = String(message.content ?? "");
+		const content = type === "tool" ? rawContent : safeVisibleText(rawContent);
 		const messageId = String(message.id ?? `${type || "message"}-${index}`);
 		const toolCalls = Array.isArray(message.tool_calls)
 			? (message.tool_calls as Array<Record<string, unknown>>)
@@ -241,7 +244,9 @@ export function buildTranscriptItems(
 
 	flushToolActivity();
 
-	const normalizedAssistantMessage = normalizeText(assistantMessage);
+	const normalizedAssistantMessage = normalizeText(
+		safeVisibleText(assistantMessage ?? ""),
+	);
 	const shouldHideAssistantFallback = shouldHideStreamingInternalContent(
 		normalizedAssistantMessage,
 	);

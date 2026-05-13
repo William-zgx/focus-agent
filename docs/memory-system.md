@@ -1,12 +1,14 @@
 # Focus Agent 记忆系统设计
 
-更新时间：2026-05-06
+更新时间：2026-05-10
 
-本文是当前仓库里记忆系统的 canonical 说明。它按真实实现整理，而不是未来设想：系统记忆是一套嵌在 Agent graph 主路径里的执行记忆层，用来保存用户偏好、项目事实、分支验证结论和近期 episodic 上下文。它不是通用知识库，也不是脱离 agent 主路径的长期知识服务。
+> 历史参考：当前 canonical 记忆系统说明请看 [memory-system-v2.md](memory-system-v2.md)。本文保留 Memory v1 的设计背景和迁移语境，不能作为当前 pgvector、embedding、HTTP/SDK surface 或生产配置的唯一依据。
 
-当前边界：
+本文记录的是早期记忆系统设计：系统记忆是一套嵌在 Agent graph 主路径里的执行记忆层，用来保存用户偏好、项目事实、分支验证结论和近期 episodic 上下文。它不是通用知识库，也不是脱离 agent 主路径的长期知识服务。
 
-- 不引入 vector database 或 embedding retrieval。
+历史边界：
+
+- 当时不引入 vector database 或 embedding retrieval；当前实现已在 PostgreSQL memory 上支持 pgvector/hybrid retrieval，详见 v2 文档。
 - 不增加专门的 memory summarizer model。
 - 已提供只读/forget 的 memory HTTP/SDK 审计 surface，但 agent 主路径的 save/search/forget 仍主要通过 tool 和 graph pipeline 发生。
 - 不把 memory 做成脱离 graph 主路径的平行系统。

@@ -6,12 +6,11 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import HumanMessage
 from langgraph.types import Command
 
 from ..core.branching import BranchMeta
 from ..core.request_context import RequestContext
-from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..engine.runtime import AppRuntime
 from ..observability.tracing import (
     TraceCorrelation,
@@ -30,7 +29,7 @@ from .chat_serialization import (
     thread_state_messages,
 )
 from .chat_compaction import ChatContextCompactionMixin
-from .chat_thread_state import effective_thinking_mode, response_payload
+from .chat_thread_state import effective_thinking_mode, latest_final_ai_text, response_payload
 from .chat_thread_access import ChatThreadAccessMixin
 from .chat_turn_errors import ConcurrentTurnError as ConcurrentTurnError
 from .chat_turn_recording import ChatTurnRecordingMixin
@@ -198,13 +197,7 @@ class ChatService(
         return message_content_to_text(content)
 
     def _latest_final_ai_text(self, messages: list[Any]) -> str | None:
-        for message in reversed(messages):
-            if isinstance(message, AIMessage) and not getattr(message, 'tool_calls', None):
-                text = self._message_content_to_text(message.content)
-                if looks_like_textual_tool_call_artifact(text):
-                    continue
-                return text
-        return None
+        return latest_final_ai_text(messages, message_content_to_text=self._message_content_to_text)
 
     def _serialize_message(self, message: Any) -> dict[str, Any]:
         return serialize_message(message)

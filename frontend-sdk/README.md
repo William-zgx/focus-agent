@@ -6,6 +6,7 @@ It is meant for teams that want a small integration surface instead of re-implem
 
 - Main project README: [`../README.md`](../README.md)
 - Chinese README: [`../README.zh-CN.md`](../README.zh-CN.md)
+- Streaming contract: [`../docs/streaming-contract.md`](../docs/streaming-contract.md)
 
 ## Why This SDK Exists
 
@@ -165,6 +166,29 @@ Recommended usage:
 - State panels: watch `state.update` during streamed turns
 - Completion handling: watch `run.completed`, `run.failed`, and `run.closed`
 
+Canonical event names:
+
+```text
+run.metadata
+run.status
+run.completed
+run.failed
+run.interrupt
+run.closed
+heartbeat
+state.update
+message.delta
+message.completed
+reasoning.delta
+tool.call.delta
+tool.requested
+tool.error
+tool.result
+task.update
+```
+
+`message.delta` and `message.completed` are the only assistant-answer text events. Tool planning, tool calls, task progress, and internal graph state should be rendered from `tool.*`, `task.update`, `reasoning.delta`, and `state.update` rather than mixed into visible text. `tool.call.delta` uses `args_delta` for streamed arguments and omits optional `id` / `name` fields when they are unknown.
+
 ## Reducers And Guards
 
 The package includes lightweight helpers for common UI wiring.
@@ -183,6 +207,10 @@ The derived stream state tracks:
 - `latestTurnState`
 - `isClosed`
 - `failed`
+
+`processingSteps` is the canonical derived input for processing cards. `toolCalls`, `toolEvents`, and `reasoningText` are retained as raw/debug/backcompat state. New UI code should not rebuild processing cards from raw tool events when `processingSteps` is available.
+
+Visible text is filtered through `safeVisibleTextTransition()` so DSML, XML-ish function-call text, bracketed tool markers, and internal process narration do not flash in normal chat UI. This frontend filtering is defensive; the backend remains responsible for not publishing dirty `message.delta` events.
 
 Type guards:
 
@@ -251,6 +279,7 @@ From the repository root:
 make sdk-install
 make sdk-check
 make sdk-build
+make sdk-validate-transport
 make contract-check
 ```
 

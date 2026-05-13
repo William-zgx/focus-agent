@@ -118,8 +118,6 @@ export function ThreadPageContent({
 		onDismissBranchAction,
 		onDecideToolApproval,
 		streamFailed: streamState?.failed,
-		streamToolCalls: streamState?.toolCalls,
-		streamToolEvents: streamState?.toolEvents,
 		streamVisibleText: streamState?.visibleText,
 		streamReasoningText: streamState?.reasoningText,
 		streamProcessingSteps: streamState?.processingSteps,

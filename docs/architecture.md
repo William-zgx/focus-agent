@@ -1,11 +1,12 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-07
+更新时间：2026-05-10
 
 本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
 - Agent governance：[agent-role-routing.md](agent-role-routing.md)
 - Agent Team Workbench：[agent-team-workbench.md](agent-team-workbench.md)
+- Streaming Contract：[streaming-contract.md](streaming-contract.md)
 - Context Window：[context-window.md](context-window.md)
 - Memory：[memory-system-v2.md](memory-system-v2.md)
 - Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
@@ -171,10 +172,13 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Auth | `POST /v1/auth/demo-token`、`GET /v1/auth/me` | demo token 和当前 principal |
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
-| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`GET/POST /v2/runs/{run_id}` | V2 harness run、流式 run、resume、查询与取消 |
+| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events|snapshot|trajectory` | V2 harness run、流式 run、resume、查询、事件回放、snapshot、trajectory 与取消 |
 | Threads | `GET /v1/threads/{thread_id}`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、当前上下文窗口预览和非破坏式压缩 |
 | Branches | fork、archive、activate、rename、proposal、merge、tree | 分支生命周期 |
 | Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
+| Agent Team | `/v1/agent-team/*` | Mission session、DAG planning/run、task lifecycle、outputs、merge bundle 和 merge decision |
+| Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
+| Admin | `/v1/admin/users/*`、`/v1/admin/audit-events` | 用户、会话、密码重置、状态、角色和审计管理 |
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
 
 API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业务流程在 services、runtime、repositories 和 graph nodes。
@@ -232,6 +236,18 @@ POST /v2/threads/{thread_id}/runs/stream
 ```
 
 `ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。服务本身依赖 `ChatServicePorts` 窄端口，当前端口只暴露 settings、graph、repo、branch service、skill registry、trajectory recorder 和 checkpointer；调用方仍可从 `AppRuntime` 适配出 ports，但 chat 编排逻辑不再直接绑定完整 runtime。
+
+### 7.3 流式可见文本边界
+
+流式入口会把 LangGraph chunk 映射成 canonical SSE events，但 `message.delta` 有额外强约束：它只能承载确认可见的 assistant answer text。
+
+- graph 内部模型调用会标记内部 `stream_phase`，工具绑定调用和 repair 调用默认 `quarantine`，最终 tool-free answer 才能标为 `visible`。
+- `harness_runs.py` 在发布 `message.delta` 前做 phase gate；缺省 phase 也按 `quarantine` 处理。
+- `tool.call.delta`、`tool.requested/result/error`、`reasoning.delta`、`task.update` 和 `state.update` 不受 visible gate 阻断，工具处理卡仍能正常展示。
+- DSML/XML/function-call 文本、内部工具规划口播和 split protocol prefix 会在后端与 SDK reducer 两侧过滤。
+- 对外事件 payload 不暴露内部 `stream_phase` metadata/tags。
+
+完整契约见 [streaming-contract.md](streaming-contract.md)。
 
 ## 8. LangGraph 主路径
 
@@ -420,7 +436,10 @@ Web App 位于 `apps/web/src/`：
 ```text
 app/                      router, shell, providers
 pages/thread/             chat, branch tree, merge review
+pages/agent-team/         Agent Team Mission Runner
 pages/agents/             governance console
+pages/auth/               login, registration, account routes
+pages/admin/              user and audit administration
 pages/observability/      overview and trajectory workbench
 features/                 branch, conversation, merge, models, stream, trajectory
 shared/                   config, query keys, SDK provider, UI, styles
@@ -430,13 +449,27 @@ shared/                   config, query keys, SDK provider, UI, styles
 
 - `/app`
 - `/app/zh`
+- `/app/c/{conversationId}/t/{threadId}`
+- `/app/c/{conversationId}/t/{threadId}/review`
+- `/app/agent-team`
+- `/app/agent-team/{sessionId}`
+- `/app/agent/memory`
+- `/app/agent/roles`
 - `/app/observability/overview`
 - `/app/observability/trajectory`
 - `/app/agent/governance`
+- `/app/admin/users`
+- `/app/admin/users/{userId}`
+- `/app/admin/audit-events`
+- `/app/auth/login`
+- `/app/auth/register`
+- `/app/account/profile`
+- `/app/account/security`
+- `/app/account/sessions`
 
 `frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端必须发送符合 SDK validator 的 canonical SSE payload，例如 `tool.call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
 
-Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
+Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。实时处理过程卡以 SDK reducer 派生的 `processingSteps` 为 canonical 输入；`toolCalls`、`toolEvents` 和 `reasoningText` 保留为 raw/debug/backcompat state。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
 
 ## 16. 安全边界
 
@@ -524,21 +557,31 @@ make format-check
 make ci
 ```
 
-`make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build 和 Web check/build。CI pytest 通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免 repo-local secrets 影响结果。
+`make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。CI pytest 通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免 repo-local secrets 影响结果。
 
 影响 SDK：
 
 ```bash
 make sdk-check
 make sdk-build
+make sdk-validate-transport
 make contract-check
+```
+
+影响流式事件、工具协议隔离或 SDK reducer：
+
+```bash
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+pnpm test:thread-stream-frontend-regressions
+pnpm sdk:check
+pnpm web:check
 ```
 
 影响 Web：
 
 ```bash
-pnpm --filter @focus-agent/web-app lint
-pnpm --filter @focus-agent/web-app format
+make web-lint
+make web-format-check
 make web-check
 make web-build
 make ui-smoke
