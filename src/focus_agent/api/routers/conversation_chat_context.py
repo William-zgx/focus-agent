@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from focus_agent.core.token_usage import normalize_token_usage
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
@@ -23,7 +24,7 @@ from ..contracts import (
 )
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
 from ..route_utils.conversations import _conversation_response, _list_or_bootstrap_conversations
-from ..route_utils.token_usage import _normalize_token_usage, _token_usage_for_root_thread
+from ..route_utils.token_usage import _token_usage_for_root_thread
 
 router = APIRouter()
 
@@ -68,7 +69,7 @@ def create_conversation(
             title_pending_ai=not bool(requested_title),
         )
     )
-    return _conversation_response(record.model_copy(update={"token_usage": _normalize_token_usage()}))
+    return _conversation_response(record.model_copy(update={"token_usage": normalize_token_usage()}))
 
 @router.patch('/v1/conversations/{root_thread_id:path}', response_model=ConversationSummaryResponse)
 def update_conversation(

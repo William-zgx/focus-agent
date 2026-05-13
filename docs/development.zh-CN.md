@@ -293,6 +293,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [快速开始](quick-start.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
 - [架构说明](architecture.md)
+- [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)
 - [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)

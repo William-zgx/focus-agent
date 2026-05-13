@@ -13,6 +13,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from focus_agent.config import Settings
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.security.tokens import AuthError, decode_access_token
 from focus_agent.services.coordination import InMemoryRateLimitBackend, RateLimitBackend
 
@@ -93,8 +94,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         runtime = getattr(getattr(request.app, "state", None), "runtime", None)
         coordination_backend = getattr(runtime, "coordination_backend", None)
         backend = getattr(coordination_backend, "rate_limiter", None)
-        check = getattr(backend, "check", None)
-        if callable(check):
+        if has_repo_method(backend, "check"):
             return backend
         return self._limiter
 

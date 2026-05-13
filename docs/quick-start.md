@@ -225,6 +225,7 @@ For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`
 
 - [Memory System v2](memory-system-v2.md)
 - [Observability Runbook](observability-runbook.md)
+- [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)
 - [Development Guide](development.md)
 - [Docker Deployment](docker-deployment.md)

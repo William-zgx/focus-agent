@@ -224,6 +224,7 @@ uv run python scripts/ui_smoke_test.py \
 
 - [Memory System v2](memory-system-v2.md)
 - [Observability Runbook](observability-runbook.md)
+- [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)
 - [开发指南](development.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)

@@ -60,6 +60,26 @@ class AgentCapabilityListResponse(BaseModel):
     count: int = 0
 
 
+class AgentToolsetResponse(BaseModel):
+    name: str
+    description: str = ""
+    tools: list[str] = Field(default_factory=list)
+    count: int = 0
+    provider_ids: list[str] = Field(default_factory=list)
+    risk_levels: list[str] = Field(default_factory=list)
+    allowed_roles: list[str] = Field(default_factory=list)
+    intent_policies: list[str] = Field(default_factory=list)
+    requires_network: bool = False
+    requires_workspace_write: bool = False
+    side_effect: bool = False
+    requires_approval: bool = False
+
+
+class AgentToolsetListResponse(BaseModel):
+    items: list[AgentToolsetResponse] = Field(default_factory=list)
+    count: int = 0
+
+
 class AgentToolRouteRequest(BaseModel):
     role: str = "executor"
     tool_policy: str = "execution"

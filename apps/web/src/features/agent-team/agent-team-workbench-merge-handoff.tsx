@@ -1,6 +1,11 @@
 import { useShellUi } from "@/app/shell/shell-ui-context";
 
 import { EmptyList, FieldList, HelpText } from "./agent-team-workbench-shared";
+import {
+  formatUnknown,
+  isRawRunText,
+  uniqueCompactStrings as uniqueStrings,
+} from "./agent-team-workbench-task-output-utils";
 import type {
   AgentTeamArtifact,
   AgentTeamMergeBundle,
@@ -352,14 +357,14 @@ function resultEvidenceItems(bundle: AgentTeamMergeBundle, evidenceItems: string
         ...(bundle.key_findings ?? []),
         ...(bundle.test_evidence ?? []),
         isChineseUi ? "已汇总任务回传内容作为最终答案依据。" : "Task returns were synthesized as final-answer evidence.",
-      ]).filter((item) => !isRawRunText(item)),
+      ]).filter((item) => !isRawRunText(item, "bundle")),
       isChineseUi,
     );
   }
   return limitUserFacingItems(
     uniqueStrings(
       uniqueStrings([...(bundle.key_findings ?? []), ...(bundle.test_evidence ?? []), ...evidenceItems]).map((item) =>
-        isRawRunText(item)
+        isRawRunText(item, "bundle")
           ? isChineseUi
             ? "任务产出已回传。"
             : "Task output returned."
@@ -377,7 +382,7 @@ function finalResultSummary(bundle: AgentTeamMergeBundle | null, isChineseUi: bo
       ? "当前是模拟执行，只验证了 Agent Team 的拆解、运行和回传流程，没有生成可交付的真实答案。"
       : "This is a simulated run. It only validates the Agent Team planning, run, and return flow; it did not generate a deliverable final answer.";
   }
-  if (!isRawRunText(bundle.summary)) return bundle.summary;
+  if (!isRawRunText(bundle.summary, "bundle")) return bundle.summary;
 
   const completedMatch = bundle.summary.match(/\b(\d+)\s*\/\s*(\d+)\b/);
   if (completedMatch) {
@@ -395,7 +400,7 @@ function finalResultSummary(bundle: AgentTeamMergeBundle | null, isChineseUi: bo
 function finalAnswerText(bundle: AgentTeamMergeBundle | null, isChineseUi: boolean) {
   if (!bundle) return isChineseUi ? "暂无最终答案。" : "No final answer yet.";
   const finalAnswer = bundle.final_answer?.trim();
-  if (finalAnswer && !isRawRunText(finalAnswer)) return finalAnswer;
+  if (finalAnswer && !isRawRunText(finalAnswer, "bundle")) return finalAnswer;
   if (bundle.final_answer_status === "placeholder") {
     return isChineseUi
       ? "当前是模拟执行，只验证了 Agent Team 的拆解、运行和回传流程，没有生成可交付的真实答案。"
@@ -415,7 +420,7 @@ function finalAnswerWarnings(bundle: AgentTeamMergeBundle, isChineseUi: boolean)
         : "Switch to real model execution, then generate the Agent Team final answer again.",
     ];
   }
-  const warnings = uniqueStrings(bundle.final_answer_warnings ?? []).filter((item) => !isRawRunText(item));
+  const warnings = uniqueStrings(bundle.final_answer_warnings ?? []).filter((item) => !isRawRunText(item, "bundle"));
   return warnings;
 }
 
@@ -434,7 +439,7 @@ function resultRiskItems(bundle: AgentTeamMergeBundle, riskItems: string[], isCh
       ...(bundle.open_questions ?? []),
       ...riskItems,
     ]).filter(
-      (item) => !isRawRunText(item),
+      (item) => !isRawRunText(item, "bundle"),
     ),
     isChineseUi,
   );
@@ -465,20 +470,6 @@ function planningMetadataItems(metadata: AgentTeamPlanningMetadata | Record<stri
     .map(([key, value]) => `${key}: ${formatUnknown(value)}`);
 }
 
-function formatUnknown(value: unknown) {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function isRawRunText(value: string) {
-  return /(?:^|\b)(fake delegated|delegated fake run|run-|artifact-)/i.test(value.trim());
-}
-
 function normalizedFinalAnswerStatus(bundle: AgentTeamMergeBundle) {
   const status = bundle.final_answer_status?.trim();
   if (status) return status;
@@ -499,17 +490,7 @@ function isBundleSimulated(bundle: AgentTeamMergeBundle) {
     ...(bundle.test_evidence ?? []),
     ...(bundle.risk_items ?? []),
     ...(bundle.open_questions ?? []),
-  ].some((item) => Boolean(item && isRawRunText(item)));
-}
-
-function uniqueStrings(items: (string | null | undefined)[]) {
-  return Array.from(
-    new Set(
-      items
-        .map((item) => item?.trim().replace(/\s+/g, " "))
-        .filter((item): item is string => Boolean(item)),
-    ),
-  );
+  ].some((item) => Boolean(item && isRawRunText(item, "bundle")));
 }
 
 function limitUserFacingItems(items: string[], isChineseUi: boolean, limit = 6) {

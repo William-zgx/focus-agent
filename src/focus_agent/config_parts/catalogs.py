@@ -152,6 +152,7 @@ def _load_basic_tool_config(
     *,
     int_fields: tuple[str, ...] = (),
     optional_string_fields: tuple[str, ...] = (),
+    tuple_fields: tuple[str, ...] = (),
 ) -> _ToolConfigT:
     if not isinstance(raw_section, dict):
         return defaults
@@ -170,6 +171,8 @@ def _load_basic_tool_config(
             values[field_name] = int(raw_section.get(field_name, default_value))
         elif field_name in optional_string_fields:
             values[field_name] = _normalize_optional_string(raw_value) or default_value
+        elif field_name in tuple_fields:
+            values[field_name] = _split_listish(raw_value) or default_value
         else:
             values[field_name] = default_value
 
@@ -326,6 +329,8 @@ class WebFetchToolConfig:
     description: str = "Fetch and extract readable text from a user-provided HTTP or HTTPS URL."
     default_max_chars: int = 12000
     max_chars_cap: int = 50000
+    blocked_domains: tuple[str, ...] = ()
+    allowed_domains: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -475,6 +480,7 @@ class ToolCatalogSectionSpec:
     defaults_factory: Callable[[], Any]
     int_fields: tuple[str, ...] = ()
     optional_string_fields: tuple[str, ...] = ()
+    tuple_fields: tuple[str, ...] = ()
 
 
 _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
@@ -517,6 +523,7 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
     "web_fetch": ToolCatalogSectionSpec(
         WebFetchToolConfig,
         int_fields=("default_max_chars", "max_chars_cap"),
+        tuple_fields=("blocked_domains", "allowed_domains"),
     ),
     "memory_save": ToolCatalogSectionSpec(MemorySaveToolConfig),
     "memory_search": ToolCatalogSectionSpec(
@@ -668,6 +675,7 @@ def load_tool_catalog_document(
             spec.defaults_factory(),
             int_fields=spec.int_fields,
             optional_string_fields=spec.optional_string_fields,
+            tuple_fields=spec.tuple_fields,
         )
         for section_name, spec in _TOOL_CATALOG_SPECS.items()
     }

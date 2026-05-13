@@ -10,6 +10,7 @@ from langchain.messages import HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.tool_protocol import (
     looks_like_textual_tool_call_artifact,
     safe_visible_text_transition,
@@ -122,102 +123,89 @@ async def create_harness_run(
         rollback_partial=is_branch_action,
         rollback_unreverted_scopes=("branch_action",) if is_branch_action else (),
     )
-    await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
-    initial_message_count = len(list(initial_values.get("messages", []) or []))
-    initial_llm_calls = int(initial_values.get("llm_calls") or 0)
-    started_at = utc_now()
     if is_branch_action:
-        try:
-            input_messages = [HumanMessage(content=message)]
-            result = await asyncio.to_thread(
-                chat._handle_branch_action_turn,
-                thread_id=thread_id,
-                user_id=principal.user_id,
-                message=message,
-                request_id=getattr(request.state, "request_id", None),
-            )
-            if result is None:
-                raise RuntimeError("Branch action intent disappeared before execution.")
-            latest_context, latest_branch_meta, final_values = _context_for_turn(
-                chat=chat,
-                thread_id=thread_id,
-                user_id=principal.user_id,
-                fallback_context=context,
-                fallback_branch_meta=branch_meta,
-            )
-            _record_harness_turn_and_schedule(
-                chat=chat,
-                thread_id=thread_id,
-                user_id=principal.user_id,
-                root_thread_id=latest_context.root_thread_id,
-                kind="chat.turn",
-                status="succeeded",
-                final_values=final_values,
-                initial_message_count=initial_message_count,
-                initial_llm_calls=initial_llm_calls,
-                started_at=started_at,
-                branch_meta=latest_branch_meta,
-                trace_correlation=build_trace_correlation(
-                    settings=getattr(runtime, "settings", {}),
-                    request_id=getattr(request.state, "request_id", None),
-                ),
-                payload={"messages": input_messages},
-                answer=str(result.get("message") or ""),
-            )
-        except Exception as exc:  # noqa: BLE001
-            await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
-            _record_harness_turn_and_schedule(
-                chat=chat,
-                thread_id=thread_id,
-                user_id=principal.user_id,
-                root_thread_id=context.root_thread_id,
-                kind="chat.turn",
-                status="failed",
-                final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
-                initial_message_count=initial_message_count,
-                initial_llm_calls=initial_llm_calls,
-                started_at=started_at,
-                branch_meta=branch_meta,
-                trace_correlation=build_trace_correlation(
-                    settings=getattr(runtime, "settings", {}),
-                    request_id=getattr(request.state, "request_id", None),
-                ),
-                payload={"messages": [HumanMessage(content=message)]},
-                error=str(exc),
-            )
-            raise
-        await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
-        return HarnessRunResponse(
-            run=_run_record_payload(runtime.run_manager.get(run_record.run_id) or run_record),
-            thread_state=result["thread_state"],
+        return await _execute_branch_action_run(
+            runtime=runtime,
+            chat=chat,
+            run_record=run_record,
+            thread_id=thread_id,
+            user_id=principal.user_id,
+            message=message,
+            request_id=getattr(request.state, "request_id", None),
+            context=context,
+            branch_meta=branch_meta,
+            initial_values=initial_values,
         )
-    trace_correlation = build_trace_correlation(
-        settings=getattr(runtime, "settings", {}),
-        request_id=getattr(request.state, "request_id", None),
-    )
-    config = build_invoke_config(
-        settings=getattr(runtime, "settings", {}),
+    return await _execute_harness_run(
+        runtime=runtime,
+        chat=chat,
+        run_record=run_record,
         thread_id=thread_id,
         user_id=principal.user_id,
-        root_thread_id=context.root_thread_id,
+        payload=graph_payload,
+        request_id=getattr(request.state, "request_id", None),
+        context=context,
         branch_meta=branch_meta,
-        trace_correlation=trace_correlation,
-        run_name="focus_agent_harness_run",
+        initial_values=initial_values,
     )
+
+
+async def _execute_branch_action_run(
+    *,
+    runtime: AppRuntime,
+    chat: ChatService,
+    run_record: Any,
+    thread_id: str,
+    user_id: str,
+    message: str,
+    request_id: str | None,
+    context: Any,
+    branch_meta: Any,
+    initial_values: dict[str, Any],
+) -> HarnessRunResponse:
+    await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
+    initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
+    input_messages = [HumanMessage(content=message)]
+    trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
     try:
-        await asyncio.to_thread(
-            runtime.harness.invoke,
-            graph_payload,
-            config=config,
-            context=context,
-            version="v2",
+        result = await asyncio.to_thread(
+            chat._handle_branch_action_turn,
+            thread_id=thread_id,
+            user_id=user_id,
+            message=message,
+            request_id=request_id,
+        )
+        if result is None:
+            raise RuntimeError("Branch action intent disappeared before execution.")
+        latest_context, latest_branch_meta, final_values = _context_for_turn(
+            chat=chat,
+            thread_id=thread_id,
+            user_id=user_id,
+            fallback_context=context,
+            fallback_branch_meta=branch_meta,
+        )
+        _record_harness_turn_and_schedule(
+            chat=chat,
+            thread_id=thread_id,
+            user_id=user_id,
+            root_thread_id=latest_context.root_thread_id,
+            kind="chat.turn",
+            status="succeeded",
+            final_values=final_values,
+            initial_message_count=initial_message_count,
+            initial_llm_calls=initial_llm_calls,
+            started_at=started_at,
+            branch_meta=latest_branch_meta,
+            trace_correlation=trace_correlation,
+            payload={"messages": input_messages},
+            answer=str(result.get("message") or ""),
         )
     except Exception as exc:  # noqa: BLE001
         await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
         _record_harness_turn_and_schedule(
             chat=chat,
             thread_id=thread_id,
-            user_id=principal.user_id,
+            user_id=user_id,
             root_thread_id=context.root_thread_id,
             kind="chat.turn",
             status="failed",
@@ -227,7 +215,68 @@ async def create_harness_run(
             started_at=started_at,
             branch_meta=branch_meta,
             trace_correlation=trace_correlation,
-            payload=graph_payload,
+            payload={"messages": input_messages},
+            error=str(exc),
+        )
+        raise
+    await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
+    return _harness_run_response(
+        runtime=runtime,
+        run_id=run_record.run_id,
+        fallback_record=run_record,
+        thread_state=result["thread_state"],
+    )
+
+
+async def _execute_harness_run(
+    *,
+    runtime: AppRuntime,
+    chat: ChatService,
+    run_record: Any,
+    thread_id: str,
+    user_id: str,
+    payload: dict[str, Any],
+    request_id: str | None,
+    context: Any,
+    branch_meta: Any,
+    initial_values: dict[str, Any],
+) -> HarnessRunResponse:
+    await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
+    initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
+    trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
+    config = build_invoke_config(
+        settings=getattr(runtime, "settings", {}),
+        thread_id=thread_id,
+        user_id=user_id,
+        root_thread_id=context.root_thread_id,
+        branch_meta=branch_meta,
+        trace_correlation=trace_correlation,
+        run_name="focus_agent_harness_run",
+    )
+    try:
+        await asyncio.to_thread(
+            runtime.harness.invoke,
+            payload,
+            config=config,
+            context=context,
+            version="v2",
+        )
+    except Exception as exc:  # noqa: BLE001
+        await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
+        _record_harness_turn_and_schedule(
+            chat=chat,
+            thread_id=thread_id,
+            user_id=user_id,
+            root_thread_id=context.root_thread_id,
+            kind="chat.turn",
+            status="failed",
+            final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
+            initial_message_count=initial_message_count,
+            initial_llm_calls=initial_llm_calls,
+            started_at=started_at,
+            branch_meta=branch_meta,
+            trace_correlation=trace_correlation,
+            payload=payload,
             error=str(exc),
         )
         raise
@@ -235,13 +284,13 @@ async def create_harness_run(
     latest_context, latest_branch_meta, final_values = _context_for_turn(
         chat=chat,
         thread_id=thread_id,
-        user_id=principal.user_id,
+        user_id=user_id,
         fallback_context=context,
         fallback_branch_meta=branch_meta,
     )
     thread_state = chat._response_payload(
         thread_id=thread_id,
-        user_id=principal.user_id,
+        user_id=user_id,
         context=latest_context,
         branch_meta=latest_branch_meta,
         interrupts=chat._safe_get_interrupts(thread_id),
@@ -250,7 +299,7 @@ async def create_harness_run(
     _record_harness_turn_and_schedule(
         chat=chat,
         thread_id=thread_id,
-        user_id=principal.user_id,
+        user_id=user_id,
         root_thread_id=latest_context.root_thread_id,
         kind="chat.turn",
         status="succeeded",
@@ -260,11 +309,13 @@ async def create_harness_run(
         started_at=started_at,
         branch_meta=latest_branch_meta,
         trace_correlation=trace_correlation,
-        payload=graph_payload,
+        payload=payload,
         answer=thread_state.get("assistant_message"),
     )
-    return HarnessRunResponse(
-        run=_run_record_payload(runtime.run_manager.get(run_record.run_id) or run_record),
+    return _harness_run_response(
+        runtime=runtime,
+        run_id=run_record.run_id,
+        fallback_record=run_record,
         thread_state=thread_state,
     )
 
@@ -403,10 +454,12 @@ async def stream_existing_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> StreamingResponse:
-    run_payload = await _load_run_payload(runtime, run_id)
-    if run_payload is None:
-        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    run_payload = await _load_authorized_run_payload(
+        runtime=runtime,
+        chat=chat,
+        principal=principal,
+        run_id=run_id,
+    )
     return _run_event_streaming_response(
         runtime=runtime,
         run_id=run_id,
@@ -481,10 +534,12 @@ async def get_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
-    run_payload = await _load_run_payload(runtime, run_id)
-    if run_payload is None:
-        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    run_payload = await _load_authorized_run_payload(
+        runtime=runtime,
+        chat=chat,
+        principal=principal,
+        run_id=run_id,
+    )
     return HarnessRunResponse(run=run_payload, thread_state=None)
 
 
@@ -496,18 +551,20 @@ async def cancel_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
-    run_payload = await _load_run_payload(runtime, run_id)
-    if run_payload is None:
-        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    await _load_authorized_run_payload(
+        runtime=runtime,
+        chat=chat,
+        principal=principal,
+        run_id=run_id,
+    )
     action = "rollback" if payload.action == "rollback" else "interrupt"
     cancelled = await runtime.run_manager.cancel(run_id, action=action)
     if not cancelled:
         raise HTTPException(status_code=404, detail=f"Active run not found: {run_id}")
-    record = runtime.run_manager.get(run_id)
-    return HarnessRunResponse(
-        run=_run_record_payload(record) if record else {"run_id": run_id},
-        thread_state=None,
+    return _harness_run_response(
+        runtime=runtime,
+        run_id=run_id,
+        fallback_record={"run_id": run_id},
     )
 
 
@@ -647,42 +704,57 @@ def _record_harness_turn_and_schedule(
     answer: str | None = None,
     error: str | None = None,
 ) -> None:
-    record_turn = getattr(chat, "_record_turn_trajectory_best_effort", None)
-    if callable(record_turn):
-        record_turn(
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=root_thread_id,
-            kind=kind,
-            status=status,
-            final_values=final_values,
-            initial_message_count=initial_message_count,
-            initial_llm_calls=initial_llm_calls,
-            started_at=started_at,
-            finished_at=utc_now(),
-            branch_meta=branch_meta,
-            trace_correlation=trace_correlation,
-            input_messages=list(payload.get("messages", []) if isinstance(payload, dict) else []),
-            answer=answer,
-            error=error,
-        )
+    _call_chat_hook(
+        chat=chat,
+        method="_record_turn_trajectory_best_effort",
+        thread_id=thread_id,
+        user_id=user_id,
+        root_thread_id=root_thread_id,
+        kind=kind,
+        status=status,
+        final_values=final_values,
+        initial_message_count=initial_message_count,
+        initial_llm_calls=initial_llm_calls,
+        started_at=started_at,
+        finished_at=utc_now(),
+        branch_meta=branch_meta,
+        trace_correlation=trace_correlation,
+        input_messages=list(payload.get("messages", []) if isinstance(payload, dict) else []),
+        answer=answer,
+        error=error,
+    )
     if status != "succeeded":
         return
-    compact_context = getattr(chat, "_schedule_post_turn_context_compaction", None)
-    if callable(compact_context):
-        compact_context(
-            thread_id=thread_id,
-            user_id=user_id,
-            kind=kind,
-        )
-    refresh_branch_name = getattr(chat, "_schedule_branch_name_refresh_after_first_turn", None)
-    if callable(refresh_branch_name):
-        refresh_branch_name(
-            thread_id=thread_id,
-            user_id=user_id,
-            branch_meta=branch_meta,
-            kind=kind,
-        )
+    _call_chat_hook(
+        chat=chat,
+        method="_schedule_post_turn_context_compaction",
+        thread_id=thread_id,
+        user_id=user_id,
+        kind=kind,
+    )
+    _call_chat_hook(
+        chat=chat,
+        method="_schedule_branch_name_refresh_after_first_turn",
+        thread_id=thread_id,
+        user_id=user_id,
+        branch_meta=branch_meta,
+        kind=kind,
+    )
+
+
+def _turn_recording_baseline(initial_values: dict[str, Any]) -> tuple[int, int, Any]:
+    return (
+        len(list(initial_values.get("messages", []) or [])),
+        int(initial_values.get("llm_calls") or 0),
+        utc_now(),
+    )
+
+
+def _trace_correlation(*, runtime: AppRuntime, request_id: str | None) -> Any:
+    return build_trace_correlation(
+        settings=getattr(runtime, "settings", {}),
+        request_id=request_id,
+    )
 
 
 def _context_for_turn(
@@ -693,9 +765,14 @@ def _context_for_turn(
     fallback_context: Any,
     fallback_branch_meta: Any,
 ) -> tuple[Any, Any, dict[str, Any]]:
-    context_for_thread = getattr(chat, "_context_for_thread", None)
-    if callable(context_for_thread):
-        return context_for_thread(thread_id=thread_id, user_id=user_id)
+    context_for_thread = _call_chat_hook(
+        chat=chat,
+        method="_context_for_thread",
+        thread_id=thread_id,
+        user_id=user_id,
+    )
+    if context_for_thread is not None:
+        return context_for_thread
     return fallback_context, fallback_branch_meta, _safe_chat_values(chat=chat, thread_id=thread_id)
 
 
@@ -719,10 +796,8 @@ async def _produce_run_stream(
     reasoning_buffer = ""
     reasoning_text_pending = ""
     cancelled = False
-    initial_message_count = len(list(initial_values.get("messages", []) or []))
-    initial_llm_calls = int(initial_values.get("llm_calls") or 0)
-    started_at = utc_now()
-    trace_correlation = build_trace_correlation(settings=runtime.settings, request_id=request_id)
+    initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
+    trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
     config = build_invoke_config(
         settings=runtime.settings,
         thread_id=thread_id,
@@ -735,22 +810,14 @@ async def _produce_run_stream(
 
     async def publish(event_name: str, source_node_name: str | None = None, **data: Any) -> None:
         nonlocal sequence
-        sequence = await _next_run_sequence(
+        sequence = await _publish_run_event(
             runtime=runtime,
             run_id=run_id,
-            current_sequence=sequence,
-        )
-        await runtime.stream_bridge.publish(
-            run_id,
-            event_name,
-            canonical_event_payload(
-                run_id=run_id,
-                thread_id=thread_id,
-                turn_id=run_id,
-                sequence=sequence,
-                source_node=source_node_name,
-                **_canonical_payload_extras(data),
-            ),
+            thread_id=thread_id,
+            sequence=sequence,
+            event_name=event_name,
+            source_node_name=source_node_name,
+            data=data,
         )
 
     try:
@@ -945,36 +1012,50 @@ async def _produce_run_stream(
         )
         await publish("run.failed", error=exc.__class__.__name__, message=str(exc))
     finally:
-        _signal_rollback_ready(runtime=runtime, run_id=run_id)
-        await _await_rollback_completion(runtime=runtime, run_id=run_id)
-        sequence = await _next_run_sequence(
+        await _close_run_stream(
             runtime=runtime,
             run_id=run_id,
-            current_sequence=sequence,
+            thread_id=thread_id,
+            sequence=sequence,
         )
-        await runtime.stream_bridge.publish(
-            run_id,
-            "run.closed",
-            canonical_event_payload(
-                run_id=run_id,
-                thread_id=thread_id,
-                turn_id=run_id,
-                sequence=sequence,
-                source_node="harness",
-                status="closed",
-            ),
-        )
-        await runtime.stream_bridge.publish_end(run_id)
 
 
 def _safe_chat_values(*, chat: ChatService, thread_id: str) -> dict[str, Any]:
-    safe_get_values = getattr(chat, "_safe_get_values", None)
-    if not callable(safe_get_values):
-        return {}
+    return dict(
+        _safe_call_chat_hook(
+            chat=chat,
+            method="_safe_get_values",
+            thread_id=thread_id,
+            default={},
+        )
+        or {}
+    )
+
+
+def _call_chat_hook(
+    chat: ChatService,
+    method: str,
+    *args: Any,
+    **kwargs: Any,
+) -> Any | None:
+    if not has_repo_method(chat, method):
+        return None
+    return getattr(chat, method)(*args, **kwargs)
+
+
+def _safe_call_chat_hook(
+    chat: ChatService,
+    method: str,
+    *args: Any,
+    default: Any = None,
+    **kwargs: Any,
+) -> Any:
+    if not has_repo_method(chat, method):
+        return default
     try:
-        return dict(safe_get_values(thread_id) or {})
+        return getattr(chat, method)(*args, **kwargs)
     except Exception:  # noqa: BLE001
-        return {}
+        return default
 
 
 async def _produce_branch_action_run_stream(
@@ -992,33 +1073,20 @@ async def _produce_branch_action_run_stream(
     kind: str = "chat.turn",
 ) -> None:
     sequence = 0
-    initial_message_count = len(list(initial_values.get("messages", []) or []))
-    initial_llm_calls = int(initial_values.get("llm_calls") or 0)
-    started_at = utc_now()
+    initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
     input_messages = [HumanMessage(content=message)]
-    trace_correlation = build_trace_correlation(
-        settings=getattr(runtime, "settings", {}),
-        request_id=request_id,
-    )
+    trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
 
     async def publish(event_name: str, source_node_name: str = "harness", **data: Any) -> None:
         nonlocal sequence
-        sequence = await _next_run_sequence(
+        sequence = await _publish_run_event(
             runtime=runtime,
             run_id=run_id,
-            current_sequence=sequence,
-        )
-        await runtime.stream_bridge.publish(
-            run_id,
-            event_name,
-            canonical_event_payload(
-                run_id=run_id,
-                thread_id=thread_id,
-                turn_id=run_id,
-                sequence=sequence,
-                source_node=source_node_name,
-                **_canonical_payload_extras(data),
-            ),
+            thread_id=thread_id,
+            sequence=sequence,
+            event_name=event_name,
+            source_node_name=source_node_name,
+            data=data,
         )
 
     try:
@@ -1098,26 +1166,12 @@ async def _produce_branch_action_run_stream(
         )
         await publish("run.failed", error=exc.__class__.__name__, message=str(exc))
     finally:
-        _signal_rollback_ready(runtime=runtime, run_id=run_id)
-        await _await_rollback_completion(runtime=runtime, run_id=run_id)
-        sequence = await _next_run_sequence(
+        await _close_run_stream(
             runtime=runtime,
             run_id=run_id,
-            current_sequence=sequence,
+            thread_id=thread_id,
+            sequence=sequence,
         )
-        await runtime.stream_bridge.publish(
-            run_id,
-            "run.closed",
-            canonical_event_payload(
-                run_id=run_id,
-                thread_id=thread_id,
-                turn_id=run_id,
-                sequence=sequence,
-                source_node="harness",
-                status="closed",
-            ),
-        )
-        await runtime.stream_bridge.publish_end(run_id)
 
 
 def _message_from_payload(payload: HarnessRunRequest) -> str:
@@ -1134,14 +1188,44 @@ async def _next_run_sequence(
     run_id: str,
     current_sequence: int,
 ) -> int:
-    count_events = getattr(_event_store_for_runtime(runtime), "count_events", None)
-    if callable(count_events):
+    count_events = _journal_method_optional(runtime, "count_events")
+    if count_events is not None:
         try:
             journal_sequence = int(await count_events(run_id)) + 1
             return max(current_sequence + 1, journal_sequence)
         except Exception:  # noqa: BLE001
             logger.warning("Failed to read harness journal sequence for run %s", run_id, exc_info=True)
     return current_sequence + 1
+
+
+async def _publish_run_event(
+    *,
+    runtime: AppRuntime,
+    run_id: str,
+    thread_id: str,
+    sequence: int,
+    event_name: str,
+    source_node_name: str | None,
+    data: dict[str, Any],
+) -> int:
+    next_sequence = await _next_run_sequence(
+        runtime=runtime,
+        run_id=run_id,
+        current_sequence=sequence,
+    )
+    await runtime.stream_bridge.publish(
+        run_id,
+        event_name,
+        canonical_event_payload(
+            run_id=run_id,
+            thread_id=thread_id,
+            turn_id=run_id,
+            sequence=next_sequence,
+            source_node=source_node_name,
+            **_canonical_payload_extras(data),
+        ),
+    )
+    return next_sequence
 
 
 def _signal_rollback_ready(
@@ -1182,6 +1266,35 @@ async def _await_rollback_completion(
             "Timed out waiting for rollback completion before closing run stream %s",
             run_id,
         )
+
+
+async def _close_run_stream(
+    *,
+    runtime: AppRuntime,
+    run_id: str,
+    thread_id: str,
+    sequence: int,
+) -> None:
+    _signal_rollback_ready(runtime=runtime, run_id=run_id)
+    await _await_rollback_completion(runtime=runtime, run_id=run_id)
+    sequence = await _next_run_sequence(
+        runtime=runtime,
+        run_id=run_id,
+        current_sequence=sequence,
+    )
+    await runtime.stream_bridge.publish(
+        run_id,
+        "run.closed",
+        canonical_event_payload(
+            run_id=run_id,
+            thread_id=thread_id,
+            turn_id=run_id,
+            sequence=sequence,
+            source_node="harness",
+            status="closed",
+        ),
+    )
+    await runtime.stream_bridge.publish_end(run_id)
 
 
 def _source_node(metadata: dict[str, Any], namespace: list[str]) -> str:
@@ -1243,6 +1356,19 @@ def _run_record_payload(record: Any) -> dict[str, Any]:
     return _json_safe(record)
 
 
+def _harness_run_response(
+    *,
+    runtime: AppRuntime,
+    run_id: str,
+    fallback_record: Any,
+    thread_state: dict[str, Any] | None = None,
+) -> HarnessRunResponse:
+    return HarnessRunResponse(
+        run=_run_record_payload(runtime.run_manager.get(run_id) or fallback_record),
+        thread_state=thread_state,
+    )
+
+
 async def _load_run_payload(runtime: AppRuntime, run_id: str) -> dict[str, Any] | None:
     record = runtime.run_manager.get(run_id)
     if record is not None:
@@ -1273,11 +1399,15 @@ def _event_store_for_runtime(runtime: AppRuntime) -> Any:
 
 
 def _journal_method(runtime: AppRuntime, name: str) -> Any:
-    event_store = _event_store_for_runtime(runtime)
-    method = getattr(event_store, name, None)
-    if not callable(method):
+    method = _journal_method_optional(runtime, name)
+    if method is None:
         raise HTTPException(status_code=503, detail="Harness run journal is unavailable.")
     return method
+
+
+def _journal_method_optional(runtime: AppRuntime, name: str) -> Any:
+    event_store = _event_store_for_runtime(runtime)
+    return getattr(event_store, name) if has_repo_method(event_store, name) else None
 
 
 def _authorize_run_access(
@@ -1304,9 +1434,8 @@ def _authorize_run_access(
 
 
 async def _get_persisted_run(runtime: AppRuntime, run_id: str) -> dict[str, Any] | None:
-    event_store = getattr(runtime, "event_store", None)
-    get_run = getattr(event_store, "get_run", None)
-    if not callable(get_run):
+    get_run = _journal_method_optional(runtime, "get_run")
+    if get_run is None:
         return None
     run = await get_run(run_id)
     if run is None:

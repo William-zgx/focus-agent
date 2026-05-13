@@ -1,8 +1,8 @@
 # Focus Agent Memory System v2
 
-更新时间：2026-05-07
+更新时间：2026-05-13
 
-本文是 PostgreSQL canonical memory 架构的系统设计文档。它描述当前仓库中的真实实现，而不是未来设想。旧版 `docs/memory-system.md` 仍可作为演进背景阅读；本文件重点整理 v2 后的设计边界、数据模型、运行时链路、pgvector embedding、审计治理和后续风险。
+本文是 Memory 系统的 canonical 设计文档。它描述当前仓库中的真实实现，而不是未来设想；旧版 v1 背景已合并到本文的 legacy fallback / migration 章节，不再作为独立文档维护。本文件重点整理 PostgreSQL canonical memory、数据模型、运行时链路、pgvector embedding、审计治理、legacy fallback 和后续风险。
 
 ## 1. 定位
 
@@ -837,6 +837,16 @@ flowchart TD
 - `--backfill-memory-embeddings` 会扫描 `status=active` 的 canonical memory，并按当前 env 中的 embedding provider/model/dimensions best-effort 补齐 shadow，报告 `scanned/written/skipped/failed`。
 - embedding backfill 会在执行前用当前 provider dimensions 调用 repository setup，确保 fresh database 也能创建 v10 pgvector schema。生产环境仍应先由 DBA/迁移账号预装 `vector` extension，并把应用设为 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required`。当前 backfill 不会把 local fallback 当 embedding 事实源。
 - tombstone 防回填仍需在更完整 dual read/backfill 阶段继续补强。
+
+## 14.1 Legacy fallback 与迁移背景
+
+Memory v1 的运行时事实源主要依赖 LangGraph Store payload。当前生产事实源已经迁移到 PostgreSQL 独立业务表，但 legacy path 仍作为开发、测试和离线迁移的兼容边界存在：
+
+- 无 `DATABASE_URI` 的裸跑本地模式下，`runtime.memory_repository=None`，retriever / writer / tools 回退到 store-backed legacy memory path。
+- `focus-agent-migrate-local-state` 负责从 legacy LangGraph Store namespace 扫描 memory payload，并幂等写入 `focus_memories`；可选 `--backfill-memory-embeddings` 补齐 pgvector shadow。
+- legacy payload 不再作为生产 HTTP / SDK / Web surface 的事实源；list/detail/audit/candidates/forget 的生产语义以 Postgres repository 为准。
+- local fallback 的 `memory_forget` 仍是 store delete，不维护 tombstone 或 pgvector shadow；生产 Postgres 路径使用 tombstone/soft forget，并同步清理对应 embedding rows。
+- 旧文档中的 v1 抽取、namespace、prompt injection 和 branch promotion 背景只作为理解迁移的语境保留；新增设计应优先修改本文件和 `src/focus_agent/memory/*` 的当前实现。
 
 ## 15. Observability 与 AgentState
 

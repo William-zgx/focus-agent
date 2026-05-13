@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.memory import MemoryAuditEvent, MemoryCandidate, MemoryRecord, MemoryService
+from focus_agent.core.repo_call import REPO_METHOD_ERROR, REPO_METHOD_MISSING, has_repo_method, safe_repo_call
 from focus_agent.memory.models import MemoryScope
 from focus_agent.repositories.memory_repository import MemoryListQuery, MemoryRepository
 from focus_agent.security.permissions import AuthContext
@@ -514,19 +515,22 @@ def _is_thread_owner(thread_id: str, *, user_id: str, runtime: AppRuntime) -> bo
 
 
 def _has_thread_owner_checker(runtime: AppRuntime) -> bool:
-    branch_repo = getattr(runtime, "repo", None)
-    assert_thread_owner = getattr(branch_repo, "assert_thread_owner", None)
-    return callable(assert_thread_owner)
+    return has_repo_method(getattr(runtime, "repo", None), "assert_thread_owner")
 
 
 def _thread_owner_matches(thread_id: str, *, user_id: str, runtime: AppRuntime) -> bool | None:
-    branch_repo = getattr(runtime, "repo", None)
-    assert_thread_owner = getattr(branch_repo, "assert_thread_owner", None)
-    if not callable(assert_thread_owner):
+    result = safe_repo_call(
+        getattr(runtime, "repo", None),
+        "assert_thread_owner",
+        thread_id=thread_id,
+        owner_user_id=user_id,
+        default_missing=REPO_METHOD_MISSING,
+        default_error=REPO_METHOD_ERROR,
+        except_errors=(KeyError, PermissionError),
+    )
+    if result is REPO_METHOD_MISSING:
         return None
-    try:
-        assert_thread_owner(thread_id=thread_id, owner_user_id=user_id)
-    except (KeyError, PermissionError):
+    if result is REPO_METHOD_ERROR:
         return False
     return True
 
@@ -536,16 +540,19 @@ def _is_branch_owner(branch_id: str, *, user_id: str, runtime: AppRuntime) -> bo
 
 
 def _branch_owner_matches(branch_id: str, *, user_id: str, runtime: AppRuntime) -> bool | None:
-    branch_repo = getattr(runtime, "repo", None)
-    get_branch = getattr(branch_repo, "get", None)
-    if callable(get_branch):
-        try:
-            branch = get_branch(branch_id)
-        except (KeyError, PermissionError):
-            return False
-        owner_user_id = getattr(branch, "owner_user_id", None)
-        if owner_user_id is not None:
-            return owner_user_id == user_id
+    branch = safe_repo_call(
+        getattr(runtime, "repo", None),
+        "get",
+        branch_id,
+        default_missing=None,
+        default_error=False,
+        except_errors=(KeyError, PermissionError),
+    )
+    if branch is None:
+        return None
+    owner_user_id = getattr(branch, "owner_user_id", None)
+    if owner_user_id is not None:
+        return owner_user_id == user_id
     return None
 
 
@@ -579,9 +586,8 @@ def _value(value: object) -> str | None:
 
 
 def _model_payload(value: object) -> dict[str, Any]:
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        return _without_embedding_vectors(model_dump(mode="json"))
+    if has_repo_method(value, "model_dump"):
+        return _without_embedding_vectors(value.model_dump(mode="json"))
     if isinstance(value, dict):
         return _without_embedding_vectors(value)
     return {}
@@ -651,35 +657,50 @@ def _embedding_response_metadata(
         "get_memory_record_embedding",
         "find_memory_embedding",
     ):
-        getter = getattr(repository, name, None)
-        if not callable(getter):
+        metadata = safe_repo_call(
+            repository,
+            name,
+            memory_id=memory_id,
+            fallback_args=(memory_id,),
+            default_missing=REPO_METHOD_MISSING,
+            default_error=REPO_METHOD_ERROR,
+            except_errors=(Exception,),
+        )
+        if metadata is REPO_METHOD_MISSING:
             continue
-        try:
-            metadata = getter(memory_id=memory_id)
-        except TypeError:
-            try:
-                metadata = getter(memory_id)
-            except Exception:
-                return {}
-        except Exception:
+        if metadata is REPO_METHOD_ERROR:
             return {}
         return _embedding_metadata_payload(metadata)
-    list_metadata = getattr(repository, "list_embedding_metadata", None)
-    if callable(list_metadata):
+    list_metadata = safe_repo_call(
+        repository,
+        "list_embedding_metadata",
+        namespace=record.namespace,
+        limit=500,
+        default_missing=[],
+        default_error=REPO_METHOD_ERROR,
+        except_errors=(Exception,),
+    )
+    if list_metadata is not REPO_METHOD_ERROR:
         try:
-            for metadata in list_metadata(namespace=record.namespace, limit=500):
+            for metadata in list_metadata:
                 payload = _embedding_metadata_payload(metadata)
                 if payload.get("memory_id") == memory_id:
                     return payload
         except Exception:
             return {}
-    get_status = getattr(repository, "get_embedding_status", None)
-    if callable(get_status):
-        try:
-            return {"status": get_status(memory_id)}
-        except Exception:
-            return {}
-    return {}
+    status = safe_repo_call(
+        repository,
+        "get_embedding_status",
+        memory_id,
+        default_missing=REPO_METHOD_MISSING,
+        default_error=REPO_METHOD_ERROR,
+        except_errors=(Exception,),
+    )
+    if status is REPO_METHOD_ERROR:
+        return {}
+    if status is REPO_METHOD_MISSING:
+        return {}
+    return {"status": status}
 
 
 def _embedding_metadata_payload(value: object) -> dict[str, object]:
@@ -739,6 +760,4 @@ def _candidate_response(candidate: MemoryCandidate) -> MemoryCandidateResponse:
         created_at=_dt(candidate.created_at),
         updated_at=_dt(candidate.updated_at),
     )
-
-
 __all__ = ["router"]

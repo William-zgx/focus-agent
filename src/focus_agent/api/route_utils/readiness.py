@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from focus_agent.config import Settings
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import RuntimeComponentStatusResponse, RuntimeReadinessResponse
@@ -120,8 +121,7 @@ def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusR
             ready=False,
             detail="postgres memory repository missing",
         )
-    inspect_pgvector = getattr(repository, "inspect_pgvector_support", None)
-    if not callable(inspect_pgvector):
+    if not has_repo_method(repository, "inspect_pgvector_support"):
         return RuntimeComponentStatusResponse(
             name="memory_pgvector",
             ready=False,
@@ -134,7 +134,7 @@ def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusR
         getattr(settings, "agent_memory_pgvector_extension_mode", "auto_create") or "auto_create"
     ).strip()
     try:
-        status = inspect_pgvector(dimensions=dimensions, vector_index=vector_index)
+        status = repository.inspect_pgvector_support(dimensions=dimensions, vector_index=vector_index)
     except Exception as exc:  # pragma: no cover - concrete failures are driver-specific.
         return RuntimeComponentStatusResponse(
             name="memory_pgvector",
@@ -166,34 +166,56 @@ def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusR
     )
 
 
+def _component_status(
+    runtime: AppRuntime | Any,
+    attr: str,
+    *,
+    name: str | None = None,
+    ready_detail: str,
+    missing_detail: str,
+) -> RuntimeComponentStatusResponse:
+    ready = getattr(runtime, attr, None) is not None
+    return RuntimeComponentStatusResponse(
+        name=name or attr,
+        ready=ready,
+        detail=ready_detail if ready else missing_detail,
+    )
+
+
 def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
     settings = getattr(runtime, "settings", None)
     otel_runtime = getattr(runtime, "otel_runtime", None)
     checks = [
-        RuntimeComponentStatusResponse(
-            name="graph",
-            ready=getattr(runtime, "graph", None) is not None,
-            detail="langgraph pipeline initialized" if getattr(runtime, "graph", None) is not None else "graph missing",
+        _component_status(
+            runtime,
+            "graph",
+            ready_detail="langgraph pipeline initialized",
+            missing_detail="graph missing",
         ),
-        RuntimeComponentStatusResponse(
+        _component_status(
+            runtime,
+            "repo",
             name="branch_repository",
-            ready=getattr(runtime, "repo", None) is not None,
-            detail="branch persistence ready" if getattr(runtime, "repo", None) is not None else "branch repository missing",
+            ready_detail="branch persistence ready",
+            missing_detail="branch repository missing",
         ),
-        RuntimeComponentStatusResponse(
-            name="branch_service",
-            ready=getattr(runtime, "branch_service", None) is not None,
-            detail="branch service initialized" if getattr(runtime, "branch_service", None) is not None else "branch service missing",
+        _component_status(
+            runtime,
+            "branch_service",
+            ready_detail="branch service initialized",
+            missing_detail="branch service missing",
         ),
-        RuntimeComponentStatusResponse(
-            name="tool_registry",
-            ready=getattr(runtime, "tool_registry", None) is not None,
-            detail="tool registry loaded" if getattr(runtime, "tool_registry", None) is not None else "tool registry missing",
+        _component_status(
+            runtime,
+            "tool_registry",
+            ready_detail="tool registry loaded",
+            missing_detail="tool registry missing",
         ),
-        RuntimeComponentStatusResponse(
-            name="skill_registry",
-            ready=getattr(runtime, "skill_registry", None) is not None,
-            detail="skill registry loaded" if getattr(runtime, "skill_registry", None) is not None else "skill registry missing",
+        _component_status(
+            runtime,
+            "skill_registry",
+            ready_detail="skill registry loaded",
+            missing_detail="skill registry missing",
         ),
     ]
     if getattr(settings, "database_uri", None):
@@ -205,14 +227,11 @@ def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespo
             )
         )
         checks.append(
-            RuntimeComponentStatusResponse(
-                name="memory_repository",
-                ready=getattr(runtime, "memory_repository", None) is not None,
-                detail=(
-                    "postgres-canonical"
-                    if getattr(runtime, "memory_repository", None) is not None
-                    else "postgres memory repository missing"
-                ),
+            _component_status(
+                runtime,
+                "memory_repository",
+                ready_detail="postgres-canonical",
+                missing_detail="postgres memory repository missing",
             )
         )
     else:
@@ -271,17 +290,13 @@ def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespo
     checks.append(_memory_pgvector_check(runtime))
 
     trajectory_expected = _trajectory_expected(settings)
-    trajectory_recorder = getattr(runtime, "trajectory_recorder", None)
     if trajectory_expected:
         checks.append(
-            RuntimeComponentStatusResponse(
-                name="trajectory_recorder",
-                ready=trajectory_recorder is not None,
-                detail=(
-                    "trajectory recorder ready"
-                    if trajectory_recorder is not None
-                    else "trajectory recorder missing while trajectory persistence is configured"
-                ),
+            _component_status(
+                runtime,
+                "trajectory_recorder",
+                ready_detail="trajectory recorder ready",
+                missing_detail="trajectory recorder missing while trajectory persistence is configured",
             )
         )
     else:

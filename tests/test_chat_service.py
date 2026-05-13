@@ -193,6 +193,43 @@ def _repo_with_child_branch(tmp_path: Path) -> SQLiteBranchRepository:
     return repo
 
 
+def _repo_with_merged_branch(tmp_path: Path) -> SQLiteBranchRepository:
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="b-merged",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-merged",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Merged Branch",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+            branch_status=BranchStatus.MERGED,
+        )
+    )
+    return repo
+
+
+def _chat_for_repo(
+    repo: SQLiteBranchRepository,
+    *,
+    graph: object | None = None,
+    settings: Settings | None = None,
+    **ports: object,
+) -> ChatService:
+    return ChatService(
+        SimpleNamespace(
+            settings=settings or Settings(),
+            graph=graph or FakeGraph(),
+            repo=repo,
+            **ports,
+        )
+    )
+
+
 def test_chat_service_accepts_narrow_ports(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -379,84 +416,21 @@ def test_branch_action_execute_heartbeats_thread_turn_lock(tmp_path: Path):
 
 
 def test_send_message_rejects_merged_branch(tmp_path: Path):
-    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
-    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
-    repo.create(
-        BranchRecord(
-            branch_id="b-merged",
-            root_thread_id="root-1",
-            parent_thread_id="root-1",
-            child_thread_id="child-merged",
-            return_thread_id="root-1",
-            owner_user_id="owner-1",
-            branch_name="Merged Branch",
-            branch_role=BranchRole.DEEP_DIVE,
-            branch_depth=1,
-            branch_status=BranchStatus.MERGED,
-        )
-    )
-    runtime = SimpleNamespace(
-        settings=Settings(),
-        graph=FakeGraph(),
-        repo=repo,
-    )
-    chat = ChatService(runtime)
+    chat = _chat_for_repo(_repo_with_merged_branch(tmp_path))
 
     with pytest.raises(PermissionError, match="Merged branches are read-only."):
         chat.send_message(thread_id="child-merged", user_id="owner-1", message="hello")
 
 
 def test_send_message_rejects_merged_branch_when_graph_meta_is_stale(tmp_path: Path):
-    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
-    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
-    repo.create(
-        BranchRecord(
-            branch_id="b-merged",
-            root_thread_id="root-1",
-            parent_thread_id="root-1",
-            child_thread_id="child-merged",
-            return_thread_id="root-1",
-            owner_user_id="owner-1",
-            branch_name="Merged Branch",
-            branch_role=BranchRole.DEEP_DIVE,
-            branch_depth=1,
-            branch_status=BranchStatus.MERGED,
-        )
-    )
-    runtime = SimpleNamespace(
-        settings=Settings(),
-        graph=StaleBranchMetaGraph(),
-        repo=repo,
-    )
-    chat = ChatService(runtime)
+    chat = _chat_for_repo(_repo_with_merged_branch(tmp_path), graph=StaleBranchMetaGraph())
 
     with pytest.raises(PermissionError, match="Merged branches are read-only."):
         chat.send_message(thread_id="child-merged", user_id="owner-1", message="hello")
 
 
 def test_compact_thread_context_rejects_merged_branch(tmp_path: Path):
-    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
-    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
-    repo.create(
-        BranchRecord(
-            branch_id="b-merged",
-            root_thread_id="root-1",
-            parent_thread_id="root-1",
-            child_thread_id="child-merged",
-            return_thread_id="root-1",
-            owner_user_id="owner-1",
-            branch_name="Merged Branch",
-            branch_role=BranchRole.DEEP_DIVE,
-            branch_depth=1,
-            branch_status=BranchStatus.MERGED,
-        )
-    )
-    runtime = SimpleNamespace(
-        settings=Settings(),
-        graph=FakeGraph(),
-        repo=repo,
-    )
-    chat = ChatService(runtime)
+    chat = _chat_for_repo(_repo_with_merged_branch(tmp_path))
 
     with pytest.raises(PermissionError, match="Merged branches are read-only."):
         chat.compact_thread_context(thread_id="child-merged", user_id="owner-1")

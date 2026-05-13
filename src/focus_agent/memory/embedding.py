@@ -9,6 +9,7 @@ import urllib.error
 from typing import Any, Protocol
 from urllib.request import Request, urlopen
 
+from ..core.repo_call import has_repo_method
 from .embedding_policy import should_embed_memory
 from .models import MemoryRecord, MemoryStatus
 
@@ -322,12 +323,11 @@ class MemoryEmbeddingService:
         }
 
     def backfill(self, *, limit: int = 1000) -> dict[str, int]:
-        list_records = getattr(self.repository, "list_records", None)
-        if not callable(list_records):
+        if not has_repo_method(self.repository, "list_records"):
             return {"attempted": 0, "embedded": 0, "skipped": 0, "failed": 0}
         from ..repositories.memory_repository import MemoryListQuery
 
-        records = list_records(MemoryListQuery(status=MemoryStatus.ACTIVE.value, limit=limit))
+        records = self.repository.list_records(MemoryListQuery(status=MemoryStatus.ACTIVE.value, limit=limit))
         return self.embed_records(records)
 
 
@@ -605,21 +605,19 @@ def _existing_memory_embedding_content_hash(
     if repository is None:
         return None
 
-    list_metadata = getattr(repository, "list_embedding_metadata", None)
-    if not callable(list_metadata):
-        get_embedding = getattr(repository, "get_memory_embedding", None)
-        if callable(get_embedding):
+    if not has_repo_method(repository, "list_embedding_metadata"):
+        if has_repo_method(repository, "get_memory_embedding"):
             try:
-                return _metadata_content_hash(get_embedding(memory_id=memory_id))
+                return _metadata_content_hash(repository.get_memory_embedding(memory_id=memory_id))
             except TypeError:
-                return _metadata_content_hash(get_embedding(memory_id))
+                return _metadata_content_hash(repository.get_memory_embedding(memory_id))
         return None
 
     offset = 0
     batch_size = 500
     while True:
         try:
-            rows = list_metadata(
+            rows = repository.list_embedding_metadata(
                 namespace=namespace,
                 provider_id=provider_id,
                 model_id=model_id,
@@ -629,7 +627,7 @@ def _existing_memory_embedding_content_hash(
         except TypeError:
             from ..repositories.memory_repository import MemoryEmbeddingListQuery
 
-            rows = list_metadata(
+            rows = repository.list_embedding_metadata(
                 MemoryEmbeddingListQuery(
                     namespace=namespace,
                     provider_id=provider_id,
@@ -651,9 +649,8 @@ def _existing_memory_embedding_content_hash(
 
 
 def _upsert_memory_embedding(repository: object, payload: MemoryEmbeddingPayload) -> bool:
-    upsert_embedding = getattr(repository, "upsert_embedding", None)
-    if callable(upsert_embedding):
-        upsert_embedding(
+    if has_repo_method(repository, "upsert_embedding"):
+        repository.upsert_embedding(
             memory_id=payload.memory_id,
             namespace=payload.namespace,
             embedding=payload.embedding,
@@ -667,12 +664,11 @@ def _upsert_memory_embedding(repository: object, payload: MemoryEmbeddingPayload
         )
         return True
 
-    upsert_memory_embedding = getattr(repository, "upsert_memory_embedding", None)
-    if callable(upsert_memory_embedding):
+    if has_repo_method(repository, "upsert_memory_embedding"):
         try:
-            upsert_memory_embedding(payload)
+            repository.upsert_memory_embedding(payload)
         except TypeError:
-            upsert_memory_embedding(
+            repository.upsert_memory_embedding(
                 memory_id=payload.memory_id,
                 namespace=payload.namespace,
                 provider_id=payload.provider_id,

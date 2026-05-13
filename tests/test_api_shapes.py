@@ -295,6 +295,8 @@ def test_agent_role_contract_shapes():
     from focus_agent.api.contracts import (
         AgentCapabilityListResponse,
         AgentCapabilityResponse,
+        AgentToolsetListResponse,
+        AgentToolsetResponse,
         AgentMemoryCuratorDecisionListResponse,
         AgentMemoryCuratorEvaluateRequest,
         AgentMemoryCuratorEvaluateResponse,
@@ -322,6 +324,21 @@ def test_agent_role_contract_shapes():
     )
     route_request = AgentToolRouteRequest(role="critic", available_tools=["search_code"])
     route_response = AgentToolRouteResponse(plan={"allowed_tools": ["search_code"]})
+    toolsets = AgentToolsetListResponse(
+        items=[
+            AgentToolsetResponse(
+                name="workspace",
+                description="Inspect repository files, code, and git state.",
+                tools=["search_code"],
+                count=1,
+                provider_ids=["builtin"],
+                risk_levels=["low"],
+                allowed_roles=["executor"],
+                intent_policies=["workspace_lookup"],
+            )
+        ],
+        count=1,
+    )
     memory_policy = AgentMemoryCuratorPolicyResponse(enabled=True)
     memory_request = AgentMemoryCuratorEvaluateRequest(
         root_thread_id="root-1",
@@ -339,6 +356,7 @@ def test_agent_role_contract_shapes():
     assert capabilities.items[0].output_summary_contract == "Return path, line, and snippet."
     assert route_request.role == "critic"
     assert route_response.plan["allowed_tools"] == ["search_code"]
+    assert toolsets.items[0].tools == ["search_code"]
     assert memory_policy.conflict_strategy == "needs_review"
     assert memory_request.findings[0]["finding"] == "Promote me"
     assert memory_response.decision["status"] == "ready"
@@ -802,6 +820,7 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/agent/roles/dry-run" in route_paths
     assert "/v1/agent/roles/decisions" in route_paths
     assert "/v1/agent/capabilities" in route_paths
+    assert "/v1/agent/toolsets" in route_paths
     assert "/v1/agent/tool-router/route" in route_paths
     assert "/v1/agent/tool-router/decisions" in route_paths
     assert "/v1/agent/memory/curator/policy" in route_paths

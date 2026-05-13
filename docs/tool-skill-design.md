@@ -75,6 +75,13 @@ The nearby Hermes agent and DeerFlow projects point in the same direction:
 
 Focus Agent should stay smaller by default: no unrestricted bash, no browser/computer control, and no account-backed connectors in the builtin baseline.
 
+The concrete borrowing from Hermes is the toolset boundary itself. Focus Agent now
+derives a toolset catalog from runtime metadata and exposes it through
+`/v1/agent/toolsets`, so UI and governance code can inspect groups such as
+`workspace`, `web`, `artifact`, `memory`, and `skill` without duplicating a
+parallel registry. The catalog summarizes tool names, providers, risk levels,
+roles, policies, network use, and write/side-effect flags.
+
 ## Skill Boundary
 
 A skill is prompt-level guidance for a repeatable task pattern. It can decide when and how to combine tools, but it should not claim hidden capabilities that the runtime cannot provide.
@@ -229,6 +236,21 @@ Focus Agent already has these default tools:
 - `skill_view`
 
 The newer product primitives make the agent useful beyond repository work: explicit memory control, URL reading, artifact iteration, and conversation summarization.
+
+The runtime also exposes a grouped view of those primitives:
+
+- `workspace`: repository file, code search, and git inspection tools
+- `web`: live search and URL retrieval tools
+- `artifact`: generated document and draft iteration tools
+- `memory`: durable memory and conversation recovery tools
+- `skill`: bundled and local workflow inspection tools
+
+Web retrieval keeps a separate access-policy boundary. `web_fetch` only accepts
+HTTP(S), always blocks localhost, private, reserved, link-local, and `.local`
+hosts, and can be narrowed further with `blocked_domains` and `allowed_domains`
+in `.focus_agent/tools.toml`. Blocked fetches emit structured policy metadata
+such as category, host, and matching rule so trajectory and UI surfaces can
+explain the denial.
 
 ## Tool Runtime Policy
 

@@ -1,8 +1,8 @@
 # Admin Console 操作与实现手册
 
-更新时间：2026-05-12
+更新时间：2026-05-13
 
-Admin Console 是 Focus Agent 当前的访问治理入口，用于管理持久化用户、管理员角色、账号状态、会话、密码重置和审计事件。它和普通 `/app` 聊天工作区共享同一套认证与 SDK，但权限判断以数据库中的用户状态和角色为准。
+Admin Console 是 Focus Agent 当前的管理员访问治理入口，用于管理持久化用户、管理员角色、账号状态、会话、密码重置和审计事件。普通登录、注册、账号自助页面和 token/session 语义见 [auth-access.md](auth-access.md)。它和普通 `/app` 聊天工作区共享同一套认证与 SDK，但权限判断以数据库中的用户状态和角色为准。
 
 ## 1. 入口
 
@@ -67,8 +67,8 @@ Admin Console 不把 bearer token 里的 scope 当作管理员身份来源。管
 ## 5. 实现导航
 
 ```text
-src/focus_agent/api/routers/admin.py
-src/focus_agent/services/user_service.py
+src/focus_agent/api/routers/admin_users.py
+src/focus_agent/services/users.py
 src/focus_agent/repositories/user_repository.py
 apps/web/src/pages/admin/
 apps/web/src/features/admin-users/

@@ -32,6 +32,7 @@ from .memory.models import (
     MemoryStatus,
     MemoryVisibility,
 )
+from .core.repo_call import has_repo_method
 from .repositories.artifact_metadata_repository import ArtifactMetadataRepository
 from .repositories.memory_repository import MemoryListQuery
 from .repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
@@ -190,7 +191,7 @@ def create_memory_embedding_service(database_uri: str) -> MemoryEmbeddingService
 def _coerce_memory_embedding_service(candidate: object | None) -> MemoryEmbeddingService | None:
     if candidate is None:
         return None
-    if callable(getattr(candidate, "ensure_embedding", None)):
+    if has_repo_method(candidate, "ensure_embedding"):
         return candidate  # type: ignore[return-value]
     return MemoryEmbeddingService.from_repository(candidate)
 
@@ -439,9 +440,8 @@ def load_local_store_items(store_path: Path) -> list[LocalStoreItemRecord]:
 def _store_item_value_to_dict(value: object) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        dumped = model_dump(mode="json")
+    if has_repo_method(value, "model_dump"):
+        dumped = value.model_dump(mode="json")
         if isinstance(dumped, dict):
             return dumped
     if value is None:
@@ -555,7 +555,7 @@ def _supports_app_state_sink(candidate: object) -> bool:
         "upsert_conversation_rows",
         "upsert_branch_rows",
     )
-    return all(callable(getattr(candidate, method_name, None)) for method_name in required_methods)
+    return all(has_repo_method(candidate, method_name) for method_name in required_methods)
 
 
 def discover_app_state_sink(database_uri: str) -> AppStateSinkDiscovery:
@@ -603,7 +603,7 @@ def discover_app_state_sink(database_uri: str) -> AppStateSinkDiscovery:
 
         if _supports_app_state_sink(sink_candidate):
             description = getattr(sink_candidate, "description", None)
-            if description is None and hasattr(sink_candidate, "describe") and callable(sink_candidate.describe):
+            if description is None and has_repo_method(sink_candidate, "describe"):
                 description = str(sink_candidate.describe())
             return AppStateSinkDiscovery(
                 sink=sink_candidate,
@@ -987,11 +987,10 @@ def _backfill_memory_embeddings(
             "written_embedding_count": 0,
             "skipped_embedding_count": 0,
             "failed_embedding_count": 0,
-        }
+    }
 
     repository = create_memory_repository(database_uri)
-    list_records = getattr(repository, "list_records", None)
-    if not callable(list_records):
+    if not has_repo_method(repository, "list_records"):
         return {
             "status": "skipped",
             "reason": "memory_repository_does_not_support_list_records",
@@ -1031,7 +1030,7 @@ def _backfill_memory_embeddings(
     offset = 0
 
     while True:
-        records = list_records(
+        records = repository.list_records(
             MemoryListQuery(
                 status=MemoryStatus.ACTIVE.value,
                 limit=batch_size,
@@ -1075,14 +1074,13 @@ def _backfill_memory_embeddings(
 
 def _setup_memory_embedding_service(embedding_service: object) -> None:
     repository = getattr(embedding_service, "embedding_repository", embedding_service)
-    setup = getattr(repository, "setup", None)
-    if callable(setup):
+    if has_repo_method(repository, "setup"):
         provider = getattr(embedding_service, "provider", None)
         dimensions = int(getattr(provider, "dimensions", 1536) or 1536)
         try:
-            setup(memory_embeddings_enabled=True, dimensions=dimensions)
+            repository.setup(memory_embeddings_enabled=True, dimensions=dimensions)
         except TypeError:
-            setup()
+            repository.setup()
 
 
 def _memory_embedding_result_status(result: object) -> str:

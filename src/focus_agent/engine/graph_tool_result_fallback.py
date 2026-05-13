@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+from ..core.repo_call import has_repo_method
 from ..core.state import AgentState
 from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget
@@ -243,11 +244,10 @@ def _invoke_tool_result_synthesis(
 ) -> Any | None:
     from .graph_textual_tool_call_repair import _looks_like_textual_tool_call_artifact
 
-    invoke = getattr(model, "invoke", None)
-    if not callable(invoke):
+    if not has_repo_method(model, "invoke"):
         return None
     try:
-        response = invoke(_tool_result_synthesis_prompt(source_messages))
+        response = model.invoke(_tool_result_synthesis_prompt(source_messages))
     except Exception:
         return None
     if getattr(response, "tool_calls", None):

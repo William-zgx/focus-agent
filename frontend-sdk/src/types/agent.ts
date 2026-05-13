@@ -67,6 +67,26 @@ export interface FocusAgentCapabilityListResponse {
   count: number;
 }
 
+export interface FocusAgentToolset {
+  name: string;
+  description: string;
+  tools: string[];
+  count: number;
+  provider_ids: string[];
+  risk_levels: string[];
+  allowed_roles: string[];
+  intent_policies: string[];
+  requires_network: boolean;
+  requires_workspace_write: boolean;
+  side_effect: boolean;
+  requires_approval: boolean;
+}
+
+export interface FocusAgentToolsetListResponse {
+  items: FocusAgentToolset[];
+  count: number;
+}
+
 export interface FocusAgentToolRouteRequest {
   role?: string;
   tool_policy?: string;

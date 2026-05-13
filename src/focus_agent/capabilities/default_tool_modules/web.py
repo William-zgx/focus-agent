@@ -118,6 +118,82 @@ def _is_blocked_fetch_host(host: str | None) -> bool:
     )
 
 
+def _normalize_domain_rule(rule: Any) -> str:
+    normalized = str(rule or "").strip().lower()
+    if not normalized:
+        return ""
+    if "://" in normalized:
+        parsed = stdlib_urllib_parse.urlparse(normalized)
+        normalized = parsed.hostname or parsed.netloc or parsed.path
+    normalized = normalized.split("/", 1)[0].strip().strip("[]").rstrip(".")
+    if normalized.startswith("www."):
+        normalized = normalized[4:]
+    return normalized
+
+
+def _normalize_policy_host(host: str | None) -> str:
+    normalized = str(host or "").strip().lower().strip("[]").rstrip(".")
+    if normalized.startswith("www."):
+        normalized = normalized[4:]
+    return normalized
+
+
+def _host_matches_domain_rule(host: str, rule: str) -> bool:
+    if not host or not rule:
+        return False
+    if rule.startswith("*."):
+        suffix = rule[2:]
+        return host.endswith(f".{suffix}")
+    return host == rule or host.endswith(f".{rule}")
+
+
+def _web_fetch_policy_violation(
+    host: str | None,
+    *,
+    blocked_domains: tuple[str, ...],
+    allowed_domains: tuple[str, ...],
+) -> dict[str, str] | None:
+    normalized_host = _normalize_policy_host(host)
+    if not normalized_host:
+        return {
+            "category": "invalid_host",
+            "host": "",
+            "rule": "",
+            "message": "URL must include a valid hostname.",
+        }
+    if _is_blocked_fetch_host(normalized_host):
+        return {
+            "category": "blocked_host",
+            "host": normalized_host,
+            "rule": "local_or_private_network",
+            "message": "Refusing to fetch localhost, private, reserved, or link-local hosts.",
+        }
+
+    for raw_rule in blocked_domains:
+        rule = _normalize_domain_rule(raw_rule)
+        if _host_matches_domain_rule(normalized_host, rule):
+            return {
+                "category": "blocked_domain",
+                "host": normalized_host,
+                "rule": rule,
+                "message": f"Refusing to fetch blocked domain: {rule}.",
+            }
+
+    normalized_allowlist = tuple(
+        rule for rule in (_normalize_domain_rule(item) for item in allowed_domains) if rule
+    )
+    if normalized_allowlist and not any(
+        _host_matches_domain_rule(normalized_host, rule) for rule in normalized_allowlist
+    ):
+        return {
+            "category": "not_in_allowlist",
+            "host": normalized_host,
+            "rule": ",".join(normalized_allowlist),
+            "message": "Refusing to fetch a domain outside the configured allowlist.",
+        }
+    return None
+
+
 def _is_timeout_exception(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError):
         return True
@@ -171,6 +247,8 @@ def build_web_tools(
         )
         or str(web_search_config.api_key_default or "").strip()
     )
+    blocked_fetch_domains = tuple(getattr(tool_catalog.web_fetch, "blocked_domains", ()) or ())
+    allowed_fetch_domains = tuple(getattr(tool_catalog.web_fetch, "allowed_domains", ()) or ())
 
     def _make_provider_error(
         *,
@@ -697,8 +775,22 @@ def build_web_tools(
             parsed = urllib_parse_module.urlparse(url.strip())
             if parsed.scheme not in {"http", "https"}:
                 raise ValueError("Only http and https URLs are supported.")
-            if _is_blocked_fetch_host(parsed.hostname):
-                raise ValueError("Refusing to fetch localhost, private, reserved, or link-local hosts.")
+            policy_violation = _web_fetch_policy_violation(
+                parsed.hostname,
+                blocked_domains=blocked_fetch_domains,
+                allowed_domains=allowed_fetch_domains,
+            )
+            if policy_violation is not None:
+                emit_tool_event(
+                    tool_name=tool_name,
+                    stage="blocked",
+                    url=url,
+                    **policy_violation,
+                )
+                raise ValueError(
+                    "Web fetch blocked by access policy "
+                    f"({policy_violation['category']}): {policy_violation['message']}"
+                )
             requested_chars = (
                 tool_catalog.web_fetch.default_max_chars
                 if max_chars is None

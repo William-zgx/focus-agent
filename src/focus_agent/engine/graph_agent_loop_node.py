@@ -13,6 +13,7 @@ from ..capabilities import ToolRegistry
 from ..capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ..config import Settings
 from ..core.context_policy import apply_prompt_budget_guard
+from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..core.state import AgentState, append_agent_state_record
 from ..core.types import Plan
@@ -42,10 +43,9 @@ from .graph_turn_helpers import (
 
 
 def _with_stream_phase(model: Any, phase: str) -> Any:
-    with_config = getattr(model, "with_config", None)
-    if not callable(with_config):
+    if not has_repo_method(model, "with_config"):
         return model
-    return with_config(
+    return model.with_config(
         {
             "metadata": {"stream_phase": phase},
             "tags": [f"stream_phase:{phase}"],

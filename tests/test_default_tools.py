@@ -21,6 +21,7 @@ from focus_agent.config import (
     SearchCodeToolConfig,
     Settings,
     ToolCatalogConfig,
+    WebFetchToolConfig,
     WebSearchConfig,
 )
 from focus_agent.core.types import ContextBudget
@@ -808,6 +809,48 @@ def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):
 
     with pytest.raises(ValueError, match="localhost"):
         tools["web_fetch"].invoke({"url": "http://localhost:8000/healthz"})
+
+
+def test_web_fetch_respects_configured_domain_policy(monkeypatch):
+    def unexpected_urlopen(_request, timeout=0):
+        raise AssertionError("Blocked web_fetch should not issue a network request.")
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", unexpected_urlopen)
+    tools = _tool_map(
+        Settings(
+            tool_catalog=ToolCatalogConfig(
+                web_fetch=WebFetchToolConfig(
+                    blocked_domains=("blocked.example",),
+                    allowed_domains=("docs.example",),
+                )
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="blocked_domain"):
+        tools["web_fetch"].invoke({"url": "https://news.blocked.example/article"})
+    with pytest.raises(ValueError, match="not_in_allowlist"):
+        tools["web_fetch"].invoke({"url": "https://outside.example/article"})
+
+
+def test_web_fetch_domain_policy_allows_matching_allowlist(monkeypatch):
+    def fake_urlopen(request, timeout=0):
+        assert request.full_url == "https://guide.docs.example/article"
+        return _FakeHttpResponse("Allowed article", url="https://guide.docs.example/article")
+
+    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+    tools = _tool_map(
+        Settings(
+            tool_catalog=ToolCatalogConfig(
+                web_fetch=WebFetchToolConfig(allowed_domains=("docs.example",))
+            )
+        )
+    )
+
+    payload = json.loads(tools["web_fetch"].invoke({"url": "https://guide.docs.example/article"}))
+
+    assert payload["final_url"] == "https://guide.docs.example/article"
+    assert payload["content"] == "Allowed article"
 
 
 def test_memory_tools_save_search_and_forget(tmp_path):

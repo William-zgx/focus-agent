@@ -10,6 +10,7 @@ from ..contracts import (
     AgentArtifactSynthesisRequest,
     AgentArtifactSynthesisResponse,
     AgentCapabilityListResponse,
+    AgentToolsetListResponse,
     AgentContextArtifactListResponse,
     AgentContextDecisionListResponse,
     AgentContextPolicyResponse,
@@ -79,6 +80,7 @@ from ..route_utils.agent_governance import (
     _agent_task_ledger_runs_response,
     _agent_tool_route_decisions_response,
     _agent_tool_route_response,
+    _agent_toolsets_response,
 )
 
 router = APIRouter()
@@ -117,6 +119,14 @@ def list_agent_capabilities(
 ) -> AgentCapabilityListResponse:
     del principal
     return _agent_capabilities_response(runtime)
+
+@router.get('/v1/agent/toolsets', response_model=AgentToolsetListResponse)
+def list_agent_toolsets(
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentToolsetListResponse:
+    del principal
+    return _agent_toolsets_response(runtime)
 
 @router.post('/v1/agent/tool-router/route', response_model=AgentToolRouteResponse)
 def route_agent_tools(

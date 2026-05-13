@@ -9,6 +9,8 @@ from typing import Callable
 
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings, ensure_runtime_directories
+from ..core.repo_call import has_repo_method
+from ..core.request_context import RequestContext
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from ..harness import HarnessConfig, PostgresRunJournal, SQLiteRunJournal, create_focus_agent
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
@@ -36,7 +38,6 @@ from ..services.coordination import CoordinationBackend, create_coordination_bac
 from ..services.users import UserService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
-from ..core.request_context import RequestContext
 from .graph_builder import build_graph
 
 logger = logging.getLogger("focus_agent.runtime")
@@ -576,9 +577,8 @@ def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
 
 
 def _setup_component_if_available(component: object) -> None:
-    setup = getattr(component, "setup", None)
-    if callable(setup):
-        setup()
+    if has_repo_method(component, "setup"):
+        component.setup()
 
 
 def _resolve_memory_embedding_setup(settings: Settings) -> RuntimeMemoryEmbeddingSetup:
@@ -623,14 +623,13 @@ def _setup_memory_repository_if_available(
     settings: Settings,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
 ) -> None:
-    setup = getattr(component, "setup", None)
-    if not callable(setup):
+    if not has_repo_method(component, "setup"):
         return
-    signature = inspect.signature(setup)
+    signature = inspect.signature(component.setup)
     if not signature.parameters:
-        setup()
+        component.setup()
         return
-    setup(
+    component.setup(
         dimensions=memory_embedding_setup.dimensions,
         vector_index=getattr(settings, "agent_memory_vector_index_enabled", False),
         memory_embeddings_enabled=memory_embedding_setup.memory_embeddings_enabled,

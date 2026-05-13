@@ -7,7 +7,11 @@ from langchain.tools import tool
 
 from focus_agent.api.main import create_app
 from focus_agent.capabilities.tool_registry import ToolRegistry
-from focus_agent.capabilities.tool_router import build_capability_registry, build_tool_route_plan
+from focus_agent.capabilities.tool_router import (
+    build_capability_registry,
+    build_tool_route_plan,
+    build_toolset_registry,
+)
 from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.request_context import RequestContext
@@ -320,6 +324,22 @@ def test_capability_registry_exposes_tool_quality_metadata():
     assert capability.output_summary_contract == "Return compact snippets."
 
 
+def test_toolset_registry_summarizes_capability_groups():
+    registry = ToolRegistry(tools=(search_code, write_text_artifact, web_search))
+
+    toolsets = {item.name: item for item in build_toolset_registry(registry)}
+
+    assert toolsets["workspace"].tools == ["search_code"]
+    assert toolsets["workspace"].description == "Inspect repository files, code, and git state."
+    assert toolsets["workspace"].provider_ids == ["builtin"]
+    assert toolsets["workspace"].risk_levels == ["low"]
+    assert "executor" in toolsets["workspace"].allowed_roles
+    assert toolsets["web"].requires_network is True
+    assert toolsets["artifact"].requires_workspace_write is True
+    assert toolsets["artifact"].side_effect is True
+    assert toolsets["artifact"].risk_levels == ["medium"]
+
+
 def test_tool_router_matches_graph_policy_filtering_for_core_policies():
     @tool
     def approval_lookup(name: str) -> str:
@@ -582,6 +602,7 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     client = TestClient(app)
 
     capabilities = client.get("/v1/agent/capabilities")
+    toolsets = client.get("/v1/agent/toolsets")
     role_route = client.post(
         "/v1/agent/roles/dry-run",
         json={
@@ -662,6 +683,8 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
 
     assert capabilities.status_code == 200
     assert capabilities.json()["count"] >= 3
+    assert toolsets.status_code == 200
+    assert any(item["name"] == "workspace" for item in toolsets.json()["items"])
     role_plan = role_route.json()["plan"]
     assert role_plan["legacy_execution_unchanged"] is True
     assert any(decision["role"] == "skill_scout" for decision in role_plan["decisions"])

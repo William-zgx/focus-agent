@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
 
@@ -45,9 +46,8 @@ def _mark_deprecated_route(response: Response, *, canonical_path: str) -> None:
 def _model_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        return model_dump(mode="json")
+    if has_repo_method(value, "model_dump"):
+        return value.model_dump(mode="json")
     return {}
 
 

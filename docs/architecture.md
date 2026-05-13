@@ -1,10 +1,11 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-12
+更新时间：2026-05-13
 
-本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
+本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
 - Agent governance：[agent-role-routing.md](agent-role-routing.md)
+- Auth / Access：[auth-access.md](auth-access.md)
 - Agent Team Workbench：[agent-team-workbench.md](agent-team-workbench.md)
 - Admin Console：[admin-console.md](admin-console.md)
 - Streaming Contract：[streaming-contract.md](streaming-contract.md)
@@ -16,7 +17,7 @@
 
 ## 1. 系统定位
 
-Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式会话、流式响应、受控 merge-back、记忆治理、工具调用、可观测复盘和 TypeScript SDK 的 AI 应用。
+Focus Agent 是一个 Web-first Agent 应用平台骨架。它已经超过单一 agent demo 或最小 starter 的范围，当前覆盖分支式会话、流式响应、受控 merge-back、记忆治理、工具调用、可观测复盘、Agent Team 协作、Admin 运维、发布/eval 证据链和 TypeScript SDK。
 
 它的核心假设是：复杂任务不是单线聊天。研究、调试、写作和验证往往需要并行探索，主线需要稳定沉淀，分支需要可丢弃、可合并、可审计。因此系统围绕以下能力设计：
 
@@ -28,7 +29,7 @@ Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式
 | Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
 | Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
 | Release confidence | 发布前把 readiness、trajectory、eval、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、release evidence |
-| Access and admin governance | 持久化用户、角色、会话、状态、密码重置和审计事件统一治理 | auth service、user repository、Admin API、Admin Web |
+| Access and admin governance | 登录、注册、refresh session、持久化用户、角色、状态、密码重置和审计事件统一治理 | auth service、user repository、Auth / Admin API、Auth / Account / Admin Web |
 | Local-first development | 本地命令可以自动托管 repo-local PostgreSQL | `scripts/serve-*.sh`、`make serve-dev` |
 
 ## 2. 总体拓扑
@@ -115,6 +116,20 @@ Persistence
 | `apps/web/src/` | React app shell、pages、features、shared UI |
 | `frontend-sdk/src/` | typed client facade、domain client modules、type barrels、guards、stream parser、reducers |
 
+### 3.1 维护边界
+
+当前代码库已经超过“单一 agent demo”的规模，维护时按平台边界拆分，而不是按文件类型拆分：
+
+| 边界 | 包含内容 | 改动原则 |
+|------|----------|----------|
+| Core runtime | `engine/`、`core/`、conversation / branch / graph lifecycle | 保持协议稳定；新能力优先进入 typed port 或小型 helper，避免在 API route 中直接拼接 runtime 细节 |
+| Product surfaces | FastAPI routes、Web app、SDK、Admin、Observability | 路由、SDK 类型、SSE event 和用户可见主流程是兼容边界；route handler 只保留鉴权、参数校验和 presenter 组装 |
+| Agent Team module | `services/agent_team_*`、`apps/web/src/features/agent-team`、Agent Team API | 作为独立产品模块维护；planning/run/merge、workbench state、task output helper 分别收口，避免与普通 chat/harness 逻辑互相泄漏 |
+| Persistence adapters | Postgres / SQLite repositories、schema、migration、本地 fallback | schema 和 repository contract 是稳定边界；兼容路径先用引用扫描证明安全，再删除 |
+| Release and eval tooling | `scripts/`、release/eval/smoke tests、contract snapshots | CLI 参数、exit code、报告字段稳定；重复 I/O 和 report 读取可抽 helper，但不改变输出 shape |
+
+当一个改动跨越两个以上边界时，默认拆成多阶段：先抽私有 helper 或 typed port，再迁移调用点，最后才考虑删除 compatibility alias。
+
 ## 4. App Runtime
 
 `src/focus_agent/engine/runtime.py` 中的 `create_runtime()` 是后端运行态装配点。它先调用 `ensure_runtime_directories(settings)` 创建运行时目录，再按小型 factory 组装运行态：
@@ -174,7 +189,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 |------|----------|------|
 | Health | `GET /healthz`、`GET /readyz`、`GET /metrics` | 存活、就绪、指标 |
 | Web App | `GET /app`、`GET /app/zh`、`GET /app/{path:path}` | React build serving 或 Vite redirect |
-| Auth | `POST /v1/auth/demo-token`、`GET /v1/auth/me` | demo token 和当前 principal |
+| Auth | `POST /v1/auth/demo-token`、register / login / refresh / logout / change-password / sessions、`GET /v1/auth/me` | 本地 demo token、用户名密码登录、refresh session、账号自助和当前 principal |
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
 | Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events|snapshot|trajectory` | V2 harness run、流式 run、resume、查询、事件回放、snapshot、trajectory 与取消 |
@@ -197,7 +212,7 @@ API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业�
 
 ### 6.1 Admin Console 权限边界
 
-Admin Console 的 canonical 文档是 [admin-console.md](admin-console.md)。架构层只保留安全边界：
+认证、账号自助和 access model 的 canonical 文档是 [auth-access.md](auth-access.md)；Admin Console 的 canonical 文档是 [admin-console.md](admin-console.md)。架构层只保留安全边界：
 
 - 管理员身份来自持久化用户角色和权限，不来自 bearer token scope 本身。
 - `AUTH_ENABLED=false` 时的 anonymous principal 仍不是 admin。
@@ -455,7 +470,8 @@ app/                      router, shell, providers
 pages/thread/             chat, branch tree, merge review
 pages/agent-team/         Agent Team Mission Runner
 pages/agents/             governance console
-pages/auth/               login, registration, account routes
+pages/auth/               login and registration
+pages/account/            profile, password, and session self-service
 pages/admin/              user and audit administration
 pages/observability/      overview and trajectory workbench
 features/                 branch, conversation, merge, models, stream, trajectory
@@ -665,8 +681,9 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Chat service orchestration：`src/focus_agent/services/chat.py`
 - Harness run API：`src/focus_agent/api/routers/harness_runs.py`
 - Harness runtime：`src/focus_agent/harness/`
-- Admin API：`src/focus_agent/api/routers/admin.py`
-- User service / repository：`src/focus_agent/services/user_service.py`、`src/focus_agent/repositories/user_repository.py`
+- Auth API：`src/focus_agent/api/routers/auth_models.py`
+- Admin API：`src/focus_agent/api/routers/admin_users.py`
+- User service / repository：`src/focus_agent/services/users.py`、`src/focus_agent/repositories/user_repository.py`
 - Chat branch action facade：`src/focus_agent/services/chat_branch_action_facade.py`
 - Branch service：`src/focus_agent/services/branches.py`
 - Branch naming / memory promotion：`src/focus_agent/services/branch_naming_policy.py`、`src/focus_agent/services/branch_memory_promotion.py`
@@ -674,6 +691,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
 - AgentTeam repository contract tests：`tests/test_agent_team_repository_contract.py`
 - Web App：`apps/web/src/`
+- Web auth/account pages：`apps/web/src/pages/auth/`、`apps/web/src/pages/account/`
 - Web Admin pages：`apps/web/src/pages/admin/`、`apps/web/src/features/admin-users/`
 - Web message transcript facade：`apps/web/src/entities/messages/message-transcript.ts`
 - Web message transcript modules：`apps/web/src/entities/messages/message-transcript-*.ts`

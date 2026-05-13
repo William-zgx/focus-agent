@@ -24,6 +24,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
     agent_role_for_team_task_role,
 )
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.services.coordination import BackgroundJobSpec
 
 from .agent_team_helpers import _dedupe, _now
@@ -537,10 +538,9 @@ class AgentTeamRunMixin:
             dedupe_policy="replace",
         ):
             return True
-        submit = getattr(self.background_work, "submit", None)
-        if callable(submit):
+        if has_repo_method(self.background_work, "submit"):
             return bool(
-                submit(
+                self.background_work.submit(
                     key=key,
                     func=self.run_task_claimed,
                     task_id=task_id,
@@ -562,12 +562,11 @@ class AgentTeamRunMixin:
         if _agent_team_execution_mode(self.settings).strip().lower() != "durable":
             return False
         backend = getattr(self.coordination_backend, "job_deduper", None)
-        enqueue = getattr(backend, "enqueue_job", None)
-        if not callable(enqueue):
+        if not has_repo_method(backend, "enqueue_job"):
             return False
         try:
             return bool(
-                enqueue(
+                backend.enqueue_job(
                     BackgroundJobSpec(
                         kind=kind,
                         key=key,

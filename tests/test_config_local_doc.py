@@ -152,6 +152,10 @@ def test_load_tool_catalog_document_reads_web_search_config(tmp_path):
                 "[skill_view]",
                 "enabled = false",
                 "",
+                "[web_fetch]",
+                'blocked_domains = ["blocked.example", "*.internal.example"]',
+                'allowed_domains = "docs.example,developer.example"',
+                "",
                 "[web_search]",
                 "enabled = true",
                 'provider = "tavily"',
@@ -175,7 +179,15 @@ def test_load_tool_catalog_document_reads_web_search_config(tmp_path):
     assert loaded.web_search.provider == "tavily"
     assert loaded.web_search.fallback_provider == "duckduckgo"
     assert loaded.web_search.api_key_env == "SEARCH_API_KEY"
-    assert loaded.section_names[:4] == ("list_files", "skills_list", "skill_view", "web_search")
+    assert loaded.web_fetch.blocked_domains == ("blocked.example", "*.internal.example")
+    assert loaded.web_fetch.allowed_domains == ("docs.example", "developer.example")
+    assert loaded.section_names[:5] == (
+        "list_files",
+        "skills_list",
+        "skill_view",
+        "web_fetch",
+        "web_search",
+    )
     assert loaded.by_name["web_search"].provider == "tavily"
     assert loaded.by_name["list_files"].default_max_results == 12
 

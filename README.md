@@ -6,9 +6,9 @@
 
 ![Focus Agent showcase](docs/assets/focus-agent-readme-hero.svg)
 
-Focus Agent is a compact Python starter project for building AI apps with branching conversations, live responses, access control, an admin console, and a lightweight web UI.
+Focus Agent is a web-first Agent application scaffold that has grown into a small platform for branching conversations, live responses, access control, admin operations, observability, memory, Agent Team workflows, and a typed frontend SDK.
 
-It is designed for teams that want a clear foundation for longer AI workflows without adopting a heavy platform too early.
+It is designed for teams that want a local-first, understandable foundation for longer AI workflows while keeping the main platform boundaries explicit. It is no longer just a minimal demo: backend runtime, Web app, SDK, persistence adapters, release/eval tooling, and Agent Team collaboration are maintained as separate areas.
 
 ## Why Focus Agent
 
@@ -90,6 +90,8 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
 - [Architecture and module map](docs/architecture.md)
+- [Auth / Access](docs/auth-access.md)
+- [Agent Team Workbench](docs/agent-team-workbench.md)
 - [Admin Console](docs/admin-console.md)
 - [Streaming Contract](docs/streaming-contract.md)
 - [Release Checklist](docs/release-checklist.md)

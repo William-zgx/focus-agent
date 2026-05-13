@@ -303,6 +303,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [Quick Start](quick-start.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)
+- [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)
 - [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)

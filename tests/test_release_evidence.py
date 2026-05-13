@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from scripts._report_io import load_json, write_json_report
 from scripts import release_evidence
 
 
@@ -16,8 +17,13 @@ def _artifact_path(artifact: dict[str, object]) -> Path:
 
 
 def _write_json(path: Path, payload: object) -> Path:
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
+    return write_json_report(path, payload, ensure_ascii=True, indent=None, sort_keys=False)
+
+
+def _read_report(path: str | Path) -> dict[str, Any]:
+    report = load_json(path)
+    assert isinstance(report, dict)
+    return report
 
 
 def _readyz(path: Path) -> Path:
@@ -145,6 +151,40 @@ def _governance_report(path: Path) -> Path:
     )
 
 
+def _source_dir(tmp_path: Path) -> Path:
+    source_dir = tmp_path / "sources"
+    source_dir.mkdir()
+    return source_dir
+
+
+def _production_inputs(
+    source_dir: Path,
+    *,
+    include_baseline: bool = True,
+    include_optional_reports: bool = False,
+) -> dict[str, object]:
+    inputs: dict[str, object] = {
+        "readyz_json": _readyz(source_dir / "readyz.json"),
+        "trajectory_stats_json": _trajectory_stats(source_dir / "trajectory.json"),
+        "replay_comparisons_json": _replay(source_dir / "replay.json"),
+        "production_smoke_report_json": _production_smoke_report(
+            source_dir / "production-smoke.json"
+        ),
+        "postgres_ops_report_json": _postgres_ops_report(source_dir / "postgres-ops.json"),
+        "otel_smoke_report_json": _otel_smoke_report(source_dir / "otel-smoke.json"),
+        "governance_report_json": _governance_report(source_dir / "governance.json"),
+        "eval_report_json": [_eval_report(source_dir / "eval.json")],
+    }
+    if include_baseline:
+        inputs["baseline_eval_report_json"] = [_eval_report(source_dir / "baseline.json")]
+    if include_optional_reports:
+        inputs["alert_report_json"] = _alert_report(source_dir / "alert.json")
+        inputs["postgres_migration_report_json"] = _postgres_migration_report(
+            source_dir / "postgres-migration.json"
+        )
+    return inputs
+
+
 def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) -> None:
     manifest = release_evidence.run_release_evidence(
         release_id="dry-run-release",
@@ -152,7 +192,7 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
         output_root=tmp_path,
     )
     manifest_path = Path(manifest["manifest_json"])
-    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    saved = _read_report(manifest_path)
 
     assert saved["summary"]["status"] == "passed"
     assert saved["meta"]["release_id"] == "dry-run-release"
@@ -181,26 +221,15 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
 
 
 def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path: Path) -> None:
-    source_dir = tmp_path / "sources"
-    source_dir.mkdir()
+    source_dir = _source_dir(tmp_path)
     manifest = release_evidence.run_release_evidence(
         release_id="prod-release",
         output_root=tmp_path / "packs",
-        readyz_json=_readyz(source_dir / "readyz.json"),
-        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
-        replay_comparisons_json=_replay(source_dir / "replay.json"),
-        alert_report_json=_alert_report(source_dir / "alert.json"),
-        postgres_migration_report_json=_postgres_migration_report(source_dir / "postgres-migration.json"),
-        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
-        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
-        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
-        governance_report_json=_governance_report(source_dir / "governance.json"),
-        eval_report_json=[_eval_report(source_dir / "eval.json")],
-        baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
+        **_production_inputs(source_dir, include_optional_reports=True),
         approval_id="approval-1",
         approval_status="approved",
     )
-    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+    saved = _read_report(manifest["manifest_json"])
     pack_dir = tmp_path / "packs" / "prod-release"
 
     assert saved["summary"]["status"] == "passed"
@@ -242,7 +271,7 @@ def test_release_evidence_missing_production_inputs_fails_closed(tmp_path: Path)
         release_id="missing-inputs",
         output_root=tmp_path,
     )
-    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+    saved = _read_report(manifest["manifest_json"])
 
     assert saved["summary"]["status"] == "failed"
     assert saved["commands"][0]["exit_code"] == 1
@@ -253,21 +282,13 @@ def test_release_evidence_missing_production_inputs_fails_closed(tmp_path: Path)
 
 
 def test_release_evidence_requires_baseline_eval_report_for_production_pack(tmp_path: Path) -> None:
-    source_dir = tmp_path / "sources"
-    source_dir.mkdir()
+    source_dir = _source_dir(tmp_path)
     manifest = release_evidence.run_release_evidence(
         release_id="missing-baseline",
         output_root=tmp_path / "packs",
-        readyz_json=_readyz(source_dir / "readyz.json"),
-        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
-        replay_comparisons_json=_replay(source_dir / "replay.json"),
-        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
-        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
-        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
-        governance_report_json=_governance_report(source_dir / "governance.json"),
-        eval_report_json=[_eval_report(source_dir / "eval.json")],
+        **_production_inputs(source_dir, include_baseline=False),
     )
-    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+    saved = _read_report(manifest["manifest_json"])
 
     assert saved["summary"]["status"] == "failed"
     assert saved["summary"]["missing_required_artifacts"] == ["baseline_eval_reports"]
@@ -276,22 +297,13 @@ def test_release_evidence_requires_baseline_eval_report_for_production_pack(tmp_
 
 
 def test_release_evidence_requires_approval_for_production_pack(tmp_path: Path) -> None:
-    source_dir = tmp_path / "sources"
-    source_dir.mkdir()
+    source_dir = _source_dir(tmp_path)
     manifest = release_evidence.run_release_evidence(
         release_id="missing-approval",
         output_root=tmp_path / "packs",
-        readyz_json=_readyz(source_dir / "readyz.json"),
-        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
-        replay_comparisons_json=_replay(source_dir / "replay.json"),
-        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
-        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
-        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
-        governance_report_json=_governance_report(source_dir / "governance.json"),
-        eval_report_json=[_eval_report(source_dir / "eval.json")],
-        baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
+        **_production_inputs(source_dir),
     )
-    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
+    saved = _read_report(manifest["manifest_json"])
 
     assert saved["summary"]["status"] == "failed"
     assert saved["approval"]["status"] == "missing"
@@ -307,27 +319,18 @@ def test_release_evidence_requires_release_id_for_production_pack(tmp_path: Path
 
 
 def test_release_evidence_writes_summary_and_copies_pack_to_storage(tmp_path: Path) -> None:
-    source_dir = tmp_path / "sources"
-    source_dir.mkdir()
+    source_dir = _source_dir(tmp_path)
     manifest = release_evidence.run_release_evidence(
         release_id="prod-release",
         output_root=tmp_path / "packs",
         retention_days=7,
         storage_dir=tmp_path / "storage",
-        readyz_json=_readyz(source_dir / "readyz.json"),
-        trajectory_stats_json=_trajectory_stats(source_dir / "trajectory.json"),
-        replay_comparisons_json=_replay(source_dir / "replay.json"),
-        production_smoke_report_json=_production_smoke_report(source_dir / "production-smoke.json"),
-        postgres_ops_report_json=_postgres_ops_report(source_dir / "postgres-ops.json"),
-        otel_smoke_report_json=_otel_smoke_report(source_dir / "otel-smoke.json"),
-        governance_report_json=_governance_report(source_dir / "governance.json"),
-        eval_report_json=[_eval_report(source_dir / "eval.json")],
-        baseline_eval_report_json=[_eval_report(source_dir / "baseline.json")],
+        **_production_inputs(source_dir),
         approval_id="approval-1",
         approval_status="approved",
     )
-    saved = json.loads(Path(manifest["manifest_json"]).read_text(encoding="utf-8"))
-    summary = json.loads(Path(saved["summary"]["summary_json"]).read_text(encoding="utf-8"))
+    saved = _read_report(manifest["manifest_json"])
+    summary = _read_report(saved["summary"]["summary_json"])
     stored_pack_dir = Path(saved["storage"]["stored_pack_dir"])
 
     assert saved["summary"]["status"] == "passed"

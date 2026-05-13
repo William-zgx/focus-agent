@@ -14,6 +14,15 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
     path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
 
 
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _run_cli(args: list[str], capsys) -> tuple[int, dict]:
+    exit_code = nightly_regression.main(args)
+    return exit_code, json.loads(capsys.readouterr().out)
+
+
 def _write_passing_memory_artifacts(tmp_path: Path) -> tuple[Path, Path]:
     memory_eval = tmp_path / "memory-eval.json"
     memory_trend = tmp_path / "memory-trend.json"
@@ -67,7 +76,10 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
         {
             "meta": {"suite": "trajectory_replay"},
             "summary": {"total": 2, "failed": 1},
-            "results": [{"case_id": "case-ok", "passed": True}, {"case_id": "case-bad", "passed": False}],
+            "results": [
+                {"case_id": "case-ok", "passed": True},
+                {"case_id": "case-bad", "passed": False},
+            ],
         },
     )
     _write_json(alert, {"status": "alert", "alerts": [{"kind": "budget"}]})
@@ -129,28 +141,10 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
 
 
 def test_nightly_cli_writes_report_without_golden_mutation(tmp_path: Path, capsys) -> None:
-    memory_eval = tmp_path / "memory-eval.json"
-    memory_trend = tmp_path / "memory-trend.json"
     report_json = tmp_path / "nightly.json"
-    _write_json(
-        memory_eval,
-        {
-            "meta": {"suite": "memory_context_quality"},
-            "summary": {"total": 1, "passed": 1, "failed": 0, "errors": 0},
-        },
-    )
-    _write_json(
-        memory_trend,
-        {
-            "meta": {"suite": "memory_context_regression_trend"},
-            "status": "ok",
-            "trend": [],
-            "promotion_history": {},
-            "pollution_alerts": [],
-        },
-    )
+    memory_eval, memory_trend = _write_passing_memory_artifacts(tmp_path)
 
-    exit_code = nightly_regression.main(
+    exit_code, stdout = _run_cli(
         [
             "--report-json",
             str(report_json),
@@ -160,10 +154,10 @@ def test_nightly_cli_writes_report_without_golden_mutation(tmp_path: Path, capsy
             str(memory_trend),
             "--history-dir",
             str(tmp_path / "history"),
-        ]
+        ],
+        capsys,
     )
-    stdout = json.loads(capsys.readouterr().out)
-    report = json.loads(report_json.read_text(encoding="utf-8"))
+    report = _read_json(report_json)
 
     assert exit_code == 0
     assert stdout["status"] == "passed"
@@ -175,7 +169,9 @@ def test_nightly_cli_writes_report_without_golden_mutation(tmp_path: Path, capsy
     assert nightly_regression.DEFAULT_REPORT_JSON == Path("reports/nightly/latest.json")
 
 
-def test_nightly_report_fails_closed_when_required_memory_artifacts_are_missing(tmp_path: Path) -> None:
+def test_nightly_report_fails_closed_when_required_memory_artifacts_are_missing(
+    tmp_path: Path,
+) -> None:
     report = nightly_regression.build_nightly_report(
         memory_eval_json=tmp_path / "missing-eval.json",
         memory_trend_json=tmp_path / "missing-trend.json",
@@ -255,9 +251,9 @@ def test_nightly_write_appends_latest_summary_to_history(tmp_path: Path) -> None
         memory_trend_json=memory_trend,
         history_dir=history_dir,
     )
-    report = json.loads(target.read_text(encoding="utf-8"))
+    report = _read_json(target)
     history_files = sorted(history_dir.glob("*.json"))
-    history_entry = json.loads(history_files[0].read_text(encoding="utf-8"))
+    history_entry = _read_json(history_files[0])
 
     assert len(history_files) == 1
     assert report["history"]["append"]["path"] == str(history_files[0])
@@ -274,10 +270,16 @@ def test_nightly_write_appends_latest_summary_to_history(tmp_path: Path) -> None
 
     assert next_report["baseline_status"] == "available"
     assert next_report["history"]["source_count"] == 1
-    assert next_report["delta"]["numeric"]["alert_count"] == {"current": 0, "delta": 0, "previous": 0}
+    assert next_report["delta"]["numeric"]["alert_count"] == {
+        "current": 0,
+        "delta": 0,
+        "previous": 0,
+    }
 
 
-def test_nightly_report_auto_discovers_default_replay_and_alert_entrypoints(tmp_path: Path, monkeypatch) -> None:
+def test_nightly_report_auto_discovers_default_replay_and_alert_entrypoints(
+    tmp_path: Path, monkeypatch
+) -> None:
     memory_eval, memory_trend = _write_passing_memory_artifacts(tmp_path)
     default_replay = tmp_path / "reports" / "nightly" / "trajectory-replay.json"
     default_alerts = tmp_path / "reports" / "nightly" / "alerts.json"
@@ -291,8 +293,16 @@ def test_nightly_report_auto_discovers_default_replay_and_alert_entrypoints(tmp_
         },
     )
     _write_json(default_alerts, {"status": "ok", "alerts": []})
-    monkeypatch.setattr(nightly_regression, "DEFAULT_REPLAY_JSON", Path("reports/nightly/trajectory-replay.json"))
-    monkeypatch.setattr(nightly_regression, "DEFAULT_ALERT_JSON", Path("reports/nightly/alerts.json"))
+    monkeypatch.setattr(
+        nightly_regression,
+        "DEFAULT_REPLAY_JSON",
+        Path("reports/nightly/trajectory-replay.json"),
+    )
+    monkeypatch.setattr(
+        nightly_regression,
+        "DEFAULT_ALERT_JSON",
+        Path("reports/nightly/alerts.json"),
+    )
     monkeypatch.setattr(nightly_regression, "REPO_ROOT", tmp_path)
 
     report = nightly_regression.build_nightly_report(
@@ -309,7 +319,9 @@ def test_nightly_report_auto_discovers_default_replay_and_alert_entrypoints(tmp_
     assert commands["nightly-alerts"]["status"] == "available"
 
 
-def test_nightly_report_keeps_replay_and_alert_entrypoints_not_configured_when_absent(tmp_path: Path) -> None:
+def test_nightly_report_keeps_replay_and_alert_entrypoints_not_configured_when_absent(
+    tmp_path: Path,
+) -> None:
     memory_eval, memory_trend = _write_passing_memory_artifacts(tmp_path)
 
     report = nightly_regression.build_nightly_report(

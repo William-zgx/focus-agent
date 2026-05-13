@@ -5,6 +5,7 @@ import threading
 from typing import Any
 
 from ..core.branching import BranchMeta
+from ..core.repo_call import has_repo_method
 from ..observability.tracing import TraceCorrelation
 from .coordination import background_job_key
 from .chat_trajectory import record_turn_trajectory_best_effort
@@ -28,10 +29,9 @@ class ChatTurnRecordingMixin:
             return
 
         def dispatch_background(func, **kwargs) -> None:
-            submit_background = getattr(self, "_submit_background_work", None)
-            if callable(submit_background):
+            if has_repo_method(self, "_submit_background_work"):
                 task_key = str(kwargs.pop("_background_task_key"))
-                submit_background(key=task_key, func=func, **kwargs)
+                self._submit_background_work(key=task_key, func=func, **kwargs)
                 return
             try:
                 loop = asyncio.get_running_loop()

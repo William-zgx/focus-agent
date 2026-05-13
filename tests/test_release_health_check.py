@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
+from typing import Any
 
+from scripts._report_io import load_json, write_json_report
 from scripts import release_health_check
 
 
 def _write_json(path: Path, payload: object) -> Path:
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
+    return write_json_report(path, payload, ensure_ascii=True, indent=None, sort_keys=False)
+
+
+def _read_report(path: Path) -> dict[str, Any]:
+    report = load_json(path)
+    assert isinstance(report, dict)
+    return report
 
 
 def _readyz_path(tmp_path: Path, *, trajectory_ready: bool = True) -> Path:
@@ -128,24 +134,62 @@ def _passing_governance_report_path(tmp_path: Path) -> Path:
     )
 
 
-def _required_production_report_args(tmp_path: Path) -> list[str]:
-    return [
-        "--production-smoke-report-json",
-        str(_passing_production_smoke_report_path(tmp_path)),
-        "--postgres-ops-report-json",
-        str(_passing_postgres_ops_report_path(tmp_path)),
-        "--otel-smoke-report-json",
-        str(_passing_otel_smoke_report_path(tmp_path)),
-        "--governance-report-json",
-        str(_passing_governance_report_path(tmp_path)),
+def _production_health_args(
+    tmp_path: Path,
+    report_path: Path,
+    *,
+    readyz: Path | None = None,
+    trajectory_stats: Path | None = None,
+    replay_comparisons: Path | None = None,
+    eval_report: Path | None = None,
+    baseline_eval_report: Path | None = None,
+    alert_report: Path | None = None,
+    postgres_migration_report: Path | None = None,
+    production_smoke_report: Path | None = None,
+    postgres_ops_report: Path | None = None,
+    otel_smoke_report: Path | None = None,
+    governance_report: Path | None = None,
+) -> list[str]:
+    args = [
+        "--mode",
+        "production",
+        "--readyz-json",
+        str(readyz or _readyz_path(tmp_path)),
+        "--trajectory-stats-json",
+        str(trajectory_stats or _trajectory_stats_path(tmp_path)),
+        "--replay-comparisons-json",
+        str(replay_comparisons or _passing_replay_path(tmp_path)),
+        "--eval-report-json",
+        str(eval_report or _passing_eval_path(tmp_path)),
     ]
+    if baseline_eval_report is not None:
+        args.extend(["--baseline-eval-report-json", str(baseline_eval_report)])
+    if alert_report is not None:
+        args.extend(["--alert-report-json", str(alert_report)])
+    if postgres_migration_report is not None:
+        args.extend(["--postgres-migration-report-json", str(postgres_migration_report)])
+    args.extend(
+        [
+            "--production-smoke-report-json",
+            str(production_smoke_report or _passing_production_smoke_report_path(tmp_path)),
+            "--postgres-ops-report-json",
+            str(postgres_ops_report or _passing_postgres_ops_report_path(tmp_path)),
+            "--otel-smoke-report-json",
+            str(otel_smoke_report or _passing_otel_smoke_report_path(tmp_path)),
+            "--governance-report-json",
+            str(governance_report or _passing_governance_report_path(tmp_path)),
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    return args
 
 
 def test_release_health_check_self_check_writes_report(tmp_path: Path) -> None:
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(["--self-check", "--report-json", str(report_path)])
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
 
     assert exit_code == 0
     assert report["status"] == "passed"
@@ -165,7 +209,7 @@ def test_release_health_check_fails_when_expected_eval_report_is_missing(tmp_pat
             str(report_path),
         ]
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
 
     assert exit_code == 1
     assert report["status"] == "failed"
@@ -173,15 +217,12 @@ def test_release_health_check_fails_when_expected_eval_report_is_missing(tmp_pat
 
 
 def test_release_health_check_failed_eval_report_blocks_release(tmp_path: Path) -> None:
-    eval_report = tmp_path / "eval.json"
-    eval_report.write_text(
-        json.dumps(
-            {
-                "summary": {"total": 2, "passed": 1, "failed": 1, "errors": 0},
-                "comparison": {"regressions": ["task_success dropped 50.0pp"]},
-            }
-        ),
-        encoding="utf-8",
+    eval_report = _write_json(
+        tmp_path / "eval.json",
+        {
+            "summary": {"total": 2, "passed": 1, "failed": 1, "errors": 0},
+            "comparison": {"regressions": ["task_success dropped 50.0pp"]},
+        },
     )
     report_path = tmp_path / "release-health.json"
 
@@ -194,7 +235,7 @@ def test_release_health_check_failed_eval_report_blocks_release(tmp_path: Path) 
             str(report_path),
         ]
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
 
     assert exit_code == 1
     assert report["signals"][-1]["key"] == "eval_replay_regression"
@@ -206,23 +247,9 @@ def test_release_health_check_empty_eval_report_blocks_release(tmp_path: Path) -
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(eval_report),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, eval_report=eval_report)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     eval_signal = next(signal for signal in report["signals"] if signal["key"] == "eval_report_invalid")
 
     assert exit_code == 1
@@ -245,7 +272,7 @@ def test_release_health_check_production_mode_missing_inputs_fails_closed(tmp_pa
     exit_code = release_health_check.main(
         ["--mode", "production", "--report-json", str(report_path)]
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     missing_inputs = [
         signal["labels"]["input"]
         for signal in report["signals"]
@@ -272,23 +299,9 @@ def test_release_health_check_production_bad_json_writes_failed_report(tmp_path:
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(readyz),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, readyz=readyz)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     failed_input = next(
         signal
         for signal in report["signals"]
@@ -308,23 +321,9 @@ def test_release_health_check_production_invalid_trajectory_stats_blocks_release
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(trajectory_stats),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, trajectory_stats=trajectory_stats)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     failed_input = next(
         signal
         for signal in report["signals"]
@@ -343,23 +342,9 @@ def test_release_health_check_production_empty_replay_comparison_blocks_release(
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(replay),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, replay_comparisons=replay)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     failed_input = next(
         signal
         for signal in report["signals"]
@@ -381,7 +366,7 @@ def test_release_health_check_marks_explicit_self_check_fallback(tmp_path: Path)
             str(report_path),
         ]
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     fallback_signals = [
         signal for signal in report["signals"] if signal["key"] == "release_health_self_check_fallback"
     ]
@@ -391,11 +376,7 @@ def test_release_health_check_marks_explicit_self_check_fallback(tmp_path: Path)
 
 
 def test_release_health_check_replay_comparison_blocks_release(tmp_path: Path) -> None:
-    replay = tmp_path / "replay.json"
-    replay.write_text(
-        json.dumps([{"case_id": "traj-1", "replay_passed": False}]),
-        encoding="utf-8",
-    )
+    replay = _write_json(tmp_path / "replay.json", [{"case_id": "traj-1", "replay_passed": False}])
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
@@ -407,7 +388,7 @@ def test_release_health_check_replay_comparison_blocks_release(tmp_path: Path) -
             str(report_path),
         ]
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
 
     assert exit_code == 1
     assert report["signals"][4]["key"] == "eval_replay_regression"
@@ -419,23 +400,9 @@ def test_release_health_check_production_replay_comparison_blocks_release(tmp_pa
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(replay),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, replay_comparisons=replay)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     replay_signal = next(signal for signal in report["signals"] if signal["key"] == "eval_replay_regression")
 
     assert exit_code == 1
@@ -454,23 +421,9 @@ def test_release_health_check_production_eval_regression_blocks_release(tmp_path
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(eval_report),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, eval_report=eval_report)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
 
     assert exit_code == 1
     assert report["signals"][-1]["key"] == "eval_replay_regression"
@@ -509,25 +462,14 @@ def test_release_health_check_production_baseline_eval_regression_blocks_release
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(current_eval),
-            "--baseline-eval-report-json",
-            str(baseline_eval),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(
+            tmp_path,
+            report_path,
+            eval_report=current_eval,
+            baseline_eval_report=baseline_eval,
+        )
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
 
     assert exit_code == 1
     assert report["signals"][-1]["key"] == "eval_replay_regression"
@@ -540,23 +482,13 @@ def test_release_health_check_production_trajectory_recorder_unavailable_blocks_
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path, trajectory_ready=False)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(
+            tmp_path,
+            report_path,
+            readyz=_readyz_path(tmp_path, trajectory_ready=False),
+        )
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     recorder_signal = next(
         signal for signal in report["signals"] if signal["key"] == "trajectory_recorder_unavailable"
     )
@@ -578,25 +510,9 @@ def test_release_health_check_alert_report_blocks_release(tmp_path: Path) -> Non
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            "--alert-report-json",
-            str(alert_report),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, alert_report=alert_report)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     alert_signal = next(signal for signal in report["signals"] if signal["key"] == "alert_rules_report")
 
     assert exit_code == 1
@@ -612,25 +528,13 @@ def test_release_health_check_postgres_migration_report_blocks_release(tmp_path:
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            "--postgres-migration-report-json",
-            str(postgres_report),
-            *_required_production_report_args(tmp_path),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(
+            tmp_path,
+            report_path,
+            postgres_migration_report=postgres_report,
+        )
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     postgres_signal = next(
         signal for signal in report["signals"] if signal["key"] == "postgres_migration_verification"
     )
@@ -644,30 +548,9 @@ def test_release_health_check_reads_production_ops_and_otel_reports(tmp_path: Pa
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            "--production-smoke-report-json",
-            str(_passing_production_smoke_report_path(tmp_path)),
-            "--postgres-ops-report-json",
-            str(_passing_postgres_ops_report_path(tmp_path)),
-            "--otel-smoke-report-json",
-            str(_passing_otel_smoke_report_path(tmp_path)),
-            "--governance-report-json",
-            str(_passing_governance_report_path(tmp_path)),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     statuses = {signal["key"]: signal["status"] for signal in report["signals"]}
 
     assert exit_code == 0
@@ -688,30 +571,9 @@ def test_release_health_check_production_rejects_dry_run_ops_report(tmp_path: Pa
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            "--production-smoke-report-json",
-            str(_passing_production_smoke_report_path(tmp_path)),
-            "--postgres-ops-report-json",
-            str(dry_run_postgres),
-            "--otel-smoke-report-json",
-            str(_passing_otel_smoke_report_path(tmp_path)),
-            "--governance-report-json",
-            str(_passing_governance_report_path(tmp_path)),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, postgres_ops_report=dry_run_postgres)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     dry_run_signal = next(
         signal
         for signal in report["signals"]
@@ -736,30 +598,9 @@ def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: 
     report_path = tmp_path / "release-health.json"
 
     exit_code = release_health_check.main(
-        [
-            "--mode",
-            "production",
-            "--readyz-json",
-            str(_readyz_path(tmp_path)),
-            "--trajectory-stats-json",
-            str(_trajectory_stats_path(tmp_path)),
-            "--replay-comparisons-json",
-            str(_passing_replay_path(tmp_path)),
-            "--eval-report-json",
-            str(_passing_eval_path(tmp_path)),
-            "--production-smoke-report-json",
-            str(_passing_production_smoke_report_path(tmp_path)),
-            "--postgres-ops-report-json",
-            str(_passing_postgres_ops_report_path(tmp_path)),
-            "--otel-smoke-report-json",
-            str(otel_report),
-            "--governance-report-json",
-            str(_passing_governance_report_path(tmp_path)),
-            "--report-json",
-            str(report_path),
-        ]
+        _production_health_args(tmp_path, report_path, otel_smoke_report=otel_report)
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     otel_signal = next(signal for signal in report["signals"] if signal["key"] == "otel_smoke_report")
 
     assert exit_code == 1
@@ -801,7 +642,7 @@ def test_release_health_check_governance_blocking_signal_blocks_release(tmp_path
             str(report_path),
         ]
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_report(report_path)
     governance_signal = next(
         signal for signal in report["signals"] if signal["key"] == "agent_governance_quality"
     )

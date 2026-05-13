@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.repo_call import has_repo_method
 from .branch_actions import dismissal_message, normalize_branch_actions, serialize_branch_actions
 from .chat_branch_actions import (
     branch_action_intent,
@@ -36,10 +37,9 @@ class ChatBranchActionFacadeMixin:
             update["branch_action_audit"] = [*audit, audit_event]
         if messages:
             update["messages"] = messages
-        update_state = getattr(self.runtime.graph, "update_state", None)
-        if not callable(update_state):
+        if not has_repo_method(self.runtime.graph, "update_state"):
             raise RuntimeError("Conversation graph does not support branch action state updates.")
-        update_state(
+        self.runtime.graph.update_state(
             {"configurable": {"thread_id": thread_id}},
             update,
             as_node="bootstrap_turn",

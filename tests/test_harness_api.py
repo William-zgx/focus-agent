@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from langchain.messages import AIMessage, AIMessageChunk
 from langgraph.types import Command
 
@@ -638,6 +639,73 @@ async def _collect_produced_events(monkeypatch, chunks, *, final_messages=None, 
     return bridge.events, manager.statuses, bridge.ended
 
 
+def _ai_stream_chunk(content, *, node: str = "agent", stream_phase: str | None = None, tags: list[str] | None = None):
+    metadata = {"langgraph_node": node}
+    if stream_phase is not None:
+        metadata["stream_phase"] = stream_phase
+    if tags is not None:
+        metadata["tags"] = tags
+    return {
+        "type": "messages",
+        "data": (SimpleNamespace(content=content, type="ai"), metadata),
+        "ns": [],
+    }
+
+
+def _visible_ai_chunk(content):
+    return _ai_stream_chunk(content, stream_phase="visible")
+
+
+def _quarantine_ai_chunk(content):
+    return _ai_stream_chunk(content, stream_phase="quarantine")
+
+
+def _reasoning_delta_chunk(text: str):
+    return _ai_stream_chunk([{"type": "reasoning_delta", "text": text}])
+
+
+def _tool_call_chunk(
+    *,
+    call_id: str = "call-1",
+    name: str = "web_search",
+    args: str = '{"q":"agent"}',
+    stream_phase: str | None = None,
+):
+    metadata = {"langgraph_node": "agent"}
+    if stream_phase is not None:
+        metadata["stream_phase"] = stream_phase
+    return {
+        "type": "messages",
+        "data": (
+            AIMessageChunk(content=[{"type": "tool_call_chunk", "id": call_id, "name": name, "args": args}]),
+            metadata,
+        ),
+        "ns": [],
+    }
+
+
+def _event_names(events):
+    return [event for event, _data in events]
+
+
+def _message_deltas(events):
+    return [data["delta"] for event, data in events if event == "message.delta"]
+
+
+def _completed_messages(events):
+    return [data["content"] for event, data in events if event == "message.completed"]
+
+
+def _reasoning_deltas(events):
+    return [data["delta"] for event, data in events if event == "reasoning.delta"]
+
+
+def _assert_no_message_output(events):
+    event_names = _event_names(events)
+    assert "message.delta" not in event_names
+    assert "message.completed" not in event_names
+
+
 def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
     async def fake_stream_chunks(**kwargs):
         del kwargs
@@ -935,30 +1003,9 @@ def test_branch_action_intent_for_run_delegates_to_chat_facade():
 
 def test_produce_run_stream_filters_internal_and_tool_fallback_drafts(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content='{"expected_tools":["search"],"status":"replan"}', type="ai"),
-                {"langgraph_node": "plan"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="我先根据已拿到的工具结果给出一个保守整理：\n- web_search: interim", type="ai"),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="真正回答", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
+        _ai_stream_chunk('{"expected_tools":["search"],"status":"replan"}', node="plan"),
+        _ai_stream_chunk("我先根据已拿到的工具结果给出一个保守整理：\n- web_search: interim"),
+        _visible_ai_chunk("真正回答"),
     ]
 
     async def scenario():
@@ -967,33 +1014,16 @@ def test_produce_run_stream_filters_internal_and_tool_fallback_drafts(monkeypatc
             chunks,
             final_messages=[AIMessage(content="真正回答最终。")],
         )
-        message_deltas = [data["delta"] for event, data in events if event == "message.delta"]
-        completed = [data["content"] for event, data in events if event == "message.completed"]
-
-        assert message_deltas == ["真正回答"]
-        assert completed == ["真正回答最终。"]
+        assert _message_deltas(events) == ["真正回答"]
+        assert _completed_messages(events) == ["真正回答最终。"]
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_quarantines_unmarked_and_quarantine_agent_text(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="未标记的阶段文本", type="ai"),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content=_DEGRADED_DSML_FIXTURE, type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "quarantine"},
-            ),
-            "ns": [],
-        },
+        _ai_stream_chunk("未标记的阶段文本"),
+        _quarantine_ai_chunk(_DEGRADED_DSML_FIXTURE),
     ]
 
     async def scenario():
@@ -1002,33 +1032,16 @@ def test_produce_run_stream_quarantines_unmarked_and_quarantine_agent_text(monke
             chunks,
             final_messages=[AIMessage(content="最终安全回答。")],
         )
-        message_deltas = [data["delta"] for event, data in events if event == "message.delta"]
-        completed = [data["content"] for event, data in events if event == "message.completed"]
-
-        assert message_deltas == []
-        assert completed == ["最终安全回答。"]
+        assert _message_deltas(events) == []
+        assert _completed_messages(events) == ["最终安全回答。"]
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_drops_visible_phase_english_process_narration(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="Let me fetch the latest numbers before answering.", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="最终安全回答", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
+        _visible_ai_chunk("Let me fetch the latest numbers before answering."),
+        _visible_ai_chunk("最终安全回答"),
     ]
 
     async def scenario():
@@ -1037,33 +1050,16 @@ def test_produce_run_stream_drops_visible_phase_english_process_narration(monkey
             chunks,
             final_messages=[AIMessage(content="最终安全回答。")],
         )
-        message_deltas = [data["delta"] for event, data in events if event == "message.delta"]
-        completed = [data["content"] for event, data in events if event == "message.completed"]
-
-        assert message_deltas == ["最终安全回答"]
-        assert completed == ["最终安全回答。"]
+        assert _message_deltas(events) == ["最终安全回答"]
+        assert _completed_messages(events) == ["最终安全回答。"]
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_drops_split_visible_phase_english_process_narration(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="Let", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content=" me fetch the latest source.", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
+        _visible_ai_chunk("Let"),
+        _visible_ai_chunk(" me fetch the latest source."),
     ]
 
     async def scenario():
@@ -1072,27 +1068,14 @@ def test_produce_run_stream_drops_split_visible_phase_english_process_narration(
             chunks=chunks,
             final_messages=[],
         )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
+        _assert_no_message_output(events)
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_streams_final_suffix_from_mixed_visible_process_text(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content="Let me produce the final answer. I must not call more tools. Let's go.最终答案。",
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
+        _visible_ai_chunk("Let me produce the final answer. I must not call more tools. Let's go.最终答案。"),
     ]
 
     async def scenario():
@@ -1103,55 +1086,38 @@ def test_produce_run_stream_streams_final_suffix_from_mixed_visible_process_text
                 AIMessage(content="Let me produce the final answer. I must not call more tools. Let's go.最终答案。")
             ],
         )
-        message_deltas = [data["delta"] for event, data in events if event == "message.delta"]
-        completed = [data["content"] for event, data in events if event == "message.completed"]
-
-        assert message_deltas == ["最终答案。"]
-        assert completed == ["最终答案。"]
+        assert _message_deltas(events) == ["最终答案。"]
+        assert _completed_messages(events) == ["最终答案。"]
 
     asyncio.run(scenario())
 
 
-def test_produce_run_stream_drops_english_process_completed_fallback(monkeypatch):
+@pytest.mark.parametrize(
+    "content",
+    [
+        "I should look up one more source before answering.",
+        _DEGRADED_DSML_FIXTURE,
+        "invoke name\nparameter name\n| | DSML | |",
+    ],
+    ids=["english-process", "tool-protocol", "bare-dsml"],
+)
+def test_produce_run_stream_drops_protocol_or_process_completed_fallback(monkeypatch, content):
     async def scenario():
         events, _statuses, _ended = await _collect_produced_events(
             monkeypatch,
             chunks=[],
-            final_messages=[AIMessage(content="I should look up one more source before answering.")],
+            final_messages=[AIMessage(content=content)],
         )
 
-        assert "message.completed" not in [event for event, _data in events]
+        assert "message.completed" not in _event_names(events)
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_visible_phase_allows_text_and_keeps_tool_events(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                AIMessageChunk(
-                    content=[
-                        {
-                            "type": "tool_call_chunk",
-                            "id": "call-1",
-                            "name": "web_search",
-                            "args": '{"q":"agent"}',
-                        }
-                    ]
-                ),
-                {"langgraph_node": "agent", "stream_phase": "quarantine"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="最终回答", type="ai"),
-                {"langgraph_node": "agent", "tags": ["stream_phase:visible", "demo"]},
-            ),
-            "ns": [],
-        },
+        _tool_call_chunk(stream_phase="quarantine"),
+        _ai_stream_chunk("最终回答", tags=["stream_phase:visible", "demo"]),
     ]
 
     async def scenario():
@@ -1160,91 +1126,68 @@ def test_produce_run_stream_visible_phase_allows_text_and_keeps_tool_events(monk
             chunks,
             final_messages=[AIMessage(content="最终回答。")],
         )
-        event_names = [event for event, _data in events]
-        message_deltas = [data["delta"] for event, data in events if event == "message.delta"]
+        event_names = _event_names(events)
         tool_payload = next(data for event, data in events if event == "tool.call.delta")
         message_delta_payload = next(data for event, data in events if event == "message.delta")
 
         assert "tool.call.delta" in event_names
-        assert message_deltas == ["最终回答"]
+        assert _message_deltas(events) == ["最终回答"]
         assert tool_payload["tool_call_id"] == "call-1"
         assert message_delta_payload["metadata"]["tags"] == ["demo"]
 
     asyncio.run(scenario())
 
 
-def test_produce_run_stream_drops_tool_protocol_completed_fallback(monkeypatch):
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=[],
-            final_messages=[AIMessage(content=_DEGRADED_DSML_FIXTURE)],
-        )
-
-        assert "message.completed" not in [event for event, _data in events]
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_drops_split_tool_protocol_stream_buffer(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="tool", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content='calls/invoke namewebfetch">\nparameter name=""', type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
-
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=chunks,
-            final_messages=[],
-        )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_drops_split_degraded_invoke_name_stream_buffer(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="invoke", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content=(
-                        " name 2025 trends predictions multi-agent collaboration future</ | | DSML | | parameter>\n"
-                        "parameter name6</ | | DSML | | parameter>"
-                    ),
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
+@pytest.mark.parametrize(
+    "chunk_contents",
+    [
+        ("tool", 'calls/invoke namewebfetch">\nparameter name=""'),
+        (
+            "invoke",
+            " name 2025 trends predictions multi-agent collaboration future</ | | DSML | | parameter>\n"
+            "parameter name6</ | | DSML | | parameter>",
+        ),
+        ("< | | ", "DSML | | invoke nameweb_search"),
+        (
+            "<tool",
+            '_c>\n<invoke="web_fetch">\n'
+            '<parameterurl" string="true">https://vectorize.io/articles/best-ai-agent-memory-systems</parameter>',
+        ),
+        (
+            'alls>\n="web_search">\n'
+            '="query" string="true">AI agent predictions 2026\n'
+            '="query"true">AI agent frameworks comparison 2026 pros cons LangChain CrewAI AutoGen\n'
+            '="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026\n'
+            '="web_fetch="url" string="true">https://www.gartner.com/en/articles\n'
+            '="max_chars" stringfalse">8000\n'
+            '="max_chars"false">6000\n'
+            "https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>\n"
+            "12000parameter>\n"
+            '="max_fetch_length" stringfalse8000parameter>\n'
+            "invoke>\n"
+            '="read="filepath" string="true">tool-observation://webfetch/'
+            "call00ljJOwoeUmsjmBzMNhkx8505\n"
+            "</ | | DSML | | tool_calls",
+        ),
+        ("=", '"read=', '"filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505'),
+        (
+            '="url"',
+            'true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026',
+            '</｜｜DSML｜｜parameter>\n="max_chars"false">6000',
+        ),
+    ],
+    ids=[
+        "split-tool-protocol",
+        "split-degraded-invoke",
+        "split-dsml-prefix",
+        "xmlish-tool-c",
+        "orphaned-protocol-tail",
+        "assignment-tail",
+        "compacted-assignment-tail",
+    ],
+)
+def test_produce_run_stream_drops_or_holds_protocol_stream_buffer(monkeypatch, chunk_contents):
+    chunks = [_visible_ai_chunk(content) for content in chunk_contents]
 
     async def scenario():
         events, _statuses, _ended = await _collect_produced_events(
@@ -1252,267 +1195,16 @@ def test_produce_run_stream_drops_split_degraded_invoke_name_stream_buffer(monke
             chunks=chunks,
             final_messages=[],
         )
-        event_names = [event for event, _data in events]
 
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_holds_split_dsml_prefix_stream_buffer(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="< | | ", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="DSML | | invoke nameweb_search", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
-
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=chunks,
-            final_messages=[],
-        )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_drops_degraded_xmlish_tool_c_stream_buffer(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="<tool", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content=(
-                        '_c>\n<invoke="web_fetch">\n'
-                        '<parameterurl" string="true">https://vectorize.io/articles/best-ai-agent-memory-systems</parameter>'
-                    ),
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
-
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=chunks,
-            final_messages=[],
-        )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_drops_orphaned_protocol_tail_stream_buffer(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content=(
-                        'alls>\n="web_search">\n'
-                        '="query" string="true">AI agent predictions 2026\n'
-                        '="query"true">AI agent frameworks comparison 2026 pros cons LangChain CrewAI AutoGen\n'
-                        '="url"true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026\n'
-                        '="web_fetch="url" string="true">https://www.gartner.com/en/articles\n'
-                        '="max_chars" stringfalse">8000\n'
-                        '="max_chars"false">6000\n'
-                        "https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>\n"
-                        "12000parameter>\n"
-                        '="max_fetch_length" stringfalse8000parameter>\n'
-                        "invoke>\n"
-                        '="read="filepath" string="true">tool-observation://webfetch/'
-                        "call00ljJOwoeUmsjmBzMNhkx8505\n"
-                        "</ | | DSML | | tool_calls"
-                    ),
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
-
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=chunks,
-            final_messages=[],
-        )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_holds_split_degraded_assignment_tail(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content="=", type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content='"read=', type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content='"filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505',
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
-
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=chunks,
-            final_messages=[],
-        )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_drops_compacted_parameter_assignment_tail(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content='="url"', type="ai"),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content='true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026',
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content='</｜｜DSML｜｜parameter>\n="max_chars"false">6000',
-                    type="ai",
-                ),
-                {"langgraph_node": "agent", "stream_phase": "visible"},
-            ),
-            "ns": [],
-        },
-    ]
-
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=chunks,
-            final_messages=[],
-        )
-        event_names = [event for event, _data in events]
-
-        assert "message.delta" not in event_names
-        assert "message.completed" not in event_names
-
-    asyncio.run(scenario())
-
-
-def test_produce_run_stream_drops_bare_dsml_completed_fallback(monkeypatch):
-    async def scenario():
-        events, _statuses, _ended = await _collect_produced_events(
-            monkeypatch,
-            chunks=[],
-            final_messages=[AIMessage(content="invoke name\nparameter name\n| | DSML | |")],
-        )
-
-        assert "message.completed" not in [event for event, _data in events]
+        _assert_no_message_output(events)
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_drops_textual_tool_protocol_reasoning(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content=[
-                        {
-                            "type": "reasoning_delta",
-                            "text": 'invoke name">\nparameter name="" string="true">direct',
-                        }
-                    ],
-                    type="ai",
-                ),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content=[{"type": "reasoning_delta", "text": "safe reasoning"}],
-                    type="ai",
-                ),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        },
+        _reasoning_delta_chunk('invoke name">\nparameter name="" string="true">direct'),
+        _reasoning_delta_chunk("safe reasoning"),
     ]
 
     async def scenario():
@@ -1521,39 +1213,15 @@ def test_produce_run_stream_drops_textual_tool_protocol_reasoning(monkeypatch):
             chunks=chunks,
             final_messages=[AIMessage(content="最终安全回答。")],
         )
-        reasoning_deltas = [data["delta"] for event, data in events if event == "reasoning.delta"]
-
-        assert reasoning_deltas == ["safe reasoning", ""]
+        assert _reasoning_deltas(events) == ["safe reasoning", ""]
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_drops_split_tool_protocol_reasoning(monkeypatch):
     chunks = [
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(content=[{"type": "reasoning_delta", "text": "tool"}], type="ai"),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        },
-        {
-            "type": "messages",
-            "data": (
-                SimpleNamespace(
-                    content=[
-                        {
-                            "type": "reasoning_delta",
-                            "text": 'calls/invoke namewebfetch">\nparameter name=""',
-                        }
-                    ],
-                    type="ai",
-                ),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        },
+        _reasoning_delta_chunk("tool"),
+        _reasoning_delta_chunk('calls/invoke namewebfetch">\nparameter name=""'),
     ]
 
     async def scenario():
@@ -1562,37 +1230,17 @@ def test_produce_run_stream_drops_split_tool_protocol_reasoning(monkeypatch):
             chunks=chunks,
             final_messages=[AIMessage(content="最终安全回答。")],
         )
-        reasoning_deltas = [data["delta"] for event, data in events if event == "reasoning.delta"]
-
-        assert reasoning_deltas == []
+        assert _reasoning_deltas(events) == []
 
     asyncio.run(scenario())
 
 
 def test_produce_run_stream_emits_tool_call_delta_without_legacy_alias(monkeypatch):
-    chunks = [
-        {
-            "type": "messages",
-            "data": (
-                AIMessageChunk(
-                    content=[
-                        {
-                            "type": "tool_call_chunk",
-                            "id": "call-1",
-                            "name": "search_web",
-                            "args": '{"q":"agent"}',
-                        }
-                    ]
-                ),
-                {"langgraph_node": "agent"},
-            ),
-            "ns": [],
-        }
-    ]
+    chunks = [_tool_call_chunk(name="search_web")]
 
     async def scenario():
         events, _statuses, _ended = await _collect_produced_events(monkeypatch, chunks)
-        event_names = [event for event, _data in events]
+        event_names = _event_names(events)
         tool_payload = next(data for event, data in events if event == "tool.call.delta")
 
         assert "tool_call.delta" not in event_names

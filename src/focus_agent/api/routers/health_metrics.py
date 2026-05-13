@@ -8,8 +8,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import PlainTextResponse
 
-from focus_agent.engine.runtime import AppRuntime
 from focus_agent.capabilities.tool_invocation import tool_invocation_runtime_snapshot
+from focus_agent.core.repo_call import safe_repo_call
+from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import RuntimeReadinessResponse
 from ..deps import get_app_runtime
@@ -58,22 +59,23 @@ def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextR
 
 
 def _background_metrics(runtime: AppRuntime) -> dict[str, int]:
-    combined: dict[str, int] = {}
-    background_work = getattr(runtime, "background_work", None)
-    snapshot = getattr(background_work, "snapshot", None)
-    if callable(snapshot):
-        try:
-            combined.update(dict(snapshot()))
-        except Exception:  # noqa: BLE001
-            combined["job_backend_error"] = 1
-    durable_worker = getattr(runtime, "durable_background_worker", None)
-    durable_snapshot = getattr(durable_worker, "snapshot", None)
-    if callable(durable_snapshot):
-        try:
-            combined.update(dict(durable_snapshot()))
-        except Exception:  # noqa: BLE001
-            combined["durable_worker_snapshot_error"] = 1
-    return combined
+    return {
+        **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
+        **_snapshot_metrics(getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"),
+    }
+
+
+def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int]:
+    snapshot = safe_repo_call(
+        source,
+        "snapshot",
+        default_missing={},
+        default_error={error_key: 1},
+    )
+    try:
+        return dict(snapshot)
+    except Exception:  # noqa: BLE001
+        return {error_key: 1}
 
 
 def _metrics_trajectory_data(*, runtime: AppRuntime, repo: Any | None) -> dict[str, Any]:

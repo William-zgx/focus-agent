@@ -5,13 +5,18 @@ from typing import Any
 from fastapi import HTTPException
 
 from focus_agent.agent_roles import AgentRole, RoleModelResolver, build_role_route_plan
-from focus_agent.capabilities.tool_router import build_capability_registry, build_tool_route_plan
+from focus_agent.capabilities.tool_router import (
+    build_capability_registry,
+    build_tool_route_plan,
+    build_toolset_registry,
+)
 from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 
 from ..contracts import (
     AgentCapabilityListResponse,
+    AgentToolsetListResponse,
     AgentRoleDecisionListResponse,
     AgentRoleDryRunRequest,
     AgentRoleDryRunResponse,
@@ -107,6 +112,15 @@ def _agent_capabilities_response(runtime: AppRuntime | Any) -> AgentCapabilityLi
     )
 
 
+def _agent_toolsets_response(runtime: AppRuntime | Any) -> AgentToolsetListResponse:
+    registry = getattr(runtime, "tool_registry", None)
+    items = build_toolset_registry(registry) if registry is not None else []
+    return AgentToolsetListResponse(
+        items=[item.model_dump(mode="json") for item in items],
+        count=len(items),
+    )
+
+
 def _agent_tool_route_response(
     *,
     payload: AgentToolRouteRequest,
@@ -141,6 +155,7 @@ def _agent_tool_route_decisions_response(
 
 __all__ = [
     "_agent_capabilities_response",
+    "_agent_toolsets_response",
     "_agent_role_decisions_response",
     "_agent_role_dry_run_response",
     "_agent_role_policy_response",

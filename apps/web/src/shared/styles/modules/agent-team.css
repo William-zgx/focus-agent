@@ -85,7 +85,13 @@
 .fa-agent-team-field span,
 .fa-agent-team-artifact-card span,
 .fa-agent-team-task-binding span,
-.fa-agent-team-detail-heading span {
+.fa-agent-team-detail-heading span,
+.fa-agent-team-guide-heading span,
+.fa-agent-team-step span,
+.fa-agent-team-section-kicker,
+.fa-agent-team-next-step span,
+.fa-agent-team-recent-item span,
+.fa-agent-team-studio-section-heading > span {
   color: var(--fa-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -176,16 +182,6 @@
   gap: 3px;
 }
 
-.fa-agent-team-guide-heading span,
-.fa-agent-team-step span,
-.fa-agent-team-section-kicker,
-.fa-agent-team-next-step span {
-  color: var(--fa-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
 .fa-agent-team-guide-heading strong {
   color: var(--fa-text);
 }
@@ -272,13 +268,6 @@
 .fa-agent-team-recent-item:hover {
   border-color: var(--fa-border-strong);
   background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-1) 90%);
-}
-
-.fa-agent-team-recent-item span {
-  color: var(--fa-text-muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .fa-agent-team-workbench-grid {
@@ -875,13 +864,6 @@
   padding-right: 28px;
 }
 
-.fa-agent-team-studio-section-heading > span {
-  color: var(--fa-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
 .fa-agent-team-studio-section-heading strong {
   color: var(--fa-text);
 }
@@ -1346,7 +1328,8 @@
   background: color-mix(in srgb, var(--fa-panel-1) 80%, transparent 20%);
 }
 
-.fa-agent-team-progress-overview span {
+.fa-agent-team-progress-overview span,
+.fa-agent-team-progress-lead span {
   color: var(--fa-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1641,13 +1624,6 @@
   grid-row: 1;
   gap: 4px;
   min-width: 0;
-}
-
-.fa-agent-team-progress-lead span {
-  color: var(--fa-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.7rem;
 }
 
 .fa-agent-team-progress-lead strong {
@@ -2621,7 +2597,8 @@
   min-width: 0;
 }
 
-.fa-agent-team-plan-review-phase > div:first-child span {
+.fa-agent-team-plan-review-phase > div:first-child span,
+.fa-agent-team-inspector-header span {
   color: var(--fa-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2691,14 +2668,6 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-}
-
-.fa-agent-team-inspector-header span {
-  color: var(--fa-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.68rem;
-  font-weight: 700;
 }
 
 .fa-agent-team-inspector-header strong {
@@ -4120,72 +4089,6 @@
   }
 }
 
-.fa-agent-team-blocked-guide {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--fa-status-warning-text) 62%, var(--fa-border-subtle));
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--fa-status-warning-text) 14%, transparent), transparent 52%),
-    color-mix(in srgb, var(--fa-panel-1) 88%, transparent);
-}
-
-.fa-agent-team-blocked-guide > div {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.fa-agent-team-blocked-guide span,
-.fa-agent-team-blocked-guide small {
-  color: var(--fa-status-warning-text);
-}
-
-.fa-agent-team-blocked-guide span {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.7rem;
-  font-weight: 800;
-}
-
-.fa-agent-team-blocked-guide strong {
-  color: var(--fa-text);
-  font-size: 1rem;
-}
-
-.fa-agent-team-blocked-guide p,
-.fa-agent-team-blocked-guide small {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.fa-agent-team-simple-task.is-blocked-action {
-  border-color: color-mix(in srgb, var(--fa-status-warning-text) 70%, var(--fa-border-subtle));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--fa-status-warning-text) 10%, transparent), transparent 54%),
-    color-mix(in srgb, var(--fa-panel-1) 90%, transparent);
-  box-shadow: inset 4px 0 0 var(--fa-status-warning-text);
-}
-
-.fa-agent-team-simple-detail.is-blocked-detail {
-  border-color: color-mix(in srgb, var(--fa-status-warning-text) 58%, var(--fa-border-subtle));
-}
-
-.fa-agent-team-fix-box {
-  border-color: color-mix(in srgb, var(--fa-status-warning-text) 54%, var(--fa-border-subtle));
-  background: color-mix(in srgb, var(--fa-status-warning-text) 9%, var(--fa-panel-1));
-}
-
-@media (max-width: 760px) {
-  .fa-agent-team-blocked-guide {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .fa-agent-team-simple-shell {
   display: grid;
   gap: 14px;
@@ -4402,6 +4305,16 @@
 .fa-agent-team-simple-task strong,
 .fa-agent-team-simple-panel h3 {
   color: var(--fa-text);
+}
+
+.fa-agent-team-blocked-guide strong {
+  font-size: 1rem;
+}
+
+.fa-agent-team-blocked-guide p,
+.fa-agent-team-blocked-guide small {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .fa-agent-team-simple-main {

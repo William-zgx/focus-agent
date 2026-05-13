@@ -31,42 +31,63 @@ from focus_agent.engine.local_persistence import PersistentInMemorySaver
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
 
 
-def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
+class _StaticAIResponseRunnable:
+    def __init__(self, content: str):
+        self.content = content
 
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="done")
+    def with_config(self, _config):
+        return self
 
-    class FakeModel:
-        def bind_tools(self, _tools):
-            return FakeRunnable()
+    def invoke(self, _prompt_messages):
+        return AIMessage(content=self.content)
 
-        def with_config(self, _config):
-            return FakeRunnable()
 
+class _StaticAIResponseModel:
+    def __init__(self, content: str = "done"):
+        self.content = content
+
+    def bind_tools(self, _tools):
+        return _StaticAIResponseRunnable(self.content)
+
+    def with_config(self, _config):
+        return _StaticAIResponseRunnable(self.content)
+
+
+def _patch_static_chat_model(monkeypatch, *, content: str = "done"):
+    fake_model = _StaticAIResponseModel(content=content)
     monkeypatch.setattr(
         "focus_agent.engine.graph_builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
+        lambda *args, **kwargs: fake_model,
     )
+    return fake_model
+
+
+def _invoke_delegation_graph(monkeypatch, settings: Settings, *, model_content: str = "done"):
+    _patch_static_chat_model(monkeypatch, content=model_content)
     graph = build_graph(
-        settings=Settings(
-            plan_act_reflect_enabled=False,
-            agent_role_routing_enabled=True,
-            agent_delegation_enabled=True,
-            agent_delegation_enforce=True,
-        ),
+        settings=settings,
         tool_registry=ToolRegistry(tools=()),
     )
 
-    result = graph.invoke(
+    return graph.invoke(
         {
             "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
             "selected_model": "openai:fake",
         },
         context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
         version="v2",
+    )
+
+
+def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
+    result = _invoke_delegation_graph(
+        monkeypatch,
+        Settings(
+            plan_act_reflect_enabled=False,
+            agent_role_routing_enabled=True,
+            agent_delegation_enabled=True,
+            agent_delegation_enforce=True,
+        ),
     )
 
     delegation = result.value["agent_delegation_plan"]
@@ -78,26 +99,9 @@ def test_graph_delegation_observe_mode_leaves_runs_planned(monkeypatch):
 
 
 def test_graph_delegation_fake_mode_updates_runs_and_artifacts(monkeypatch):
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="done")
-
-    class FakeModel:
-        def bind_tools(self, _tools):
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-    graph = build_graph(
-        settings=Settings(
+    result = _invoke_delegation_graph(
+        monkeypatch,
+        Settings(
             plan_act_reflect_enabled=False,
             agent_role_routing_enabled=True,
             agent_delegation_enabled=True,
@@ -105,16 +109,6 @@ def test_graph_delegation_fake_mode_updates_runs_and_artifacts(monkeypatch):
             agent_task_ledger_enabled=True,
             agent_artifact_synthesis_enabled=True,
         ),
-        tool_registry=ToolRegistry(tools=()),
-    )
-
-    result = graph.invoke(
-        {
-            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
-            "selected_model": "openai:fake",
-        },
-        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
-        version="v2",
     )
 
     delegation = result.value["agent_delegation_plan"]
@@ -131,26 +125,9 @@ def test_graph_delegation_fake_mode_updates_runs_and_artifacts(monkeypatch):
 
 
 def test_graph_delegation_inline_mode_merges_completed_runs_and_artifacts(monkeypatch):
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="inline graph delegated result")
-
-    class FakeModel:
-        def bind_tools(self, _tools):
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-    graph = build_graph(
-        settings=Settings(
+    result = _invoke_delegation_graph(
+        monkeypatch,
+        Settings(
             plan_act_reflect_enabled=False,
             agent_role_routing_enabled=True,
             agent_delegation_enabled=True,
@@ -158,16 +135,7 @@ def test_graph_delegation_inline_mode_merges_completed_runs_and_artifacts(monkey
             agent_task_ledger_enabled=True,
             agent_artifact_synthesis_enabled=True,
         ),
-        tool_registry=ToolRegistry(tools=()),
-    )
-
-    result = graph.invoke(
-        {
-            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
-            "selected_model": "openai:fake",
-        },
-        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
-        version="v2",
+        model_content="inline graph delegated result",
     )
 
     delegation = result.value["agent_delegation_plan"]
@@ -182,26 +150,9 @@ def test_graph_delegation_inline_mode_merges_completed_runs_and_artifacts(monkey
 
 
 def test_graph_delegation_background_mode_merges_completed_runs_and_artifacts(monkeypatch):
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="background graph delegated result")
-
-    class FakeModel:
-        def bind_tools(self, _tools):
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-    graph = build_graph(
-        settings=Settings(
+    result = _invoke_delegation_graph(
+        monkeypatch,
+        Settings(
             plan_act_reflect_enabled=False,
             agent_role_routing_enabled=True,
             agent_delegation_enabled=True,
@@ -210,16 +161,7 @@ def test_graph_delegation_background_mode_merges_completed_runs_and_artifacts(mo
             agent_task_ledger_enabled=True,
             agent_artifact_synthesis_enabled=True,
         ),
-        tool_registry=ToolRegistry(tools=()),
-    )
-
-    result = graph.invoke(
-        {
-            "messages": [HumanMessage(content="Implement and verify delegation runtime.")],
-            "selected_model": "openai:fake",
-        },
-        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
-        version="v2",
+        model_content="background graph delegated result",
     )
 
     delegation = result.value["agent_delegation_plan"]
@@ -231,6 +173,7 @@ def test_graph_delegation_background_mode_merges_completed_runs_and_artifacts(mo
     assert not any(run["status"] == "skipped" for run in delegation["runs"])
     assert not any("not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"])
     assert any("background graph delegated result" in artifact["summary"] for artifact in artifacts)
+
 
 def test_tool_call_repair_canonicalizes_args_and_dedupes_identical_calls():
     assert _canonicalize_tool_call_args('{"query":"focus"}') == {"query": "focus"}

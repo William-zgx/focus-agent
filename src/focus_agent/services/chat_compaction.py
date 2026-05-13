@@ -6,6 +6,7 @@ from typing import Any
 from langchain.messages import HumanMessage
 
 from ..context_usage import build_context_usage
+from ..core.repo_call import has_repo_method
 from ..observability.trajectory import utc_now
 from .chat_turn_errors import ConcurrentTurnError
 from .coordination import background_job_key
@@ -181,9 +182,8 @@ class ChatContextCompactionMixin:
             return
 
         def schedule_compact_later(*, delay: float, attempt: int) -> None:
-            submit_background = getattr(self, "_submit_background_work", None)
-            if callable(submit_background):
-                submit_background(
+            if has_repo_method(self, "_submit_background_work"):
+                self._submit_background_work(
                     key=job_key,
                     func=compact_later,
                     delay_seconds=delay,
@@ -202,9 +202,8 @@ class ChatContextCompactionMixin:
                 )
             except ConcurrentTurnError:
                 if attempt < 2:
-                    release_job = getattr(self, "_release_background_job_key", None)
-                    if callable(release_job):
-                        release_job(job_key)
+                    if has_repo_method(self, "_release_background_job_key"):
+                        self._release_background_job_key(job_key)
                     schedule_compact_later(delay=0.2, attempt=attempt + 1)
                     return
                 logger.debug("post-turn context compaction skipped because the thread stayed busy")

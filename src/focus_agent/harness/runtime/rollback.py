@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from focus_agent.core.repo_call import has_repo_method
+
 ROLLBACK_TARGET_METADATA_KEY = "harness.rollback_target"
 
 
@@ -97,14 +99,12 @@ def _restore_graph_rollback_target_sync(
     if target.checkpoint_id is None:
         if checkpointer is None:
             return CheckpointRollbackResult(requested=True, applied=False, reason="missing_checkpointer")
-        delete_thread = getattr(checkpointer, "delete_thread", None)
-        if not callable(delete_thread):
+        if not has_repo_method(checkpointer, "delete_thread"):
             return CheckpointRollbackResult(requested=True, applied=False, reason="delete_thread_unavailable")
-        delete_thread(target.thread_id)
+        checkpointer.delete_thread(target.thread_id)
         return CheckpointRollbackResult(requested=True, applied=True, reason="deleted_thread")
 
-    update_state = getattr(graph, "update_state", None)
-    if not callable(update_state):
+    if not has_repo_method(graph, "update_state"):
         return CheckpointRollbackResult(requested=True, applied=False, reason="update_state_unavailable")
     config = {
         "configurable": {
@@ -113,7 +113,7 @@ def _restore_graph_rollback_target_sync(
             "checkpoint_id": target.checkpoint_id,
         }
     }
-    next_config = update_state(config, [], as_node="__copy__")
+    next_config = graph.update_state(config, [], as_node="__copy__")
     checkpoint_id = None
     if isinstance(next_config, dict):
         checkpoint_id = str(next_config.get("configurable", {}).get("checkpoint_id") or "") or None

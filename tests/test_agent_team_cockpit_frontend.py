@@ -54,6 +54,11 @@ def test_workbench_uses_agent_team_cockpit_and_merge_decision_hook():
 
 def test_view_model_derives_cockpit_state():
     view_model_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts")
+    derived_state_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-derived-state.ts")
+    decision_state_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-decision-state.ts")
+    focus_state_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-focus-state.ts")
+    view_model_contract_text = view_model_text + "\n" + derived_state_text
+    selector_contract_text = view_model_text + "\n" + decision_state_text + "\n" + focus_state_text
 
     _assert_contains_all(
         view_model_text,
@@ -67,7 +72,7 @@ def test_view_model_derives_cockpit_state():
         ],
     )
     _assert_contains_all(
-        view_model_text,
+        selector_contract_text,
         [
             "isPlanReview",
             "recommendedTaskStateForSelection",
@@ -79,7 +84,7 @@ def test_view_model_derives_cockpit_state():
         ],
     )
     _assert_contains_all(
-        view_model_text,
+        view_model_contract_text,
         [
             "placeholder",
             "Not deliverable",

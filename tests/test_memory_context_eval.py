@@ -7,11 +7,93 @@ from pathlib import Path
 from scripts import memory_context_eval
 
 
+def _write_json(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _write_jsonl(path: Path, records: list[dict]) -> None:
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+
+
+def _write_cases(path: Path, *records: dict) -> None:
+    _write_jsonl(path, list(records))
+
+
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _memory_case(
+    case_id: str,
+    *,
+    rendered_context: str,
+    answer: str,
+    expected: dict,
+    tags: list[str] | None = None,
+    **extra: object,
+) -> dict:
+    return {
+        "id": case_id,
+        "tags": tags or ["memory_context"],
+        "input": {"rendered_context": rendered_context, "answer": answer},
+        "expected": expected,
+        **extra,
+    }
+
+
+def _candidate_case(
+    case_id: str,
+    *,
+    rendered_context: str,
+    answer: str,
+    expected: dict,
+    baseline: str | None = None,
+    tags: list[str] | None = None,
+    origin: dict | None = None,
+    origin_extra: dict | None = None,
+    **extra: object,
+) -> dict:
+    baseline_marker = f"baseline:{baseline}" if baseline else None
+    case = _memory_case(
+        case_id,
+        rendered_context=rendered_context,
+        answer=answer,
+        expected=expected,
+        tags=tags
+        or [
+            "memory_context",
+            "candidate_import",
+            *([baseline_marker] if baseline_marker else []),
+        ],
+        **extra,
+    )
+    if origin is not None:
+        case["origin"] = dict(origin)
+    elif baseline is not None:
+        case["origin"] = {
+            "type": "candidate_import",
+            "baseline_label": baseline,
+            "baseline_marker": baseline_marker,
+            **(origin_extra or {}),
+        }
+    return case
+
+
+def _run_cli(args: list[str], capsys) -> tuple[int, dict, str]:
+    exit_code = memory_context_eval.main(args)
+    output = capsys.readouterr()
+    return exit_code, json.loads(output.out) if output.out else {}, output.err
+
+
 def test_memory_context_quality_dataset_passes(tmp_path: Path) -> None:
     report_path = tmp_path / "memory-context.json"
 
     result = memory_context_eval.run(report_json=report_path)
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_json(report_path)
 
     assert result["status"] == "passed"
     assert report["meta"]["suite"] == "memory_context_quality"
@@ -23,28 +105,22 @@ def test_memory_context_quality_dataset_passes(tmp_path: Path) -> None:
 
 def test_memory_context_quality_reports_failures(tmp_path: Path) -> None:
     dataset = tmp_path / "memory-context.jsonl"
-    dataset.write_text(
-        json.dumps(
-            {
-                "id": "bad-memory-context",
-                "tags": ["memory_context"],
-                "input": {
-                    "rendered_context": "Context contains stale sqlite migration path.",
-                    "answer": "Use sqlite migration path.",
-                },
-                "expected": {
-                    "required_facts": ["postgres migration path"],
-                    "forbidden_facts": ["sqlite migration path"],
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        dataset,
+        _memory_case(
+            "bad-memory-context",
+            rendered_context="Context contains stale sqlite migration path.",
+            answer="Use sqlite migration path.",
+            expected={
+                "required_facts": ["postgres migration path"],
+                "forbidden_facts": ["sqlite migration path"],
+            },
+        ),
     )
     report_path = tmp_path / "report.json"
 
     result = memory_context_eval.run(dataset=dataset, report_json=report_path)
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = _read_json(report_path)
 
     assert result["status"] == "failed"
     assert report["summary"]["failed_case_ids"] == ["bad-memory-context"]
@@ -53,23 +129,18 @@ def test_memory_context_quality_reports_failures(tmp_path: Path) -> None:
 
 def test_memory_context_quality_fails_missing_artifact_refs(tmp_path: Path) -> None:
     dataset = tmp_path / "memory-context.jsonl"
-    dataset.write_text(
-        json.dumps(
-            {
-                "id": "missing-artifact",
-                "tags": ["artifact_ref"],
-                "input": {
-                    "rendered_context": "Context has the decision but no evidence ref.",
-                    "answer": "Use the approved Postgres decision.",
-                },
-                "expected": {
-                    "required_facts": ["approved Postgres decision"],
-                    "artifact_refs": ["artifact://missing/postgres-decision"],
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        dataset,
+        _memory_case(
+            "missing-artifact",
+            tags=["artifact_ref"],
+            rendered_context="Context has the decision but no evidence ref.",
+            answer="Use the approved Postgres decision.",
+            expected={
+                "required_facts": ["approved Postgres decision"],
+                "artifact_refs": ["artifact://missing/postgres-decision"],
+            },
+        ),
     )
 
     result = memory_context_eval.run(dataset=dataset, report_json=tmp_path / "report.json")
@@ -81,23 +152,20 @@ def test_memory_context_quality_fails_missing_artifact_refs(tmp_path: Path) -> N
 
 def test_memory_context_quality_fails_unmarked_conflict(tmp_path: Path) -> None:
     dataset = tmp_path / "memory-context.jsonl"
-    dataset.write_text(
-        json.dumps(
-            {
-                "id": "unmarked-conflict",
-                "tags": ["conflict"],
-                "input": {
-                    "rendered_context": "Old memory says provider is Anthropic. Current config says Moonshot.",
-                    "answer": "Use Moonshot from the current config.",
-                },
-                "expected": {
-                    "required_facts": ["Anthropic", "Moonshot"],
-                    "conflict_markers": ["CONFLICT", "resolve"],
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        dataset,
+        _memory_case(
+            "unmarked-conflict",
+            tags=["conflict"],
+            rendered_context=(
+                "Old memory says provider is Anthropic. Current config says Moonshot."
+            ),
+            answer="Use Moonshot from the current config.",
+            expected={
+                "required_facts": ["Anthropic", "Moonshot"],
+                "conflict_markers": ["CONFLICT", "resolve"],
+            },
+        ),
     )
 
     result = memory_context_eval.run(dataset=dataset, report_json=tmp_path / "report.json")
@@ -109,33 +177,31 @@ def test_memory_context_quality_fails_unmarked_conflict(tmp_path: Path) -> None:
 
 def test_memory_context_failure_conversion_from_replay_report(tmp_path: Path) -> None:
     replay_report = tmp_path / "replay-report.json"
-    replay_report.write_text(
-        json.dumps(
-            {
-                "meta": {"suite": "trajectory_replay"},
-                "results": [
-                    {
-                        "case_id": "ctx-reg-7",
-                        "passed": False,
-                        "input": {
-                            "rendered_context": "Replay context omitted artifact refs.",
-                            "answer": "Use the Postgres migration plan.",
-                        },
-                        "expected": {
-                            "required_facts": ["Postgres migration plan"],
-                            "artifact_refs": ["artifact://trajectory/ctx-reg-7/postgres-plan"],
-                        },
-                        "replay_error": "missing artifact refs",
+    _write_json(
+        replay_report,
+        {
+            "meta": {"suite": "trajectory_replay"},
+            "results": [
+                {
+                    "case_id": "ctx-reg-7",
+                    "passed": False,
+                    "input": {
+                        "rendered_context": "Replay context omitted artifact refs.",
+                        "answer": "Use the Postgres migration plan.",
                     },
-                    {
-                        "case_id": "ctx-reg-8",
-                        "passed": True,
-                        "input": {"rendered_context": "ok", "answer": "ok"},
+                    "expected": {
+                        "required_facts": ["Postgres migration plan"],
+                        "artifact_refs": ["artifact://trajectory/ctx-reg-7/postgres-plan"],
                     },
-                ],
-            }
-        ),
-        encoding="utf-8",
+                    "replay_error": "missing artifact refs",
+                },
+                {
+                    "case_id": "ctx-reg-8",
+                    "passed": True,
+                    "input": {"rendered_context": "ok", "answer": "ok"},
+                },
+            ],
+        },
     )
 
     cases = memory_context_eval.convert_failure_report_to_cases(replay_report)
@@ -153,19 +219,17 @@ def test_memory_context_failure_conversion_skips_records_without_assertions(
     tmp_path: Path,
 ) -> None:
     replay_report = tmp_path / "replay-report.json"
-    replay_report.write_text(
-        json.dumps(
-            {
-                "results": [
-                    {
-                        "case_id": "metadata-only",
-                        "passed": False,
-                        "replay_error": "tool timeout",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
+    _write_json(
+        replay_report,
+        {
+            "results": [
+                {
+                    "case_id": "metadata-only",
+                    "passed": False,
+                    "replay_error": "tool timeout",
+                }
+            ]
+        },
     )
 
     cases = memory_context_eval.convert_failure_report_to_cases(replay_report)
@@ -188,52 +252,41 @@ def test_memory_context_candidate_import_multiple_sources_sanitizes_and_dedupes(
         "required_facts": ["Postgres migration plan"],
         "artifact_refs": ["artifact://candidate/postgres-plan"],
     }
-    replay_source.write_text(
-        json.dumps(
-            {
-                "meta": {"suite": "trajectory_replay"},
-                "results": [
-                    {
-                        "case_id": "alice@example.com",
-                        "input": duplicate_input,
-                        "expected": duplicate_expected,
-                    },
-                    {
-                        "case_id": "metadata-only",
-                        "input": {"rendered_context": "No assertions here."},
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_json(
+        replay_source,
+        {
+            "meta": {"suite": "trajectory_replay"},
+            "results": [
+                {
+                    "case_id": "alice@example.com",
+                    "input": duplicate_input,
+                    "expected": duplicate_expected,
+                },
+                {
+                    "case_id": "metadata-only",
+                    "input": {"rendered_context": "No assertions here."},
+                },
+            ],
+        },
     )
     trajectory_source = tmp_path / "trajectory.jsonl"
-    trajectory_source.write_text(
-        "\n".join(
-            [
-                json.dumps(
-                    {
-                        "id": "artifact-secret-duplicate",
-                        "input": duplicate_input,
-                        "expected": duplicate_expected,
-                    }
-                ),
-                json.dumps(
-                    {
-                        "id": "context-freshness",
-                        "bucket": "context",
-                        "rendered_context": "Current route is BranchTree.",
-                        "answer": "Use the BranchTree route.",
-                        "expected": {
-                            "required_context_markers": ["Current route"],
-                            "answer_contains_all": ["BranchTree route"],
-                        },
-                    }
-                ),
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        trajectory_source,
+        {
+            "id": "artifact-secret-duplicate",
+            "input": duplicate_input,
+            "expected": duplicate_expected,
+        },
+        {
+            "id": "context-freshness",
+            "bucket": "context",
+            "rendered_context": "Current route is BranchTree.",
+            "answer": "Use the BranchTree route.",
+            "expected": {
+                "required_context_markers": ["Current route"],
+                "answer_contains_all": ["BranchTree route"],
+            },
+        },
     )
 
     result = memory_context_eval.import_candidate_cases([replay_source, trajectory_source])
@@ -302,32 +355,30 @@ def test_memory_context_candidate_import_cli_writes_jsonl(
     capsys,
 ) -> None:
     source = tmp_path / "memory-context-report.json"
-    source.write_text(
-        json.dumps(
-            {
-                "meta": {"suite": "memory_context_quality"},
-                "results": [
-                    {
-                        "case_id": "mctx-1",
-                        "case": {
-                            "tags": ["regression"],
-                            "input": {
-                                "rendered_context": "Context mentions the compaction summary.",
-                                "answer": "Use the compaction summary.",
-                            },
-                            "expected": {
-                                "required_facts": ["compaction summary"],
-                            },
+    _write_json(
+        source,
+        {
+            "meta": {"suite": "memory_context_quality"},
+            "results": [
+                {
+                    "case_id": "mctx-1",
+                    "case": {
+                        "tags": ["regression"],
+                        "input": {
+                            "rendered_context": "Context mentions the compaction summary.",
+                            "answer": "Use the compaction summary.",
                         },
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
+                        "expected": {
+                            "required_facts": ["compaction summary"],
+                        },
+                    },
+                }
+            ],
+        },
     )
     dataset_out = tmp_path / "candidates.jsonl"
 
-    exit_code = memory_context_eval.main(
+    exit_code, stdout, _ = _run_cli(
         [
             "--candidate-source-json",
             str(source),
@@ -335,10 +386,10 @@ def test_memory_context_candidate_import_cli_writes_jsonl(
             str(dataset_out),
             "--candidate-baseline-label",
             "nightly",
-        ]
+        ],
+        capsys,
     )
-    stdout = json.loads(capsys.readouterr().out)
-    imported = [json.loads(line) for line in dataset_out.read_text(encoding="utf-8").splitlines()]
+    imported = _read_jsonl(dataset_out)
 
     assert exit_code == 0
     assert stdout["imported"] == 1
@@ -354,33 +405,31 @@ def test_memory_context_candidate_import_cli_refuses_golden_dataset_output(
     capsys,
 ) -> None:
     source = tmp_path / "memory-context-report.json"
-    source.write_text(
-        json.dumps(
-            {
-                "results": [
-                    {
-                        "case_id": "mctx-1",
-                        "input": {
-                            "rendered_context": "Context mentions the compaction summary.",
-                            "answer": "Use the compaction summary.",
-                        },
-                        "expected": {"required_facts": ["compaction summary"]},
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
+    _write_json(
+        source,
+        {
+            "results": [
+                {
+                    "case_id": "mctx-1",
+                    "input": {
+                        "rendered_context": "Context mentions the compaction summary.",
+                        "answer": "Use the compaction summary.",
+                    },
+                    "expected": {"required_facts": ["compaction summary"]},
+                }
+            ],
+        },
     )
 
-    exit_code = memory_context_eval.main(
+    exit_code, _, stderr = _run_cli(
         [
             "--candidate-source-json",
             str(source),
             "--candidate-dataset-out",
             str(memory_context_eval.DEFAULT_DATASET),
-        ]
+        ],
+        capsys,
     )
-    stderr = capsys.readouterr().err
 
     assert exit_code == 2
     assert "must not target the golden memory/context dataset" in stderr
@@ -390,18 +439,15 @@ def test_memory_context_candidate_import_reports_age_and_review_sla(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "trajectory.jsonl"
-    source.write_text(
-        json.dumps(
-            {
-                "id": "old-candidate",
-                "created_at": "2026-04-20T00:00:00Z",
-                "rendered_context": "Context mentions the BranchTree route.",
-                "answer": "Use the BranchTree route.",
-                "expected": {"required_facts": ["BranchTree route"]},
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        source,
+        {
+            "id": "old-candidate",
+            "created_at": "2026-04-20T00:00:00Z",
+            "rendered_context": "Context mentions the BranchTree route.",
+            "answer": "Use the BranchTree route.",
+            "expected": {"required_facts": ["BranchTree route"]},
+        },
     )
 
     result = memory_context_eval.import_candidate_cases(
@@ -423,62 +469,43 @@ def test_memory_context_candidate_review_promotes_only_explicit_approval(
     tmp_path: Path,
 ) -> None:
     candidate_jsonl = tmp_path / "candidates.jsonl"
-    approved_case = {
-        "id": "mc_candidate_approved",
-        "tags": ["memory_context", "candidate_import", "baseline:nightly"],
-        "input": {
-            "rendered_context": "Contact alice@example.com with Bearer abcdefghij12345.",
-            "answer": "Use the Postgres migration plan.",
-        },
-        "expected": {"required_facts": ["Postgres migration plan"]},
-        "origin": {
-            "type": "candidate_import",
-            "baseline_label": "nightly",
-            "baseline_marker": "baseline:nightly",
+    approved_case = _candidate_case(
+        "mc_candidate_approved",
+        baseline="nightly",
+        rendered_context="Contact alice@example.com with Bearer abcdefghij12345.",
+        answer="Use the Postgres migration plan.",
+        expected={"required_facts": ["Postgres migration plan"]},
+        origin_extra={
             "source_type": "replay",
             "source_record_id": "alice@example.com",
         },
-    }
-    rejected_case = {
-        "id": "mc_candidate_rejected",
-        "tags": ["memory_context", "candidate_import", "baseline:nightly"],
-        "input": {"rendered_context": "Rejected context.", "answer": "Rejected answer."},
-        "expected": {"required_context_markers": ["Rejected context"]},
-        "origin": {
-            "type": "candidate_import",
-            "baseline_label": "nightly",
-            "baseline_marker": "baseline:nightly",
-        },
-    }
-    pending_case = {
-        "id": "mc_candidate_pending",
-        "tags": ["memory_context", "candidate_import", "baseline:nightly"],
-        "input": {"rendered_context": "Pending context.", "answer": "Pending answer."},
-        "expected": {"answer_contains_all": ["Pending answer"]},
-        "origin": {
-            "type": "candidate_import",
-            "baseline_label": "nightly",
-            "baseline_marker": "baseline:nightly",
-        },
-    }
+    )
+    rejected_case = _candidate_case(
+        "mc_candidate_rejected",
+        baseline="nightly",
+        rendered_context="Rejected context.",
+        answer="Rejected answer.",
+        expected={"required_context_markers": ["Rejected context"]},
+    )
+    pending_case = _candidate_case(
+        "mc_candidate_pending",
+        baseline="nightly",
+        rendered_context="Pending context.",
+        answer="Pending answer.",
+        expected={"answer_contains_all": ["Pending answer"]},
+    )
     no_assertion_case = {
         "id": "mc_candidate_no_assertions",
         "input": {"rendered_context": "Metadata only.", "answer": ""},
         "expected": {},
     }
-    candidate_jsonl.write_text(
-        "\n".join(
-            json.dumps(case)
-            for case in [
-                approved_case,
-                rejected_case,
-                pending_case,
-                {**approved_case, "id": "mc_candidate_duplicate"},
-                no_assertion_case,
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        candidate_jsonl,
+        approved_case,
+        rejected_case,
+        pending_case,
+        {**approved_case, "id": "mc_candidate_duplicate"},
+        no_assertion_case,
     )
 
     result = memory_context_eval.review_candidate_cases(
@@ -545,33 +572,27 @@ def test_memory_context_candidate_review_marks_promotion_sla_overdue(
     tmp_path: Path,
 ) -> None:
     candidate_jsonl = tmp_path / "candidates.jsonl"
-    candidate_jsonl.write_text(
-        json.dumps(
-            {
-                "id": "mc_candidate_old_pending",
-                "tags": ["memory_context", "candidate_import"],
-                "input": {
-                    "rendered_context": "Context includes the Postgres path.",
-                    "answer": "Use the Postgres path.",
-                },
-                "expected": {"required_facts": ["Postgres path"]},
-                "candidate_ops": {
+    _write_cases(
+        candidate_jsonl,
+        _candidate_case(
+            "mc_candidate_old_pending",
+            rendered_context="Context includes the Postgres path.",
+            answer="Use the Postgres path.",
+            expected={"required_facts": ["Postgres path"]},
+            candidate_ops={
+                "candidate_created_at": "2026-04-20T00:00:00Z",
+                "candidate_age_days": 6.0,
+                "candidate_age_bucket": "over_sla",
+                "promotion_review_sla": {
+                    "sla_days": 3,
                     "candidate_created_at": "2026-04-20T00:00:00Z",
-                    "candidate_age_days": 6.0,
-                    "candidate_age_bucket": "over_sla",
-                    "promotion_review_sla": {
-                        "sla_days": 3,
-                        "candidate_created_at": "2026-04-20T00:00:00Z",
-                        "review_due_at": "2026-04-23T00:00:00Z",
-                        "age_days": 6.0,
-                        "overdue": True,
-                        "status": "overdue",
-                    },
+                    "review_due_at": "2026-04-23T00:00:00Z",
+                    "age_days": 6.0,
+                    "overdue": True,
+                    "status": "overdue",
                 },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+            },
+        ),
     )
 
     result = memory_context_eval.review_candidate_cases(
@@ -596,50 +617,27 @@ def test_memory_context_candidate_review_cli_writes_review_and_promotion(
     capsys,
 ) -> None:
     candidate_jsonl = tmp_path / "candidates.jsonl"
-    candidate_jsonl.write_text(
-        "\n".join(
-            [
-                json.dumps(
-                    {
-                        "id": "mc_candidate_approved",
-                        "tags": ["memory_context", "candidate_import", "baseline:candidate"],
-                        "input": {
-                            "rendered_context": "Context mentions the compaction summary.",
-                            "answer": "Use the compaction summary.",
-                        },
-                        "expected": {"required_facts": ["compaction summary"]},
-                        "origin": {
-                            "type": "candidate_import",
-                            "baseline_label": "candidate",
-                            "baseline_marker": "baseline:candidate",
-                        },
-                    }
-                ),
-                json.dumps(
-                    {
-                        "id": "mc_candidate_pending",
-                        "tags": ["memory_context", "candidate_import", "baseline:candidate"],
-                        "input": {
-                            "rendered_context": "Context mentions the branch tree.",
-                            "answer": "Use the branch tree.",
-                        },
-                        "expected": {"required_facts": ["branch tree"]},
-                        "origin": {
-                            "type": "candidate_import",
-                            "baseline_label": "candidate",
-                            "baseline_marker": "baseline:candidate",
-                        },
-                    }
-                ),
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        candidate_jsonl,
+        _candidate_case(
+            "mc_candidate_approved",
+            baseline="candidate",
+            rendered_context="Context mentions the compaction summary.",
+            answer="Use the compaction summary.",
+            expected={"required_facts": ["compaction summary"]},
+        ),
+        _candidate_case(
+            "mc_candidate_pending",
+            baseline="candidate",
+            rendered_context="Context mentions the branch tree.",
+            answer="Use the branch tree.",
+            expected={"required_facts": ["branch tree"]},
+        ),
     )
     reviewed_out = tmp_path / "reviewed.jsonl"
     promoted_out = tmp_path / "promoted.jsonl"
 
-    exit_code = memory_context_eval.main(
+    exit_code, stdout, _ = _run_cli(
         [
             "--candidate-review-jsonl",
             str(candidate_jsonl),
@@ -649,11 +647,11 @@ def test_memory_context_candidate_review_cli_writes_review_and_promotion(
             str(promoted_out),
             "--candidate-approve-id",
             "mc_candidate_approved",
-        ]
+        ],
+        capsys,
     )
-    stdout = json.loads(capsys.readouterr().out)
-    reviewed = [json.loads(line) for line in reviewed_out.read_text(encoding="utf-8").splitlines()]
-    promoted = [json.loads(line) for line in promoted_out.read_text(encoding="utf-8").splitlines()]
+    reviewed = _read_jsonl(reviewed_out)
+    promoted = _read_jsonl(promoted_out)
 
     assert exit_code == 0
     assert stdout["reviewed"] == 2
@@ -664,42 +662,37 @@ def test_memory_context_candidate_review_cli_writes_review_and_promotion(
     assert [case["id"] for case in promoted] == ["mc_candidate_approved"]
 
     blocked_out = tmp_path / "blocked.jsonl"
-    blocked_exit_code = memory_context_eval.main(
+    blocked_exit_code, _, blocked_stderr = _run_cli(
         [
             "--candidate-review-jsonl",
             str(candidate_jsonl),
             "--candidate-promoted-out",
             str(blocked_out),
-        ]
+        ],
+        capsys,
     )
-    blocked_output = capsys.readouterr()
 
     assert blocked_exit_code == 2
-    assert "--candidate-promoted-out requires" in blocked_output.err
+    assert "--candidate-promoted-out requires" in blocked_stderr
     assert not blocked_out.exists()
 
 
 def test_memory_context_compaction_semantic_metrics_report_drift(tmp_path: Path) -> None:
     dataset = tmp_path / "compaction.jsonl"
-    dataset.write_text(
-        json.dumps(
-            {
-                "id": "context-compaction-drift",
-                "tags": ["memory_context", "context_compaction"],
-                "input": {
-                    "rendered_context": "rolling_summary says old sqlite path is approved.",
-                    "answer": "Use the sqlite path.",
-                },
-                "expected": {
-                    "required_facts": ["Postgres path"],
-                    "forbidden_facts": ["sqlite path"],
-                    "required_context_markers": ["Postgres path"],
-                    "answer_contains_all": ["Postgres path"],
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_cases(
+        dataset,
+        _memory_case(
+            "context-compaction-drift",
+            tags=["memory_context", "context_compaction"],
+            rendered_context="rolling_summary says old sqlite path is approved.",
+            answer="Use the sqlite path.",
+            expected={
+                "required_facts": ["Postgres path"],
+                "forbidden_facts": ["sqlite path"],
+                "required_context_markers": ["Postgres path"],
+                "answer_contains_all": ["Postgres path"],
+            },
+        ),
     )
 
     result = memory_context_eval.run(dataset=dataset, report_json=tmp_path / "report.json")
@@ -719,51 +712,40 @@ def test_memory_regression_trend_report_summarizes_stages_and_alerts(
     reviewed_jsonl = tmp_path / "reviewed.jsonl"
     promoted_jsonl = tmp_path / "promoted.jsonl"
     golden_jsonl = tmp_path / "golden.jsonl"
-    polluted_candidate = {
-        "id": "candidate-polluted",
-        "tags": ["memory_context", "candidate_import"],
-        "input": {
-            "rendered_context": "Context includes stale sqlite path.",
-            "answer": "Use the Postgres path.",
-        },
-        "expected": {
+    polluted_candidate = _candidate_case(
+        "candidate-polluted",
+        rendered_context="Context includes stale sqlite path.",
+        answer="Use the Postgres path.",
+        expected={
             "required_facts": ["Postgres path"],
             "forbidden_facts": ["sqlite path"],
         },
-    }
-    reviewed_case = {
-        "id": "reviewed-approved",
-        "tags": ["memory_context", "candidate_import"],
-        "input": {
-            "rendered_context": "Context includes Postgres path.",
-            "answer": "Use the Postgres path.",
-        },
-        "expected": {"required_facts": ["Postgres path"]},
-        "promotion_review": {"status": "approved", "approved": True},
-    }
-    golden_case = {
-        "id": "golden-compaction",
-        "tags": ["memory_context", "context_compaction"],
-        "input": {
-            "rendered_context": "rolling_summary keeps Postgres path.",
-            "answer": "Use the Postgres path.",
-        },
-        "expected": {
+    )
+    reviewed_case = _candidate_case(
+        "reviewed-approved",
+        rendered_context="Context includes Postgres path.",
+        answer="Use the Postgres path.",
+        expected={"required_facts": ["Postgres path"]},
+        promotion_review={"status": "approved", "approved": True},
+    )
+    golden_case = _memory_case(
+        "golden-compaction",
+        tags=["memory_context", "context_compaction"],
+        rendered_context="rolling_summary keeps Postgres path.",
+        answer="Use the Postgres path.",
+        expected={
             "required_facts": ["Postgres path"],
             "required_context_markers": ["Postgres path"],
             "answer_contains_all": ["Postgres path"],
         },
-    }
+    )
     for path, cases in (
         (candidate_jsonl, [polluted_candidate]),
         (reviewed_jsonl, [reviewed_case]),
         (promoted_jsonl, [reviewed_case]),
         (golden_jsonl, [golden_case]),
     ):
-        path.write_text(
-            "\n".join(json.dumps(case) for case in cases) + "\n",
-            encoding="utf-8",
-        )
+        _write_jsonl(path, cases)
 
     report = memory_context_eval.build_memory_regression_trend_report(
         candidate_jsonl=[candidate_jsonl],
@@ -785,19 +767,16 @@ def test_memory_regression_trend_cli_writes_report(tmp_path: Path, capsys) -> No
     candidate_jsonl = tmp_path / "candidate.jsonl"
     golden_jsonl = tmp_path / "golden.jsonl"
     report_json = tmp_path / "trend.json"
-    case = {
-        "id": "candidate-ok",
-        "tags": ["memory_context"],
-        "input": {
-            "rendered_context": "Context includes the branch tree.",
-            "answer": "Use the branch tree.",
-        },
-        "expected": {"required_facts": ["branch tree"]},
-    }
+    case = _memory_case(
+        "candidate-ok",
+        rendered_context="Context includes the branch tree.",
+        answer="Use the branch tree.",
+        expected={"required_facts": ["branch tree"]},
+    )
     for path in (candidate_jsonl, golden_jsonl):
-        path.write_text(json.dumps(case) + "\n", encoding="utf-8")
+        _write_cases(path, case)
 
-    exit_code = memory_context_eval.main(
+    exit_code, stdout, _ = _run_cli(
         [
             "--trend-report-json",
             str(report_json),
@@ -805,10 +784,10 @@ def test_memory_regression_trend_cli_writes_report(tmp_path: Path, capsys) -> No
             str(candidate_jsonl),
             "--trend-golden-jsonl",
             str(golden_jsonl),
-        ]
+        ],
+        capsys,
     )
-    stdout = json.loads(capsys.readouterr().out)
-    report = json.loads(report_json.read_text(encoding="utf-8"))
+    report = _read_json(report_json)
 
     assert exit_code == 0
     assert stdout["status"] == "ok"

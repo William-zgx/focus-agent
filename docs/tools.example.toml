@@ -81,6 +81,11 @@ label = "Web Fetch"
 description = "Fetch and extract readable text from a user-provided HTTP or HTTPS URL."
 default_max_chars = 12000
 max_chars_cap = 50000
+# Optional domain policy. Localhost, private, reserved, link-local, and .local
+# hosts are always blocked. When allowed_domains is non-empty, other domains
+# are denied unless they match one of these suffix rules.
+blocked_domains = []
+allowed_domains = []
 
 [memory_save]
 enabled = true

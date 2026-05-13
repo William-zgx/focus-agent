@@ -1,10 +1,10 @@
 # Focus Agent Docs Index / 文档索引
 
-更新时间：2026-05-12
+更新时间：2026-05-13
 
-This is the canonical navigation entry for `docs/`. Root README files stay lightweight; deeper guides live here and are grouped by use case.
+This is the canonical navigation entry for `docs/`. Root README files stay lightweight and describe the current platform-scale positioning; deeper guides live here and are grouped by use case.
 
-这份索引是 `docs/` 的唯一导航入口。根目录 README 保持轻量；更完整的说明集中到这里，并按使用场景分组。
+这份索引是 `docs/` 的唯一导航入口。根目录 README 保持轻量，并描述当前平台化应用骨架的定位；更完整的说明集中到这里，并按使用场景分组。
 
 ```mermaid
 flowchart LR
@@ -20,6 +20,7 @@ flowchart LR
     Develop --> EvalGuide["Agent Evaluation"]
     Develop --> SDK["Frontend SDK"]
     Topics --> Governance["Agent Governance"]
+    Topics --> AuthAccess["Auth / Access"]
     Topics --> AgentTeam["Agent Team Workbench"]
     Topics --> Admin["Admin Console"]
     Topics --> Streaming["Streaming Contract"]
@@ -41,7 +42,7 @@ flowchart LR
 
 ## Understand The System / 理解系统
 
-- [architecture.md](architecture.md)：整体架构、核心请求链路、拆分后的服务/工具/图边界、持久化边界、前端/SDK、部署和验证总览。
+- [architecture.md](architecture.md)：整体架构、核心请求链路、平台维护边界、拆分后的服务/工具/图边界、持久化边界、前端/SDK、部署和验证总览。
 - [roadmap.md](roadmap.md)：当前基线、下一阶段重点和仍在推进的方向。
 
 ## Develop And Validate / 开发验证
@@ -51,12 +52,12 @@ flowchart LR
 ## Core Topics / 核心专题
 
 - [agent-role-routing.md](agent-role-routing.md)：Agent Governance、role routing、tool routing、delegation、context、task ledger、critic gate 和 eval gate。
+- [auth-access.md](auth-access.md)：登录、注册、Bearer/Demo token、refresh session、账号自助页面、ownership 和生产鉴权边界。
 - [agent-team-workbench.md](agent-team-workbench.md)：Agent Team Mission Runner 的目标驱动规划、DAG 执行、最终答案、API、持久化边界和多 Agent 开发验收口径。
 - [admin-console.md](admin-console.md)：管理员用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件、权限边界和验证口径。
 - [streaming-contract.md](streaming-contract.md)：SSE 事件模型、`message.delta` 可见文本边界、工具协议隔离、SDK reducer 和处理过程卡契约。
 - [context-window.md](context-window.md)：当前上下文窗口用量、发送栏 Context Meter、手动/自动压缩、API/SDK 和 `token_usage` 边界。
-- [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget 和 branch promotion。
-- [memory-system.md](memory-system.md)：旧版 memory 设计背景，保留作历史参考。
+- [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget、branch promotion 和 legacy fallback / migration 背景。
 - [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、运行时策略和扩展检查项。
 
 ## Operations And Release / 运维发布
@@ -75,9 +76,9 @@ flowchart LR
 ## Maintenance Principles / 维护原则
 
 - 同一主题只保留一个 canonical 文档，其他文档只做摘要和跳转。
-- 根目录 README 只做轻入口，不承载长篇操作说明。
+- 根目录 README 只做轻入口和当前定位说明，不承载长篇操作说明。
 - `docs/README.md` 是 `docs/` 的唯一导航入口；新增文档应先确认归属分组和 canonical 位置。
-- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Agent Team、Admin Console、Streaming Contract、Context Window、Memory、Tool / Skill、Docker、Observability 和 SDK 文档。
+- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Auth / Access、Agent Team、Admin Console、Streaming Contract、Context Window、Memory、Tool / Skill、Docker、Observability 和 SDK 文档。
 - `development.md` / `development.zh-CN.md` 讲本地开发与验证命令；release provider 细节放到 `ci/github-actions-release-gate.md`。
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 阶段性方案、执行记录和草稿不要长期堆在 `docs/`，应放到 issue、PR 或项目管理工具。

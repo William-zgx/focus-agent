@@ -5,6 +5,7 @@ from typing import Any
 from langchain.messages import SystemMessage
 from pydantic import ValidationError
 
+from ..core.repo_call import REPO_METHOD_ERROR, REPO_METHOD_MISSING, has_repo_method, safe_repo_call
 from ..core.branching import BranchMeta, BranchStatus
 from ..core.request_context import RequestContext
 from ..core.state import normalize_agent_state
@@ -101,9 +102,14 @@ class ChatThreadAccessMixin:
         return values
 
     def _branch_meta_from_repo(self, thread_id: str) -> BranchMeta | None:
-        try:
-            record = self.runtime.repo.get_by_child_thread_id(thread_id)
-        except Exception:
+        record = safe_repo_call(
+            self.runtime.repo,
+            "get_by_child_thread_id",
+            thread_id,
+            default_missing=None,
+            default_error=None,
+        )
+        if record is None:
             return None
         return BranchMeta(
             branch_id=record.branch_id,
@@ -184,15 +190,21 @@ class ChatThreadAccessMixin:
             self._ensure_root_conversation_record(root_thread_id=context.root_thread_id, user_id=user_id)
 
     def _ensure_root_conversation_record(self, *, root_thread_id: str, user_id: str) -> None:
-        get_conversation = getattr(self.runtime.repo, "get_conversation", None)
-        create_conversation = getattr(self.runtime.repo, "create_conversation", None)
-        if not callable(get_conversation) or not callable(create_conversation):
+        repo = self.runtime.repo
+        if not has_repo_method(repo, "get_conversation") or not has_repo_method(repo, "create_conversation"):
             return
-        try:
-            get_conversation(root_thread_id)
+        create_conversation = getattr(repo, "create_conversation")
+
+        conversation = safe_repo_call(
+            repo,
+            "get_conversation",
+            root_thread_id,
+            except_errors=(KeyError,),
+            default_missing=REPO_METHOD_MISSING,
+            default_error=REPO_METHOD_ERROR,
+        )
+        if conversation is not REPO_METHOD_MISSING and conversation is not REPO_METHOD_ERROR:
             return
-        except KeyError:
-            pass
         try:
             create_conversation(
                 ConversationRecord(
@@ -205,9 +217,13 @@ class ChatThreadAccessMixin:
         except Exception:
             # If concurrent workers race here, another session may have already persisted it.
             # Retry the read path and only fail loudly when the conversation is still missing.
-            try:
-                get_conversation(root_thread_id)
-            except Exception:
+            retry = safe_repo_call(
+                repo,
+                "get_conversation",
+                root_thread_id,
+                except_errors=(Exception,),
+            )
+            if retry is REPO_METHOD_ERROR:
                 raise
 
     @staticmethod

@@ -18,6 +18,7 @@ from ..capabilities.tool_runtime import (
     is_tool_approval_approved,
     tool_approval_response_error,
 )
+from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..core.state import AgentState, append_agent_state_record
 from .graph_turn_helpers import (
@@ -231,10 +232,9 @@ def make_tool_executor_node(
 def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:
     if isinstance(route_plan, Mapping):
         return route_plan
-    model_dump = getattr(route_plan, "model_dump", None)
-    if not callable(model_dump):
+    if not has_repo_method(route_plan, "model_dump"):
         return None
-    dumped = model_dump(mode="json")
+    dumped = route_plan.model_dump(mode="json")
     return dumped if isinstance(dumped, Mapping) else None
 
 

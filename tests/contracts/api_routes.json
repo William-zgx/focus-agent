@@ -1832,6 +1832,18 @@
       }
     },
     {
+      "method": "GET",
+      "operation_id": "list_agent_toolsets_v1_agent_toolsets_get",
+      "parameters": [],
+      "path": "/v1/agent/toolsets",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentToolsetListResponse"
+        }
+      }
+    },
+    {
       "method": "POST",
       "operation_id": "change_password_v1_auth_change_password_post",
       "parameters": [],
@@ -7020,6 +7032,86 @@
           "type": "object"
         }
       },
+      "type": "object"
+    },
+    "AgentToolsetListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentToolsetResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentToolsetResponse": {
+      "properties": {
+        "allowed_roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "intent_policies": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requires_approval": {
+          "default": false,
+          "type": "boolean"
+        },
+        "requires_network": {
+          "default": false,
+          "type": "boolean"
+        },
+        "requires_workspace_write": {
+          "default": false,
+          "type": "boolean"
+        },
+        "risk_levels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "side_effect": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
       "type": "object"
     },
     "ApplyAgentTeamMergeDecisionRequest": {

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from focus_agent.core.token_usage import normalize_token_usage
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import ConversationSummaryResponse
-from .token_usage import _normalize_token_usage
 
 
 def _conversation_response(record: ConversationRecord) -> ConversationSummaryResponse:
@@ -15,7 +15,7 @@ def _conversation_response(record: ConversationRecord) -> ConversationSummaryRes
         archived_at=record.archived_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
-        token_usage=_normalize_token_usage(record.token_usage),
+        token_usage=normalize_token_usage(record.token_usage),
     )
 
 

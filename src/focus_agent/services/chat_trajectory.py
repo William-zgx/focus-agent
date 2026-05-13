@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from ..core.branching import BranchMeta
+from ..core.repo_call import has_repo_method
 from ..observability.tracing import TraceCorrelation
 from ..observability.trajectory import build_turn_trajectory_record
 
@@ -32,8 +33,7 @@ def record_turn_trajectory_best_effort(
 ) -> None:
     if recorder is None:
         return
-    record_turn = getattr(recorder, 'record_turn', None)
-    if not callable(record_turn):
+    if not has_repo_method(recorder, 'record_turn'):
         return
     try:
         record = build_turn_trajectory_record(
@@ -56,6 +56,6 @@ def record_turn_trajectory_best_effort(
             answer_max_chars=settings.trajectory_answer_max_chars,
             hash_user_id=settings.trajectory_hash_user_id,
         )
-        record_turn(record)
+        recorder.record_turn(record)
     except Exception:  # noqa: BLE001
         logger.warning("failed to persist turn trajectory", exc_info=True)

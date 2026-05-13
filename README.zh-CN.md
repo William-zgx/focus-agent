@@ -6,9 +6,9 @@
 
 ![Focus Agent 展示图](docs/assets/focus-agent-readme-hero.zh-CN.svg)
 
-Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式会话、实时输出、访问控制、管理员控制台和轻量 Web UI 的 AI 应用。
+Focus Agent 是一个 Web-first 的 Agent 应用骨架，当前已经发展成一个小型平台：支持分支式会话、实时输出、访问控制、管理员运维、可观测性、记忆链路、Agent Team 协作流程和类型完备的前端 SDK。
 
-它面向的是这样一类团队：需要一个清晰、可演进的 AI 系统起点，但又不想过早引入庞大、难改、难理解的平台。
+它面向的是这样一类团队：需要一个 local-first、可理解、可演进的长任务 AI 系统基础，同时希望平台边界保持清楚。它已经不只是最小 demo：后端运行时、Web App、SDK、持久化适配、发布/eval 工具和 Agent Team 协作模块都按独立维护区域管理。
 
 ## 为什么是 Focus Agent
 
@@ -90,6 +90,8 @@ docker compose up --build
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
 - [架构说明与模块导航](docs/architecture.md)
+- [Auth / Access](docs/auth-access.md)
+- [Agent Team Workbench](docs/agent-team-workbench.md)
 - [管理员控制台](docs/admin-console.md)
 - [流式事件契约](docs/streaming-contract.md)
 - [发布检查清单](docs/release-checklist.md)

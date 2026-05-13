@@ -19,6 +19,15 @@ from typing import Any, Callable, Mapping, Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from scripts._report_io import (  # noqa: E402
+    load_json,
+    print_json_stdout,
+    resolve_optional_path,
+    write_json_report,
+)
+
 DEFAULT_OUTPUT_ROOT = Path("reports/release-gate")
 TAIL_LINE_LIMIT = 80
 TAIL_CHAR_LIMIT = 12_000
@@ -64,15 +73,6 @@ def _format_utc(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
-def _resolve_path(path: str | Path | None, root: Path) -> Path | None:
-    if path is None:
-        return None
-    target = Path(path)
-    if not target.is_absolute():
-        target = root / target
-    return target
-
-
 def _normalize_release_id(release_id: str) -> str:
     normalized = "".join(char if char.isalnum() or char in "._-" else "-" for char in release_id)
     normalized = normalized.strip(".-_")
@@ -103,12 +103,7 @@ def _default_release_id(root: Path) -> str:
 
 
 def _write_json(path: Path, payload: object) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return path
+    return write_json_report(path, payload)
 
 
 def _sha256(path: Path) -> str:
@@ -120,7 +115,7 @@ def _sha256(path: Path) -> str:
 
 
 def _copy_or_reference_json(source: str | Path | None, target: Path, *, root: Path) -> tuple[Path | None, Path | None]:
-    source_path = _resolve_path(source, root)
+    source_path = resolve_optional_path(source, root)
     if source_path is None:
         return None, None
     if not source_path.exists():
@@ -600,7 +595,7 @@ def _load_release_health_summary(report_json: Path) -> dict[str, Any]:
         }
 
     try:
-        payload = json.loads(report_json.read_text(encoding="utf-8"))
+        payload = load_json(report_json)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return {
             "error": str(exc),
@@ -730,7 +725,7 @@ def _storage_metadata(
             "summary_json": str(summary_json),
         }
 
-    storage_base = _resolve_path(storage_dir, root)
+    storage_base = resolve_optional_path(storage_dir, root)
     if storage_base is None:
         raise ValueError("storage directory could not be resolved")
     stored_pack_dir = storage_base / release_id
@@ -1032,15 +1027,15 @@ def run_release_evidence(
         release_id_source = "explicit"
     else:
         resolved_release_id, release_id_source = _default_release_id_with_source(root)
-    pack_dir = _resolve_path(output_dir, root) if output_dir is not None else None
+    pack_dir = resolve_optional_path(output_dir, root) if output_dir is not None else None
     if pack_dir is None:
-        output_base = _resolve_path(output_root, root)
+        output_base = resolve_optional_path(output_root, root)
         if output_base is None:
             raise ValueError("output root could not be resolved")
         pack_dir = output_base / resolved_release_id
     pack_dir.mkdir(parents=True, exist_ok=True)
 
-    report_json = _resolve_path(release_health_report_json, root) if release_health_report_json else None
+    report_json = resolve_optional_path(release_health_report_json, root) if release_health_report_json else None
     if report_json is None:
         report_json = pack_dir / "release-health.json"
 
@@ -1303,16 +1298,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[release-evidence] {exc}", file=sys.stderr)
         return 2
 
-    print(
-        json.dumps(
-            {
-                "manifest_json": manifest["manifest_json"],
-                "release_health_report_json": manifest["release_health"]["report_json"],
-                "status": manifest["summary"]["status"],
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json_stdout(
+        {
+            "manifest_json": manifest["manifest_json"],
+            "release_health_report_json": manifest["release_health"]["report_json"],
+            "status": manifest["summary"]["status"],
+        },
+        sort_keys=True,
     )
     return 1 if manifest["summary"]["status"] == "failed" else 0
 

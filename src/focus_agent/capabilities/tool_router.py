@@ -32,6 +32,21 @@ class CapabilityDescriptor(StateModel):
     provider_id: str | None = None
 
 
+class ToolsetDescriptor(StateModel):
+    name: str
+    description: str = ""
+    tools: list[str] = Field(default_factory=list)
+    count: int = 0
+    provider_ids: list[str] = Field(default_factory=list)
+    risk_levels: list[str] = Field(default_factory=list)
+    allowed_roles: list[str] = Field(default_factory=list)
+    intent_policies: list[str] = Field(default_factory=list)
+    requires_network: bool = False
+    requires_workspace_write: bool = False
+    side_effect: bool = False
+    requires_approval: bool = False
+
+
 class ToolRouteDecision(StateModel):
     name: str
     allowed: bool
@@ -65,6 +80,16 @@ class ToolIntentPlan(StateModel):
     allowed_toolsets: list[str] = Field(default_factory=list)
     denied_toolsets: list[str] = Field(default_factory=list)
     source: str = "deterministic"
+
+
+_TOOLSET_DESCRIPTIONS = {
+    "artifact": "Draft and iterate explicit user-visible artifacts.",
+    "memory": "Read and manage durable memory and conversation recovery state.",
+    "skill": "Inspect reusable local and bundled workflow instructions.",
+    "web": "Retrieve live web evidence and URL content.",
+    "workspace": "Inspect repository files, code, and git state.",
+}
+_RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
 
 
 class CapabilityPolicyEngine:
@@ -125,6 +150,50 @@ def build_capability_registry(tool_registry: ToolRegistry) -> list[CapabilityDes
         runtime = tool_registry.runtime_by_name.get(name) or ToolRuntimeMeta()
         descriptors.append(capability_from_tool(name=name, description=str(getattr(tool, "description", "") or ""), runtime=runtime))
     return sorted(descriptors, key=lambda item: item.name)
+
+
+def build_toolset_registry(tool_registry: ToolRegistry) -> list[ToolsetDescriptor]:
+    grouped: dict[str, list[CapabilityDescriptor]] = {}
+    for capability in build_capability_registry(tool_registry):
+        toolset = capability.toolset or f"ungrouped:{capability.name}"
+        grouped.setdefault(toolset, []).append(capability)
+
+    descriptors: list[ToolsetDescriptor] = []
+    for name, capabilities in grouped.items():
+        tools = sorted(capability.name for capability in capabilities)
+        provider_ids = _sorted_unique(
+            capability.provider_id for capability in capabilities if capability.provider_id
+        )
+        risk_levels = sorted(
+            {capability.risk_level for capability in capabilities if capability.risk_level},
+            key=lambda item: (_RISK_ORDER.get(item, 99), item),
+        )
+        descriptors.append(
+            ToolsetDescriptor(
+                name=name,
+                description=_TOOLSET_DESCRIPTIONS.get(
+                    name,
+                    "Provider-defined tool group." if not name.startswith("ungrouped:") else "Tool without a declared toolset.",
+                ),
+                tools=tools,
+                count=len(tools),
+                provider_ids=provider_ids,
+                risk_levels=risk_levels,
+                allowed_roles=_sorted_unique(
+                    role for capability in capabilities for role in capability.allowed_roles
+                ),
+                intent_policies=_sorted_unique(
+                    policy for capability in capabilities for policy in capability.intent_policies
+                ),
+                requires_network=any(capability.requires_network for capability in capabilities),
+                requires_workspace_write=any(
+                    capability.requires_workspace_write for capability in capabilities
+                ),
+                side_effect=any(capability.side_effect for capability in capabilities),
+                requires_approval=any(capability.requires_approval for capability in capabilities),
+            )
+        )
+    return sorted(descriptors, key=lambda item: (item.name.startswith("ungrouped:"), item.name))
 
 
 def capability_from_tool(*, name: str, description: str, runtime: ToolRuntimeMeta) -> CapabilityDescriptor:
@@ -227,6 +296,10 @@ def _normalized_tool_names(names: Iterable[str] | None) -> list[str]:
     return normalized
 
 
+def _sorted_unique(values: Iterable[str | None]) -> list[str]:
+    return sorted({str(value).strip() for value in values if str(value or "").strip()})
+
+
 def infer_tool_router_role(role_route_plan: dict[str, Any] | None, *, fallback: AgentRole = AgentRole.EXECUTOR) -> AgentRole:
     if isinstance(role_route_plan, dict):
         for raw in role_route_plan.get("decisions") or []:
@@ -252,10 +325,12 @@ def _default_risk_level(runtime: ToolRuntimeMeta) -> str:
 __all__ = [
     "CapabilityPolicyEngine",
     "CapabilityDescriptor",
+    "ToolsetDescriptor",
     "ToolRouteDecision",
     "ToolIntentPlan",
     "ToolRoutePlan",
     "build_capability_registry",
+    "build_toolset_registry",
     "build_tool_route_plan",
     "infer_tool_router_role",
 ]

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "focus-agent"
 version = "1.0.0"
-description = "A concise long-dialogue research agent with branchable conversations built on LangChain/LangGraph."
+description = "A web-first Agent application scaffold with branching conversations, observability, memory, Agent Team workflows, and a typed SDK."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

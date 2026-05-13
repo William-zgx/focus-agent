@@ -2,6 +2,7 @@ import { useShellUi } from "@/app/shell/shell-ui-context";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 import { FieldList, StatusPill } from "./agent-team-workbench-shared";
+import { artifactsForTask, outputsForTask } from "./agent-team-workbench-task-output-utils";
 import type { useAgentTeamWorkbenchViewModel } from "./agent-team-workbench-view-model";
 import {
   compactTaskGoal,
@@ -651,19 +652,6 @@ function blockedReasonInfo(
     requiresExecutionSetup: false,
     title: isChineseUi ? "先处理这个卡住的任务" : "Handle this blocked task first",
   };
-}
-
-function outputsForTask(outputs: AgentTeamTaskOutput[], task: AgentTeamTask) {
-  return outputs.filter((output) => output.task_id === task.task_id);
-}
-
-function artifactsForTask(artifacts: AgentTeamArtifact[], task: AgentTeamTask, outputs: AgentTeamTaskOutput[] = []) {
-  const artifactIds = new Set([
-    ...(task.artifact_ids ?? []),
-    ...(task.output_artifact_ids ?? []),
-    ...outputs.map((output) => output.artifact_id).filter((artifactId): artifactId is string => Boolean(artifactId)),
-  ]);
-  return artifacts.filter((artifact) => artifact.task_id === task.task_id || artifactIds.has(artifact.artifact_id));
 }
 
 function taskOutputSummary(

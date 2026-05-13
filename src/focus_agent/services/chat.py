@@ -10,6 +10,7 @@ from langchain.messages import HumanMessage
 from langgraph.types import Command
 
 from ..core.branching import BranchMeta
+from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..engine.runtime import AppRuntime
 from ..observability.tracing import (
@@ -144,9 +145,8 @@ class ChatService(
         )
 
     def _release_background_job_key(self, key: str) -> None:
-        release = getattr(self._background_work, "release_job_key", None)
-        if callable(release):
-            release(key)
+        if has_repo_method(self._background_work, "release_job_key"):
+            self._background_work.release_job_key(key)
             return
         self._coordination_backend.job_deduper.release_job_key(key)
 
@@ -168,12 +168,11 @@ class ChatService(
     ) -> bool | None:
         if not self._durable_background_execution_enabled():
             return None
-        enqueue = getattr(self._coordination_backend.job_deduper, "enqueue_job", None)
-        if not callable(enqueue):
+        if not has_repo_method(self._coordination_backend.job_deduper, "enqueue_job"):
             return None
         try:
             return bool(
-                enqueue(
+                self._coordination_backend.job_deduper.enqueue_job(
                     BackgroundJobSpec(
                         kind=kind,
                         key=key,

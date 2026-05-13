@@ -5,6 +5,7 @@ import {
   compactTaskGoal,
   defaultTaskActionLabel,
   errorMessage,
+  isRecord,
   isTaskDone,
   isTaskQueued,
   isTaskReady,
@@ -15,6 +16,18 @@ import {
   taskTitle,
 } from "./agent-team-workbench-utils";
 import { EmptyList, FieldList, HelpText } from "./agent-team-workbench-shared";
+import {
+  artifactsForTask,
+  formatUnknown,
+  hasFakeExecution,
+  isRawRunText,
+  latestTaskOutput,
+  outputsForTask,
+  stringFromUnknown,
+  taskOutputEvidence,
+  taskOutputRisks,
+  uniqueStrings,
+} from "./agent-team-workbench-task-output-utils";
 import { useCancelAgentTeamTask, useRetryAgentTeamTask, useRunAgentTeamTask } from "./use-agent-team";
 import type { AgentTeamArtifact, AgentTeamTask, AgentTeamTaskOutput } from "./types";
 
@@ -59,62 +72,6 @@ function taskResultSummary(
   return isChineseUi ? "尚未产生运行结果。" : "No run result yet.";
 }
 
-function latestTaskOutput(outputs: AgentTeamTaskOutput[]) {
-  return [...outputs].sort((left, right) => Date.parse(right.created_at ?? "") - Date.parse(left.created_at ?? ""))[0] ?? null;
-}
-
-function outputsForTask(outputs: AgentTeamTaskOutput[], task: AgentTeamTask) {
-  return outputs.filter((output) => output.task_id === task.task_id);
-}
-
-function artifactsForTask(
-  artifacts: AgentTeamArtifact[],
-  task: AgentTeamTask,
-  outputs: AgentTeamTaskOutput[] = [],
-) {
-  const artifactIds = new Set([
-    ...(task.artifact_ids ?? []),
-    ...(task.output_artifact_ids ?? []),
-    ...outputs.map((output) => output.artifact_id).filter((id): id is string => Boolean(id)),
-  ]);
-  return artifacts.filter((artifact) => artifact.task_id === task.task_id || artifactIds.has(artifact.artifact_id));
-}
-
-function uniqueStrings(items: (string | null | undefined)[]) {
-  return Array.from(
-    new Set(
-      items
-        .map((item) => item?.trim())
-        .filter((item): item is string => Boolean(item)),
-    ),
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stringFromUnknown(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isRawRunText(value: string) {
-  return /(?:^|\b)(fake delegated|delegated fake run|delegated (?:fake|inline|background|observe) run|run-|artifact-)/i.test(value.trim());
-}
-
-function hasFakeExecution(outputs: AgentTeamTaskOutput[]) {
-  return outputs.some((output) => {
-    const metadata = isRecord(output.metadata) ? output.metadata : {};
-    const execution = isRecord(metadata.execution) ? metadata.execution : {};
-    const run = isRecord(metadata.run) ? metadata.run : {};
-    return (
-      stringFromUnknown(execution.execution_mode).toLowerCase() === "fake" ||
-      stringFromUnknown(run.execution_mode).toLowerCase() === "fake" ||
-      stringFromUnknown(metadata.execution_mode).toLowerCase() === "fake"
-    );
-  });
-}
-
 function outputExecutionItems(output: AgentTeamTaskOutput, isChineseUi: boolean) {
   const metadata = isRecord(output.metadata) ? output.metadata : {};
   const execution = isRecord(metadata.execution) ? metadata.execution : {};
@@ -152,24 +109,6 @@ function artifactPayloadItems(artifact: AgentTeamArtifact, isChineseUi: boolean)
       ? `${isChineseUi ? "确定性运行" : "Deterministic"}: ${String(payload.deterministic)}`
       : null,
   ]);
-}
-
-function formatUnknown(value: unknown) {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function taskOutputEvidence(outputs: AgentTeamTaskOutput[]) {
-  return uniqueStrings(outputs.flatMap((output) => output.test_evidence ?? []));
-}
-
-function taskOutputRisks(outputs: AgentTeamTaskOutput[]) {
-  return uniqueStrings(outputs.flatMap((output) => output.risk_notes ?? []));
 }
 
 function taskAttentionItems(task: AgentTeamTask, isChineseUi: boolean) {

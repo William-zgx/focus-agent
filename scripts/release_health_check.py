@@ -13,8 +13,10 @@ from urllib import request as urllib_request
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from scripts._report_io import load_json, print_json_stdout, resolve_path, write_json_report  # noqa: E402
 from focus_agent.observability.release_health import (  # noqa: E402
     FAIL,
     WARN,
@@ -37,10 +39,6 @@ PRODUCTION_REPORT_INPUTS = (
 )
 
 
-def _load_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
 def _load_json_input(
     path: str | Path | None,
     *,
@@ -51,7 +49,7 @@ def _load_json_input(
     if not path:
         return None, False
     try:
-        return _load_json(path), True
+        return load_json(path), True
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         if not live_mode:
             raise
@@ -85,13 +83,6 @@ def _http_get_json(url: str) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _resolve_path(path: str | Path, root: Path) -> Path:
-    target = Path(path)
-    if not target.is_absolute():
-        target = root / target
-    return target
-
-
 def _self_check_runtime() -> dict[str, Any]:
     return {
         "ready": True,
@@ -121,7 +112,7 @@ def _normalize_trajectory_stats(payload: Any) -> dict[str, Any] | None:
 def _load_replay_comparisons(path: str | Path | None) -> list[dict[str, Any]] | None:
     if not path:
         return None
-    payload = _load_json(path)
+    payload = load_json(path)
     if isinstance(payload, list):
         return [row for row in payload if isinstance(row, dict)]
     if isinstance(payload, dict):
@@ -148,7 +139,7 @@ def _report_is_dry_run(payload: Any) -> bool:
 def _eval_report_signals(paths: Iterable[str | Path], *, root: Path) -> list[ReleaseHealthSignal]:
     signals: list[ReleaseHealthSignal] = []
     for raw_path in paths:
-        path = _resolve_path(raw_path, root)
+        path = resolve_path(raw_path, root)
         if not path.exists():
             signals.append(
                 ReleaseHealthSignal(
@@ -161,7 +152,7 @@ def _eval_report_signals(paths: Iterable[str | Path], *, root: Path) -> list[Rel
             continue
 
         try:
-            payload = _load_json(path)
+            payload = load_json(path)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             signals.append(
                 ReleaseHealthSignal(
@@ -261,8 +252,8 @@ def _baseline_eval_report_signals(
         return signals
     for index, raw_baseline_path in enumerate(baseline_paths):
         raw_current_path = current_paths[index] if index < len(current_paths) else current_paths[-1]
-        baseline_path = _resolve_path(raw_baseline_path, root)
-        current_path = _resolve_path(raw_current_path, root)
+        baseline_path = resolve_path(raw_baseline_path, root)
+        current_path = resolve_path(raw_current_path, root)
         if not baseline_path.exists():
             signals.append(
                 ReleaseHealthSignal(
@@ -277,8 +268,8 @@ def _baseline_eval_report_signals(
             continue
 
         try:
-            baseline_payload = _load_json(baseline_path)
-            current_payload = _load_json(current_path)
+            baseline_payload = load_json(baseline_path)
+            current_payload = load_json(current_path)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             signals.append(
                 ReleaseHealthSignal(
@@ -371,8 +362,7 @@ def write_report(
     root: Path,
     inputs: dict[str, Any],
 ) -> Path:
-    target = _resolve_path(path, root)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    target = resolve_path(path, root)
     payload = {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "status": "passed" if report.passed else "failed",
@@ -381,8 +371,7 @@ def write_report(
         "inputs": inputs,
         "signals": [signal.to_dict() for signal in report.signals],
     }
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return target
+    return write_json_report(target, payload)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -682,7 +671,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[release-health] {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps({"status": "passed" if report.passed else "failed", "report_json": str(report_path)}, indent=2))
+    print_json_stdout({"status": "passed" if report.passed else "failed", "report_json": str(report_path)})
     return 0 if report.passed else 1
 
 

@@ -5,6 +5,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from focus_agent.config import Settings
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.users import User, UserSession, UserStatus
 from focus_agent.repositories.user_repository import UserRepository
 from focus_agent.security.passwords import hash_password, password_needs_rehash, verify_password
@@ -294,9 +295,10 @@ class AuthService:
 
     def _revoke_other_sessions(self, *, user_id: str, current_session_id: str | None) -> None:
         now = _now()
-        revoke_other = getattr(self.repository, "revoke_other_sessions", None)
-        if callable(revoke_other) and current_session_id:
-            revoke_other(user_id=user_id, current_session_id=current_session_id, revoked_at=now)
+        if current_session_id and has_repo_method(self.repository, "revoke_other_sessions"):
+            self.repository.revoke_other_sessions(
+                user_id=user_id, current_session_id=current_session_id, revoked_at=now
+            )
             return
         for session in self.repository.list_sessions(user_id=user_id, include_revoked=False):
             if current_session_id and session.session_id == current_session_id:
@@ -305,9 +307,8 @@ class AuthService:
 
     def _revoke_user_sessions(self, *, user_id: str) -> None:
         now = _now()
-        revoke_all = getattr(self.repository, "revoke_user_sessions", None)
-        if callable(revoke_all):
-            revoke_all(user_id=user_id, revoked_at=now)
+        if has_repo_method(self.repository, "revoke_user_sessions"):
+            self.repository.revoke_user_sessions(user_id=user_id, revoked_at=now)
             return
         for session in self.repository.list_sessions(user_id=user_id, include_revoked=False):
             self.repository.revoke_session(session.session_id, revoked_at=now)

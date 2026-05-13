@@ -10,6 +10,7 @@ import sqlite3
 from typing import Any, Protocol, TypeVar
 import uuid
 
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.observability.trajectory import TrajectoryStep
 
 from ..streaming import END_SENTINEL, InMemoryStreamBridge, StreamEvent
@@ -778,10 +779,9 @@ def _stream_event_from_journal_event(event: JournalEvent) -> StreamEvent:
 
 
 async def _journal_run_is_terminal(journal: RunJournal, run_id: str) -> bool:
-    get_run = getattr(journal, "get_run", None)
-    if not callable(get_run):
+    if not has_repo_method(journal, "get_run"):
         return False
-    run = await get_run(run_id)
+    run = await journal.get_run(run_id)
     if run is None:
         return False
     status = getattr(run, "status", None)
@@ -789,10 +789,9 @@ async def _journal_run_is_terminal(journal: RunJournal, run_id: str) -> bool:
 
 
 async def _bridge_stream_ended(bridge: InMemoryStreamBridge, run_id: str) -> bool | None:
-    stream_ended = getattr(bridge, "stream_ended", None)
-    if not callable(stream_ended):
+    if not has_repo_method(bridge, "stream_ended"):
         return None
-    return await stream_ended(run_id)
+    return await bridge.stream_ended(run_id)
 
 
 def _trajectory_summary(snapshot: dict[str, Any]) -> dict[str, Any]:

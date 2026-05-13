@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Any
 
+from ..core.repo_call import has_repo_method
 from .coordination import (
     BackgroundJobClaim,
     BackgroundJobDeduperBackend,
@@ -25,6 +26,22 @@ REGISTERED_BACKGROUND_JOB_KINDS = frozenset(
         "branch_title",
     }
 )
+
+
+def _invoke_job_backend_hook(
+    backend: Any,
+    key: str,
+    claim: BackgroundJobClaim | None,
+    claim_hook: str,
+    fallback_hook: str,
+    *args: Any,
+) -> None:
+    if claim is not None:
+        if has_repo_method(backend, claim_hook):
+            getattr(backend, claim_hook)(key, claim, *args)
+            return
+    if has_repo_method(backend, fallback_hook):
+        getattr(backend, fallback_hook)(key, *args)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,56 +94,62 @@ def register_default_background_job_handlers(
     branch_service: Any | None = None,
     agent_team_service: Any | None = None,
 ) -> None:
-    if agent_team_service is not None:
-        run_session = getattr(agent_team_service, "run_ready_tasks_once", None)
-        if callable(run_session):
-            registry.register(
-                "agent_team_run_session",
-                lambda payload: run_session(
-                    session_id=_required_payload_string(payload, "session_id"),
-                    user_id=_required_payload_string(payload, "user_id"),
-                ),
-            )
-        run_task = getattr(agent_team_service, "run_task_claimed", None)
-        if callable(run_task):
-            registry.register(
-                "agent_team_run_task",
-                lambda payload: run_task(
-                    task_id=_required_payload_string(payload, "task_id"),
-                    user_id=_required_payload_string(payload, "user_id"),
-                ),
-            )
-    if chat_service is not None and callable(getattr(chat_service, "compact_thread_context", None)):
+    def _register(kind: str, handler: Any, payload_factory: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+        if not callable(handler):
+            return
         registry.register(
+            kind,
+            lambda payload, handler=handler: handler(**payload_factory(payload)),
+        )
+
+    if agent_team_service is not None:
+        _register(
+            "agent_team_run_session",
+            getattr(agent_team_service, "run_ready_tasks_once", None),
+            lambda payload: {
+                "session_id": _required_payload_string(payload, "session_id"),
+                "user_id": _required_payload_string(payload, "user_id"),
+            },
+        )
+        _register(
+            "agent_team_run_task",
+            getattr(agent_team_service, "run_task_claimed", None),
+            lambda payload: {
+                "task_id": _required_payload_string(payload, "task_id"),
+                "user_id": _required_payload_string(payload, "user_id"),
+            },
+        )
+    if chat_service is not None:
+        _register(
             "context_compaction",
-            lambda payload: chat_service.compact_thread_context(
-                thread_id=_required_payload_string(payload, "thread_id"),
-                user_id=_required_payload_string(payload, "user_id"),
-                trigger=str(payload.get("trigger") or "auto_post_turn"),
-                force=bool(payload.get("force", False)),
-            ),
+            getattr(chat_service, "compact_thread_context", None),
+            lambda payload: {
+                "thread_id": _required_payload_string(payload, "thread_id"),
+                "user_id": _required_payload_string(payload, "user_id"),
+                "trigger": str(payload.get("trigger") or "auto_post_turn"),
+                "force": bool(payload.get("force", False)),
+            },
         )
     if branch_service is not None:
-        refresh_title = getattr(branch_service, "refresh_conversation_title_after_first_turn", None)
-        if callable(refresh_title):
-            registry.register(
-                "conversation_title",
-                lambda payload: refresh_title(
-                    root_thread_id=_required_payload_string(payload, "root_thread_id"),
-                    user_id=_required_payload_string(payload, "user_id"),
-                ),
-            )
-        refresh_branch = getattr(branch_service, "refresh_branch_metadata_after_first_turn", None)
-        if refresh_branch is None:
-            refresh_branch = getattr(branch_service, "refresh_branch_name_after_first_turn", None)
-        if callable(refresh_branch):
-            registry.register(
-                "branch_title",
-                lambda payload: refresh_branch(
-                    child_thread_id=_required_payload_string(payload, "child_thread_id"),
-                    user_id=_required_payload_string(payload, "user_id"),
-                ),
-            )
+        _register(
+            "conversation_title",
+            getattr(branch_service, "refresh_conversation_title_after_first_turn", None),
+            lambda payload: {
+                "root_thread_id": _required_payload_string(payload, "root_thread_id"),
+                "user_id": _required_payload_string(payload, "user_id"),
+            },
+        )
+        branch_title_handler = getattr(branch_service, "refresh_branch_metadata_after_first_turn", None)
+        if branch_title_handler is None:
+            branch_title_handler = getattr(branch_service, "refresh_branch_name_after_first_turn", None)
+        _register(
+            "branch_title",
+            branch_title_handler,
+            lambda payload: {
+                "child_thread_id": _required_payload_string(payload, "child_thread_id"),
+                "user_id": _required_payload_string(payload, "user_id"),
+            },
+        )
 
 
 class DurableBackgroundWorker:
@@ -169,10 +192,9 @@ class DurableBackgroundWorker:
             self._thread.join(timeout=1.0)
 
     def run_once(self) -> bool:
-        claim_next = getattr(self._job_backend, "claim_next_job", None)
-        if not callable(claim_next):
+        if not has_repo_method(self._job_backend, "claim_next_job"):
             return False
-        claimed = claim_next(
+        claimed = self._job_backend.claim_next_job(
             allowed_kinds=self._handlers.kinds(),
             claim_ttl_seconds=self._claim_ttl_seconds,
         )
@@ -234,19 +256,32 @@ class DurableBackgroundWorker:
                 self._closed.wait(self._poll_interval_seconds)
 
     def _mark_job_running(self, key: str, claim: BackgroundJobClaim) -> None:
-        marker = getattr(self._job_backend, "mark_job_claim_running", None)
-        if callable(marker):
-            marker(key, claim)
+        _invoke_job_backend_hook(
+            self._job_backend,
+            key,
+            claim,
+            "mark_job_claim_running",
+            "mark_job_running",
+        )
 
     def _mark_job_succeeded(self, key: str, claim: BackgroundJobClaim) -> None:
-        marker = getattr(self._job_backend, "mark_job_claim_succeeded", None)
-        if callable(marker):
-            marker(key, claim)
+        _invoke_job_backend_hook(
+            self._job_backend,
+            key,
+            claim,
+            "mark_job_claim_succeeded",
+            "mark_job_succeeded",
+        )
 
     def _mark_job_failed(self, key: str, claim: BackgroundJobClaim, error: str) -> None:
-        marker = getattr(self._job_backend, "mark_job_claim_failed", None)
-        if callable(marker):
-            marker(key, claim, error)
+        _invoke_job_backend_hook(
+            self._job_backend,
+            key,
+            claim,
+            "mark_job_claim_failed",
+            "mark_job_failed",
+            error,
+        )
 
     def _claim_heartbeat_ttl_seconds(self) -> float:
         if self._claim_ttl_seconds is not None:
@@ -258,11 +293,10 @@ class DurableBackgroundWorker:
         return min(max(self._claim_heartbeat_ttl_seconds() / 3.0, 0.05), 5.0)
 
     def _heartbeat_job_claim(self, key: str, claim: BackgroundJobClaim) -> bool:
-        heartbeater = getattr(self._job_backend, "heartbeat_job_claim", None)
-        if not callable(heartbeater):
+        if not has_repo_method(self._job_backend, "heartbeat_job_claim"):
             return True
         try:
-            return bool(heartbeater(key, claim, self._claim_heartbeat_ttl_seconds()))
+            return bool(self._job_backend.heartbeat_job_claim(key, claim, self._claim_heartbeat_ttl_seconds()))
         except Exception:  # noqa: BLE001 - heartbeat failures must not mark success
             logger.warning("durable background job heartbeat failed", extra={"job_key": key}, exc_info=True)
             return False
@@ -272,8 +306,7 @@ class DurableBackgroundWorker:
         key: str,
         claim: BackgroundJobClaim,
     ) -> tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread] | None:
-        heartbeater = getattr(self._job_backend, "heartbeat_job_claim", None)
-        if not callable(heartbeater):
+        if not has_repo_method(self._job_backend, "heartbeat_job_claim"):
             return None
         stop_event = threading.Event()
         lost_event = threading.Event()
@@ -364,9 +397,8 @@ class BoundedBackgroundQueue:
             if self._closed:
                 self._dropped_total += 1
                 return False
-            claim_job = getattr(self._job_deduper, "claim_job_key", None)
-            if callable(claim_job):
-                claim = claim_job(task_key)
+            if has_repo_method(self._job_deduper, "claim_job_key"):
+                claim = self._job_deduper.claim_job_key(task_key)
                 claimed = claim is not None
             else:
                 claimed = self._job_deduper.try_claim_job_key(task_key)
@@ -396,10 +428,9 @@ class BoundedBackgroundQueue:
 
     def snapshot(self) -> dict[str, int]:
         job_metrics: dict[str, int] = {}
-        snapshot_backend = getattr(self._job_deduper, "snapshot", None)
-        if callable(snapshot_backend):
+        if has_repo_method(self._job_deduper, "snapshot"):
             try:
-                job_metrics = {str(key): int(value) for key, value in dict(snapshot_backend()).items()}
+                job_metrics = {str(key): int(value) for key, value in dict(self._job_deduper.snapshot()).items()}
             except Exception:  # noqa: BLE001 - metrics must not break health scrapes
                 logger.warning("background job backend snapshot failed", exc_info=True)
                 job_metrics = {"job_backend_error": 1}
@@ -465,42 +496,41 @@ class BoundedBackgroundQueue:
                 self._queue.task_done()
 
     def _mark_job_running(self, key: str, claim: BackgroundJobClaim | None) -> None:
-        if claim is not None:
-            claim_marker = getattr(self._job_deduper, "mark_job_claim_running", None)
-            if callable(claim_marker):
-                claim_marker(key, claim)
-                return
-        marker = getattr(self._job_deduper, "mark_job_running", None)
-        if callable(marker):
-            marker(key)
+        _invoke_job_backend_hook(
+            self._job_deduper,
+            key,
+            claim,
+            "mark_job_claim_running",
+            "mark_job_running",
+        )
 
     def _mark_job_succeeded(self, key: str, claim: BackgroundJobClaim | None) -> None:
-        if claim is not None:
-            claim_marker = getattr(self._job_deduper, "mark_job_claim_succeeded", None)
-            if callable(claim_marker):
-                claim_marker(key, claim)
-                return
-        marker = getattr(self._job_deduper, "mark_job_succeeded", None)
-        if callable(marker):
-            marker(key)
+        _invoke_job_backend_hook(
+            self._job_deduper,
+            key,
+            claim,
+            "mark_job_claim_succeeded",
+            "mark_job_succeeded",
+        )
 
     def _mark_job_failed(self, key: str, claim: BackgroundJobClaim | None, error: str) -> None:
-        if claim is not None:
-            claim_marker = getattr(self._job_deduper, "mark_job_claim_failed", None)
-            if callable(claim_marker):
-                claim_marker(key, claim, error)
-                return
-        marker = getattr(self._job_deduper, "mark_job_failed", None)
-        if callable(marker):
-            marker(key, error)
+        _invoke_job_backend_hook(
+            self._job_deduper,
+            key,
+            claim,
+            "mark_job_claim_failed",
+            "mark_job_failed",
+            error,
+        )
 
     def _release_job_claim(self, key: str, claim: BackgroundJobClaim | None) -> None:
-        if claim is not None:
-            releaser = getattr(self._job_deduper, "release_job_claim", None)
-            if callable(releaser):
-                releaser(key, claim)
-                return
-        self._job_deduper.release_job_key(key)
+        _invoke_job_backend_hook(
+            self._job_deduper,
+            key,
+            claim,
+            "release_job_claim",
+            "release_job_key",
+        )
 
     def _remove_job_claim(self, key: str, claim: BackgroundJobClaim | None) -> None:
         current = self._job_claims.get(key)

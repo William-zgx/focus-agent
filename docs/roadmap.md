@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-05-12
+更新时间：2026-05-13
 
 这份文档只回答两个问题：
 
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-05-12，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-05-13，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
 - `frontend-sdk` 已覆盖 conversation、branch tree、branch action、merge review、Agent Team、Admin、agent governance、observability 等核心 typed client 能力
@@ -72,7 +72,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 | Memory | 读写闭环、Memory Curator 分支提升保护、candidate review/promotion、regression trend report 已接入 | `src/focus_agent/memory/` `scripts/memory_context_eval.py` `/app/agent/governance` | 继续扩 golden cases，把真实失败样本稳定接入 nightly |
 | Context Engineering | v2 已接入长上下文压缩决策、artifact refs、角色上下文视图与治理台预览；当前线程 `context_usage` 与非破坏式 compaction 已进入 ChatService / Web composer；context assembly、budget guard、tool observation compaction 已从 `context_policy.py` facade 拆出 | `src/focus_agent/core/context_policy.py` `src/focus_agent/core/context_assembly.py` `src/focus_agent/context_usage.py` `src/focus_agent/agent_context_engineering.py` `scripts/memory_context_eval.py` `/app/agent/governance` `/app` | tokenizer 精算、artifact 生命周期治理、真实线上摘要漂移样本沉淀 |
 | Tool Runtime | 并行/缓存/降级、参数校验失败短路、取消/超时不走 fallback、side-effect 串行边界已落地；runtime facade 下沉到 cache、execution、invocation、messages、parallel helpers | `src/focus_agent/capabilities/tool_runtime.py` `src/focus_agent/capabilities/tool_execution.py` | 增加更多 validator 覆盖和真实高风险工具策略样本 |
-| Agent Team | 目标驱动 dynamic Mission DAG、standalone mission、任务契约、fallback contract defaults、bounded ready-task scheduler、Cockpit UI、final-answer synthesis、retry/cancel 与 merge bundle 已落地 | [agent-team-workbench.md](agent-team-workbench.md) `src/focus_agent/services/agent_team*.py` `apps/web/src/pages/agent-team/` | 提升真实子任务执行质量、更多浏览器回归、接入更强执行隔离 |
+| Agent Team | 目标驱动 dynamic Mission DAG、standalone mission、任务契约、fallback contract defaults、bounded ready-task scheduler、Cockpit UI、final-answer synthesis、retry/cancel 与 merge bundle 已落地；Workbench view-model 已按 focus / phase / decision / derived state helper 收口 | [agent-team-workbench.md](agent-team-workbench.md) `src/focus_agent/services/agent_team*.py` `apps/web/src/features/agent-team/` `apps/web/src/pages/agent-team/team-workbench-page.tsx` | 提升真实子任务执行质量、更多浏览器回归、接入更强执行隔离 |
 | Eval / Regression | 已有 `tests/eval/` 基线，支持 baseline 对比、trajectory replay/promotion、memory/context trend 与 contract drift 检查 | `tests/eval/` `scripts/check_contracts.py` `scripts/memory_context_eval.py` | 扩 golden cases、补失败 trajectory 回放样本、接入 nightly 趋势报表 |
 | Observability | trajectory 写入、request/trace correlation、查询/导出 CLI、单条 replay/promotion、批量 promote-preview/replay-compare、`/readyz`、`/metrics`、overview route、三栏 trajectory workbench、`timeline` / `zero_step` / `missing_detail` 证据态、executable alert report、release-health 发布阻断信号，以及浏览器 smoke 发布口径已落地；release health 已按 alerts/context/governance/otel/postgres/runtime/trajectory 模块拆分 | `src/focus_agent/observability/trajectory.py` `src/focus_agent/observability/tracing.py` `src/focus_agent/observability/release_health.py` `apps/web/src/pages/observability/trajectory-page.tsx` | OpenTelemetry 部署联通、告警落盘、长时浏览器回归 |
 | Agent Governance | role routing、Memory Curator、Tool Router、Delegation Runtime、Model Router、Self Repair、Review Queue、Task Ledger、Delegated Artifact Synthesis、observe-first autonomy 契约与 eval gate 已补 | [agent-role-routing.md](agent-role-routing.md) `tests/eval/datasets/agent_delegation.jsonl` `tests/eval/datasets/agent_task_ledger.jsonl` `/app/agent/governance` | 继续提升真实子任务执行质量、成本画像、critic gate 质量和人工 review 队列体验 |
@@ -110,14 +110,15 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - Memory / Context regression dashboard：candidate / reviewed / promoted / golden trend、promotion history、污染告警、compaction semantic quality / drift
 - Ownership Audit Dashboard：allow / deny 聚合、deny reason、resource/action/principal 维度统计、deny trend export
 - SDK / E2E drift guard：frontend SDK barrel exports 与 Web App `@focus-agent/web-sdk` import surface contract snapshot
-- P27-P35 运维闭环首轮：GitHub Actions release gate、nightly regression workflow、production smoke、Postgres ops report、OTel smoke report、Agent governance quality report
-- P0-P3 多 Agent 工程治理已落地：非开发环境安全 fail-fast、API router 拆分、default tools 按域拆分、发布门禁固化、`AgentState` 分域 helper、`BranchService` facade 内部解耦
+- 运维闭环首轮已落地：GitHub Actions release gate、nightly regression workflow、production smoke、Postgres ops report、OTel smoke report、Agent governance quality report
+- 多 Agent 工程治理已落地：非开发环境安全 fail-fast、API router 拆分、default tools 按域拆分、发布门禁固化、`AgentState` 分域 helper、`BranchService` facade 内部解耦
+- 平台边界瘦身首轮已落地：README/architecture 定位改为平台化应用骨架，Agent Team view-model 拆成纯 selector helper，harness run 非流式生命周期 helper 化，release report I/O 样板收敛到 `scripts/_report_io.py`
 
 ### 正在继续收口
 
-- Postgres 运维链：迁移验证与 ops report 已能阻断 release-health，P36-P44 已加入 backup / restore / restore verification / retention cleanup drill，并让 production workflow 禁止用 dry-run ops report 替代真实证据；下一步绑定 RPO/RTO 和长期保留平台
-- observability 治理体验：告警报告和 OTel smoke report 已能阻断发布，P36-P44 已加入 synthetic span export / collector health / trace query round-trip，并让 production workflow 禁止用 dry-run OTel report 替代真实证据；下一步接真实告警系统和长时浏览器回归
-- Auth / Access Model：生产安全启动基线已强制检查 `AUTH_ENABLED`、JWT secret/key set、JWT issuer、token TTL、demo token 与 rate limit；JWT 已支持 `kid`、active key set 和 rotation overlap，配置 key set 时 current `kid` 必须匹配 active key，`tenant_id` / `scope` 仍不能绕过 ownership；Admin Console 已把持久化用户角色、最后 active admin 保护、reasoned admin actions 和 audit events 纳入默认治理面
+- Postgres 运维链：迁移验证与 ops report 已能阻断 release-health，backup / restore / restore verification / retention cleanup drill 已加入发布证据链，并让 production workflow 禁止用 dry-run ops report 替代真实证据；下一步绑定 RPO/RTO 和长期保留平台
+- observability 治理体验：告警报告和 OTel smoke report 已能阻断发布，synthetic span export / collector health / trace query round-trip 已加入发布证据链，并让 production workflow 禁止用 dry-run OTel report 替代真实证据；下一步接真实告警系统和长时浏览器回归
+- Auth / Access Model：生产安全启动基线已强制检查 `AUTH_ENABLED`、JWT secret/key set、JWT issuer、token TTL、demo token 与 rate limit；JWT 已支持 `kid`、active key set 和 rotation overlap，配置 key set 时 current `kid` 必须匹配 active key，`tenant_id` / `scope` 仍不能绕过 ownership；[auth-access.md](auth-access.md) 已收口登录、注册、账号自助和 token/session 边界，Admin Console 已把持久化用户角色、最后 active admin 保护、reasoned admin actions 和 audit events 纳入默认治理面
 - 文档与 contract 对齐：README、SDK、Web UI 文案、部署说明、CI artifact/approval 示例
 - eval 数据集扩充与 nightly 回归报表覆盖面
 - branch / merge / memory 之间的语义一致性
@@ -171,7 +172,8 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 
 ## 5. 文档分工
 
-- [architecture.md](architecture.md)：描述整体架构、核心链路、持久化边界和跨模块验证口径
+- [architecture.md](architecture.md)：描述整体架构、平台维护边界、核心链路、持久化边界和跨模块验证口径
+- [auth-access.md](auth-access.md)：描述登录、注册、账号自助、token/session、ownership 和生产鉴权边界
 - [agent-team-workbench.md](agent-team-workbench.md)：描述 Agent Team Mission Runner、动态 DAG、Cockpit UI、任务契约和验收口径
 - [admin-console.md](admin-console.md)：描述管理员用户、角色、会话、密码、审计事件和权限边界
 - [docker-deployment.md](docker-deployment.md)：描述本机启动、本地 Docker、生产模板和迁移方式

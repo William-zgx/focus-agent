@@ -5,6 +5,7 @@ from typing import Any, Sequence
 
 from fastapi import HTTPException
 
+from focus_agent.core.repo_call import has_repo_method
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.postgres_trajectory_repository import (
     PostgresTrajectoryRepository,
@@ -91,13 +92,18 @@ def _trajectory_query_from_request(
     )
 
 
+_TRAJECTORY_REPOSITORY_METHODS = (
+    "list_turns",
+    "get_turn",
+    "list_steps_by_turn_ids",
+    "get_turn_stats",
+)
+
+
 def _get_trajectory_repository(runtime: AppRuntime) -> PostgresTrajectoryRepository | Any:
-    candidate = runtime.trajectory_recorder
-    required_methods = ("list_turns", "get_turn", "list_steps_by_turn_ids", "get_turn_stats")
-    if candidate is not None and all(callable(getattr(candidate, name, None)) for name in required_methods):
-        return candidate
-    if runtime.settings.database_uri:
-        return PostgresTrajectoryRepository(runtime.settings.database_uri)
+    maybe_repository = _maybe_get_trajectory_repository(runtime)
+    if maybe_repository is not None:
+        return maybe_repository
     raise HTTPException(
         status_code=503,
         detail=(
@@ -322,13 +328,12 @@ def _trajectory_query_from_batch_payload(payload: Any) -> TrajectoryTurnQuery:
 
 
 def _export_trajectory_records(repo: Any, query: TrajectoryTurnQuery) -> list[dict[str, Any]]:
-    export_turns = getattr(repo, "export_turns", None)
-    if not callable(export_turns):
+    if not has_repo_method(repo, "export_turns"):
         raise HTTPException(
             status_code=503,
             detail="Trajectory batch observability requires a repository that can export turns.",
         )
-    return [dict(record) for record in export_turns(query)]
+    return [dict(record) for record in repo.export_turns(query)]
 
 
 def _build_batch_replay_summary(results: Sequence[TrajectoryReplayResponse]) -> TrajectoryBatchReplaySummaryResponse:
@@ -342,10 +347,11 @@ def _build_batch_replay_summary(results: Sequence[TrajectoryReplayResponse]) -> 
 
 
 def _maybe_get_trajectory_repository(runtime: AppRuntime | Any) -> PostgresTrajectoryRepository | Any | None:
-    candidate = getattr(runtime, "trajectory_recorder", None)
-    required_methods = ("list_turns", "get_turn", "list_steps_by_turn_ids", "get_turn_stats")
-    if candidate is not None and all(callable(getattr(candidate, name, None)) for name in required_methods):
-        return candidate
+    repository = getattr(runtime, "trajectory_recorder", None)
+    if repository is not None and all(
+        has_repo_method(repository, name) for name in _TRAJECTORY_REPOSITORY_METHODS
+    ):
+        return repository
     database_uri = getattr(getattr(runtime, "settings", None), "database_uri", None)
     if database_uri:
         return PostgresTrajectoryRepository(database_uri)

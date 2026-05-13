@@ -1,6 +1,6 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-05-12
+更新时间：2026-05-13
 
 本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 仍保留为高级审查能力，但默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主。
 
@@ -372,6 +372,19 @@ Web 新增：
 apps/web/src/features/agent-team/
 apps/web/src/pages/agent-team/team-workbench-page.tsx
 ```
+
+Workbench 前端状态边界：
+
+```text
+agent-team-workbench-view-model.ts          React hook 编排和对外返回 shape
+agent-team-workbench-derived-state.ts       final preview / evidence / mission header 派生状态
+agent-team-workbench-decision-state.ts      mission stage、primary action、next step、decision dock
+agent-team-workbench-focus-state.ts         recommended task 和焦点自动推进规则
+agent-team-workbench-phase-state.ts         phase group / phase map 派生
+agent-team-workbench-task-output-utils.ts   task output / artifact / fake execution helper
+```
+
+新增 UI 状态时优先放进对应纯 helper，`useAgentTeamWorkbenchViewModel()` 只负责 hook state、memo 编排和兼容字段 re-export。
 
 核心组件：
 
