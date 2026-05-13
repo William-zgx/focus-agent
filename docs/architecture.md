@@ -1,11 +1,12 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-10
+更新时间：2026-05-12
 
 本文是 Focus Agent 的整体架构入口，说明系统分层、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
 - Agent governance：[agent-role-routing.md](agent-role-routing.md)
 - Agent Team Workbench：[agent-team-workbench.md](agent-team-workbench.md)
+- Admin Console：[admin-console.md](admin-console.md)
 - Streaming Contract：[streaming-contract.md](streaming-contract.md)
 - Context Window：[context-window.md](context-window.md)
 - Memory：[memory-system-v2.md](memory-system-v2.md)
@@ -27,6 +28,7 @@ Focus Agent 是一个 Web-first Agent 应用骨架，用于构建支持分支式
 | Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
 | Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
 | Release confidence | 发布前把 readiness、trajectory、eval、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、release evidence |
+| Access and admin governance | 持久化用户、角色、会话、状态、密码重置和审计事件统一治理 | auth service、user repository、Admin API、Admin Web |
 | Local-first development | 本地命令可以自动托管 repo-local PostgreSQL | `scripts/serve-*.sh`、`make serve-dev` |
 
 ## 2. 总体拓扑
@@ -46,6 +48,7 @@ flowchart LR
     API --> Chat["ChatService"]
     API --> Branch["BranchService"]
     API --> Governance["Agent Governance APIs"]
+    API --> Admin["Admin APIs"]
     API --> Obs["Observability APIs"]
     Chat --> Graph["LangGraph Agent Graph"]
     Graph --> Tools["Tool Runtime"]
@@ -78,6 +81,8 @@ FastAPI app
   |     +-- merge proposal and imported findings
   +-- Agent governance APIs
   |     +-- role route / tool route / context / ledger / critic
+  +-- Admin APIs
+  |     +-- users / roles / sessions / passwords / audit events
   +-- Observability APIs
         +-- overview / trajectory / stats / replay / promote
 
@@ -178,7 +183,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
 | Agent Team | `/v1/agent-team/*` | Mission session、DAG planning/run、task lifecycle、outputs、merge bundle 和 merge decision |
 | Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
-| Admin | `/v1/admin/users/*`、`/v1/admin/audit-events` | 用户、会话、密码重置、状态、角色和审计管理 |
+| Admin | `/v1/admin/users/*`、`/v1/admin/audit-events` | 用户目录、详情、会话撤销、密码重置、状态、角色和审计事件管理 |
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
 
 API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业务流程在 services、runtime、repositories 和 graph nodes。
@@ -189,6 +194,16 @@ API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业�
 - `get_optional_principal()` 用于允许匿名读取或渐进鉴权的路由。
 - `require_scopes()` / `require_roles()` 为路由级 scope / role enforcement 提供 dependency helper。
 - `get_chat_service()` 通过 `ChatServicePorts.from_runtime(runtime)` 创建 `ChatService`，避免 ChatService 直接依赖完整 runtime 对象。
+
+### 6.1 Admin Console 权限边界
+
+Admin Console 的 canonical 文档是 [admin-console.md](admin-console.md)。架构层只保留安全边界：
+
+- 管理员身份来自持久化用户角色和权限，不来自 bearer token scope 本身。
+- `AUTH_ENABLED=false` 时的 anonymous principal 仍不是 admin。
+- local/development 可以通过首个非匿名用户或 `AUTH_BOOTSTRAP_ADMIN_USER_IDS` bootstrap admin；生产数据库必须显式配置管理员并关闭 demo token。
+- 状态、角色、会话撤销和密码重置动作需要 reason，并写入 admin audit event。
+- 最后一个 active admin 不能被禁用，也不能失去 admin 角色。
 
 ## 7. Harness Run 数据流
 
@@ -370,6 +385,7 @@ flowchart TD
     Decision -- "No raw binary" --> Fallback["Local fallback persistence"]
     Managed --> PG
     PG --> AppState["Conversations, branches, access, Agent Team"]
+    PG --> AdminState["Users, sessions, roles, admin audit"]
     PG --> GraphStore["LangGraph checkpoint and store"]
     PG --> TraceMeta["Trajectory and artifact metadata"]
     TraceMeta --> Files["Filesystem artifact bodies"]
@@ -381,6 +397,7 @@ flowchart TD
 
 - conversation / branch / thread access
 - Agent Team sessions / tasks / outputs
+- users / roles / sessions / admin audit events
 - LangGraph checkpoint/store
 - artifact metadata
 - trajectory turn / step observability tables
@@ -469,6 +486,8 @@ shared/                   config, query keys, SDK provider, UI, styles
 
 `frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端必须发送符合 SDK validator 的 canonical SSE payload，例如 `tool.call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
 
+Admin Web 使用独立的 `pages/admin/` 路由和 admin CSS module。`/app/admin/users/{userId}` 通过详情抽屉承载 Profile、Access、Security 和 Audit tabs；`/app/admin/audit-events` 通过 URL query 同步 actor/resource/decision 过滤和选中事件。普通聊天 header 不暴露 admin 导航。
+
 Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。实时处理过程卡以 SDK reducer 派生的 `processingSteps` 为 canonical 输入；`toolCalls`、`toolEvents` 和 `reasoningText` 保留为 raw/debug/backcompat state。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
 
 ## 16. 安全边界
@@ -478,12 +497,13 @@ Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-
 - Bearer token authentication。
 - demo token bootstrap，仅适合本地与演示。
 - owner / access check，线程和会话操作必须匹配 owner。
+- persisted admin role check，管理员操作必须匹配数据库用户状态和角色。
 - CORS。
 - 进程内 sliding-window rate limit。
 - 统一错误信封。
 - Tool Router 对 network、workspace write、memory write 做 role-level 收紧。
 
-生产部署必须显式设置 `AUTH_JWT_SECRET`，并关闭 demo token。
+生产部署必须显式设置 `AUTH_JWT_SECRET`，关闭 demo token，并显式配置管理员。管理员高风险操作需要 reason 并写入审计事件；token scope 不能单独授予 admin 权限。
 
 ## 17. Observability 与 Eval
 
@@ -588,6 +608,16 @@ make ui-smoke
 make ui-smoke-observability
 ```
 
+影响 Admin Console、Auth UI 或访问治理：
+
+```bash
+uv run pytest tests/test_admin_users_api.py tests/test_auth.py tests/test_auth_accounts_api.py tests/test_user_service.py tests/test_auth_ownership.py
+uv run pytest tests/test_web_app_scaffold.py
+make contract-check
+make web-check
+make web-build
+```
+
 影响部署、持久化或 observability：
 
 ```bash
@@ -635,6 +665,8 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Chat service orchestration：`src/focus_agent/services/chat.py`
 - Harness run API：`src/focus_agent/api/routers/harness_runs.py`
 - Harness runtime：`src/focus_agent/harness/`
+- Admin API：`src/focus_agent/api/routers/admin.py`
+- User service / repository：`src/focus_agent/services/user_service.py`、`src/focus_agent/repositories/user_repository.py`
 - Chat branch action facade：`src/focus_agent/services/chat_branch_action_facade.py`
 - Branch service：`src/focus_agent/services/branches.py`
 - Branch naming / memory promotion：`src/focus_agent/services/branch_naming_policy.py`、`src/focus_agent/services/branch_memory_promotion.py`
@@ -642,6 +674,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
 - AgentTeam repository contract tests：`tests/test_agent_team_repository_contract.py`
 - Web App：`apps/web/src/`
+- Web Admin pages：`apps/web/src/pages/admin/`、`apps/web/src/features/admin-users/`
 - Web message transcript facade：`apps/web/src/entities/messages/message-transcript.ts`
 - Web message transcript modules：`apps/web/src/entities/messages/message-transcript-*.ts`
 - Web thread streaming hooks：`apps/web/src/features/thread-stream/`

@@ -1,8 +1,8 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-05-05
+更新时间：2026-05-12
 
-本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。工程 merge bundle 仍保留为高级审查能力，但默认用户体验以“目标 -> 任务进度 -> Agent Team 最终答案”为主。
+本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 仍保留为高级审查能力，但默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主。
 
 当前已落地的入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend SDK 的 Agent Team client 方法、Postgres/SQLite repository、模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。本文不再作为历史方案草稿保存；新改动应把这里当作当前操作和验证手册维护。
 
@@ -12,7 +12,9 @@ Focus Agent 当前已经具备分支对话、merge review、memory、trajectory 
 
 核心用户价值：
 
-- 用户输入一个复杂目标后，系统能由模型或保守 fallback 拆成多个 Agent 子任务。
+- 用户只需描述想达成的结果、期望产出和关键约束；系统按目标所需交付物自动拆成 Agent 任务 DAG。
+- 来源对话是可选上下文；没有来源对话时，系统会创建 standalone Mission 并生成内部 `root_thread_id`。
+- 每个任务携带输入/输出契约、证据要求、能力要求、风险等级和写入范围，便于后续执行与汇总。
 - 每个 Agent 在自己的 conversation branch 中工作，避免污染主线。
 - 每个 Agent 的产出以 artifact、branch-local findings、trajectory 和 task ledger 记录下来。
 - 主控 Agent 汇总各分支产物，生成用户可读的 Agent Team 最终答案。
@@ -161,6 +163,7 @@ class AgentTeamTask:
     dependencies: list[str]
     acceptance_criteria: list[str]
     planning_rationale: str | None
+    sort_order: int | None
     task_type: Literal[
         "research",
         "implementation",
@@ -169,24 +172,48 @@ class AgentTeamTask:
         "documentation",
         "coordination",
     ] | str | None
+    task_kind: str | None
     plan_source: str | None
+    input_contract: dict[str, Any] | None
+    output_contract: dict[str, Any] | None
+    evidence_required: list[str]
+    capability_requirements: list[str]
+    risk_level: str | None
+    write_scope: list[str]
+    replan_policy: dict[str, Any] | None
     context_refs: list[dict]
     status: Literal[
         "pending",
+        "queued",
         "running",
         "blocked",
         "done",
         "failed",
         "cancelled",
     ]
+    run_status: str | None
     output_artifact_ids: list[str]
+    agent_run_id: str | None
+    delegated_task_id: str | None
+    artifact_ids: list[str]
+    execution_status: str | None
     changed_files: list[str]
     verification_summary: str | None
     risk_notes: list[str]
+    attempt: int
+    max_attempts: int
+    claim_owner: str | None
+    claimed_until: str | None
+    queued_at: str | None
+    heartbeat_at: str | None
+    execution_mode: str | None
+    cancel_requested_at: str | None
     started_at: str | None
     finished_at: str | None
     last_error: str | None
 ```
+
+`queued` 是后端任务状态；前端列表中的 `ready` 是根据依赖和运行状态派生出的展示态，不写回核心任务模型。
 
 ### 4.3 AgentTeamTaskOutput / AgentTeamArtifact
 
@@ -215,6 +242,7 @@ class AgentTeamMergeBundle:
     key_findings: list[str]
     changed_files: list[str]
     test_evidence: list[str]
+    execution_evidence: list[dict[str, Any]]
     open_questions: list[str]
     risk_items: list[str]
     recommended_next_action: Literal[
@@ -268,9 +296,12 @@ src/focus_agent/services/agent_team_merge.py
 - 应用 team merge decision
 - 汇总 ownership audit report，用于 Dashboard 展示 deny reason 和 deny trend
 
-`AgentTeamPlanningService` 默认走模型结构化规划；模型不可用、校验失败或 repair 失败时使用 2-3 个保守 fallback 任务，并在 session 上记录 `planning_source="fallback_heuristic"` 与 `planning_error`。Legacy `/dispatch` 仍保留，但 Web 主流程使用 `/plan`。
+`AgentTeamPlanningService` 默认走模型结构化规划；模型不可用、校验失败或 repair 失败时使用保守 fallback。规划不再从固定三段式模板出发，而是先根据 goal/options 生成 Mission Profile，再推导 deliverables，最后编译成带依赖、输入/输出契约、证据要求、风险等级和重拆策略的 Mission DAG。session 会记录 `planning_source`、`planning_rationale`、`planner_model_id`、`plan_generated_at`、`plan_hash` 与 `planning_error`。Legacy `/dispatch` 仍保留，但 Web 主流程使用 `/plan`。
 
-`AgentTeamRunService` 会运行依赖已满足的 ready tasks。fake mode 只用于流程验证；当 merge bundle 检测到 fake output 或 `Fake delegated...` summary 时，`final_answer_status` 必须是 `placeholder`，`recommended_next_action` 必须是 `request_changes`。
+Fallback planner 仍要保留契约完整性：当旧字段如 `input_items`、`output_items`、`evidence`、`capabilities`、`risk` 或 `replan_when` 被填充时，规划服务会把它们归一化到 `input_contract`、`output_contract`、`evidence_required`、`capability_requirements`、`risk_level` 和 `replan_policy`，避免降级路径丢失执行和汇总所需的任务契约。
+
+
+`AgentTeamRunService` 会运行依赖已满足的 ready tasks。委派执行时，每个 subagent 都会收到 session 目标、task contract 和上游依赖任务 outputs，避免下游任务只拿到元指令而缺少真实用户目标或前置产出。fake mode 只用于流程验证；当 merge bundle 检测到 fake output 或 `Fake delegated...` summary 时，`final_answer_status` 必须是 `placeholder`，`recommended_next_action` 必须是 `request_changes`。如果已完成任务声明了 `evidence_required` 但 output / artifact / verification summary 中缺少对应证据，merge bundle 会补充风险并要求变更。
 
 当前 API：
 
@@ -344,26 +375,37 @@ apps/web/src/pages/agent-team/team-workbench-page.tsx
 
 核心组件：
 
-- `AgentTeamWorkbench`
-- `CreateSessionPanel`
-- `TaskLanesPanel`
-- `TaskDetailPanel`
-- `PreMergeCheckPanel`
-- `MergeBundleCard`
+- `AgentTeamCockpit`
+- `MissionHeader`
+- `MissionSteps`
+- `ExecutionGraph`
+- `TaskList`
+- `TaskDetail`
+- `OutputsPanel`
+- `FinalResultCard`
+- `BlockedTaskGuide`
+- `InspectorDrawer`
 - `useAgentTeamWorkbenchViewModel`
 
 页面布局：
 
 ```text
-顶部：Mission 标题、用户态状态、一个主 CTA、更多菜单
-中部：三步进度（生成方案 / 执行任务 / 查看结果）
-左侧：紧凑任务时间线
-下方：选中任务的拆解原因、验收标准、结果摘要、关键依据和需要注意
-右侧：Agent Team 最终答案、依据、需要注意
-高级详情：planning metadata、DAG、branch/thread、output ids、artifact ids、raw evidence
+创建页：输入 Mission 目标、选择可选来源上下文、协作粒度和重点；默认提示强调“想达成什么 / 最终结果 / 上下文约束”。
+顶部：Mission 标题、用户态状态、主 CTA、更多菜单和 final-answer 状态。
+主视图：Cockpit 展示 Mission steps、执行图、任务列表、选中任务详情、输出证据和最终答案。
+Blocked 引导：当任务缺少依赖或证据时，展示阻塞原因、可重试动作和下一步建议。
+Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids、raw evidence、execution metadata。
 ```
 
 默认用户态不展示 branch id、artifact id、raw fake run text、execution metadata 或状态机原文；这些信息只在高级详情中用于调试和审查。Chat 页面侧栏也不再展示 Agent Team / 管理后台入口，这两个入口保留在登录/账号入口页和各自工作区内部导航中。
+
+创建页协作模式当前映射为：
+
+- `快一点`：coarse granularity，任务数更少，适合快速分解。
+- `稳一点`：balanced granularity，默认选择。
+- `细一点`：detailed granularity，任务数更多，便于分工和验证。
+
+重点模式支持 auto、research、debugging、review、implementation、verification 和 writing，并会影响 `max_tasks`、任务类型和验证任务权重。
 
 ## 7. Agent 角色映射
 
@@ -382,13 +424,13 @@ apps/web/src/pages/agent-team/team-workbench-page.tsx
 
 当前支持：
 
-1. 创建 team session。
+1. 创建 standalone team session，或选择来源对话作为可选上下文。
 2. 通过 `/plan` 基于目标生成动态任务 DAG；`replace_existing=true` 可重拆未运行任务。
 3. 模型规划不可用时自动降级到保守 fallback，并在 UI 中提示。
 4. 通过 `/run` 或 task-level `/run` 按依赖推进 ready tasks。
 5. task 可记录 output、artifact、changed files、verification summary、risk notes 和 execution metadata。
-6. UI 默认展示紧凑任务进度、选中任务摘要和 Agent Team 最终答案。
-7. 生成带 `final_answer`、`final_answer_status`、warnings 和 source output ids 的 merge bundle。
+6. UI 默认展示 Cockpit、Mission header、执行图、紧凑任务进度、选中任务摘要、阻塞引导、outputs 和 Agent Team 最终答案。
+7. 生成带 `final_answer`、`final_answer_status`、warnings、source output ids 和缺失证据风险提示的 merge bundle。
 8. 用户记录 accepted / rejected tasks 的 merge decision。
 9. Legacy `/dispatch` 继续兼容旧客户端，但不再是 Web 主流程。
 
@@ -408,7 +450,7 @@ apps/web/src/pages/agent-team/team-workbench-page.tsx
 - fake output 会生成 `placeholder` final answer，不能显示为可交付。
 - fixture/真实 output 能生成 `ready` final answer，并包含用户目标相关内容。
 - SDK 暴露完整 AgentTeam 类型和 client 方法。
-- Web 可以展示 Mission header、任务时间线、选中任务摘要、Agent Team 最终答案和高级详情。
+- Web 可以展示 Mission header、任务 DAG、依赖状态、选中任务摘要、Agent Team 最终答案和高级详情。
 - branch tree 能看到 Agent task 分支，且角色标签合理。
 - task 输出可汇总成 merge bundle。
 - rejected task 不进入主线 memory。
@@ -428,6 +470,7 @@ Agent Team focused regression：
 
 ```bash
 .venv/bin/python -m pytest tests/test_agent_team_* -q
+uv run pytest tests/test_agent_team_cockpit_frontend.py tests/test_agent_team_frontend_dynamic_planning.py
 pnpm --filter @focus-agent/web-app check
 pnpm --filter @focus-agent/web-sdk check
 pnpm --filter @focus-agent/web-sdk build

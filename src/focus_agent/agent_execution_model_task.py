@@ -171,7 +171,10 @@ def _prompt_messages(task: AgentTask, config: SubagentConfig) -> list[Any]:
     return [
         SystemMessage(
             content=(
-                f"You are the delegated {task.role.value} subagent. Use only the provided task context. "
+                f"You are the delegated {task.role.value} subagent for an Agent Team mission. "
+                "The HumanMessage JSON is your explicit task request: execute the `goal` field, use "
+                "`context_refs` for mission context and dependency outputs, satisfy `acceptance_criteria`, "
+                "and respect `constraints`. Do not say there is no user request when goal is non-empty. "
                 "Do not call tools, run commands, or modify files. Return a concise result; JSON with "
                 "summary, findings, risks, acceptance_checklist, and verdict is preferred."
             )

@@ -214,12 +214,12 @@ export function MergeBundleCard({
     <section className="fa-agent-team-panel fa-agent-team-merge-card">
       <div className="fa-agent-team-panel-header">
         <div>
-          <span>{isChineseUi ? "第四步 · 最终结果" : "Step 4 · Final result"}</span>
-          <strong>{isChineseUi ? "结果、依据、需要注意一次看清" : "Result, evidence, and risks"}</strong>
+          <span>{isChineseUi ? "交付结果" : "Deliverable result"}</span>
+          <strong>{isChineseUi ? "结果、依据、风险一次看清" : "Result, evidence, and risks"}</strong>
           <HelpText>
             {isChineseUi
-              ? "把各任务的改动、依据、风险和未决问题收束成一次可读的最终结果。"
-              : "Collect task changes, evidence, risks, and open questions into one readable final result."}
+              ? "把任务 DAG 的产出、依据、风险和未决问题收束成可交付的最终回答。"
+              : "Synthesize the task DAG outputs, evidence, risks, and open questions into a deliverable final answer."}
           </HelpText>
         </div>
         {activeBundle ? <FinalAnswerStatusPill bundle={activeBundle} isChineseUi={isChineseUi} /> : null}

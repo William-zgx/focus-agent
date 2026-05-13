@@ -10,6 +10,8 @@ import type {
   AgentTeamCreateTaskRequest,
   AgentTeamDispatchRequest,
   AgentTeamListSessionsRequest,
+  AgentTeamMergeDecisionRequest,
+  AgentTeamMergeDecisionResponse,
   AgentTeamPlanSessionRequest,
   AgentTeamRunSessionRequest,
   AgentTeamRunTaskRequest,
@@ -49,8 +51,13 @@ function coerceViewResponse(
       ? normalizeSessionView(response as AgentTeamSession | AgentTeamSessionView)
       : null;
   if (responseView) {
+    const mergeDecision = coerceMergeDecision(response);
     return {
       ...responseView,
+      session: {
+        ...responseView.session,
+        merge_decision: mergeDecision ?? responseView.session.merge_decision ?? previousView?.session.merge_decision ?? null,
+      },
       tasks: responseView.tasks.length ? responseView.tasks : previousView?.tasks ?? [],
       outputs: responseView.outputs?.length ? responseView.outputs : previousView?.outputs ?? [],
       artifacts: responseView.artifacts?.length ? responseView.artifacts : previousView?.artifacts ?? [],
@@ -91,6 +98,46 @@ function coerceViewResponse(
     };
   }
 
+  const mergeDecision = coerceMergeDecision(response);
+  if (mergeDecision && previousView) {
+    return {
+      ...previousView,
+      session: {
+        ...previousView.session,
+        ...(mergeDecision.session ?? {}),
+        merge_decision: mergeDecision,
+        latest_merge_bundle:
+          mergeDecision.merge_bundle ?? mergeDecision.session?.latest_merge_bundle ?? previousView.session.latest_merge_bundle,
+      },
+      merge_bundle:
+        mergeDecision.merge_bundle ??
+        mergeDecision.session?.latest_merge_bundle ??
+        previousView.merge_bundle ??
+        null,
+    };
+  }
+
+  return null;
+}
+
+function coerceMergeDecision(response: AgentTeamActionResponse): AgentTeamMergeDecisionResponse | null {
+  if (!response || typeof response !== "object") return null;
+  const record = response as Record<string, unknown>;
+  if (record.merge_decision && typeof record.merge_decision === "object") {
+    return record.merge_decision as AgentTeamMergeDecisionResponse;
+  }
+  if (record.decision && typeof record.decision === "object") {
+    return record.decision as AgentTeamMergeDecisionResponse;
+  }
+  if (
+    "action" in record ||
+    "next_action" in record ||
+    "approved" in record ||
+    "apply" in record ||
+    "rationale" in record
+  ) {
+    return response as AgentTeamMergeDecisionResponse;
+  }
   return null;
 }
 
@@ -331,6 +378,24 @@ export function useAgentTeamMergeProposal(sessionId: string | null) {
     },
     onSuccess: (data) => {
       updateSessionCache(queryClient, sessionId, data);
+    },
+  });
+}
+
+export function useAgentTeamMergeDecision(sessionId: string | null) {
+  const { client } = useFocusAgent();
+  const queryClient = useQueryClient();
+  const agentTeam = agentTeamClient(client);
+
+  return useMutation<AgentTeamMergeDecisionResponse | AgentTeamSessionView, Error, AgentTeamMergeDecisionRequest>({
+    mutationFn: (request) => {
+      if (!sessionId) throw new Error("Missing Agent Team session id.");
+      if (!agentTeam.recordAgentTeamMergeDecision) throw missingSdkMethod("recordAgentTeamMergeDecision");
+      return agentTeam.recordAgentTeamMergeDecision(sessionId, request);
+    },
+    onSuccess: (data) => {
+      updateSessionCache(queryClient, sessionId, data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentTeamSession(sessionId ?? "") });
     },
   });
 }

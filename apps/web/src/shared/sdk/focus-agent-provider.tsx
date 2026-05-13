@@ -54,6 +54,9 @@ function authErrorMessage(error: unknown, fallback: string): string {
         return nested.message;
       }
     }
+    if (error.message) {
+      return error.message;
+    }
     if (error.code) {
       const code = String(error.code);
       if (code) {
@@ -89,12 +92,29 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
   function persistToken(token: string | null | undefined) {
     const nextToken = token?.trim();
     if (nextToken) {
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
       client.setToken(nextToken);
+      try {
+        window.localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+      } catch (error) {
+        console.warn("Failed to persist Focus Agent auth token", error);
+      }
       return;
     }
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     client.setToken(undefined);
+    try {
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    } catch (error) {
+      console.warn("Failed to clear Focus Agent auth token", error);
+    }
+  }
+
+  function readStoredToken(): string | null {
+    try {
+      return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    } catch (error) {
+      console.warn("Failed to read Focus Agent auth token", error);
+      return null;
+    }
   }
 
   async function resolvePrincipalFromAuthResponse(response?: FocusAgentAuthResponse): Promise<FocusAgentPrincipalResponse> {
@@ -111,6 +131,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
     authAttemptId: number,
     response?: FocusAgentAuthResponse,
   ): Promise<boolean> {
+    if (authAttemptRef.current !== authAttemptId) return false;
     const nextPrincipal = await resolvePrincipalFromAuthResponse(response);
     if (authAttemptRef.current !== authAttemptId) return false;
     setPrincipal(nextPrincipal);
@@ -143,16 +164,21 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let cancelled = false;
+    const authAttemptId = ++authAttemptRef.current;
+
+    function shouldApplyBootstrapResult() {
+      return !cancelled && authAttemptRef.current === authAttemptId;
+    }
 
     async function bootstrap() {
-      const savedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+      const savedToken = readStoredToken();
       if (savedToken?.trim()) {
         client.setToken(savedToken.trim());
       }
 
       try {
         const nextPrincipal = await client.getPrincipal();
-        if (cancelled) return;
+        if (!shouldApplyBootstrapResult()) return;
         setPrincipal(nextPrincipal);
         setAuthError(null);
         setAuthHint(null);
@@ -166,8 +192,9 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 
       try {
         const response = await client.refresh();
+        if (!shouldApplyBootstrapResult()) return;
         const nextPrincipal = await resolvePrincipalFromAuthResponse(response);
-        if (cancelled) return;
+        if (!shouldApplyBootstrapResult()) return;
         setPrincipal(nextPrincipal);
         setAuthError(null);
         setAuthHint(null);
@@ -179,7 +206,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
         }
       }
 
-      if (!cancelled) {
+      if (shouldApplyBootstrapResult()) {
         persistToken(null);
         setPrincipal(null);
         setAuthError(null);
@@ -189,8 +216,8 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
     }
 
     void bootstrap().catch((error: unknown) => {
-      console.error("Failed to bootstrap Focus Agent auth", error);
-      if (!cancelled) {
+      if (shouldApplyBootstrapResult()) {
+        console.error("Failed to bootstrap Focus Agent auth", error);
         persistToken(null);
         setPrincipal(null);
         setAuthError(authErrorMessage(error, "Failed to bootstrap Focus Agent auth."));

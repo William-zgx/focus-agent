@@ -6,6 +6,17 @@ import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 type AdminRouteKey = "users" | "audit";
 
+type AdminConsoleLayoutProps = {
+  active: AdminRouteKey;
+  children: ReactNode;
+  drawer?: ReactNode;
+  drawerLabel?: string;
+  side?: ReactNode;
+  summary: string;
+  title: string;
+  toolbar?: ReactNode;
+};
+
 export function AdminAccessGate({ children }: PropsWithChildren) {
   const { isAdmin, logout } = useFocusAgent();
   const { isChineseUi } = useShellUi();
@@ -35,6 +46,35 @@ export function AdminAccessGate({ children }: PropsWithChildren) {
   }
 
   return <>{children}</>;
+}
+
+export function AdminConsoleLayout({
+  active,
+  children,
+  drawer,
+  drawerLabel,
+  side,
+  summary,
+  title,
+  toolbar,
+}: AdminConsoleLayoutProps) {
+  return (
+    <AdminAccessGate>
+      <div className="fa-admin-layout">
+        <div className={`fa-admin-console ${drawer ? "has-drawer" : ""}`}>
+          <main className="fa-admin-console-main">
+            <AdminPageHeading active={active} title={title} summary={summary} side={side} toolbar={toolbar} />
+            {children}
+          </main>
+          {drawer ? (
+            <aside className="fa-admin-console-drawer" aria-label={drawerLabel}>
+              {drawer}
+            </aside>
+          ) : null}
+        </div>
+      </div>
+    </AdminAccessGate>
+  );
 }
 
 export function AdminRouteTabs({ active }: { active: AdminRouteKey }) {
@@ -68,16 +108,18 @@ export function AdminPageHeading({
   title,
   summary,
   side,
+  toolbar,
 }: {
   active: AdminRouteKey;
   title: string;
   summary: string;
   side?: ReactNode;
+  toolbar?: ReactNode;
 }) {
   const { isChineseUi } = useShellUi();
 
   return (
-    <section className="fa-trajectory-workbench-header fa-admin-header fa-admin-workspace-header">
+    <section className="fa-admin-page-bar">
       <div className="fa-trajectory-workbench-header-copy">
         <div className="fa-trajectory-workbench-heading fa-admin-workspace-heading">
           <p className="fa-admin-eyebrow">
@@ -88,9 +130,12 @@ export function AdminPageHeading({
         </div>
         <AdminRouteTabs active={active} />
       </div>
-      <div className="fa-trajectory-workbench-header-side">
-        {side}
-      </div>
+      {side || toolbar ? (
+        <div className="fa-trajectory-workbench-header-side">
+          {side}
+          {toolbar ? <div className="fa-admin-console-toolbar">{toolbar}</div> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

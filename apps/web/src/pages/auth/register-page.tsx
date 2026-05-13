@@ -1,5 +1,5 @@
 import { useSearch } from "@tanstack/react-router";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
@@ -7,29 +7,35 @@ import { appAuthPath, appReturnToPath, normalizeAuthReturnTo } from "./return-to
 
 export function RegisterPage() {
   const search = useSearch({ strict: false });
-  const { authError, principal, registerWithPassword } = useFocusAgent();
+  const { authError, principal, ready, registerWithPassword } = useFocusAgent();
   const returnTo = useMemo(() => normalizeAuthReturnTo((search as { return_to?: unknown }).return_to), [search]);
+  const registrationRedirectInProgressRef = useRef(false);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const canSubmit = username.trim() && password && password === confirmPassword && !submitting;
+  const canSubmit = Boolean(ready && username.trim() && password && password === confirmPassword && !submitting);
 
   useEffect(() => {
-    if (!principal) return;
+    if (!principal || registrationRedirectInProgressRef.current) return;
     window.location.replace(appAuthPath("/login", returnTo));
   }, [principal, returnTo]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError(null);
+    if (!ready || submitting || !username.trim() || !password) {
+      return;
+    }
     if (password !== confirmPassword) {
       setLocalError("两次密码输入不一致。");
       return;
     }
     setSubmitting(true);
+    registrationRedirectInProgressRef.current = true;
+    let isRedirecting = false;
     try {
       const ok = await registerWithPassword({
         username: username.trim(),
@@ -37,9 +43,13 @@ export function RegisterPage() {
         display_name: displayName.trim() || null,
       });
       if (ok) {
+        isRedirecting = true;
         window.location.assign(appReturnToPath(returnTo));
       }
     } finally {
+      if (!isRedirecting) {
+        registrationRedirectInProgressRef.current = false;
+      }
       setSubmitting(false);
     }
   }
@@ -123,7 +133,7 @@ export function RegisterPage() {
             />
           </label>
           <button className="fa-auth-button is-primary" disabled={!canSubmit} type="submit">
-            {submitting ? "创建中..." : "创建账号"}
+            {!ready ? "准备中..." : submitting ? "创建中..." : "创建账号"}
           </button>
         </form>
 

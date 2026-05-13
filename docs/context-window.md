@@ -1,6 +1,6 @@
 # 当前上下文窗口
 
-更新时间：2026-04-26
+更新时间：2026-05-12
 
 Focus Agent 同时维护两类容易混淆但语义不同的统计：
 
@@ -35,6 +35,8 @@ Focus Agent 同时维护两类容易混淆但语义不同的统计：
 默认 `ContextBudget.prompt_token_limit` 是 `128000`。当前 tokenizer 默认仍是 `chars_fallback` 近似模式；如果线程状态已经携带模型或 tokenizer 配置，会随 budget 一起进入估算。
 
 ## API
+
+Conversation list and branch tree responses expose optional `token_usage` summaries so navigation surfaces can show historical spend without loading each thread.
 
 `GET /v1/threads/{thread_id}` 返回的 `ThreadStateResponse` 会带可选 `context_usage`，用于首屏和每轮完成后的发送栏刷新。
 
@@ -125,6 +127,7 @@ Web App 在 `MessageComposer` 中使用 Context Meter 展示当前线程的 `con
 
 `frontend-sdk` 暴露：
 
+- `listConversations()` / `getBranchTree()` responses with optional `token_usage`
 - `previewThreadContext(threadId, { draft_message })`
 - `compactThreadContext(threadId, { trigger })`
 

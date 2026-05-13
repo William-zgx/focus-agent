@@ -27,7 +27,30 @@ export type AgentTeamRole =
   | "verifier"
   | "writer";
 
-export type AgentTeamFinalAnswerStatus = "ready" | "placeholder" | "blocked" | "error" | string;
+export type AgentTeamFinalAnswerStatus = "ready" | "placeholder" | "blocked" | "error" | "missing" | string;
+
+export type AgentTeamMergeDecisionAction = "merge" | "request_changes" | "split_followup" | "discard" | string;
+
+export interface AgentTeamMergeDecisionRequest {
+  apply?: boolean;
+  next_action?: AgentTeamMergeDecisionAction;
+  rationale?: string | null;
+  accepted_tasks?: string[];
+  rejected_tasks?: string[];
+}
+
+export interface AgentTeamMergeDecisionResponse {
+  session_id?: string;
+  action?: AgentTeamMergeDecisionAction;
+  next_action?: AgentTeamMergeDecisionAction;
+  approved?: boolean;
+  apply?: boolean;
+  rationale?: string | null;
+  accepted_tasks?: string[];
+  rejected_tasks?: string[];
+  session?: AgentTeamSession;
+  merge_bundle?: AgentTeamMergeBundle | null;
+}
 
 export interface AgentTeamSession {
   session_id: string;
@@ -49,7 +72,7 @@ export interface AgentTeamSession {
   created_at?: string;
   updated_at?: string;
   latest_merge_bundle?: AgentTeamMergeBundle | null;
-  merge_decision?: Record<string, unknown> | null;
+  merge_decision?: AgentTeamMergeDecisionResponse | Record<string, unknown> | null;
 }
 
 export interface AgentTeamRunStatus {
@@ -77,7 +100,15 @@ export interface AgentTeamTask {
   planning_rationale?: string | null;
   sort_order?: number | null;
   task_type?: string | null;
+  task_kind?: string | null;
   plan_source?: string | null;
+  input_contract?: Record<string, unknown> | null;
+  output_contract?: Record<string, unknown> | null;
+  evidence_required?: string[];
+  capability_requirements?: string[];
+  risk_level?: string | null;
+  write_scope?: string[];
+  replan_policy?: Record<string, unknown> | null;
   context_refs?: Record<string, unknown>[];
   status: AgentTeamTaskStatus | string;
   run_status?: AgentTeamRunStatus | string | null;
@@ -181,7 +212,7 @@ export interface AgentTeamSessionView {
 export interface AgentTeamCreateSessionRequest {
   title?: string;
   goal: string;
-  root_thread_id: string;
+  root_thread_id?: string | null;
 }
 
 export interface AgentTeamListSessionsRequest {
@@ -199,6 +230,14 @@ export interface AgentTeamSessionListResponse {
 export interface AgentTeamCreateTaskRequest {
   role: AgentTeamRole | string;
   goal: string;
+  task_kind?: string | null;
+  input_contract?: Record<string, unknown> | null;
+  output_contract?: Record<string, unknown> | null;
+  evidence_required?: string[];
+  capability_requirements?: string[];
+  risk_level?: string | null;
+  write_scope?: string[];
+  replan_policy?: Record<string, unknown> | null;
   scope?: string[];
   dependencies?: string[];
   acceptance_criteria?: string[];
@@ -249,6 +288,7 @@ export type AgentTeamActionResponse =
   | AgentTeamSessionView
   | AgentTeamTask
   | AgentTeamMergeBundle
+  | AgentTeamMergeDecisionResponse
   | {
       session?: AgentTeamSession;
       task?: AgentTeamTask | null;
@@ -257,7 +297,9 @@ export type AgentTeamActionResponse =
       outputs?: AgentTeamTaskOutput[];
       artifacts?: AgentTeamArtifact[];
       merge_bundle?: AgentTeamMergeBundle | null;
+      merge_decision?: AgentTeamMergeDecisionResponse | null;
       bundle?: AgentTeamMergeBundle;
+      decision?: AgentTeamMergeDecisionResponse;
       run?: AgentTeamRunMetadata | null;
       count?: number;
     };
@@ -289,6 +331,10 @@ export interface AgentTeamClientContract {
     request?: Record<string, unknown>,
   ) => Promise<AgentTeamMergeBundle | AgentTeamSessionView>;
   createAgentTeamMergeProposal?: (sessionId: string) => Promise<AgentTeamMergeBundle | AgentTeamSessionView>;
+  recordAgentTeamMergeDecision?: (
+    sessionId: string,
+    request: AgentTeamMergeDecisionRequest,
+  ) => Promise<AgentTeamMergeDecisionResponse | AgentTeamSessionView>;
   mergeAgentTeamSession?: (
     sessionId: string,
     request: { accepted_tasks?: string[]; rejected_tasks?: string[] },

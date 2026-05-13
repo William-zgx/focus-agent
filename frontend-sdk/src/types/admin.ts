@@ -16,6 +16,10 @@ export interface FocusAgentUserListResponse {
   offset: number;
 }
 
+export interface FocusAgentUserSessionListRequest {
+  include_revoked?: boolean;
+}
+
 export interface FocusAgentCreateUserRequest {
   user_id: string;
   username?: string | null;

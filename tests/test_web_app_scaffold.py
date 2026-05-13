@@ -204,14 +204,14 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert ".fa-workspace-sidebar" in styles_text
     assert ".fa-chat-panel.is-workspace-shell" in styles_text
     assert ".fa-agent-team-workspace-shell" in styles_text
-    assert ".fa-admin-workspace-header" in styles_text
+    assert ".fa-admin-page-bar" in styles_text
 
     agent_team_text = (
         web_root / "src" / "features" / "agent-team" / "agent-team-workbench.tsx"
     ).read_text()
     assert "fa-agent-team-workspace-shell" in agent_team_text
     assert "fa-agent-team-stage" in agent_team_text
-    assert "Agent Team · Mission Runner" in agent_team_text
+    assert "AgentTeamCockpit" in agent_team_text
     assert "AgentTeamRouteTabs" not in agent_team_text
 
     admin_chrome_text = (web_root / "src" / "pages" / "admin" / "admin-page-chrome.tsx").read_text()
@@ -222,7 +222,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "SessionExitIcon" not in admin_chrome_text
     assert "logout" not in admin_heading_text
     assert "退出登录" not in admin_heading_text
-    assert "fa-admin-workspace-header" in admin_heading_text
+    assert "fa-admin-page-bar" in admin_heading_text
     assert "系统管理 / 治理" in admin_heading_text
 
     agent_console_text = _join_text(

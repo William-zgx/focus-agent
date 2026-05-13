@@ -250,6 +250,7 @@ def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
         _read(path)
         for path in [
             WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench.tsx",
+            WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-cockpit.tsx",
             WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench-utils.ts",
             WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench-merge-handoff.tsx",
             WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench-task-lanes.tsx",
@@ -266,20 +267,20 @@ def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
     assert "recommended_next_action" in workbench_text
     assert "重新生成结果" in workbench_text
     assert "fa-agent-team-guided-layout" in workbench_text
-    assert "fa-agent-team-mission-header" in workbench_text
-    assert "fa-agent-team-mission-progress" in workbench_text
+    assert "fa-agent-team-cockpit-mission-header" in workbench_text
+    assert "fa-agent-team-cockpit-grid" in workbench_text
     assert "返回来源对话" in workbench_text
-    assert "fa-agent-team-progress-overview" in workbench_text
-    assert "fa-agent-team-primary-action" in workbench_text
+    assert "fa-agent-team-cockpit-mission-meta" in workbench_text
+    assert "fa-agent-team-cockpit-button is-primary" in workbench_text
     assert "StatusPill status={session.status}" not in workbench_text
     assert "AdvancedDetailsPanel" in workbench_text
     assert "compactTaskGoal" in workbench_text
     assert "evidenceItems" in workbench_text
     assert "task.verification_summary" in workbench_text
     assert "activeBundle.test_evidence" in workbench_text
-    assert "Agent Team 最终答案" in workbench_text
+    assert "Final Preview" in workbench_text
     assert "finalAnswerText" in workbench_text
     assert "source_output_ids" in workbench_text
     assert "fa-agent-team-execution-mode" in workbench_text
     assert "white-space: pre-line" in stylesheet_text
-    assert "fa-agent-team-guided-grid" in stylesheet_text
+    assert "fa-agent-team-cockpit-grid" in stylesheet_text

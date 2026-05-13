@@ -15,7 +15,7 @@ export function AdminPanelHeader({
         <strong>{eyebrow}</strong>
         <h2>{title}</h2>
       </div>
-      <span>{status}</span>
+      {status ? <div className="fa-admin-panel-header-status">{status}</div> : null}
     </div>
   );
 }

@@ -142,6 +142,86 @@ def test_agent_team_plan_prefers_research_dag_over_generic_delegation() -> None:
     assert all(task.plan_source == "model" for task in tasks)
 
 
+def test_agent_team_adaptive_planning_varies_dag_by_mission_profile() -> None:
+    cases = [
+        ("Research database migration options", "research", ["coordination", "research", "documentation", "review"]),
+        ("Debug failing checkout regression", "debugging", ["diagnosis", "diagnosis", "implementation", "verification"]),
+        ("Review payment flow changes for risk", "review", ["coordination", "review", "documentation"]),
+        ("Implement backend API rate limits", "implementation", ["coordination", "implementation", "verification", "review"]),
+        ("Verify release candidate behavior", "verification", ["coordination", "verification", "review"]),
+        ("Write operator runbook", "writing", ["coordination", "research", "documentation", "review"]),
+    ]
+    observed_shapes: set[tuple[str, ...]] = set()
+
+    for goal, focus, expected_types in cases:
+        service = AgentTeamService(branch_service=None)
+        session = service.create_session(
+            root_thread_id=f"root-{focus}",
+            user_id="user-1",
+            goal=goal,
+        )
+
+        planned_session, tasks = service.plan_session(
+            session_id=session.session_id,
+            user_id="user-1",
+            create_branches=False,
+            focus=focus,
+        )
+
+        task_types = [task.task_type for task in tasks]
+        observed_shapes.add(tuple(task_types))
+        assert planned_session.planning_source == "model"
+        assert task_types == expected_types
+        assert all(task.task_kind for task in tasks)
+        assert all(task.input_contract for task in tasks)
+        assert all(task.output_contract for task in tasks)
+        assert all(task.replan_policy for task in tasks)
+
+    assert len(observed_shapes) >= 5
+
+
+def test_agent_team_fallback_planning_uses_profile_specific_debug_dag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_adaptive_failure(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        raise RuntimeError("planner fixture failed")
+
+    monkeypatch.setattr(
+        "focus_agent.services.agent_team_planning._adaptive_task_specs",
+        _raise_adaptive_failure,
+    )
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Debug failing checkout regression.",
+    )
+
+    planned_session, tasks = service.plan_session(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+        focus="debugging",
+    )
+
+    assert planned_session.planning_source == "fallback_heuristic"
+    assert [task.task_type for task in tasks] == [
+        "diagnosis",
+        "implementation",
+        "verification",
+    ]
+    assert [task.role.value for task in tasks] == [
+        "verifier",
+        "backend_executor",
+        "verifier",
+    ]
+    assert tasks[1].dependencies == [tasks[0].task_id]
+    assert tasks[2].dependencies == [tasks[1].task_id]
+    assert tasks[1].risk_level == "high"
+    assert "root cause differs" in " ".join(tasks[1].replan_policy.get("replan_when", []))
+    assert tasks[1].write_scope == ["src/**", "tests/**"]
+
+
 def test_agent_team_plan_falls_back_only_when_adaptive_planning_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -170,6 +250,73 @@ def test_agent_team_plan_falls_back_only_when_adaptive_planning_fails(
     assert "Adaptive planning failed" in (planned_session.planning_error or "")
     assert len(planned) == 2
     assert all(task.plan_source == "fallback_heuristic" for task in planned)
+
+
+def test_agent_team_planning_compiles_dag_from_deliverable_contracts_and_evidence() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(
+        root_thread_id="root-contracts",
+        user_id="user-1",
+        goal="Implement backend API rate limits with focused tests.",
+    )
+
+    planned_session, tasks = service.plan_session(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+
+    assert planned_session.planning_source == "model"
+    assert [task.task_type for task in tasks] == [
+        "coordination",
+        "implementation",
+        "verification",
+        "review",
+    ]
+    assert [task.title for task in tasks] != ["Plan", "Execute", "Verify"]
+    assert tasks[1].dependencies == [tasks[0].task_id]
+    assert tasks[2].dependencies == [tasks[1].task_id]
+    assert tasks[3].dependencies == [tasks[2].task_id]
+    assert "implementation contract" in tasks[1].input_contract["requires"]
+    assert "patch summary" in tasks[1].output_contract["produces"]
+    assert "changed files" in tasks[1].evidence_required
+    assert tasks[1].write_scope == ["src/**", "tests/**"]
+    assert "patch summary" in tasks[2].input_contract["requires"]
+    assert "test command and result" in tasks[2].evidence_required
+
+
+def test_agent_team_research_and_implementation_have_distinct_deliverable_dags() -> None:
+    service = AgentTeamService(branch_service=None)
+    research_session = service.create_session(
+        root_thread_id="root-research-contracts",
+        user_id="user-1",
+        goal="Research database migration options and compare risks.",
+    )
+    implementation_session = service.create_session(
+        root_thread_id="root-implementation-contracts",
+        user_id="user-1",
+        goal="Implement backend database migration API.",
+    )
+
+    _, research_tasks = service.plan_session(
+        session_id=research_session.session_id,
+        user_id="user-1",
+        create_branches=False,
+        focus="research",
+    )
+    _, implementation_tasks = service.plan_session(
+        session_id=implementation_session.session_id,
+        user_id="user-1",
+        create_branches=False,
+        focus="implementation",
+    )
+
+    assert [task.task_type for task in research_tasks] != [task.task_type for task in implementation_tasks]
+    assert "research findings" in research_tasks[2].input_contract["requires"]
+    assert "source notes" in research_tasks[1].evidence_required
+    assert "patch summary" not in research_tasks[1].output_contract["produces"]
+    assert "patch summary" in implementation_tasks[1].output_contract["produces"]
+    assert "test command and result" in implementation_tasks[2].evidence_required
 
 
 def test_agent_team_planning_fields_are_optional_for_old_payloads() -> None:
@@ -201,4 +348,12 @@ def test_agent_team_planning_fields_are_optional_for_old_payloads() -> None:
     assert task.planning_rationale is None
     assert task.sort_order is None
     assert task.task_type is None
+    assert task.task_kind is None
+    assert task.input_contract is None
+    assert task.output_contract is None
+    assert task.evidence_required == []
+    assert task.capability_requirements == []
+    assert task.risk_level is None
+    assert task.write_scope == []
+    assert task.replan_policy is None
     assert task.plan_source is None

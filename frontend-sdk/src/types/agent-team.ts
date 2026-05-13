@@ -45,7 +45,14 @@ export type FocusAgentAgentTeamFinalAnswerStatus = "ready" | "placeholder" | "bl
 
 export type FocusAgentAgentTeamPlanGranularity = "auto" | "coarse" | "balanced" | "detailed";
 
-export type FocusAgentAgentTeamPlanFocus = "auto" | "research" | "implementation" | "verification";
+export type FocusAgentAgentTeamPlanFocus =
+  | "auto"
+  | "research"
+  | "debugging"
+  | "review"
+  | "implementation"
+  | "verification"
+  | "writing";
 
 export interface FocusAgentAgentTeamPlanningMetadata {
   source?: string | null;
@@ -95,7 +102,15 @@ export interface FocusAgentAgentTeamTask {
   planning_rationale?: string | null;
   sort_order?: number | null;
   task_type?: string | null;
+  task_kind?: string | null;
   plan_source?: string | null;
+  input_contract?: Record<string, unknown> | null;
+  output_contract?: Record<string, unknown> | null;
+  evidence_required?: string[];
+  capability_requirements?: string[];
+  risk_level?: string | null;
+  write_scope?: string[];
+  replan_policy?: Record<string, unknown> | null;
   acceptance_criteria?: string[];
   context_refs?: Record<string, unknown>[];
   scope: string[];
@@ -171,7 +186,7 @@ export interface FocusAgentAgentTeamMergeBundle {
 }
 
 export interface FocusAgentAgentTeamCreateSessionRequest {
-  root_thread_id: string;
+  root_thread_id?: string | null;
   goal: string;
   title?: string | null;
 }
@@ -269,6 +284,14 @@ export interface FocusAgentAgentTeamRunTaskResponse {
 export interface FocusAgentAgentTeamCreateTaskRequest {
   role: FocusAgentAgentTeamTaskRole;
   goal: string;
+  task_kind?: string | null;
+  input_contract?: Record<string, unknown> | null;
+  output_contract?: Record<string, unknown> | null;
+  evidence_required?: string[];
+  capability_requirements?: string[];
+  risk_level?: string | null;
+  write_scope?: string[];
+  replan_policy?: Record<string, unknown> | null;
   acceptance_criteria?: string[];
   context_refs?: Record<string, unknown>[];
   scope?: string[];
@@ -295,6 +318,13 @@ export interface FocusAgentAgentTeamTaskListResponse {
 export interface FocusAgentAgentTeamUpdateTaskRequest {
   status?: FocusAgentAgentTeamTaskStatus;
   goal?: string;
+  input_contract?: Record<string, unknown> | null;
+  output_contract?: Record<string, unknown> | null;
+  evidence_required?: string[];
+  capability_requirements?: string[];
+  risk_level?: string | null;
+  write_scope?: string[];
+  replan_policy?: Record<string, unknown> | null;
   acceptance_criteria?: string[];
   context_refs?: Record<string, unknown>[];
   scope?: string[];

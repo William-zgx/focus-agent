@@ -13,7 +13,7 @@ export const LOGIN_DESTINATIONS = [
   },
   {
     description: "多人协作，分工推进复杂工作。",
-    label: "团队合作",
+    label: "团队协作",
     to: "/agent-team",
     icon: <AgentTeamIcon className="fa-auth-entry-card-icon" />,
   },

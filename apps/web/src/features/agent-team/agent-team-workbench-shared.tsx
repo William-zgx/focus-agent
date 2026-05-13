@@ -40,18 +40,18 @@ export function HelpText({ children }: { children: string }) {
 export function WorkflowGuide({ compact = false }: { compact?: boolean }) {
   const { isChineseUi } = useShellUi();
   const summary = isChineseUi
-    ? "Mission Runner 负责计划、运行和生成最终结果；分支线程只是辅助入口。"
-    : "Mission Runner plans, runs, and prepares final results; branch threads are supporting links.";
+    ? "Mission Runner 会根据目标推导交付物、任务依赖和最终结果；分支线程只是辅助入口。"
+    : "Mission Runner infers deliverables, task dependencies, and final results from the goal; branch threads are supporting links.";
   const steps = isChineseUi
     ? [
-        ["1", "生成方案", "把目标拆成几个协作任务"],
-        ["2", "运行 Mission", "只启动依赖满足的任务"],
-        ["3", "查看结果", "把依据、风险和下一步收束成结果"],
+        ["目标", "描述结果", "说明要达成什么和已有上下文"],
+        ["DAG", "自动拆解", "按交付物生成任务和依赖"],
+        ["结果", "收束交付", "汇总依据、风险和最终回答"],
       ]
     : [
-        ["1", "Generate plan", "Split the goal into collaboration tasks"],
-        ["2", "Run Mission", "Run tasks whose dependencies are ready"],
-        ["3", "View result", "Collect evidence, risks, and next steps"],
+        ["Goal", "Describe outcome", "State the needed result and context"],
+        ["DAG", "Auto-plan", "Generate deliverable tasks and dependencies"],
+        ["Result", "Synthesize", "Collect evidence, risks, and final answer"],
       ];
 
   return (
@@ -59,7 +59,7 @@ export function WorkflowGuide({ compact = false }: { compact?: boolean }) {
       <div className="fa-agent-team-guide-heading">
         <span>{isChineseUi ? "Mission Runner" : "Mission Runner"}</span>
         <strong {...tooltipProps(summary)}>
-          {isChineseUi ? "从目标到最终结果" : "From goal to final result"}
+          {isChineseUi ? "从目标到可运行 DAG" : "From goal to runnable DAG"}
         </strong>
       </div>
       <div className="fa-agent-team-step-strip">

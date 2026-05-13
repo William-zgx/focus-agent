@@ -26,7 +26,17 @@ class FakeBranchService:
         return SimpleNamespace(branch_id="branch-1", child_thread_id="child-1")
 
 
-def test_agent_team_service_creates_task_branch_with_role_mapping() -> None:
+def test_agent_team_service_creates_standalone_session_without_root_thread() -> None:
+    service = AgentTeamService(branch_service=None)
+
+    session = service.create_session(user_id="user-1", goal="Run standalone mission")
+
+    assert session.root_thread_id.startswith("agent-team-standalone-")
+    assert session.goal == "Run standalone mission"
+    assert service.get_session(session.session_id, user_id="user-1").root_thread_id == session.root_thread_id
+
+
+
     branch_service = FakeBranchService()
     service = AgentTeamService(branch_service=branch_service)  # type: ignore[arg-type]
     session = service.create_session(
@@ -187,9 +197,11 @@ def test_agent_team_service_run_ready_tasks_records_execution_evidence() -> None
 
     outputs = service.list_task_outputs(task_id=first.task_id, user_id="user-1")
     assert outputs[0].metadata["execution"]["agent_run_id"] == f"run-{first.task_id}"
-    assert outputs[0].metadata["artifacts"][0]["payload"]["context_refs"] == [
-        {"kind": "thread", "id": "root-1"}
-    ]
+    context_refs = outputs[0].metadata["artifacts"][0]["payload"]["context_refs"]
+    assert {"kind": "thread", "id": "root-1"} in context_refs
+    assert any(item.get("type") == "agent_team_session" for item in context_refs)
+    assert any(item.get("type") == "agent_team_task_contract" for item in context_refs)
+    assert any(item.get("type") == "agent_team_dependency_outputs" for item in context_refs)
     assert outputs[0].test_evidence == [f"delegated fake run run-{first.task_id}: completed"]
 
     second_outputs = service.list_task_outputs(task_id=second.task_id, user_id="user-1")
@@ -272,7 +284,70 @@ def test_agent_team_merge_bundle_includes_execution_evidence() -> None:
     ]
 
 
-def test_agent_team_merge_bundle_fake_outputs_use_placeholder_final_answer() -> None:
+def test_merge_bundle_requests_changes_when_required_task_evidence_is_missing() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(user_id="user-1", goal="Deliver evidence-gated output")
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role=AgentTeamTaskRole.WRITER,
+        title="Write final answer",
+        goal="Write final answer",
+        evidence_required=["benchmark table"],
+        create_branch=False,
+    )
+    service.record_task_output(
+        task_id=task.task_id,
+        user_id="user-1",
+        summary="Final answer drafted without the required source comparison.",
+    )
+    service.update_task(
+        task_id=task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.DONE,
+    )
+
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.recommended_next_action == "request_changes"
+    assert any("benchmark table" in item for item in bundle.risk_items)
+    assert any("Missing required evidence" in item for item in bundle.final_answer_warnings)
+
+
+
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Verify mission")
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="test_engineer",
+        goal="Run verification",
+        create_branch=False,
+    )
+
+    first_bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+    assert any(item.startswith("Pending test_engineer:") for item in first_bundle.open_questions)
+
+    service.update_task(
+        task_id=task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.DONE,
+        verification_summary="Verification completed.",
+    )
+    service.record_task_output(
+        task_id=task.task_id,
+        user_id="user-1",
+        kind="test_report",
+        summary="Verification completed.",
+        test_evidence=["pytest tests/test_agent_team_service.py"],
+    )
+
+    second_bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert second_bundle.open_questions == []
+    assert not any("Pending test_engineer:" in item for item in second_bundle.risk_items)
+
+
     service = AgentTeamService(branch_service=None)
     session = service.create_session(
         root_thread_id="root-1",

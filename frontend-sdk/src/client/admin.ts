@@ -16,11 +16,25 @@ import type {
   FocusAgentUser,
   FocusAgentUserListRequest,
   FocusAgentUserListResponse,
+  FocusAgentUserSessionListRequest,
 } from "../types.js";
 
-async function listUserSessions(this: FocusAgentEndpointContext, userId: string): Promise<FocusAgentSessionListResponse> {
+function buildUserSessionQueryString(request: FocusAgentUserSessionListRequest = {}): string {
+  const params = new URLSearchParams();
+  if (request.include_revoked !== undefined) {
+    params.append("include_revoked", String(request.include_revoked));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+async function listUserSessions(
+  this: FocusAgentEndpointContext,
+  userId: string,
+  request: FocusAgentUserSessionListRequest = {},
+): Promise<FocusAgentSessionListResponse> {
   return this.requestJson<FocusAgentSessionListResponse>(
-    `/v1/admin/users/${encodeURIComponent(userId)}/sessions`,
+    `/v1/admin/users/${encodeURIComponent(userId)}/sessions${buildUserSessionQueryString(request)}`,
     {
       method: "GET",
       headers: {},

@@ -257,7 +257,11 @@ def test_agent_team_api_plan_run_view_and_list_filters(
     view = view_response.json()
     assert view["session"]["session_id"] == second["session_id"]
     assert view["outputs"][0]["metadata"]["execution"]["agent_run_id"] == f"run-{task_id}"
-    assert view["artifacts"][0]["payload"]["context_refs"] == [{"kind": "thread", "id": "root-2"}]
+    context_refs = view["artifacts"][0]["payload"]["context_refs"]
+    assert {"kind": "thread", "id": "root-2"} in context_refs
+    assert any(item.get("type") == "agent_team_session" for item in context_refs)
+    assert any(item.get("type") == "agent_team_task_contract" for item in context_refs)
+    assert any(item.get("type") == "agent_team_dependency_outputs" for item in context_refs)
 
 
 def test_agent_team_api_task_run_respects_dependencies(

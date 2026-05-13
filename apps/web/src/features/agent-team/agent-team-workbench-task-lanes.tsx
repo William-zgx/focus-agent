@@ -24,8 +24,10 @@ function shortText(value: string | null | undefined, fallback = "—") {
   return normalized.length > 140 ? `${normalized.slice(0, 139)}…` : normalized;
 }
 
-function taskStepLabel(index: number) {
-  return String(index + 1).padStart(2, "0");
+function taskDependencyLabel(task: AgentTeamTask, isChineseUi: boolean) {
+  const dependencyCount = task.dependencies?.length ?? 0;
+  if (!dependencyCount) return isChineseUi ? "入口任务" : "Entry task";
+  return isChineseUi ? `依赖 ${dependencyCount} 个任务` : `Depends on ${dependencyCount}`;
 }
 
 function displayTaskTitle(task: AgentTeamTask, isChineseUi: boolean) {
@@ -583,8 +585,8 @@ export function TaskBoard({
                 type="button"
               >
                 <div className="fa-agent-team-task-topline">
-                  <div className="fa-agent-team-task-step-marker" aria-hidden="true">
-                    <span>{taskStepLabel(index)}</span>
+                  <div className="fa-agent-team-task-dependency-marker" aria-hidden="true">
+                    <span>{taskDependencyLabel(task, isChineseUi)}</span>
                     <i />
                   </div>
                   <div>
@@ -777,8 +779,13 @@ export function TaskLanesPanel({
     <section className="fa-agent-team-panel">
       <div className="fa-agent-team-panel-header">
         <div>
-          <span>{isChineseUi ? "任务进度" : "Task progress"}</span>
-          <strong>{isChineseUi ? "任务进度" : "Task progress"}</strong>
+          <span>{isChineseUi ? "任务 DAG" : "Task DAG"}</span>
+          <strong>{isChineseUi ? "计划任务与依赖" : "Planned work and dependencies"}</strong>
+          <HelpText>
+            {isChineseUi
+              ? "这里展示自动拆出的任务、依赖状态、回传产出和需要处理的风险。"
+              : "Review generated tasks, dependency readiness, returned outputs, and risks that need attention."}
+          </HelpText>
         </div>
         <button
           className="fa-observability-preset"

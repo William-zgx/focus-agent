@@ -34,7 +34,9 @@ flowchart LR
 - Confirm SSE event names and payload expectations are still accurate
 - Confirm branch lifecycle behavior is still reflected correctly in docs
 - Confirm auth behavior, ownership rules, protected-route `return_to`, logout, and account switching are documented accurately
+- Confirm Admin Console docs match `/app/admin/users`, `/app/admin/audit-events`, persisted admin role checks, reasoned admin actions, session revoke, password reset, and last-active-admin protection
 - Confirm the frontend SDK examples still match the live contract
+- Confirm Agent Team docs match dynamic planning, standalone sessions, task contracts, Cockpit UI, retry/cancel, final-answer status, and merge bundle behavior
 - Confirm trajectory observability docs match the live API, CLI, and `/app/observability/trajectory` console
 - Confirm trajectory failure promotion preview and batch replay workflow still match the API and eval CLI
 - Confirm OTel exporter env vars and runtime readiness docs still match the live tracing behavior
@@ -100,7 +102,7 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
 - Local Vite smoke URLs should use `http://127.0.0.1:5173/app/` with the trailing slash. Manual browser passes are useful, but personal Chrome profiles can carry stale localStorage, extensions, and auth state; prefer the smoke script's temporary Chrome profile for release evidence and use manual passes as an additional visual check.
-- Auth UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, sidebar logout, Bearer Token login, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
+- Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.

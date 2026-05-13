@@ -9,6 +9,7 @@ import type {
   FocusAgentUpdateUserRequest,
   FocusAgentUpdateUserRolesRequest,
   FocusAgentUpdateUserStatusRequest,
+  FocusAgentUserSessionListRequest,
   FocusAgentUser,
   FocusAgentUserListRequest,
   FocusAgentUserListResponse,
@@ -107,14 +108,18 @@ export function useUpdateAdminUserRoles(userId: string | null) {
   });
 }
 
-export function useAdminUserSessions(userId: string | null) {
+export function useAdminUserSessions(
+  userId: string | null,
+  request: FocusAgentUserSessionListRequest = {},
+) {
   const { client, ready, isAdmin } = useFocusAgent();
+  const filtersKey = JSON.stringify(request);
 
   return useQuery<FocusAgentSessionListResponse>({
-    queryKey: userId ? queryKeys.adminUserSessions(userId) : queryKeys.adminUserSessions(""),
+    queryKey: userId ? [...queryKeys.adminUserSessions(userId), filtersKey] : queryKeys.adminUserSessions(""),
     queryFn: () => {
       if (!userId) throw new Error("Missing user id.");
-      return client.listUserSessions(userId);
+      return client.listUserSessions(userId, request);
     },
     enabled: ready && isAdmin && Boolean(userId),
   });

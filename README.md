@@ -6,7 +6,7 @@
 
 ![Focus Agent showcase](docs/assets/focus-agent-readme-hero.svg)
 
-Focus Agent is a compact Python starter project for building AI apps with branching conversations, live responses, access control, and a lightweight web UI.
+Focus Agent is a compact Python starter project for building AI apps with branching conversations, live responses, access control, an admin console, and a lightweight web UI.
 
 It is designed for teams that want a clear foundation for longer AI workflows without adopting a heavy platform too early.
 
@@ -23,7 +23,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
-- Access control, memory pipeline, and typed frontend SDK
+- Access control, Admin Console, memory pipeline, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
 - Built-in repo, git, web, artifact, and memory tools
 
@@ -60,6 +60,8 @@ Then open:
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/admin/users`
+- `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -88,6 +90,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
 - [Architecture and module map](docs/architecture.md)
+- [Admin Console](docs/admin-console.md)
 - [Streaming Contract](docs/streaming-contract.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)

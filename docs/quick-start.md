@@ -48,6 +48,8 @@ Open:
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/admin/users`
+- `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -196,6 +198,13 @@ Registration and test-account notes:
 - Admin user creation in `/app/admin/users` creates the user record; reset that user's password before testing username/password login.
 - Logout clears the Web app's stored token, clears auth cookies, and revokes the refresh session. Access tokens and demo tokens are stateless, so a copied token remains usable until expiry or key rotation.
 
+Admin Console local checks:
+
+- `/app/admin/users` is the user directory, create-user drawer, and user-detail drawer.
+- `/app/admin/audit-events` is the admin audit event browser.
+- Admin status, role, session revoke, and password reset actions require a reason and write audit events.
+- Bearer token scopes alone do not grant admin access; the persisted user role must allow it.
+
 ## 9. Browser Smoke Testing
 
 The default `make ui-smoke` target expects the app URL from `scripts/ui_smoke_test.py`, which is usually the Vite dev URL. When you want to test the backend-served static bundle or disable auth for local debugging, start the API explicitly and pass the app URL:
@@ -216,6 +225,7 @@ For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`
 
 - [Memory System v2](memory-system-v2.md)
 - [Observability Runbook](observability-runbook.md)
+- [Admin Console](admin-console.md)
 - [Development Guide](development.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)

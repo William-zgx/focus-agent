@@ -48,6 +48,8 @@ make api
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/admin/users`
+- `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -195,6 +197,13 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
 - 在 `/app/admin/users` 创建用户只会创建用户记录；验证用户名密码登录前，需要先为该用户 reset password。
 - 退出登录会清掉 Web App 本地 token、清掉 auth cookie，并撤销 refresh session。Access token 和 demo token 是无状态 token，已经复制出去的 token 在过期或密钥轮换前仍可再次粘贴使用。
 
+Admin Console 本地检查入口：
+
+- `/app/admin/users` 是用户目录、创建用户抽屉和用户详情抽屉。
+- `/app/admin/audit-events` 是管理员审计事件浏览器。
+- 状态、角色、会话撤销和密码重置动作都需要填写 reason，并写入审计事件。
+- Bearer token scope 不能单独授予 admin 权限；必须有持久化用户角色支持。
+
 ## 9. 浏览器 Smoke 测试
 
 `make ui-smoke` 默认使用 `scripts/ui_smoke_test.py` 中配置的 app URL，通常对应 Vite dev server。当你想验证后端托管的静态 bundle，或本地调试时临时关闭鉴权，可以显式启动 API 并传入页面地址：
@@ -215,6 +224,7 @@ uv run python scripts/ui_smoke_test.py \
 
 - [Memory System v2](memory-system-v2.md)
 - [Observability Runbook](observability-runbook.md)
+- [管理员控制台](admin-console.md)
 - [开发指南](development.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
 - [架构说明](architecture.md)

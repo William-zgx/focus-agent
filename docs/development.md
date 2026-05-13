@@ -8,14 +8,17 @@ flowchart TD
     Scope --> Backend["Backend / contracts"]
     Scope --> Web["Web app"]
     Scope --> SDK["Frontend SDK"]
+    Scope --> Admin["Admin / Auth"]
     Scope --> Agent["Agent governance"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
+    Admin --> AdminChecks["admin API tests + web scaffold"]
     Agent --> Eval["agent eval suites + governance tests"]
     CI --> Done["Ready for review"]
     WebChecks --> Done
     SDKChecks --> Done
+    AdminChecks --> Done
     Eval --> Done
 ```
 
@@ -217,6 +220,16 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated
 tokens, production demo-token blocking, registration/password rules, refresh-session logout, admin role safeguards, and the rule that `tenant_id` and `scope` are claim metadata rather than thread ownership keys.
 
+If the Admin Console Web pages, admin SDK types, route protection, or audit event UI changed, also run:
+
+```bash
+uv run pytest tests/test_web_app_scaffold.py
+make contract-check
+make web-check
+make web-build
+make sdk-check
+```
+
 When the Web login surface, account shell, admin route protection, or token storage changes, also run a real-browser auth flow against the local app:
 
 - Visit a protected page such as `/app/admin/users` while signed out and confirm the redirect to `/app/auth/login?return_to=...`.
@@ -224,6 +237,8 @@ When the Web login surface, account shell, admin route protection, or token stor
 - Sign out from the sidebar account control and confirm the login page is visible again.
 - Generate a local `/v1/auth/demo-token`, use the `使用 Bearer Token` panel, and confirm the sidebar account changes.
 - After registration or admin password reset, confirm username/password login still reaches the same `return_to` target.
+- In `/app/admin/users`, create a user, open the detail drawer, and perform a reasoned status or role update.
+- In `/app/admin/audit-events`, filter by resource or decision and open an event detail drawer.
 - Switch back by signing out and logging in with a different method. The app has no separate account switcher; switching is logout followed by another login.
 
 15. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
@@ -237,6 +252,8 @@ make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318
 make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 ```
+
+The full release gate includes live-model eval smoke suites and expects a configured provider/model. In offline test environments, run the focused release-gate tests plus generated offline reports and document skipped live evals as a verification gap rather than treating the skip as equivalent to a live pass.
 
 16. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
@@ -286,5 +303,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [Quick Start](quick-start.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)
+- [Admin Console](admin-console.md)
+- [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)
 - [Roadmap](roadmap.md)

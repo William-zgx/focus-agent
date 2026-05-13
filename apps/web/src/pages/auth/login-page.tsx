@@ -49,7 +49,7 @@ export function LoginPage() {
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!username.trim() || !password || submitting) return;
+    if (!ready || !username.trim() || !password || submitting) return;
     setSubmitting("password");
     try {
       await finish(await authenticateWithPassword({ username: username.trim(), password }));
@@ -60,7 +60,7 @@ export function LoginPage() {
 
   async function handleTokenSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token.trim() || submitting) return;
+    if (!ready || !token.trim() || submitting) return;
     setSubmitting("token");
     try {
       await finish(await authenticateWithToken(token));
@@ -70,7 +70,7 @@ export function LoginPage() {
   }
 
   async function handleDemoLogin() {
-    if (submitting) return;
+    if (!ready || submitting) return;
     setSubmitting("demo");
     try {
       await finish(await authenticateWithDemoUser());
@@ -96,6 +96,7 @@ export function LoginPage() {
     <LoginPageShell
       advanced={
         <TokenLoginPanel
+          authReady={ready}
           clearStoredToken={clearStoredToken}
           onTokenSubmit={handleTokenSubmit}
           setShowToken={setShowToken}
@@ -109,6 +110,7 @@ export function LoginPage() {
     >
       <LoginIntro effectiveReturnTo={effectiveReturnTo} />
       <LoginForm
+        authReady={ready}
         authError={authError ?? null}
         effectiveReturnTo={effectiveReturnTo}
         onDemoLogin={handleDemoLogin}

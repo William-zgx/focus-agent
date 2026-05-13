@@ -68,7 +68,7 @@
     "listModels": "async listModels(): Promise<FocusAgentModelsResponse>",
     "listMySessions": "async listMySessions(): Promise<FocusAgentSessionListResponse>",
     "listTrajectoryTurns": "async listTrajectoryTurns( request: FocusAgentTrajectoryListRequest = {}, ): Promise<FocusAgentTrajectoryListResponse>",
-    "listUserSessions": "async listUserSessions(userId: string): Promise<FocusAgentSessionListResponse>",
+    "listUserSessions": "async listUserSessions( userId: string, request: FocusAgentUserSessionListRequest = {}, ): Promise<FocusAgentSessionListResponse>",
     "listUsers": "async listUsers(request: FocusAgentUserListRequest = {}): Promise<FocusAgentUserListResponse>",
     "login": "async login(request: FocusAgentLoginRequest): Promise<FocusAgentAuthResponse>",
     "logout": "async logout(): Promise<void>",
@@ -229,8 +229,8 @@
     "FocusAgentAgentStreamStep": "export interface FocusAgentAgentStreamStep extends FocusAgentStreamStepBase { kind: \"agent\"; }",
     "FocusAgentAgentTeamArtifact": "export interface FocusAgentAgentTeamArtifact { artifact_id: string; task_id?: string | null; kind?: FocusAgentAgentTeamArtifactKind | string | null; title?: string | null; summary?: string | null; content?: string | null; metadata?: Record<string, unknown> | null; created_at?: string | null; }",
     "FocusAgentAgentTeamArtifactKind": "export type FocusAgentAgentTeamArtifactKind = | \"plan\" | \"patch_summary\" | \"test_report\" | \"review_report\" | \"risk_report\" | \"handoff\" | \"merge_summary\";",
-    "FocusAgentAgentTeamCreateSessionRequest": "export interface FocusAgentAgentTeamCreateSessionRequest { root_thread_id: string; goal: string; title?: string | null; }",
-    "FocusAgentAgentTeamCreateTaskRequest": "export interface FocusAgentAgentTeamCreateTaskRequest { role: FocusAgentAgentTeamTaskRole; goal: string; acceptance_criteria?: string[]; context_refs?: Record<string, unknown>[]; scope?: string[]; dependencies?: string[]; branch_id?: string | null; child_thread_id?: string | null; auto_fork_branch?: boolean | null; create_branch?: boolean | null; branch_name?: string | null; }",
+    "FocusAgentAgentTeamCreateSessionRequest": "export interface FocusAgentAgentTeamCreateSessionRequest { root_thread_id?: string | null; goal: string; title?: string | null; }",
+    "FocusAgentAgentTeamCreateTaskRequest": "export interface FocusAgentAgentTeamCreateTaskRequest { role: FocusAgentAgentTeamTaskRole; goal: string; task_kind?: string | null; input_contract?: Record<string, unknown> | null; output_contract?: Record<string, unknown> | null; evidence_required?: string[]; capability_requirements?: string[]; risk_level?: string | null; write_scope?: string[]; replan_policy?: Record<string, unknown> | null; acceptance_criteria?: string[]; context_refs?: Record<string, unknown>[]; scope?: string[]; dependencies?: string[]; branch_id?: string | null; child_thread_id?: string | null; auto_fork_branch?: boolean | null; create_branch?: boolean | null; branch_name?: string | null; }",
     "FocusAgentAgentTeamDispatchRequest": "export interface FocusAgentAgentTeamDispatchRequest { create_branches?: boolean; auto_fork_branch?: boolean | null; parent_thread_id?: string | null; }",
     "FocusAgentAgentTeamDispatchResponse": "export interface FocusAgentAgentTeamDispatchResponse { session: FocusAgentAgentTeamSession; tasks: FocusAgentAgentTeamTask[]; items: FocusAgentAgentTeamTask[]; outputs?: FocusAgentAgentTeamTaskOutput[]; artifacts?: FocusAgentAgentTeamArtifact[]; merge_bundle?: FocusAgentAgentTeamMergeBundle | null; planning?: FocusAgentAgentTeamPlanningMetadata | null; count: number; }",
     "FocusAgentAgentTeamFinalAnswerStatus": "export type FocusAgentAgentTeamFinalAnswerStatus = \"ready\" | \"placeholder\" | \"blocked\" | \"error\" | string;",
@@ -240,7 +240,7 @@
     "FocusAgentAgentTeamMergeDecisionRequest": "export interface FocusAgentAgentTeamMergeDecisionRequest { accepted_tasks: string[]; rejected_tasks?: string[]; apply?: boolean; rationale?: string | null; summary_override?: string | null; next_action?: FocusAgentAgentTeamMergeNextAction | null; }",
     "FocusAgentAgentTeamMergeDecisionResponse": "export interface FocusAgentAgentTeamMergeDecisionResponse { session: FocusAgentAgentTeamSession; merge_bundle: FocusAgentAgentTeamMergeBundle; applied: boolean; }",
     "FocusAgentAgentTeamMergeNextAction": "export type FocusAgentAgentTeamMergeNextAction = | \"merge\" | \"request_changes\" | \"split_followup\" | \"discard\";",
-    "FocusAgentAgentTeamPlanFocus": "export type FocusAgentAgentTeamPlanFocus = \"auto\" | \"research\" | \"implementation\" | \"verification\";",
+    "FocusAgentAgentTeamPlanFocus": "export type FocusAgentAgentTeamPlanFocus = | \"auto\" | \"research\" | \"debugging\" | \"review\" | \"implementation\" | \"verification\" | \"writing\";",
     "FocusAgentAgentTeamPlanGranularity": "export type FocusAgentAgentTeamPlanGranularity = \"auto\" | \"coarse\" | \"balanced\" | \"detailed\";",
     "FocusAgentAgentTeamPlanSessionRequest": "export interface FocusAgentAgentTeamPlanSessionRequest extends FocusAgentAgentTeamSessionRunRequest { replace_existing?: boolean; granularity?: FocusAgentAgentTeamPlanGranularity; focus?: FocusAgentAgentTeamPlanFocus; max_tasks?: number; }",
     "FocusAgentAgentTeamPlanSessionResponse": "export type FocusAgentAgentTeamPlanSessionResponse = FocusAgentAgentTeamSessionRunResponse;",
@@ -258,13 +258,13 @@
     "FocusAgentAgentTeamSessionRunResponse": "export interface FocusAgentAgentTeamSessionRunResponse { session: FocusAgentAgentTeamSession; tasks: FocusAgentAgentTeamTask[]; items: FocusAgentAgentTeamTask[]; outputs: FocusAgentAgentTeamTaskOutput[]; artifacts: FocusAgentAgentTeamArtifact[]; merge_bundle?: FocusAgentAgentTeamMergeBundle | null; planning?: FocusAgentAgentTeamPlanningMetadata | null; run?: FocusAgentAgentTeamRunMetadata | null; count: number; }",
     "FocusAgentAgentTeamSessionStatus": "export type FocusAgentAgentTeamSessionStatus = | \"planning\" | \"running\" | \"awaiting_review\" | \"merging\" | \"completed\" | \"failed\" | \"cancelled\";",
     "FocusAgentAgentTeamSessionView": "export interface FocusAgentAgentTeamSessionView { session: FocusAgentAgentTeamSession; tasks: FocusAgentAgentTeamTask[]; outputs?: FocusAgentAgentTeamTaskOutput[]; artifacts: FocusAgentAgentTeamArtifact[]; merge_bundle?: FocusAgentAgentTeamMergeBundle | null; planning?: FocusAgentAgentTeamPlanningMetadata | null; run?: FocusAgentAgentTeamRunMetadata | null; }",
-    "FocusAgentAgentTeamTask": "export interface FocusAgentAgentTeamTask { task_id: string; session_id: string; branch_id?: string | null; child_thread_id?: string | null; role: FocusAgentAgentTeamTaskRole; goal: string; title?: string | null; planning_rationale?: string | null; sort_order?: number | null; task_type?: string | null; plan_source?: string | null; acceptance_criteria?: string[]; context_refs?: Record<string, unknown>[]; scope: string[]; dependencies: string[]; status: FocusAgentAgentTeamTaskStatus; run_status?: string | null; output_artifact_ids: string[]; agent_run_id?: string | null; delegated_task_id?: string | null; artifact_ids: string[]; execution_status?: string | null; changed_files: string[]; verification_summary?: string | null; risk_notes: string[]; started_at?: string | null; finished_at?: string | null; last_error?: string | null; attempt?: number; max_attempts?: number; claim_owner?: string | null; claimed_until?: string | null; queued_at?: string | null; heartbeat_at?: string | null; execution_mode?: string | null; cancel_requested_at?: string | null; created_at?: string; updated_at?: string; }",
+    "FocusAgentAgentTeamTask": "export interface FocusAgentAgentTeamTask { task_id: string; session_id: string; branch_id?: string | null; child_thread_id?: string | null; role: FocusAgentAgentTeamTaskRole; goal: string; title?: string | null; planning_rationale?: string | null; sort_order?: number | null; task_type?: string | null; task_kind?: string | null; plan_source?: string | null; input_contract?: Record<string, unknown> | null; output_contract?: Record<string, unknown> | null; evidence_required?: string[]; capability_requirements?: string[]; risk_level?: string | null; write_scope?: string[]; replan_policy?: Record<string, unknown> | null; acceptance_criteria?: string[]; context_refs?: Record<string, unknown>[]; scope: string[]; dependencies: string[]; status: FocusAgentAgentTeamTaskStatus; run_status?: string | null; output_artifact_ids: string[]; agent_run_id?: string | null; delegated_task_id?: string | null; artifact_ids: string[]; execution_status?: string | null; changed_files: string[]; verification_summary?: string | null; risk_notes: string[]; started_at?: string | null; finished_at?: string | null; last_error?: string | null; attempt?: number; max_attempts?: number; claim_owner?: string | null; claimed_until?: string | null; queued_at?: string | null; heartbeat_at?: string | null; execution_mode?: string | null; cancel_requested_at?: string | null; created_at?: string; updated_at?: string; }",
     "FocusAgentAgentTeamTaskListResponse": "export interface FocusAgentAgentTeamTaskListResponse { items: FocusAgentAgentTeamTask[]; count: number; }",
     "FocusAgentAgentTeamTaskOutput": "export interface FocusAgentAgentTeamTaskOutput { output_id?: string; task_id: string; kind?: FocusAgentAgentTeamArtifactKind | null; artifact_id?: string | null; artifact_kind?: FocusAgentAgentTeamArtifactKind | null; content?: string | null; summary?: string | null; changed_files: string[]; test_evidence?: string[]; verification_summary?: string | null; risk_notes: string[]; metadata?: Record<string, unknown> | null; created_at?: string | null; }",
     "FocusAgentAgentTeamTaskRole": "export type FocusAgentAgentTeamTaskRole = | \"planner\" | \"architect\" | \"backend_executor\" | \"frontend_executor\" | \"test_engineer\" | \"reviewer\" | \"verifier\" | \"writer\";",
     "FocusAgentAgentTeamTaskRunRequest": "export interface FocusAgentAgentTeamTaskRunRequest { create_branch?: boolean; auto_fork_branch?: boolean | null; parent_thread_id?: string | null; metadata?: Record<string, unknown> | null; }",
     "FocusAgentAgentTeamTaskStatus": "export type FocusAgentAgentTeamTaskStatus = | \"pending\" | \"queued\" | \"running\" | \"blocked\" | \"done\" | \"failed\" | \"cancelled\";",
-    "FocusAgentAgentTeamUpdateTaskRequest": "export interface FocusAgentAgentTeamUpdateTaskRequest { status?: FocusAgentAgentTeamTaskStatus; goal?: string; acceptance_criteria?: string[]; context_refs?: Record<string, unknown>[]; scope?: string[]; dependencies?: string[]; branch_id?: string | null; child_thread_id?: string | null; output_artifact_ids?: string[]; run_status?: string | null; changed_files?: string[]; verification_summary?: string | null; risk_notes?: string[]; started_at?: string | null; finished_at?: string | null; last_error?: string | null; }",
+    "FocusAgentAgentTeamUpdateTaskRequest": "export interface FocusAgentAgentTeamUpdateTaskRequest { status?: FocusAgentAgentTeamTaskStatus; goal?: string; input_contract?: Record<string, unknown> | null; output_contract?: Record<string, unknown> | null; evidence_required?: string[]; capability_requirements?: string[]; risk_level?: string | null; write_scope?: string[]; replan_policy?: Record<string, unknown> | null; acceptance_criteria?: string[]; context_refs?: Record<string, unknown>[]; scope?: string[]; dependencies?: string[]; branch_id?: string | null; child_thread_id?: string | null; output_artifact_ids?: string[]; run_status?: string | null; changed_files?: string[]; verification_summary?: string | null; risk_notes?: string[]; started_at?: string | null; finished_at?: string | null; last_error?: string | null; }",
     "FocusAgentApplyMergeDecisionRequest": "export interface FocusAgentApplyMergeDecisionRequest { approved?: boolean; mode?: MergeMode; target?: MergeTarget; rationale?: string | null; selected_artifacts?: string[]; proposal_overrides?: FocusAgentMergeProposalOverrides | null; }",
     "FocusAgentApplyMergeDecisionResponse": "export interface FocusAgentApplyMergeDecisionResponse { imported?: FocusAgentImportedConclusion | null; }",
     "FocusAgentArtifactListResponse": "export interface FocusAgentArtifactListResponse { items: Array<Record<string, unknown>>; count: number; trajectory_available: boolean; trajectory_error?: string | null; }",
@@ -412,6 +412,7 @@
     "FocusAgentUser": "export interface FocusAgentUser { user_id: string; username?: string | null; display_name?: string | null; email?: string | null; tenant_id?: string | null; status: FocusAgentUserStatus | string; roles: string[]; auth_provider?: string | null; created_at?: string | null; updated_at?: string | null; last_seen_at?: string | null; last_login_at?: string | null; password_updated_at?: string | null; metadata: Record<string, unknown>; }",
     "FocusAgentUserListRequest": "export interface FocusAgentUserListRequest { status?: string | string[] | null; role?: string | string[] | null; tenant_id?: string | null; query?: string | null; limit?: number; offset?: number; }",
     "FocusAgentUserListResponse": "export interface FocusAgentUserListResponse { items: FocusAgentUser[]; count: number; limit: number; offset: number; }",
+    "FocusAgentUserSessionListRequest": "export interface FocusAgentUserSessionListRequest { include_revoked?: boolean; }",
     "FocusAgentUserStatus": "export type FocusAgentUserStatus = \"active\" | \"disabled\" | \"invited\" | \"deleted\";",
     "MergeMode": "export type MergeMode = \"none\" | \"summary_only\" | \"summary_plus_evidence\" | \"selected_artifacts\";",
     "MergeTarget": "export type MergeTarget = \"return_thread\" | \"root_thread\";",
@@ -633,6 +634,7 @@
     "FocusAgentUser",
     "FocusAgentUserListRequest",
     "FocusAgentUserListResponse",
+    "FocusAgentUserSessionListRequest",
     "FocusAgentUserStatus",
     "MergeMode",
     "MergeTarget",
@@ -749,7 +751,8 @@
       "FocusAgentUpdateUserStatusRequest",
       "FocusAgentUser",
       "FocusAgentUserListRequest",
-      "FocusAgentUserListResponse"
+      "FocusAgentUserListResponse",
+      "FocusAgentUserSessionListRequest"
     ],
     "apps/web/src/features/branch-tree/branch-tree-archived-sections.tsx": [
       "BranchTreeNode",
@@ -924,6 +927,9 @@
     "apps/web/src/features/trajectory-observability/use-trajectory-list.ts": [
       "FocusAgentTrajectoryListRequest",
       "FocusAgentTrajectoryListResponse"
+    ],
+    "apps/web/src/pages/admin/admin-audit-events-page.tsx": [
+      "FocusAgentAuditEvent"
     ],
     "apps/web/src/pages/admin/admin-user-detail-panels.tsx": [
       "FocusAgentAuditEvent",

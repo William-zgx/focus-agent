@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 
 import { useAdminUsers } from "@/features/admin-users/use-admin-users";
 
+import { readAdminSearchParam, useAdminUrlSync } from "./admin-url-state";
+
 export function useAdminUsersListState() {
-	const [statusFilter, setStatusFilter] = useState("");
-	const [roleFilter, setRoleFilter] = useState("");
-	const [tenantFilter, setTenantFilter] = useState("");
-	const [queryFilter, setQueryFilter] = useState("");
+	const [statusFilter, setStatusFilter] = useState(() => readAdminSearchParam("status"));
+	const [roleFilter, setRoleFilter] = useState(() => readAdminSearchParam("role"));
+	const [tenantFilter, setTenantFilter] = useState(() => readAdminSearchParam("tenant"));
+	const [queryFilter, setQueryFilter] = useState(() => readAdminSearchParam("query"));
 
 	const filters = useMemo(
 		() => ({
@@ -19,6 +21,16 @@ export function useAdminUsersListState() {
 		}),
 		[queryFilter, roleFilter, statusFilter, tenantFilter],
 	);
+	const urlFilters = useMemo(
+		() => ({
+			query: queryFilter,
+			role: roleFilter,
+			status: statusFilter,
+			tenant: tenantFilter,
+		}),
+		[queryFilter, roleFilter, statusFilter, tenantFilter],
+	);
+	useAdminUrlSync(urlFilters);
 
 	const usersQuery = useAdminUsers(filters);
 	const users = usersQuery.data?.items ?? [];

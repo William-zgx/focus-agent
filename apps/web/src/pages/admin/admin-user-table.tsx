@@ -11,6 +11,7 @@ type AdminUsersTableProps = {
 	isChineseUi: boolean;
 	isLoading: boolean;
 	locale: string;
+	selectedUserId?: string | null;
 	users: FocusAgentUser[];
 };
 
@@ -18,6 +19,7 @@ export function AdminUsersTable({
 	isChineseUi,
 	isLoading,
 	locale,
+	selectedUserId,
 	users,
 }: AdminUsersTableProps) {
 	return (
@@ -35,7 +37,7 @@ export function AdminUsersTable({
 				</thead>
 				<tbody>
 					{users.map((user) => (
-						<tr key={user.user_id}>
+						<tr className={selectedUserId === user.user_id ? "is-selected" : undefined} key={user.user_id}>
 							<td>
 								<div className="fa-admin-identity-cell">
 									<strong>{formatUserLabel(user)}</strong>

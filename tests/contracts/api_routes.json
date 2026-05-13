@@ -6028,8 +6028,11 @@
               "enum": [
                 "auto",
                 "research",
+                "debugging",
+                "review",
                 "implementation",
-                "verification"
+                "verification",
+                "writing"
               ],
               "type": "string"
             },
@@ -6490,6 +6493,12 @@
             }
           ]
         },
+        "capability_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "changed_files": {
           "items": {
             "type": "string"
@@ -6552,6 +6561,12 @@
           },
           "type": "array"
         },
+        "evidence_required": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "execution_mode": {
           "anyOf": [
             {
@@ -6595,6 +6610,17 @@
             }
           ]
         },
+        "input_contract": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "last_error": {
           "anyOf": [
             {
@@ -6614,6 +6640,17 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "output_contract": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "plan_source": {
           "anyOf": [
@@ -6636,6 +6673,27 @@
           ]
         },
         "queued_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replan_policy": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "risk_level": {
           "anyOf": [
             {
               "type": "string"
@@ -6699,6 +6757,16 @@
         "task_id": {
           "type": "string"
         },
+        "task_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "task_type": {
           "anyOf": [
             {
@@ -6731,6 +6799,12 @@
               "type": "null"
             }
           ]
+        },
+        "write_scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -7827,7 +7901,14 @@
           "type": "string"
         },
         "root_thread_id": {
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "title": {
           "anyOf": [
@@ -7841,7 +7922,6 @@
         }
       },
       "required": [
-        "root_thread_id",
         "goal"
       ],
       "type": "object"
@@ -7884,6 +7964,12 @@
             }
           ]
         },
+        "capability_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "child_thread_id": {
           "anyOf": [
             {
@@ -7911,10 +7997,59 @@
           },
           "type": "array"
         },
+        "evidence_required": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "goal": {
           "type": "string"
         },
+        "input_contract": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_contract": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replan_policy": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "risk_level": {
           "anyOf": [
             {
               "type": "string"
@@ -7928,6 +8063,22 @@
           "$ref": "#/components/schemas/AgentTeamTaskRole"
         },
         "scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "task_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "write_scope": {
           "items": {
             "type": "string"
           },
@@ -11718,6 +11869,19 @@
             }
           ]
         },
+        "capability_requirements": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "changed_files": {
           "anyOf": [
             {
@@ -11768,6 +11932,19 @@
             }
           ]
         },
+        "evidence_required": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "finished_at": {
           "anyOf": [
             {
@@ -11782,6 +11959,17 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input_contract": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
             },
             {
               "type": "null"
@@ -11805,6 +11993,38 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_contract": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replan_policy": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"
@@ -11871,6 +12091,19 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "write_scope": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             {
               "type": "null"

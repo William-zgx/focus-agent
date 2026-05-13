@@ -52,11 +52,9 @@ class AgentTeamMergeMixin:
             + [note for output in outputs for note in output.risk_notes]
             + _planning_risk_notes(session=session, outputs=outputs)
         )
-        test_evidence = _dedupe(
-            [task.verification_summary or "" for task in tasks]
-            + [evidence for output in outputs for evidence in output.test_evidence]
-            + _metadata_values(outputs, "test_evidence", "verification_evidence", "tests")
-        )
+        missing_required_evidence = _missing_required_evidence(tasks=tasks, outputs=outputs)
+        risk_items = _dedupe([*risk_items, *missing_required_evidence])
+        test_evidence = _merge_test_evidence(tasks=tasks, outputs=outputs)
         execution_evidence = self._execution_evidence(tasks, outputs)
         has_review_evidence = _has_review_or_verification_evidence(
             tasks=tasks,
@@ -258,6 +256,68 @@ class AgentTeamMergeMixin:
         return headline
 
 
+def _missing_required_evidence(
+    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
+) -> list[str]:
+    outputs_by_task: dict[str, list[AgentTeamTaskOutput]] = {}
+    for output in outputs:
+        outputs_by_task.setdefault(output.task_id, []).append(output)
+
+    missing: list[str] = []
+    for task in tasks:
+        if task.status != AgentTeamTaskStatus.DONE or not task.evidence_required:
+            continue
+        available = "\n".join(
+            _dedupe(
+                [task.verification_summary or ""]
+                + task.risk_notes
+                + task.changed_files
+                + [output.summary for output in outputs_by_task.get(task.task_id, [])]
+                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.test_evidence]
+                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.changed_files]
+                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.risk_notes]
+                + [
+                    value
+                    for output in outputs_by_task.get(task.task_id, [])
+                    for value in _artifact_payload_values(output.metadata)
+                ]
+            )
+        ).lower()
+        missing_items = [
+            item
+            for item in task.evidence_required
+            if str(item).strip() and str(item).strip().lower() not in available
+        ]
+        if missing_items:
+            label = task.title or task.goal
+            missing.append(
+                f"Missing required evidence for {task.role.value} task '{label}': {', '.join(missing_items)}."
+            )
+    return _dedupe(missing)
+
+def _merge_test_evidence(
+    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
+) -> list[str]:
+    values: list[str] = []
+    for output in outputs:
+        values.extend(_explicit_evidence_items(output.test_evidence))
+    values.extend(
+        _explicit_evidence_items(
+            _metadata_values(outputs, "test_evidence", "verification_evidence", "tests")
+        )
+    )
+    values.extend(
+        _explicit_evidence_items(
+            [
+                task.verification_summary or ""
+                for task in tasks
+                if task.role.value in _REVIEW_EVIDENCE_ROLES
+            ]
+        )
+    )
+    return _dedupe(values)
+
+
 def _has_review_or_verification_evidence(
     *,
     tasks: list[AgentTeamTask],
@@ -267,7 +327,7 @@ def _has_review_or_verification_evidence(
     for output in outputs:
         task = task_by_id.get(output.task_id)
         role = task.role.value if task is not None else ""
-        if _explicit_verification_evidence(
+        if _explicit_evidence_items(
             [
                 *output.test_evidence,
                 *_values_for_keys(
@@ -333,7 +393,9 @@ def _build_final_answer(
             "source_output_ids": source_output_ids,
         }
 
-    body_items = _final_answer_content_items(outputs)
+    body_items = _final_answer_content_items(
+        _deliverable_outputs(tasks=tasks, outputs=outputs)
+    )
     if not body_items:
         return {
             "status": AgentTeamFinalAnswerStatus.BLOCKED,
@@ -395,6 +457,24 @@ def _has_executor_or_writer_output(
     return False
 
 
+def _deliverable_outputs(
+    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
+) -> list[AgentTeamTaskOutput]:
+    task_by_id = {task.task_id: task for task in tasks}
+    deliverable_roles = {
+        AgentTeamTaskRole.BACKEND_EXECUTOR,
+        AgentTeamTaskRole.FRONTEND_EXECUTOR,
+        AgentTeamTaskRole.WRITER,
+    }
+    deliverables = [
+        output
+        for output in outputs
+        if task_by_id.get(output.task_id) is not None
+        and task_by_id[output.task_id].role in deliverable_roles
+    ]
+    return deliverables or outputs
+
+
 def _final_answer_content_items(outputs: list[AgentTeamTaskOutput]) -> list[str]:
     items: list[str] = []
     for output in outputs:
@@ -447,8 +527,13 @@ def _payload_values(payload: dict[str, object]) -> list[str]:
     return values
 
 
-def _explicit_verification_evidence(values: list[str]) -> bool:
-    return any(value.strip() and not value.strip().startswith("delegated ") for value in values)
+def _explicit_evidence_items(values: list[str]) -> list[str]:
+    return [value for value in values if _is_explicit_evidence(value)]
+
+
+def _is_explicit_evidence(value: str) -> bool:
+    text = value.strip().lower()
+    return bool(text) and not text.startswith("delegated ") and not text.startswith("completed ") and text != "completed"
 
 
 def _planning_risk_notes(
@@ -458,7 +543,6 @@ def _planning_risk_notes(
     latest_bundle = session.latest_merge_bundle or {}
     if isinstance(latest_bundle, dict):
         values.extend(_values_for_keys(latest_bundle, "risk_items", "risk_notes", "risks"))
-        values.extend(_values_for_keys(latest_bundle, "open_questions"))
     for output in outputs:
         values.extend(
             _values_for_keys(

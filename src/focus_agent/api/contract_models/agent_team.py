@@ -15,7 +15,15 @@ from focus_agent.core.agent_team import (
 )
 
 AgentTeamPlanGranularity = Literal["auto", "coarse", "balanced", "detailed"]
-AgentTeamPlanFocus = Literal["auto", "research", "implementation", "verification"]
+AgentTeamPlanFocus = Literal[
+    "auto",
+    "research",
+    "debugging",
+    "review",
+    "implementation",
+    "verification",
+    "writing",
+]
 AgentTeamFinalAnswerStatus = Literal["ready", "placeholder", "blocked", "error"] | str
 
 
@@ -71,7 +79,15 @@ class AgentTeamTaskContract(BaseModel):
     planning_rationale: str | None = None
     sort_order: int | None = None
     task_type: str | None = None
+    task_kind: str | None = None
     plan_source: str | None = None
+    input_contract: dict[str, Any] | None = None
+    output_contract: dict[str, Any] | None = None
+    evidence_required: list[str] = Field(default_factory=list)
+    capability_requirements: list[str] = Field(default_factory=list)
+    risk_level: str | None = None
+    write_scope: list[str] = Field(default_factory=list)
+    replan_policy: dict[str, Any] | None = None
     scope: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -122,7 +138,7 @@ class AgentTeamMergeBundleContract(BaseModel):
 
 
 class CreateAgentTeamSessionRequest(BaseModel):
-    root_thread_id: str
+    root_thread_id: str | None = None
     title: str | None = None
     goal: str
 
@@ -140,6 +156,14 @@ class AgentTeamSessionListResponse(BaseModel):
 class CreateAgentTeamTaskRequest(BaseModel):
     role: AgentTeamTaskRole
     goal: str
+    task_kind: str | None = None
+    input_contract: dict[str, Any] | None = None
+    output_contract: dict[str, Any] | None = None
+    evidence_required: list[str] = Field(default_factory=list)
+    capability_requirements: list[str] = Field(default_factory=list)
+    risk_level: str | None = None
+    write_scope: list[str] = Field(default_factory=list)
+    replan_policy: dict[str, Any] | None = None
     scope: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -181,6 +205,13 @@ class UpdateAgentTeamTaskRequest(BaseModel):
     dependencies: list[str] | None = None
     acceptance_criteria: list[str] | None = None
     context_refs: list[dict[str, Any]] | None = None
+    input_contract: dict[str, Any] | None = None
+    output_contract: dict[str, Any] | None = None
+    evidence_required: list[str] | None = None
+    capability_requirements: list[str] | None = None
+    risk_level: str | None = None
+    write_scope: list[str] | None = None
+    replan_policy: dict[str, Any] | None = None
     branch_id: str | None = None
     child_thread_id: str | None = None
     output_artifact_ids: list[str] | None = None

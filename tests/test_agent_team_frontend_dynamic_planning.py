@@ -21,24 +21,38 @@ def test_create_page_no_longer_shows_fixed_role_template():
     assert "planAgentTeamSession" in create_text
     assert "dispatchAgentTeamSession" in create_text
     assert "生成方案中" in create_text
+    assert "Step 1" not in create_text
+    assert "Step 2" not in create_text
+    assert "Step 3" not in create_text
+    assert "第一步" not in create_text
+    assert "第二步" not in create_text
+    assert "第三步" not in create_text
+    assert "不绑定来源，直接创建独立 Mission" in create_text
+    assert "root_thread_id?: string | null" in _read(AGENT_TEAM_ROOT / "types.ts")
 
 
 def test_workbench_exposes_dynamic_planning_controls_and_metadata():
-    workbench_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx")
+    workbench_text = "\n".join(
+        [
+            _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx"),
+            _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx"),
+            _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
+        ]
+    )
     styles_text = _read(AGENT_TEAM_STYLES)
 
     for text in ["生成方案", "重新拆解", "运行 Mission", "生成最终结果"]:
         assert text in workbench_text or text in _read(AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts")
 
     assert "fa-agent-team-guided-layout" in workbench_text
-    assert "fa-agent-team-mission-progress" in workbench_text
-    assert "nextStepHint={nextStepHint}" in workbench_text
-    assert "fa-agent-team-primary-action" in workbench_text
-    assert "fa-agent-team-progress-overview" in workbench_text
+    assert "fa-agent-team-cockpit-mission-header" in workbench_text
+    assert "fa-agent-team-cockpit-grid" in workbench_text
+    assert "fa-agent-team-cockpit-button is-primary" in workbench_text
+    assert "Decision Dock" in workbench_text
+    assert "Plan Review" in workbench_text
     assert "AdvancedDetailsPanel" in workbench_text
     assert "StatusPill status={session.status}" not in workbench_text
     assert "待审查" not in workbench_text
-    assert "阻塞" not in workbench_text
     assert "模型规划不可用，已使用保守协作方案" in workbench_text
     assert "fa-agent-team-planning-meta" not in workbench_text
     assert "fa-agent-team-refine-strip" not in workbench_text
@@ -47,10 +61,10 @@ def test_workbench_exposes_dynamic_planning_controls_and_metadata():
     assert 'granularity: "coarse"' in workbench_text
     assert 'focus: "implementation"' in workbench_text
     assert 'focus: "verification"' in workbench_text
-    assert "fa-agent-team-progress-overview" in styles_text
-    assert "fa-agent-team-button" in styles_text
+    assert "fa-agent-team-cockpit-grid" in styles_text
+    assert "fa-agent-team-cockpit-button" in styles_text
+    assert "fa-agent-team-inspector-overlay" in styles_text
     assert "fa-agent-team-plan-banner" in styles_text
-    assert "fa-agent-team-advanced-shell" in styles_text
 
 
 def test_task_surface_prefers_dynamic_plan_fields_over_roles():
@@ -93,13 +107,18 @@ def test_task_surface_prefers_dynamic_plan_fields_over_roles():
 
 
 def test_default_result_panel_summarizes_raw_execution_text():
-    workbench_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx")
+    workbench_text = "\n".join(
+        [
+            _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx"),
+            _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx"),
+            _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
+        ]
+    )
     result_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-merge-handoff.tsx")
     styles_text = _read(AGENT_TEAM_STYLES)
 
-    assert "canGenerate={canGenerateResult}" in workbench_text
-    assert "allTasksComplete" in workbench_text
-    assert "Agent Team 最终答案" in workbench_text
+    assert "finalResultState" in workbench_text
+    assert "Final Preview" in workbench_text
     assert "executionModeForWorkbench" in workbench_text
     assert "模拟执行" in workbench_text
     assert "真实模型执行" in workbench_text

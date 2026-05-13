@@ -19,15 +19,18 @@ class AgentTeamSessionTaskMixin:
     def create_session(
         self,
         *,
-        root_thread_id: str,
+        root_thread_id: str | None = None,
         user_id: str,
         title: str | None = None,
         goal: str,
     ) -> AgentTeamSession:
         now = _now()
+        resolved_root_thread_id = root_thread_id.strip() if root_thread_id else ""
+        if not resolved_root_thread_id:
+            resolved_root_thread_id = f"agent-team-standalone-{uuid4()}"
         session = AgentTeamSession(
             session_id=str(uuid4()),
-            root_thread_id=root_thread_id,
+            root_thread_id=resolved_root_thread_id,
             user_id=user_id,
             title=(title or goal or "Agent Team Session").strip()[:120] or "Agent Team Session",
             goal=goal,
@@ -82,7 +85,15 @@ class AgentTeamSessionTaskMixin:
         planning_rationale: str | None = None,
         sort_order: int | None = None,
         task_type: str | None = None,
+        task_kind: str | None = None,
         plan_source: str | None = None,
+        input_contract: dict | None = None,
+        output_contract: dict | None = None,
+        evidence_required: list[str] | None = None,
+        capability_requirements: list[str] | None = None,
+        risk_level: str | None = None,
+        write_scope: list[str] | None = None,
+        replan_policy: dict | None = None,
         context_refs: list[dict] | None = None,
         create_branch: bool = True,
         branch_name: str | None = None,
@@ -119,7 +130,15 @@ class AgentTeamSessionTaskMixin:
             planning_rationale=planning_rationale,
             sort_order=sort_order,
             task_type=task_type,
+            task_kind=task_kind,
             plan_source=plan_source,
+            input_contract=dict(input_contract) if isinstance(input_contract, dict) else None,
+            output_contract=dict(output_contract) if isinstance(output_contract, dict) else None,
+            evidence_required=list(evidence_required or []),
+            capability_requirements=list(capability_requirements or []),
+            risk_level=risk_level,
+            write_scope=list(write_scope or []),
+            replan_policy=dict(replan_policy) if isinstance(replan_policy, dict) else None,
             context_refs=[dict(item) for item in context_refs or [] if isinstance(item, dict)],
             created_at=now,
             updated_at=now,
@@ -159,8 +178,15 @@ class AgentTeamSessionTaskMixin:
         risk_notes: list[str] | None = None,
         acceptance_criteria: list[str] | None = None,
         context_refs: list[dict] | None = None,
-        dependencies: list[str] | None = None,
         scope: list[str] | None = None,
+        dependencies: list[str] | None = None,
+        input_contract: dict | None = None,
+        output_contract: dict | None = None,
+        evidence_required: list[str] | None = None,
+        capability_requirements: list[str] | None = None,
+        risk_level: str | None = None,
+        write_scope: list[str] | None = None,
+        replan_policy: dict | None = None,
         agent_run_id: str | None = None,
         delegated_task_id: str | None = None,
         artifact_ids: list[str] | None = None,
@@ -191,6 +217,20 @@ class AgentTeamSessionTaskMixin:
                 updates["dependencies"] = list(dependencies)
             if scope is not None:
                 updates["scope"] = list(scope)
+            if input_contract is not None:
+                updates["input_contract"] = dict(input_contract)
+            if output_contract is not None:
+                updates["output_contract"] = dict(output_contract)
+            if evidence_required is not None:
+                updates["evidence_required"] = list(evidence_required)
+            if capability_requirements is not None:
+                updates["capability_requirements"] = list(capability_requirements)
+            if risk_level is not None:
+                updates["risk_level"] = risk_level
+            if write_scope is not None:
+                updates["write_scope"] = list(write_scope)
+            if replan_policy is not None:
+                updates["replan_policy"] = dict(replan_policy)
             if agent_run_id is not None:
                 updates["agent_run_id"] = agent_run_id
             if delegated_task_id is not None:

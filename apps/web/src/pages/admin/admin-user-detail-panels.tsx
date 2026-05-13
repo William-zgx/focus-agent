@@ -15,7 +15,13 @@ import { AdminErrorMessage } from "./admin-page-chrome";
 import { AdminField, AdminPanelHeader } from "./admin-page-sections";
 
 export function messageNoticeTone(message: string) {
-  return message.includes("Failed") || message.includes("invalid")
+  const normalized = message.toLowerCase();
+  return normalized.includes("failed") ||
+    normalized.includes("invalid") ||
+    normalized.includes("required") ||
+    message.includes("请填写") ||
+    message.includes("失败") ||
+    message.includes("无效")
     ? "is-danger"
     : "is-success";
 }

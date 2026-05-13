@@ -453,7 +453,7 @@ class AgentTeamRunMixin:
             started_at=started_at,
             last_error="",
         )
-        delegated = self._to_delegated_task(task)
+        delegated = self._to_delegated_task(task, user_id=user_id)
         result = run_delegated_tasks(
             tasks=[delegated],
             registry=SubagentRegistry.from_settings(
@@ -470,7 +470,7 @@ class AgentTeamRunMixin:
                 final_status=AgentTeamTaskStatus.BLOCKED,
                 run_status="skipped",
                 execution_status="skipped",
-                last_error="Delegated execution is disabled.",
+                last_error="Automatic task execution is not enabled in this environment.",
                 task_updates={"finished_at": finished_at},
             )
 
@@ -621,14 +621,59 @@ class AgentTeamRunMixin:
             return None
         return build_agent_delegation_plan(settings=self.settings, task_text=session.goal)
 
-    def _to_delegated_task(self, task: AgentTeamTask) -> AgentTask:
+    def _to_delegated_task(self, task: AgentTeamTask, *, user_id: str) -> AgentTask:
+        session = self.get_session(task.session_id, user_id=user_id)
+        upstream_outputs = [
+            output.model_dump(mode="json")
+            for dependency_id in task.dependencies
+            for output in self.repository.list_task_outputs(task_id=dependency_id)
+        ]
+        context_refs = [
+            *task.context_refs,
+            {
+                "type": "agent_team_session",
+                "session_id": session.session_id,
+                "root_thread_id": session.root_thread_id,
+                "mission_goal": session.goal,
+                "planning_source": session.planning_source,
+                "planning_rationale": session.planning_rationale,
+            },
+            {
+                "type": "agent_team_task_contract",
+                "task_id": task.task_id,
+                "title": task.title,
+                "task_type": task.task_type,
+                "task_kind": task.task_kind,
+                "input_contract": task.input_contract,
+                "output_contract": task.output_contract,
+                "evidence_required": task.evidence_required,
+                "capability_requirements": task.capability_requirements,
+                "risk_level": task.risk_level,
+                "write_scope": task.write_scope,
+                "replan_policy": task.replan_policy,
+            },
+            {
+                "type": "agent_team_dependency_outputs",
+                "dependency_task_ids": list(task.dependencies),
+                "outputs": upstream_outputs,
+            },
+        ]
+        constraints = [f"Scope: {item}" for item in task.scope]
+        if task.input_contract:
+            constraints.append(f"Input contract: {task.input_contract}")
+        if task.output_contract:
+            constraints.append(f"Output contract: {task.output_contract}")
+        if task.evidence_required:
+            constraints.append(f"Required evidence: {', '.join(task.evidence_required)}")
+        if task.write_scope:
+            constraints.append(f"Write scope: {', '.join(task.write_scope)}")
         return AgentTask(
             task_id=task.task_id,
             role=agent_role_for_team_task_role(task.role),
             goal=task.goal,
-            constraints=[f"Scope: {item}" for item in task.scope],
+            constraints=constraints,
             acceptance_criteria=list(task.acceptance_criteria),
-            context_refs=list(task.context_refs),
+            context_refs=context_refs,
             run_isolation_key=f"agent-team:{task.session_id}:{task.task_id}",
         )
 

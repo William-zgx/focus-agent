@@ -6,7 +6,7 @@
 
 ![Focus Agent 展示图](docs/assets/focus-agent-readme-hero.zh-CN.svg)
 
-Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式会话、实时输出、访问控制和轻量 Web UI 的 AI 应用。
+Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式会话、实时输出、访问控制、管理员控制台和轻量 Web UI 的 AI 应用。
 
 它面向的是这样一类团队：需要一个清晰、可演进的 AI 系统起点，但又不想过早引入庞大、难改、难理解的平台。
 
@@ -23,7 +23,7 @@ Focus Agent 是一个精简的 Python 起步项目，用来构建支持分支式
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
 - 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
-- 带有访问控制、记忆链路和类型完备的前端 SDK
+- 带有访问控制、管理员控制台、记忆链路和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
 - 提供仓库、git、网页、artifact 和 memory 工具
 
@@ -60,6 +60,8 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/admin/users`
+- `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -88,6 +90,7 @@ docker compose up --build
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
 - [架构说明与模块导航](docs/architecture.md)
+- [管理员控制台](docs/admin-console.md)
 - [流式事件契约](docs/streaming-contract.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)

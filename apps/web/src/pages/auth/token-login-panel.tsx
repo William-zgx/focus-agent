@@ -3,6 +3,7 @@ import { type FormEvent } from "react";
 import { type LoginSubmitMode } from "./login-page-types";
 
 export function TokenLoginPanel({
+  authReady,
   clearStoredToken,
   onTokenSubmit,
   setShowToken,
@@ -11,6 +12,7 @@ export function TokenLoginPanel({
   submitting,
   token,
 }: {
+  authReady: boolean;
   clearStoredToken: () => void;
   onTokenSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   setShowToken: (value: (current: boolean) => boolean) => void;
@@ -19,6 +21,8 @@ export function TokenLoginPanel({
   submitting: LoginSubmitMode | null;
   token: string;
 }) {
+  const isSubmitDisabled = !authReady || Boolean(submitting);
+
   return (
     <div className="fa-auth-advanced">
       <button onClick={() => setShowToken((value) => !value)} type="button">
@@ -36,12 +40,12 @@ export function TokenLoginPanel({
             />
           </label>
           <div className="fa-auth-actions">
-            <button className="fa-auth-button" disabled={Boolean(submitting) || !token.trim()} type="submit">
-              {submitting === "token" ? "验证中..." : "继续"}
+            <button className="fa-auth-button" disabled={isSubmitDisabled || !token.trim()} type="submit">
+              {!authReady ? "准备中..." : submitting === "token" ? "验证中..." : "继续"}
             </button>
             <button
               className="fa-auth-button"
-              disabled={Boolean(submitting)}
+              disabled={isSubmitDisabled}
               onClick={() => {
                 setToken("");
                 clearStoredToken();

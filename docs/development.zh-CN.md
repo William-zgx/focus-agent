@@ -8,14 +8,17 @@ flowchart TD
     Scope --> Backend["后端 / contract"]
     Scope --> Web["Web App"]
     Scope --> SDK["Frontend SDK"]
+    Scope --> Admin["Admin / Auth"]
     Scope --> Agent["Agent Governance"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
+    Admin --> AdminChecks["admin API tests + web scaffold"]
     Agent --> Eval["agent eval suites + governance tests"]
     CI --> Done["进入 review"]
     WebChecks --> Done
     SDKChecks --> Done
+    AdminChecks --> Done
     Eval --> Done
 ```
 
@@ -208,6 +211,16 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 
 这组 focused suite 覆盖 HS256 issuer/audience/TTL、过期或轮换 token、生产环境禁用 demo token、注册/密码规则、refresh session 退出、admin 角色保护，以及 `tenant_id` 和 `scope` 只是 claim metadata 而不是 thread ownership key 的边界。
 
+如果改动触及 Admin Console Web 页面、admin SDK 类型、管理员路由保护或审计事件 UI，也要跑：
+
+```bash
+uv run pytest tests/test_web_app_scaffold.py
+make contract-check
+make web-check
+make web-build
+make sdk-check
+```
+
 如果改动触及 Web 登录页、账号侧栏、管理员路由保护或 token 存储，还要用真实浏览器跑一遍主流程：
 
 - 未登录访问 `/app/admin/users` 等受保护页面，确认跳转到 `/app/auth/login?return_to=...`。
@@ -215,6 +228,8 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 - 从左侧栏账号区域 `退出登录`，确认重新看到登录页。
 - 调用本地 `/v1/auth/demo-token` 生成 token，通过 `使用 Bearer Token` 面板登录，确认侧栏账号已切换。
 - 注册或 admin reset password 后，确认用户名密码登录仍能回到同一个 `return_to` 目标页面。
+- 在 `/app/admin/users` 创建用户、打开详情抽屉，并填写 reason 后变更状态或角色。
+- 在 `/app/admin/audit-events` 按 resource 或 decision 过滤，并打开事件详情抽屉。
 - 需要切回其他账号时先退出再重新登录。当前没有独立切换器，账号切换就是 logout 后选择另一种登录方式。
 
 15. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
@@ -228,6 +243,8 @@ make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318
 make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 ```
+
+完整 release gate 包含依赖真实 provider/model 的 live-model eval smoke。离线测试环境可以跑 focused release-gate 测试和生成的离线 report，但要把跳过的 live eval 记录成验证缺口，不能等同于真实模型链路通过。
 
 16. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
@@ -276,5 +293,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [快速开始](quick-start.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
 - [架构说明](architecture.md)
+- [管理员控制台](admin-console.md)
+- [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)
 - [路线图](roadmap.md)

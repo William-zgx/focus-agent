@@ -113,7 +113,15 @@ class AgentTeamTask(BaseModel):
     planning_rationale: str | None = None
     sort_order: int | None = None
     task_type: str | None = None
+    task_kind: str | None = None
     plan_source: str | None = None
+    input_contract: dict[str, Any] | None = None
+    output_contract: dict[str, Any] | None = None
+    evidence_required: list[str] = Field(default_factory=list)
+    capability_requirements: list[str] = Field(default_factory=list)
+    risk_level: str | None = None
+    write_scope: list[str] = Field(default_factory=list)
+    replan_policy: dict[str, Any] | None = None
     context_refs: list[dict[str, Any]] = Field(default_factory=list)
     status: AgentTeamTaskStatus = AgentTeamTaskStatus.PENDING
     run_status: str | None = None

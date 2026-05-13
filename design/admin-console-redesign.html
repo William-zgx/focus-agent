@@ -1,0 +1,1510 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Focus Agent 管理后台交互重设计</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7fa;
+        --rail: #0f172a;
+        --rail-soft: #1e293b;
+        --panel: #ffffff;
+        --panel-soft: #f8fafc;
+        --panel-tint: #eef6f5;
+        --text: #111827;
+        --muted: #64748b;
+        --soft: #94a3b8;
+        --line: #d9e1ea;
+        --line-soft: #edf1f5;
+        --teal: #0f766e;
+        --teal-soft: #dff4f1;
+        --amber: #b45309;
+        --amber-soft: #fff3d7;
+        --red: #b91c1c;
+        --red-soft: #fde8e8;
+        --blue: #1d4ed8;
+        --blue-soft: #e6efff;
+        --shadow: 0 18px 44px rgba(15, 23, 42, 0.09);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 1180px;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 14px;
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:focus {
+        outline: none;
+      }
+
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid rgba(15, 118, 110, 0.42);
+        outline-offset: 2px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 60px 216px minmax(520px, 1fr) 372px;
+        min-height: 100vh;
+      }
+
+      .global-rail {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 18px;
+        padding: 16px 12px;
+        background: var(--rail);
+        color: #e2e8f0;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        background: #f8fafc;
+        color: var(--rail);
+        font-weight: 900;
+      }
+
+      .rail-nav,
+      .rail-foot {
+        display: grid;
+        gap: 10px;
+        justify-items: center;
+      }
+
+      .rail-btn {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #94a3b8;
+      }
+
+      .rail-btn svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      .rail-btn.is-active {
+        background: #e2f8f4;
+        color: var(--teal);
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 18px;
+        padding: 22px 18px;
+        border-right: 1px solid var(--line);
+        background: #fbfcfd;
+      }
+
+      .workspace-title {
+        display: grid;
+        gap: 6px;
+      }
+
+      .workspace-title h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 850;
+        line-height: 1.2;
+      }
+
+      .workspace-title p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .side-nav {
+        display: grid;
+        align-content: start;
+        gap: 8px;
+      }
+
+      .side-link {
+        display: grid;
+        grid-template-columns: 32px 1fr;
+        gap: 10px;
+        align-items: center;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        text-align: left;
+      }
+
+      .side-link strong,
+      .side-link span {
+        display: block;
+      }
+
+      .side-link strong {
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 780;
+      }
+
+      .side-link span {
+        margin-top: 3px;
+        font-size: 12px;
+      }
+
+      .side-icon {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: var(--panel-soft);
+        color: var(--muted);
+      }
+
+      .side-icon svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .side-link.is-active {
+        border-color: #b8ded9;
+        background: var(--teal-soft);
+        color: var(--teal);
+      }
+
+      .side-link.is-active .side-icon {
+        background: #ffffff;
+        color: var(--teal);
+      }
+
+      .health-card {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .health-card span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .health-card strong {
+        font-size: 18px;
+      }
+
+      .main {
+        display: grid;
+        grid-template-rows: auto auto auto minmax(0, 1fr);
+        gap: 14px;
+        min-width: 0;
+        padding: 18px;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) auto;
+        gap: 16px;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .search {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        gap: 8px;
+        align-items: center;
+        min-height: 40px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        color: var(--muted);
+      }
+
+      .search input {
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--text);
+      }
+
+      .top-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .icon-btn,
+      .primary-btn,
+      .secondary-btn,
+      .danger-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        font-size: 13px;
+        font-weight: 760;
+      }
+
+      .icon-btn {
+        width: 36px;
+        padding: 0;
+        background: var(--panel-soft);
+        color: var(--muted);
+      }
+
+      .icon-btn svg,
+      .primary-btn svg,
+      .secondary-btn svg,
+      .danger-btn svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .primary-btn,
+      .secondary-btn,
+      .danger-btn {
+        gap: 7px;
+        padding: 0 12px;
+        white-space: nowrap;
+      }
+
+      .top-actions .primary-btn {
+        min-width: 88px;
+      }
+
+      .top-actions .secondary-btn {
+        min-width: 72px;
+      }
+
+      .primary-btn {
+        border-color: var(--teal);
+        background: var(--teal);
+        color: #ffffff;
+      }
+
+      .secondary-btn {
+        background: var(--panel);
+        color: var(--text);
+      }
+
+      .danger-btn {
+        border-color: #f4b4b4;
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .page-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items: end;
+        padding: 6px 2px;
+      }
+
+      .headline {
+        display: grid;
+        gap: 8px;
+      }
+
+      .headline h2 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .headline p {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .route-tabs {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .route-tab {
+        min-width: 92px;
+        padding: 8px 10px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font-weight: 780;
+      }
+
+      .route-tab.is-active {
+        background: var(--teal-soft);
+        color: var(--teal);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric {
+        display: grid;
+        gap: 8px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 680;
+      }
+
+      .metric strong {
+        font-size: 24px;
+        line-height: 1;
+      }
+
+      .metric small {
+        color: var(--soft);
+        line-height: 1.35;
+      }
+
+      .content-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .filters {
+        display: grid;
+        grid-template-columns: 1fr repeat(3, minmax(132px, 0.22fr)) auto;
+        gap: 10px;
+        align-items: end;
+        padding: 14px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 760;
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        width: 100%;
+        min-height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        color: var(--text);
+        outline: 0;
+      }
+
+      .field input,
+      .field select {
+        padding: 0 10px;
+      }
+
+      .field textarea {
+        min-height: 82px;
+        padding: 10px;
+        resize: vertical;
+      }
+
+      .table-wrap {
+        min-height: 0;
+        overflow: auto;
+        padding: 0 14px 14px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 8px;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 12px 10px 6px;
+        background: var(--panel);
+        color: var(--soft);
+        font-size: 12px;
+        font-weight: 800;
+        text-align: left;
+      }
+
+      td {
+        padding: 12px 10px;
+        border-top: 1px solid var(--line-soft);
+        border-bottom: 1px solid var(--line-soft);
+        background: var(--panel-soft);
+        vertical-align: middle;
+      }
+
+      tr.is-selected td {
+        border-color: #aadbd4;
+        background: #f0faf8;
+      }
+
+      td:first-child {
+        border-left: 1px solid var(--line-soft);
+        border-radius: 8px 0 0 8px;
+      }
+
+      td:last-child {
+        border-right: 1px solid var(--line-soft);
+        border-radius: 0 8px 8px 0;
+      }
+
+      .identity {
+        display: grid;
+        gap: 4px;
+      }
+
+      .identity strong {
+        font-size: 13px;
+      }
+
+      .identity span,
+      .tiny {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chip,
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 0 8px;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        background: #ffffff;
+        color: var(--muted);
+      }
+
+      .pill.is-active,
+      .pill.is-allow,
+      .pill.is-current {
+        background: var(--teal-soft);
+        color: var(--teal);
+      }
+
+      .pill.is-disabled,
+      .pill.is-warning {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .pill.is-deleted,
+      .pill.is-deny,
+      .pill.is-revoked {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .pill.is-invited {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+
+      .row-action {
+        border: 0;
+        background: transparent;
+        color: var(--teal);
+        font-weight: 820;
+      }
+
+      .inspector {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+        padding: 18px 18px 18px 0;
+      }
+
+      .inspector-shell {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .inspector-head {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .inspector-user {
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+        background: var(--teal-soft);
+        color: var(--teal);
+        font-weight: 900;
+      }
+
+      .inspector-user h3 {
+        margin: 0;
+        font-size: 17px;
+      }
+
+      .inspector-user p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .drawer-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .drawer-tab {
+        min-height: 32px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 780;
+      }
+
+      .drawer-tab.is-active {
+        background: #ffffff;
+        color: var(--teal);
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+      }
+
+      .drawer-body {
+        min-height: 0;
+        overflow: auto;
+        padding: 16px;
+      }
+
+      .drawer-section {
+        display: grid;
+        gap: 12px;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 2px;
+      }
+
+      .section-title h4 {
+        margin: 0;
+        font-size: 13px;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .form-grid .span-2 {
+        grid-column: 1 / -1;
+      }
+
+      .audit-reason {
+        padding: 12px;
+        border: 1px solid #f4d08c;
+        border-radius: 8px;
+        background: #fff8e8;
+      }
+
+      .audit-reason .field {
+        margin-top: 8px;
+      }
+
+      .notice {
+        margin: 0;
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .session-list,
+      .timeline {
+        display: grid;
+        gap: 8px;
+      }
+
+      .session-row,
+      .timeline-row,
+      .create-summary {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .session-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .session-row p,
+      .timeline-row p,
+      .create-summary p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .session-row strong,
+      .timeline-row strong {
+        font-size: 13px;
+      }
+
+      .stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .audit-view {
+        display: none;
+      }
+
+      body[data-view="audit"] .users-view {
+        display: none;
+      }
+
+      body[data-view="audit"] .audit-view {
+        display: grid;
+      }
+
+      body[data-drawer="create"] .user-drawer {
+        display: none;
+      }
+
+      body[data-view="audit"] .user-drawer {
+        display: none;
+      }
+
+      body:not([data-view="audit"]) .audit-drawer,
+      body[data-drawer="create"] .audit-drawer {
+        display: none;
+      }
+
+      body:not([data-drawer="create"]) .create-drawer {
+        display: none;
+      }
+
+      @media (max-width: 1120px) {
+        body {
+          min-width: 1024px;
+        }
+
+        .app {
+          grid-template-columns: 58px 216px minmax(560px, 1fr);
+        }
+
+        .inspector {
+          position: fixed;
+          top: 18px;
+          right: 18px;
+          bottom: 18px;
+          z-index: 20;
+          width: 390px;
+          padding: 0;
+        }
+      }
+    </style>
+  </head>
+  <body data-view="users">
+    <div class="app">
+      <aside class="global-rail" aria-label="全局导航">
+        <div class="mark">F</div>
+        <nav class="rail-nav">
+          <button class="rail-btn" aria-label="对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 5h16v10H7l-3 3V5Z" />
+            </svg>
+          </button>
+          <button class="rail-btn" aria-label="Agent Team">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 7a4 4 0 1 0 8 0 4 4 0 0 0-8 0Z" />
+              <path d="M4 22a8 8 0 0 1 16 0" />
+            </svg>
+          </button>
+          <button class="rail-btn is-active" aria-label="管理后台">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16v16H4z" />
+              <path d="M8 8h8M8 12h8M8 16h5" />
+            </svg>
+          </button>
+        </nav>
+        <div class="rail-foot">
+          <button class="rail-btn" aria-label="偏好">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+              <path d="M3 12h2m14 0h2M12 3v2m0 14v2" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+
+      <aside class="workspace">
+        <div class="workspace-title">
+          <h1>系统管理</h1>
+          <p>账号、角色、状态、会话和审计都在同一处完成。</p>
+        </div>
+
+        <nav class="side-nav" aria-label="系统管理导航">
+          <button class="side-link is-active" data-view-target="users">
+            <span class="side-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 11a4 4 0 1 0-8 0" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+            </span>
+            <span>
+              <strong>用户与角色</strong>
+              <span>账号与权限</span>
+            </span>
+          </button>
+          <button class="side-link" data-view-target="audit">
+            <span class="side-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 3h12v18H6z" />
+                <path d="M9 8h6M9 12h6M9 16h4" />
+              </svg>
+            </span>
+            <span>
+              <strong>审计事件</strong>
+              <span>登录与操作记录</span>
+            </span>
+          </button>
+        </nav>
+
+        <div class="health-card">
+          <span>权限策略</span>
+          <strong>Admin only</strong>
+          <span>当前设计保留管理员访问门禁，不改变后端权限模型。</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <label class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input value="tenant:core role:admin" aria-label="全局搜索" />
+          </label>
+          <div class="top-actions">
+            <button class="icon-btn" aria-label="刷新">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-3-6.7" />
+                <path d="M21 3v6h-6" />
+              </svg>
+            </button>
+            <button class="secondary-btn" data-view-target="audit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 3h12v18H6z" />
+                <path d="M9 8h6M9 12h6M9 16h4" />
+              </svg>
+              审计
+            </button>
+            <button class="primary-btn" data-drawer-target="create">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              创建用户
+            </button>
+          </div>
+        </header>
+
+        <section class="page-head">
+          <div class="headline">
+            <h2 class="users-view">用户目录</h2>
+            <h2 class="audit-view">审计事件</h2>
+            <p class="users-view">把新增用户从常驻大表单收拢到右侧抽屉，列表承担查找和选择，详情抽屉承担高风险操作。</p>
+            <p class="audit-view">以事件时间线为主视图，保留操作者、资源、决策和原因筛选，方便追踪管理员动作。</p>
+          </div>
+          <div class="route-tabs">
+            <button class="route-tab is-active" data-view-target="users">用户</button>
+            <button class="route-tab" data-view-target="audit">审计</button>
+          </div>
+        </section>
+
+        <section class="metrics users-view">
+          <div class="metric">
+            <span>列表总数</span>
+            <strong>82</strong>
+            <small>当前筛选返回用户数</small>
+          </div>
+          <div class="metric">
+            <span>Active</span>
+            <strong>64</strong>
+            <small>可登录账号</small>
+          </div>
+          <div class="metric">
+            <span>Admin</span>
+            <strong>9</strong>
+            <small>含管理员角色</small>
+          </div>
+          <div class="metric">
+            <span>需复核</span>
+            <strong>3</strong>
+            <small>最近 24 小时敏感变更</small>
+          </div>
+        </section>
+
+        <section class="metrics audit-view">
+          <div class="metric">
+            <span>事件数</span>
+            <strong>100</strong>
+            <small>当前窗口返回记录</small>
+          </div>
+          <div class="metric">
+            <span>Allow</span>
+            <strong>96</strong>
+            <small>授权通过</small>
+          </div>
+          <div class="metric">
+            <span>Deny</span>
+            <strong>4</strong>
+            <small>被拒绝动作</small>
+          </div>
+          <div class="metric">
+            <span>高风险</span>
+            <strong>8</strong>
+            <small>密码、角色、会话相关</small>
+          </div>
+        </section>
+
+        <section class="content-panel users-view">
+          <div class="filters">
+            <div class="field">
+              <label for="user-query">搜索</label>
+              <input id="user-query" value="zhang" />
+            </div>
+            <div class="field">
+              <label for="status">状态</label>
+              <select id="status">
+                <option>全部状态</option>
+                <option selected>active</option>
+                <option>disabled</option>
+                <option>invited</option>
+                <option>deleted</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="role">角色</label>
+              <select id="role">
+                <option>全部角色</option>
+                <option selected>admin</option>
+                <option>member</option>
+                <option>viewer</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="tenant">租户</label>
+              <input id="tenant" value="core" />
+            </div>
+            <button class="secondary-btn">清空</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>用户</th>
+                  <th>租户</th>
+                  <th>状态</th>
+                  <th>角色</th>
+                  <th>最近更新</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="is-selected" data-user="张予舟">
+                  <td>
+                    <div class="identity">
+                      <strong>张予舟</strong>
+                      <span>zhangyz@focus.local</span>
+                    </div>
+                  </td>
+                  <td>core</td>
+                  <td><span class="pill is-active">active</span></td>
+                  <td>
+                    <div class="chips"><span class="chip">admin</span><span class="chip">member</span></div>
+                  </td>
+                  <td>05/10 16:21</td>
+                  <td><button class="row-action" data-drawer-target="user">管理</button></td>
+                </tr>
+                <tr data-user="刘以宁">
+                  <td>
+                    <div class="identity">
+                      <strong>刘以宁</strong>
+                      <span>liuyining@focus.local</span>
+                    </div>
+                  </td>
+                  <td>agent-lab</td>
+                  <td><span class="pill is-invited">invited</span></td>
+                  <td>
+                    <div class="chips"><span class="chip">member</span></div>
+                  </td>
+                  <td>05/10 12:08</td>
+                  <td><button class="row-action" data-drawer-target="user">管理</button></td>
+                </tr>
+                <tr data-user="王则安">
+                  <td>
+                    <div class="identity">
+                      <strong>王则安</strong>
+                      <span>wangza@focus.local</span>
+                    </div>
+                  </td>
+                  <td>core</td>
+                  <td><span class="pill is-disabled">disabled</span></td>
+                  <td>
+                    <div class="chips"><span class="chip">viewer</span></div>
+                  </td>
+                  <td>05/09 18:44</td>
+                  <td><button class="row-action" data-drawer-target="user">管理</button></td>
+                </tr>
+                <tr data-user="陈景">
+                  <td>
+                    <div class="identity">
+                      <strong>陈景</strong>
+                      <span>chenjing@focus.local</span>
+                    </div>
+                  </td>
+                  <td>research</td>
+                  <td><span class="pill is-active">active</span></td>
+                  <td>
+                    <div class="chips"><span class="chip">member</span><span class="chip">viewer</span></div>
+                  </td>
+                  <td>05/09 15:12</td>
+                  <td><button class="row-action" data-drawer-target="user">管理</button></td>
+                </tr>
+                <tr data-user="孙禾">
+                  <td>
+                    <div class="identity">
+                      <strong>孙禾</strong>
+                      <span>sunhe@focus.local</span>
+                    </div>
+                  </td>
+                  <td>ops</td>
+                  <td><span class="pill is-deleted">deleted</span></td>
+                  <td>
+                    <div class="chips"><span class="chip">viewer</span></div>
+                  </td>
+                  <td>05/08 11:39</td>
+                  <td><button class="row-action" data-drawer-target="user">管理</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="content-panel audit-view">
+          <div class="filters">
+            <div class="field">
+              <label for="actor">操作者</label>
+              <input id="actor" value="admin-root" />
+            </div>
+            <div class="field">
+              <label for="resource-type">资源类型</label>
+              <select id="resource-type">
+                <option>全部资源</option>
+                <option selected>user</option>
+                <option>session</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="resource-id">资源 ID</label>
+              <input id="resource-id" value="zhangyz" />
+            </div>
+            <div class="field">
+              <label for="decision">决策</label>
+              <select id="decision">
+                <option>全部</option>
+                <option selected>allow</option>
+                <option>deny</option>
+              </select>
+            </div>
+            <button class="secondary-btn">清空</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>操作者</th>
+                  <th>动作</th>
+                  <th>资源</th>
+                  <th>决策</th>
+                  <th>原因</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>05/10 16:21</td>
+                  <td>admin-root</td>
+                  <td>users.roles.update</td>
+                  <td>
+                    <div class="identity"><strong>user</strong><span>zhangyz</span></div>
+                  </td>
+                  <td><span class="pill is-allow">allow</span></td>
+                  <td>项目迁移，授予临时 admin</td>
+                </tr>
+                <tr>
+                  <td>05/10 16:08</td>
+                  <td>admin-root</td>
+                  <td>users.sessions.revoke</td>
+                  <td>
+                    <div class="identity"><strong>session</strong><span>9f7d2a18c103</span></div>
+                  </td>
+                  <td><span class="pill is-allow">allow</span></td>
+                  <td>设备丢失</td>
+                </tr>
+                <tr>
+                  <td>05/10 15:54</td>
+                  <td>ops-reviewer</td>
+                  <td>users.password.reset</td>
+                  <td>
+                    <div class="identity"><strong>user</strong><span>liuyining</span></div>
+                  </td>
+                  <td><span class="pill is-deny">deny</span></td>
+                  <td>缺少 users:update 权限</td>
+                </tr>
+                <tr>
+                  <td>05/10 14:19</td>
+                  <td>admin-root</td>
+                  <td>users.status.update</td>
+                  <td>
+                    <div class="identity"><strong>user</strong><span>wangza</span></div>
+                  </td>
+                  <td><span class="pill is-allow">allow</span></td>
+                  <td>安全复核后禁用</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector">
+        <div class="inspector-shell user-drawer">
+          <div class="inspector-head">
+            <div class="inspector-user">
+              <div class="avatar">张</div>
+              <div>
+                <h3>张予舟</h3>
+                <p>zhangyz@focus.local · core</p>
+              </div>
+              <span class="pill is-active">active</span>
+            </div>
+            <div class="drawer-tabs">
+              <button class="drawer-tab is-active" data-panel-target="profile">资料</button>
+              <button class="drawer-tab" data-panel-target="access">权限</button>
+              <button class="drawer-tab" data-panel-target="security">安全</button>
+            </div>
+          </div>
+
+          <div class="drawer-body">
+            <section class="drawer-section drawer-panel" data-panel="profile">
+              <div class="section-title">
+                <h4>基础资料</h4>
+                <span class="tiny">User ID: zhangyz</span>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="username">用户名</label>
+                  <input id="username" value="zhangyz" />
+                </div>
+                <div class="field">
+                  <label for="display-name">显示名</label>
+                  <input id="display-name" value="张予舟" />
+                </div>
+                <div class="field span-2">
+                  <label for="email">Email</label>
+                  <input id="email" value="zhangyz@focus.local" />
+                </div>
+                <div class="field span-2">
+                  <label for="metadata">Metadata JSON</label>
+                  <textarea id="metadata">{
+  "department": "platform",
+  "source": "admin"
+}</textarea>
+                </div>
+              </div>
+              <button class="primary-btn">保存资料</button>
+              <div class="create-summary">
+                <p>创建时间 05/01 09:30 · 最近登录 05/10 15:52</p>
+              </div>
+            </section>
+
+            <section class="drawer-section drawer-panel" data-panel="access" hidden>
+              <div class="section-title">
+                <h4>状态与角色</h4>
+                <div class="chips"><span class="chip">admin</span><span class="chip">member</span></div>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="drawer-status">状态</label>
+                  <select id="drawer-status">
+                    <option selected>active</option>
+                    <option>disabled</option>
+                    <option>invited</option>
+                    <option>deleted</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="drawer-roles">角色</label>
+                  <input id="drawer-roles" value="admin, member" />
+                </div>
+              </div>
+              <div class="audit-reason">
+                <p class="notice">敏感操作合并到一个审计原因区，避免状态、角色和会话操作各写一遍。</p>
+                <div class="field">
+                  <label for="reason">审计原因</label>
+                  <textarea id="reason">项目迁移期间临时提升权限，2026-05-17 前复核。</textarea>
+                </div>
+              </div>
+              <div class="stack">
+                <button class="primary-btn">更新状态</button>
+                <button class="secondary-btn">保存角色</button>
+              </div>
+            </section>
+
+            <section class="drawer-section drawer-panel" data-panel="security" hidden>
+              <div class="section-title">
+                <h4>密码与会话</h4>
+                <span class="tiny">2 active</span>
+              </div>
+              <div class="field">
+                <label for="new-password">新密码</label>
+                <input id="new-password" type="password" value="temporary-password" />
+              </div>
+              <button class="danger-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v20M5 12h14" />
+                </svg>
+                重置密码
+              </button>
+              <div class="session-list">
+                <div class="session-row">
+                  <div>
+                    <strong>当前会话</strong>
+                    <p>Chrome macOS · 05/10 15:52</p>
+                  </div>
+                  <span class="pill is-current">active</span>
+                </div>
+                <div class="session-row">
+                  <div>
+                    <strong>9f7d2a18c103</strong>
+                    <p>Safari macOS · 05/09 21:04</p>
+                  </div>
+                  <button class="danger-btn">撤销会话</button>
+                </div>
+                <div class="session-row">
+                  <div>
+                    <strong>4cc8fa012ab0</strong>
+                    <p>Chrome Windows · 05/05 10:11</p>
+                  </div>
+                  <span class="pill is-revoked">revoked</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="drawer-section">
+              <div class="section-title">
+                <h4>近期审计</h4>
+                <button class="row-action" data-view-target="audit">查看全部</button>
+              </div>
+              <div class="timeline">
+                <div class="timeline-row">
+                  <strong>users.roles.update</strong>
+                  <p>admin-root · 项目迁移，授予临时 admin</p>
+                  <span class="tiny">05/10 16:21</span>
+                </div>
+                <div class="timeline-row">
+                  <strong>users.sessions.revoke</strong>
+                  <p>admin-root · 设备丢失</p>
+                  <span class="tiny">05/10 16:08</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="inspector-shell audit-drawer">
+          <div class="inspector-head">
+            <div class="inspector-user">
+              <div class="avatar">审</div>
+              <div>
+                <h3>users.roles.update</h3>
+                <p>admin-root · 05/10 16:21</p>
+              </div>
+              <span class="pill is-allow">allow</span>
+            </div>
+          </div>
+          <div class="drawer-body">
+            <section class="drawer-section">
+              <div class="section-title">
+                <h4>事件详情</h4>
+                <span class="tiny">event_id: ae_9102</span>
+              </div>
+              <div class="create-summary">
+                <p>操作者 admin-root 更新了用户 zhangyz 的角色。</p>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label>资源类型</label>
+                  <input value="user" readonly />
+                </div>
+                <div class="field">
+                  <label>资源 ID</label>
+                  <input value="zhangyz" readonly />
+                </div>
+                <div class="field span-2">
+                  <label>原因</label>
+                  <textarea readonly>项目迁移，授予临时 admin</textarea>
+                </div>
+                <div class="field span-2">
+                  <label>Metadata JSON</label>
+                  <textarea readonly>{
+  "previous_roles": ["member"],
+  "next_roles": ["admin", "member"]
+}</textarea>
+                </div>
+              </div>
+              <div class="stack">
+                <button class="secondary-btn" data-view-target="users">打开用户</button>
+                <button class="secondary-btn">复制事件 ID</button>
+              </div>
+            </section>
+
+            <section class="drawer-section">
+              <div class="section-title">
+                <h4>同一资源近期事件</h4>
+                <span class="tiny">user / zhangyz</span>
+              </div>
+              <div class="timeline">
+                <div class="timeline-row">
+                  <strong>users.sessions.revoke</strong>
+                  <p>admin-root · 设备丢失</p>
+                  <span class="tiny">05/10 16:08</span>
+                </div>
+                <div class="timeline-row">
+                  <strong>users.update</strong>
+                  <p>admin-root · 更新租户和显示名</p>
+                  <span class="tiny">05/08 19:24</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="inspector-shell create-drawer">
+          <div class="inspector-head">
+            <div class="inspector-user">
+              <div class="avatar">新</div>
+              <div>
+                <h3>创建用户</h3>
+                <p>创建后进入用户详情继续配置权限</p>
+              </div>
+              <button class="icon-btn" data-drawer-target="user" aria-label="关闭创建">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="drawer-body">
+            <section class="drawer-section">
+              <div class="form-grid">
+                <div class="field span-2">
+                  <label for="new-user-id">User ID</label>
+                  <input id="new-user-id" value="li-ming" />
+                </div>
+                <div class="field">
+                  <label for="new-name">显示名</label>
+                  <input id="new-name" value="李明" />
+                </div>
+                <div class="field">
+                  <label for="new-tenant">租户</label>
+                  <input id="new-tenant" value="core" />
+                </div>
+                <div class="field span-2">
+                  <label for="new-email">Email</label>
+                  <input id="new-email" value="liming@focus.local" />
+                </div>
+                <div class="field span-2">
+                  <label for="new-roles">角色</label>
+                  <input id="new-roles" value="member" />
+                </div>
+                <div class="field span-2">
+                  <label for="new-metadata">Metadata JSON</label>
+                  <textarea id="new-metadata">{
+  "source": "admin"
+}</textarea>
+                </div>
+              </div>
+              <button class="primary-btn">创建用户</button>
+              <div class="create-summary">
+                <p>默认状态 active，创建成功后自动跳转到新用户详情。</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const body = document.body;
+
+      function setView(view) {
+        body.dataset.view = view;
+        if (body.dataset.drawer === "create") {
+          setDrawer("user");
+        }
+        document.querySelectorAll("[data-view-target]").forEach((control) => {
+          control.classList.toggle("is-active", control.dataset.viewTarget === view);
+        });
+      }
+
+      function setDrawer(drawer) {
+        body.dataset.drawer = drawer;
+      }
+
+      document.querySelectorAll("[data-view-target]").forEach((control) => {
+        control.addEventListener("click", () => setView(control.dataset.viewTarget));
+      });
+
+      document.querySelectorAll("[data-drawer-target]").forEach((control) => {
+        control.addEventListener("click", () => setDrawer(control.dataset.drawerTarget));
+      });
+
+      document.querySelectorAll("tbody tr[data-user]").forEach((row) => {
+        row.addEventListener("click", () => {
+          document.querySelectorAll("tbody tr[data-user]").forEach((item) => item.classList.remove("is-selected"));
+          row.classList.add("is-selected");
+          setDrawer("user");
+        });
+      });
+
+      document.querySelectorAll("[data-panel-target]").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          const target = tab.dataset.panelTarget;
+          document.querySelectorAll("[data-panel-target]").forEach((item) => {
+            item.classList.toggle("is-active", item.dataset.panelTarget === target);
+          });
+          document.querySelectorAll("[data-panel]").forEach((panel) => {
+            panel.hidden = panel.dataset.panel !== target;
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
