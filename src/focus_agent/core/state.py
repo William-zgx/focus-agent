@@ -128,6 +128,11 @@ class AgentState(TypedDict, total=False):
     # it also controls the tools bound to the model for this turn.
     tool_intent_plan: dict[str, Any] | None
     tool_route_plan: dict[str, Any] | None
+    pending_tool_action: dict[str, Any] | None
+
+    # Written by tool-result evidence normalization after live web/tool use,
+    # read by final synthesis, citations, memory quality gates, and observability.
+    evidence_bundle: list[dict[str, Any]]
 
     # Written by Delegation Runtime when multi-agent role runs are planned or
     # enforced. It stays in plan_meta for observability and replay.
@@ -202,6 +207,8 @@ AgentStateKey: TypeAlias = Literal[
     "memory_curator_decision",
     "tool_intent_plan",
     "tool_route_plan",
+    "pending_tool_action",
+    "evidence_bundle",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -250,6 +257,7 @@ AgentStateRecordName: TypeAlias = Literal[
     "delegated_artifacts",
     "artifact_synthesis_result",
     "critic_gate_result",
+    "memory_write_result",
 ]
 
 
@@ -302,6 +310,10 @@ GOVERNANCE_METRIC_KEYS: tuple[str, ...] = (
     "tool_intent_live_web_research",
     "tool_intent_execution",
     "tool_intent_first_tool",
+    "tool_intent_carryover",
+    "temporal_anchor_forced",
+    "memory_quality_skipped",
+    "external_answer_missing_citation",
     "agent_task_ledger_tasks",
     "delegated_artifacts",
     "critic_gate_rejected",
@@ -331,12 +343,38 @@ def _tool_intent_metrics(payload: Any) -> Mapping[str, int]:
         return {}
     policy = str(payload.get("policy") or "").strip()
     preferred_first_tool = str(payload.get("preferred_first_tool") or "").strip()
+    reason_codes = {str(item) for item in payload.get("reason_codes") or [] if str(item)}
     return {
         "tool_intent_direct_answer": 1 if policy == "direct_answer" else 0,
         "tool_intent_workspace_lookup": 1 if policy == "workspace_lookup" else 0,
         "tool_intent_live_web_research": 1 if policy == "live_web_research" else 0,
         "tool_intent_execution": 1 if policy == "execution" else 0,
         "tool_intent_first_tool": 1 if preferred_first_tool else 0,
+        "tool_intent_carryover": 1 if "pending_tool_action_carryover" in reason_codes else 0,
+        "temporal_anchor_forced": 1 if payload.get("temporal_anchor_forced") else 0,
+        "external_answer_missing_citation": 1 if payload.get("external_answer_missing_citation") else 0,
+    }
+
+
+def _memory_write_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    skipped = payload.get("skipped") or []
+    if not isinstance(skipped, list):
+        return {}
+    quality_reasons = {
+        "unstable_self_correction",
+        "claimed_tool_use_without_result",
+        "external_claim_without_evidence",
+    }
+    return {
+        "memory_quality_skipped": len(
+            [
+                item
+                for item in skipped
+                if isinstance(item, Mapping) and str(item.get("reason") or "") in quality_reasons
+            ]
+        )
     }
 
 
@@ -423,6 +461,12 @@ GOVERNANCE_RECORD_DESCRIPTORS: tuple[GovernanceRecordDescriptor, ...] = (
         "tool_route_plan",
         mirror_key="tool_route_plan",
         metric_extractor=_tool_route_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "memory_write_result",
+        domain="observability",
+        mirror_key="memory_write_result",
+        metric_extractor=_memory_write_metrics,
     ),
     GovernanceRecordDescriptor(
         "agent_delegation_plan",
@@ -530,6 +574,8 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "memory_curator_decision",
     "tool_intent_plan",
     "tool_route_plan",
+    "pending_tool_action",
+    "evidence_bundle",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -602,6 +648,8 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "memory_curator_decision",
     "tool_intent_plan",
     "tool_route_plan",
+    "pending_tool_action",
+    "evidence_bundle",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -616,6 +664,7 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "delegated_artifacts",
     "artifact_synthesis_result",
     "critic_gate_result",
+    "memory_write_result",
     "plan",
     "current_step_id",
     "reflection",
@@ -631,6 +680,8 @@ GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST: frozenset[AgentStateKey] = frozenset(
         "memory_curator_decision",
         "tool_intent_plan",
         "tool_route_plan",
+        "pending_tool_action",
+        "evidence_bundle",
         "agent_delegation_plan",
         "agent_runs",
         "model_route_decision",
@@ -645,6 +696,7 @@ GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST: frozenset[AgentStateKey] = frozenset(
         "delegated_artifacts",
         "artifact_synthesis_result",
         "critic_gate_result",
+        "memory_write_result",
         "plan",
         "current_step_id",
         "reflection",
@@ -659,6 +711,8 @@ OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "memory_curator_decision",
     "tool_intent_plan",
     "tool_route_plan",
+    "pending_tool_action",
+    "evidence_bundle",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -725,6 +779,8 @@ def initial_agent_state() -> AgentState:
         "memory_curator_decision": None,
         "tool_intent_plan": None,
         "tool_route_plan": None,
+        "pending_tool_action": None,
+        "evidence_bundle": [],
         "agent_delegation_plan": None,
         "agent_runs": [],
         "model_route_decision": None,

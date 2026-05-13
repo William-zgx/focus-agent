@@ -9,6 +9,7 @@ from ..core.repo_call import has_repo_method
 from ..core.state import AgentState
 from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget
+from .graph_evidence import evidence_bundle_source_snippets, normalize_evidence_bundle
 from .graph_tool_history_repair import _message_text
 
 
@@ -128,6 +129,9 @@ def _tool_observation_summary(payload: Any, raw: str) -> str:
 
 def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
     snippets: list[str] = []
+    snippets.extend(
+        evidence_bundle_source_snippets(normalize_evidence_bundle(_latest_turn_messages(prompt_messages)))
+    )
     pending_calls: dict[str, dict[str, Any]] = {}
     for message in _latest_turn_messages(prompt_messages):
         if isinstance(message, AIMessage):

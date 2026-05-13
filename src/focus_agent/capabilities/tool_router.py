@@ -80,6 +80,9 @@ class ToolIntentPlan(StateModel):
     allowed_toolsets: list[str] = Field(default_factory=list)
     denied_toolsets: list[str] = Field(default_factory=list)
     source: str = "deterministic"
+    temporal_anchor_required: bool = False
+    temporal_anchor_forced: bool = False
+    external_answer_missing_citation: bool = False
 
 
 _TOOLSET_DESCRIPTIONS = {

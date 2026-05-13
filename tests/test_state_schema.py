@@ -202,6 +202,7 @@ def test_governance_schema_guard_blocks_new_top_level_fields():
         "delegated_artifacts",
         "artifact_synthesis_result",
         "critic_gate_result",
+        "memory_write_result",
     }
     assert set(GOVERNANCE_RECORD_MIRROR_KEYS.values()) <= set(GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST)
 

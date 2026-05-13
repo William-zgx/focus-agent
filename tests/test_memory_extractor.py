@@ -107,6 +107,44 @@ def test_turn_summary_filters_ack_noise_but_keeps_substantive_episode():
     )
 
 
+def test_branch_turn_summary_sources_child_thread_and_branch_separately():
+    extractor = MemoryExtractor()
+
+    result = extractor.extract_from_turn(
+        context=_context(branch_id="branch-1"),
+        state={
+            "branch_meta": {"child_thread_id": "child-thread-1"},
+            "messages": [
+                HumanMessage(content="继续分支验证"),
+                AIMessage(content="已完成分支内的回归检查。"),
+            ],
+        },
+    )
+
+    turn_summary = result.records[0]
+    assert turn_summary.kind == MemoryKind.TURN_SUMMARY
+    assert turn_summary.source_thread_id == "child-thread-1"
+    assert turn_summary.source_branch_id == "branch-1"
+
+
+def test_branch_turn_summary_preserves_legacy_source_thread_fallback():
+    extractor = MemoryExtractor()
+
+    result = extractor.extract_from_turn(
+        context=_context(branch_id="branch-1"),
+        state={
+            "messages": [
+                HumanMessage(content="继续分支验证"),
+                AIMessage(content="已完成分支内的回归检查。"),
+            ],
+        },
+    )
+
+    turn_summary = result.records[0]
+    assert turn_summary.source_thread_id == "branch-1"
+    assert turn_summary.source_branch_id == "branch-1"
+
+
 def test_branch_findings_only_come_from_branch_local_findings():
     extractor = MemoryExtractor()
 

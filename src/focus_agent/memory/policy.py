@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from langchain.messages import AIMessage
+from typing import Any
+
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from ..core.request_context import RequestContext
 from ..core.types import PromptMode
@@ -16,10 +18,49 @@ from ..storage.namespaces import (
 from .models import MemoryRecord, MemoryVisibility, MemoryWriteRequest, RetrievedMemoryBundle
 
 
+class MemoryQualityGate:
+    def skip_reason(
+        self,
+        *,
+        record: MemoryWriteRequest,
+        context: RequestContext,
+        state: dict[str, Any],
+    ) -> str | None:
+        del context
+        if record.kind.value != "turn_summary":
+            return None
+
+        messages = list(state.get("messages", []) or [])
+        latest_turn = _latest_turn_messages(messages)
+        latest_user = _latest_message_text(messages, HumanMessage)
+        claim_text = _turn_summary_claim_text(record=record, messages=messages)
+
+        if _has_unstable_self_correction_signal(claim_text):
+            return "unstable_self_correction"
+
+        has_tool_result = _has_tool_result(latest_turn)
+        if (
+            _has_live_web_intent(latest_user, state=state)
+            and _claims_query_result(claim_text)
+            and not has_tool_result
+        ):
+            return "claimed_tool_use_without_result"
+
+        if _makes_external_live_claim(claim_text, latest_user=latest_user) and not _has_evidence(
+            record=record,
+            state=state,
+            latest_turn=latest_turn,
+        ):
+            return "external_claim_without_evidence"
+
+        return None
+
+
 class MemoryPolicy:
-    def __init__(self, *, top_k: int = 8):
+    def __init__(self, *, top_k: int = 8, quality_gate: MemoryQualityGate | None = None):
         self.top_k = top_k
         self.max_content_chars = 4000
+        self.quality_gate = quality_gate or MemoryQualityGate()
 
     def should_persist(
         self,
@@ -28,29 +69,48 @@ class MemoryPolicy:
         context: RequestContext,
         state: dict,
     ) -> bool:
+        return self.persistence_skip_reason(record=record, context=context, state=state) is None
+
+    def persistence_skip_reason(
+        self,
+        *,
+        record: MemoryWriteRequest,
+        context: RequestContext,
+        state: dict,
+    ) -> str | None:
         content = record.content.strip()
         summary = (record.summary or content).strip()
         if not content or not summary:
-            return False
+            return "policy"
         if record.importance < 0.5:
-            return False
+            return "policy"
         if len(content) > self.max_content_chars:
-            return False
+            return "policy"
         if not _turn_is_stable(state):
-            return False
+            return "policy"
+
+        quality_reason = self.quality_gate.skip_reason(
+            record=record,
+            context=context,
+            state=state,
+        )
+        if quality_reason:
+            return quality_reason
 
         if record.scope == record.scope.USER:
-            return (
+            allowed = (
                 record.kind.value in {"user_preference", "user_profile"}
                 and record.namespace == user_profile_namespace(context.user_id)
             )
+            return None if allowed else "policy"
 
         if record.scope == record.scope.PROJECT:
-            return bool(
+            allowed = bool(
                 context.project_id
                 and record.kind.value == "project_fact"
                 and record.namespace == project_memory_namespace(context.project_id)
             )
+            return None if allowed else "policy"
 
         if record.scope == record.scope.ROOT_THREAD:
             allowed = {"turn_summary", "imported_conclusion"}
@@ -58,16 +118,17 @@ class MemoryPolicy:
                 root_thread_episodic_namespace(context.root_thread_id),
                 conversation_main_namespace(context.root_thread_id),
             }
-            return record.kind.value in allowed and record.namespace in root_namespaces
+            return None if record.kind.value in allowed and record.namespace in root_namespaces else "policy"
 
         if record.scope == record.scope.BRANCH:
-            return bool(
+            allowed = bool(
                 context.branch_id
                 and record.kind.value == "branch_finding"
                 and record.namespace == branch_local_memory_namespace(context.root_thread_id, context.branch_id)
             )
+            return None if allowed else "policy"
 
-        return False
+        return "policy"
 
     def allowed_namespaces_for_read(self, *, context: RequestContext) -> list[tuple[str, ...]]:
         namespaces: list[tuple[str, ...]] = [
@@ -168,6 +229,219 @@ def _turn_is_stable(state: dict) -> bool:
     if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
         return False
     return True
+
+
+def _latest_turn_messages(messages: list[Any]) -> list[Any]:
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return messages[index:]
+    return messages
+
+
+def _latest_message_text(messages: list[Any], message_type: type) -> str:
+    for message in reversed(messages):
+        if isinstance(message, message_type):
+            content = getattr(message, "content", "")
+            return str(content).strip()
+    return ""
+
+
+def _latest_final_ai_text(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
+            content = getattr(message, "content", "")
+            return str(content).strip()
+    return ""
+
+
+def _turn_summary_claim_text(
+    *,
+    record: MemoryWriteRequest,
+    messages: list[Any],
+) -> str:
+    latest_ai = _latest_final_ai_text(messages)
+    if latest_ai:
+        return " ".join(part for part in [record.summary, latest_ai] if part).strip()
+    text = " ".join(part for part in [record.summary, record.content] if part).strip()
+    if "Assistant:" in text:
+        return text.rsplit("Assistant:", maxsplit=1)[-1].strip()
+    return text
+
+
+def _has_tool_result(messages: list[Any]) -> bool:
+    return any(isinstance(message, ToolMessage) for message in messages)
+
+
+def _has_evidence(
+    *,
+    record: MemoryWriteRequest,
+    state: dict[str, Any],
+    latest_turn: list[Any],
+) -> bool:
+    return bool(
+        record.evidence_refs
+        or state.get("citations")
+        or state.get("evidence_bundle")
+        or _has_tool_result(latest_turn)
+    )
+
+
+def _has_unstable_self_correction_signal(text: str) -> bool:
+    normalized = (text or "").casefold()
+    return any(
+        phrase in normalized
+        for phrase in (
+            "我错了",
+            "搞错了",
+            "弄错了",
+            "没查",
+            "还没查",
+            "未查询",
+            "没有查询",
+            "可能",
+            "不确定",
+            "没有实际调用工具",
+            "没有调用工具",
+            "实际未调用工具",
+            "失误",
+            "抱歉",
+            "maybe",
+            "possibly",
+            "probably",
+            "not sure",
+            "i was wrong",
+            "i did not check",
+            "didn't check",
+            "without actually calling",
+            "mistake",
+        )
+    )
+
+
+def _claims_query_result(text: str) -> bool:
+    normalized = (text or "").casefold()
+    return any(
+        phrase in normalized
+        for phrase in (
+            "已查",
+            "查到",
+            "查询结果",
+            "根据查询",
+            "根据搜索",
+            "搜索结果",
+            "检索结果",
+            "查询显示",
+            "搜索显示",
+            "according to the search",
+            "search results",
+            "query results",
+            "i found",
+        )
+    )
+
+
+def _has_live_web_intent(text: str, *, state: dict[str, Any]) -> bool:
+    normalized = (text or "").casefold()
+    if any(
+        phrase in normalized
+        for phrase in (
+            "联网",
+            "上网",
+            "实时",
+            "最新",
+            "最近",
+            "今天",
+            "当前",
+            "新闻",
+            "股价",
+            "天气",
+            "价格",
+            "官网",
+            "api 文档",
+            "web search",
+            "live web",
+            "latest",
+            "recent",
+            "today",
+            "current",
+            "news",
+            "stock price",
+            "weather",
+        )
+    ):
+        return True
+    return _state_mentions_live_tool(state)
+
+
+def _state_mentions_live_tool(state: dict[str, Any]) -> bool:
+    for key in ("tool_intent_plan", "tool_route_plan", "pending_tool_action"):
+        value = state.get(key)
+        if not isinstance(value, dict):
+            continue
+        normalized = str(value).casefold()
+        if any(token in normalized for token in ("web_search", "live_web", "search_web")):
+            return True
+    return False
+
+
+def _makes_external_live_claim(text: str, *, latest_user: str) -> bool:
+    normalized = (text or "").casefold()
+    if any(
+        phrase in normalized
+        for phrase in (
+            "最新",
+            "最近",
+            "今天",
+            "当前",
+            "实时",
+            "新闻",
+            "股价",
+            "天气",
+            "价格",
+            "官网",
+            "发布",
+            "更新",
+            "查询显示",
+            "搜索显示",
+            "latest",
+            "recent",
+            "today",
+            "current",
+            "news",
+            "stock price",
+            "weather",
+            "price",
+            "released",
+            "announced",
+        )
+    ):
+        return True
+    return _has_live_web_intent(latest_user, state={}) and _looks_like_factual_claim(text)
+
+
+def _looks_like_factual_claim(text: str) -> bool:
+    normalized = (text or "").casefold()
+    if not normalized:
+        return False
+    return any(char.isdigit() for char in normalized) or any(
+        marker in normalized
+        for marker in (
+            "显示",
+            "为",
+            "是",
+            "有",
+            "上涨",
+            "下跌",
+            "增长",
+            "下降",
+            "announced",
+            "released",
+            "is",
+            "are",
+            "was",
+            "were",
+        )
+    )
 
 
 def _section_name(record: MemoryRecord, *, prompt_mode: PromptMode) -> str:

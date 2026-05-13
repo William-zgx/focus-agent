@@ -800,6 +800,53 @@ def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
     assert review.source == "skill:review"
 
 
+def test_tool_intent_plan_recovers_pending_web_search_from_confirmation():
+    plan = build_tool_intent_plan(
+        "允许",
+        pending_tool_action={
+            "policy": "live_web_research",
+            "preferred_first_tool": "web_search",
+            "preferred_first_args": {"query": "帮我查一下今天北京天气"},
+        },
+    )
+    no_pending = build_tool_intent_plan("允许")
+
+    assert plan.policy == "live_web_research"
+    assert plan.preferred_first_tool == "web_search"
+    assert plan.preferred_first_args == {"query": "帮我查一下今天北京天气"}
+    assert plan.source == "pending_tool_action"
+    assert "pending_tool_action_carryover" in plan.reason_codes
+    assert "temporal_anchor_required" in plan.reason_codes
+    assert no_pending.policy == "direct_answer"
+
+
+def test_tool_intent_plan_recovers_pending_web_search_from_phrase_confirmation():
+    plan = build_tool_intent_plan(
+        "好的，帮我查吧。",
+        pending_tool_action={
+            "policy": "live_web_research",
+            "tool": "web_search",
+            "query": "今天有哪个国家总统访问中国？",
+            "created_turn_index": 1,
+            "expires_after_turns": 2,
+        },
+    )
+
+    assert plan.policy == "live_web_research"
+    assert plan.preferred_first_tool == "web_search"
+    assert plan.preferred_first_args == {"query": "今天有哪个国家总统访问中国？"}
+    assert plan.temporal_anchor_required is True
+
+
+def test_tool_intent_plan_marks_temporal_anchor_requirement_for_live_web():
+    plan = build_tool_intent_plan("帮我查一下 today AI news")
+
+    assert plan.policy == "live_web_research"
+    assert plan.preferred_first_tool == "web_search"
+    assert "temporal_anchor_required" in plan.reason_codes
+    assert plan.temporal_anchor_required is True
+
+
 def test_live_web_research_starts_stock_queries_with_web_search():
     @tool
     def web_search(query: str) -> str:
@@ -846,6 +893,24 @@ def test_live_web_research_starts_stock_queries_with_web_search():
         [
             HumanMessage(content="帮我查一下这个周沪指的波动情况。"),
             ToolMessage(content='{"answer":"done"}', tool_call_id="call-1"),
+        ],
+        [web_search, current_utc_time],
+    )
+    assert _live_web_research_should_start_with_search(
+        "帮我查一下今天北京天气",
+        [
+            HumanMessage(content="帮我查一下今天北京天气"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "time-1",
+                        "name": "current_utc_time",
+                        "args": {},
+                    }
+                ],
+            ),
+            ToolMessage(content="2026-05-14T00:00:00Z", tool_call_id="time-1"),
         ],
         [web_search, current_utc_time],
     )
@@ -924,6 +989,178 @@ def test_graph_routes_external_ai_trend_queries_to_web_search_first(monkeypatch)
         assert first_call["name"] == "web_search"
         assert first_call["args"] == {"query": prompt}
         assert web_calls == [prompt]
+
+
+def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
+    calls = []
+
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        calls.append("current_utc_time")
+        return "2026-05-14T00:00:00Z"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        calls.append(f"web_search:{query}")
+        return '{"answer":"sunny"}'
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="今天北京天气晴朗。")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下今天北京天气")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-temporal-anchor"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
+    assert [call["name"] for call in tool_calls[:2]] == ["current_utc_time", "web_search"]
+    assert tool_calls[1]["args"] == {"query": "帮我查一下今天北京天气"}
+    assert calls == [
+        "current_utc_time",
+        "web_search:帮我查一下今天北京天气",
+    ]
+    assert result.value["tool_intent_plan"]["temporal_anchor_required"] is True
+    assert result.value["plan_meta"]["tool_intent_plan"]["temporal_anchor_required"] is True
+
+
+def test_graph_recovers_pending_web_search_from_confirmation(monkeypatch):
+    web_calls = []
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return '{"answer":"allowed"}'
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="查询完成。")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(web_search,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(content="帮我查一下最近 AI 项目"),
+                AIMessage(content="需要联网查询，是否允许？"),
+                HumanMessage(content="可以"),
+            ],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-carryover"),
+        version="v2",
+    )
+
+    first_call = _first_tool_call(result.value["messages"])
+    assert first_call["name"] == "web_search"
+    assert first_call["args"] == {"query": "帮我查一下最近 AI 项目"}
+    assert web_calls == ["帮我查一下最近 AI 项目"]
+    assert result.value["tool_intent_plan"]["source"] == "pending_tool_action"
+    assert "pending_tool_action_carryover" in result.value["tool_intent_plan"]["reason_codes"]
+
+
+def test_graph_writes_evidence_bundle_and_citations_after_web_result(monkeypatch):
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return json.dumps(
+            {
+                "query": query,
+                "provider": "test",
+                "results": [
+                    {
+                        "title": "Foreign Ministry Spokesperson",
+                        "url": "https://www.mfa.gov.cn/eng/example",
+                        "content": "Official visit details from the Ministry of Foreign Affairs.",
+                    }
+                ],
+            }
+        )
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="根据外交部消息，访问安排已公布。")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="最近有哪个国家总统访问中国？")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-evidence"),
+        version="v2",
+    )
+
+    assert result.value["evidence_bundle"][0]["trust_tier"] == "high"
+    assert result.value["citations"][0]["label"] == "Foreign Ministry Spokesperson"
+    assert result.value["citations"][0]["uri"] == "https://www.mfa.gov.cn/eng/example"
+    assert not result.value["tool_intent_plan"].get("external_answer_missing_citation")
 
 
 def test_graph_routes_research_prefixed_academic_download_to_web_search_first(monkeypatch):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from langchain.messages import ToolMessage
 
@@ -303,6 +303,35 @@ _LIVE_WEB_SEARCH_FIRST_MARKERS = (
 )
 
 
+_TOOL_CARRYOVER_CONFIRMATION_MARKERS = frozenset(
+    {
+        "允许",
+        "好的",
+        "好",
+        "帮我查吧",
+        "继续",
+        "查吧",
+        "可以",
+        "行",
+        "ok",
+        "okay",
+        "yes",
+        "continue",
+        "go ahead",
+    }
+)
+
+
+_TEMPORAL_ANCHOR_MARKERS = (
+    "今天",
+    "现在",
+    "当前",
+    "today",
+    "now",
+    "current",
+)
+
+
 _LOCAL_WORKSPACE_QUALIFIERS = (
     "当前仓库",
     "这个仓库",
@@ -521,8 +550,34 @@ def build_tool_intent_plan(
     text: str,
     *,
     active_skill_ids: tuple[str, ...] | list[str] = (),
+    pending_tool_action: Mapping[str, Any] | None = None,
 ) -> ToolIntentPlan:
     normalized = " ".join(text.strip().split())
+    pending_web_search = _pending_live_web_search_intent(pending_tool_action)
+    if _is_tool_carryover_confirmation(normalized) and pending_web_search is not None:
+        query = str(pending_web_search.get("query") or "").strip() or normalized
+        reason_codes = [
+            "pending_tool_action_carryover",
+            "live_web_signal",
+            "policy_live_web_research",
+        ]
+        if _requires_temporal_anchor(query):
+            reason_codes.append("temporal_anchor_required")
+        return ToolIntentPlan(
+            normalized_text=normalized,
+            policy="live_web_research",
+            confidence=0.9,
+            reason_codes=reason_codes,
+            preferred_first_tool="web_search",
+            preferred_first_args={"query": query},
+            allowed_toolsets=["web"],
+            denied_toolsets=[
+                toolset for toolset in _ALL_FILTERABLE_TOOLSETS if toolset != "web"
+            ],
+            source="pending_tool_action",
+            temporal_anchor_required="temporal_anchor_required" in reason_codes,
+        )
+
     exposure = _classify_turn_tool_exposure(normalized)
     source = "deterministic"
 
@@ -552,17 +607,22 @@ def build_tool_intent_plan(
         )
         source = "skill:research"
 
+    reason_codes = list(exposure.reason_codes)
+    if exposure.policy == "live_web_research" and _requires_temporal_anchor(normalized):
+        reason_codes.append("temporal_anchor_required")
+
     preferred_first_args = _preferred_first_args(exposure.preferred_first_tool, normalized)
     return ToolIntentPlan(
         normalized_text=normalized,
         policy=exposure.policy,
         confidence=exposure.confidence,
-        reason_codes=list(exposure.reason_codes),
+        reason_codes=list(dict.fromkeys(reason_codes)),
         preferred_first_tool=exposure.preferred_first_tool,
         preferred_first_args=preferred_first_args,
         allowed_toolsets=list(exposure.allowed_toolsets),
         denied_toolsets=list(exposure.hard_denied_toolsets),
         source=source,
+        temporal_anchor_required="temporal_anchor_required" in reason_codes,
     )
 
 
@@ -586,6 +646,71 @@ def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
     if tool_name == "search_code":
         return {"query": _workspace_search_query(text)}
     return {}
+
+
+def _pending_live_web_search_intent(raw: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    policy = _first_mapping_text(raw, ("policy", "tool_policy", "intent_policy"))
+    tool_name = _first_mapping_text(raw, ("preferred_first_tool", "tool", "tool_name", "name"))
+    if policy != "live_web_research" or tool_name != "web_search":
+        return None
+
+    args = raw.get("preferred_first_args")
+    if not isinstance(args, Mapping):
+        args = raw.get("args")
+    query = ""
+    if isinstance(args, Mapping):
+        query = str(args.get("query") or "").strip()
+    if not query:
+        query = _first_mapping_text(raw, ("query", "normalized_text", "text"))
+    if not query:
+        return None
+    return {"query": query}
+
+
+def _first_mapping_text(raw: Mapping[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = raw.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _is_tool_carryover_confirmation(text: str) -> bool:
+    normalized = _normalize_carryover_text(text)
+    if normalized in _TOOL_CARRYOVER_CONFIRMATION_MARKERS:
+        return True
+    compact = re.sub(r"[\s,，。.!！?？;；:：]+", "", text.strip().lower())
+    return any(
+        marker in compact
+        for marker in _TOOL_CARRYOVER_CONFIRMATION_MARKERS
+        if len(marker) > 1 and not re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", marker)
+    )
+
+
+def _normalize_carryover_text(text: str) -> str:
+    return re.sub(r"[\s,，。.!！?？;；:：]+", " ", text.strip().lower()).strip()
+
+
+def _requires_temporal_anchor(text: str) -> bool:
+    return _contains_any(text, _TEMPORAL_ANCHOR_MARKERS)
+
+
+def _tool_intent_plan_requires_temporal_anchor(intent_plan: ToolIntentPlan) -> bool:
+    if str(intent_plan.policy or "") != "live_web_research":
+        return False
+    reason_codes = {str(item) for item in intent_plan.reason_codes if str(item)}
+    if "temporal_anchor_required" in reason_codes:
+        return True
+    query = ""
+    preferred_args = intent_plan.preferred_first_args
+    if isinstance(preferred_args, Mapping):
+        query = str(preferred_args.get("query") or "").strip()
+    return _requires_temporal_anchor(query or str(intent_plan.normalized_text or ""))
 
 
 def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
@@ -919,13 +1044,35 @@ def _live_web_research_should_start_with_search(
     normalized = " ".join(text.strip().split())
     if not normalized:
         return False
-    if any(isinstance(message, ToolMessage) for message in messages):
+    if _has_non_temporal_anchor_tool_result(messages):
         return False
     if not any(str(getattr(tool, "name", "")) == "web_search" for tool in tools):
         return False
     if exposure is not None and exposure.preferred_first_tool is not None:
         return exposure.preferred_first_tool == "web_search"
     return _contains_any(normalized, _LIVE_WEB_SEARCH_FIRST_MARKERS)
+
+
+def _has_non_temporal_anchor_tool_result(messages: list[Any]) -> bool:
+    latest_human_index = -1
+    for index, message in enumerate(messages):
+        if getattr(message, "type", None) == "human":
+            latest_human_index = index
+
+    call_names_by_id: dict[str, str] = {}
+    for message in messages[latest_human_index + 1 :]:
+        for call in getattr(message, "tool_calls", None) or ():
+            if not isinstance(call, Mapping):
+                continue
+            call_id = str(call.get("id") or "").strip()
+            name = str(call.get("name") or "").strip()
+            if call_id and name:
+                call_names_by_id[call_id] = name
+        if isinstance(message, ToolMessage):
+            name = call_names_by_id.get(str(message.tool_call_id or "").strip())
+            if name != "current_utc_time":
+                return True
+    return False
 
 
 def _workspace_search_query(text: str) -> str:
@@ -962,6 +1109,7 @@ __all__ = [
     "_classify_turn_tool_exposure",
     "_classify_turn_tool_policy",
     "_live_web_research_should_start_with_search",
+    "_tool_intent_plan_requires_temporal_anchor",
     "_tool_policy_note",
     "_tools_for_policy",
     "_workspace_lookup_should_start_with_search",

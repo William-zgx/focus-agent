@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
@@ -311,6 +311,146 @@ def test_memory_writer_keeps_distinct_user_preferences_separate():
     assert outcome["merged"] == []
     assert outcome["skipped"] == []
     assert len(store.data[namespace]) == 2
+
+
+def test_memory_writer_quality_gate_skips_unstable_turn_summary():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    namespace = root_thread_episodic_namespace("thread-1")
+    record = MemoryWriteRequest(
+        kind=MemoryKind.TURN_SUMMARY,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.PRIVATE,
+        namespace=namespace,
+        content="User: 查一下天气 Assistant: 我错了，刚才没有实际调用工具，可能不准确。",
+        summary="我错了，刚才没有实际调用工具，可能不准确。",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        importance=0.55,
+    )
+
+    outcome = writer.persist_records(
+        [record],
+        context=context,
+        state={
+            "messages": [
+                HumanMessage(content="查一下天气"),
+                AIMessage(content="我错了，刚才没有实际调用工具，可能不准确。"),
+            ]
+        },
+    )
+
+    assert outcome["written"] == []
+    assert outcome["skipped"] == [
+        {"summary": "我错了，刚才没有实际调用工具，可能不准确。", "reason": "unstable_self_correction"}
+    ]
+    assert namespace not in store.data
+
+
+def test_memory_writer_quality_gate_skips_claimed_query_without_tool_result():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    namespace = root_thread_episodic_namespace("thread-1")
+    record = MemoryWriteRequest(
+        kind=MemoryKind.TURN_SUMMARY,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.PRIVATE,
+        namespace=namespace,
+        content="User: 查一下今天北京天气 Assistant: 根据查询结果，北京今天晴。",
+        summary="根据查询结果，北京今天晴。",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        importance=0.55,
+    )
+
+    outcome = writer.persist_records(
+        [record],
+        context=context,
+        state={
+            "messages": [
+                HumanMessage(content="查一下今天北京天气"),
+                AIMessage(content="根据查询结果，北京今天晴。"),
+            ]
+        },
+    )
+
+    assert outcome["written"] == []
+    assert outcome["skipped"] == [
+        {"summary": "根据查询结果，北京今天晴。", "reason": "claimed_tool_use_without_result"}
+    ]
+    assert namespace not in store.data
+
+
+def test_memory_writer_quality_gate_skips_external_claim_without_evidence():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    namespace = root_thread_episodic_namespace("thread-1")
+    record = MemoryWriteRequest(
+        kind=MemoryKind.TURN_SUMMARY,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.PRIVATE,
+        namespace=namespace,
+        content="User: 今天北京天气如何 Assistant: 北京今天晴，白天 25 度。",
+        summary="北京今天晴，白天 25 度。",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        importance=0.55,
+    )
+
+    outcome = writer.persist_records(
+        [record],
+        context=context,
+        state={
+            "messages": [
+                HumanMessage(content="今天北京天气如何"),
+                AIMessage(content="北京今天晴，白天 25 度。"),
+            ]
+        },
+    )
+
+    assert outcome["written"] == []
+    assert outcome["skipped"] == [
+        {"summary": "北京今天晴，白天 25 度。", "reason": "external_claim_without_evidence"}
+    ]
+    assert namespace not in store.data
+
+
+def test_memory_writer_quality_gate_allows_external_claim_with_tool_result():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    namespace = root_thread_episodic_namespace("thread-1")
+    record = MemoryWriteRequest(
+        kind=MemoryKind.TURN_SUMMARY,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.PRIVATE,
+        namespace=namespace,
+        content="User: 今天北京天气如何 Assistant: 根据查询结果，北京今天晴。",
+        summary="根据查询结果，北京今天晴。",
+        root_thread_id="thread-1",
+        user_id="user-1",
+        importance=0.55,
+    )
+
+    outcome = writer.persist_records(
+        [record],
+        context=context,
+        state={
+            "messages": [
+                HumanMessage(content="今天北京天气如何"),
+                AIMessage(content="", tool_calls=[{"id": "call-1", "name": "web_search", "args": {}}]),
+                ToolMessage(content='{"weather":"sunny"}', tool_call_id="call-1"),
+                AIMessage(content="根据查询结果，北京今天晴。"),
+            ]
+        },
+    )
+
+    assert len(outcome["written"]) == 1
+    assert outcome["skipped"] == []
+    assert len(store.data[namespace]) == 1
 
 
 def test_memory_writer_replaces_user_preference_with_same_topic():

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from langchain.messages import AIMessage, SystemMessage
+from langchain.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.runtime import Runtime
 
 from ..agent_roles import AgentRole
@@ -19,6 +19,7 @@ from ..core.state import AgentState, append_agent_state_record
 from ..core.types import Plan
 from ..transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
 from . import graph_tool_policy as _graph_tool_policy
+from .graph_evidence import evidence_bundle_to_citation_refs, normalize_evidence_bundle
 from .graph_plan_nodes import _format_plan_block
 from .graph_turn_helpers import (
     _TOOL_EXHAUSTION_NOTE,
@@ -96,12 +97,21 @@ def make_agent_loop_node(
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
         tool_intent_text = _tool_intent_text(state, latest_user)
         context_budget = _context_budget_from_state(state)
+        pending_tool_action = _pending_live_web_search_action_from_state(
+            state,
+            latest_user=tool_intent_text,
+        )
         tool_intent_plan = _graph_tool_policy.build_tool_intent_plan(
             tool_intent_text,
             active_skill_ids=list(state.get("active_skill_ids", []) or ()),
+            pending_tool_action=pending_tool_action,
         )
         tool_policy = tool_intent_plan.policy
         tool_exposure = _graph_tool_policy._turn_tool_exposure_from_intent_plan(tool_intent_plan)
+        temporal_anchor_required = _graph_tool_policy._tool_intent_plan_requires_temporal_anchor(
+            tool_intent_plan
+        )
+        temporal_anchor_forced = False
         available_tools = _tools_for_policy_compat(
             tool_policy,
             all_tools,
@@ -196,6 +206,23 @@ def make_agent_loop_node(
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=quarantined_model_for,
             )
+        elif (
+            tool_policy == "live_web_research"
+            and temporal_anchor_required
+            and _has_tool_named(available_tools, "current_utc_time")
+            and not _latest_turn_has_tool_result(state_messages, "current_utc_time")
+        ):
+            temporal_anchor_forced = True
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"current-utc-time-{state.get('llm_calls', 0) + 1}",
+                        "name": "current_utc_time",
+                        "args": {},
+                    }
+                ],
+            )
         elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search_compat(
             tool_intent_text,
             state_messages,
@@ -277,11 +304,48 @@ def make_agent_loop_node(
                 model_with_tools_for=quarantined_model_with_tools_for,
             )
         response = _repair_and_dedupe_tool_calls(response)
+        completed_turn_messages = _latest_turn_messages([*state_messages, response])
+        observed_at = _latest_tool_result_content(completed_turn_messages, "current_utc_time")
+        evidence_bundle = normalize_evidence_bundle(
+            completed_turn_messages,
+            observed_at=observed_at or None,
+        )
+        citation_refs = _new_citation_refs(
+            evidence_bundle_to_citation_refs(evidence_bundle),
+            existing=list(state.get("citations", []) or []),
+        )
+        web_tool_result_seen = _latest_turn_has_tool_result(state_messages, "web_search") or _latest_turn_has_tool_result(
+            state_messages,
+            "web_fetch",
+        )
+        external_answer_missing_citation = bool(
+            tool_policy == "live_web_research"
+            and web_tool_result_seen
+            and not getattr(response, "tool_calls", None)
+            and _message_content_text(response)
+            and not citation_refs
+            and not state.get("citations")
+        )
         updates: dict[str, Any] = {
             "messages": [response],
             "llm_calls": state.get("llm_calls", 0) + 1,
+            "evidence_bundle": evidence_bundle,
         }
+        if citation_refs:
+            updates["citations"] = citation_refs
         intent_dumped = tool_intent_plan.model_dump(mode="json")
+        if temporal_anchor_required:
+            intent_dumped["temporal_anchor_required"] = True
+        if temporal_anchor_forced:
+            intent_dumped["temporal_anchor_forced"] = True
+        if external_answer_missing_citation:
+            intent_dumped["external_answer_missing_citation"] = True
+        updates["pending_tool_action"] = _next_pending_tool_action(
+            state=state,
+            tool_intent_plan=intent_dumped,
+            response=response,
+            web_tool_result_seen=web_tool_result_seen,
+        )
         append_agent_state_record(
             updates,
             "tool_intent_plan",
@@ -438,6 +502,194 @@ def _tool_intent_text(state: AgentState, latest_user: str) -> str:
     if task_brief and state.get("active_skill_ids"):
         return task_brief
     return latest_user
+
+
+def _pending_live_web_search_action_from_state(
+    state: AgentState,
+    *,
+    latest_user: str,
+) -> Mapping[str, Any] | None:
+    if not _graph_tool_policy._is_tool_carryover_confirmation(latest_user):
+        return None
+    pending = state.get("pending_tool_action")
+    if isinstance(pending, Mapping) and not _pending_tool_action_expired(pending, state):
+        return pending
+    prior_plan = state.get("tool_intent_plan")
+    if _is_pending_live_web_search_mapping(prior_plan):
+        return prior_plan
+    return _prior_live_web_search_intent_from_messages(
+        list(state.get("messages", []) or ()),
+        active_skill_ids=list(state.get("active_skill_ids", []) or ()),
+    )
+
+
+def _is_pending_live_web_search_mapping(raw: Any) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    return (
+        str(raw.get("policy") or "").strip() == "live_web_research"
+        and str(raw.get("preferred_first_tool") or "").strip() == "web_search"
+    )
+
+
+def _prior_live_web_search_intent_from_messages(
+    messages: list[Any],
+    *,
+    active_skill_ids: list[Any],
+) -> Mapping[str, Any] | None:
+    latest_human_index = _latest_human_index(messages)
+    if latest_human_index <= 0:
+        return None
+    for message in reversed(messages[:latest_human_index]):
+        if getattr(message, "type", None) != "human":
+            continue
+        prior_text = str(getattr(message, "content", "") or "").strip()
+        if not prior_text:
+            continue
+        prior_plan = _graph_tool_policy.build_tool_intent_plan(
+            prior_text,
+            active_skill_ids=active_skill_ids,
+        )
+        if (
+            prior_plan.policy == "live_web_research"
+            and prior_plan.preferred_first_tool == "web_search"
+        ):
+            return prior_plan.model_dump(mode="json")
+        return None
+    return None
+
+
+def _latest_human_index(messages: list[Any]) -> int:
+    latest = -1
+    for index, message in enumerate(messages):
+        if getattr(message, "type", None) == "human":
+            latest = index
+    return latest
+
+
+def _current_turn_index(state: AgentState) -> int:
+    return sum(
+        1
+        for message in list(state.get("messages", []) or ())
+        if getattr(message, "type", None) == "human"
+    )
+
+
+def _pending_tool_action_expired(raw: Mapping[str, Any], state: AgentState) -> bool:
+    expires_after_turns = _coerce_int(raw.get("expires_after_turns"), default=2)
+    created_turn_index = _coerce_int(raw.get("created_turn_index"), default=_current_turn_index(state))
+    return (_current_turn_index(state) - created_turn_index) > expires_after_turns
+
+
+def _coerce_int(value: Any, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _has_tool_named(tools: list[Any], name: str) -> bool:
+    return any(str(getattr(tool, "name", "")) == name for tool in tools)
+
+
+def _latest_turn_has_tool_result(messages: list[Any], tool_name: str) -> bool:
+    latest_human_index = _latest_human_index(messages)
+    call_names_by_id: dict[str, str] = {}
+    for message in messages[latest_human_index + 1 :]:
+        for call in getattr(message, "tool_calls", None) or ():
+            if not isinstance(call, Mapping):
+                continue
+            call_id = str(call.get("id") or "").strip()
+            name = str(call.get("name") or "").strip()
+            if call_id and name:
+                call_names_by_id[call_id] = name
+        if isinstance(message, ToolMessage):
+            if call_names_by_id.get(str(message.tool_call_id or "").strip()) == tool_name:
+                return True
+    return False
+
+
+def _latest_tool_result_content(messages: list[Any], tool_name: str) -> str:
+    call_names_by_id: dict[str, str] = {}
+    latest = ""
+    for message in messages:
+        for call in getattr(message, "tool_calls", None) or ():
+            if not isinstance(call, Mapping):
+                continue
+            call_id = str(call.get("id") or "").strip()
+            name = str(call.get("name") or "").strip()
+            if call_id and name:
+                call_names_by_id[call_id] = name
+        if isinstance(message, ToolMessage):
+            if call_names_by_id.get(str(message.tool_call_id or "").strip()) == tool_name:
+                latest = _message_content_text(message)
+    return latest
+
+
+def _message_content_text(message: Any) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    return str(content or "").strip()
+
+
+def _new_citation_refs(
+    citation_refs: list[dict[str, str | None]],
+    *,
+    existing: list[Any],
+) -> list[dict[str, str | None]]:
+    seen = {_citation_key(item) for item in existing}
+    unique: list[dict[str, str | None]] = []
+    for item in citation_refs:
+        key = _citation_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
+def _citation_key(item: Any) -> tuple[str, str]:
+    if isinstance(item, Mapping):
+        return (str(item.get("uri") or ""), str(item.get("label") or ""))
+    return (
+        str(getattr(item, "uri", "") or ""),
+        str(getattr(item, "label", "") or ""),
+    )
+
+
+def _next_pending_tool_action(
+    *,
+    state: AgentState,
+    tool_intent_plan: Mapping[str, Any],
+    response: AIMessage,
+    web_tool_result_seen: bool,
+) -> dict[str, Any] | None:
+    if getattr(response, "tool_calls", None) or web_tool_result_seen:
+        return None
+    if (
+        str(tool_intent_plan.get("policy") or "") != "live_web_research"
+        or str(tool_intent_plan.get("preferred_first_tool") or "") != "web_search"
+    ):
+        return None
+    args = tool_intent_plan.get("preferred_first_args")
+    query = ""
+    if isinstance(args, Mapping):
+        query = str(args.get("query") or "").strip()
+    if not query:
+        query = str(tool_intent_plan.get("normalized_text") or "").strip()
+    if not query:
+        return None
+    return {
+        "policy": "live_web_research",
+        "tool": "web_search",
+        "query": query,
+        "preferred_first_tool": "web_search",
+        "preferred_first_args": {"query": query},
+        "requires_confirmation": True,
+        "created_turn_index": _current_turn_index(state),
+        "expires_after_turns": 2,
+    }
 
 
 def _registered_tool_names(tool_registry: ToolRegistry, tools: Sequence[Any]) -> list[str]:

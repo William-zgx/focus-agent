@@ -121,7 +121,8 @@ class MemoryExtractor:
             namespace=root_thread_episodic_namespace(context.root_thread_id),
             content=content,
             summary=content[:240],
-            source_thread_id=context.branch_id or context.root_thread_id,
+            source_thread_id=_turn_summary_source_thread_id(context=context, state=state),
+            source_branch_id=context.branch_id,
             root_thread_id=context.root_thread_id,
             user_id=context.user_id,
             importance=0.55,
@@ -167,6 +168,21 @@ def _latest_message_text(messages: list[Any], message_type: type) -> str:
             content = getattr(message, "content", "")
             return str(content).strip()
     return ""
+
+
+def _turn_summary_source_thread_id(*, context: RequestContext, state: dict[str, Any]) -> str:
+    if not context.branch_id:
+        return context.root_thread_id
+    branch_meta = state.get("branch_meta")
+    if isinstance(branch_meta, dict):
+        child_thread_id = str(branch_meta.get("child_thread_id") or "").strip()
+        if child_thread_id:
+            return child_thread_id
+    for key in ("child_thread_id", "current_thread_id", "thread_id"):
+        value = str(state.get(key) or "").strip()
+        if value:
+            return value
+    return context.branch_id
 
 
 def _looks_like_user_profile(text: str) -> bool:

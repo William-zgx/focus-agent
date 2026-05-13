@@ -76,15 +76,35 @@ class MemoryWriter:
         state: dict[str, Any],
     ) -> dict[str, Any]:
         if self.repository is not None:
-            return MemoryService(
-                repository=self.repository,
-                policy=self.policy,
-                embedding_service=self.embedding_service,
-            ).persist_records(
+            records, quality_skips = self._filter_quality_gated_records(
                 records,
                 context=context,
                 state=state,
             )
+            service = MemoryService(
+                repository=self.repository,
+                policy=self.policy,
+                embedding_service=self.embedding_service,
+            )
+            outcome = service.persist_records(
+                records,
+                context=context,
+                state=state,
+            )
+            if quality_skips:
+                outcome["skipped"] = [*quality_skips, *list(outcome.get("skipped", []))]
+                if "decisions" in outcome:
+                    outcome["decisions"] = [
+                        {
+                            "status": "skipped",
+                            "reason": item["reason"],
+                            "summary": item["summary"],
+                            "action": "memory_quality_gate",
+                        }
+                        for item in quality_skips
+                    ] + list(outcome.get("decisions", []))
+            outcome["prepared"] = len(records) + len(quality_skips)
+            return outcome
         outcome: dict[str, Any] = {
             "prepared": len(records),
             "written": [],
@@ -97,8 +117,16 @@ class MemoryWriter:
             return outcome
 
         for record in records:
-            if not self.policy.should_persist(record=record, context=context, state=state):
-                outcome["skipped"].append({"summary": record.summary or record.content[:80], "reason": "policy"})
+            skip_reason = _policy_skip_reason(
+                self.policy,
+                record=record,
+                context=context,
+                state=state,
+            )
+            if skip_reason is not None:
+                outcome["skipped"].append(
+                    {"summary": record.summary or record.content[:80], "reason": skip_reason}
+                )
                 continue
             try:
                 action, key = self._upsert_record(record)
@@ -129,7 +157,8 @@ class MemoryWriter:
                     summary=summary[:240],
                     root_thread_id=context.root_thread_id,
                     user_id=context.user_id,
-                    source_thread_id=context.branch_id or context.root_thread_id,
+                    source_thread_id=_turn_summary_source_thread_id(context=context),
+                    source_branch_id=context.branch_id,
                 )
             ]
         )
@@ -163,6 +192,28 @@ class MemoryWriter:
             for item in findings
         ]
         return self.write_records(records)
+
+    def _filter_quality_gated_records(
+        self,
+        records: list[MemoryWriteRequest],
+        *,
+        context: RequestContext,
+        state: dict[str, Any],
+    ) -> tuple[list[MemoryWriteRequest], list[dict[str, Any]]]:
+        accepted: list[MemoryWriteRequest] = []
+        skipped: list[dict[str, Any]] = []
+        for record in records:
+            reason = _quality_skip_reason(
+                self.policy,
+                record=record,
+                context=context,
+                state=state,
+            )
+            if reason is None:
+                accepted.append(record)
+            else:
+                skipped.append({"summary": record.summary or record.content[:80], "reason": reason})
+        return accepted, skipped
 
     def write_imported_conclusion(self, *, context: RequestContext, imported: ImportedConclusion) -> str:
         keys = self.write_records(
@@ -357,6 +408,42 @@ class MemoryWriter:
 
 def _normalize_text(text: str) -> str:
     return " ".join((text or "").casefold().split())
+
+
+def _policy_skip_reason(
+    policy: MemoryPolicy,
+    *,
+    record: MemoryWriteRequest,
+    context: RequestContext,
+    state: dict[str, Any],
+) -> str | None:
+    skip_reason = getattr(policy, "persistence_skip_reason", None)
+    if callable(skip_reason):
+        return skip_reason(record=record, context=context, state=state)
+    return None if policy.should_persist(record=record, context=context, state=state) else "policy"
+
+
+def _quality_skip_reason(
+    policy: MemoryPolicy,
+    *,
+    record: MemoryWriteRequest,
+    context: RequestContext,
+    state: dict[str, Any],
+) -> str | None:
+    quality_gate = getattr(policy, "quality_gate", None)
+    skip_reason = getattr(quality_gate, "skip_reason", None)
+    if callable(skip_reason):
+        return skip_reason(record=record, context=context, state=state)
+    return None
+
+
+def _turn_summary_source_thread_id(*, context: RequestContext) -> str:
+    if not context.branch_id:
+        return context.root_thread_id
+    child_thread_id = str(getattr(context, "child_thread_id", "") or "").strip()
+    if child_thread_id:
+        return child_thread_id
+    return context.branch_id
 
 
 def _has_correction_signal(text: str) -> bool:

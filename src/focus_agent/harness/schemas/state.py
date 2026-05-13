@@ -75,6 +75,8 @@ class GovernanceStateSlice(HarnessSchemaModel):
     memory_curator_decision: dict[str, Any] | None = None
     tool_intent_plan: dict[str, Any] | None = None
     tool_route_plan: dict[str, Any] | None = None
+    pending_tool_action: dict[str, Any] | None = None
+    evidence_bundle: list[dict[str, Any]] = Field(default_factory=list)
     agent_delegation_plan: dict[str, Any] | None = None
     agent_runs: list[dict[str, Any]] = Field(default_factory=list)
     model_route_decision: dict[str, Any] | None = None
@@ -89,6 +91,7 @@ class GovernanceStateSlice(HarnessSchemaModel):
     delegated_artifacts: list[dict[str, Any]] = Field(default_factory=list)
     artifact_synthesis_result: dict[str, Any] | None = None
     critic_gate_result: dict[str, Any] | None = None
+    memory_write_result: dict[str, Any] = Field(default_factory=dict)
     plan: Any = None
     current_step_id: str = ""
     reflection: Any = None
@@ -103,6 +106,8 @@ class ObservabilityStateSlice(HarnessSchemaModel):
     memory_curator_decision: dict[str, Any] | None = None
     tool_intent_plan: dict[str, Any] | None = None
     tool_route_plan: dict[str, Any] | None = None
+    pending_tool_action: dict[str, Any] | None = None
+    evidence_bundle: list[dict[str, Any]] = Field(default_factory=list)
     agent_delegation_plan: dict[str, Any] | None = None
     agent_runs: list[dict[str, Any]] = Field(default_factory=list)
     model_route_decision: dict[str, Any] | None = None
