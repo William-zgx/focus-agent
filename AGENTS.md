@@ -31,6 +31,7 @@ Use `Plan -> Execute -> Verify -> Learn`.
 
 - Before executing any non-trivial task, first ask: can this be split into independent investigation, implementation, review, or verification slices?
 - When the active runtime supports Codex native subagents and independent slices exist, prefer a multi-agent workflow by default.
+- When subagent tools are available, use parallel subagents for any task with independent investigation, implementation, or verification slices unless doing so would create write conflicts or block the critical path.
 - Use solo execution only when the task is trivial, tightly coupled, sequentially blocked, or when delegation would add overhead without improving speed, quality, or safety.
 - Treat tasks as strong multi-agent candidates when they involve multiple files or modules, investigation plus implementation, frontend or browser verification, review or regression testing, conflict resolution, docs plus code, or long-running validation.
 - When the user explicitly asks for multi-agent work, multiple agents, delegation, subagents, or concurrent agent execution, use subagents where practical and safe.
