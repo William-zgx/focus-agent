@@ -9,6 +9,7 @@ from .service import (
 )
 from .threads import (
     ChatThreadAccessMixin,
+    ThreadStateUnavailableError,
     effective_thinking_mode,
     json_safe,
     latest_final_ai_text,
@@ -29,6 +30,7 @@ __all__ = [
     "ChatThreadAccessMixin",
     "ChatContextCompactionMixin",
     "ChatTurnRecordingMixin",
+    "ThreadStateUnavailableError",
     "execute_branch_action_navigation",
     "effective_thinking_mode",
     "latest_final_ai_text",

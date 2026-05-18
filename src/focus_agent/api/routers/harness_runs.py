@@ -39,7 +39,8 @@ from focus_agent.observability.tracing import build_invoke_config, build_trace_c
 from focus_agent.observability.trajectory import utc_now
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
-from focus_agent.services.chat import ChatService
+from focus_agent.services.chat import ChatService, ConcurrentTurnError
+from focus_agent.services.branches.actions import branch_handoff_message_from_text
 from focus_agent.transport.stream_events import (
     STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,
@@ -56,6 +57,10 @@ from focus_agent.transport.stream_events import (
 )
 
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
+from ..route_utils.branch_handoff_decisions import (
+    mark_branch_handoff_decision_outcome,
+    record_branch_handoff_decision_for_run,
+)
 from ..route_utils.harness_run_helpers import (
     _canonical_custom_event,
     _canonical_payload_extras,
@@ -128,8 +133,9 @@ async def create_harness_run(
         chat=chat,
     )
     rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
-    message = _message_from_payload(payload)
-    is_branch_action = _branch_action_intent_for_run(
+    skip_branch_recommendation = _is_branch_handoff_auto_run(payload)
+    message = _run_message_from_payload(payload)
+    is_branch_action = (not skip_branch_recommendation) and _branch_action_intent_for_run(
         chat=chat,
         initial_values=initial_values,
         branch_meta=branch_meta,
@@ -170,6 +176,7 @@ async def create_harness_run(
         context=context,
         branch_meta=branch_meta,
         initial_values=initial_values,
+        skip_branch_recommendation=skip_branch_recommendation,
     )
 
 
@@ -185,6 +192,7 @@ async def _execute_branch_action_run(
     context: Any,
     branch_meta: Any,
     initial_values: dict[str, Any],
+    skip_branch_recommendation: bool = False,
 ) -> HarnessRunResponse:
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
     initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
@@ -265,52 +273,79 @@ async def _execute_harness_run(
     context: Any,
     branch_meta: Any,
     initial_values: dict[str, Any],
+    skip_branch_recommendation: bool = False,
 ) -> HarnessRunResponse:
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
     initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
     trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
-    try:
-        branch_recommendation_result = _handle_branch_recommendation_for_run(
-            chat=chat,
+    handoff_decision = (
+        record_branch_handoff_decision_for_run(
+            runtime=runtime,
             thread_id=thread_id,
             user_id=user_id,
             message=message,
+            root_thread_id=context.root_thread_id,
             request_id=request_id,
+            trace_id=getattr(trace_correlation, "trace_id", None)
+            if trace_correlation is not None
+            else None,
+            run_id=run_record.run_id,
+            run_status=RunStatus.RUNNING.value,
         )
-        if branch_recommendation_result is not None:
-            latest_context, latest_branch_meta, final_values = _context_for_turn(
+        if skip_branch_recommendation
+        else None
+    )
+    try:
+        if not skip_branch_recommendation:
+            branch_recommendation_result = _handle_branch_recommendation_for_run(
                 chat=chat,
                 thread_id=thread_id,
                 user_id=user_id,
-                fallback_context=context,
-                fallback_branch_meta=branch_meta,
+                message=message,
+                request_id=request_id,
             )
-            message_text = str(branch_recommendation_result.get("message") or "")
-            _record_harness_turn_and_schedule(
-                chat=chat,
-                thread_id=thread_id,
-                user_id=user_id,
-                root_thread_id=latest_context.root_thread_id,
-                kind="chat.turn",
-                status="succeeded",
-                final_values=final_values,
-                initial_message_count=initial_message_count,
-                initial_llm_calls=initial_llm_calls,
-                started_at=started_at,
-                branch_meta=latest_branch_meta,
-                trace_correlation=trace_correlation,
-                payload={"messages": [HumanMessage(content=message)]},
-                answer=message_text or None,
-                schedule_side_effects=False,
-            )
-            await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
-            return _harness_run_response(
-                runtime=runtime,
-                run_id=run_record.run_id,
-                fallback_record=run_record,
-                thread_state=branch_recommendation_result["thread_state"],
-            )
+            if branch_recommendation_result is not None:
+                latest_context, latest_branch_meta, final_values = _context_for_turn(
+                    chat=chat,
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    fallback_context=context,
+                    fallback_branch_meta=branch_meta,
+                )
+                message_text = str(branch_recommendation_result.get("message") or "")
+                _record_harness_turn_and_schedule(
+                    chat=chat,
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    root_thread_id=latest_context.root_thread_id,
+                    kind="chat.turn",
+                    status="succeeded",
+                    final_values=final_values,
+                    initial_message_count=initial_message_count,
+                    initial_llm_calls=initial_llm_calls,
+                    started_at=started_at,
+                    branch_meta=latest_branch_meta,
+                    trace_correlation=trace_correlation,
+                    payload={"messages": [HumanMessage(content=message)]},
+                    answer=message_text or None,
+                    schedule_side_effects=False,
+                )
+                await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
+                return _harness_run_response(
+                    runtime=runtime,
+                    run_id=run_record.run_id,
+                    fallback_record=run_record,
+                    thread_state=branch_recommendation_result["thread_state"],
+                )
     except Exception as exc:  # noqa: BLE001
+        mark_branch_handoff_decision_outcome(
+            runtime=runtime,
+            decision=handoff_decision,
+            run_status=RunStatus.ERROR.value,
+            run_id=run_record.run_id,
+            message=message,
+            error=str(exc),
+        )
         await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
         _record_harness_turn_and_schedule(
             chat=chat,
@@ -347,6 +382,14 @@ async def _execute_harness_run(
             version="v2",
         )
     except Exception as exc:  # noqa: BLE001
+        mark_branch_handoff_decision_outcome(
+            runtime=runtime,
+            decision=handoff_decision,
+            run_status=RunStatus.ERROR.value,
+            run_id=run_record.run_id,
+            message=message,
+            error=str(exc),
+        )
         await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
         _record_harness_turn_and_schedule(
             chat=chat,
@@ -366,6 +409,13 @@ async def _execute_harness_run(
         )
         raise
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
+    mark_branch_handoff_decision_outcome(
+        runtime=runtime,
+        decision=handoff_decision,
+        run_status=RunStatus.SUCCESS.value,
+        run_id=run_record.run_id,
+        message=message,
+    )
     latest_context, latest_branch_meta, final_values = _context_for_turn(
         chat=chat,
         thread_id=thread_id,
@@ -421,8 +471,9 @@ async def stream_harness_run(
         chat=chat,
     )
     rollback_target = _capture_run_rollback_target(runtime=runtime, thread_id=thread_id)
-    message = _message_from_payload(payload)
-    is_branch_action = _branch_action_intent_for_run(
+    skip_branch_recommendation = _is_branch_handoff_auto_run(payload)
+    message = _run_message_from_payload(payload)
+    is_branch_action = (not skip_branch_recommendation) and _branch_action_intent_for_run(
         chat=chat,
         initial_values=initial_values,
         branch_meta=branch_meta,
@@ -469,6 +520,7 @@ async def stream_harness_run(
                 request_id=getattr(request.state, "request_id", None),
                 message=message,
                 kind="chat.turn",
+                skip_branch_recommendation=skip_branch_recommendation,
             )
         )
     await runtime.run_manager.attach_task(run_record.run_id, producer)
@@ -663,7 +715,7 @@ def _prepare_run_payload(
     payload: HarnessRunRequest,
     chat: ChatService,
 ) -> tuple[dict[str, Any], Any, Any, dict[str, Any]]:
-    message = _message_from_payload(payload)
+    message = _run_message_from_payload(payload)
     selection = chat._select_skills_for_message(
         message=message,
         explicit_skill_hints=tuple(payload.skill_hints),
@@ -690,7 +742,9 @@ def _prepare_run_payload(
         ),
     }
     if payload.input:
-        graph_payload.update(payload.input)
+        graph_payload.update(
+            {key: value for key, value in payload.input.items() if key != "messages"}
+        )
     if selection.prompt_mode is not None:
         graph_payload["prompt_mode"] = selection.prompt_mode
     return graph_payload, context, branch_meta, initial_values
@@ -792,12 +846,19 @@ def _handle_branch_recommendation_for_run(
     )
     if not has_repo_method(chat, method_name):
         return None
-    result = getattr(chat, method_name)(
-        thread_id=thread_id,
-        user_id=user_id,
-        message=message,
-        request_id=request_id,
-    )
+    try:
+        result = getattr(chat, method_name)(
+            thread_id=thread_id,
+            user_id=user_id,
+            message=message,
+            request_id=request_id,
+        )
+    except ConcurrentTurnError:
+        logger.debug("pre-turn branch recommendation skipped because thread is busy")
+        return None
+    except Exception:  # noqa: BLE001 - recommendation failures must not block answers.
+        logger.warning("pre-turn branch recommendation failed", exc_info=True)
+        return None
     return result if isinstance(result, dict) else None
 
 
@@ -934,6 +995,7 @@ async def _produce_run_stream(
     request_id: str | None,
     message: str | None = None,
     kind: str = "chat.turn",
+    skip_branch_recommendation: bool = False,
 ) -> None:
     sequence = 0
     visible_text_buffer = ""
@@ -943,6 +1005,23 @@ async def _produce_run_stream(
     cancelled = False
     initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
     trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
+    handoff_decision = (
+        record_branch_handoff_decision_for_run(
+            runtime=runtime,
+            thread_id=thread_id,
+            user_id=user_id,
+            message=message or _message_text_from_graph_payload(payload),
+            root_thread_id=context.root_thread_id,
+            request_id=request_id,
+            trace_id=getattr(trace_correlation, "trace_id", None)
+            if trace_correlation is not None
+            else None,
+            run_id=run_id,
+            run_status=RunStatus.RUNNING.value,
+        )
+        if skip_branch_recommendation
+        else None
+    )
     config = build_invoke_config(
         settings=runtime.settings,
         thread_id=thread_id,
@@ -970,7 +1049,7 @@ async def _produce_run_stream(
         await publish("run.metadata")
         await publish("run.status", phase="running")
         turn_message = str(message or _message_text_from_graph_payload(payload))
-        if turn_message:
+        if turn_message and not skip_branch_recommendation:
             branch_recommendation_result = _handle_branch_recommendation_for_run(
                 chat=chat,
                 thread_id=thread_id,
@@ -1142,6 +1221,13 @@ async def _produce_run_stream(
 
         if cancelled:
             await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
+            mark_branch_handoff_decision_outcome(
+                runtime=runtime,
+                decision=handoff_decision,
+                run_status=RunStatus.INTERRUPTED.value,
+                run_id=run_id,
+                message=turn_message,
+            )
             return
 
         latest_context, latest_branch_meta, final_values = chat._context_for_thread(
@@ -1172,6 +1258,13 @@ async def _produce_run_stream(
         if reasoning_buffer:
             await publish("reasoning.delta", delta="", completed=True, content=reasoning_buffer)
         await runtime.run_manager.set_status(run_id, RunStatus.SUCCESS)
+        mark_branch_handoff_decision_outcome(
+            runtime=runtime,
+            decision=handoff_decision,
+            run_status=RunStatus.SUCCESS.value,
+            run_id=run_id,
+            message=turn_message,
+        )
         thread_state = chat._response_payload(
             thread_id=thread_id,
             user_id=user_id,
@@ -1199,10 +1292,26 @@ async def _produce_run_stream(
         await publish("run.completed", status="succeeded", thread_state=thread_state)
     except asyncio.CancelledError:
         await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
+        mark_branch_handoff_decision_outcome(
+            runtime=runtime,
+            decision=handoff_decision,
+            run_status=RunStatus.INTERRUPTED.value,
+            run_id=run_id,
+            message=message or _message_text_from_graph_payload(payload),
+            error="CancelledError",
+        )
         record = runtime.run_manager.get(run_id)
         if record is None or not record.abort_event.is_set():
             await publish("run.failed", error="CancelledError", message="Run was cancelled.")
     except Exception as exc:  # noqa: BLE001
+        mark_branch_handoff_decision_outcome(
+            runtime=runtime,
+            decision=handoff_decision,
+            run_status=RunStatus.ERROR.value,
+            run_id=run_id,
+            message=message or _message_text_from_graph_payload(payload),
+            error=str(exc),
+        )
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
         _record_harness_turn_and_schedule(
             chat=chat,
@@ -1391,6 +1500,17 @@ def _message_from_payload(payload: HarnessRunRequest) -> str:
     if payload.input and payload.input.get("message") is not None:
         return str(payload.input["message"])
     raise HTTPException(status_code=400, detail="Harness run requires a message.")
+
+
+def _run_message_from_payload(payload: HarnessRunRequest) -> str:
+    message = _message_from_payload(payload)
+    if not _is_branch_handoff_auto_run(payload):
+        return message
+    return branch_handoff_message_from_text(message) or message
+
+
+def _is_branch_handoff_auto_run(payload: HarnessRunRequest) -> bool:
+    return bool((payload.metadata or {}).get("branch_handoff_auto_run"))
 
 
 def _message_text_from_graph_payload(payload: Any) -> str:

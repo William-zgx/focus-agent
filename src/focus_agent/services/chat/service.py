@@ -321,8 +321,9 @@ class ChatService(
         branch_meta: BranchMeta | None,
         interrupts: list[Any],
         trace_correlation: TraceCorrelation | None = None,
+        strict_state_read: bool = False,
     ) -> dict[str, Any]:
-        values = self._safe_get_values(thread_id)
+        values = self._safe_get_values(thread_id, strict=strict_state_read)
         payload = response_payload(
             thread_id=thread_id,
             user_id=user_id,
@@ -723,8 +724,9 @@ class ChatService(
             user_id=user_id,
             context=context,
             branch_meta=branch_meta,
-            interrupts=self._safe_get_interrupts(thread_id),
+            interrupts=self._safe_get_interrupts(thread_id, strict=True),
             trace_correlation=trace_correlation,
+            strict_state_read=True,
         )
 
     def _select_skills_for_message(

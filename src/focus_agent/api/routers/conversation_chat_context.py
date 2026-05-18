@@ -8,7 +8,11 @@ from focus_agent.core.token_usage import normalize_token_usage
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
-from focus_agent.services.chat import ChatService, ConcurrentTurnError
+from focus_agent.services.chat import (
+    ChatService,
+    ConcurrentTurnError,
+    ThreadStateUnavailableError,
+)
 
 from ..contracts import (
     BranchActionExecuteResponse,
@@ -24,6 +28,7 @@ from ..contracts import (
     UpdateConversationRequest,
 )
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
+from ..route_utils.branch_handoff_decisions import ensure_branch_handoff_decision_from_journal
 from ..route_utils.conversations import _conversation_response, _list_or_bootstrap_conversations
 from ..route_utils.token_usage import _token_usage_for_root_thread
 
@@ -193,13 +198,20 @@ def get_thread_resolution(
 
 
 @router.get("/v1/threads/{thread_id:path}", response_model=ThreadStateResponse)
-def get_thread_snapshot(
+async def get_thread_snapshot(
     thread_id: str,
     request: Request,
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ThreadStateResponse:
     try:
+        await ensure_branch_handoff_decision_from_journal(
+            runtime=runtime,
+            thread_id=thread_id,
+            user_id=principal.user_id,
+            request_id=getattr(request.state, "request_id", None),
+        )
         result = chat.get_thread_state(
             thread_id=thread_id,
             user_id=principal.user_id,
@@ -207,6 +219,8 @@ def get_thread_snapshot(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ThreadStateUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ThreadStateResponse.model_validate(result)
 
 

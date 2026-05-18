@@ -10,6 +10,9 @@ from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.types import Command
 
 import focus_agent.api.routers.harness_runs as harness_runs
+from focus_agent.api.route_utils.branch_handoff_decisions import (
+    ensure_branch_handoff_decision_from_journal,
+)
 from focus_agent.harness.observability import InMemoryRunJournal, JournaledStreamBridge
 from focus_agent.harness.runtime import RunStatus
 from focus_agent.harness.runtime.rollback import (
@@ -49,6 +52,116 @@ def test_prepare_resume_payload_uses_langgraph_command_resume():
         "explicit_skill_hints": (),
         "require_writable": True,
     }
+
+
+def test_prepare_run_payload_keeps_explicit_message_when_input_has_messages():
+    class _Selection:
+        stripped_message = "carried question"
+        skill_ids = ()
+        prompt_mode = None
+
+    class _Chat:
+        runtime = SimpleNamespace(settings=SimpleNamespace(model="model-1"))
+
+        def _select_skills_for_message(self, **kwargs):
+            self.selection_kwargs = kwargs
+            return _Selection()
+
+        def _preflight_thread_access(self, **kwargs):
+            self.preflight_kwargs = kwargs
+            return SimpleNamespace(root_thread_id="root-1"), None, {"messages": []}
+
+        def _effective_thinking_mode(self, **kwargs):
+            del kwargs
+            return "auto"
+
+    chat = _Chat()
+    payload = harness_runs.HarnessRunRequest(
+        message="carried question",
+        input={"messages": [], "custom": "value"},
+    )
+
+    graph_payload, context, branch_meta, initial_values = harness_runs._prepare_run_payload(
+        thread_id="thread-1",
+        user_id="user-1",
+        payload=payload,
+        chat=chat,
+    )
+
+    assert [message.content for message in graph_payload["messages"]] == ["carried question"]
+    assert graph_payload["custom"] == "value"
+    assert context.root_thread_id == "root-1"
+    assert branch_meta is None
+    assert initial_values == {"messages": []}
+
+
+def test_run_message_from_payload_cleans_branch_handoff_auto_run():
+    payload = harness_runs.HarnessRunRequest(
+        message="新建子分支，探索济州岛10月亲子住宿，20字以内。",
+        metadata={"branch_handoff_auto_run": True},
+    )
+
+    assert harness_runs._run_message_from_payload(payload) == "探索济州岛10月亲子住宿，20字以内"
+
+
+def test_create_harness_run_skips_branch_action_intent_for_branch_handoff(monkeypatch):
+    class _Selection:
+        stripped_message = "探索济州岛10月亲子住宿，20字以内"
+        skill_ids = ()
+        prompt_mode = None
+
+    class _Chat:
+        runtime = SimpleNamespace(settings=SimpleNamespace(model="model-1"))
+
+        def _select_skills_for_message(self, **kwargs):
+            self.selection_kwargs = kwargs
+            return _Selection()
+
+        def _preflight_thread_access(self, **kwargs):
+            self.preflight_kwargs = kwargs
+            return SimpleNamespace(root_thread_id="root-1"), {"branch": "child"}, {"messages": []}
+
+        def _effective_thinking_mode(self, **kwargs):
+            del kwargs
+            return "auto"
+
+    async def fake_create_run_record(**kwargs):
+        fake_create_run_record.kwargs = kwargs
+        return SimpleNamespace(run_id="run-1")
+
+    async def fake_execute_harness_run(**kwargs):
+        fake_execute_harness_run.kwargs = kwargs
+        return SimpleNamespace(run=SimpleNamespace(run_id="run-1"), thread_state={"ok": True})
+
+    def fail_branch_action_intent(**kwargs):
+        raise AssertionError("branch handoff auto-run must not create another branch action")
+
+    monkeypatch.setattr(harness_runs, "_create_run_record", fake_create_run_record)
+    monkeypatch.setattr(harness_runs, "_execute_harness_run", fake_execute_harness_run)
+    monkeypatch.setattr(harness_runs, "_branch_action_intent_for_run", fail_branch_action_intent)
+    monkeypatch.setattr(harness_runs, "_capture_run_rollback_target", lambda **kwargs: None)
+
+    payload = harness_runs.HarnessRunRequest(
+        message="新建子分支，探索济州岛10月亲子住宿，20字以内。",
+        metadata={"branch_handoff_auto_run": True},
+    )
+
+    async def scenario():
+        response = await harness_runs.create_harness_run(
+            thread_id="thread-2",
+            payload=payload,
+            request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
+            runtime=SimpleNamespace(settings=SimpleNamespace(model="model-1")),
+            chat=_Chat(),
+            principal=SimpleNamespace(user_id="user-1"),
+        )
+
+        assert response.thread_state == {"ok": True}
+        assert fake_create_run_record.kwargs["rollback_partial"] is False
+        assert fake_execute_harness_run.kwargs["message"] == "探索济州岛10月亲子住宿，20字以内"
+        assert fake_execute_harness_run.kwargs["skip_branch_recommendation"] is True
+
+    asyncio.run(scenario())
 
 
 def test_get_persisted_run_reads_runtime_event_store_when_manager_misses():
@@ -530,6 +643,292 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_not_visib
             "assistant_message": "normal answer",
         }
         assert chat.recommendation_kwargs["message"] == "换个主题，先看另一个问题。"
+        assert harness.called is True
+        assert manager.statuses[-1][1] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
+def test_execute_harness_run_skips_pre_turn_recommendation_for_branch_handoff(monkeypatch):
+    class _BranchDecisionService:
+        def __init__(self):
+            self.records = []
+            self.outcomes = []
+
+        def record_branch_handoff_auto_run_decision(self, **kwargs):
+            self.records.append(kwargs)
+            return SimpleNamespace(decision_id="handoff-decision-1")
+
+        def update_branch_handoff_auto_run_outcome(self, **kwargs):
+            self.outcomes.append(kwargs)
+            return SimpleNamespace(decision_id=kwargs["decision_id"])
+
+    class _Chat:
+        def __init__(self):
+            self.recommendation_called = False
+
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            del kwargs
+            self.recommendation_called = True
+            raise AssertionError("branch handoff auto-run must answer in the new branch")
+
+        def _context_for_thread(self, **kwargs):
+            del kwargs
+            return (
+                SimpleNamespace(root_thread_id="root-1"),
+                {"branch": "child"},
+                {"messages": [AIMessage(content="handoff answer")]},
+            )
+
+        def _response_payload(self, **kwargs):
+            del kwargs
+            return {"thread_id": "thread-2", "assistant_message": "handoff answer"}
+
+        def _safe_get_interrupts(self, thread_id: str):
+            del thread_id
+            return []
+
+    class _Harness:
+        def __init__(self):
+            self.payload = None
+
+        def invoke(self, payload, **kwargs):
+            del kwargs
+            self.payload = payload
+
+    class _Manager:
+        def __init__(self):
+            self.statuses = []
+            self.record = SimpleNamespace(
+                run_id="run-1",
+                to_dict=lambda: {
+                    "run_id": "run-1",
+                    "thread_id": "thread-2",
+                    "status": "success",
+                },
+            )
+
+        def get(self, run_id: str):
+            del run_id
+            return self.record
+
+        async def set_status(self, run_id: str, status: RunStatus, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+    async def scenario():
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        manager = _Manager()
+        harness = _Harness()
+        branch_decisions = _BranchDecisionService()
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(model="model-1"),
+            harness=harness,
+            run_manager=manager,
+            branch_decision_service=branch_decisions,
+        )
+        chat = _Chat()
+        payload = {"messages": [HumanMessage(content="换个主题，研究十月大阪环球影城预算。")]}
+
+        response = await harness_runs._execute_harness_run(
+            runtime=runtime,
+            chat=chat,
+            run_record=manager.record,
+            thread_id="thread-2",
+            user_id="user-1",
+            message="换个主题，研究十月大阪环球影城预算。",
+            payload=payload,
+            request_id="request-handoff",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "child"},
+            initial_values={"messages": []},
+            skip_branch_recommendation=True,
+        )
+
+        assert response.thread_state == {
+            "thread_id": "thread-2",
+            "assistant_message": "handoff answer",
+        }
+        assert harness.payload is payload
+        assert chat.recommendation_called is False
+        assert branch_decisions.records == [
+            {
+                "thread_id": "thread-2",
+                "user_id": "user-1",
+                "message": "换个主题，研究十月大阪环球影城预算。",
+                "root_thread_id": "root-1",
+                "handoff_run_id": "run-1",
+                "handoff_run_status": "running",
+                "request_id": "request-handoff",
+                "trace_id": None,
+            }
+        ]
+        assert branch_decisions.outcomes[-1] == {
+            "decision_id": "handoff-decision-1",
+            "handoff_run_id": "run-1",
+            "handoff_run_status": "success",
+            "message": "换个主题，研究十月大阪环球影城预算。",
+            "error": None,
+        }
+        assert manager.statuses[-1][1] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
+def test_ensure_branch_handoff_decision_from_journal_backfills_missing_event():
+    class _BranchDecisionService:
+        def __init__(self):
+            self.decisions = []
+            self.records = []
+            self.outcomes = []
+
+        def list_decisions(self, **kwargs):
+            self.list_kwargs = kwargs
+            return list(self.decisions)
+
+        def record_branch_handoff_auto_run_decision(self, **kwargs):
+            self.records.append(kwargs)
+            event = SimpleNamespace(decision_id="handoff-decision-1")
+            self.decisions.append(event)
+            return event
+
+        def update_branch_handoff_auto_run_outcome(self, **kwargs):
+            self.outcomes.append(kwargs)
+            return SimpleNamespace(decision_id=kwargs["decision_id"])
+
+    async def scenario():
+        event_store = InMemoryRunJournal()
+        await event_store.put(
+            "run-1",
+            thread_id="thread-2",
+            user_id="user-1",
+            status="interrupted",
+            metadata={"branch_handoff_auto_run": True, "root_thread_id": "root-1"},
+            kwargs={"input": {"task_brief": "探索十月大阪环球影城预算。"}},
+            error="user stopped generation",
+        )
+        service = _BranchDecisionService()
+        runtime = SimpleNamespace(event_store=event_store, branch_decision_service=service)
+
+        event = await ensure_branch_handoff_decision_from_journal(
+            runtime=runtime,
+            thread_id="thread-2",
+            user_id="user-1",
+            request_id="request-1",
+        )
+        existing = await ensure_branch_handoff_decision_from_journal(
+            runtime=runtime,
+            thread_id="thread-2",
+            user_id="user-1",
+            request_id="request-2",
+        )
+
+        assert event.decision_id == "handoff-decision-1"
+        assert existing.decision_id == "handoff-decision-1"
+        assert service.list_kwargs == {"thread_id": "thread-2", "user_id": "user-1", "limit": 1}
+        assert service.records == [
+            {
+                "thread_id": "thread-2",
+                "user_id": "user-1",
+                "message": "探索十月大阪环球影城预算。",
+                "root_thread_id": "root-1",
+                "handoff_run_id": "run-1",
+                "handoff_run_status": "interrupted",
+                "request_id": "request-1",
+                "trace_id": None,
+            }
+        ]
+        assert service.outcomes == [
+            {
+                "decision_id": "handoff-decision-1",
+                "handoff_run_id": "run-1",
+                "handoff_run_status": "interrupted",
+                "message": "探索十月大阪环球影城预算。",
+                "error": "user stopped generation",
+            }
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_execute_harness_run_continues_when_pre_turn_recommendation_is_busy(monkeypatch):
+    class _Chat:
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            del kwargs
+            raise harness_runs.ConcurrentTurnError("busy")
+
+        def _context_for_thread(self, **kwargs):
+            del kwargs
+            return (
+                SimpleNamespace(root_thread_id="root-1"),
+                {"branch": "child"},
+                {"messages": [AIMessage(content="normal answer")]},
+            )
+
+        def _response_payload(self, **kwargs):
+            del kwargs
+            return {"thread_id": "thread-1", "assistant_message": "normal answer"}
+
+        def _safe_get_interrupts(self, thread_id: str):
+            del thread_id
+            return []
+
+    class _Harness:
+        def __init__(self):
+            self.called = False
+
+        def invoke(self, *args, **kwargs):
+            del args, kwargs
+            self.called = True
+
+    class _Manager:
+        def __init__(self):
+            self.statuses = []
+            self.record = SimpleNamespace(
+                run_id="run-1",
+                to_dict=lambda: {
+                    "run_id": "run-1",
+                    "thread_id": "thread-1",
+                    "status": "success",
+                },
+            )
+
+        def get(self, run_id: str):
+            del run_id
+            return self.record
+
+        async def set_status(self, run_id: str, status: RunStatus, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+    async def scenario():
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        manager = _Manager()
+        harness = _Harness()
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(model="model-1"),
+            harness=harness,
+            run_manager=manager,
+        )
+
+        response = await harness_runs._execute_harness_run(
+            runtime=runtime,
+            chat=_Chat(),
+            run_record=manager.record,
+            thread_id="thread-1",
+            user_id="user-1",
+            message="大阪环球影城十月亲子预算怎么安排？",
+            payload={"messages": [HumanMessage(content="大阪环球影城十月亲子预算怎么安排？")]},
+            request_id="request-busy",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "child"},
+            initial_values={"messages": []},
+        )
+
+        assert response.thread_state == {
+            "thread_id": "thread-1",
+            "assistant_message": "normal answer",
+        }
         assert harness.called is True
         assert manager.statuses[-1][1] is RunStatus.SUCCESS
 
@@ -1129,6 +1528,180 @@ def test_produce_run_stream_uses_pre_turn_branch_recommendation(monkeypatch):
         }
         assert chat.recommendation_kwargs["message"] == "请新开一个子分支深入研究方案 B。"
         assert harness.called is False
+        assert manager.statuses[-1][0] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
+def test_produce_run_stream_skips_pre_turn_recommendation_for_branch_handoff(monkeypatch):
+    class _BranchDecisionService:
+        def __init__(self):
+            self.records = []
+            self.outcomes = []
+
+        def record_branch_handoff_auto_run_decision(self, **kwargs):
+            self.records.append(kwargs)
+            return SimpleNamespace(decision_id="handoff-decision-1")
+
+        def update_branch_handoff_auto_run_outcome(self, **kwargs):
+            self.outcomes.append(kwargs)
+            return SimpleNamespace(decision_id=kwargs["decision_id"])
+
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.called = False
+
+        async def stream_chunks(self, **kwargs):
+            self.called = True
+            assert kwargs["payload"] == {
+                "messages": [HumanMessage(content="换个主题，研究十月大阪环球影城预算。")]
+            }
+            yield _visible_ai_chunk("handoff answer")
+
+    class _Chat(_ProducerChat):
+        def __init__(self):
+            super().__init__([AIMessage(content="handoff final")])
+            self.recommendation_called = False
+
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            del kwargs
+            self.recommendation_called = True
+            raise AssertionError("branch handoff auto-run must stream the new branch answer")
+
+    async def scenario():
+        bridge = _CollectingBridge()
+        manager = _CollectingRunManager()
+        harness = _Harness()
+        branch_decisions = _BranchDecisionService()
+        runtime = SimpleNamespace(
+            harness=harness,
+            checkpointer=None,
+            settings=SimpleNamespace(sse_heartbeat_seconds=0),
+            run_manager=manager,
+            stream_bridge=bridge,
+            branch_decision_service=branch_decisions,
+        )
+        chat = _Chat()
+
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+
+        await harness_runs._produce_run_stream(
+            runtime=runtime,
+            chat=chat,
+            run_id="run-1",
+            thread_id="thread-2",
+            user_id="user-1",
+            payload={"messages": [HumanMessage(content="换个主题，研究十月大阪环球影城预算。")]},
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "child"},
+            initial_values={"messages": []},
+            request_id="request-handoff",
+            message="换个主题，研究十月大阪环球影城预算。",
+            skip_branch_recommendation=True,
+        )
+
+        assert _event_names(bridge.events) == [
+            "run.metadata",
+            "run.status",
+            "message.delta",
+            "message.completed",
+            "run.completed",
+            "run.closed",
+        ]
+        assert _completed_messages(bridge.events) == ["handoff final"]
+        assert bridge.events[4][1].get("branch_action") is None
+        assert bridge.events[4][1]["thread_state"] == {
+            "thread_id": "thread-2",
+            "messages": [{"type": "ai", "content": "done"}],
+        }
+        assert chat.recommendation_called is False
+        assert harness.called is True
+        assert branch_decisions.records == [
+            {
+                "thread_id": "thread-2",
+                "user_id": "user-1",
+                "message": "换个主题，研究十月大阪环球影城预算。",
+                "root_thread_id": "root-1",
+                "handoff_run_id": "run-1",
+                "handoff_run_status": "running",
+                "request_id": "request-handoff",
+                "trace_id": None,
+            }
+        ]
+        assert branch_decisions.outcomes[-1] == {
+            "decision_id": "handoff-decision-1",
+            "handoff_run_id": "run-1",
+            "handoff_run_status": "success",
+            "message": "换个主题，研究十月大阪环球影城预算。",
+            "error": None,
+        }
+        assert manager.statuses[-1][0] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
+def test_produce_run_stream_continues_when_pre_turn_recommendation_is_busy(monkeypatch):
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.called = False
+
+        async def stream_chunks(self, **kwargs):
+            del kwargs
+            self.called = True
+            yield _visible_ai_chunk("normal answer")
+
+    class _Chat(_ProducerChat):
+        def __init__(self):
+            super().__init__([AIMessage(content="normal final")])
+
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            del kwargs
+            raise harness_runs.ConcurrentTurnError("busy")
+
+    async def scenario():
+        bridge = _CollectingBridge()
+        manager = _CollectingRunManager()
+        harness = _Harness()
+        runtime = SimpleNamespace(
+            harness=harness,
+            checkpointer=None,
+            settings=SimpleNamespace(sse_heartbeat_seconds=0),
+            run_manager=manager,
+            stream_bridge=bridge,
+        )
+
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+
+        await harness_runs._produce_run_stream(
+            runtime=runtime,
+            chat=_Chat(),
+            run_id="run-1",
+            thread_id="thread-1",
+            user_id="user-1",
+            payload={"messages": [HumanMessage(content="大阪环球影城十月亲子预算怎么安排？")]},
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "child"},
+            initial_values={"messages": []},
+            request_id="request-busy",
+            message="大阪环球影城十月亲子预算怎么安排？",
+        )
+
+        assert _event_names(bridge.events) == [
+            "run.metadata",
+            "run.status",
+            "message.delta",
+            "message.completed",
+            "run.completed",
+            "run.closed",
+        ]
+        assert _completed_messages(bridge.events) == ["normal final"]
+        assert harness.called is True
         assert manager.statuses[-1][0] is RunStatus.SUCCESS
 
     asyncio.run(scenario())

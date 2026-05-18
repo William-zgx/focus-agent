@@ -1783,7 +1783,8 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
   assert.equal(compactBranchAction.includes("options.onRunHandoff?.("), true);
   assert.match(threadPageSource, /runCarriedMessageInThread\(targetThreadId, message\)/);
   assert.equal(compactStream.includes("client.streamHarnessRun( requestThreadId,"), true);
-  assert.equal(compactStream.includes("input: { messages: [] }"), true);
+  assert.equal(compactStream.includes("message: cleanMessage"), true);
+  assert.equal(compactStream.includes("input: { messages: [] }"), false);
   assert.equal(compactStream.includes("branch_handoff_auto_run: true"), true);
 });
 
@@ -1799,6 +1800,9 @@ test("branch graph node hover AI decision shows only the key conclusion", () => 
   const compactCss = compactSource(branchTreeCss);
 
   assert.equal(overlaySource.includes("decisionConclusionText"), true);
+  assert.equal(overlaySource.includes("isBranchHandoffDecision"), true);
+  assert.equal(overlaySource.includes("轻量 AI 建议 · 已接收"), true);
+  assert.equal(overlaySource.includes("继续在当前新分支处理带入问题"), true);
   assert.equal(overlaySource.includes("建议继续当前线程"), true);
   assert.equal(overlaySource.includes("建议创建子分支"), true);
   assert.equal(overlaySource.includes("建议创建同级分支"), true);
@@ -1808,6 +1812,10 @@ test("branch graph node hover AI decision shows only the key conclusion", () => 
   assert.equal(overlaySource.includes("fa-branch-node-ai-decision-line"), true);
   assert.equal(overlaySource.includes("fa-branch-node-ai-diagnostic"), false);
   assert.equal(overlaySource.includes("fa-branch-node-ai-audit-note"), false);
+  assert.equal(overlaySource.includes("semantic_reason"), false);
+  assert.equal(overlaySource.includes("semantic_relatedness"), false);
+  assert.equal(overlaySource.includes("semantic_relationship"), false);
+  assert.equal(overlaySource.includes("semantic_classifier_status"), false);
   assert.equal(
     overlaySource.includes("Math.round(detailBranchDecision.score * 100)"),
     false,
@@ -1824,4 +1832,229 @@ test("branch graph node hover AI decision shows only the key conclusion", () => 
   assert.equal(compactCss.includes("-webkit-line-clamp: 1;"), true);
   assert.equal(compactCss.includes("overflow: hidden;"), true);
   assert.equal(compactCss.includes("white-space: nowrap;"), true);
+});
+
+test("branch decision summary stays compact while hover details keep diagnostics", () => {
+  const diagnostics = loadModule("apps/web/src/shared/branch-decision-diagnostics.ts");
+  const summaryPanelSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/branch-decisions/branch-decision-summary-panel.tsx"),
+    "utf8",
+  );
+  const threadPageContentSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/thread-page-content.tsx"),
+    "utf8",
+  );
+  const chatCss = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/styles/modules/chat.css"),
+    "utf8",
+  );
+  const summaryMainSource = summaryPanelSource.split("function BranchDecisionDrawer")[0];
+  const drawerSource = summaryPanelSource.split("function BranchDecisionDrawer")[1] ?? "";
+  const compactCss = compactSource(chatCss);
+
+  const entries = diagnostics.branchDecisionSemanticDiagnosticEntries({
+    metadata: {
+      semantic_relatedness: 0.876,
+      semantic_relationship: "continuation",
+      semantic_reason: "same user goal with no new branch boundary",
+      semantic_classifier_status: "matched",
+    },
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(entries)), [
+    { key: "semantic_relatedness", label: "semantic_relatedness", value: "88%" },
+    { key: "semantic_relationship", label: "semantic_relationship", value: "continuation" },
+    {
+      key: "semantic_reason",
+      label: "semantic_reason",
+      value: "same user goal with no new branch boundary",
+    },
+    { key: "semantic_classifier_status", label: "semantic_classifier_status", value: "matched" },
+  ]);
+	  assert.deepEqual(
+	    JSON.parse(JSON.stringify(diagnostics.branchDecisionSemanticDiagnosticEntries({
+	      diagnostic: {
+	        details: {
+	          semantic_reason: "classifier unavailable",
+          semantic_classifier_status: "fallback",
+        },
+      },
+    }))),
+    [
+      { key: "semantic_reason", label: "semantic_reason", value: "classifier unavailable" },
+	      { key: "semantic_classifier_status", label: "semantic_classifier_status", value: "fallback" },
+	    ],
+	  );
+	  assert.deepEqual(
+	    JSON.parse(JSON.stringify(diagnostics.branchDecisionSemanticDiagnosticEntries({
+	      metadata: {
+	        semantic_reason: "Semantic classifier was not invoked.",
+	        semantic_classifier_status: "not_run",
+	      },
+	    }))),
+	    [],
+	  );
+	  assert.equal(
+	    diagnostics.branchDecisionDiagnosticText({
+	      metadata: {
+	        diagnostic: {
+	          gate_reason: "continue_current",
+	          mode: "suggest",
+	        },
+	      },
+	    }),
+	    "continue_current",
+	  );
+	  assert.equal(
+	    diagnostics.isBranchHandoffDecision({
+	      metadata: {
+	        source: "branch_handoff",
+	        branch_handoff_auto_run: true,
+	        handoff_run_status: "interrupted",
+	      },
+	    }),
+	    true,
+	  );
+	  assert.equal(
+	    diagnostics.isBranchHandoffDecision({
+	      metadata: {
+	        source: "branch_handoff",
+	        branch_handoff_auto_run: false,
+	      },
+	    }),
+	    false,
+	  );
+	  assert.equal(
+	    diagnostics.branchHandoffRunStatus({
+	      metadata: {
+	        source: "branch_handoff",
+	        branch_handoff_auto_run: true,
+	        handoff_run_status: "interrupted",
+	      },
+	    }),
+	    "interrupted",
+	  );
+	  assert.equal(summaryPanelSource.includes("branchDecisionSemanticDiagnosticEntries"), true);
+	  assert.equal(summaryPanelSource.includes("isBranchHandoffDecision"), true);
+	  assert.equal(summaryPanelSource.includes("showAuditNote = auditOnly && !isBranchHandoff"), true);
+	  assert.equal(summaryPanelSource.includes('data-handoff={isBranchHandoff ? "true" : undefined}'), true);
+	  assert.equal(summaryPanelSource.includes("轻量 AI 建议"), true);
+	  assert.equal(summaryPanelSource.includes("已接收"), true);
+	  assert.equal(summaryPanelSource.includes("继续在当前新分支处理带入问题"), true);
+	  assert.equal(
+	    summaryPanelSource.includes("新分支已接收带入问题，继续在当前分支处理"),
+	    true,
+	  );
+	  assert.equal(summaryPanelSource.includes("自动生成已中断"), true);
+	  assert.equal(summaryPanelSource.includes("!isBranchHandoff"), true);
+	  assert.equal(summaryPanelSource.includes("Focus Score"), true);
+	  assert.equal(summaryPanelSource.includes("scorePercent(decision.score)"), true);
+	  assert.equal(summaryPanelSource.includes('Badge tone="info"'), true);
+	  assert.equal(summaryPanelSource.includes(': "Focus Score"'), true);
+	  assert.equal(summaryPanelSource.includes("branchDecisionDetailNote"), true);
+	  assert.equal(summaryPanelSource.includes("已生成可确认的分支建议。"), true);
+	  assert.equal(
+	    summaryPanelSource.includes("A branch recommendation is ready to confirm."),
+	    true,
+	  );
+	  assert.equal(
+	    summaryPanelSource.includes("scoreLabel ? <span>{scoreLabel}</span> : null"),
+	    true,
+	  );
+  assert.equal(summaryPanelSource.includes("semanticDiagnosticEntries.map"), false);
+  assert.equal(summaryPanelSource.includes("semanticDiagnosticEntries.length > 0"), true);
+  assert.equal(summaryMainSource.includes("decision.rationale"), false);
+  assert.equal(summaryPanelSource.includes("fa-branch-decision-summary-text"), false);
+  assert.equal(drawerSource.includes("decision.rationale"), false);
+  assert.equal(summaryPanelSource.includes("fa-branch-decision-signals"), false);
+  assert.equal(summaryPanelSource.includes("decision.signals.map"), false);
+  assert.equal(summaryPanelSource.includes("fa-branch-decision-summary-trigger"), true);
+  assert.equal(summaryPanelSource.includes("aria-controls={detailId}"), true);
+  assert.equal(summaryPanelSource.includes("aria-expanded={drawerOpen}"), true);
+  assert.equal(summaryPanelSource.includes("fa-branch-decision-summary-details"), true);
+  assert.equal(summaryPanelSource.includes("onMouseLeave={() => setDrawerOpen(false)}"), true);
+  assert.equal(summaryPanelSource.includes("悬停或点击查看诊断详情"), true);
+  assert.match(
+    compactSource(threadPageContentSource),
+    /<BranchDecisionSummaryPanel .*? \/> <ConversationViewport/s,
+  );
+  assert.equal(compactCss.includes(".fa-branch-decision-summary-popover:focus-within"), false);
+  assert.equal(compactCss.includes('.fa-branch-decision-summary-trigger[data-handoff="true"]'), true);
+  assert.equal(compactCss.includes("overflow: hidden;"), true);
+  assert.equal(compactCss.includes(".fa-branch-decision-summary-details {"), true);
+  assert.equal(compactCss.includes(".fa-branch-decision-summary-popover.is-open"), false);
+  assert.equal(
+    compactCss.includes(".fa-branch-decision-summary-trigger:focus-visible"),
+    true,
+  );
+  assert.equal(compactCss.includes("background-color: var(--fa-panel-1);"), true);
+  assert.equal(
+    compactCss.includes("background-image: linear-gradient(180deg, var(--fa-panel-2), var(--fa-panel-1));"),
+    true,
+  );
+  assert.equal(compactCss.includes("backdrop-filter: none;"), true);
+  assert.equal(compactCss.includes("width: min(520px, calc(100vw - 32px));"), true);
+  assert.equal(compactCss.includes("max-height: min(52vh, 420px);"), true);
+  assert.equal(compactCss.includes("grid-template-columns: repeat(2, minmax(0, 1fr));"), true);
+  assert.equal(compactCss.includes("max-height: 150px;"), true);
+  assert.equal(compactCss.includes("-webkit-line-clamp: 2;"), true);
+  assert.equal(compactCss.includes("position: absolute;"), true);
+  assert.equal(compactCss.includes("justify-content: flex-end;"), true);
+  assert.equal(compactCss.includes("bottom: 16px;"), true);
+  assert.equal(compactCss.includes("right: 20px;"), true);
+  assert.equal(compactCss.includes("bottom: calc(100% + 8px);"), true);
+  assert.equal(compactCss.includes("right: 0;"), true);
+  assert.equal(compactCss.includes("pointer-events: none;"), true);
+  assert.equal(compactCss.includes("pointer-events: auto;"), true);
+  assert.equal(
+    compactCss.includes(
+      ".fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history { padding-bottom: 72px;",
+    ),
+    true,
+  );
+  assert.equal(compactCss.includes("bottom: 72px;"), true);
+  assert.equal(compactCss.includes("display: none;"), true);
+});
+
+test("chat header keeps conversation tools left and compacts branch actions by available width", () => {
+  const headerCss = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/styles/modules/workbench-header.css"),
+    "utf8",
+  );
+  const compactHeaderCss = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/styles/modules/workbench-header-compact.css"),
+    "utf8",
+  );
+  const compactHookSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread/use-thread-header-compact.ts"),
+    "utf8",
+  );
+  const compactHeader = compactSource(`${headerCss}\n${compactHeaderCss}`);
+  const compactHook = compactSource(compactHookSource);
+
+  assert.equal(
+    compactHeader.includes(
+      ".fa-chat-header-top { display: grid; grid-template-columns: auto minmax(0, 1fr);",
+    ),
+    true,
+  );
+  assert.equal(
+    compactHeader.includes(
+      ".fa-conversation-toolbar { flex: 0 1 auto; justify-content: flex-start;",
+    ),
+    true,
+  );
+  assert.equal(
+    compactHeader.includes(".fa-chat-header-right-actions { position: relative;"),
+    true,
+  );
+  assert.equal(compactHeader.includes("width: 100%;"), true);
+  assert.equal(
+    compactHook.includes('actions.closest(".fa-chat-header-right-actions")'),
+    true,
+  );
+  assert.equal(
+    compactHook.includes("Math.min(actions.clientWidth, host.clientWidth)"),
+    true,
+  );
 });

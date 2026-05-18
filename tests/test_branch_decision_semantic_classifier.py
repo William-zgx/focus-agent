@@ -155,6 +155,33 @@ def test_semantic_classifier_accepts_labeled_relatedness() -> None:
     assert result.status == "ok"
 
 
+def test_semantic_classifier_accepts_labeled_topic_shift() -> None:
+    fake_model = FakeModel(
+        """
+        {
+          "relatedness": "unrelated",
+          "topic_shift": "major",
+          "relationship": "unrelated_new_topic",
+          "recommended_action": "fork_sibling_branch",
+          "confidence": 0.87,
+          "reason": "The user moved from travel planning to market analysis."
+        }
+        """
+    )
+
+    result = classify_topic_relation(
+        settings=_settings(model="moonshot:kimi-k2.6"),
+        message="软通动力今天盘面怎么看？",
+        branch_history=[HumanMessage(content="当前分支在讨论韩国济州岛旅行。")],
+        on_branch=True,
+        model_factory=lambda _model_id: fake_model,
+    )
+
+    assert result.topic_shift is True
+    assert result.recommended_action == "fork_sibling_branch"
+    assert result.status == "ok"
+
+
 def test_semantic_classifier_fails_closed_on_non_json() -> None:
     result = classify_topic_relation(
         settings=_settings(),

@@ -12,6 +12,7 @@ import {
 	roleColor,
 	roleLabel,
 } from "@/features/branch-tree/branch-tree-helpers";
+import { isBranchHandoffDecision } from "@/shared/branch-decision-diagnostics";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 type BranchTreeNodeDetailOverlayProps = {
@@ -73,6 +74,11 @@ function decisionConclusionText(
 	decision: FocusAgentBranchDecisionEvent,
 	isChineseUi: boolean,
 ) {
+	if (isBranchHandoffDecision(decision)) {
+		return isChineseUi
+			? "继续在当前新分支处理带入问题"
+			: "Continue the carried question in this new branch";
+	}
 	if (decision.action === "split") {
 		return isChineseUi ? "建议创建新分支" : "Suggest creating a new branch";
 	}
@@ -90,9 +96,13 @@ function decisionConclusionText(
 	if (decision.action === "continue_current") {
 		return isChineseUi ? "建议继续当前线程" : "Suggest continuing this thread";
 	}
+	return isChineseUi ? "建议收束当前结论" : "Suggest concluding this thread";
+}
+
+function branchHandoffKickerText(isChineseUi: boolean) {
 	return isChineseUi
-		? "建议收束当前结论"
-		: "Suggest concluding this thread";
+		? "轻量 AI 建议 · 已接收"
+		: "Light AI suggestion · Received";
 }
 
 export function BranchNodeDetailOverlay({
@@ -243,9 +253,12 @@ export function BranchNodeDetailOverlay({
 
 				{detailBranchDecision ? (
 					<div className="fa-branch-node-ai-decision is-compact">
-						<p className="fa-branch-node-ai-decision-line">
-							{decisionSummary}
-						</p>
+						{isBranchHandoffDecision(detailBranchDecision) ? (
+							<div className="fa-branch-node-ai-decision-head">
+								<span>{branchHandoffKickerText(isChineseUi)}</span>
+							</div>
+						) : null}
+						<p className="fa-branch-node-ai-decision-line">{decisionSummary}</p>
 					</div>
 				) : null}
 

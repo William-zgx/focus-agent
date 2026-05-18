@@ -19,6 +19,7 @@ from focus_agent.core.governance import (
     BranchDecisionEvent,
     BranchDecisionMode,
     BranchDecisionRecommendationTarget,
+    BranchDecisionSignal,
     BranchDecisionStatus,
     BranchDecisionSummary,
 )
@@ -221,6 +222,136 @@ class BranchDecisionService:
             root_thread_id=root_thread_id,
             request_id=request_id,
             trace_id=trace_id,
+        )
+
+    def record_branch_handoff_auto_run_decision(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        message: str | None = None,
+        root_thread_id: str | None = None,
+        handoff_run_id: str | None = None,
+        handoff_run_status: str | None = None,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> BranchDecisionEvent:
+        config = self.recommendation_config()
+        values = self._safe_get_values(thread_id)
+        resolution = self._thread_resolution(thread_id=thread_id, user_id=user_id)
+        branch_meta = self._branch_meta_for_thread(thread_id=thread_id, values=values)
+        resolved_root_thread_id = root_thread_id or resolution.root_thread_id
+        message_preview = _message_preview(message)
+        metadata: dict[str, Any] = {
+            "source": "branch_handoff",
+            "branch_handoff_auto_run": True,
+            "handoff_run_id": str(handoff_run_id).strip() if handoff_run_id else None,
+            "handoff_run_status": str(handoff_run_status).strip()
+            if handoff_run_status
+            else None,
+            "handoff_message_preview": message_preview,
+            "message_hash": _normalized_message_hash(message),
+            "reason": "branch_handoff_auto_run",
+        }
+        event = BranchDecisionEvent(
+            user_id=user_id,
+            root_thread_id=resolved_root_thread_id,
+            source_thread_id=thread_id,
+            branch_id=branch_meta.branch_id if branch_meta is not None else resolution.branch_id,
+            recommendation_target=BranchDecisionRecommendationTarget.CONTINUE_CURRENT,
+            action=BranchDecisionAction.CONTINUE_CURRENT,
+            status=BranchDecisionStatus.SKIPPED,
+            mode=config.mode,
+            score=0.0,
+            confidence=0.0,
+            threshold=config.min_confidence,
+            signals=[
+                BranchDecisionSignal(
+                    name="branch_handoff_context",
+                    value={
+                        "branch_handoff_auto_run": True,
+                        "handoff_run_id": metadata["handoff_run_id"],
+                        "handoff_run_status": metadata["handoff_run_status"],
+                        "message_preview": message_preview,
+                    },
+                    rationale="Automatic branch handoff run continues in the target thread.",
+                )
+            ],
+            rationale="Automatic branch handoff run continues in the target thread.",
+            idempotency_key=_branch_handoff_idempotency_key(
+                thread_id=thread_id,
+                message=message,
+            ),
+            request_id=request_id,
+            trace_id=trace_id,
+            metadata=metadata,
+        )
+        return self._save_event(event)
+
+    def update_branch_handoff_auto_run_outcome(
+        self,
+        *,
+        decision_id: str,
+        handoff_run_status: str,
+        handoff_run_id: str | None = None,
+        message: str | None = None,
+        error: str | None = None,
+    ) -> BranchDecisionEvent:
+        event = self._require_event(decision_id)
+        metadata = {
+            **event.metadata,
+            "source": event.metadata.get("source") or "branch_handoff",
+            "handoff_run_status": str(handoff_run_status).strip(),
+        }
+        if handoff_run_id is not None:
+            metadata["handoff_run_id"] = str(handoff_run_id).strip()
+        if message is not None:
+            metadata["handoff_message_preview"] = _message_preview(message)
+        return self._update_event(
+            event,
+            error=str(error).strip() or None if error is not None else event.error,
+            metadata=metadata,
+            executed_at=_now_iso(),
+        )
+
+    def record_branch_handoff_decision(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        message: str | None = None,
+        root_thread_id: str | None = None,
+        run_id: str | None = None,
+        run_status: str | None = None,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> BranchDecisionEvent:
+        return self.record_branch_handoff_auto_run_decision(
+            thread_id=thread_id,
+            user_id=user_id,
+            message=message,
+            root_thread_id=root_thread_id,
+            handoff_run_id=run_id,
+            handoff_run_status=run_status,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def mark_branch_handoff_decision_outcome(
+        self,
+        *,
+        decision_id: str,
+        run_status: str,
+        run_id: str | None = None,
+        message: str | None = None,
+        error: str | None = None,
+    ) -> BranchDecisionEvent:
+        return self.update_branch_handoff_auto_run_outcome(
+            decision_id=decision_id,
+            handoff_run_id=run_id,
+            handoff_run_status=run_status,
+            message=message,
+            error=error,
         )
 
     def evaluate_thread_turn(
@@ -1001,6 +1132,19 @@ def _branch_recommendation_signal_value(
         if getattr(signal, "name", None) == name:
             return getattr(signal, "value", default)
     return default
+
+
+def _normalized_message_hash(message: str | None) -> str:
+    normalized = " ".join(str(message or "").split())
+    return sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _branch_handoff_idempotency_key(*, thread_id: str, message: str | None) -> str:
+    return f"branch_handoff:{thread_id}:{_normalized_message_hash(message)}"
+
+
+def _message_preview(message: str | None, *, limit: int = 240) -> str:
+    return " ".join(str(message or "").split())[:limit]
 
 
 def _semantic_topic_relation_metadata(signals: list[Any]) -> dict[str, Any]:

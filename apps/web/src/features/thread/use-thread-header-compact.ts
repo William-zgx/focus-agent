@@ -31,7 +31,12 @@ function actionGroupsNeedCompact(actions: HTMLElement) {
 	const requiredWidth =
 		groups.reduce((total, group) => total + visibleElementWidth(group), 0) +
 		gap * Math.max(0, groups.length - 1);
-	return requiredWidth > actions.clientWidth + 2;
+	const host = actions.closest(".fa-chat-header-right-actions");
+	const availableWidth =
+		host instanceof HTMLElement
+			? Math.min(actions.clientWidth, host.clientWidth)
+			: actions.clientWidth;
+	return requiredWidth > availableWidth + 2;
 }
 
 function compactButtonsAreClipped(

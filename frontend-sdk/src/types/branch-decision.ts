@@ -40,6 +40,16 @@ export interface FocusAgentBranchDecisionDiagnostic {
 	[key: string]: unknown;
 }
 
+export interface FocusAgentBranchDecisionSemanticDiagnostic {
+	semantic_relatedness?: number | string | null;
+	semantic_relationship?: string | null;
+	semantic_reason?: string | null;
+	semantic_classifier_status?: string | null;
+}
+
+export type FocusAgentBranchDecisionMetadata = Record<string, unknown> &
+	Partial<FocusAgentBranchDecisionSemanticDiagnostic>;
+
 export interface FocusAgentBranchDecisionConfig {
 	enabled: boolean;
 	mode: BranchDecisionMode;
@@ -51,6 +61,8 @@ export interface FocusAgentBranchDecisionConfig {
 	recommendation_enabled: boolean;
 	recommendation_mode: BranchDecisionMode;
 	recommendation_min_confidence: number;
+	recommendation_semantic_enabled: boolean;
+	recommendation_semantic_model?: string | null;
 	recommendation_user_visible: boolean;
 	recommendation_diagnostics: FocusAgentBranchDecisionDiagnostic;
 	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;
@@ -81,7 +93,7 @@ export interface FocusAgentBranchDecisionEvent {
 	error?: string | null;
 	recommendation_user_visible?: boolean | null;
 	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;
-	metadata: Record<string, unknown>;
+	metadata: FocusAgentBranchDecisionMetadata;
 	created_at: string;
 	updated_at: string;
 	executed_at?: string | null;

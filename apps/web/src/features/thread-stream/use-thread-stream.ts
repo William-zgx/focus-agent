@@ -349,7 +349,6 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 					requestThreadId,
 					{
 						message: cleanMessage,
-						input: { messages: [] },
 						metadata: { branch_handoff_auto_run: true },
 						model: overrides?.model || options.selectedModel || undefined,
 						thinking_mode: resolveThinkingModeForRequest(

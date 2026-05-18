@@ -57,6 +57,49 @@ class SemanticTopicRelationResult(BaseModel):
                 return label_scores[normalized]
         return float(value)
 
+    @field_validator("topic_shift", mode="before")
+    @classmethod
+    def _coerce_topic_shift(cls, value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+            if normalized in {
+                "true",
+                "yes",
+                "y",
+                "1",
+                "shift",
+                "topic_shift",
+                "new",
+                "new_topic",
+                "different",
+                "unrelated",
+                "off_topic",
+                "major",
+                "major_shift",
+                "separate",
+                "separate_topic",
+            }:
+                return True
+            if normalized in {
+                "false",
+                "no",
+                "n",
+                "0",
+                "same",
+                "same_topic",
+                "related",
+                "minor",
+                "no_shift",
+                "continue",
+                "continue_current",
+            }:
+                return False
+        return bool(value)
+
 
 ModelFactory = Callable[[str], Any]
 

@@ -584,6 +584,96 @@ def test_branch_recommendation_retry_reuses_promoted_event_without_repromoting()
     assert graph.values["branch_actions"] == []
 
 
+def test_branch_handoff_auto_run_records_non_promotable_continue_event() -> None:
+    service, graph, repository = _recommendation_service(mode="suggest")
+
+    event = service.record_branch_handoff_auto_run_decision(
+        thread_id="target-thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message="  Carry this context\ninto the new branch.  ",
+        handoff_run_id="run-1",
+        handoff_run_status="started",
+        request_id="req-handoff-1",
+    )
+
+    stored = repository.list_branch_decision_events(source_thread_id="target-thread-1")[0]
+    signal = next(item for item in stored.signals if item.name == "branch_handoff_context")
+    assert event.decision_id == stored.decision_id
+    assert stored.source_thread_id == "target-thread-1"
+    assert stored.action == BranchDecisionAction.CONTINUE_CURRENT
+    assert stored.status == BranchDecisionStatus.SKIPPED
+    assert stored.mode.value == "suggest"
+    assert stored.can_promote is False
+    assert stored.idempotency_key == "branch_handoff:target-thread-1:c37ce35aaf541163"
+    assert stored.recommendation_target == "continue_current"
+    assert stored.metadata["source"] == "branch_handoff"
+    assert stored.metadata["branch_handoff_auto_run"] is True
+    assert stored.metadata["handoff_run_id"] == "run-1"
+    assert stored.metadata["handoff_run_status"] == "started"
+    assert stored.metadata["handoff_message_preview"] == "Carry this context into the new branch."
+    assert signal.value["handoff_run_id"] == "run-1"
+    assert signal.value["handoff_run_status"] == "started"
+    assert "branch_actions" not in graph.values
+
+
+def test_branch_handoff_auto_run_record_is_idempotent_for_normalized_message() -> None:
+    service, _graph, repository = _recommendation_service(mode="suggest")
+
+    first = service.record_branch_handoff_auto_run_decision(
+        thread_id="target-thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message="Carry this context into the new branch.",
+        handoff_run_id="run-1",
+        handoff_run_status="started",
+    )
+    second = service.record_branch_handoff_auto_run_decision(
+        thread_id="target-thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message="  Carry this context\ninto the new branch.  ",
+        handoff_run_id="run-2",
+        handoff_run_status="retry",
+    )
+
+    events = repository.list_branch_decision_events(source_thread_id="target-thread-1")
+    assert second.decision_id == first.decision_id
+    assert len(events) == 1
+    assert events[0].metadata["handoff_run_id"] == "run-1"
+    assert events[0].metadata["handoff_run_status"] == "started"
+
+
+def test_branch_handoff_auto_run_outcome_update_records_status() -> None:
+    service, _graph, repository = _recommendation_service(mode="suggest")
+    event = service.record_branch_handoff_auto_run_decision(
+        thread_id="target-thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message="Initial handoff context.",
+        handoff_run_id="run-1",
+        handoff_run_status="started",
+    )
+
+    updated = service.update_branch_handoff_auto_run_outcome(
+        decision_id=event.decision_id,
+        handoff_run_id="run-1",
+        handoff_run_status="completed",
+        message="Final handoff answer.",
+    )
+
+    stored = repository.get_branch_decision_event(event.decision_id)
+    assert stored is not None
+    assert updated.decision_id == event.decision_id
+    assert stored.status == BranchDecisionStatus.SKIPPED
+    assert stored.action == BranchDecisionAction.CONTINUE_CURRENT
+    assert stored.metadata["source"] == "branch_handoff"
+    assert stored.metadata["handoff_run_id"] == "run-1"
+    assert stored.metadata["handoff_run_status"] == "completed"
+    assert stored.metadata["handoff_message_preview"] == "Final handoff answer."
+    assert stored.executed_at is not None
+
+
 def test_branch_recommendation_suggests_sibling_from_child_branch() -> None:
     service, graph, repository = _recommendation_service(
         values={

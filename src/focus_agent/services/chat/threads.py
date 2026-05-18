@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
@@ -33,6 +34,12 @@ from .branch_actions import (
     normalize_branch_actions,
     serialize_branch_actions,
 )
+
+logger = logging.getLogger("focus_agent.chat")
+
+
+class ThreadStateUnavailableError(RuntimeError):
+    """Raised when an interactive thread state read cannot be completed."""
 
 
 def _message_type_name(message: Any) -> str:
@@ -251,16 +258,81 @@ def _is_copied_branch_control_human_message(message: Any) -> bool:
     )
 
 
+def _normalized_human_message_text(message: Any) -> str:
+    if not is_human_message_type(_message_type_name(message)):
+        return ""
+    return " ".join(message_content_to_text(_message_content(message)).split())
+
+
+def _local_human_texts(messages: list[Any], *, copied_count: int) -> set[str]:
+    return {
+        text
+        for message in messages[copied_count:]
+        if (text := _normalized_human_message_text(message))
+    }
+
+
+def _is_copied_branch_recommendation_handoff(
+    messages: list[Any],
+    *,
+    index: int,
+    copied_count: int,
+    local_human_texts: set[str],
+) -> bool:
+    if index >= copied_count:
+        return False
+    text = _normalized_human_message_text(messages[index])
+    if not text or text not in local_human_texts:
+        return False
+    if index + 1 >= copied_count:
+        return True
+    return _is_copied_branch_control_ai_message(messages[index + 1])
+
+
+def _is_local_duplicate_handoff_before_response(
+    messages: list[Any],
+    *,
+    index: int,
+    copied_count: int,
+) -> bool:
+    if index < copied_count:
+        return False
+    text = _normalized_human_message_text(messages[index])
+    if not text:
+        return False
+    for later in messages[index + 1 :]:
+        later_type = _message_type_name(later)
+        if is_human_message_type(later_type):
+            return _normalized_human_message_text(later) == text
+        if is_ai_message_type(later_type) or is_tool_message_type(later_type):
+            return False
+    return False
+
+
 def _branch_thread_messages(messages: list[Any], *, values: dict[str, Any]) -> list[Any]:
     fork_message_count = _branch_fork_message_count(values)
     if fork_message_count is None:
         return messages
     copied_count = fork_message_count if fork_message_count <= len(messages) else 0
+    local_human_texts = _local_human_texts(messages, copied_count=copied_count)
     visible_messages: list[Any] = []
     for index, message in enumerate(messages):
         if _is_copied_branch_control_ai_message(message):
             continue
         if index < copied_count and _is_copied_branch_control_human_message(message):
+            continue
+        if _is_copied_branch_recommendation_handoff(
+            messages,
+            index=index,
+            copied_count=copied_count,
+            local_human_texts=local_human_texts,
+        ):
+            continue
+        if _is_local_duplicate_handoff_before_response(
+            messages,
+            index=index,
+            copied_count=copied_count,
+        ):
             continue
         visible_messages.append(message)
     return visible_messages
@@ -362,21 +434,31 @@ def response_payload(
 
 
 class ChatThreadAccessMixin:
-    def _safe_snapshot(self, thread_id: str):
+    def _safe_snapshot(self, thread_id: str, *, strict: bool = False):
         try:
             return self.runtime.graph.get_state({"configurable": {"thread_id": thread_id}})
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise ThreadStateUnavailableError(
+                    "Thread state is temporarily unavailable. Please retry after the server "
+                    "finishes reloading."
+                ) from exc
+            logger.debug(
+                "failed to read thread graph snapshot",
+                extra={"thread_id": thread_id},
+                exc_info=True,
+            )
             return None
 
-    def _safe_get_values(self, thread_id: str) -> dict[str, Any]:
-        snapshot = self._safe_snapshot(thread_id)
+    def _safe_get_values(self, thread_id: str, *, strict: bool = False) -> dict[str, Any]:
+        snapshot = self._safe_snapshot(thread_id, strict=strict)
         values = normalize_agent_state(
             dict(getattr(snapshot, "values", {}) or {}) if snapshot else normalize_agent_state()
         )
         return self._backfill_import_records(thread_id=thread_id, values=values)
 
-    def _safe_get_interrupts(self, thread_id: str) -> list[Any]:
-        snapshot = self._safe_snapshot(thread_id)
+    def _safe_get_interrupts(self, thread_id: str, *, strict: bool = False) -> list[Any]:
+        snapshot = self._safe_snapshot(thread_id, strict=strict)
         return list(getattr(snapshot, "interrupts", []) or []) if snapshot else []
 
     @staticmethod

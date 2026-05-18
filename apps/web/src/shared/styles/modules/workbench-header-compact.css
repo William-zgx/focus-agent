@@ -5,12 +5,24 @@
 }
 
 .fa-chat-header-top {
+	grid-template-columns: auto minmax(0, 1fr);
 	gap: 12px;
 }
 
 .fa-chat-header-copy,
 .fa-toolbar-cluster {
 	gap: 8px;
+}
+
+.fa-chat-header-copy {
+	min-width: 0;
+	max-width: min(100%, 360px);
+	overflow: hidden;
+}
+
+.fa-conversation-toolbar {
+	flex: 0 1 auto;
+	justify-content: flex-start;
 }
 
 .fa-chat-header-actions {

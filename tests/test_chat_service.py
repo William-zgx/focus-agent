@@ -27,7 +27,12 @@ from focus_agent.services.branch_actions import (
     is_branch_action_request,
     mark_branch_action_executed,
 )
-from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
+from focus_agent.services.chat import (
+    ChatService,
+    ChatServicePorts,
+    ConcurrentTurnError,
+    ThreadStateUnavailableError,
+)
 from focus_agent.services.coordination import (
     CoordinationBackend,
     InMemoryBackgroundJobDeduperBackend,
@@ -309,6 +314,20 @@ def test_chat_service_accepts_narrow_ports(tmp_path: Path):
 
     assert payload["thread_id"] == "root-1"
     assert chat.ports is ports
+
+
+def test_get_thread_state_does_not_mask_snapshot_read_failure(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    class BrokenGraph:
+        def get_state(self, _config):
+            raise RuntimeError("graph unavailable")
+
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=BrokenGraph(), repo=repo))
+
+    with pytest.raises(ThreadStateUnavailableError):
+        chat.get_thread_state(thread_id="root-1", user_id="owner-1")
 
 
 def test_send_message_creates_pending_branch_action_without_forking(tmp_path: Path):
@@ -833,6 +852,206 @@ def test_branch_thread_state_hides_copied_branch_creation_turn():
     ]
     assert payload["assistant_message"] == "雨天安排可以先预留室内活动。"
     assert payload["branch_actions"] == []
+
+
+def test_branch_thread_state_hides_copied_recommendation_handoff_after_auto_run():
+    handoff = "new topic tokyo disneyland family budget for october 2026"
+    graph = BranchActionGraph(
+        {
+            "branch_meta": {
+                "branch_id": "branch-new",
+                "root_thread_id": "root-1",
+                "parent_thread_id": "parent-1",
+                "return_thread_id": "parent-1",
+                "branch_name": "Tokyo Disneyland",
+                "branch_role": "explore_alternatives",
+                "branch_depth": 2,
+                "branch_status": "active",
+                "branch_fork_message_count": 3,
+            },
+            "messages": [
+                HumanMessage(content="Jeju October trip context."),
+                HumanMessage(content=handoff),
+                AIMessage(
+                    content=(
+                        "I prepared a branch switch confirmation: create a new "
+                        "sibling branch “Tokyo Disneyland”. Confirm it in the card, "
+                        "or reply “go ahead”."
+                    )
+                ),
+                HumanMessage(content=handoff),
+                AIMessage(content="Tokyo Disneyland needs a separate October budget."),
+            ],
+            "branch_actions": [
+                build_branch_action_proposal(
+                    kind=BranchActionKind.FORK_SIBLING_BRANCH,
+                    root_thread_id="root-1",
+                    source_thread_id="parent-1",
+                    target_parent_thread_id="root-1",
+                    suggested_branch_name="Tokyo Disneyland",
+                    reason="topic shift",
+                    handoff_message=handoff,
+                ).model_dump(mode="json")
+            ],
+        }
+    )
+    chat = ChatService(
+        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
+    )
+
+    payload = chat._response_payload(
+        thread_id="child-new",
+        user_id="owner-1",
+        context=RequestContext(
+            user_id="owner-1",
+            root_thread_id="root-1",
+            branch_id="branch-new",
+            parent_thread_id="parent-1",
+        ),
+        branch_meta=BranchMeta(
+            branch_id="branch-new",
+            root_thread_id="root-1",
+            parent_thread_id="parent-1",
+            return_thread_id="parent-1",
+            branch_name="Tokyo Disneyland",
+            branch_role=BranchRole.EXPLORE_ALTERNATIVES,
+            branch_depth=2,
+            branch_status=BranchStatus.ACTIVE,
+        ),
+        interrupts=[],
+    )
+
+    assert [message["content"] for message in payload["messages"]] == [
+        "Jeju October trip context.",
+        handoff,
+        "Tokyo Disneyland needs a separate October budget.",
+    ]
+    assert payload["branch_actions"] == []
+
+
+def test_branch_thread_state_hides_copied_terminal_handoff_after_auto_run():
+    handoff = "大阪环球影城十月亲子预算怎么安排？"
+    graph = BranchActionGraph(
+        {
+            "branch_meta": {
+                "branch_id": "branch-new",
+                "root_thread_id": "root-1",
+                "parent_thread_id": "parent-1",
+                "return_thread_id": "parent-1",
+                "branch_name": "USJ budget",
+                "branch_role": "explore_alternatives",
+                "branch_depth": 2,
+                "branch_status": "active",
+                "branch_fork_message_count": 2,
+            },
+            "messages": [
+                HumanMessage(content="Jeju October trip context."),
+                HumanMessage(content=handoff),
+                HumanMessage(content=handoff),
+                AIMessage(content="USJ October budget belongs in this branch."),
+            ],
+            "branch_actions": [
+                build_branch_action_proposal(
+                    kind=BranchActionKind.FORK_SIBLING_BRANCH,
+                    root_thread_id="root-1",
+                    source_thread_id="parent-1",
+                    target_parent_thread_id="root-1",
+                    suggested_branch_name="USJ budget",
+                    reason="topic shift",
+                    handoff_message=handoff,
+                ).model_dump(mode="json")
+            ],
+        }
+    )
+    chat = ChatService(
+        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
+    )
+
+    payload = chat._response_payload(
+        thread_id="child-new",
+        user_id="owner-1",
+        context=RequestContext(
+            user_id="owner-1",
+            root_thread_id="root-1",
+            branch_id="branch-new",
+            parent_thread_id="parent-1",
+        ),
+        branch_meta=BranchMeta(
+            branch_id="branch-new",
+            root_thread_id="root-1",
+            parent_thread_id="parent-1",
+            return_thread_id="parent-1",
+            branch_name="USJ budget",
+            branch_role=BranchRole.EXPLORE_ALTERNATIVES,
+            branch_depth=2,
+            branch_status=BranchStatus.ACTIVE,
+        ),
+        interrupts=[],
+    )
+
+    assert [message["content"] for message in payload["messages"]] == [
+        "Jeju October trip context.",
+        handoff,
+        "USJ October budget belongs in this branch.",
+    ]
+    assert payload["branch_actions"] == []
+
+
+def test_branch_thread_state_hides_local_duplicate_handoff_before_answer():
+    handoff = "大阪环球影城十月亲子预算，20字以内"
+    graph = BranchActionGraph(
+        {
+            "branch_meta": {
+                "branch_id": "branch-new",
+                "root_thread_id": "root-1",
+                "parent_thread_id": "parent-1",
+                "return_thread_id": "parent-1",
+                "branch_name": "USJ budget",
+                "branch_role": "explore_alternatives",
+                "branch_depth": 2,
+                "branch_status": "active",
+                "branch_fork_message_count": 1,
+            },
+            "messages": [
+                HumanMessage(content="Jeju October trip context."),
+                HumanMessage(content=handoff),
+                HumanMessage(content=handoff),
+                AIMessage(content="USJ October budget belongs in this branch."),
+            ],
+            "branch_actions": [],
+        }
+    )
+    chat = ChatService(
+        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
+    )
+
+    payload = chat._response_payload(
+        thread_id="child-new",
+        user_id="owner-1",
+        context=RequestContext(
+            user_id="owner-1",
+            root_thread_id="root-1",
+            branch_id="branch-new",
+            parent_thread_id="parent-1",
+        ),
+        branch_meta=BranchMeta(
+            branch_id="branch-new",
+            root_thread_id="root-1",
+            parent_thread_id="parent-1",
+            return_thread_id="parent-1",
+            branch_name="USJ budget",
+            branch_role=BranchRole.EXPLORE_ALTERNATIVES,
+            branch_depth=2,
+            branch_status=BranchStatus.ACTIVE,
+        ),
+        interrupts=[],
+    )
+
+    assert [message["content"] for message in payload["messages"]] == [
+        "Jeju October trip context.",
+        handoff,
+        "USJ October budget belongs in this branch.",
+    ]
 
 
 def test_branch_thread_state_does_not_drop_messages_when_fork_count_is_stale():

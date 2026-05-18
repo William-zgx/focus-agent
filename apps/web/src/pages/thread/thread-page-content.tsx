@@ -136,6 +136,13 @@ export function ThreadPageContent({
 		<div className="fa-thread-layout">
 			<div className="fa-transcript-panel">
 				<section className="fa-chat-transcript">
+					<BranchDecisionSummaryPanel
+						isChineseUi={isChineseUi}
+						isReadOnly={isMergedReadOnlyThread}
+						rootThreadId={rootThreadId}
+						summary={branchDecisionSummary}
+						threadId={threadId}
+					/>
 					<ConversationViewport
 						hasTranscriptContent={hasTranscriptContent}
 						isChineseUi={isChineseUi}
@@ -153,13 +160,6 @@ export function ThreadPageContent({
 									: "Failed to load thread state."}
 							</div>
 						) : null}
-						<BranchDecisionSummaryPanel
-							isChineseUi={isChineseUi}
-							isReadOnly={isMergedReadOnlyThread}
-							rootThreadId={rootThreadId}
-							summary={branchDecisionSummary}
-							threadId={threadId}
-						/>
 						{hasTranscriptContent ? (
 							<MessageList {...messageListProps} />
 						) : (

@@ -7,9 +7,12 @@ import { useState } from "react";
 import {
 	branchDecisionAuditOnlyText,
 	branchDecisionDiagnosticText,
+	branchDecisionSemanticDiagnosticEntries,
+	branchHandoffRunStatus,
+	isBranchHandoffDecision,
 	shouldShowBranchDecisionDiagnostic,
 } from "@/shared/branch-decision-diagnostics";
-import { Badge, Button, Surface } from "@/shared/ui/primitives";
+import { Badge, Button } from "@/shared/ui/primitives";
 
 import {
 	useBranchDecisionActions,
@@ -41,169 +44,301 @@ export function BranchDecisionSummaryPanel({
 	const configDiagnostic = branchDecisionDiagnosticText({
 		diagnostic: config?.diagnostic ?? config?.recommendation_diagnostics,
 	});
-	const diagnostic = decision
+	const rawDiagnostic = decision
 		? branchDecisionDiagnosticText(decision) || configDiagnostic
 		: "";
+	const semanticDiagnosticEntries = decision
+		? branchDecisionSemanticDiagnosticEntries(decision)
+		: [];
 	const recommendationUserVisible =
 		decision?.recommendation_user_visible ??
 		config?.recommendation_user_visible;
 	const auditOnly = recommendationUserVisible === false;
+	const isBranchHandoff = decision ? isBranchHandoffDecision(decision) : false;
+	const showAuditNote = auditOnly && !isBranchHandoff;
+	const diagnostic = isBranchHandoff ? "" : rawDiagnostic;
 
 	if (
 		!decision ||
 		((decision.status === "skipped" ||
 			decision.recommendation_target === "continue_current") &&
+			!isBranchHandoff &&
 			!diagnostic &&
+			semanticDiagnosticEntries.length === 0 &&
 			!auditOnly)
 	) {
 		return null;
 	}
 
-	const actionable = Boolean(summary?.actionable && !isReadOnly && !auditOnly);
+	const actionable = Boolean(
+		summary?.actionable && !isReadOnly && !showAuditNote && !isBranchHandoff,
+	);
 	const busy = promote.isPending || dismiss.isPending;
+	const detailId = `branch-decision-${decision.decision_id}-details`;
 	const showDiagnostic =
-		shouldShowBranchDecisionDiagnostic(decision.status) || auditOnly;
+		shouldShowBranchDecisionDiagnostic(decision.status) ||
+		auditOnly ||
+		isBranchHandoff ||
+		semanticDiagnosticEntries.length > 0;
+	const scoreLabel = !isBranchHandoff ? scorePercent(decision.score) : null;
+	const summarySegments = isBranchHandoff
+		? [
+				decisionKickerLabel(decision, isChineseUi),
+				decisionStatusLabel(decision, isChineseUi),
+				decisionActionLabel(decision, isChineseUi),
+			]
+		: ["Focus Score", scoreLabel];
+	const summaryLabel = summarySegments.join(" · ");
 	return (
-		<Surface
+		<section
 			className="fa-branch-decision-summary"
 			id={`branch-decision-${decision.decision_id}`}
-			tone="section"
 		>
-			<div className="fa-branch-decision-summary-main">
-				<div className="fa-branch-decision-summary-copy">
-					<div className="fa-branch-decision-summary-kicker">
+			<div
+				className={`fa-branch-decision-summary-popover ${
+					drawerOpen ? "is-open" : ""
+				}`}
+				onBlur={(event) => {
+					if (!event.currentTarget.contains(event.relatedTarget)) {
+						setDrawerOpen(false);
+					}
+				}}
+				onMouseLeave={() => setDrawerOpen(false)}
+			>
+				<Button
+					aria-controls={detailId}
+					aria-expanded={drawerOpen}
+					aria-label={
+						isChineseUi
+							? `${summaryLabel}。悬停或点击查看诊断详情。`
+							: `${summaryLabel}. Hover or click for diagnostic details.`
+					}
+					className="fa-branch-decision-summary-trigger"
+					data-handoff={isBranchHandoff ? "true" : undefined}
+					disabled={busy}
+					onClick={() => setDrawerOpen((value) => !value)}
+					size="sm"
+					variant="ghost"
+				>
+					<span className="fa-branch-decision-summary-kicker">
 						<Badge tone="info">
-							{isChineseUi ? "AI 建议" : "AI suggestion"}
+							{isBranchHandoff
+								? decisionKickerLabel(decision, isChineseUi)
+								: "Focus Score"}
 						</Badge>
-						<span>{decisionStatusLabel(decision, isChineseUi)}</span>
-						<span>{Math.round(decision.score * 100)}%</span>
-					</div>
-					<div className="fa-branch-decision-summary-title">
-						{decisionActionLabel(decision, isChineseUi)}
-					</div>
-					<div className="fa-branch-decision-summary-text">
-						{decision.rationale}
-					</div>
-					{showDiagnostic && diagnostic ? (
-						<div className="fa-branch-decision-diagnostic">
-							<span>{isChineseUi ? "诊断" : "Diagnostic"}</span>
-							<strong>{diagnostic}</strong>
-						</div>
+						{isBranchHandoff ? (
+							<span>{decisionStatusLabel(decision, isChineseUi)}</span>
+						) : null}
+						{scoreLabel ? <span>{scoreLabel}</span> : null}
+					</span>
+					{isBranchHandoff ? (
+						<strong className="fa-branch-decision-summary-title">
+							{decisionActionLabel(decision, isChineseUi)}
+						</strong>
 					) : null}
-					{auditOnly ? (
-						<div className="fa-branch-decision-audit-note">
+					{showAuditNote ? (
+						<span className="fa-branch-decision-audit-note">
 							{branchDecisionAuditOnlyText(isChineseUi)}
-						</div>
+						</span>
 					) : null}
-				</div>
-				<div className="fa-branch-decision-summary-actions">
-					<Button
-						disabled={busy}
-						onClick={() => setDrawerOpen((value) => !value)}
-						size="sm"
-						variant="ghost"
-					>
-						{drawerOpen
-							? isChineseUi
-								? "收起依据"
-								: "Hide evidence"
-							: isChineseUi
-								? "查看依据"
-								: "Evidence"}
-					</Button>
-					{actionable ? (
-						<Button
-							disabled={busy}
-							onClick={() => promote.mutate(decision)}
-							size="sm"
-							variant="primary"
-						>
-							{isChineseUi ? "生成分支确认项" : "Promote"}
-						</Button>
-					) : null}
-					{actionable ? (
-						<Button
-							disabled={busy}
-							onClick={() =>
-								dismiss.mutate({
-									decision,
-									request: { reason: "dismissed_from_thread_summary" },
-								})
-							}
-							size="sm"
-							variant="secondary"
-						>
-							{isChineseUi ? "忽略" : "Dismiss"}
-						</Button>
-					) : null}
+				</Button>
+				<div
+					aria-label={
+						isChineseUi ? "AI 建议诊断详情" : "AI suggestion diagnostic details"
+					}
+					className="fa-branch-decision-summary-details"
+					id={detailId}
+					role="dialog"
+				>
+					<BranchDecisionDrawer
+						decision={decision}
+						detailNote={branchDecisionDetailNote({
+							auditOnly,
+							decision,
+							isBranchHandoff,
+							isChineseUi,
+							showDiagnostic,
+						})}
+						isChineseUi={isChineseUi}
+						isBranchHandoff={isBranchHandoff}
+					/>
+					<div className="fa-branch-decision-summary-actions">
+						{actionable ? (
+							<Button
+								disabled={busy}
+								onClick={() => promote.mutate(decision)}
+								size="sm"
+								variant="primary"
+							>
+								{isChineseUi ? "生成分支确认项" : "Promote"}
+							</Button>
+						) : null}
+						{actionable ? (
+							<Button
+								disabled={busy}
+								onClick={() =>
+									dismiss.mutate({
+										decision,
+										request: { reason: "dismissed_from_thread_summary" },
+									})
+								}
+								size="sm"
+								variant="secondary"
+							>
+								{isChineseUi ? "忽略" : "Dismiss"}
+							</Button>
+						) : null}
+					</div>
 				</div>
 			</div>
-			{drawerOpen ? (
-				<BranchDecisionDrawer
-					decision={decision}
-					diagnostic={diagnostic}
-					isChineseUi={isChineseUi}
-				/>
-			) : null}
 			{promote.error || dismiss.error ? (
 				<div className="fa-branch-decision-error">
 					{isChineseUi ? "更新 AI 决策失败。" : "Failed to update AI decision."}
 				</div>
 			) : null}
-		</Surface>
+		</section>
 	);
 }
 
 function BranchDecisionDrawer({
 	decision,
-	diagnostic,
+	detailNote,
 	isChineseUi,
+	isBranchHandoff,
 }: {
 	decision: FocusAgentBranchDecisionEvent;
-	diagnostic: string;
+	detailNote: string;
 	isChineseUi: boolean;
+	isBranchHandoff: boolean;
 }) {
+	const handoffRunStatus = branchHandoffRunStatus(decision);
 	return (
 		<div className="fa-branch-decision-drawer">
 			<div className="fa-branch-decision-drawer-grid">
 				<div>
+					<span>{isChineseUi ? "结论" : "Conclusion"}</span>
+					<strong>{decisionActionLabel(decision, isChineseUi)}</strong>
+				</div>
+				{!isBranchHandoff ? (
+					<div>
+						<span>Focus Score</span>
+						<strong>{scorePercent(decision.score)}</strong>
+					</div>
+				) : null}
+				<div>
+					<span>{isChineseUi ? "状态" : "Status"}</span>
+					<strong>{decisionStatusLabel(decision, isChineseUi)}</strong>
+				</div>
+				<div>
 					<span>{isChineseUi ? "模式" : "Mode"}</span>
 					<strong>{decision.mode}</strong>
 				</div>
-				<div>
-					<span>{isChineseUi ? "阈值" : "Threshold"}</span>
-					<strong>{Math.round(decision.threshold * 100)}%</strong>
-				</div>
-				<div>
-					<span>{isChineseUi ? "动作" : "Action"}</span>
-					<strong>{decision.action}</strong>
-				</div>
-				{diagnostic ? (
+				{isBranchHandoff ? (
 					<div>
-						<span>{isChineseUi ? "诊断" : "Diagnostic"}</span>
-						<strong>{diagnostic}</strong>
+						<span>{isChineseUi ? "自动生成" : "Auto run"}</span>
+						<strong>
+							{branchHandoffRunStatusLabel(handoffRunStatus, isChineseUi)}
+						</strong>
+					</div>
+				) : null}
+				{detailNote ? (
+					<div>
+						<span>{isChineseUi ? "说明" : "Note"}</span>
+						<strong>{detailNote}</strong>
 					</div>
 				) : null}
 			</div>
-			<div className="fa-branch-decision-signals">
-				{decision.signals.map((signal) => (
-					<div className="fa-branch-decision-signal" key={signal.name}>
-						<div>
-							<strong>{signal.name}</strong>
-							<span>{Math.round(signal.score * 100)}%</span>
-						</div>
-						<p>{signal.rationale}</p>
-					</div>
-				))}
-			</div>
 		</div>
 	);
+}
+
+function scorePercent(score: number) {
+	return `${Math.round(score * 100)}%`;
+}
+
+function branchDecisionDetailNote({
+	auditOnly,
+	decision,
+	isBranchHandoff,
+	isChineseUi,
+	showDiagnostic,
+}: {
+	auditOnly: boolean;
+	decision: FocusAgentBranchDecisionEvent;
+	isBranchHandoff: boolean;
+	isChineseUi: boolean;
+	showDiagnostic: boolean;
+}) {
+	if (isBranchHandoff) {
+		return branchHandoffDetailText(isChineseUi);
+	}
+	if (auditOnly) {
+		return branchDecisionAuditOnlyText(isChineseUi);
+	}
+	if (decision.status === "suggested") {
+		return isChineseUi
+			? "已生成可确认的分支建议。"
+			: "A branch recommendation is ready to confirm.";
+	}
+	if (decision.status === "blocked") {
+		return isChineseUi
+			? "当前条件阻止继续创建分支建议。"
+			: "The current conditions block another branch recommendation.";
+	}
+	if (decision.status === "skipped") {
+		return isChineseUi
+			? "本轮不需要创建新的分支操作。"
+			: "No new branch action is needed for this turn.";
+	}
+	if (decision.status === "error" || showDiagnostic) {
+		return isChineseUi
+			? "建议诊断已记录，当前展示关键结论。"
+			: "Diagnostics were recorded; this view shows the key conclusion.";
+	}
+	return "";
+}
+
+function branchHandoffRunStatusLabel(status: string, isChineseUi: boolean) {
+	if (status === "interrupted") {
+		return isChineseUi ? "自动生成已中断" : "Auto generation interrupted";
+	}
+	if (status === "error") {
+		return isChineseUi ? "自动生成失败" : "Auto generation failed";
+	}
+	if (status === "success") {
+		return isChineseUi ? "自动生成已完成" : "Auto generation completed";
+	}
+	if (status === "running") {
+		return isChineseUi ? "自动生成中" : "Auto generation running";
+	}
+	return isChineseUi ? "已接收" : "Received";
+}
+
+function branchHandoffDetailText(isChineseUi: boolean) {
+	return isChineseUi
+		? "新分支已接收带入问题，继续在当前分支处理"
+		: "The new branch received the carried question; continue in the current branch";
+}
+
+function decisionKickerLabel(
+	decision: FocusAgentBranchDecisionEvent,
+	isChineseUi: boolean,
+) {
+	if (isBranchHandoffDecision(decision)) {
+		return isChineseUi ? "轻量 AI 建议" : "Light AI suggestion";
+	}
+	return isChineseUi ? "AI 建议" : "AI suggestion";
 }
 
 function decisionActionLabel(
 	decision: FocusAgentBranchDecisionEvent,
 	isChineseUi: boolean,
 ) {
+	if (isBranchHandoffDecision(decision)) {
+		return isChineseUi
+			? "继续在当前新分支处理带入问题"
+			: "Continue the carried question in this new branch";
+	}
 	if (decision.action === "split") {
 		return isChineseUi
 			? "建议创建一个低风险新分支"
@@ -232,6 +367,9 @@ function decisionStatusLabel(
 	decision: FocusAgentBranchDecisionEvent,
 	isChineseUi: boolean,
 ) {
+	if (isBranchHandoffDecision(decision)) {
+		return isChineseUi ? "已接收" : "Received";
+	}
 	const labels: Record<string, string> = isChineseUi
 		? {
 				blocked: "已阻断",
