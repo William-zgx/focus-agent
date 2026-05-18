@@ -7,14 +7,14 @@ from typing import Any
 class PostgresTrajectoryStatsMixin:
     _TOKEN_USAGE_INT_RE = r"^[0-9]+([.]0+)?$"
 
-    _TOKEN_USAGE_SELECT_SQL = """
+    _TOKEN_USAGE_SELECT_SQL = f"""
         COALESCE(
             SUM(
                 COALESCE(
                     CASE
-                        WHEN t.metrics ->> 'input_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'input_tokens')::NUMERIC::BIGINT
-                        WHEN t.metrics ->> 'prompt_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_tokens')::NUMERIC::BIGINT
-                        WHEN t.metrics ->> 'prompt_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_token_count')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'input_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'input_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'prompt_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'prompt_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'prompt_token_count' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'prompt_token_count')::NUMERIC::BIGINT
                         ELSE 0
                     END,
                     0
@@ -26,9 +26,9 @@ class PostgresTrajectoryStatsMixin:
             SUM(
                 COALESCE(
                     CASE
-                        WHEN t.metrics ->> 'output_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'output_tokens')::NUMERIC::BIGINT
-                        WHEN t.metrics ->> 'completion_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_tokens')::NUMERIC::BIGINT
-                        WHEN t.metrics ->> 'completion_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_token_count')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'output_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'output_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'completion_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'completion_tokens')::NUMERIC::BIGINT
+                        WHEN t.metrics ->> 'completion_token_count' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'completion_token_count')::NUMERIC::BIGINT
                         ELSE 0
                     END,
                     0
@@ -40,24 +40,24 @@ class PostgresTrajectoryStatsMixin:
             SUM(
                 COALESCE(
                     CASE
-                        WHEN t.metrics ->> 'total_tokens' ~ '{_token_usage_int_re}' THEN NULLIF((t.metrics ->> 'total_tokens')::NUMERIC::BIGINT, 0)
-                        WHEN t.metrics ->> 'total_token_count' ~ '{_token_usage_int_re}' THEN NULLIF((t.metrics ->> 'total_token_count')::NUMERIC::BIGINT, 0)
+                        WHEN t.metrics ->> 'total_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN NULLIF((t.metrics ->> 'total_tokens')::NUMERIC::BIGINT, 0)
+                        WHEN t.metrics ->> 'total_token_count' ~ '{_TOKEN_USAGE_INT_RE}' THEN NULLIF((t.metrics ->> 'total_token_count')::NUMERIC::BIGINT, 0)
                         ELSE NULL
                     END,
                     COALESCE(
                         CASE
-                            WHEN t.metrics ->> 'input_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'input_tokens')::NUMERIC::BIGINT
-                            WHEN t.metrics ->> 'prompt_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_tokens')::NUMERIC::BIGINT
-                            WHEN t.metrics ->> 'prompt_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'prompt_token_count')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'input_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'input_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'prompt_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'prompt_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'prompt_token_count' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'prompt_token_count')::NUMERIC::BIGINT
                             ELSE 0
                         END,
                         0
                     )
                     + COALESCE(
                         CASE
-                            WHEN t.metrics ->> 'output_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'output_tokens')::NUMERIC::BIGINT
-                            WHEN t.metrics ->> 'completion_tokens' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_tokens')::NUMERIC::BIGINT
-                            WHEN t.metrics ->> 'completion_token_count' ~ '{_token_usage_int_re}' THEN (t.metrics ->> 'completion_token_count')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'output_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'output_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'completion_tokens' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'completion_tokens')::NUMERIC::BIGINT
+                            WHEN t.metrics ->> 'completion_token_count' ~ '{_TOKEN_USAGE_INT_RE}' THEN (t.metrics ->> 'completion_token_count')::NUMERIC::BIGINT
                             ELSE 0
                         END,
                         0
@@ -66,7 +66,7 @@ class PostgresTrajectoryStatsMixin:
             ),
             0
         )::BIGINT AS total_tokens
-    """.format(_token_usage_int_re=_TOKEN_USAGE_INT_RE)
+    """
 
     def get_turn_stats(
         self,

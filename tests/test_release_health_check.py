@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from scripts._report_io import load_json, write_json_report
 from scripts import release_health_check
+from scripts._report_io import load_json, write_json_report
 
 
 def _write_json(path: Path, payload: object) -> Path:
@@ -584,6 +584,47 @@ def test_release_health_check_production_rejects_dry_run_ops_report(tmp_path: Pa
     assert exit_code == 1
     assert dry_run_signal["status"] == "fail"
     assert "cannot be dry-run" in dry_run_signal["detail"]
+
+
+def test_release_health_check_production_rejects_nested_dry_run_report(tmp_path: Path) -> None:
+    dry_run_smoke = _write_json(
+        tmp_path / "production-smoke-dry-run.json",
+        {
+            "checks": [{"category": "api", "name": "api_readyz", "status": "dry-run"}],
+            "passed": True,
+            "status": "passed",
+        },
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        _production_health_args(tmp_path, report_path, production_smoke_report=dry_run_smoke)
+    )
+    report = _read_report(report_path)
+    dry_run_signal = next(
+        signal
+        for signal in report["signals"]
+        if signal["key"] == "release_health_required_input_missing"
+        and signal["labels"]["input"] == "production_smoke_report"
+    )
+
+    assert exit_code == 1
+    assert dry_run_signal["status"] == "fail"
+    assert "cannot be dry-run" in dry_run_signal["detail"]
+
+
+def test_release_health_check_production_rejects_allow_dry_run_reports_flag(tmp_path: Path) -> None:
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        [
+            *_production_health_args(tmp_path, report_path),
+            "--allow-dry-run-reports",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not report_path.exists()
 
 
 def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: Path) -> None:

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from langchain.tools import tool
 from langgraph.config import get_config, get_stream_writer
@@ -31,6 +32,20 @@ def _get_current_thread_id() -> str | None:
     configurable = dict(config.get("configurable") or {})
     value = configurable.get("thread_id")
     return str(value) if value else None
+
+
+def _get_current_user_id() -> str | None:
+    try:
+        config = get_config()
+    except Exception:  # noqa: BLE001
+        return None
+    configurable = dict(config.get("configurable") or {})
+    value = configurable.get("user_id")
+    if value:
+        return str(value)
+    metadata = dict(config.get("metadata") or {})
+    metadata_user = metadata.get("user_id")
+    return str(metadata_user) if metadata_user else None
 
 
 def _coerce_relative_posix(path: Path, workspace_root: Path) -> str:
@@ -91,7 +106,7 @@ def _apply_tool_metadata(
 ) -> Any:
     tool_obj.description = description
     merged_runtime = dict(runtime or {})
-    if hasattr(tool_obj, "metadata") and isinstance(getattr(tool_obj, "metadata"), dict):
+    if hasattr(tool_obj, "metadata") and isinstance(tool_obj.metadata, dict):
         tool_obj.metadata = {**tool_obj.metadata, "display_name": label, **merged_runtime}
     else:
         tool_obj.metadata = {"display_name": label, **merged_runtime}
@@ -108,7 +123,7 @@ def build_utility_tools(
         tool_name = "current_utc_time"
         emit_tool_event(tool_name=tool_name, stage="start")
         try:
-            value = datetime.now(timezone.utc).isoformat()
+            value = datetime.now(UTC).isoformat()
             emit_tool_event(tool_name=tool_name, stage="end", output=value)
             return value
         except Exception as exc:  # noqa: BLE001

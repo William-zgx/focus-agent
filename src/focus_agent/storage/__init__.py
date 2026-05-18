@@ -7,8 +7,8 @@ from .import_memory import (
     user_profile_memory_namespace,
 )
 from .namespaces import (
-    branch_namespace,
     branch_local_memory_namespace,
+    branch_namespace,
     branch_promoted_memory_namespace,
     conversation_main_namespace,
     conversation_namespace_for_context,

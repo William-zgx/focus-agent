@@ -10,9 +10,11 @@ from ..contracts import (
     AgentArtifactSynthesisRequest,
     AgentArtifactSynthesisResponse,
     AgentCapabilityListResponse,
-    AgentToolsetListResponse,
     AgentContextArtifactListResponse,
     AgentContextDecisionListResponse,
+    AgentContextEvidenceListResponse,
+    AgentContextExplainRequest,
+    AgentContextExplainResponse,
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
@@ -27,9 +29,9 @@ from ..contracts import (
     AgentMemoryCuratorEvaluateRequest,
     AgentMemoryCuratorEvaluateResponse,
     AgentMemoryCuratorPolicyResponse,
+    AgentModelRouterDecisionListResponse,
     AgentModelRouteRequest,
     AgentModelRouteResponse,
-    AgentModelRouterDecisionListResponse,
     AgentModelRouterPolicyResponse,
     AgentReviewQueueDecisionResponse,
     AgentReviewQueueListResponse,
@@ -40,6 +42,15 @@ from ..contracts import (
     AgentSelfRepairFailureListResponse,
     AgentSelfRepairPromotePreviewRequest,
     AgentSelfRepairPromotePreviewResponse,
+    AgentSkillCatalogResponse,
+    AgentSkillPreferenceRequest,
+    AgentSkillPreferenceResponse,
+    AgentSkillSelectionEventListResponse,
+    AgentSkillSelectionFeedbackRequest,
+    AgentSkillSelectionFeedbackResponse,
+    AgentSkillSelectionResponse,
+    AgentSkillSelectRequest,
+    AgentSkillSemanticCandidateResponse,
     AgentTaskLedgerPlanRequest,
     AgentTaskLedgerPlanResponse,
     AgentTaskLedgerPolicyResponse,
@@ -47,6 +58,7 @@ from ..contracts import (
     AgentToolRouteDecisionListResponse,
     AgentToolRouteRequest,
     AgentToolRouteResponse,
+    AgentToolsetListResponse,
 )
 from ..deps import get_app_runtime, get_current_principal
 from ..route_utils.agent_governance import (
@@ -82,8 +94,62 @@ from ..route_utils.agent_governance import (
     _agent_tool_route_response,
     _agent_toolsets_response,
 )
+from ..route_utils.agent_governance_operations import (
+    _agent_context_evidence_list_response,
+    _agent_context_explain_response,
+    _agent_skill_catalog_response,
+    _agent_skill_preference_response,
+    _agent_skill_selection_events_response,
+    _agent_skill_selection_feedback_response,
+    _persist_skill_selection_event,
+)
 
 router = APIRouter()
+
+
+def _skill_selection_response(
+    *,
+    payload: AgentSkillSelectRequest,
+    runtime: AppRuntime,
+) -> AgentSkillSelectionResponse:
+    registry = runtime.skill_registry
+    threshold = (
+        float(payload.semantic_threshold)
+        if payload.semantic_threshold is not None
+        else float(getattr(runtime.settings, "skill_semantic_match_threshold", 0.22))
+    )
+    semantic_enabled = (
+        bool(payload.semantic_enabled)
+        if payload.semantic_enabled is not None
+        else bool(getattr(runtime.settings, "skill_semantic_match_enabled", True))
+    )
+    selection = registry.select_for_message(
+        payload.message,
+        explicit_hints=payload.skill_hints,
+        semantic_match_enabled=semantic_enabled,
+        semantic_match_threshold=threshold,
+    )
+    return AgentSkillSelectionResponse(
+        skill_ids=list(selection.skill_ids),
+        stripped_message=selection.stripped_message,
+        prompt_mode=selection.prompt_mode.value if selection.prompt_mode else None,
+        selection_source=selection.selection_source,
+        matched_triggers=list(selection.matched_triggers),
+        semantic_candidates=[
+            AgentSkillSemanticCandidateResponse(
+                skill_id=candidate.skill_id,
+                score=candidate.score,
+                matched_terms=list(candidate.matched_terms),
+                auto_activate=candidate.auto_activate,
+                rationale=candidate.rationale,
+            )
+            for candidate in selection.semantic_candidates
+        ],
+        confidence=selection.confidence,
+        rationale=selection.rationale,
+        semantic_enabled=semantic_enabled,
+        semantic_threshold=threshold,
+    )
 
 
 @router.get('/v1/agent/roles/policy', response_model=AgentRolePolicyResponse)
@@ -93,6 +159,76 @@ def get_agent_role_policy(
 ) -> AgentRolePolicyResponse:
     del principal
     return _agent_role_policy_response(runtime.settings)
+
+@router.post('/v1/agent/skills/select', response_model=AgentSkillSelectionResponse)
+def select_agent_skills(
+    payload: AgentSkillSelectRequest,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentSkillSelectionResponse:
+    response = _skill_selection_response(payload=payload, runtime=runtime)
+    return _persist_skill_selection_event(
+        runtime=runtime,
+        principal=principal,
+        payload=payload,
+        response=response,
+    )
+
+
+@router.get('/v1/agent/skills/selections', response_model=AgentSkillSelectionEventListResponse)
+def list_agent_skill_selections(
+    skill_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=0, le=200),
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentSkillSelectionEventListResponse:
+    return _agent_skill_selection_events_response(
+        runtime=runtime,
+        principal=principal,
+        skill_id=skill_id,
+        limit=limit,
+    )
+
+
+@router.post(
+    '/v1/agent/skills/selections/{selection_id}/feedback',
+    response_model=AgentSkillSelectionFeedbackResponse,
+)
+def record_agent_skill_selection_feedback(
+    selection_id: str,
+    payload: AgentSkillSelectionFeedbackRequest,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentSkillSelectionFeedbackResponse:
+    return _agent_skill_selection_feedback_response(
+        runtime=runtime,
+        principal=principal,
+        selection_id=selection_id,
+        payload=payload,
+    )
+
+
+@router.get('/v1/agent/skills/catalog', response_model=AgentSkillCatalogResponse)
+def list_agent_skill_catalog(
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentSkillCatalogResponse:
+    return _agent_skill_catalog_response(runtime=runtime, principal=principal)
+
+
+@router.patch('/v1/agent/skills/{skill_id}/preference', response_model=AgentSkillPreferenceResponse)
+def update_agent_skill_preference(
+    skill_id: str,
+    payload: AgentSkillPreferenceRequest,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentSkillPreferenceResponse:
+    return _agent_skill_preference_response(
+        runtime=runtime,
+        principal=principal,
+        skill_id=skill_id,
+        payload=payload,
+    )
 
 @router.post('/v1/agent/roles/dry-run', response_model=AgentRoleDryRunResponse)
 def dry_run_agent_role_route(
@@ -304,6 +440,36 @@ def list_agent_context_artifacts(
 ) -> AgentContextArtifactListResponse:
     del principal
     return _agent_context_artifacts_response(runtime=runtime, limit=limit)
+
+
+@router.get('/v1/agent/context/evidence', response_model=AgentContextEvidenceListResponse)
+def list_agent_context_evidence(
+    thread_id: str | None = Query(default=None),
+    turn_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=0, le=200),
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentContextEvidenceListResponse:
+    return _agent_context_evidence_list_response(
+        runtime=runtime,
+        principal=principal,
+        thread_id=thread_id,
+        turn_id=turn_id,
+        limit=limit,
+    )
+
+
+@router.post('/v1/agent/context/explain', response_model=AgentContextExplainResponse)
+def explain_agent_context(
+    payload: AgentContextExplainRequest,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentContextExplainResponse:
+    return _agent_context_explain_response(
+        payload=payload,
+        runtime=runtime,
+        principal=principal,
+    )
 
 @router.get('/v1/agent/task-ledger/policy', response_model=AgentTaskLedgerPolicyResponse)
 def get_agent_task_ledger_policy(

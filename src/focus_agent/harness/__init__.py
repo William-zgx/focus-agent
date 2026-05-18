@@ -20,10 +20,10 @@ from .middleware import (
 )
 from .observability import (
     InMemoryRunJournal,
+    JournaledStreamBridge,
     JournalEvent,
     JournalRun,
     JournalToolEvent,
-    JournaledStreamBridge,
     PostgresRunJournal,
     RunJournal,
     SQLiteRunJournal,
@@ -32,16 +32,20 @@ from .observability import (
 from .runtime import (
     ConflictError,
     DisconnectMode,
-    HarnessConfig as RuntimeHarnessConfig,
     MultitaskStrategy,
+    RunConflictError,
     RunLifecyclePublisher,
     RunManager,
     RunRecord,
-    RunConflictError,
     RunRequest,
     RunStatus,
-    RuntimeFeatures as RuntimeFeatureFlags,
     UnsupportedStrategyError,
+)
+from .runtime import (
+    HarnessConfig as RuntimeHarnessConfig,
+)
+from .runtime import (
+    RuntimeFeatures as RuntimeFeatureFlags,
 )
 from .schemas import (
     AgentStateSlices,

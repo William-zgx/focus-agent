@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -34,7 +34,7 @@ def _record(
         root_thread_id="root-1",
         promoted_to_main=promoted_to_main,
         status=status,
-        deleted_at=datetime.now(timezone.utc) if deleted else None,
+        deleted_at=datetime.now(UTC) if deleted else None,
     )
 
 

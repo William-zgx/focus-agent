@@ -1,31 +1,30 @@
 from __future__ import annotations
 
-from contextlib import ExitStack
-from dataclasses import dataclass
 import inspect
 import logging
+from collections.abc import Callable
+from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings, ensure_runtime_directories
 from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
-from ..harness import HarnessConfig, PostgresRunJournal, SQLiteRunJournal, create_focus_agent
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..memory.embedding import (
     MemoryEmbeddingError,
     MemoryEmbeddingService,
     create_memory_embedding_provider,
 )
+from ..multi_agent.maintenance import MultiAgentMaintenanceWorker
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
-from ..repositories.agent_team_repository import AgentTeamRepository
+from ..repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
 from ..repositories.branch_repository import BranchRepository
-from ..repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
-from ..repositories.sqlite_branch_repository import SQLiteBranchRepository
-from ..repositories.sqlite_user_repository import SQLiteUserRepository
-from ..repositories.user_repository import UserRepository
+from ..repositories.productivity_repository import InMemoryProductivityRepository, ProductivityRepository
+from ..repositories.in_memory_branch_repository import InMemoryBranchRepository
+from ..repositories.user_repository import UserRepository, InMemoryUserRepository
 from ..services.agent_team import AgentTeamService
 from ..services.background_work import (
     BackgroundJobHandlerRegistry,
@@ -35,12 +34,28 @@ from ..services.background_work import (
 )
 from ..services.branches import BranchService
 from ..services.coordination import CoordinationBackend, create_coordination_backend
+from ..services.productivity import ProductivityService
 from ..services.users import UserService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
-from .graph_builder import build_graph
+from ..storage.postgres import PostgresConnectionProvider
 
 logger = logging.getLogger("focus_agent.runtime")
+
+PostgresRunJournal: object | None = None
+SQLiteRunJournal: object | None = None
+
+
+def create_focus_agent(*args: object, **kwargs: object) -> object:
+    from ..harness.agents.factory import create_focus_agent as factory
+
+    return factory(*args, **kwargs)
+
+
+def build_graph(*args: object, **kwargs: object) -> object:
+    from .graph_builder import build_graph as graph_builder
+
+    return graph_builder(*args, **kwargs)
 
 
 @dataclass(slots=True)
@@ -50,6 +65,7 @@ class RuntimePersistence:
     repo: BranchRepository
     user_repository: UserRepository
     memory_repository: object | None
+    productivity_repository: ProductivityRepository
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
     run_journal: object
@@ -86,6 +102,7 @@ class RuntimeServices:
     branch_service: BranchService
     agent_team_service: AgentTeamService
     user_service: UserService
+    productivity_service: ProductivityService
 
 
 @dataclass(slots=True)
@@ -101,6 +118,7 @@ class AppRuntime:
     branch_service: BranchService
     agent_team_service: AgentTeamService
     user_service: UserService
+    productivity_service: ProductivityService
     checkpointer: object
     store: object
     store_namespace_selector: Callable[[RequestContext], tuple[str, ...]]
@@ -109,6 +127,8 @@ class AppRuntime:
     memory_writer: MemoryWriter
     memory_extractor: MemoryExtractor
     memory_repository: object | None
+    productivity_repository: ProductivityRepository
+    governance_repository: object
     memory_embedding_service: MemoryEmbeddingService | None
     memory_embedding_provider: object | None
     memory_embedding_backend_error: str | None
@@ -119,7 +139,9 @@ class AppRuntime:
     otel_runtime: OTelRuntime
     background_work: BoundedBackgroundQueue
     durable_background_worker: DurableBackgroundWorker | None
+    multi_agent_maintenance_worker: MultiAgentMaintenanceWorker | None
     coordination_backend: CoordinationBackend
+    postgres_connection_provider: PostgresConnectionProvider | None
     _exit_stack: ExitStack
 
     def close(self) -> None:
@@ -170,10 +192,17 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
     exit_stack = ExitStack()
     otel_runtime = initialize_otel_runtime(settings)
     exit_stack.callback(otel_runtime.shutdown)
+    postgres_connection_provider = _create_postgres_connection_provider(settings)
+    if postgres_connection_provider is not None:
+        exit_stack.callback(postgres_connection_provider.close)
     coordination_backend = create_coordination_backend(
         database_uri=settings.database_uri,
         background_job_backend=settings.background_job_backend,
         background_job_claim_ttl_seconds=settings.background_job_claim_ttl_seconds,
+        background_job_retry_base_delay_seconds=settings.background_job_retry_base_delay_seconds,
+        background_job_retry_max_delay_seconds=settings.background_job_retry_max_delay_seconds,
+        multi_agent_enabled=settings.multi_agent_v2_enabled,
+        multi_agent_message_ttl_seconds=settings.multi_agent_message_ttl_seconds,
     )
     background_work = BoundedBackgroundQueue(
         name="runtime",
@@ -182,6 +211,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         job_deduper=coordination_backend.job_deduper,
     )
     exit_stack.callback(background_work.close)
+    multi_agent_maintenance_worker = _start_multi_agent_maintenance_worker(
+        settings=settings,
+        coordination_backend=coordination_backend,
+        exit_stack=exit_stack,
+    )
 
     memory_embedding_setup = _resolve_memory_embedding_setup(settings)
     persistence = _create_runtime_persistence(
@@ -205,6 +239,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         persistence=persistence,
         memory=memory,
         registries=registries,
+        coordination_backend=coordination_backend,
     )
     graph = harness.graph
     services = _create_runtime_services(
@@ -215,6 +250,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         store=persistence.store,
         memory_writer=memory.memory_writer,
         memory_repository=persistence.memory_repository,
+        productivity_repository=persistence.productivity_repository,
         coordination_backend=coordination_backend,
         background_work=background_work,
     )
@@ -231,6 +267,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         branch_service=services.branch_service,
         agent_team_service=services.agent_team_service,
         user_service=services.user_service,
+        productivity_service=services.productivity_service,
         checkpointer=persistence.checkpointer,
         store=persistence.store,
         store_namespace_selector=conversation_namespace_for_context,
@@ -239,6 +276,8 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_writer=memory.memory_writer,
         memory_extractor=memory.memory_extractor,
         memory_repository=memory.memory_repository,
+        productivity_repository=persistence.productivity_repository,
+        governance_repository=_create_governance_repository(settings),
         memory_embedding_service=memory.memory_embedding_service,
         memory_embedding_provider=memory.memory_embedding_provider,
         memory_embedding_backend_error=memory.memory_embedding_backend_error,
@@ -249,9 +288,25 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         otel_runtime=otel_runtime,
         background_work=background_work,
         durable_background_worker=None,
+        multi_agent_maintenance_worker=multi_agent_maintenance_worker,
         coordination_backend=coordination_backend,
+        postgres_connection_provider=postgres_connection_provider,
         _exit_stack=exit_stack,
     )
+
+
+def _start_multi_agent_maintenance_worker(
+    *,
+    settings: Settings,
+    coordination_backend: CoordinationBackend,
+    exit_stack: ExitStack,
+) -> MultiAgentMaintenanceWorker | None:
+    if not bool(getattr(settings, "multi_agent_v2_enabled", False)):
+        return None
+    worker = MultiAgentMaintenanceWorker(coordination_backend)
+    worker.start()
+    exit_stack.callback(worker.close)
+    return worker
 
 
 def _create_runtime_persistence(
@@ -268,6 +323,7 @@ def _create_runtime_persistence(
             repo,
             user_repository,
             memory_repository,
+            productivity_repository,
             trajectory_recorder,
             artifact_metadata_repository,
             run_journal,
@@ -286,6 +342,7 @@ def _create_runtime_persistence(
             repo,
             user_repository,
             memory_repository,
+            productivity_repository,
             trajectory_recorder,
             artifact_metadata_repository,
             run_journal,
@@ -299,10 +356,33 @@ def _create_runtime_persistence(
         repo=repo,
         user_repository=user_repository,
         memory_repository=memory_repository,
+        productivity_repository=productivity_repository,
         trajectory_recorder=trajectory_recorder,
         artifact_metadata_repository=artifact_metadata_repository,
         run_journal=run_journal,
     )
+
+
+def _create_postgres_connection_provider(settings: Settings) -> PostgresConnectionProvider | None:
+    if not settings.database_uri:
+        return None
+    return PostgresConnectionProvider(
+        settings.database_uri,
+        pool_enabled=bool(getattr(settings, "postgres_pool_enabled", True)),
+        min_size=int(getattr(settings, "postgres_pool_min_size", 1) or 1),
+        max_size=int(getattr(settings, "postgres_pool_max_size", 4) or 4),
+        slow_query_threshold_ms=float(getattr(settings, "postgres_slow_query_threshold_ms", 500.0) or 500.0),
+    )
+
+
+def _create_governance_repository(settings: Settings) -> object:
+    if settings.database_uri:
+        from ..repositories.postgres_governance_repository import PostgresGovernanceRepository
+
+        return PostgresGovernanceRepository(settings.database_uri)
+    from ..repositories.governance_repository import InMemoryGovernanceRepository
+
+    return InMemoryGovernanceRepository()
 
 
 def _create_memory_components(
@@ -386,6 +466,7 @@ def _create_runtime_registries(
         artifact_metadata_repository=persistence.artifact_metadata_repository,
         memory_repository=persistence.memory_repository,
         memory_embedding_service=memory.memory_embedding_service,
+        productivity_repository=persistence.productivity_repository,
     )
     return RuntimeRegistries(skill_registry=skill_registry, tool_registry=tool_registry)
 
@@ -416,7 +497,10 @@ def _create_runtime_harness(
     persistence: RuntimePersistence,
     memory: RuntimeMemoryComponents,
     registries: RuntimeRegistries,
+    coordination_backend: CoordinationBackend,
 ) -> object:
+    from ..harness.schemas.config import HarnessConfig
+
     harness_config = HarnessConfig(
         name="focus-agent",
         model=settings.model,
@@ -437,6 +521,7 @@ def _create_runtime_harness(
         memory_extractor=memory.memory_extractor,
         skill_registry=registries.skill_registry,
         tool_registry=registries.tool_registry,
+        approval_queue=coordination_backend.approval_queue,
         event_store=persistence.run_journal,
     )
 
@@ -450,6 +535,7 @@ def _create_runtime_services(
     store: object,
     memory_writer: MemoryWriter,
     memory_repository: object | None,
+    productivity_repository: ProductivityRepository,
     coordination_backend: CoordinationBackend,
     background_work: BoundedBackgroundQueue,
 ) -> RuntimeServices:
@@ -472,11 +558,31 @@ def _create_runtime_services(
         user_repository,
         auth_enabled=settings.auth_enabled,
     )
+    productivity_service = ProductivityService(productivity_repository)
     return RuntimeServices(
         branch_service=branch_service,
         agent_team_service=agent_team_service,
         user_service=user_service,
+        productivity_service=productivity_service,
     )
+
+
+def _postgres_run_journal_cls() -> object:
+    if PostgresRunJournal is not None:
+        return PostgresRunJournal
+    from ..harness.observability.postgres_run_journal import (
+        PostgresRunJournal as PostgresRunJournalClass,
+    )
+
+    return PostgresRunJournalClass
+
+
+def _sqlite_run_journal_cls() -> object:
+    if SQLiteRunJournal is not None:
+        return SQLiteRunJournal
+    from ..harness.observability.run_journal import SQLiteRunJournal as SQLiteRunJournalClass
+
+    return SQLiteRunJournalClass
 
 
 def _create_postgres_primary_persistence(
@@ -484,13 +590,14 @@ def _create_postgres_primary_persistence(
     settings: Settings,
     exit_stack: ExitStack,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object, object]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, ProductivityRepository, object | None, object, object]:
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
 
     from ..repositories.artifact_metadata_repository import ArtifactMetadataRepository
     from ..repositories.postgres_branch_repository import PostgresBranchRepository
     from ..repositories.postgres_memory_repository import PostgresMemoryRepository
+    from ..repositories.postgres_productivity_repository import PostgresProductivityRepository
     from ..repositories.postgres_user_repository import PostgresUserRepository
 
     assert settings.database_uri is not None
@@ -515,6 +622,9 @@ def _create_postgres_primary_persistence(
         memory_embedding_setup=memory_embedding_setup,
     )
 
+    productivity_repository = PostgresProductivityRepository(settings.database_uri)
+    _setup_component_if_available(productivity_repository)
+
     trajectory_recorder = None
     if _trajectory_enabled(settings):
         from ..repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
@@ -527,7 +637,7 @@ def _create_postgres_primary_persistence(
         else:
             trajectory_recorder = candidate
 
-    run_journal = PostgresRunJournal(settings.database_uri)
+    run_journal = _postgres_run_journal_cls()(settings.database_uri)
     _setup_component_if_available(run_journal)
 
     return (
@@ -536,6 +646,7 @@ def _create_postgres_primary_persistence(
         repo,
         user_repository,
         memory_repository,
+        productivity_repository,
         trajectory_recorder,
         artifact_metadata_repository,
         run_journal,
@@ -544,7 +655,7 @@ def _create_postgres_primary_persistence(
 
 def _create_local_fallback_persistence(
     settings: Settings,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, object | None, object | None, object]:
+) -> tuple[object, object, BranchRepository, UserRepository, object | None, ProductivityRepository, object | None, object | None, object]:
     persistence_dir = Path(settings.branch_db_path).expanduser().parent
     checkpoint_path = (
         Path(settings.local_checkpoint_path).expanduser()
@@ -558,12 +669,12 @@ def _create_local_fallback_persistence(
     )
     checkpointer = PersistentInMemorySaver(checkpoint_path)
     store = PersistentInMemoryStore(store_path)
-    repo = SQLiteBranchRepository(settings.branch_db_path)
-    user_repository = SQLiteUserRepository(settings.branch_db_path)
-    run_journal = SQLiteRunJournal(persistence_dir / "harness_runs.sqlite3")
+    repo = InMemoryBranchRepository()
+    user_repository = InMemoryUserRepository()
+    productivity_repository = InMemoryProductivityRepository()
+    run_journal = _sqlite_run_journal_cls()(persistence_dir / "harness_runs.sqlite3")
     _setup_component_if_available(run_journal)
-    return checkpointer, store, repo, user_repository, None, None, None, run_journal
-
+    return checkpointer, store, repo, user_repository, None, productivity_repository, None, None, run_journal
 
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
     if settings.database_uri:
@@ -571,7 +682,7 @@ def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
 
         repository = PostgresAgentTeamRepository(settings.database_uri)
     else:
-        repository = SQLiteAgentTeamRepository(settings.branch_db_path)
+        repository = InMemoryAgentTeamRepository()
     _setup_component_if_available(repository)
     return repository
 
@@ -659,6 +770,7 @@ def _build_tool_registry_compat(
     artifact_metadata_repository: object | None,
     memory_repository: object | None = None,
     memory_embedding_service: object | None = None,
+    productivity_repository: object | None = None,
 ) -> ToolRegistry:
     kwargs = {
         "settings": settings,
@@ -672,6 +784,8 @@ def _build_tool_registry_compat(
         kwargs["memory_repository"] = memory_repository
     if "memory_embedding_service" in inspect.signature(build_tool_registry).parameters:
         kwargs["memory_embedding_service"] = memory_embedding_service
+    if "productivity_repository" in inspect.signature(build_tool_registry).parameters:
+        kwargs["productivity_repository"] = productivity_repository
     return build_tool_registry(**kwargs)
 
 

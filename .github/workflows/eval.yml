@@ -57,7 +57,7 @@ jobs:
       - name: Run provider-backed smoke eval
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PROVIDER_EVAL_MISSING_KEY_POLICY: ${{ github.event_name == 'pull_request' && 'skip' || vars.PROVIDER_EVAL_MISSING_KEY_POLICY || 'skip' }}
+          PROVIDER_EVAL_MISSING_KEY_POLICY: ${{ vars.PROVIDER_EVAL_MISSING_KEY_POLICY || (github.event_name == 'pull_request' && 'skip' || 'fail') }}
         run: |
           mkdir -p reports
           uv run python scripts/eval_provider_gate.py \

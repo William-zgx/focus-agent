@@ -80,6 +80,7 @@ def create_focus_agent(
     memory_extractor: Any | None = None,
     skill_registry: Any | None = None,
     tool_registry: Any | None = None,
+    approval_queue: Any | None = None,
     subagent_executor: SubagentExecutor | None = None,
 ) -> FocusAgentHarness:
     """Create the reusable Focus Agent harness around the existing graph.
@@ -113,6 +114,7 @@ def create_focus_agent(
         memory_extractor=memory_extractor,
         skill_registry=skill_registry,
         tool_registry=effective_tool_registry,
+        approval_queue=approval_queue,
     )
     middleware = list(config.middleware)
     features = config.features

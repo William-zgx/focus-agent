@@ -1,16 +1,6 @@
 import json
 
-from focus_agent.core.types import (
-    ArtifactRef,
-    CitationRef,
-    ConstraintItem,
-    ContextBudget,
-    FindingItem,
-    PinnedFact,
-    PromptMode,
-)
 from focus_agent.core.state import (
-    AgentState,
     ALL_AGENT_STATE_FIELDS,
     BRANCH_STATE_FIELDS,
     CONVERSATION_STATE_FIELDS,
@@ -22,6 +12,7 @@ from focus_agent.core.state import (
     MEMORY_STATE_FIELDS,
     OBSERVABILITY_STATE_FIELDS,
     STATE_DOMAIN_FIELDS,
+    AgentState,
     agent_state_record_payloads,
     append_agent_state_record,
     default_agent_state_slice,
@@ -35,6 +26,15 @@ from focus_agent.core.state import (
     slice_agent_state,
     state_domain_fields,
     state_domains_for_field,
+)
+from focus_agent.core.types import (
+    ArtifactRef,
+    CitationRef,
+    ConstraintItem,
+    ContextBudget,
+    FindingItem,
+    PinnedFact,
+    PromptMode,
 )
 
 
@@ -202,6 +202,8 @@ def test_governance_schema_guard_blocks_new_top_level_fields():
         "delegated_artifacts",
         "artifact_synthesis_result",
         "critic_gate_result",
+        "execution_contract",
+        "answer_verification",
         "memory_write_result",
     }
     assert set(GOVERNANCE_RECORD_MIRROR_KEYS.values()) <= set(GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST)

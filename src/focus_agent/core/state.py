@@ -1,14 +1,33 @@
 from __future__ import annotations
 
 import operator
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Annotated, Any, Callable, Literal, Mapping, TypeAlias, TypedDict
+from typing import Annotated, Any, Literal, TypeAlias, TypedDict
 
 from langchain.messages import AnyMessage
 from pydantic import BaseModel
 
+from .state_governance_metrics import (
+    GOVERNANCE_METRIC_KEYS,
+    agent_delegation_metrics,
+    answer_verification_metrics,
+    agent_failure_metrics,
+    agent_review_metrics,
+    agent_task_ledger_metrics,
+    context_artifact_ref_metrics,
+    context_budget_metrics,
+    critic_gate_metrics,
+    delegated_artifact_metrics,
+    execution_contract_metrics,
+    memory_curator_metrics,
+    memory_write_metrics,
+    model_route_metrics,
+    tool_intent_metrics,
+    tool_route_metrics,
+)
 from .types import (
     ArtifactRef,
     CitationRef,
@@ -133,6 +152,9 @@ class AgentState(TypedDict, total=False):
     # Written by tool-result evidence normalization after live web/tool use,
     # read by final synthesis, citations, memory quality gates, and observability.
     evidence_bundle: list[dict[str, Any]]
+    evidence_ledger: list[dict[str, Any]]
+    execution_contract: dict[str, Any] | None
+    answer_verification: dict[str, Any] | None
 
     # Written by Delegation Runtime when multi-agent role runs are planned or
     # enforced. It stays in plan_meta for observability and replay.
@@ -209,6 +231,9 @@ AgentStateKey: TypeAlias = Literal[
     "tool_route_plan",
     "pending_tool_action",
     "evidence_bundle",
+    "evidence_ledger",
+    "execution_contract",
+    "answer_verification",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -257,6 +282,8 @@ AgentStateRecordName: TypeAlias = Literal[
     "delegated_artifacts",
     "artifact_synthesis_result",
     "critic_gate_result",
+    "execution_contract",
+    "answer_verification",
     "memory_write_result",
 ]
 
@@ -293,230 +320,90 @@ class GovernanceRecordDescriptor:
         return self.plan_meta_key or str(self.mirror_key or self.name)
 
 
-GOVERNANCE_METRIC_KEYS: tuple[str, ...] = (
-    "memory_promotions",
-    "memory_conflicts",
-    "tool_router_denied",
-    "tool_router_enforced",
-    "agent_delegation_runs",
-    "critic_rejects",
-    "agent_review_pending",
-    "model_router_fallback",
-    "agent_failures",
-    "context_artifact_refs",
-    "context_over_budget",
-    "tool_intent_direct_answer",
-    "tool_intent_workspace_lookup",
-    "tool_intent_live_web_research",
-    "tool_intent_execution",
-    "tool_intent_first_tool",
-    "tool_intent_carryover",
-    "temporal_anchor_forced",
-    "memory_quality_skipped",
-    "external_answer_missing_citation",
-    "agent_task_ledger_tasks",
-    "delegated_artifacts",
-    "critic_gate_rejected",
-)
-
-
-def _memory_curator_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {
-        "memory_promotions": len(payload.get("promoted_memory_ids") or []),
-        "memory_conflicts": len(payload.get("conflicts") or []),
-    }
-
-
-def _tool_route_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {
-        "tool_router_denied": len(payload.get("denied_tools") or []),
-        "tool_router_enforced": 1 if payload.get("enforce") else 0,
-    }
-
-
-def _tool_intent_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    policy = str(payload.get("policy") or "").strip()
-    preferred_first_tool = str(payload.get("preferred_first_tool") or "").strip()
-    reason_codes = {str(item) for item in payload.get("reason_codes") or [] if str(item)}
-    return {
-        "tool_intent_direct_answer": 1 if policy == "direct_answer" else 0,
-        "tool_intent_workspace_lookup": 1 if policy == "workspace_lookup" else 0,
-        "tool_intent_live_web_research": 1 if policy == "live_web_research" else 0,
-        "tool_intent_execution": 1 if policy == "execution" else 0,
-        "tool_intent_first_tool": 1 if preferred_first_tool else 0,
-        "tool_intent_carryover": 1 if "pending_tool_action_carryover" in reason_codes else 0,
-        "temporal_anchor_forced": 1 if payload.get("temporal_anchor_forced") else 0,
-        "external_answer_missing_citation": 1 if payload.get("external_answer_missing_citation") else 0,
-    }
-
-
-def _memory_write_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    skipped = payload.get("skipped") or []
-    if not isinstance(skipped, list):
-        return {}
-    quality_reasons = {
-        "unstable_self_correction",
-        "claimed_tool_use_without_result",
-        "external_claim_without_evidence",
-    }
-    return {
-        "memory_quality_skipped": len(
-            [
-                item
-                for item in skipped
-                if isinstance(item, Mapping) and str(item.get("reason") or "") in quality_reasons
-            ]
-        )
-    }
-
-
-def _agent_delegation_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {"agent_delegation_runs": len(payload.get("runs") or [])}
-
-
-def _model_route_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {"model_router_fallback": 1 if payload.get("fallback_used") else 0}
-
-
-def _agent_failure_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, list):
-        return {}
-    return {
-        "agent_failures": len(payload),
-        "critic_rejects": len(
-            [
-                item
-                for item in payload
-                if isinstance(item, Mapping) and item.get("failure_type") == "critic_rejected"
-            ]
-        ),
-    }
-
-
-def _agent_review_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, list):
-        return {}
-    return {
-        "agent_review_pending": len(
-            [item for item in payload if isinstance(item, Mapping) and item.get("status") == "pending"]
-        )
-    }
-
-
-def _context_artifact_ref_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, list):
-        return {}
-    return {"context_artifact_refs": len(payload)}
-
-
-def _context_budget_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {"context_over_budget": 1 if int(payload.get("over_budget_chars") or 0) > 0 else 0}
-
-
-def _agent_task_ledger_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {"agent_task_ledger_tasks": len(payload.get("tasks") or [])}
-
-
-def _delegated_artifact_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, list):
-        return {}
-    return {"delegated_artifacts": len(payload)}
-
-
-def _critic_gate_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {"critic_gate_rejected": len(payload.get("rejected_artifact_ids") or [])}
-
-
 GOVERNANCE_RECORD_DESCRIPTORS: tuple[GovernanceRecordDescriptor, ...] = (
     GovernanceRecordDescriptor("role_route_plan", mirror_key="role_route_plan"),
     GovernanceRecordDescriptor(
         "memory_curator_decision",
         mirror_key="memory_curator_decision",
-        metric_extractor=_memory_curator_metrics,
+        metric_extractor=memory_curator_metrics,
     ),
     GovernanceRecordDescriptor(
         "tool_intent_plan",
         mirror_key="tool_intent_plan",
-        metric_extractor=_tool_intent_metrics,
+        metric_extractor=tool_intent_metrics,
     ),
     GovernanceRecordDescriptor(
         "tool_route_plan",
         mirror_key="tool_route_plan",
-        metric_extractor=_tool_route_metrics,
+        metric_extractor=tool_route_metrics,
     ),
     GovernanceRecordDescriptor(
         "memory_write_result",
         domain="observability",
         mirror_key="memory_write_result",
-        metric_extractor=_memory_write_metrics,
+        metric_extractor=memory_write_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "execution_contract",
+        domain="observability",
+        mirror_key="execution_contract",
+        metric_extractor=execution_contract_metrics,
+    ),
+    GovernanceRecordDescriptor(
+        "answer_verification",
+        domain="observability",
+        mirror_key="answer_verification",
+        metric_extractor=answer_verification_metrics,
     ),
     GovernanceRecordDescriptor(
         "agent_delegation_plan",
         mirror_key="agent_delegation_plan",
-        metric_extractor=_agent_delegation_metrics,
+        metric_extractor=agent_delegation_metrics,
     ),
     GovernanceRecordDescriptor("agent_runs", mirror_key="agent_runs"),
     GovernanceRecordDescriptor(
         "model_route_decision",
         mirror_key="model_route_decision",
-        metric_extractor=_model_route_metrics,
+        metric_extractor=model_route_metrics,
     ),
     GovernanceRecordDescriptor(
         "agent_failure_records",
         mirror_key="agent_failure_records",
-        metric_extractor=_agent_failure_metrics,
+        metric_extractor=agent_failure_metrics,
     ),
     GovernanceRecordDescriptor(
         "agent_review_queue",
         mirror_key="agent_review_queue",
-        metric_extractor=_agent_review_metrics,
+        metric_extractor=agent_review_metrics,
     ),
     GovernanceRecordDescriptor(
         "context_budget_decision",
         mirror_key="context_budget_decision",
-        metric_extractor=_context_budget_metrics,
+        metric_extractor=context_budget_metrics,
     ),
     GovernanceRecordDescriptor("context_compression_plan", mirror_key="context_compression_plan"),
     GovernanceRecordDescriptor(
         "context_artifact_refs",
         mirror_key="context_artifact_refs",
-        metric_extractor=_context_artifact_ref_metrics,
+        metric_extractor=context_artifact_ref_metrics,
     ),
     GovernanceRecordDescriptor("role_context_views", mirror_key="role_context_views"),
     GovernanceRecordDescriptor("context_compaction", mirror_key="context_compaction"),
     GovernanceRecordDescriptor(
         "agent_task_ledger",
         mirror_key="agent_task_ledger",
-        metric_extractor=_agent_task_ledger_metrics,
+        metric_extractor=agent_task_ledger_metrics,
     ),
     GovernanceRecordDescriptor(
         "delegated_artifacts",
         mirror_key="delegated_artifacts",
-        metric_extractor=_delegated_artifact_metrics,
+        metric_extractor=delegated_artifact_metrics,
     ),
     GovernanceRecordDescriptor("artifact_synthesis_result", mirror_key="artifact_synthesis_result"),
     GovernanceRecordDescriptor(
         "critic_gate_result",
         mirror_key="critic_gate_result",
-        metric_extractor=_critic_gate_metrics,
+        metric_extractor=critic_gate_metrics,
     ),
 )
 GOVERNANCE_RECORD_DESCRIPTOR_REGISTRY: Mapping[str, GovernanceRecordDescriptor] = MappingProxyType(
@@ -576,6 +463,9 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "tool_route_plan",
     "pending_tool_action",
     "evidence_bundle",
+    "evidence_ledger",
+    "execution_contract",
+    "answer_verification",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -650,6 +540,9 @@ GOVERNANCE_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "tool_route_plan",
     "pending_tool_action",
     "evidence_bundle",
+    "evidence_ledger",
+    "execution_contract",
+    "answer_verification",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -682,6 +575,9 @@ GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST: frozenset[AgentStateKey] = frozenset(
         "tool_route_plan",
         "pending_tool_action",
         "evidence_bundle",
+        "evidence_ledger",
+        "execution_contract",
+        "answer_verification",
         "agent_delegation_plan",
         "agent_runs",
         "model_route_decision",
@@ -713,6 +609,9 @@ OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "tool_route_plan",
     "pending_tool_action",
     "evidence_bundle",
+    "evidence_ledger",
+    "execution_contract",
+    "answer_verification",
     "agent_delegation_plan",
     "agent_runs",
     "model_route_decision",
@@ -781,6 +680,9 @@ def initial_agent_state() -> AgentState:
         "tool_route_plan": None,
         "pending_tool_action": None,
         "evidence_bundle": [],
+        "evidence_ledger": [],
+        "execution_contract": None,
+        "answer_verification": None,
         "agent_delegation_plan": None,
         "agent_runs": [],
         "model_route_decision": None,
@@ -1081,11 +983,11 @@ def _legacy_mirror_key_for(name_or_mirror_key: AgentStateRecordName | str) -> st
 
 def _record_created_at(value: datetime | str | None) -> str:
     if isinstance(value, datetime):
-        timestamp = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-        return timestamp.astimezone(timezone.utc).isoformat()
+        timestamp = value if value.tzinfo else value.replace(tzinfo=UTC)
+        return timestamp.astimezone(UTC).isoformat()
     if value:
         return str(value)
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _serialize_value(value: Any) -> Any:

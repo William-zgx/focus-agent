@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
 import json
-from pathlib import Path
 import re
 import sys
-from typing import Any, Iterable
-
+from collections.abc import Iterable
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 API_SNAPSHOT_PATH = REPO_ROOT / "tests" / "contracts" / "api_routes.json"

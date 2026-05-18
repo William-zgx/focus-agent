@@ -2,8 +2,8 @@ import logging
 
 from langchain.messages import AIMessage, HumanMessage
 
-from focus_agent.services.branches import BranchService
 from focus_agent.core.branching import BranchRole
+from focus_agent.services.branches import BranchService
 
 
 def test_initial_branch_name_defaults_to_new_branch_without_model_invoke():

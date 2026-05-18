@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
 import logging
-from typing import Any, Awaitable, Callable, Literal, Protocol
 import uuid
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,7 +23,7 @@ def _completed_event() -> asyncio.Event:
     return event
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     """Lifecycle status for a harness run."""
 
     PENDING = "pending"
@@ -40,7 +40,7 @@ class RunStatus(str, Enum):
     interrupted = "interrupted"
 
 
-class DisconnectMode(str, Enum):
+class DisconnectMode(StrEnum):
     """Behavior when a stream consumer disconnects."""
 
     CANCEL = "cancel"
@@ -50,7 +50,7 @@ class DisconnectMode(str, Enum):
     ROLLBACK = "rollback"
 
 
-class MultitaskStrategy(str, Enum):
+class MultitaskStrategy(StrEnum):
     """Concurrency policy for creating runs on a thread."""
 
     REJECT = "reject"
@@ -527,7 +527,7 @@ class RunManager:
                 record.rollback_ready.wait(),
                 timeout=_ROLLBACK_READY_WAIT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Timed out waiting for run %s to reach rollback-safe finalization",
                 record.run_id,
@@ -607,7 +607,7 @@ class UnsupportedStrategyError(Exception):
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _coerce_run_status(value: RunStatus | str) -> RunStatus:

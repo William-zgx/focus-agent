@@ -15,7 +15,10 @@ from focus_agent.memory import (
     score_memory_hit,
     score_memory_importance,
 )
-from focus_agent.storage.namespaces import branch_local_memory_namespace, conversation_main_namespace
+from focus_agent.storage.namespaces import (
+    branch_local_memory_namespace,
+    conversation_main_namespace,
+)
 
 
 def test_memory_models_have_safe_defaults():

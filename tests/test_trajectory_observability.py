@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.core.state import make_agent_state_record
+from focus_agent.observability.tracing import build_trace_correlation
 from focus_agent.observability.trajectory import (
     build_turn_trajectory_record,
     extract_trajectory_steps,
     utc_now,
 )
-from focus_agent.observability.tracing import build_trace_correlation
 from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 
@@ -405,7 +405,7 @@ def test_postgres_trajectory_repository_accepts_cli_style_filters(monkeypatch):
     assert params["thread_id"] == "thread-1"
     assert params["status"] == ["failed"]
     assert params["step_tool"] == ["web_search"]
-    assert params["since"] == datetime(2026, 4, 21, 0, 0, tzinfo=timezone.utc)
+    assert params["since"] == datetime(2026, 4, 21, 0, 0, tzinfo=UTC)
     assert params["limit"] == 5
     assert params["offset"] == 2
 

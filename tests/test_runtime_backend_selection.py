@@ -18,6 +18,7 @@ from focus_agent.services.coordination import (
     PostgresBackgroundJobDeduperBackend,
     PostgresThreadTurnLockBackend,
 )
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
 
 class _FakeContextManager:
@@ -58,7 +59,7 @@ class _FakeBranchService:
 
 def _make_postgres_component(*, with_factory: bool):
     class _Component:
-        instances: list["_Component"] = []
+        instances: list[_Component] = []
 
         def __init__(self, value: str):
             self.value = value
@@ -85,6 +86,7 @@ def _install_postgres_modules(monkeypatch):
     branch_repo_cls = _make_postgres_component(with_factory=False)
     artifact_repo_cls = _make_postgres_component(with_factory=False)
     memory_repo_cls = _make_postgres_component(with_factory=False)
+    productivity_repo_cls = _make_postgres_component(with_factory=False)
     trajectory_repo_cls = _make_postgres_component(with_factory=False)
     agent_team_repo_cls = _make_postgres_component(with_factory=False)
     user_repo_cls = _make_postgres_component(with_factory=False)
@@ -100,6 +102,8 @@ def _install_postgres_modules(monkeypatch):
     artifact_module.ArtifactMetadataRepository = artifact_repo_cls
     memory_module = types.ModuleType("focus_agent.repositories.postgres_memory_repository")
     memory_module.PostgresMemoryRepository = memory_repo_cls
+    productivity_module = types.ModuleType("focus_agent.repositories.postgres_productivity_repository")
+    productivity_module.PostgresProductivityRepository = productivity_repo_cls
     trajectory_module = types.ModuleType("focus_agent.repositories.postgres_trajectory_repository")
     trajectory_module.PostgresTrajectoryRepository = trajectory_repo_cls
     agent_team_module = types.ModuleType("focus_agent.repositories.postgres_agent_team_repository")
@@ -112,6 +116,11 @@ def _install_postgres_modules(monkeypatch):
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_branch_repository", branch_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.artifact_metadata_repository", artifact_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_memory_repository", memory_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "focus_agent.repositories.postgres_productivity_repository",
+        productivity_module,
+    )
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module)
     monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_user_repository", user_module)
@@ -123,6 +132,7 @@ def _install_postgres_modules(monkeypatch):
         "branch_repo": branch_repo_cls,
         "artifact_repo": artifact_repo_cls,
         "memory_repo": memory_repo_cls,
+        "productivity_repo": productivity_repo_cls,
         "trajectory_repo": trajectory_repo_cls,
         "agent_team_repo": agent_team_repo_cls,
         "user_repo": user_repo_cls,
@@ -257,24 +267,30 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         def __init__(self, path: Path):
             self.path = Path(path)
 
-    class _FakeSQLiteBranchRepository:
-        def __init__(self, path: str):
-            self.path = path
+    class _FakeInMemoryBranchRepository:
+        instances: list[_FakeInMemoryBranchRepository] = []
 
-    class _FakeSQLiteAgentTeamRepository:
-        def __init__(self, path: str):
-            self.path = path
+        def __init__(self):
+            self.__class__.instances.append(self)
 
-    class _FakeSQLiteUserRepository:
-        def __init__(self, path: str):
-            self.path = path
+    class _FakeInMemoryAgentTeamRepository:
+        instances: list[_FakeInMemoryAgentTeamRepository] = []
+
+        def __init__(self):
+            self.__class__.instances.append(self)
+
+    class _FakeInMemoryUserRepository:
+        instances: list[_FakeInMemoryUserRepository] = []
+
+        def __init__(self):
+            self.__class__.instances.append(self)
 
     fakes = _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
-    monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
-    monkeypatch.setattr(runtime_mod, "SQLiteAgentTeamRepository", _FakeSQLiteAgentTeamRepository)
-    monkeypatch.setattr(runtime_mod, "SQLiteUserRepository", _FakeSQLiteUserRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
     caplog.set_level(logging.INFO, logger="focus_agent.runtime")
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
@@ -285,13 +301,14 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert runtime.event_store is fakes["local_run_journal"].instances[0]
         assert runtime.event_store.value == tmp_path / "harness_runs.sqlite3"
         assert runtime.event_store.setup_calls == 1
-        assert runtime.repo.path == str(tmp_path / "branches.sqlite3")
-        assert runtime.user_repository.path == str(tmp_path / "branches.sqlite3")
-        assert runtime.agent_team_service.repository.path == str(tmp_path / "branches.sqlite3")
-        assert runtime.user_service.repository.path == str(tmp_path / "branches.sqlite3")
+        assert isinstance(runtime.repo, _FakeInMemoryBranchRepository)
+        assert isinstance(runtime.user_repository, _FakeInMemoryUserRepository)
+        assert isinstance(runtime.user_service.repository, _FakeInMemoryUserRepository)
+        assert isinstance(runtime.agent_team_service.repository, _FakeInMemoryAgentTeamRepository)
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
         assert runtime.memory_repository is None
+        assert runtime.postgres_connection_provider is None
         assert isinstance(runtime.coordination_backend.thread_turns, InMemoryThreadTurnLockBackend)
         assert isinstance(runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend)
         assert captured["store"] is runtime.store
@@ -434,17 +451,23 @@ def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch,
         def __init__(self, path: Path):
             self.path = Path(path)
 
-    class _FakeSQLiteBranchRepository:
-        def __init__(self, path: str):
-            self.path = path
+    class _FakeInMemoryBranchRepository:
+        instances: list[_FakeInMemoryBranchRepository] = []
 
-    class _FakeSQLiteAgentTeamRepository:
-        def __init__(self, path: str):
-            self.path = path
+        def __init__(self):
+            self.__class__.instances.append(self)
 
-    class _FakeSQLiteUserRepository:
-        def __init__(self, path: str):
-            self.path = path
+    class _FakeInMemoryAgentTeamRepository:
+        instances: list[_FakeInMemoryAgentTeamRepository] = []
+
+        def __init__(self):
+            self.__class__.instances.append(self)
+
+    class _FakeInMemoryUserRepository:
+        instances: list[_FakeInMemoryUserRepository] = []
+
+        def __init__(self):
+            self.__class__.instances.append(self)
 
     monkeypatch.setattr(
         "focus_agent.capabilities.tool_registry.get_default_tools",
@@ -453,9 +476,9 @@ def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch,
     _patch_runtime_collaborators(monkeypatch, build_tool_registry=runtime_mod.build_tool_registry)
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
-    monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
-    monkeypatch.setattr(runtime_mod, "SQLiteAgentTeamRepository", _FakeSQLiteAgentTeamRepository)
-    monkeypatch.setattr(runtime_mod, "SQLiteUserRepository", _FakeSQLiteUserRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
     settings.tool_catalog = ToolCatalogConfig(
@@ -503,6 +526,55 @@ def test_create_runtime_uses_postgres_background_jobs_only_when_opted_in(monkeyp
         runtime.close()
 
 
+def test_create_runtime_exposes_postgres_connection_provider(monkeypatch, tmp_path):
+    def fake_build_tool_registry(
+        *,
+        settings,
+        skill_registry,
+        store=None,
+        checkpointer=None,
+        artifact_metadata_repository=None,
+    ):
+        return {"artifact_metadata_repository": artifact_metadata_repository}
+
+    _install_postgres_modules(monkeypatch)
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+
+    settings = _make_settings(
+        tmp_path,
+        database_uri="postgresql://focus-agent.test/runtime",
+        trajectory_enabled=False,
+    )
+    settings.postgres_pool_enabled = False
+    settings.postgres_slow_query_threshold_ms = 125.0
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        provider = runtime.postgres_connection_provider
+        assert provider is not None
+        snapshot = provider.snapshot()
+        assert snapshot["postgres_pool_enabled"] == 0
+        assert snapshot["postgres_pool_fallback_direct"] == 1
+        assert snapshot["postgres_slow_query_threshold_ms"] == 125.0
+    finally:
+        runtime.close()
+
+
+def test_postgres_connection_provider_records_slow_query_metrics(caplog):
+    provider = PostgresConnectionProvider(
+        "postgresql://focus-agent.test/runtime",
+        pool_enabled=False,
+        slow_query_threshold_ms=10.0,
+    )
+    caplog.set_level(logging.WARNING, logger="focus_agent.postgres")
+
+    provider._record_query(duration_ms=12.5, statement="SELECT pg_sleep(1)", error=None)
+    snapshot = provider.snapshot()
+
+    assert snapshot["postgres_query_total"] == 1
+    assert snapshot["postgres_slow_query_total"] == 1
+    assert "slow Postgres query observed" in caplog.text
+
+
 def test_create_runtime_rejects_durable_background_execution_without_postgres(monkeypatch, tmp_path):
     settings = _make_settings(
         tmp_path,
@@ -527,24 +599,30 @@ def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):
         def __init__(self, path: Path):
             self.path = Path(path)
 
-    class _FakeSQLiteBranchRepository:
-        def __init__(self, path: str):
-            self.path = path
+    class _FakeInMemoryBranchRepository:
+        instances: list[_FakeInMemoryBranchRepository] = []
 
-    class _FakeSQLiteAgentTeamRepository:
-        def __init__(self, path: str):
-            self.path = path
+        def __init__(self):
+            self.__class__.instances.append(self)
 
-    class _FakeSQLiteUserRepository:
-        def __init__(self, path: str):
-            self.path = path
+    class _FakeInMemoryAgentTeamRepository:
+        instances: list[_FakeInMemoryAgentTeamRepository] = []
+
+        def __init__(self):
+            self.__class__.instances.append(self)
+
+    class _FakeInMemoryUserRepository:
+        instances: list[_FakeInMemoryUserRepository] = []
+
+        def __init__(self):
+            self.__class__.instances.append(self)
 
     _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
-    monkeypatch.setattr(runtime_mod, "SQLiteBranchRepository", _FakeSQLiteBranchRepository)
-    monkeypatch.setattr(runtime_mod, "SQLiteAgentTeamRepository", _FakeSQLiteAgentTeamRepository)
-    monkeypatch.setattr(runtime_mod, "SQLiteUserRepository", _FakeSQLiteUserRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository)
+    monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     branch_db_path = tmp_path / "runtime" / "db" / "branches.sqlite3"
     artifact_dir = tmp_path / "runtime" / "artifacts"

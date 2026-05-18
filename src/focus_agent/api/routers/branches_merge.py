@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from focus_agent.core.branching import MergeDecision
+from focus_agent.core.branching import MergeDecision, MergeMode, MergeTarget
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
@@ -165,7 +165,14 @@ def submit_merge_decision(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return ApplyMergeDecisionResponse(imported=imported)
+    target_thread_id = None
+    if imported is not None and decision.approved and decision.mode != MergeMode.NONE:
+        target_thread_id = (
+            record.root_thread_id
+            if decision.target == MergeTarget.ROOT_THREAD
+            else record.return_thread_id
+        )
+    return ApplyMergeDecisionResponse(imported=imported, target_thread_id=target_thread_id)
 
 @router.get('/v1/branches/tree/{root_thread_id:path}', response_model=BranchTreeResponse)
 def get_branch_tree_view(

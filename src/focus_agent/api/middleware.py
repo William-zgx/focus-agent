@@ -17,7 +17,6 @@ from focus_agent.core.repo_call import has_repo_method
 from focus_agent.security.tokens import AuthError, decode_access_token
 from focus_agent.services.coordination import InMemoryRateLimitBackend, RateLimitBackend
 
-
 REQUEST_ID_HEADER = "X-Request-ID"
 RATE_LIMITED_PATH_PREFIXES = ("/v2/threads",)
 logger = logging.getLogger("focus_agent.api")

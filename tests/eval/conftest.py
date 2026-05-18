@@ -6,14 +6,15 @@ without external LLM providers or network access.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 from langchain.messages import AIMessage
+from langchain.tools import tool as langchain_tool
 
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
-from langchain.tools import tool as langchain_tool
 
 from .runner.harness import EvalRuntime
 

@@ -1,19 +1,19 @@
-from io import BytesIO
 import json
 import subprocess
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from urllib.error import HTTPError
 
+import pytest
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
-import pytest
 
 from focus_agent.capabilities.default_tools import get_default_tools
-from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
+from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
 from focus_agent.config import (
     GitLogToolConfig,
     ListFilesToolConfig,
@@ -27,6 +27,7 @@ from focus_agent.config import (
 from focus_agent.core.types import ContextBudget
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from focus_agent.memory import MemoryAuditEvent, MemoryRecord, MemorySearchHit, MemoryStatus
+from focus_agent.repositories.productivity_repository import InMemoryProductivityRepository
 
 
 class _FakeHeaders(dict):
@@ -124,8 +125,8 @@ class _FakeArtifactMetadataRepository:
             path=str(path),
             title=title,
             size_bytes=stat.st_size,
-            created_at=previous.created_at if previous is not None else datetime.now(timezone.utc),
-            updated_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+            created_at=previous.created_at if previous is not None else datetime.now(UTC),
+            updated_at=datetime.fromtimestamp(stat.st_mtime, UTC),
         )
         self.records_by_id[artifact_id] = record
         self.upsert_calls.append(
@@ -272,12 +273,15 @@ def _tool_map(
     artifact_metadata_repository=None,
     memory_repository=None,
     memory_embedding_service=None,
+    productivity_repository=None,
 ) -> dict[str, object]:
     kwargs = {"artifact_metadata_repository": artifact_metadata_repository}
     if memory_repository is not None:
         kwargs["memory_repository"] = memory_repository
     if memory_embedding_service is not None:
         kwargs["memory_embedding_service"] = memory_embedding_service
+    if productivity_repository is not None:
+        kwargs["productivity_repository"] = productivity_repository
     return {tool.name: tool for tool in get_default_tools(settings, **kwargs)}
 
 
@@ -1105,6 +1109,81 @@ def test_memory_tools_use_repository_when_provided():
     ]
 
 
+def test_productivity_tools_use_current_user_context():
+    repo = InMemoryProductivityRepository()
+    tools = _tool_map(Settings(), productivity_repository=repo)
+    config = {"configurable": {"thread_id": "thread-1", "user_id": "researcher-1"}}
+
+    note = json.loads(
+        tools["notes_create"].invoke(
+            {
+                "title": "Capture idea",
+                "body": "Make notes first-class.",
+                "source_kind": "chat_answer",
+                "source_id": "turn-1",
+                "source_url": "/app/chat/thread-1",
+                "pinned_context": {"thread_id": "thread-1"},
+                "captured_from": "chat",
+            },
+            config=config,
+        )
+    )["note"]
+    task = json.loads(
+        tools["tasks_create"].invoke(
+            {
+                "title": "Follow up",
+                "description": "Turn note into task.",
+                "source_note_id": note["note_id"],
+                "source_kind": "agent_team_review",
+                "source_id": "review-1",
+                "source_url": "/app/agent-team/session-1",
+                "captured_from": "agent_team",
+            },
+            config=config,
+        )
+    )["task"]
+    captured = json.loads(
+        tools["productivity_capture"].invoke(
+            {
+                "capture_type": "task",
+                "source_kind": "chat_answer",
+                "title": "Ship capture tool",
+                "content": "Expose explicit productivity capture.",
+                "payload_json": '{"id":"turn-2","thread_id":"thread-1"}',
+                "captured_from": "chat",
+            },
+            config=config,
+        )
+    )["task"]
+    notes = json.loads(tools["notes_search"].invoke({"query": "first-class"}, config=config))
+    tasks = json.loads(tools["tasks_list"].invoke({}, config=config))
+    updated = json.loads(
+        tools["tasks_update"].invoke(
+            {"task_id": task["task_id"], "status": "completed"},
+            config=config,
+        )
+    )["task"]
+
+    assert note["user_id"] == "researcher-1"
+    assert note["source_thread_id"] == "thread-1"
+    assert note["source_kind"] == "chat_answer"
+    assert note["source_id"] == "turn-1"
+    assert note["source_url"] == "/app/chat/thread-1"
+    assert note["pinned_context"] == {"thread_id": "thread-1"}
+    assert note["captured_from"] == "chat"
+    assert task["source_note_id"] == note["note_id"]
+    assert task["source_kind"] == "agent_team_review"
+    assert task["source_id"] == "review-1"
+    assert task["captured_from"] == "agent_team"
+    assert captured["title"] == "Ship capture tool"
+    assert captured["source_kind"] == "chat_answer"
+    assert captured["source_id"] == "turn-2"
+    assert captured["source_thread_id"] == "thread-1"
+    assert notes["count"] == 1
+    assert tasks["count"] == 2
+    assert updated["status"] == "completed"
+
+
 def test_conversation_summary_reads_latest_checkpoint(tmp_path):
     checkpointer = PersistentInMemorySaver(tmp_path / "checkpoints.pkl")
     builder = StateGraph(dict)
@@ -1173,8 +1252,13 @@ def test_list_files_and_codebase_stats_filter_common_dependency_dirs(tmp_path):
     (project / "src").mkdir()
     (project / "node_modules").mkdir()
     (project / ".git").mkdir()
+    (project / ".claude" / "worktrees" / "stale-copy").mkdir(parents=True)
     (project / "src" / "main.py").write_text("print('ok')\n", encoding="utf-8")
     (project / "node_modules" / "leftpad.js").write_text("module.exports = 1;\n", encoding="utf-8")
+    (project / ".claude" / "worktrees" / "stale-copy" / "main.py").write_text(
+        "print('stale')\n",
+        encoding="utf-8",
+    )
     tools = _tool_map(Settings(workspace_root=str(project)))
 
     list_payload = json.loads(tools["list_files"].invoke({"path": ".", "pattern": "**/*"}))
@@ -1264,9 +1348,14 @@ def test_search_code_skips_local_focus_agent_runtime_dir(tmp_path):
     project.mkdir()
     (project / "src").mkdir()
     (project / ".focus_agent" / "postgres" / "run").mkdir(parents=True)
+    (project / ".claude" / "worktrees" / "stale-copy" / "src").mkdir(parents=True)
     (project / "src" / "state.py").write_text("selected_model: str\n", encoding="utf-8")
     (project / ".focus_agent" / "postgres" / "run" / "noise.py").write_text(
         "selected_model = 'runtime'\n",
+        encoding="utf-8",
+    )
+    (project / ".claude" / "worktrees" / "stale-copy" / "src" / "state.py").write_text(
+        "selected_model = 'stale-worktree'\n",
         encoding="utf-8",
     )
     tools = _tool_map(Settings(workspace_root=str(project)))
@@ -1274,6 +1363,37 @@ def test_search_code_skips_local_focus_agent_runtime_dir(tmp_path):
     payload = json.loads(tools["search_code"].invoke({"query": "selected_model", "literal": True}))
 
     assert [item["path"] for item in payload["results"]] == ["src/state.py"]
+
+
+def test_search_code_includes_context_for_block_start_matches(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    sample = project / "settings.py"
+    sample.write_text(
+        "\n".join(
+            [
+                "TOOL_MANIFEST = {",
+                '    "skill_install": {',
+                '        "allowed_roles": ("skill_scout",),',
+                '        "requires_workspace_write": True,',
+                "    },",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    payload = json.loads(
+        tools["search_code"].invoke(
+            {"query": "skill_install", "path": "settings.py", "literal": True}
+        )
+    )
+
+    result = payload["results"][0]
+    assert result["line_number"] == 2
+    assert '"allowed_roles": ("skill_scout",),' in result["context"]
+    assert '"requires_workspace_write": True,' in result["context"]
 
 
 def test_search_code_glob_matches_root_level_files_with_double_star(tmp_path):

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from types import SimpleNamespace
+
+import pytest
 
 from focus_agent.agent_roles import AgentRole
 from focus_agent.config import Settings
@@ -15,6 +19,7 @@ from focus_agent.core.agent_team import (
 from focus_agent.core.branching import BranchRole
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
+from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
 
 
 class FakeBranchService:
@@ -26,6 +31,17 @@ class FakeBranchService:
         return SimpleNamespace(branch_id="branch-1", child_thread_id="child-1")
 
 
+def _git(cwd, *args: str) -> None:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_agent_team_service_creates_standalone_session_without_root_thread() -> None:
     service = AgentTeamService(branch_service=None)
 
@@ -33,9 +49,10 @@ def test_agent_team_service_creates_standalone_session_without_root_thread() -> 
 
     assert session.root_thread_id.startswith("agent-team-standalone-")
     assert session.goal == "Run standalone mission"
-    assert service.get_session(session.session_id, user_id="user-1").root_thread_id == session.root_thread_id
-
-
+    assert (
+        service.get_session(session.session_id, user_id="user-1").root_thread_id
+        == session.root_thread_id
+    )
 
     branch_service = FakeBranchService()
     service = AgentTeamService(branch_service=branch_service)  # type: ignore[arg-type]
@@ -89,12 +106,61 @@ def test_agent_team_task_execution_links_are_optional_for_old_payloads() -> None
     assert task.delegated_task_id is None
     assert task.artifact_ids == []
     assert task.execution_status is None
+    assert task.workspace_id is None
+    assert task.workspace_branch is None
+    assert task.workspace_path is None
+    assert task.base_commit is None
+    assert task.diff_summary is None
+    assert task.test_evidence == []
+    assert task.workspace_status is None
     assert task.acceptance_criteria == []
     assert task.context_refs == []
     assert task.run_status is None
     assert task.started_at is None
     assert task.finished_at is None
     assert task.last_error is None
+
+
+def test_agent_team_workspace_service_creates_worktree_and_collects_status(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is required for worktree metadata collection")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "focus-agent@example.test")
+    _git(repo, "config", "user.name", "Focus Agent Test")
+    (repo / "README.md").write_text("hello\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "init")
+
+    service = AgentTeamService(
+        branch_service=None,
+        workspace_service=AgentTeamWorkspaceService(repo_root=repo),
+    )
+    session = service.create_session(user_id="user-1", goal="Isolated worktree")
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        title="Write metadata",
+        goal="Write metadata",
+        create_branch=False,
+    )
+
+    workspace = service.workspace_service.ensure_workspace(session=session, task=task)
+    assert workspace.workspace_path.endswith(
+        f".focus_agent/worktrees/{session.session_id}/{task.task_id}"
+    )
+    assert workspace.workspace_branch.startswith(f"codex/agent-team/{session.session_id[:12]}/")
+    assert workspace.base_commit
+
+    workspace_path = repo / ".focus_agent" / "worktrees" / session.session_id / task.task_id
+    (workspace_path / "agent-team.txt").write_text("changed\n")
+    status = service.workspace_service.collect_status(workspace.workspace_path)
+
+    assert status.workspace_status == "dirty"
+    assert status.changed_files == ["agent-team.txt"]
+    assert "agent-team.txt" in status.diff_summary
 
 
 def test_agent_team_service_lists_sessions_with_filters() -> None:
@@ -112,12 +178,11 @@ def test_agent_team_service_lists_sessions_with_filters() -> None:
         second.session_id
     ]
     assert [
-        item.session_id
-        for item in service.list_sessions(user_id="user-1", root_thread_id="root-1")
+        item.session_id for item in service.list_sessions(user_id="user-1", root_thread_id="root-1")
     ] == [first.session_id]
-    assert [item.session_id for item in service.list_sessions(user_id="user-1", status="running")] == [
-        second.session_id
-    ]
+    assert [
+        item.session_id for item in service.list_sessions(user_id="user-1", status="running")
+    ] == [second.session_id]
     assert [item.session_id for item in service.list_sessions(user_id="user-1", offset=1)] == [
         first.session_id
     ]
@@ -133,6 +198,7 @@ def test_agent_team_service_plan_session_is_idempotent_and_writes_dag_fields() -
             agent_delegation_enabled=True,
             agent_role_routing_enabled=True,
             agent_delegation_execution_mode="fake",
+            agent_team_skill_scout_enabled=False,
         ),
     )
     session = service.create_session(
@@ -158,6 +224,57 @@ def test_agent_team_service_plan_session_is_idempotent_and_writes_dag_fields() -
     assert planned[1].dependencies == [planned[0].task_id]
     assert planned[1].acceptance_criteria
     assert planned[1].context_refs == []
+
+
+def test_agent_team_service_plan_session_injects_selected_skill_context(tmp_path) -> None:
+    skill_dir = tmp_path / "agent-tools"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: agent-tools",
+                "description: Agent tool and skill discovery workflow",
+                "triggers: agent-tools:",
+                "when_to_use: The team needs to discover agent skills and common tools",
+                "recommended_tools: skills_search,skill_view,search_code",
+                "capability_requirements: skill-discovery",
+                "prompt_mode: explore",
+                "---",
+                "",
+                "# Agent Tools",
+                "",
+                "Search configured skill sources before implementation.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    service = AgentTeamService(
+        branch_service=None,
+        settings=Settings(
+            skill_directories=(str(tmp_path),),
+            skill_semantic_match_enabled=False,
+            agent_team_skill_scout_enabled=True,
+        ),
+    )
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="agent-tools: Add autonomous skill discovery to AgentTeam planning.",
+    )
+
+    planned_session, planned = service.plan_session(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+
+    assert planned_session.skill_plan["selected_skill_ids"] == ["agent-tools"]
+    assert planned
+    assert planned[0].active_skill_ids == ["agent-tools"]
+    assert "skills_search" in planned[0].scope
+    assert "skill:agent-tools" in planned[0].capability_requirements
+    assert any(ref.get("type") == "skill" for ref in planned[0].context_refs)
 
 
 def test_agent_team_service_run_ready_tasks_records_execution_evidence() -> None:
@@ -284,6 +401,45 @@ def test_agent_team_merge_bundle_includes_execution_evidence() -> None:
     ]
 
 
+def test_agent_team_merge_bundle_treats_queued_tasks_as_pending() -> None:
+    service = AgentTeamService(branch_service=None)
+    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Build MVP")
+    done_task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="backend_executor",
+        goal="Implement backend",
+        create_branch=False,
+    )
+    queued_task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role="test_engineer",
+        goal="Verify backend",
+        create_branch=False,
+    )
+    service.update_task(
+        task_id=done_task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.DONE,
+    )
+    service.update_task(
+        task_id=queued_task.task_id,
+        user_id="user-1",
+        status=AgentTeamTaskStatus.QUEUED,
+    )
+    service.record_task_output(
+        task_id=done_task.task_id,
+        user_id="user-1",
+        summary="Backend execution completed.",
+    )
+
+    bundle = service.prepare_merge_bundle(session_id=session.session_id, user_id="user-1")
+
+    assert bundle.recommended_next_action == "request_changes"
+    assert any("Pending test_engineer" in item for item in bundle.open_questions)
+
+
 def test_merge_bundle_requests_changes_when_required_task_evidence_is_missing() -> None:
     service = AgentTeamService(branch_service=None)
     session = service.create_session(user_id="user-1", goal="Deliver evidence-gated output")
@@ -313,10 +469,10 @@ def test_merge_bundle_requests_changes_when_required_task_evidence_is_missing() 
     assert any("benchmark table" in item for item in bundle.risk_items)
     assert any("Missing required evidence" in item for item in bundle.final_answer_warnings)
 
-
-
     service = AgentTeamService(branch_service=None)
-    session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Verify mission")
+    session = service.create_session(
+        root_thread_id="root-1", user_id="user-1", goal="Verify mission"
+    )
     task = service.create_task(
         session_id=session.session_id,
         user_id="user-1",
@@ -346,7 +502,6 @@ def test_merge_bundle_requests_changes_when_required_task_evidence_is_missing() 
 
     assert second_bundle.open_questions == []
     assert not any("Pending test_engineer:" in item for item in second_bundle.risk_items)
-
 
     service = AgentTeamService(branch_service=None)
     session = service.create_session(
@@ -438,8 +593,7 @@ def test_agent_team_merge_bundle_without_executor_output_blocks_final_answer() -
     assert bundle.final_answer_status == "blocked"
     assert "缺少执行/撰写任务产出" in (bundle.final_answer or "")
     assert any(
-        "Missing executor or writer output" in warning
-        for warning in bundle.final_answer_warnings
+        "Missing executor or writer output" in warning for warning in bundle.final_answer_warnings
     )
 
 

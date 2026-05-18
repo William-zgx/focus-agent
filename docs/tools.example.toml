@@ -121,6 +121,28 @@ enabled = true
 label = "Skill View"
 description = "Load the full instructions for a named skill."
 
+[skill_sources]
+enabled = true
+label = "Skill Sources"
+description = "List configured skill sources and trust metadata."
+
+[skills_search]
+enabled = true
+label = "Skills Search"
+description = "Search installed and configured skill sources for relevant capabilities."
+default_limit = 5
+max_limit_cap = 20
+
+[skill_install]
+enabled = true
+label = "Skill Install"
+description = "Install a trusted local skill, or return a review-required result for external sources."
+
+[skills_refresh_index]
+enabled = true
+label = "Skills Refresh Index"
+description = "Refresh the runtime skill index after project or source changes."
+
 # Optional controlled provider registry entries. Provider ids here can only
 # configure builtin, skill, or provider factories registered by application code.
 [[providers]]

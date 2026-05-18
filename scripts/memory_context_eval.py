@@ -4,26 +4,50 @@
 from __future__ import annotations
 
 import argparse
-import ast
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-import hashlib
 import json
-from pathlib import Path
-import re
 import sys
-from typing import Any, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
+from scripts.memory_context_helpers import (
+    _candidate_age_summary,
+    _candidate_aging,
+    _coerce_datetime,
+    _contains,
+    _dedupe_strings,
+    _duplicate_reason,
+    _empty_redaction_summary,
+    _first_mapping,
+    _first_text,
+    _isoformat_z,
+    _load_json_or_jsonl,
+    _merge_redaction_summaries,
+    _nested_text,
+    _normalize_text,
+    _promotion_sla_summary,
+    _redaction_summary_payload,
+    _sanitize_json,
+    _sanitize_json_with_summary,
+    _slug,
+    _stable_hash,
+    _strings,
+    _with_privacy_summary,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_quality.jsonl"
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
 DEFAULT_TREND_REPORT_JSON = Path("reports/release-gate/memory-context-trend.json")
+DEFAULT_CANDIDATE_JSONL = Path("reports/nightly/memory-context-candidates.jsonl")
+DEFAULT_REVIEWED_JSONL = Path("reports/nightly/memory-context-reviewed.jsonl")
+DEFAULT_PROMOTED_JSONL = Path("reports/nightly/memory-context-promoted.jsonl")
 DEFAULT_CANDIDATE_ID_PREFIX = "mc_candidate"
 DEFAULT_PROMOTION_REVIEW_SLA_DAYS = 7
 _PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok"}
 _SOURCE_TYPES = {"auto", "trajectory", "replay", "memory-context"}
-_REDACTION_TYPES = ("email", "bearer_token", "jwt", "token_literal", "secret", "phone")
 _CANDIDATE_TIME_KEYS = (
     "candidate_created_at",
     "created_at",
@@ -34,18 +58,6 @@ _CANDIDATE_TIME_KEYS = (
     "started_at",
     "completed_at",
 )
-
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_BEARER_TOKEN_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{10,}")
-_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
-_TOKEN_LITERAL_RE = re.compile(
-    r"\b(?:sk|pk|rk|ghp|gho|github_pat|xoxb|xoxp|ya29|pat|tok)[-_A-Za-z0-9.]{10,}\b"
-)
-_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(?P<key>api[_-]?key|secret|access[_-]?token|refresh[_-]?token|token|"
-    r"password|passwd|pwd)(?P<sep>\s*[:=]\s*)(?P<quote>[\"']?)(?P<value>[^\s\"',;)}\]]+)"
-)
-_PHONE_CANDIDATE_RE = re.compile(r"(?<![\w/])(?:\+?\d[\d .()/-]{8,}\d)(?![\w/])")
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +174,7 @@ class TrendStageSummary:
     failed: int
     task_success: float
     pollution_rate: float
+    context_compaction_drift_report: dict[str, Any]
     context_compaction_semantic_quality: float
     context_compaction_semantic_drift: float
     failed_case_ids: list[str]
@@ -177,6 +190,7 @@ class TrendStageSummary:
             "failed": self.failed,
             "task_success": self.task_success,
             "pollution_rate": self.pollution_rate,
+            "context_compaction_drift_report": dict(self.context_compaction_drift_report),
             "context_compaction_semantic_quality": self.context_compaction_semantic_quality,
             "context_compaction_semantic_drift": self.context_compaction_semantic_drift,
             "failed_case_ids": list(self.failed_case_ids),
@@ -477,15 +491,23 @@ def evaluate_case(case: dict[str, Any]) -> ProbeResult:
         semantic_quality = (
             recall + semantic_precision + context_grounding + semantic_answerability
         ) / 4
+        semantic_drift = 1.0 - semantic_quality
         metrics.update(
             {
                 "context_compaction_semantic_recall": round(recall, 4),
                 "context_compaction_semantic_precision": round(semantic_precision, 4),
                 "context_compaction_semantic_grounding": round(context_grounding, 4),
+                "context_compaction_semantic_answerability": round(semantic_answerability, 4),
                 "context_compaction_semantic_quality": round(semantic_quality, 4),
-                "context_compaction_semantic_drift": 1.0
-                if missing_facts or missing_context or polluted or stale_context
-                else 0.0,
+                "context_compaction_semantic_drift": round(semantic_drift, 4),
+                "context_compaction_drift_report": {
+                    "recall": round(recall, 4),
+                    "precision": round(semantic_precision, 4),
+                    "grounding": round(context_grounding, 4),
+                    "answerability": round(semantic_answerability, 4),
+                    "overall_drift": round(semantic_drift, 4),
+                    "drift_risk": _drift_risk(semantic_drift),
+                },
             }
         )
     return ProbeResult(
@@ -512,6 +534,7 @@ def build_summary(results: Sequence[ProbeResult]) -> dict[str, Any]:
         "context_compaction_semantic_recall",
         "context_compaction_semantic_precision",
         "context_compaction_semantic_grounding",
+        "context_compaction_semantic_answerability",
         "context_compaction_semantic_quality",
         "context_compaction_semantic_drift",
     )
@@ -534,6 +557,7 @@ def build_summary(results: Sequence[ProbeResult]) -> dict[str, Any]:
         "task_success": round(passed / total, 4) if total else 0.0,
         **averages,
         "per_tag_success": per_tag_success,
+        "context_compaction_drift_report": _aggregate_compaction_drift_reports(results),
         "failed_case_ids": [result.case_id for result in results if not result.passed],
     }
 
@@ -566,6 +590,7 @@ def build_memory_regression_trend_report(
                 "total": stage.total,
                 "task_success": stage.task_success,
                 "pollution_rate": stage.pollution_rate,
+                "context_compaction_drift_report": dict(stage.context_compaction_drift_report),
                 "context_compaction_semantic_quality": stage.context_compaction_semantic_quality,
                 "context_compaction_semantic_drift": stage.context_compaction_semantic_drift,
             }
@@ -605,6 +630,15 @@ def write_trend_report(
     )
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target
+
+
+def existing_default_pipeline_jsonl() -> dict[str, list[Path]]:
+    """Return default nightly candidate pipeline JSONL artifacts that exist."""
+    return {
+        "candidate": _existing_paths(DEFAULT_CANDIDATE_JSONL),
+        "reviewed": _existing_paths(DEFAULT_REVIEWED_JSONL),
+        "promoted": _existing_paths(DEFAULT_PROMOTED_JSONL),
+    }
 
 
 def write_report(path: str | Path, *, dataset: Path, results: Sequence[ProbeResult]) -> Path:
@@ -669,7 +703,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--candidate-dataset-out",
         "--candidate-out",
         dest="candidate_dataset_out",
-        help="Write imported candidate cases to this JSONL path. This never updates the golden dataset.",
+        help=(
+            "Write imported candidate cases to this JSONL path. Defaults to "
+            f"{DEFAULT_CANDIDATE_JSONL}. This never updates the golden dataset."
+        ),
     )
     parser.add_argument(
         "--candidate-id-prefix",
@@ -691,11 +728,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--candidate-reviewed-out",
-        help="Write reviewed candidate JSONL with explicit approval status metadata.",
+        help=(
+            "Write reviewed candidate JSONL with explicit approval status metadata. "
+            f"Defaults to {DEFAULT_REVIEWED_JSONL}."
+        ),
     )
     parser.add_argument(
         "--candidate-promoted-out",
-        help="Write approved candidate cases to this JSONL path. Never updates the golden dataset.",
+        help=(
+            "Write approved candidate cases to this JSONL path. Defaults to "
+            f"{DEFAULT_PROMOTED_JSONL}; without explicit approvals this is an empty JSONL. "
+            "Never updates the golden dataset."
+        ),
     )
     parser.add_argument(
         "--candidate-approve-id",
@@ -771,11 +815,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             or args.trend_promoted_jsonl
             or args.trend_golden_jsonl
         ):
+            default_pipeline = existing_default_pipeline_jsonl()
             target = write_trend_report(
                 args.trend_report_json or DEFAULT_TREND_REPORT_JSON,
-                candidate_jsonl=args.trend_candidate_jsonl,
-                reviewed_jsonl=args.trend_reviewed_jsonl,
-                promoted_jsonl=args.trend_promoted_jsonl,
+                candidate_jsonl=args.trend_candidate_jsonl or default_pipeline["candidate"],
+                reviewed_jsonl=args.trend_reviewed_jsonl or default_pipeline["reviewed"],
+                promoted_jsonl=args.trend_promoted_jsonl or default_pipeline["promoted"],
                 golden_jsonl=args.trend_golden_jsonl or (args.dataset,),
             )
             payload = json.loads(Path(target).read_text(encoding="utf-8"))
@@ -792,18 +837,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0 if payload["status"] == "ok" else 1
         if args.candidate_review_jsonl:
-            if not args.candidate_reviewed_out and not args.candidate_promoted_out:
-                raise ValueError(
-                    "--candidate-reviewed-out or --candidate-promoted-out is required "
-                    "when --candidate-review-jsonl is used"
-                )
-            if args.candidate_promoted_out and not (
-                args.candidate_approve_all or args.candidate_approve_id
-            ):
-                raise ValueError(
-                    "--candidate-promoted-out requires --candidate-approve-id "
-                    "or --candidate-approve-all"
-                )
             result = review_candidate_cases(
                 args.candidate_review_jsonl,
                 approved_ids=args.candidate_approve_id,
@@ -813,19 +846,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 note=args.candidate_review_note,
                 promotion_review_sla_days=args.candidate_review_sla_days,
             )
-            reviewed_target = None
-            promoted_target = None
-            if args.candidate_reviewed_out:
-                _reject_golden_dataset_output(args.candidate_reviewed_out, golden_dataset=args.dataset)
-                reviewed_target = write_cases_jsonl(args.candidate_reviewed_out, result.reviewed_cases)
-            if args.candidate_promoted_out:
-                _reject_golden_dataset_output(args.candidate_promoted_out, golden_dataset=args.dataset)
-                promoted_target = write_cases_jsonl(args.candidate_promoted_out, result.promoted_cases)
+            reviewed_out = args.candidate_reviewed_out or DEFAULT_REVIEWED_JSONL
+            promoted_out = args.candidate_promoted_out or DEFAULT_PROMOTED_JSONL
+            _reject_golden_dataset_output(reviewed_out, golden_dataset=args.dataset)
+            _reject_golden_dataset_output(promoted_out, golden_dataset=args.dataset)
+            reviewed_target = write_cases_jsonl(reviewed_out, result.reviewed_cases)
+            promoted_target = write_cases_jsonl(promoted_out, result.promoted_cases)
             print(
                 json.dumps(
                     result.to_dict(
-                        reviewed_dataset=str(reviewed_target) if reviewed_target else None,
-                        promoted_dataset=str(promoted_target) if promoted_target else None,
+                        reviewed_dataset=str(reviewed_target),
+                        promoted_dataset=str(promoted_target),
                     ),
                     ensure_ascii=False,
                     indent=2,
@@ -833,10 +864,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         if args.candidate_source_json:
-            if not args.candidate_dataset_out:
-                raise ValueError(
-                    "--candidate-dataset-out is required when --candidate-source-json is used"
-                )
             result = import_candidate_cases(
                 args.candidate_source_json,
                 source_type=args.candidate_source_type,
@@ -844,8 +871,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 baseline_label=args.candidate_baseline_label,
                 promotion_review_sla_days=args.candidate_review_sla_days,
             )
-            _reject_golden_dataset_output(args.candidate_dataset_out, golden_dataset=args.dataset)
-            target = write_cases_jsonl(args.candidate_dataset_out, result.cases)
+            candidate_out = args.candidate_dataset_out or DEFAULT_CANDIDATE_JSONL
+            _reject_golden_dataset_output(candidate_out, golden_dataset=args.dataset)
+            target = write_cases_jsonl(candidate_out, result.cases)
             print(json.dumps(result.to_dict(dataset=str(target)), ensure_ascii=False, indent=2))
             return 0
         if args.convert_failures_json:
@@ -864,38 +892,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0 if result["status"] == "passed" else 1
 
 
-def _strings(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value] if value else []
-    if isinstance(value, (list, tuple, set)):
-        return [str(item) for item in value if str(item)]
-    return [str(value)] if str(value) else []
-
-
-def _load_json_or_jsonl(path: Path) -> Any:
-    source = path.expanduser()
-    text = source.read_text(encoding="utf-8")
-    stripped = text.strip()
-    if not stripped:
-        return []
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        records: list[Any] = []
-        for line_no, line in enumerate(text.splitlines(), start=1):
-            candidate = line.strip()
-            if not candidate or candidate.startswith("#"):
-                continue
-            try:
-                records.append(json.loads(candidate))
-            except json.JSONDecodeError:
-                try:
-                    records.append(ast.literal_eval(candidate))
-                except (SyntaxError, ValueError) as exc:
-                    raise ValueError(f"{source}:{line_no} invalid JSON/JSONL: {exc}") from exc
-        return records
+def _existing_paths(*paths: str | Path) -> list[Path]:
+    existing: list[Path] = []
+    for path in paths:
+        target = Path(path).expanduser()
+        if not target.is_absolute():
+            target = REPO_ROOT / target
+        if target.exists():
+            existing.append(target)
+    return existing
 
 
 def _resolve_candidate_source_type(payload: Any, *, source_type: str) -> str:
@@ -1107,36 +1112,6 @@ def _candidate_source_observed_at(
         return now
 
 
-def _candidate_aging(
-    candidate_created_at: datetime,
-    *,
-    now: datetime,
-    promotion_review_sla_days: int,
-) -> dict[str, Any]:
-    age_days = max(0.0, (now - candidate_created_at).total_seconds() / 86400)
-    sla_days = max(0, int(promotion_review_sla_days))
-    due_at = candidate_created_at + timedelta(days=sla_days)
-    overdue = now > due_at
-    if overdue:
-        age_bucket = "over_sla"
-    elif age_days >= max(1, sla_days * 0.75):
-        age_bucket = "aging"
-    else:
-        age_bucket = "fresh"
-    return {
-        "age_days": round(age_days, 4),
-        "age_bucket": age_bucket,
-        "promotion_review_sla": {
-            "sla_days": sla_days,
-            "candidate_created_at": _isoformat_z(candidate_created_at),
-            "review_due_at": _isoformat_z(due_at),
-            "age_days": round(age_days, 4),
-            "overdue": overdue,
-            "status": "overdue" if overdue else "within_sla",
-        },
-    }
-
-
 def _candidate_dedupe_key(case: dict[str, Any]) -> str:
     return _stable_hash({"input": case.get("input"), "expected": case.get("expected")})
 
@@ -1216,145 +1191,6 @@ def _reject_golden_dataset_output(
         golden.resolve(strict=False),
     }:
         raise ValueError(f"{operation} must not target the golden memory/context dataset")
-
-
-def _sanitize_json(value: Any) -> Any:
-    sanitized, _summary = _sanitize_json_with_summary(value)
-    return sanitized
-
-
-def _sanitize_json_with_summary(value: Any) -> tuple[Any, dict[str, int]]:
-    if isinstance(value, dict):
-        sanitized: dict[str, Any] = {}
-        summary = _empty_redaction_summary()
-        for key, item in value.items():
-            redacted_item, item_summary = _sanitize_json_with_summary(item)
-            sanitized[str(key)] = redacted_item
-            summary = _merge_redaction_summaries(summary, item_summary)
-        return sanitized, summary
-    if isinstance(value, list):
-        sanitized_items: list[Any] = []
-        summary = _empty_redaction_summary()
-        for item in value:
-            redacted_item, item_summary = _sanitize_json_with_summary(item)
-            sanitized_items.append(redacted_item)
-            summary = _merge_redaction_summaries(summary, item_summary)
-        return sanitized_items, summary
-    if isinstance(value, str):
-        return _sanitize_text_with_summary(value)
-    return value, _empty_redaction_summary()
-
-
-def _sanitize_text(value: str) -> str:
-    sanitized, _summary = _sanitize_text_with_summary(value)
-    return sanitized
-
-
-def _sanitize_text_with_summary(value: str) -> tuple[str, dict[str, int]]:
-    summary = _empty_redaction_summary()
-    sanitized, count = _BEARER_TOKEN_RE.subn("Bearer [REDACTED_TOKEN]", value)
-    summary["bearer_token"] += count
-    sanitized, count = _JWT_RE.subn("[REDACTED_TOKEN]", sanitized)
-    summary["jwt"] += count
-    sanitized, count = _SECRET_ASSIGNMENT_RE.subn(_redact_secret_assignment, sanitized)
-    summary["secret"] += count
-    sanitized, count = _TOKEN_LITERAL_RE.subn("[REDACTED_TOKEN]", sanitized)
-    summary["token_literal"] += count
-    sanitized, count = _EMAIL_RE.subn("[REDACTED_EMAIL]", sanitized)
-    summary["email"] += count
-    phone_count = 0
-
-    def redact_phone(match: re.Match[str]) -> str:
-        nonlocal phone_count
-        redacted = _redact_phone_like(match)
-        if redacted == "[REDACTED_PHONE]":
-            phone_count += 1
-        return redacted
-
-    sanitized = _PHONE_CANDIDATE_RE.sub(redact_phone, sanitized)
-    summary["phone"] += phone_count
-    return sanitized, summary
-
-
-def _empty_redaction_summary() -> dict[str, int]:
-    return {name: 0 for name in _REDACTION_TYPES}
-
-
-def _merge_redaction_summaries(
-    left: dict[str, int],
-    right: dict[str, int],
-) -> dict[str, int]:
-    return {name: int(left.get(name, 0)) + int(right.get(name, 0)) for name in _REDACTION_TYPES}
-
-
-def _redaction_summary_payload(summary: dict[str, int]) -> dict[str, int]:
-    payload = {name: int(summary.get(name, 0)) for name in _REDACTION_TYPES}
-    payload["total"] = sum(payload.values())
-    return payload
-
-
-def _with_privacy_summary(case: Any, redactions: dict[str, int]) -> Any:
-    if not isinstance(case, dict):
-        return case
-    updated = dict(case)
-    existing = updated.get("privacy") if isinstance(updated.get("privacy"), dict) else {}
-    payload = _redaction_summary_payload(redactions)
-    updated["privacy"] = {
-        **existing,
-        "redacted": payload["total"] > 0,
-        "redaction_summary": payload,
-    }
-    return updated
-
-
-def _duplicate_reason(
-    case: dict[str, Any],
-    *,
-    duplicate_of: str,
-    dedupe_key: str,
-    operation: str,
-) -> dict[str, Any]:
-    origin = case.get("origin") if isinstance(case.get("origin"), dict) else {}
-    return {
-        "operation": operation,
-        "candidate_id": str(case.get("id") or ""),
-        "duplicate_of": duplicate_of,
-        "reason": "same sanitized input and expected assertions",
-        "dedupe_key": dedupe_key[:12],
-        "source_type": str(origin.get("source_type") or ""),
-        "source_name": str(origin.get("source_name") or ""),
-        "source_record_id": str(origin.get("source_record_id") or ""),
-    }
-
-
-def _redact_secret_assignment(match: re.Match[str]) -> str:
-    quote = match.group("quote") or ""
-    return f"{match.group('key')}{match.group('sep')}{quote}[REDACTED_SECRET]{quote}"
-
-
-def _redact_phone_like(match: re.Match[str]) -> str:
-    value = match.group(0)
-    digits = re.sub(r"\D", "", value)
-    if 10 <= len(digits) <= 15:
-        return "[REDACTED_PHONE]"
-    return value
-
-
-def _stable_hash(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
-
-
-def _dedupe_strings(values: Sequence[str]) -> list[str]:
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        text = str(value).strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        deduped.append(text)
-    return deduped
 
 
 def _extract_failure_records(payload: Any) -> list[dict[str, Any]]:
@@ -1449,48 +1285,46 @@ def _has_expected_assertions(expected: dict[str, Any]) -> bool:
     return any(_strings(value) for value in expected.values())
 
 
-def _first_mapping(*values: Any) -> dict[str, Any]:
-    for value in values:
-        if isinstance(value, dict):
-            return value
-    return {}
-
-
-def _first_text(*values: Any) -> str:
-    for value in values:
-        if value is not None and str(value).strip():
-            return str(value)
-    return ""
-
-
-def _nested_text(mapping: dict[str, Any], path: Sequence[str]) -> str:
-    current: Any = mapping
-    for key in path:
-        if not isinstance(current, dict):
-            return ""
-        current = current.get(key)
-    return str(current or "")
-
-
-def _slug(value: object) -> str:
-    return re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "")).strip("-").lower()
-
-
-def _contains(haystack: str, needle: str) -> bool:
-    normalized_haystack = _normalize_text(haystack)
-    normalized_needle = _normalize_text(needle)
-    return normalized_needle in normalized_haystack
-
-
-def _normalize_text(value: str) -> str:
-    return re.sub(r"\s+", " ", str(value).casefold()).strip()
-
-
 def _average_metric(results: Sequence[ProbeResult], name: str) -> float:
     values = [float(result.metrics[name]) for result in results if name in result.metrics]
     if not values:
         return 0.0
     return round(sum(values) / len(values), 4)
+
+
+def _aggregate_compaction_drift_reports(results: Sequence[ProbeResult]) -> dict[str, Any]:
+    reports = [
+        result.metrics["context_compaction_drift_report"]
+        for result in results
+        if isinstance(result.metrics.get("context_compaction_drift_report"), dict)
+    ]
+    if not reports:
+        return {
+            "recall": 1.0,
+            "precision": 1.0,
+            "grounding": 1.0,
+            "answerability": 1.0,
+            "overall_drift": 0.0,
+            "drift_risk": "low",
+            "case_count": 0,
+        }
+    averaged = {
+        key: round(sum(float(report.get(key) or 0.0) for report in reports) / len(reports), 4)
+        for key in ("recall", "precision", "grounding", "answerability", "overall_drift")
+    }
+    return {
+        **averaged,
+        "drift_risk": _drift_risk(float(averaged["overall_drift"])),
+        "case_count": len(reports),
+    }
+
+
+def _drift_risk(overall_drift: float) -> str:
+    if overall_drift >= 0.34:
+        return "high"
+    if overall_drift > 0.0:
+        return "medium"
+    return "low"
 
 
 def _is_compaction_case(*, case_id: str, tags: Sequence[str], context: str) -> bool:
@@ -1537,6 +1371,7 @@ def _build_trend_stage_summary(
         failed=summary["failed"],
         task_success=summary["task_success"],
         pollution_rate=summary["irrelevant_memory_pollution"],
+        context_compaction_drift_report=summary["context_compaction_drift_report"],
         context_compaction_semantic_quality=summary["context_compaction_semantic_quality"],
         context_compaction_semantic_drift=summary["context_compaction_semantic_drift"],
         failed_case_ids=summary["failed_case_ids"],
@@ -1577,88 +1412,6 @@ def _load_stage_case_ids(source_paths: Sequence[str | Path]) -> list[str]:
         for case in load_dataset(path):
             case_ids.append(str(case.get("id") or "unknown"))
     return case_ids
-
-
-def _number(value: Any) -> float:
-    try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _candidate_age_summary(cases: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    ages: list[float] = []
-    buckets: dict[str, int] = {}
-    overdue = 0
-    for case in cases:
-        candidate_ops = case.get("candidate_ops") if isinstance(case.get("candidate_ops"), dict) else {}
-        age = candidate_ops.get("candidate_age_days")
-        if age is not None:
-            ages.append(_number(age))
-        bucket = str(candidate_ops.get("candidate_age_bucket") or "")
-        if bucket:
-            buckets[bucket] = buckets.get(bucket, 0) + 1
-        sla = candidate_ops.get("promotion_review_sla")
-        if isinstance(sla, dict) and sla.get("overdue") is True:
-            overdue += 1
-    return {
-        "total": len(cases),
-        "avg_age_days": round(sum(ages) / len(ages), 4) if ages else 0.0,
-        "max_age_days": round(max(ages), 4) if ages else 0.0,
-        "age_buckets": buckets,
-        "promotion_review_overdue": overdue,
-    }
-
-
-def _promotion_sla_summary(cases: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    reviewed = 0
-    overdue = 0
-    pending_overdue = 0
-    for case in cases:
-        review = case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
-        sla = review.get("sla") if isinstance(review.get("sla"), dict) else {}
-        if not sla:
-            continue
-        reviewed += 1
-        is_overdue = bool(sla.get("overdue") or sla.get("reviewed_after_due"))
-        if is_overdue:
-            overdue += 1
-            if review.get("status") == "pending":
-                pending_overdue += 1
-    return {
-        "reviewed": reviewed,
-        "overdue": overdue,
-        "pending_overdue": pending_overdue,
-    }
-
-
-def _coerce_datetime(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        parsed = value
-    elif isinstance(value, (int, float)):
-        seconds = float(value)
-        if seconds > 10_000_000_000:
-            seconds /= 1000
-        parsed = datetime.fromtimestamp(seconds, tz=UTC)
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
-        if text.isdigit():
-            return _coerce_datetime(int(text))
-        try:
-            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
-
-
-def _isoformat_z(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 if __name__ == "__main__":

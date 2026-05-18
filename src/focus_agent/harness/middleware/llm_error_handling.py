@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 import functools
 import inspect
 import random
 import threading
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .base import BaseAgentMiddleware, MiddlewareHandler

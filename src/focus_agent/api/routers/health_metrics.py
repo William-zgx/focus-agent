@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 from time import monotonic
 from typing import Any
@@ -53,6 +53,7 @@ def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextR
         trajectory_available=bool(metrics_data["trajectory_available"]),
         agent_governance_metrics=metrics_data["agent_governance_metrics"],
         background_metrics=_background_metrics(runtime),
+        postgres_metrics=_postgres_metrics(runtime),
         tool_runtime_metrics=tool_invocation_runtime_snapshot(),
     )
     return PlainTextResponse(payload, media_type="text/plain; version=0.0.4; charset=utf-8")
@@ -65,7 +66,11 @@ def _background_metrics(runtime: AppRuntime) -> dict[str, int]:
     }
 
 
-def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int]:
+def _postgres_metrics(runtime: AppRuntime) -> dict[str, int | float]:
+    return _snapshot_metrics(getattr(runtime, "postgres_connection_provider", None), "postgres_metrics_error")
+
+
+def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int | float]:
     snapshot = safe_repo_call(
         source,
         "snapshot",
@@ -121,7 +126,7 @@ def _metrics_trajectory_data(*, runtime: AppRuntime, repo: Any | None) -> dict[s
             if cached is not None and cached[0] > now:
                 return cached[1]
 
-    since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    since = datetime.now(UTC) - timedelta(hours=window_hours)
     try:
         trajectory_stats = repo.get_turn_stats(
             TrajectoryTurnQuery(since=since, limit=None, newest_first=True)

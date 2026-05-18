@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
@@ -15,9 +15,7 @@ from ..core.state import (
     with_agent_state_record_mirrors,
 )
 from ..core.token_usage import message_token_usage
-from ..services.chat_serialization import confirmed_visible_ai_text, message_content_to_text
 from .tracing import TraceCorrelation
-
 
 SCHEMA_VERSION = 1
 
@@ -121,7 +119,7 @@ class TurnTrajectoryRecord:
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def extract_trajectory_steps(
@@ -314,6 +312,8 @@ def _build_metrics(
 def _latest_final_ai_text(messages: list[Any]) -> str | None:
     for message in reversed(messages or []):
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
+            from ..services.chat_serialization import confirmed_visible_ai_text
+
             text = confirmed_visible_ai_text(getattr(message, "content", ""))
             if text:
                 return text
@@ -332,6 +332,8 @@ def _count_human_messages(messages: list[Any]) -> int:
 
 
 def _message_content_to_text(content: Any) -> str:
+    from ..services.chat_serialization import message_content_to_text
+
     return message_content_to_text(content)
 
 

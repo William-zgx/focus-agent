@@ -6,9 +6,9 @@ import { AppRouter } from "@/app/router";
 import "@/shared/styles/app.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <AppProviders>
-      <AppRouter />
-    </AppProviders>
-  </React.StrictMode>,
+	<React.StrictMode>
+		<AppProviders>
+			<AppRouter />
+		</AppProviders>
+	</React.StrictMode>,
 );

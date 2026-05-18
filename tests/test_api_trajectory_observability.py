@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
-import focus_agent.api.routers.health_metrics as health_metrics_router
 import focus_agent.api.main as api_main
+import focus_agent.api.routers.health_metrics as health_metrics_router
 from focus_agent.api.main import create_app
 from focus_agent.observability.trajectory import TurnTrajectoryRecord
 
@@ -59,9 +59,9 @@ class _FakeTrajectoryRepo:
                 "selected_model": "openai:gpt-4.1-mini",
                 "selected_thinking_mode": "medium",
                 "error": "boom",
-                "started_at": datetime(2026, 4, 21, 10, 0, tzinfo=timezone.utc),
-                "finished_at": datetime(2026, 4, 21, 10, 0, 1, tzinfo=timezone.utc),
-                "created_at": datetime(2026, 4, 21, 10, 0, 2, tzinfo=timezone.utc),
+                "started_at": datetime(2026, 4, 21, 10, 0, tzinfo=UTC),
+                "finished_at": datetime(2026, 4, 21, 10, 0, 1, tzinfo=UTC),
+                "created_at": datetime(2026, 4, 21, 10, 0, 2, tzinfo=UTC),
                 "metrics": {"latency_ms": 1000.0, "tool_calls": 2},
                 "plan_meta": {},
                 "latency_ms": 1000.0,
@@ -149,8 +149,8 @@ class _FakeTrajectoryRepo:
             app_version="1.2.3",
             user_id_hash="hashed",
             scene="long_dialog_research",
-            started_at=datetime(2026, 4, 21, 10, 0, tzinfo=timezone.utc),
-            finished_at=datetime(2026, 4, 21, 10, 0, 1, tzinfo=timezone.utc),
+            started_at=datetime(2026, 4, 21, 10, 0, tzinfo=UTC),
+            finished_at=datetime(2026, 4, 21, 10, 0, 1, tzinfo=UTC),
             answer="answer",
             error="boom",
             selected_model="openai:gpt-4.1-mini",
@@ -178,13 +178,20 @@ class _FakeTrajectoryRepo:
                     "runtime": {},
                     "observation_truncated": False,
                     "error": None,
-                    "created_at": datetime(2026, 4, 21, 10, 0, tzinfo=timezone.utc),
+                    "created_at": datetime(2026, 4, 21, 10, 0, tzinfo=UTC),
                 }
             ]
         }
 
 
-def _runtime_stub(*, auth_enabled: bool = False, trajectory_recorder=None, trajectory_enabled=None):
+def _runtime_stub(
+    *,
+    auth_enabled: bool = False,
+    trajectory_recorder=None,
+    trajectory_enabled=None,
+    durable_background_worker=None,
+    postgres_connection_provider=None,
+):
     return SimpleNamespace(
         settings=SimpleNamespace(
             auth_enabled=auth_enabled,
@@ -214,13 +221,29 @@ def _runtime_stub(*, auth_enabled: bool = False, trajectory_recorder=None, traje
                 "failed_total": 1,
             }
         ),
+        durable_background_worker=durable_background_worker,
+        postgres_connection_provider=postgres_connection_provider,
     )
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     _with_stub_frontend(monkeypatch, tmp_path)
     app = create_app()
-    app.state.runtime = _runtime_stub()
+    app.state.runtime = _runtime_stub(
+        postgres_connection_provider=SimpleNamespace(
+            snapshot=lambda: {
+                "postgres_pool_enabled": 1,
+                "postgres_pool_available": 1,
+                "postgres_pool_fallback_direct": 0,
+                "postgres_connection_opened_total": 4,
+                "postgres_connection_in_use": 0,
+                "postgres_query_total": 9,
+                "postgres_query_error_total": 1,
+                "postgres_slow_query_total": 2,
+                "postgres_slow_query_threshold_ms": 250.0,
+            }
+        )
+    )
     return TestClient(app)
 
 
@@ -458,6 +481,9 @@ def test_observability_overview_readyz_and_metrics(monkeypatch: pytest.MonkeyPat
     assert "focus_agent_background_worker_active 1" in metrics_response.text
     assert "focus_agent_background_job_durable_enabled 0" in metrics_response.text
     assert 'focus_agent_background_job_status_count{status="pending"} 0' in metrics_response.text
+    assert "focus_agent_postgres_pool_enabled 1" in metrics_response.text
+    assert "focus_agent_postgres_query_total 9" in metrics_response.text
+    assert "focus_agent_postgres_slow_query_total 2" in metrics_response.text
 
 
 def test_metrics_scrape_uses_bounded_governance_query_and_cache(
@@ -498,6 +524,44 @@ def test_metrics_scrape_uses_bounded_governance_query_and_cache(
     assert repo.stats_queries[0].limit is None
     assert repo.list_queries[0].since is not None
     assert repo.list_queries[0].limit == 123
+
+
+def test_metrics_scrape_includes_durable_worker_heartbeat_and_snapshot_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class BrokenDurableWorker:
+        def snapshot(self):
+            raise RuntimeError("snapshot unavailable")
+
+    _with_stub_frontend(monkeypatch, tmp_path)
+    app = create_app()
+    app.state.runtime = _runtime_stub(
+        durable_background_worker=SimpleNamespace(
+            snapshot=lambda: {
+                "durable_worker_active": 1,
+                "durable_worker_claimed_total": 3,
+                "durable_worker_completed_total": 2,
+                "durable_worker_failed_total": 1,
+                "durable_worker_heartbeat_lost_total": 1,
+            }
+        )
+    )
+    client = TestClient(app)
+
+    metrics_response = client.get("/metrics")
+
+    assert metrics_response.status_code == 200
+    assert "focus_agent_background_durable_worker_active 1" in metrics_response.text
+    assert "focus_agent_background_durable_worker_claimed_total 3" in metrics_response.text
+    assert "focus_agent_background_durable_worker_completed_total 2" in metrics_response.text
+    assert "focus_agent_background_durable_worker_failed_total 1" in metrics_response.text
+    assert "focus_agent_background_durable_worker_heartbeat_lost_total 1" in metrics_response.text
+
+    app.state.runtime = _runtime_stub(durable_background_worker=BrokenDurableWorker())
+    metrics_response = client.get("/metrics")
+
+    assert metrics_response.status_code == 200
+    assert "focus_agent_background_durable_worker_snapshot_error 1" in metrics_response.text
 
 
 def test_readyz_returns_503_for_degraded_runtime(

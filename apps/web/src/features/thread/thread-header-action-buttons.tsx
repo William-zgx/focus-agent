@@ -1,5 +1,11 @@
 import type { BranchMeta } from "@focus-agent/web-sdk";
-import type { RefObject } from "react";
+import {
+	type FormEvent,
+	type RefObject,
+	useEffect,
+	useId,
+	useRef,
+} from "react";
 
 import {
 	BackToMainIcon,
@@ -25,14 +31,20 @@ interface ThreadHeaderActionButtonsProps {
 	isCreatingBranch: boolean;
 	isGeneratingConclusion: boolean;
 	isMergedBranch: boolean;
+	isRenamingCurrentBranch: boolean;
 	isReviewRoute: boolean;
 	isWorking: boolean;
 	newBranchTooltip: string;
 	onBackMain: () => void;
 	onBackParent: () => void;
+	onCancelRenameCurrentBranch: () => void;
 	onFocusBranchPanel: () => void;
 	onForkBranch: () => void;
+	onRenameCurrentBranch: () => void;
+	onRenameCurrentBranchDraftChange: (value: string) => void;
+	onRenameCurrentBranchSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	onReviewAction: () => void;
+	renameCurrentBranchDraft: string;
 	reviewActionText: string;
 	reviewActionTooltip: string;
 	threadId: string;
@@ -73,39 +85,102 @@ export function ThreadHeaderActionButtons({
 	isCreatingBranch,
 	isGeneratingConclusion,
 	isMergedBranch,
+	isRenamingCurrentBranch,
 	isReviewRoute,
 	isWorking,
 	newBranchTooltip,
 	onBackMain,
 	onBackParent,
+	onCancelRenameCurrentBranch,
 	onFocusBranchPanel,
 	onForkBranch,
+	onRenameCurrentBranch,
+	onRenameCurrentBranchDraftChange,
+	onRenameCurrentBranchSubmit,
 	onReviewAction,
+	renameCurrentBranchDraft,
 	reviewActionText,
 	reviewActionTooltip,
 	threadId,
 }: ThreadHeaderActionButtonsProps) {
+	const renameInputId = useId();
+	const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+	useEffect(() => {
+		if (isRenamingCurrentBranch) {
+			renameInputRef.current?.focus();
+		}
+	}, [isRenamingCurrentBranch]);
+
 	return (
 		<div ref={actionsRef} className="fa-chat-header-actions">
 			<div className="fa-chat-header-primary-actions">
-				<button
-					className="fa-chat-toolbar-pill fa-focus-branches-button"
-					data-compact-button="true"
-					data-full-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
-					{...tooltipProps(isChineseUi ? "定位左侧分支树" : "Focus branches", {
-						defaultTooltip: isChineseUi ? "定位左侧分支树" : "Focus branches",
-					})}
-					aria-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
-					onClick={onFocusBranchPanel}
-					type="button"
-				>
-					<span className="fa-toolbar-icon" aria-hidden="true">
-						<BranchFocusIcon />
-					</span>
-					<span className="fa-toolbar-text">
-						{isChineseUi ? "当前分支" : "current"}: {currentLabel}
-					</span>
-				</button>
+				{isRenamingCurrentBranch ? (
+					<form
+						className="fa-inline-rename-form is-header-branch"
+						onSubmit={onRenameCurrentBranchSubmit}
+					>
+						<label className="sr-only" htmlFor={renameInputId}>
+							{isChineseUi ? "重命名当前分支" : "Rename current branch"}
+						</label>
+						<input
+							id={renameInputId}
+							ref={renameInputRef}
+							className="fa-inline-rename-input"
+							disabled={isWorking}
+							onChange={(event) =>
+								onRenameCurrentBranchDraftChange(event.target.value)
+							}
+							value={renameCurrentBranchDraft}
+						/>
+						<button
+							className="fa-branch-inline-action is-primary"
+							disabled={isWorking || !renameCurrentBranchDraft.trim()}
+							type="submit"
+						>
+							{isChineseUi ? "保存" : "Save"}
+						</button>
+						<button
+							className="fa-branch-inline-action"
+							disabled={isWorking}
+							onClick={onCancelRenameCurrentBranch}
+							type="button"
+						>
+							{isChineseUi ? "取消" : "Cancel"}
+						</button>
+					</form>
+				) : (
+					<button
+						className="fa-chat-toolbar-pill fa-focus-branches-button"
+						data-compact-button="true"
+						data-full-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
+						{...tooltipProps(
+							branchMeta?.branch_id
+								? isChineseUi
+									? "定位左侧分支树；双击可重命名当前分支"
+									: "Focus branches; double-click to rename the current branch"
+								: isChineseUi
+									? "定位左侧分支树"
+									: "Focus branches",
+							{
+								defaultTooltip: isChineseUi
+									? "定位左侧分支树"
+									: "Focus branches",
+							},
+						)}
+						aria-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
+						onClick={onFocusBranchPanel}
+						onDoubleClick={onRenameCurrentBranch}
+						type="button"
+					>
+						<span className="fa-toolbar-icon" aria-hidden="true">
+							<BranchFocusIcon />
+						</span>
+						<span className="fa-toolbar-text">
+							{isChineseUi ? "当前分支" : "current"}: {currentLabel}
+						</span>
+					</button>
+				)}
 
 				<button
 					className="fa-chat-toolbar-button is-primary fa-new-branch-button"
@@ -115,9 +190,7 @@ export function ThreadHeaderActionButtons({
 						defaultTooltip: defaultNewBranchTooltip,
 					})}
 					aria-label={isChineseUi ? "新建分支" : "New branch"}
-					disabled={
-						!threadId || isWorking || isMergedBranch || isCreatingBranch
-					}
+					disabled={!threadId || isMergedBranch || isCreatingBranch}
 					onClick={onForkBranch}
 					type="button"
 				>

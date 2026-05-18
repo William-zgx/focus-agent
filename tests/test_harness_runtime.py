@@ -3,8 +3,8 @@ import json
 import operator
 from typing import Annotated
 
-from langgraph.graph import END, START, StateGraph
 import pytest
+from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from focus_agent.engine.local_persistence import PersistentInMemorySaver

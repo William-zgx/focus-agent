@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class BranchRole(str, Enum):
+class BranchRole(StrEnum):
     MAIN = "main"
     EXPLORE_ALTERNATIVES = "explore_alternatives"
     DEEP_DIVE = "deep_dive"
@@ -15,7 +15,7 @@ class BranchRole(str, Enum):
     WRITEUP = "writeup"
 
 
-class BranchStatus(str, Enum):
+class BranchStatus(StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
     PREPARING_MERGE_REVIEW = "preparing_merge_review"
@@ -25,28 +25,28 @@ class BranchStatus(str, Enum):
     CLOSED = "closed"
 
 
-class BranchActionKind(str, Enum):
+class BranchActionKind(StrEnum):
     FORK_SIBLING_BRANCH = "fork_sibling_branch"
     FORK_CHILD_BRANCH = "fork_child_branch"
     OPEN_EXISTING_BRANCH = "open_existing_branch"
     RETURN_PARENT_BRANCH = "return_parent_branch"
 
 
-class BranchActionStatus(str, Enum):
+class BranchActionStatus(StrEnum):
     PENDING = "pending"
     EXECUTED = "executed"
     DISMISSED = "dismissed"
     FAILED = "failed"
 
 
-class MergeMode(str, Enum):
+class MergeMode(StrEnum):
     NONE = "none"
     SUMMARY_ONLY = "summary_only"
     SUMMARY_PLUS_EVIDENCE = "summary_plus_evidence"
     SELECTED_ARTIFACTS = "selected_artifacts"
 
 
-class MergeTarget(str, Enum):
+class MergeTarget(StrEnum):
     RETURN_THREAD = "return_thread"
     ROOT_THREAD = "root_thread"
 
@@ -135,7 +135,7 @@ class BranchTreeNode(BaseModel):
     branch_depth: int = 0
     fork_strategy: str | None = None
     token_usage: dict[str, int] = Field(default_factory=dict)
-    children: list["BranchTreeNode"] = Field(default_factory=list)
+    children: list[BranchTreeNode] = Field(default_factory=list)
 
 
 class BranchActionNavigation(BaseModel):

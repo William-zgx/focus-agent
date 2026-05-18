@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,7 +10,7 @@ class StateModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class PromptMode(str, Enum):
+class PromptMode(StrEnum):
     EXPLORE = "explore"
     EXECUTE = "execute"
     SYNTHESIZE = "synthesize"
@@ -62,7 +62,7 @@ class ContextBudget(StateModel):
     citation_limit: int = Field(default=10, ge=0)
     prompt_token_limit: int = Field(default=128000, ge=1)
     chars_per_token: int = Field(default=4, ge=1)
-    token_budget_mode: Literal["chars_fallback", "tokenizer_first"] = "chars_fallback"
+    token_budget_mode: Literal["chars_fallback", "tokenizer_first"] = "tokenizer_first"
     tokenizer_id: str | None = None
     tool_observation_token_limit: int = Field(default=3000, ge=1)
     tool_observation_budget_mode: Literal["inherit", "chars_fallback", "tokenizer_first"] = "inherit"

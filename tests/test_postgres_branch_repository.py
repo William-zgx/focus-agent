@@ -42,6 +42,20 @@ def test_postgres_schema_setup_creates_app_tables(monkeypatch):
     ensure_app_postgres_schema("postgresql://example")
 
     statements = [sql for sql, _ in executed]
+    normalized_statements = [" ".join(sql.split()) for sql in statements]
+    lock_index = next(
+        index
+        for index, statement in enumerate(normalized_statements)
+        if statement.startswith("SELECT pg_advisory_xact_lock")
+    )
+    migrations_table_index = next(
+        index
+        for index, statement in enumerate(statements)
+        if "CREATE TABLE IF NOT EXISTS focus_schema_migrations" in statement
+    )
+    assert lock_index < migrations_table_index
+    assert lock_index == 0
+    assert isinstance(executed[lock_index][1], tuple)
     assert any("CREATE TABLE IF NOT EXISTS focus_schema_migrations" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_conversations" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_thread_access" in sql for sql in statements)
@@ -63,7 +77,10 @@ def test_postgres_schema_setup_creates_app_tables(monkeypatch):
     assert any("CREATE TABLE IF NOT EXISTS focus_memory_tombstones" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_memory_candidates" in sql for sql in statements)
     assert any("idx_focus_memories_text_search" in sql for sql in statements)
-    assert any(params == (8,) for _, params in executed)
+    assert any("CREATE TABLE IF NOT EXISTS agent_resource_claims" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS agent_messages" in sql for sql in statements)
+    assert any("CREATE TABLE IF NOT EXISTS tool_approval_requests" in sql for sql in statements)
+    assert any(params == (15,) for _, params in executed)
 
 
 def test_postgres_schema_setup_runs_v2_when_v1_already_exists(monkeypatch):

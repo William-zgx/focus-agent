@@ -1,5 +1,6 @@
 """Harness subagent task execution primitives."""
 
+from .agent_team import AgentTeamSubagentRunner
 from .executor import (
     DEFAULT_SUBAGENT_MAX_PARALLEL,
     SubagentExecutor,
@@ -8,7 +9,6 @@ from .executor import (
     SubagentTaskRunner,
 )
 from .fake import FakeSubagentRunner
-from .agent_team import AgentTeamSubagentRunner
 
 __all__ = [
     "AgentTeamSubagentRunner",

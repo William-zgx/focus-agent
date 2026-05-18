@@ -4,27 +4,58 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
-from pathlib import Path
 import sys
-from typing import Any, Iterable, Sequence
+import types
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 from urllib import request as urllib_request
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from scripts._report_io import load_json, print_json_stdout, resolve_path, write_json_report  # noqa: E402
-from focus_agent.observability.release_health import (  # noqa: E402
-    FAIL,
-    WARN,
-    ReleaseHealthReport,
-    ReleaseHealthSignal,
-    evaluate_release_health,
+from scripts._report_io import (  # noqa: E402
+    load_json,
+    print_json_stdout,
+    resolve_path,
+    write_json_report,
 )
 
+
+def _install_observability_import_stubs() -> list[str]:
+    inserted: list[str] = []
+    if "focus_agent" not in sys.modules:
+        package = types.ModuleType("focus_agent")
+        package.__path__ = [str(REPO_ROOT / "src" / "focus_agent")]  # type: ignore[attr-defined]
+        sys.modules["focus_agent"] = package
+        inserted.append("focus_agent")
+    if "focus_agent.observability" not in sys.modules:
+        observability = types.ModuleType("focus_agent.observability")
+        observability.__path__ = [str(REPO_ROOT / "src" / "focus_agent" / "observability")]  # type: ignore[attr-defined]
+        sys.modules["focus_agent.observability"] = observability
+        inserted.append("focus_agent.observability")
+    return inserted
+
+
+def _restore_import_stubs(inserted: Sequence[str]) -> None:
+    for name in reversed(inserted):
+        sys.modules.pop(name, None)
+
+
+_import_stubs = _install_observability_import_stubs()
+try:
+    from focus_agent.observability.release_health import (  # noqa: E402
+        FAIL,
+        WARN,
+        ReleaseHealthReport,
+        ReleaseHealthSignal,
+        evaluate_release_health,
+    )
+finally:
+    _restore_import_stubs(_import_stubs)
 
 DEFAULT_REPORT_JSON = Path("reports/release-gate/release-health.json")
 DEFAULT_READY_URL = "http://127.0.0.1:8000/readyz"
@@ -133,7 +164,16 @@ def _report_is_dry_run(payload: Any) -> bool:
     if not isinstance(payload, dict):
         return False
     status = str(payload.get("status") or "").lower()
-    return bool(payload.get("dry_run") is True or status == "dry-run")
+    if payload.get("dry_run") is True or status == "dry-run":
+        return True
+    for value in payload.values():
+        if isinstance(value, dict) and _report_is_dry_run(value):
+            return True
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict) and _report_is_dry_run(item):
+                    return True
+    return False
 
 
 def _eval_report_signals(paths: Iterable[str | Path], *, root: Path) -> list[ReleaseHealthSignal]:
@@ -442,6 +482,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("--self-check is only valid with --mode local")
         if live_mode and args.allow_self_check_fallback:
             raise ValueError("--allow-self-check-fallback is only valid with --mode local")
+        if live_mode and args.allow_dry_run_reports:
+            raise ValueError("--allow-dry-run-reports is only valid with --mode local")
 
         fallback_signals: list[ReleaseHealthSignal] = []
         fail_closed_signals: list[ReleaseHealthSignal] = []

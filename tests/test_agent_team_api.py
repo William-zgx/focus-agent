@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from focus_agent.api.main import create_app
 from focus_agent.core.agent_team import AgentTeamTaskStatus
@@ -262,6 +262,48 @@ def test_agent_team_api_plan_run_view_and_list_filters(
     assert any(item.get("type") == "agent_team_session" for item in context_refs)
     assert any(item.get("type") == "agent_team_task_contract" for item in context_refs)
     assert any(item.get("type") == "agent_team_dependency_outputs" for item in context_refs)
+
+
+def test_agent_team_api_lists_and_decides_pending_tool_approvals(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    service = AgentTeamService(branch_service=None)
+    client = _client(monkeypatch, tmp_path, agent_team_service=service)
+    session = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-approval", "goal": "Approve a risky tool"},
+    ).json()["session"]
+    approval_queue = service.coordination_backend.approval_queue
+    approval_queue.submit_pending(
+        request_id="approval-1",
+        session_id=session["root_thread_id"],
+        agent_id="agent-a",
+        tool_name="write_file",
+        tool_args={"path": "src/app.py"},
+        risk_level="high",
+        timeout_seconds=60,
+    )
+
+    view_response = client.get(f"/v1/agent-team/sessions/{session['session_id']}/view")
+    list_response = client.get(
+        f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals"
+    )
+    decision_response = client.post(
+        f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals/approval-1/approve",
+        json={"reason": "Looks bounded."},
+    )
+
+    assert view_response.status_code == 200
+    assert view_response.json()["pending_tool_approvals"][0]["request_id"] == "approval-1"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert list_response.json()["items"][0]["tool_name"] == "write_file"
+    assert decision_response.status_code == 200
+    assert decision_response.json()["approval"]["status"] == "approved"
+    assert decision_response.json()["approval"]["decided_by"] == "anonymous"
+    assert client.get(
+        f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals"
+    ).json()["count"] == 0
 
 
 def test_agent_team_api_task_run_respects_dependencies(

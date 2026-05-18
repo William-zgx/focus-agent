@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from focus_agent.config import Settings
 from focus_agent import memory_embedding_cli as cli
+from focus_agent.config import Settings
 
 
 class _Provider:
@@ -85,7 +85,7 @@ def test_memory_embedding_rebuild_uses_provider_dimensions(monkeypatch, capsys):
     monkeypatch.setattr(cli, "create_memory_embedding_provider", lambda settings: _Provider())
 
     class _Repository:
-        instances: list["_Repository"] = []
+        instances: list[_Repository] = []
 
         def __init__(self, database_uri: str):
             self.database_uri = database_uri

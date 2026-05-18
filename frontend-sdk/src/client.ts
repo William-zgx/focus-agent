@@ -5,6 +5,7 @@ import { applyAgentTeamEndpoints, type AgentTeamEndpoints } from "./client/agent
 import { applyAuthEndpoints, type AuthEndpoints } from "./client/auth.js";
 import { applyMemoryEndpoints, type MemoryEndpoints } from "./client/memory.js";
 import { applyObservabilityEndpoints, type ObservabilityEndpoints } from "./client/observability.js";
+import { applyProductivityEndpoints, type ProductivityEndpoints } from "./client/productivity.js";
 import { canonicalizeStreamEvents } from "./client/stream.js";
 import { applyStreamingEndpoints, type StreamingEndpoints } from "./client/streaming.js";
 import { applyThreadBranchEndpoints, type ThreadBranchEndpoints } from "./client/thread-branch.js";
@@ -29,6 +30,7 @@ export interface FocusAgentClient
     ThreadBranchEndpoints,
     MemoryEndpoints,
     ObservabilityEndpoints,
+    ProductivityEndpoints,
     StreamingEndpoints {}
 
 export class FocusAgentClient {
@@ -107,4 +109,5 @@ applyAgentTeamEndpoints(FocusAgentClient);
 applyThreadBranchEndpoints(FocusAgentClient);
 applyMemoryEndpoints(FocusAgentClient);
 applyObservabilityEndpoints(FocusAgentClient);
+applyProductivityEndpoints(FocusAgentClient);
 applyStreamingEndpoints(FocusAgentClient);

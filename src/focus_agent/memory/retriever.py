@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import logging
 import inspect
+import logging
 import re
 
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
 from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
-    MemoryRetrievalPlan,
     MemoryRecord,
+    MemoryRetrievalPlan,
     MemoryScope,
     MemorySearchHit,
     MemoryVisibility,
@@ -17,7 +17,6 @@ from .models import (
 )
 from .policy import MemoryPolicy
 from .scorer import score_memory_hit
-
 
 logger = logging.getLogger(__name__)
 

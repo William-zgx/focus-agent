@@ -28,6 +28,11 @@ class CaptureModel:
         )
 
 
+class FailingModel:
+    def invoke(self, messages):
+        raise RuntimeError("provider unavailable")
+
+
 def test_generate_merge_proposal_keeps_inherited_context_brief_and_matches_language():
     model = CaptureModel()
     state = {
@@ -45,7 +50,9 @@ def test_generate_merge_proposal_keeps_inherited_context_brief_and_matches_langu
         ],
     }
 
-    proposal = generate_merge_proposal(model, state, {"branch_name": "中文分支", "branch_role": "deep_dive"})
+    proposal = generate_merge_proposal(
+        model, state, {"branch_name": "中文分支", "branch_role": "deep_dive"}
+    )
 
     assert proposal.summary == "分支新增结论"
     prompt = model.messages[-1].content
@@ -55,4 +62,22 @@ def test_generate_merge_proposal_keeps_inherited_context_brief_and_matches_langu
     assert "This branch's recent interaction history:" in prompt
     assert "Generate the conclusion mainly from this branch's own interaction history." in prompt
     assert "尾部不应完整出现在结论 prompt 里" not in prompt
-    assert "Do not restate parent-thread context unless this branch materially changed or challenged it." in prompt
+    assert (
+        "Do not restate parent-thread context unless this branch materially changed or challenged it."
+        in prompt
+    )
+
+
+def test_generate_merge_proposal_falls_back_when_model_call_fails():
+    proposal = generate_merge_proposal(
+        FailingModel(),
+        {
+            "branch_local_findings": ["模型失败时也保留本地结论"],
+            "messages": [HumanMessage(content="整理这个分支")],
+        },
+        {"branch_name": "fallback-branch"},
+    )
+
+    assert proposal.summary == "模型失败时也保留本地结论"
+    assert proposal.key_findings == ["模型失败时也保留本地结论"]
+    assert proposal.recommended_import_mode == "summary_only"

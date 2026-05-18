@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from focus_agent.observability.release_health_models import FAIL, PASS, ReleaseHealthSignal
 from focus_agent.observability.release_health_utils import failed_report_rows, failed_report_status

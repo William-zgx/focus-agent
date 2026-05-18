@@ -1,8 +1,8 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-05-13
+更新时间：2026-05-14
 
-本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 仍保留为高级审查能力，但默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主。
+本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主，需要采纳代码变更时再进入选择性应用流程。
 
 当前已落地的入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend SDK 的 Agent Team client 方法、Postgres/SQLite repository、模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。本文不再作为历史方案草稿保存；新改动应把这里当作当前操作和验证手册维护。
 
@@ -16,8 +16,11 @@ Focus Agent 当前已经具备分支对话、merge review、memory、trajectory 
 - 来源对话是可选上下文；没有来源对话时，系统会创建 standalone Mission 并生成内部 `root_thread_id`。
 - 每个任务携带输入/输出契约、证据要求、能力要求、风险等级和写入范围，便于后续执行与汇总。
 - 每个 Agent 在自己的 conversation branch 中工作，避免污染主线。
+- 需要写入仓库的真实执行任务会额外分配 git worktree：`.focus_agent/worktrees/{session_id}/{task_id}`，
+  分支名为 `codex/agent-team/{session_short}/{task_slug}`；fake mode 只验证流程，不创建真实执行 worktree。
 - 每个 Agent 的产出以 artifact、branch-local findings、trajectory 和 task ledger 记录下来。
 - 主控 Agent 汇总各分支产物，生成用户可读的 Agent Team 最终答案。
+- 需要采纳真实 worktree 变更时，用户通过 merge review 选择任务、预览 diff/test evidence、执行冲突预检，再显式 apply；系统不会自动 commit、push 或合并 main。
 - Reviewer / Verifier 证据不足时默认 `request_changes`，fake mode 只验证流程，不会被标为可交付。
 
 ## 2. 设计原则
@@ -58,10 +61,19 @@ Agent 分支里的探索、失败尝试和临时推理默认不进入主线。�
 
 Agent Team Workbench 可以展示 Agent Governance / Autonomy 的建议，但当前版本不把这些建议直接升级成高风险动作：
 
-- skill selection 只输出推荐 skills 和可用 `skills_list` / `skill_view` evidence。
+- skill selection 输出推荐 skills，并可记录 `skills_list` / `skill_view` / `skill_sources` / `skills_search` / `skills_refresh_index` / `skill_install` evidence；其中 `skill_install` 仍受 workspace-write 治理约束。
 - branch suggestion 只输出 role/run isolation key，作为创建分支或分配 worker 的建议。
 - risk-aware workflow policy 只输出 denied tool、review queue、model route rationale 和风险报告。
 - workspace write、merge、memory promotion、无人值守提交仍需显式执行入口或人工确认。
+
+### 2.6 采纳结果必须能沉淀
+
+Agent Team 的采纳闭环同时服务后续工作：
+
+- merge review outcome 会进入 feedback regression，统计 applied / conflict / rejected / error。
+- 采纳页可把 accepted task output 生成 Notes / Tasks draft，保留 source session、review 和 task 关联。
+- fake / placeholder 输出必须醒目标识，不能作为真实可采纳变更进入 apply。
+- context/memory evidence 和 skill selection event 只记录“为什么这么做”的治理线索，不改变既有任务执行语义。
 
 ## 3. 总体架构
 
@@ -197,6 +209,13 @@ class AgentTeamTask:
     delegated_task_id: str | None
     artifact_ids: list[str]
     execution_status: str | None
+    workspace_id: str | None
+    workspace_branch: str | None
+    workspace_path: str | None
+    base_commit: str | None
+    diff_summary: str | None
+    test_evidence: list[str]
+    workspace_status: str | None
     changed_files: list[str]
     verification_summary: str | None
     risk_notes: list[str]
@@ -338,7 +357,7 @@ POST  /v1/agent-team/sessions/{session_id}/merge            # use /merge-decisio
 
 Agent Team Workbench 已接入 runtime 的主持久化选择：
 
-- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema v2 初始化表结构。
+- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema 初始化表结构；schema v14 额外记录 merge review / review event、feedback event、context/memory evidence 和 skill selection event，用于采纳审查、治理解释和 nightly feedback regression。
 - 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `SQLiteAgentTeamRepository`，作为本地 fallback。
 - 通过 `make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod` 启动时，如果没有显式 `DATABASE_URI`，启动脚本会托管 repo-local PostgreSQL 并注入 `DATABASE_URI`，因此 Agent Team 也走 Postgres primary persistence。
 
@@ -348,9 +367,11 @@ Postgres 表名固定为：
 focus_agent_team_sessions
 focus_agent_team_tasks
 focus_agent_team_outputs
+focus_agent_team_merge_reviews
+focus_agent_team_merge_review_events
 ```
 
-每张表都保留 `data_json JSONB NOT NULL` 作为 Pydantic model 的完整 round-trip 来源；其他列只做查询、排序和索引辅助。schema migration v2 会在已有 v1 数据库上继续创建 Agent Team 表，不依赖全新数据库。
+Agent Team 主表保留 `data_json JSONB NOT NULL` 作为 Pydantic model 的完整 round-trip 来源；其他列只做查询、排序和索引辅助。schema migration 会在已有数据库上继续创建新表和补齐列，不依赖全新数据库。
 
 当前不会自动把已有 SQLite fallback 数据迁移到 Postgres。需要跨后端迁移时，应通过显式迁移流程处理。
 

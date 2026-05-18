@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
-from dataclasses import dataclass
 import json
 import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from .config import Settings
-from .memory.embedding import MemoryEmbeddingError, MemoryEmbeddingService
-from .memory.embedding import create_memory_embedding_provider
+from .memory.embedding import (
+    MemoryEmbeddingError,
+    MemoryEmbeddingService,
+    create_memory_embedding_provider,
+)
 from .repositories.memory_repository import MemoryListQuery
 from .repositories.postgres_memory_repository import PostgresMemoryRepository
 

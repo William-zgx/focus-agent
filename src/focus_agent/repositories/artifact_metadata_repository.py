@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
@@ -41,8 +41,8 @@ class ArtifactMetadataRepository:
     ) -> ArtifactMetadataRecord:
         file_path = Path(path).expanduser()
         stat = file_path.stat()
-        updated_at = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
-        created_at = datetime.now(timezone.utc)
+        updated_at = datetime.fromtimestamp(stat.st_mtime, UTC)
+        created_at = datetime.now(UTC)
         relative_path = str(artifact_id)
         internal_artifact_id = str(uuid.uuid5(uuid.NAMESPACE_URL, relative_path))
         path_text = str(file_path)

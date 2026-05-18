@@ -4,11 +4,11 @@ import { queryKeys } from "@/shared/query/query-keys";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 export function useConversations() {
-  const { client, ready } = useFocusAgent();
+	const { client, ready } = useFocusAgent();
 
-  return useQuery({
-    queryKey: queryKeys.conversations,
-    queryFn: () => client.listConversations(),
-    enabled: ready,
-  });
+	return useQuery({
+		queryKey: queryKeys.conversations,
+		queryFn: () => client.listConversations(),
+		enabled: ready,
+	});
 }

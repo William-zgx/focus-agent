@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from focus_agent.observability.release_health_alerts import evaluate_alert_report
 from focus_agent.observability.release_health_context import evaluate_context_probe
 from focus_agent.observability.release_health_governance import evaluate_governance_quality_report
-from focus_agent.observability.release_health_models import FAIL, PASS, WARN, ReleaseHealthReport
-from focus_agent.observability.release_health_models import ReleaseHealthSignal, ReleaseHealthThresholds
+from focus_agent.observability.release_health_models import (
+    FAIL,
+    PASS,
+    WARN,
+    ReleaseHealthReport,
+    ReleaseHealthSignal,
+    ReleaseHealthThresholds,
+)
 from focus_agent.observability.release_health_otel import evaluate_otel_smoke_report
 from focus_agent.observability.release_health_postgres import (
     evaluate_postgres_migration_report,
     evaluate_postgres_ops_report,
 )
 from focus_agent.observability.release_health_production import evaluate_production_smoke_report
-from focus_agent.observability.release_health_replay import eval_regression_signal, evaluate_replay_gate
+from focus_agent.observability.release_health_replay import (
+    eval_regression_signal,
+    evaluate_replay_gate,
+)
 from focus_agent.observability.release_health_runtime import (
     evaluate_runtime_ready,
     evaluate_trajectory_recorder_ready,

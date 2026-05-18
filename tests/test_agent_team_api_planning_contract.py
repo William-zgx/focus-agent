@@ -4,8 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from focus_agent.api.main import create_app
 from focus_agent.services.agent_team import AgentTeamService

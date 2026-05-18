@@ -5,7 +5,7 @@ import uuid
 import pytest
 
 from focus_agent.harness.observability import PostgresRunJournal
-from focus_agent.repositories.postgres_schema import SCHEMA_VERSION, _MIGRATIONS
+from focus_agent.repositories.postgres_schema import _MIGRATIONS, SCHEMA_VERSION
 
 
 def test_postgres_harness_journal_migration_shape():
@@ -14,7 +14,7 @@ def test_postgres_harness_journal_migration_shape():
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 11
+    assert SCHEMA_VERSION == 15
     combined = " ".join(" ".join(sql.split()) for sql in executed)
     assert "CREATE TABLE IF NOT EXISTS focus_harness_runs" in combined
     assert "CREATE TABLE IF NOT EXISTS focus_harness_run_events" in combined

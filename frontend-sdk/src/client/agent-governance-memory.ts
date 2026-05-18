@@ -5,6 +5,7 @@ import type {
   FocusAgentMemoryCuratorEvaluateRequest,
   FocusAgentMemoryCuratorEvaluateResponse,
   FocusAgentMemoryCuratorPolicyResponse,
+  FocusAgentMemoryUsageResponse,
 } from "../types.js";
 
 async function getAgentMemoryCuratorPolicy(this: FocusAgentEndpointContext): Promise<FocusAgentMemoryCuratorPolicyResponse> {
@@ -39,14 +40,30 @@ async function listAgentMemoryCuratorDecisions(this: FocusAgentEndpointContext, 
   );
 }
 
+async function getMemoryUsage(
+  this: FocusAgentEndpointContext,
+  memoryId: string,
+): Promise<FocusAgentMemoryUsageResponse> {
+  return this.requestJson<FocusAgentMemoryUsageResponse>(
+    `/v1/memory/${encodeURIComponent(memoryId)}/usage`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
 export interface AgentGovernanceMemoryEndpoints {
   getAgentMemoryCuratorPolicy: OmitThisParameter<typeof getAgentMemoryCuratorPolicy>;
   evaluateAgentMemoryCurator: OmitThisParameter<typeof evaluateAgentMemoryCurator>;
   listAgentMemoryCuratorDecisions: OmitThisParameter<typeof listAgentMemoryCuratorDecisions>;
+  getMemoryUsage: OmitThisParameter<typeof getMemoryUsage>;
 }
 
 export const agentGovernanceMemoryEndpoints: FocusAgentEndpointMethodMap<AgentGovernanceMemoryEndpoints> = {
   getAgentMemoryCuratorPolicy,
   evaluateAgentMemoryCurator,
   listAgentMemoryCuratorDecisions,
+  getMemoryUsage,
 };

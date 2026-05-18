@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from focus_agent.core.request_context import RequestContext
+from focus_agent.memory.embedding import (
+    DeterministicTestEmbeddingProvider,
+    MemoryEmbeddingService,
+    memory_embedding_text,
+)
 from focus_agent.memory.models import (
     MemoryAuditEvent,
     MemoryCandidate,
@@ -16,11 +21,6 @@ from focus_agent.memory.models import (
     MemoryVisibility,
     MemoryWriteDecisionStatus,
     MemoryWriteRequest,
-)
-from focus_agent.memory.embedding import (
-    DeterministicTestEmbeddingProvider,
-    MemoryEmbeddingService,
-    memory_embedding_text,
 )
 from focus_agent.memory.service import MemoryService
 from focus_agent.repositories.memory_repository import MemoryListQuery
@@ -110,8 +110,8 @@ class _FakeMemoryRepository:
                 "status": MemoryStatus.FORGOTTEN,
                 "content": "",
                 "summary": "[forgotten]",
-                "deleted_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
+                "deleted_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
             }
         )
         return tombstone_id

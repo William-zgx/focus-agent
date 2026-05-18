@@ -3,17 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import signal
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 from urllib import parse as urllib_parse
 from uuid import uuid4
-
-from focus_agent.config import load_local_env_file
-from focus_agent.observability.trajectory import SCHEMA_VERSION, TrajectoryStep, TurnTrajectoryRecord, utc_now
-from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 from ui_smoke_test import (
     CdpWebSocket,
@@ -26,6 +22,14 @@ from ui_smoke_test import (
     wait_for_devtools,
 )
 
+from focus_agent.config import load_local_env_file
+from focus_agent.observability.trajectory import (
+    SCHEMA_VERSION,
+    TrajectoryStep,
+    TurnTrajectoryRecord,
+    utc_now,
+)
+from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 DEFAULT_APP_BASE_URL = "http://127.0.0.1:8000/app"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"

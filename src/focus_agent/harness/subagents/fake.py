@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 import inspect
+from collections.abc import Awaitable, Callable
 
 from ..runtime import RunRecord
 from .executor import SubagentTaskRequest, SubagentTaskResult

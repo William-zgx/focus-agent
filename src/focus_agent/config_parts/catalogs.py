@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import os
-from pathlib import Path
 import re
 import tomllib
-from typing import Any, Callable, MutableMapping, TypeVar
+from collections.abc import Callable, MutableMapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, TypeVar
 
 from .common import _coerce_bool, _normalize_optional_string, _split_csv
-
 
 DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
@@ -380,6 +380,43 @@ class SkillViewToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillSourcesToolConfig:
+    enabled: bool = True
+    label: str = "Skill Sources"
+    description: str = "List configured skill sources and trust metadata."
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsSearchToolConfig:
+    enabled: bool = True
+    label: str = "Skills Search"
+    description: str = "Search installed and configured skill sources for relevant capabilities."
+    default_limit: int = 5
+    max_limit_cap: int = 20
+
+
+@dataclass(frozen=True, slots=True)
+class SkillInstallToolConfig:
+    enabled: bool = True
+    label: str = "Skill Install"
+    description: str = "Install a trusted local skill, or return a review-required result for external sources."
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsRefreshIndexToolConfig:
+    enabled: bool = True
+    label: str = "Skills Refresh Index"
+    description: str = "Refresh the runtime skill index after project or source changes."
+
+
+@dataclass(frozen=True, slots=True)
+class ProductivityToolConfig:
+    enabled: bool = True
+    label: str = "Productivity"
+    description: str = "Create, search, and update personal notes or tasks."
+
+
+@dataclass(frozen=True, slots=True)
 class ToolProviderConfig:
     id: str
     enabled: bool = True
@@ -422,6 +459,54 @@ class ToolCatalogConfig:
     )
     skills_list: SkillsListToolConfig = field(default_factory=SkillsListToolConfig)
     skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
+    skill_sources: SkillSourcesToolConfig = field(default_factory=SkillSourcesToolConfig)
+    skills_search: SkillsSearchToolConfig = field(default_factory=SkillsSearchToolConfig)
+    skill_install: SkillInstallToolConfig = field(default_factory=SkillInstallToolConfig)
+    skills_refresh_index: SkillsRefreshIndexToolConfig = field(
+        default_factory=SkillsRefreshIndexToolConfig
+    )
+    notes_create: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="Create Note",
+            description="Create a personal note owned by the current user.",
+        )
+    )
+    notes_search: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="Search Notes",
+            description="Search personal notes owned by the current user.",
+        )
+    )
+    notes_update: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="Update Note",
+            description="Update a personal note owned by the current user.",
+        )
+    )
+    tasks_create: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="Create Task",
+            description="Create a personal task owned by the current user.",
+        )
+    )
+    tasks_list: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="List Tasks",
+            description="List personal tasks owned by the current user.",
+        )
+    )
+    tasks_update: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="Update Task",
+            description="Update a personal task owned by the current user.",
+        )
+    )
+    productivity_capture: ProductivityToolConfig = field(
+        default_factory=lambda: ProductivityToolConfig(
+            label="Capture Productivity Item",
+            description="Capture a chat or Agent Team payload as an explicit note or task.",
+        )
+    )
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     section_order: tuple[str, ...] = ()
     metadata_section_order: tuple[str, ...] = ()
@@ -537,6 +622,20 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
     ),
     "skills_list": ToolCatalogSectionSpec(SkillsListToolConfig),
     "skill_view": ToolCatalogSectionSpec(SkillViewToolConfig),
+    "skill_sources": ToolCatalogSectionSpec(SkillSourcesToolConfig),
+    "skills_search": ToolCatalogSectionSpec(
+        SkillsSearchToolConfig,
+        int_fields=("default_limit", "max_limit_cap"),
+    ),
+    "skill_install": ToolCatalogSectionSpec(SkillInstallToolConfig),
+    "skills_refresh_index": ToolCatalogSectionSpec(SkillsRefreshIndexToolConfig),
+    "notes_create": ToolCatalogSectionSpec(ProductivityToolConfig),
+    "notes_search": ToolCatalogSectionSpec(ProductivityToolConfig),
+    "notes_update": ToolCatalogSectionSpec(ProductivityToolConfig),
+    "tasks_create": ToolCatalogSectionSpec(ProductivityToolConfig),
+    "tasks_list": ToolCatalogSectionSpec(ProductivityToolConfig),
+    "tasks_update": ToolCatalogSectionSpec(ProductivityToolConfig),
+    "productivity_capture": ToolCatalogSectionSpec(ProductivityToolConfig),
     "web_search": ToolCatalogSectionSpec(
         WebSearchConfig,
         optional_string_fields=("provider", "fallback_provider", "api_key_env", "api_key_default"),

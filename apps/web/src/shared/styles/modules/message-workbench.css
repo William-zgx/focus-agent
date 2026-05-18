@@ -1,18 +1,18 @@
 /* Late workbench message refinements. */
 .fa-message-list {
-  display: grid;
-  gap: 14px;
+	display: grid;
+	gap: 14px;
 }
 
 .fa-message-head {
-  display: grid;
-  gap: 6px;
+	display: grid;
+	gap: 6px;
 }
 
 .fa-message-markdown p,
 .fa-message-markdown li,
 .fa-message-markdown blockquote {
-  white-space: pre-wrap;
+	white-space: pre-wrap;
 }
 
 .fa-message-markdown p,
@@ -22,342 +22,342 @@
 .fa-message-markdown .fa-message-table-wrap,
 .fa-message-markdown hr,
 .fa-message-markdown .fa-message-code-block {
-  margin: 0 0 12px;
+	margin: 0 0 12px;
 }
 
 .fa-message-markdown > :last-child {
-  margin-bottom: 0;
+	margin-bottom: 0;
 }
 
 .fa-message-inline-code {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-family:
-    "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas,
-    monospace;
-  font-size: 0.92em;
-  background: color-mix(in srgb, var(--fa-panel-3) 58%, transparent);
-  border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
+	display: inline-block;
+	padding: 1px 6px;
+	border-radius: 8px;
+	font-family:
+		"JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas,
+		monospace;
+	font-size: 0.92em;
+	background: color-mix(in srgb, var(--fa-panel-3) 58%, transparent);
+	border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
 }
 
 .fa-message-markdown strong {
-  font-weight: 700;
+	font-weight: 700;
 }
 
 .fa-message-markdown em {
-  font-style: italic;
+	font-style: italic;
 }
 
 .fa-message-markdown .fa-message-table-wrap {
-  overflow-x: auto;
-  border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent);
+	overflow-x: auto;
+	border-radius: 18px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent);
 }
 
 .fa-message-markdown .fa-message-table {
-  min-width: 100%;
-  border-collapse: collapse;
+	min-width: 100%;
+	border-collapse: collapse;
 }
 
 .fa-message-markdown .fa-message-table th,
 .fa-message-markdown .fa-message-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
-  vertical-align: top;
-  text-align: left;
-  white-space: normal;
+	padding: 10px 12px;
+	border-bottom: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
+	vertical-align: top;
+	text-align: left;
+	white-space: normal;
 }
 
 .fa-message-markdown .fa-message-table th {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--fa-text-muted);
-  background: color-mix(in srgb, var(--fa-panel-1) 74%, transparent);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: var(--fa-text-muted);
+	background: color-mix(in srgb, var(--fa-panel-1) 74%, transparent);
 }
 
 .fa-message-markdown .fa-message-table tbody tr:last-child td {
-  border-bottom: 0;
+	border-bottom: 0;
 }
 
 .fa-message-markdown .fa-message-table .is-align-center {
-  text-align: center;
+	text-align: center;
 }
 
 .fa-message-markdown .fa-message-table .is-align-right {
-  text-align: right;
+	text-align: right;
 }
 
 .fa-message-code-block {
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-3) 56%, transparent);
+	border-radius: 16px;
+	overflow: hidden;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-3) 56%, transparent);
 }
 
 .fa-message-code-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--fa-text-muted);
-  border-bottom: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-1) 50%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fa-text-muted);
+	border-bottom: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-1) 50%, transparent);
 }
 
 .fa-message-code-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .fa-code-copy-button {
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
-  color: var(--fa-text-muted);
-  box-shadow: none;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  flex-shrink: 0;
+	padding: 5px 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
+	color: var(--fa-text-muted);
+	box-shadow: none;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	flex-shrink: 0;
 }
 
 .fa-code-copy-button:hover {
-  background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent);
-  border-color: color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border) 72%);
-  transform: none;
+	background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent);
+	border-color: color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border) 72%);
+	transform: none;
 }
 
 .fa-message-code-block pre {
-  margin: 0;
-  padding: 14px 16px;
-  overflow: auto;
-  font-family:
-    "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas,
-    monospace;
-  font-size: 13px;
-  line-height: 1.65;
-  white-space: pre;
-  color: var(--fa-text);
+	margin: 0;
+	padding: 14px 16px;
+	overflow: auto;
+	font-family:
+		"JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas,
+		monospace;
+	font-size: 13px;
+	line-height: 1.65;
+	white-space: pre;
+	color: var(--fa-text);
 }
 
 .fa-message-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-  opacity: 0;
-  transform: translateY(-2px);
-  pointer-events: none;
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	flex-wrap: wrap;
+	gap: 6px;
+	width: 100%;
+	opacity: 0;
+	transform: translateY(-2px);
+	pointer-events: none;
+	transition:
+		opacity 0.15s ease,
+		transform 0.15s ease;
 }
 
 .fa-message-row:hover .fa-message-actions,
 .fa-message-row:focus-within .fa-message-actions {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
+	opacity: 1;
+	transform: none;
+	pointer-events: auto;
 }
 
 .fa-message-action-button {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
-  color: var(--fa-text-muted);
-  box-shadow: none;
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	min-height: 28px;
+	padding: 0;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 78%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
+	color: var(--fa-text-muted);
+	box-shadow: none;
 }
 
 .fa-message-action-button:hover {
-  transform: none;
-  background: color-mix(in srgb, var(--fa-panel-3) 74%, transparent);
-  border-color: color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border) 72%);
-  color: var(--fa-text);
+	transform: none;
+	background: color-mix(in srgb, var(--fa-panel-3) 74%, transparent);
+	border-color: color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border) 72%);
+	color: var(--fa-text);
 }
 
 .fa-message-action-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  color: currentColor;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	color: currentColor;
 }
 
 .fa-message-action-icon svg {
-  width: 14px;
-  height: 14px;
-  display: block;
+	width: 14px;
+	height: 14px;
+	display: block;
 }
 
 .fa-agent-run-bubble {
-  max-width: min(560px, 80%);
-  display: grid;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--fa-panel-2) 92%, transparent),
-    color-mix(in srgb, var(--fa-panel-1) 88%, transparent)
-  );
-  box-shadow: var(--fa-message-shadow);
-  border-bottom-left-radius: 8px;
+	max-width: min(560px, 80%);
+	display: grid;
+	gap: 12px;
+	padding: 14px 16px;
+	border-radius: 20px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fa-panel-2) 92%, transparent),
+		color-mix(in srgb, var(--fa-panel-1) 88%, transparent)
+	);
+	box-shadow: var(--fa-message-shadow);
+	border-bottom-left-radius: 8px;
 }
 
 .fa-agent-run-bubble.is-success {
-  border-color: color-mix(in srgb, var(--fa-success) 28%, var(--fa-border) 72%);
+	border-color: color-mix(in srgb, var(--fa-success) 28%, var(--fa-border) 72%);
 }
 
 .fa-agent-run-bubble.is-danger {
-  border-color: color-mix(in srgb, var(--fa-danger) 34%, var(--fa-border) 66%);
+	border-color: color-mix(in srgb, var(--fa-danger) 34%, var(--fa-border) 66%);
 }
 
 .fa-agent-run-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
 }
 
 .fa-agent-run-pulse {
-  width: 12px;
-  height: 12px;
-  margin-top: 5px;
-  border-radius: 999px;
-  background: var(--fa-warning);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--fa-warning) 14%, transparent);
-  animation: fa-agent-pulse 1.8s ease-in-out infinite;
-  flex-shrink: 0;
+	width: 12px;
+	height: 12px;
+	margin-top: 5px;
+	border-radius: 999px;
+	background: var(--fa-warning);
+	box-shadow: 0 0 0 7px color-mix(in srgb, var(--fa-warning) 14%, transparent);
+	animation: fa-agent-pulse 1.8s ease-in-out infinite;
+	flex-shrink: 0;
 }
 
 .fa-agent-run-pulse.is-success {
-  background: var(--fa-success);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--fa-success) 14%, transparent);
+	background: var(--fa-success);
+	box-shadow: 0 0 0 7px color-mix(in srgb, var(--fa-success) 14%, transparent);
 }
 
 .fa-agent-run-pulse.is-danger {
-  background: var(--fa-danger);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--fa-danger) 14%, transparent);
+	background: var(--fa-danger);
+	box-shadow: 0 0 0 7px color-mix(in srgb, var(--fa-danger) 14%, transparent);
 }
 
 @keyframes fa-agent-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
+	0%,
+	100% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.08);
+	}
 }
 
 .fa-agent-run-copy {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
+	min-width: 0;
+	display: grid;
+	gap: 3px;
 }
 
 .fa-agent-run-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--fa-text);
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--fa-text);
 }
 
 .fa-agent-run-detail {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--fa-text-muted);
 }
 
 .fa-agent-run-steps-shell {
-  display: grid;
-  gap: 10px;
+	display: grid;
+	gap: 10px;
 }
 
 .fa-agent-run-steps-shell summary {
-  list-style: none;
+	list-style: none;
 }
 
 .fa-agent-run-steps-shell summary::-webkit-details-marker {
-  display: none;
+	display: none;
 }
 
 .fa-agent-run-steps-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-3) 20%, transparent);
-  color: var(--fa-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 8px 10px;
+	border-radius: 12px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-3) 20%, transparent);
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
 }
 
 .fa-agent-run-steps-hint {
-  font-size: 11px;
-  color: var(--fa-text-soft);
+	font-size: 11px;
+	color: var(--fa-text-soft);
 }
 
 .fa-agent-run-steps-shell[open] .fa-agent-run-steps-summary {
-  color: var(--fa-text);
-  background: color-mix(in srgb, var(--fa-panel-3) 28%, transparent);
+	color: var(--fa-text);
+	background: color-mix(in srgb, var(--fa-panel-3) 28%, transparent);
 }
 
 .fa-agent-run-steps {
-  display: grid;
-  gap: 8px;
+	display: grid;
+	gap: 8px;
 }
 
 .fa-agent-run-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-3) 34%, transparent);
-  font-size: 13px;
-  color: var(--fa-text);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 12px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-3) 34%, transparent);
+	font-size: 13px;
+	color: var(--fa-text);
 }
 
 .fa-agent-run-step-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--fa-text-muted) 74%, transparent);
-  flex-shrink: 0;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-text-muted) 74%, transparent);
+	flex-shrink: 0;
 }
 
 .fa-agent-run-step.is-success .fa-agent-run-step-dot {
-  background: var(--fa-success);
+	background: var(--fa-success);
 }
 
 .fa-agent-run-step.is-warn .fa-agent-run-step-dot {
-  background: var(--fa-warning);
+	background: var(--fa-warning);
 }
 
 .fa-agent-run-step.is-danger .fa-agent-run-step-dot {
-  background: var(--fa-danger);
+	background: var(--fa-danger);
 }

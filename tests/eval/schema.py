@@ -30,7 +30,7 @@ class EvalCase:
     origin: dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "EvalCase":
+    def from_dict(cls, raw: dict[str, Any]) -> EvalCase:
         return cls(
             id=str(raw["id"]),
             input=dict(raw.get("input") or {}),

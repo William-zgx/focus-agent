@@ -4,7 +4,6 @@ import argparse
 import base64
 import json
 import os
-from pathlib import Path
 import shutil
 import socket
 import struct
@@ -12,10 +11,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from urllib import parse as urllib_parse
+from pathlib import Path
 from urllib import error as urllib_error
+from urllib import parse as urllib_parse
 from urllib import request as urllib_request
-
 
 DEFAULT_APP_URL = "http://127.0.0.1:5173/app/"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"

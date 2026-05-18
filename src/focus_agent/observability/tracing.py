@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 from contextlib import AbstractContextManager
 from contextvars import ContextVar
 from dataclasses import dataclass
-import hashlib
 from typing import Any
 from uuid import uuid4
 
@@ -319,7 +319,11 @@ def build_invoke_config(
 ) -> dict[str, Any]:
     return {
         "run_name": run_name,
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "user_id": user_id,
+            "root_thread_id": root_thread_id,
+        },
         "metadata": build_trace_metadata(
             settings=settings,
             thread_id=thread_id,
@@ -349,7 +353,11 @@ def _new_span_id() -> str:
     return uuid4().hex[:16]
 
 
-class _suppress_otel_errors(AbstractContextManager[None]):
+def _suppress_otel_errors() -> AbstractContextManager[None]:
+    return _SuppressOtelErrors()
+
+
+class _SuppressOtelErrors(AbstractContextManager[None]):
     def __enter__(self) -> None:
         return None
 

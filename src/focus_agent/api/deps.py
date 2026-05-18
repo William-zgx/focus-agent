@@ -7,8 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from focus_agent.config import Settings
 from focus_agent.core.users import User
-from focus_agent.engine.runtime import AppRuntime
-from focus_agent.engine.runtime import create_runtime
+from focus_agent.engine.runtime import AppRuntime, create_runtime
 from focus_agent.security.permissions import AuthContext, is_admin_role, permissions_for_roles
 from focus_agent.security.tokens import AuthError, Principal, decode_access_token
 from focus_agent.services.auth import AuthService

@@ -1,8 +1,16 @@
-from focus_agent.services.branches import BranchService
+from focus_agent.core.branching import (
+    BranchRecord,
+    BranchRole,
+    BranchStatus,
+    ImportedConclusion,
+    MergeMode,
+)
 from focus_agent.core.request_context import RequestContext
+from focus_agent.core.types import FindingItem
+from focus_agent.services.branches import BranchService
 from focus_agent.storage.namespaces import (
-    branch_namespace,
     branch_local_memory_namespace,
+    branch_namespace,
     branch_promoted_memory_namespace,
     conversation_main_namespace,
     conversation_namespace_for_context,
@@ -13,8 +21,6 @@ from focus_agent.storage.namespaces import (
     skill_memory_namespace,
     user_profile_namespace,
 )
-from focus_agent.core.types import FindingItem
-from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus, ImportedConclusion, MergeMode
 
 
 class FakeStore:

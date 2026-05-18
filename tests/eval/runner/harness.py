@@ -11,10 +11,11 @@ import json
 import queue
 import threading
 import time
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool as langchain_tool
@@ -29,7 +30,6 @@ from focus_agent.skills import SkillRegistry
 
 from ..judges import EnvironmentJudge, LLMJudge, RuleJudge, TrajectoryJudge
 from ..schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
-
 
 # The graph builder caches model instances internally; when we monkey-patch
 # `create_chat_model` we must serialize graph construction across threads so

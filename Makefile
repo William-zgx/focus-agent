@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint import-sort-check format format-check check ci ci-test contract-check release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-format web-format-check frontend-check frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check architecture-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -31,6 +31,7 @@ help:
 		'  make test-chat-service Run chat service tests' \
 		'  make test-thread-stream-frontend-regressions Run Node stream frontend regression tests' \
 		'  make lint              Run ruff check .' \
+		'  make lint-strict       Run stricter Ruff checks' \
 		'  make import-sort-check Run Ruff import sorting check' \
 		'  make format            Run ruff format .' \
 		'  make format-check      Check ruff formatting without writing changes' \
@@ -38,11 +39,13 @@ help:
 		'  make ci                Run local CI parity checks' \
 		'  make ci-test           Run pytest without repo-local env bootstrap' \
 		'  make contract-check    Verify API and frontend SDK contract snapshots' \
+		'  make architecture-report Report large files and import boundary signals without gating CI' \
 		'  make release-gate      Run the full release gate and write reports/release-gate/latest.json' \
 		'  make release-evidence  Generate a production release evidence manifest' \
 		'  make ci-release-gate   Run the CI release gate entrypoint' \
 		'  make ci-release-evidence Generate CI release evidence manifest' \
 		'  make nightly-regression Generate reports/nightly/latest.json' \
+		'  make feedback-regression Generate reports/nightly/feedback-regression.json' \
 		'  make production-smoke  Generate reports/release-gate/production-smoke.json' \
 		'  make sdk-install       Install frontend SDK dependencies' \
 		'  make sdk-check         Run frontend SDK type-check' \
@@ -53,9 +56,12 @@ help:
 		'  make web-check         Run frontend app type-check' \
 		'  make web-build         Build the React frontend app' \
 		'  make web-lint          Run Web Biome lint on the enabled scope' \
+		'  make web-lint-full     Run Web Biome lint on all app src' \
 		'  make web-format        Run Web Biome format write on the enabled scope' \
 		'  make web-format-check  Check Web Biome format on the enabled scope' \
+		'  make web-format-check-full Check Web Biome format on all app src' \
 		'  make frontend-check    Run frontend SDK and Web checks' \
+		'  make frontend-check-full Run full-scope frontend checks' \
 		'  make frontend-build    Build frontend SDK and Web app' \
 		'  make docker-up         Start the Compose service' \
 		'  make docker-rebuild    Rebuild image and recreate the Compose service' \
@@ -63,6 +69,8 @@ help:
 		'  make docker-logs       Follow Compose service logs' \
 		'  make ui-smoke          Run the real-browser chat and branch UI smoke test' \
 		'  make ui-smoke-observability Run the real-browser observability UI smoke test' \
+		'  make ui-smoke-productivity Run the productivity source-level UI smoke test' \
+		'  make ui-smoke-agent-team-adoption Run the Agent Team adoption UI smoke test' \
 		'  make clean             Remove Python/pytest caches'
 
 .venv/bin/python:
@@ -116,6 +124,9 @@ test-thread-stream-frontend-regressions: node_modules
 lint: .venv/bin/python
 	$(RUFF) check .
 
+lint-strict: .venv/bin/python
+	$(RUFF) check --extend-select I,W,UP,N .
+
 import-sort-check: .venv/bin/python
 	$(RUFF) check --select I .
 
@@ -125,15 +136,18 @@ format: .venv/bin/python
 format-check: .venv/bin/python
 	$(RUFF) format --check .
 
-check: lint test contract-check sdk-check sdk-build sdk-validate-transport web-lint web-format-check web-check web-build test-thread-stream-frontend-regressions
+check: lint-strict test contract-check frontend-check-full sdk-build web-build test-thread-stream-frontend-regressions
 
-ci: lint ci-test contract-check sdk-check sdk-build sdk-validate-transport web-lint web-format-check web-check web-build test-thread-stream-frontend-regressions
+ci: lint-strict ci-test contract-check frontend-check-full sdk-build web-build test-thread-stream-frontend-regressions
 
 ci-test: .venv/bin/python
 	FOCUS_AGENT_LOCAL_ENV_FILE=$(CI_LOCAL_ENV_FILE) $(PYTEST)
 
 contract-check: .venv/bin/python
 	$(PYTHON) scripts/check_contracts.py
+
+architecture-report: .venv/bin/python
+	$(PYTHON) scripts/architecture_report.py $(ARCHITECTURE_REPORT_ARGS)
 
 release-gate: .venv/bin/python
 	$(PYTHON) scripts/release_gate.py $(RELEASE_GATE_ARGS)
@@ -151,7 +165,12 @@ nightly-regression: .venv/bin/python
 	@mkdir -p reports/release-gate reports/nightly
 	$(PYTHON) scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
 	$(PYTHON) scripts/memory_context_eval.py --trend-report-json reports/release-gate/memory-context-trend.json
+	$(PYTHON) scripts/feedback_regression.py $(FEEDBACK_REGRESSION_ARGS)
 	$(PYTHON) scripts/nightly_regression.py $(NIGHTLY_REGRESSION_ARGS)
+
+feedback-regression: .venv/bin/python
+	@mkdir -p reports/nightly
+	$(PYTHON) scripts/feedback_regression.py $(FEEDBACK_REGRESSION_ARGS)
 
 production-smoke: .venv/bin/python
 	$(PYTHON) scripts/production_smoke.py $(PRODUCTION_SMOKE_ARGS)
@@ -194,13 +213,21 @@ web-build: node_modules
 web-lint: node_modules
 	$(PNPM) --filter @focus-agent/web-app lint
 
+web-lint-full: node_modules
+	$(PNPM) web:lint:full
+
 web-format: node_modules
 	$(PNPM) --filter @focus-agent/web-app format
 
 web-format-check: node_modules
 	$(PNPM) --filter @focus-agent/web-app format:check
 
+web-format-check-full: node_modules
+	$(PNPM) web:format:check:full
+
 frontend-check: sdk-check sdk-validate-transport web-lint web-format-check web-check
+
+frontend-check-full: sdk-check sdk-validate-transport web-lint-full web-format-check-full web-check
 
 frontend-build: sdk-build web-build
 
@@ -221,6 +248,12 @@ ui-smoke: .venv/bin/python
 
 ui-smoke-observability: .venv/bin/python
 	$(PYTHON) scripts/observability_ui_smoke.py
+
+ui-smoke-productivity: node_modules
+	$(PNPM) --dir $(WEB_DIR) smoke:productivity
+
+ui-smoke-agent-team-adoption: node_modules
+	$(PNPM) --dir $(WEB_DIR) smoke:agent-team-adoption
 
 clean:
 	rm -rf .pytest_cache

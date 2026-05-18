@@ -10,7 +10,6 @@ from langchain.messages import AIMessage, HumanMessage
 
 from .runner import load_dataset, run_case
 
-
 DATASET_PATH = Path(__file__).parent / "datasets" / "agent_delegation.jsonl"
 
 

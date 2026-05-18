@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from langchain.messages import ToolMessage
@@ -62,7 +62,7 @@ def build_tool_approval_interrupt_payload(item: ToolExecutionInput) -> dict[str,
         "redacted_args": redacted_args,
         "risk_level": item.runtime.risk_level or "low",
         "policy_version": TOOL_APPROVAL_POLICY_VERSION,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 

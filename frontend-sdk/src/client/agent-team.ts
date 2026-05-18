@@ -16,8 +16,19 @@ import type {
   FocusAgentAgentTeamTaskRunRequest,
   FocusAgentAgentTeamRunMetadata,
   FocusAgentAgentTeamMergeBundle,
+  FocusAgentAgentTeamCreateMergeReviewRequest,
+  FocusAgentAgentTeamMergeReviewApplyRequest,
+  FocusAgentAgentTeamMergeReviewListResponse,
+  FocusAgentAgentTeamMergeReviewPreviewRequest,
+  FocusAgentAgentTeamMergeReviewPreviewResponse,
+  FocusAgentAgentTeamMergeReviewRejectRequest,
+  FocusAgentAgentTeamMergeReviewResponse,
+  FocusAgentAgentTeamUpdateMergeReviewRequest,
   FocusAgentAgentTeamMergeDecisionRequest,
   FocusAgentAgentTeamMergeDecisionResponse,
+  FocusAgentAgentTeamToolApprovalDecisionRequest,
+  FocusAgentAgentTeamToolApprovalDecisionResponse,
+  FocusAgentAgentTeamToolApprovalListResponse,
   FocusAgentAgentTeamPrepareMergeBundleRequest,
   FocusAgentAgentTeamRecordTaskOutputRequest,
   FocusAgentAgentTeamRecordTaskOutputResponse,
@@ -27,6 +38,7 @@ import type {
   FocusAgentAgentTeamSessionListResponse,
   FocusAgentAgentTeamTask,
   FocusAgentAgentTeamTaskOutput,
+  FocusAgentAgentTeamToolApproval,
   FocusAgentAgentTeamArtifact,
   FocusAgentAgentTeamTaskListResponse,
   FocusAgentAgentTeamUpdateTaskRequest,
@@ -41,6 +53,7 @@ type AgentTeamSessionActionResponse = {
   merge_bundle?: FocusAgentAgentTeamMergeBundle | null;
   planning?: FocusAgentAgentTeamPlanningMetadata | null;
   run?: FocusAgentAgentTeamRunMetadata | null;
+  pending_tool_approvals?: FocusAgentAgentTeamToolApproval[];
   count?: number;
 };
 
@@ -61,6 +74,7 @@ function normalizeAgentTeamSessionActionResponse<T extends AgentTeamSessionActio
     artifacts: response.artifacts ?? [],
     planning: response.planning ?? response.session.planning ?? null,
     run: response.run ?? null,
+    pending_tool_approvals: response.pending_tool_approvals ?? [],
     count: response.count ?? items.length,
   };
 }
@@ -75,6 +89,7 @@ function normalizeAgentTeamTaskActionResponse(response: AgentTeamTaskActionRespo
     artifacts: response.artifacts ?? [],
     planning: response.planning ?? response.session?.planning ?? null,
     run: response.run ?? null,
+    pending_tool_approvals: response.pending_tool_approvals ?? [],
     count: response.count ?? items.length,
   };
 }
@@ -139,6 +154,7 @@ async function getAgentTeamSessionView(
     merge_bundle: response.merge_bundle ?? response.session.latest_merge_bundle ?? null,
     planning: response.planning ?? response.session.planning ?? { task_count: response.tasks?.length ?? 0 },
     run: response.run ?? null,
+    pending_tool_approvals: response.pending_tool_approvals ?? [],
   };
 }
 
@@ -342,7 +358,65 @@ async function cancelAgentTeamSession(
     merge_bundle: response.merge_bundle ?? response.session.latest_merge_bundle ?? null,
     planning: response.planning ?? response.session.planning ?? { task_count: response.tasks?.length ?? 0 },
     run: response.run ?? null,
+    pending_tool_approvals: response.pending_tool_approvals ?? [],
   };
+}
+
+async function listAgentTeamToolApprovals(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+): Promise<FocusAgentAgentTeamToolApprovalListResponse> {
+  const response = await this.requestJson<FocusAgentAgentTeamToolApprovalListResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/tool-approvals`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+  const items = response.items ?? response.approvals ?? [];
+  return { approvals: response.approvals ?? items, items, count: response.count ?? items.length };
+}
+
+async function decideAgentTeamToolApproval(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  requestId: string,
+  request: FocusAgentAgentTeamToolApprovalDecisionRequest,
+): Promise<FocusAgentAgentTeamToolApprovalDecisionResponse> {
+  return this.requestJson<FocusAgentAgentTeamToolApprovalDecisionResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/tool-approvals/${encodeURIComponent(requestId)}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function approveAgentTeamToolApproval(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  requestId: string,
+  request: Omit<FocusAgentAgentTeamToolApprovalDecisionRequest, "approved"> = {},
+): Promise<FocusAgentAgentTeamToolApprovalDecisionResponse> {
+  return decideAgentTeamToolApproval.call(this, sessionId, requestId, {
+    ...request,
+    approved: true,
+  });
+}
+
+async function rejectAgentTeamToolApproval(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  requestId: string,
+  request: Omit<FocusAgentAgentTeamToolApprovalDecisionRequest, "approved"> = {},
+): Promise<FocusAgentAgentTeamToolApprovalDecisionResponse> {
+  return decideAgentTeamToolApproval.call(this, sessionId, requestId, {
+    ...request,
+    approved: false,
+  });
 }
 
 async function recordAgentTeamTaskOutput(
@@ -405,6 +479,120 @@ async function recordAgentTeamMergeDecision(
   );
 }
 
+async function createAgentTeamMergeReview(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  request: FocusAgentAgentTeamCreateMergeReviewRequest = {},
+): Promise<FocusAgentAgentTeamMergeReviewResponse> {
+  return this.requestJson<FocusAgentAgentTeamMergeReviewResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function listAgentTeamMergeReviews(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+): Promise<FocusAgentAgentTeamMergeReviewListResponse> {
+  return this.requestJson<FocusAgentAgentTeamMergeReviewListResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
+async function updateAgentTeamMergeReview(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  reviewId: string,
+  request: FocusAgentAgentTeamUpdateMergeReviewRequest,
+): Promise<FocusAgentAgentTeamMergeReviewResponse> {
+  return this.requestJson<FocusAgentAgentTeamMergeReviewResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review/${encodeURIComponent(reviewId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function previewAgentTeamMergeReview(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  reviewId: string,
+  request: FocusAgentAgentTeamMergeReviewPreviewRequest = {},
+): Promise<FocusAgentAgentTeamMergeReviewPreviewResponse> {
+  return this.requestJson<FocusAgentAgentTeamMergeReviewPreviewResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review/${encodeURIComponent(reviewId)}/preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function applyAgentTeamMergeReview(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  reviewId: string,
+  request: FocusAgentAgentTeamMergeReviewApplyRequest = {},
+): Promise<FocusAgentAgentTeamMergeReviewResponse> {
+  return this.requestJson<FocusAgentAgentTeamMergeReviewResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review/${encodeURIComponent(reviewId)}/apply`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function rejectAgentTeamMergeReview(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  reviewId: string,
+  request: FocusAgentAgentTeamMergeReviewRejectRequest = {},
+): Promise<FocusAgentAgentTeamMergeReviewResponse> {
+  return this.requestJson<FocusAgentAgentTeamMergeReviewResponse>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review/${encodeURIComponent(reviewId)}/reject`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function captureAgentTeamMergeReview(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  reviewId: string,
+): Promise<Record<string, unknown>> {
+  return this.requestJson<Record<string, unknown>>(
+    `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review/${encodeURIComponent(reviewId)}/capture`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+    true,
+  );
+}
+
 export interface AgentTeamEndpoints {
   createAgentTeamSession: OmitThisParameter<typeof createAgentTeamSession>;
   listAgentTeamSessions: OmitThisParameter<typeof listAgentTeamSessions>;
@@ -424,6 +612,17 @@ export interface AgentTeamEndpoints {
   recordAgentTeamTaskOutput: OmitThisParameter<typeof recordAgentTeamTaskOutput>;
   prepareAgentTeamMergeBundle: OmitThisParameter<typeof prepareAgentTeamMergeBundle>;
   recordAgentTeamMergeDecision: OmitThisParameter<typeof recordAgentTeamMergeDecision>;
+  createAgentTeamMergeReview: OmitThisParameter<typeof createAgentTeamMergeReview>;
+  listAgentTeamMergeReviews: OmitThisParameter<typeof listAgentTeamMergeReviews>;
+  updateAgentTeamMergeReview: OmitThisParameter<typeof updateAgentTeamMergeReview>;
+  previewAgentTeamMergeReview: OmitThisParameter<typeof previewAgentTeamMergeReview>;
+  applyAgentTeamMergeReview: OmitThisParameter<typeof applyAgentTeamMergeReview>;
+  rejectAgentTeamMergeReview: OmitThisParameter<typeof rejectAgentTeamMergeReview>;
+  captureAgentTeamMergeReview: OmitThisParameter<typeof captureAgentTeamMergeReview>;
+  listAgentTeamToolApprovals: OmitThisParameter<typeof listAgentTeamToolApprovals>;
+  decideAgentTeamToolApproval: OmitThisParameter<typeof decideAgentTeamToolApproval>;
+  approveAgentTeamToolApproval: OmitThisParameter<typeof approveAgentTeamToolApproval>;
+  rejectAgentTeamToolApproval: OmitThisParameter<typeof rejectAgentTeamToolApproval>;
 }
 
 const agentTeamEndpoints: FocusAgentEndpointMethodMap<AgentTeamEndpoints> = {
@@ -445,6 +644,17 @@ const agentTeamEndpoints: FocusAgentEndpointMethodMap<AgentTeamEndpoints> = {
   recordAgentTeamTaskOutput,
   prepareAgentTeamMergeBundle,
   recordAgentTeamMergeDecision,
+  createAgentTeamMergeReview,
+  listAgentTeamMergeReviews,
+  updateAgentTeamMergeReview,
+  previewAgentTeamMergeReview,
+  applyAgentTeamMergeReview,
+  rejectAgentTeamMergeReview,
+  captureAgentTeamMergeReview,
+  listAgentTeamToolApprovals,
+  decideAgentTeamToolApproval,
+  approveAgentTeamToolApproval,
+  rejectAgentTeamToolApproval,
 };
 
 export function applyAgentTeamEndpoints(Client: EndpointClientConstructor): void {

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import inspect
 import json
-from pathlib import Path
 import sys
 import tomllib
-from typing import Sequence
+from collections.abc import Sequence
+from dataclasses import replace
+from pathlib import Path
 
 from focus_agent.config import Settings
 

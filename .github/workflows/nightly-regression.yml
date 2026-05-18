@@ -15,6 +15,26 @@ on:
         description: "Optional alert report JSON path included in nightly aggregation."
         required: false
         type: string
+      feedback_events_json:
+        description: "Optional feedback events JSON/JSONL path included in feedback regression."
+        required: false
+        type: string
+      merge_review_json:
+        description: "Optional Agent Team merge review JSON path included in feedback regression."
+        required: false
+        type: string
+      skill_selection_json:
+        description: "Optional skill selection events JSON path included in feedback regression."
+        required: false
+        type: string
+      context_evidence_json:
+        description: "Optional context/memory evidence JSON path included in feedback regression."
+        required: false
+        type: string
+      productivity_capture_json:
+        description: "Optional notes/tasks capture JSON path included in feedback regression."
+        required: false
+        type: string
   schedule:
     - cron: "17 19 * * *"
 
@@ -58,7 +78,16 @@ jobs:
           TRAJECTORY_INPUT_JSON: ${{ inputs.trajectory_input_json }}
           REPLAY_REPORT_JSON: ${{ inputs.replay_report_json || 'reports/nightly/trajectory-replay.json' }}
           ALERT_REPORT_JSON: ${{ inputs.alert_report_json }}
+          FEEDBACK_EVENTS_JSON: ${{ inputs.feedback_events_json }}
+          MERGE_REVIEW_JSON: ${{ inputs.merge_review_json }}
+          SKILL_SELECTION_JSON: ${{ inputs.skill_selection_json }}
+          CONTEXT_EVIDENCE_JSON: ${{ inputs.context_evidence_json }}
+          PRODUCTIVITY_CAPTURE_JSON: ${{ inputs.productivity_capture_json }}
+          CANDIDATE_JSONL: reports/nightly/memory-context-candidates.jsonl
+          REVIEWED_JSONL: reports/nightly/memory-context-reviewed.jsonl
+          PROMOTED_JSONL: reports/nightly/memory-context-promoted.jsonl
         run: |
+          mkdir -p reports/nightly reports/release-gate
           extra_args=()
           if [ -n "$TRAJECTORY_INPUT_JSON" ]; then
             uv run python -m tests.eval replay \
@@ -68,14 +97,51 @@ jobs:
               --concurrency 1 \
               --report-json "$REPLAY_REPORT_JSON" \
               --report-jsonl reports/nightly/trajectory-replay.jsonl
+            uv run python scripts/memory_context_eval.py \
+              --candidate-source-json "$REPLAY_REPORT_JSON" \
+              --candidate-source-type replay \
+              --candidate-dataset-out "$CANDIDATE_JSONL" \
+              --candidate-baseline-label nightly
+            uv run python scripts/memory_context_eval.py \
+              --candidate-review-jsonl "$CANDIDATE_JSONL" \
+              --candidate-reviewed-out "$REVIEWED_JSONL" \
+              --candidate-promoted-out "$PROMOTED_JSONL" \
+              --candidate-reviewer nightly-regression \
+              --candidate-review-note "nightly real failure backflow; explicit approval required for promotion"
             extra_args+=(--replay-json "$REPLAY_REPORT_JSON")
+            extra_args+=(--candidate-jsonl "$CANDIDATE_JSONL")
+            extra_args+=(--candidate-review-jsonl "$CANDIDATE_JSONL")
+            extra_args+=(--candidate-reviewed-jsonl "$REVIEWED_JSONL")
+            extra_args+=(--candidate-promoted-jsonl "$PROMOTED_JSONL")
           elif [ -n "$REPLAY_REPORT_JSON" ] && [ -f "$REPLAY_REPORT_JSON" ]; then
             extra_args+=(--replay-json "$REPLAY_REPORT_JSON")
           fi
           if [ -n "$ALERT_REPORT_JSON" ]; then
             extra_args+=(--alert-json "$ALERT_REPORT_JSON")
           fi
-          make nightly-regression NIGHTLY_REGRESSION_ARGS="${extra_args[*]}"
+          feedback_args=()
+          if [ -n "$FEEDBACK_EVENTS_JSON" ]; then
+            feedback_args+=(--feedback-events-json "$FEEDBACK_EVENTS_JSON")
+          fi
+          if [ -n "$MERGE_REVIEW_JSON" ]; then
+            feedback_args+=(--merge-review-json "$MERGE_REVIEW_JSON")
+          fi
+          if [ -n "$SKILL_SELECTION_JSON" ]; then
+            feedback_args+=(--skill-selection-json "$SKILL_SELECTION_JSON")
+          fi
+          if [ -n "$CONTEXT_EVIDENCE_JSON" ]; then
+            feedback_args+=(--context-evidence-json "$CONTEXT_EVIDENCE_JSON")
+          fi
+          if [ -n "$PRODUCTIVITY_CAPTURE_JSON" ]; then
+            feedback_args+=(--productivity-capture-json "$PRODUCTIVITY_CAPTURE_JSON")
+          fi
+          if [ -n "$REPLAY_REPORT_JSON" ] && [ -f "$REPLAY_REPORT_JSON" ]; then
+            feedback_args+=(--trajectory-report-json "$REPLAY_REPORT_JSON")
+          fi
+          if [ "${#feedback_args[@]}" -gt 0 ]; then
+            make feedback-regression FEEDBACK_REGRESSION_ARGS="${feedback_args[*]}"
+          fi
+          make nightly-regression NIGHTLY_REGRESSION_ARGS="${extra_args[*]}" FEEDBACK_REGRESSION_ARGS="${feedback_args[*]}"
 
       - name: Build nightly model matrix eval report
         if: always()
@@ -124,6 +190,7 @@ jobs:
             reports/nightly/
             reports/agent-governance/
             reports/release-gate/memory-context-*.json
+            reports/nightly/memory-context-*.jsonl
             reports/nightly/trajectory-replay*.json*
           retention-days: 30
           if-no-files-found: ignore

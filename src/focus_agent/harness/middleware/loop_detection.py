@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import functools
 import inspect
 import json
 import re
+from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from langchain.messages import AIMessage, HumanMessage
@@ -18,7 +18,6 @@ from .base import (
     state_from_call,
 )
 from .errors import LoopDetectedError
-
 
 LoopAction = Literal["raise", "return_fallback"]
 

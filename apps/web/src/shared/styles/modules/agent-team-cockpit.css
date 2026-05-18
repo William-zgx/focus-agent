@@ -1,0 +1,1970 @@
+.fa-agent-team-collab-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 4px;
+}
+
+.fa-agent-team-collab-card {
+	position: relative;
+	display: grid;
+	gap: 1px;
+	min-width: 0;
+	min-height: 48px;
+	padding: 5px 7px 5px 23px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-1) 84%, transparent 16%);
+	color: var(--fa-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.fa-agent-team-collab-card:hover {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 48%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-accent) 7%, var(--fa-panel-1) 93%);
+}
+
+.fa-agent-team-collab-card.is-selected {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 88%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--fa-accent) 18%, transparent),
+			transparent 44%
+		), color-mix(in srgb, var(--fa-accent) 16%, var(--fa-panel-1) 84%);
+	box-shadow:
+		inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 38%, transparent),
+		0 0 0 2px color-mix(in srgb, var(--fa-accent) 12%, transparent);
+}
+
+.fa-agent-team-collab-card::before {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 8px;
+	width: 8px;
+	height: 8px;
+	border: 1px solid color-mix(in srgb, var(--fa-text-muted) 70%, transparent);
+	border-radius: 999px;
+	transform: translateY(-50%);
+}
+
+.fa-agent-team-collab-card.is-selected::before {
+	border-color: var(--fa-accent);
+	background: radial-gradient(circle, var(--fa-accent) 0 50%, transparent 54%);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--fa-accent) 16%, transparent);
+}
+
+.fa-agent-team-collab-card strong,
+.fa-agent-team-collab-card span,
+.fa-agent-team-collab-card small {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-collab-card strong {
+	font-size: 0.78rem;
+	line-height: 1.05;
+}
+
+.fa-agent-team-collab-card span {
+	overflow: hidden;
+	color: var(--fa-text-muted);
+	font-size: 0.66rem;
+	line-height: 1.05;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-collab-card small {
+	align-self: end;
+	overflow: hidden;
+	color: var(--fa-text-subtle);
+	font-size: 0.6rem;
+	line-height: 1.05;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-cockpit-shell {
+	--fa-agent-team-cockpit-gap: 14px;
+	--fa-agent-team-rail-line: color-mix(
+		in srgb,
+		var(--fa-border-subtle) 72%,
+		transparent
+	);
+	display: grid;
+	gap: var(--fa-agent-team-cockpit-gap);
+	min-width: 0;
+	isolation: isolate;
+}
+
+.fa-agent-team-mission-header,
+.fa-agent-team-cockpit-mission-header {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 18px;
+	align-items: start;
+	min-width: 0;
+	padding: 18px;
+	overflow: hidden;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 28%, var(--fa-border-subtle));
+	border-radius: 8px;
+	background:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--fa-accent) 12%, transparent),
+			transparent 42%
+		),
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--fa-panel-2) 78%, transparent 22%),
+			color-mix(in srgb, var(--fa-panel-1) 92%, transparent 8%)
+		);
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.05),
+		0 18px 42px color-mix(in srgb, #000 18%, transparent);
+}
+
+.fa-agent-team-mission-header::before,
+.fa-agent-team-cockpit-mission-header::before {
+	content: "";
+	position: absolute;
+	inset: 0 0 auto;
+	height: 3px;
+	background: linear-gradient(
+		90deg,
+		var(--fa-accent),
+		color-mix(in srgb, var(--fa-status-success-text) 64%, var(--fa-accent) 36%)
+	);
+}
+
+.fa-agent-team-cockpit-mission-copy,
+.fa-agent-team-cockpit-header-actions,
+.fa-agent-team-cockpit-focus-body,
+.fa-agent-team-decision-next-card,
+.fa-agent-team-cockpit-next-action,
+.fa-agent-team-cockpit-dock-section,
+.fa-agent-team-final-preview-card,
+.fa-agent-team-cockpit-final-preview {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-kicker,
+.fa-agent-team-cockpit-panel-header span,
+.fa-agent-team-cockpit-mission-meta,
+.fa-agent-team-final-preview-card span,
+.fa-agent-team-cockpit-final-preview span,
+.fa-agent-team-cockpit-focus-meta span,
+.fa-agent-team-inspector-entry span {
+	color: var(--fa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.68rem;
+	font-weight: 700;
+}
+
+.fa-agent-team-cockpit-mission-header h1,
+.fa-agent-team-mission-header h1 {
+	margin: 0;
+	max-width: 100%;
+	color: var(--fa-text);
+	font-size: clamp(1.4rem, 2.2vw, 2rem);
+	line-height: 1.08;
+	letter-spacing: 0;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-cockpit-mission-header p,
+.fa-agent-team-mission-header p,
+.fa-agent-team-cockpit-panel-header strong,
+.fa-agent-team-current-focus p,
+.fa-agent-team-cockpit-current-focus p,
+.fa-agent-team-decision-dock p,
+.fa-agent-team-cockpit-decision-dock p,
+.fa-agent-team-plan-review-card p {
+	margin: 0;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-cockpit-mission-header p,
+.fa-agent-team-mission-header p {
+	max-width: 920px;
+	color: var(--fa-text-muted);
+	line-height: 1.45;
+}
+
+.fa-agent-team-cockpit-mission-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-mission-meta > span {
+	display: inline-flex;
+	align-items: center;
+	max-width: 100%;
+	min-height: 24px;
+	padding: 3px 8px;
+	overflow: hidden;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-2) 70%, transparent 30%);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-cockpit-progress {
+	height: 8px;
+	overflow: hidden;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent 38%);
+}
+
+.fa-agent-team-cockpit-progress span {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: linear-gradient(
+		90deg,
+		var(--fa-accent),
+		color-mix(in srgb, var(--fa-status-success-text) 72%, var(--fa-accent) 28%)
+	);
+	transition: width 0.22s ease;
+}
+
+.fa-agent-team-cockpit-header-actions {
+	align-content: start;
+	justify-items: end;
+}
+
+.fa-agent-team-cockpit-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 100%;
+	min-width: 0;
+	min-height: 36px;
+	padding: 8px 12px;
+	overflow: hidden;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 78%, transparent 22%);
+	color: var(--fa-text);
+	font: inherit;
+	font-size: 0.84rem;
+	font-weight: 700;
+	line-height: 1.2;
+	text-align: center;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		border-color 0.16s ease,
+		background 0.16s ease,
+		box-shadow 0.16s ease,
+		transform 0.16s ease;
+}
+
+.fa-agent-team-cockpit-button:hover:not(:disabled) {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 48%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-2) 92%);
+	transform: translateY(-1px);
+}
+
+.fa-agent-team-cockpit-button.is-primary {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 72%,
+		var(--fa-border-subtle)
+	);
+	background: linear-gradient(
+		135deg,
+		var(--fa-accent),
+		color-mix(in srgb, var(--fa-accent) 78%, var(--fa-status-success-text) 22%)
+	);
+	color: white;
+	box-shadow: 0 12px 28px color-mix(in srgb, var(--fa-accent) 22%, transparent);
+}
+
+.fa-agent-team-cockpit-button.is-secondary {
+	background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
+}
+
+.fa-agent-team-cockpit-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.56;
+	transform: none;
+}
+
+.fa-agent-team-cockpit-grid {
+	display: grid;
+	grid-template-areas: "map focus dock";
+	grid-template-columns: minmax(220px, 0.85fr) minmax(320px, 1.4fr) minmax(
+			250px,
+			0.95fr
+		);
+	gap: var(--fa-agent-team-cockpit-gap);
+	align-items: stretch;
+	min-width: 0;
+}
+
+.fa-agent-team-map-rail,
+.fa-agent-team-cockpit-mission-map,
+.fa-agent-team-current-focus,
+.fa-agent-team-cockpit-current-focus,
+.fa-agent-team-decision-dock,
+.fa-agent-team-cockpit-decision-dock,
+.fa-agent-team-plan-review-card {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+	align-content: start;
+	padding: 14px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 8px;
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fa-panel-1) 92%, transparent 8%),
+		color-mix(in srgb, var(--fa-panel-2) 76%, transparent 24%)
+	);
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.04),
+		0 12px 26px color-mix(in srgb, #000 12%, transparent);
+}
+
+.fa-agent-team-map-rail,
+.fa-agent-team-cockpit-mission-map {
+	grid-area: map;
+	order: 4;
+	position: relative;
+	overflow: hidden;
+}
+
+.fa-agent-team-current-focus,
+.fa-agent-team-cockpit-current-focus {
+	grid-area: focus;
+	order: 3;
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 42%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--fa-accent) 6%, transparent),
+			transparent 36%
+		), color-mix(in srgb, var(--fa-panel-1) 90%, transparent 10%);
+	box-shadow:
+		inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 15%, transparent),
+		0 16px 34px color-mix(in srgb, #000 15%, transparent);
+}
+
+.fa-agent-team-decision-dock,
+.fa-agent-team-cockpit-decision-dock {
+	grid-area: dock;
+	order: 2;
+	position: sticky;
+	top: 12px;
+}
+
+.fa-agent-team-cockpit-panel-header {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-panel-header strong {
+	color: var(--fa-text);
+	font-size: 0.98rem;
+	line-height: 1.25;
+}
+
+.fa-agent-team-cockpit-phase-track,
+.fa-agent-team-cockpit-phase-stack,
+.fa-agent-team-cockpit-task-stack,
+.fa-agent-team-plan-review-phases,
+.fa-agent-team-plan-review-task-list {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-phase-track,
+.fa-agent-team-cockpit-phase-stack {
+	position: relative;
+}
+
+.fa-agent-team-cockpit-phase {
+	position: relative;
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	padding-left: 16px;
+}
+
+.fa-agent-team-cockpit-phase::before {
+	content: "";
+	position: absolute;
+	top: 8px;
+	bottom: -12px;
+	left: 3px;
+	width: 1px;
+	background: var(--fa-agent-team-rail-line);
+}
+
+.fa-agent-team-cockpit-phase:last-child::before {
+	bottom: 8px;
+}
+
+.fa-agent-team-cockpit-phase::after {
+	content: "";
+	position: absolute;
+	top: 7px;
+	left: 0;
+	width: 7px;
+	height: 7px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 54%, var(--fa-border-subtle));
+	border-radius: 999px;
+	background: var(--fa-panel-1);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--fa-accent) 10%, transparent);
+}
+
+.fa-agent-team-cockpit-phase-heading {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	justify-content: space-between;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-phase-heading strong {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: 0.86rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-cockpit-phase-heading span {
+	flex: 0 0 auto;
+	color: var(--fa-text-muted);
+	font-size: 0.76rem;
+}
+
+.fa-agent-team-cockpit-phase p {
+	display: -webkit-box;
+	margin: 0;
+	overflow: hidden;
+	color: var(--fa-text-muted);
+	font-size: 0.78rem;
+	line-height: 1.35;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.fa-agent-team-map-rail {
+	counter-reset: mission-task;
+}
+
+.fa-agent-team-map-task-card,
+.fa-agent-team-cockpit-task-card,
+.fa-agent-team-cockpit-task-node {
+	position: relative;
+	display: grid;
+	grid-template-columns: 30px minmax(0, 1fr) auto;
+	gap: 4px 8px;
+	width: 100%;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent 38%);
+	color: var(--fa-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.fa-agent-team-map-task-card::before,
+.fa-agent-team-cockpit-task-card::before,
+.fa-agent-team-cockpit-task-node::before {
+	counter-increment: mission-task;
+	content: counter(mission-task, decimal-leading-zero);
+	display: grid;
+	grid-row: 1 / span 3;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 30%, var(--fa-border-subtle));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-accent) 11%, var(--fa-panel-1) 89%);
+	color: var(--fa-text);
+	font-size: 0.68rem;
+	font-weight: 800;
+}
+
+.fa-agent-team-map-task-card:hover,
+.fa-agent-team-map-task-card.is-selected,
+.fa-agent-team-cockpit-task-card:hover,
+.fa-agent-team-cockpit-task-card.is-selected,
+.fa-agent-team-cockpit-task-node:hover,
+.fa-agent-team-cockpit-task-node.is-selected {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 62%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-2) 90%);
+	box-shadow: inset 3px 0 0 color-mix(in srgb, var(--fa-accent) 78%, white 22%);
+}
+
+.fa-agent-team-map-task-card.is-recommended:not(.is-selected),
+.fa-agent-team-cockpit-task-card.is-recommended:not(.is-selected),
+.fa-agent-team-cockpit-task-node.is-recommended:not(.is-selected) {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 38%,
+		var(--fa-border-subtle)
+	);
+}
+
+.fa-agent-team-map-task-card.is-danger,
+.fa-agent-team-cockpit-task-card.is-danger,
+.fa-agent-team-cockpit-task-node.is-danger {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 48%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 7%,
+		var(--fa-panel-2) 93%
+	);
+}
+
+.fa-agent-team-map-task-card.is-warning,
+.fa-agent-team-cockpit-task-card.is-warning,
+.fa-agent-team-cockpit-task-node.is-warning {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 48%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 7%,
+		var(--fa-panel-2) 93%
+	);
+}
+
+.fa-agent-team-map-task-card span,
+.fa-agent-team-cockpit-task-card span,
+.fa-agent-team-cockpit-task-node span,
+.fa-agent-team-plan-review-task-list strong {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: 0.84rem;
+	font-weight: 700;
+	line-height: 1.25;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-map-task-card .fa-agent-team-pill,
+.fa-agent-team-cockpit-task-card .fa-agent-team-pill,
+.fa-agent-team-cockpit-task-node .fa-agent-team-pill {
+	justify-self: end;
+	max-width: 100%;
+	grid-column: 3;
+	grid-row: 1;
+}
+
+.fa-agent-team-map-task-card small,
+.fa-agent-team-cockpit-task-card small,
+.fa-agent-team-cockpit-task-node small,
+.fa-agent-team-cockpit-task-meta {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	line-height: 1.25;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-map-task-card .fa-agent-team-cockpit-task-meta,
+.fa-agent-team-cockpit-task-card .fa-agent-team-cockpit-task-meta,
+.fa-agent-team-cockpit-task-node .fa-agent-team-cockpit-task-meta {
+	grid-column: 2 / -1;
+}
+
+.fa-agent-team-cockpit-focus-meta {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-focus-meta > div,
+.fa-agent-team-decision-next-card,
+.fa-agent-team-cockpit-next-action,
+.fa-agent-team-cockpit-dock-section,
+.fa-agent-team-final-preview-card,
+.fa-agent-team-cockpit-final-preview,
+.fa-agent-team-plan-review-task-list article,
+.fa-agent-team-plan-review-phase,
+.fa-agent-team-inspector-entry {
+	min-width: 0;
+	padding: 11px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent 38%);
+}
+
+.fa-agent-team-cockpit-focus-meta strong,
+.fa-agent-team-inspector-entry strong {
+	display: block;
+	margin-top: 4px;
+	color: var(--fa-text);
+	font-size: 0.84rem;
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-current-focus section,
+.fa-agent-team-cockpit-current-focus section {
+	display: grid;
+	gap: 7px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 42%, transparent 58%);
+}
+
+.fa-agent-team-focus-evidence-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-focus-evidence-grid article {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-1) 58%, transparent 42%);
+}
+
+.fa-agent-team-focus-evidence-grid span {
+	color: var(--fa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.66rem;
+	font-weight: 800;
+}
+
+.fa-agent-team-focus-evidence-grid strong {
+	min-width: 0;
+	color: var(--fa-text);
+	font-size: 0.86rem;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-current-focus h3,
+.fa-agent-team-cockpit-current-focus h3,
+.fa-agent-team-decision-dock h3,
+.fa-agent-team-cockpit-decision-dock h3 {
+	margin: 0;
+	color: var(--fa-text);
+	font-size: 0.82rem;
+	line-height: 1.25;
+}
+
+.fa-agent-team-current-focus p,
+.fa-agent-team-cockpit-current-focus p,
+.fa-agent-team-decision-dock p,
+.fa-agent-team-cockpit-decision-dock p,
+.fa-agent-team-decision-dock small,
+.fa-agent-team-cockpit-decision-dock small {
+	min-width: 0;
+	color: var(--fa-text-muted);
+	font-size: 0.84rem;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-cockpit-focus-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.fa-agent-team-decision-next-card,
+.fa-agent-team-cockpit-next-action {
+	min-height: 168px;
+	align-content: start;
+	padding: 14px;
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 58%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			150deg,
+			color-mix(in srgb, var(--fa-accent) 18%, transparent),
+			transparent 50%
+		), color-mix(in srgb, var(--fa-panel-2) 74%, transparent 26%);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--fa-accent) 12%, transparent);
+}
+
+.fa-agent-team-decision-next-card strong,
+.fa-agent-team-cockpit-next-action strong,
+.fa-agent-team-final-preview-card strong,
+.fa-agent-team-cockpit-final-preview strong {
+	color: var(--fa-text);
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-decision-next-card > .fa-agent-team-cockpit-button,
+.fa-agent-team-cockpit-next-action > .fa-agent-team-cockpit-button,
+.fa-agent-team-final-preview-card > .fa-agent-team-cockpit-button,
+.fa-agent-team-cockpit-final-preview > .fa-agent-team-cockpit-button {
+	width: 100%;
+}
+
+.fa-agent-team-cockpit-dock-section.is-warning,
+.fa-agent-team-final-preview-card.is-placeholder,
+.fa-agent-team-final-preview-card.is-blocked,
+.fa-agent-team-final-preview-card.is-error,
+.fa-agent-team-cockpit-final-preview.is-placeholder,
+.fa-agent-team-cockpit-final-preview.is-blocked,
+.fa-agent-team-cockpit-final-preview.is-error {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 44%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--fa-status-warning-text) 10%, transparent),
+			transparent 48%
+		), color-mix(in srgb, var(--fa-panel-2) 86%, transparent 14%);
+}
+
+.fa-agent-team-final-preview-card.is-ready,
+.fa-agent-team-cockpit-final-preview.is-ready {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-success-text) 48%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--fa-status-success-text) 12%, transparent),
+			transparent 48%
+		), color-mix(in srgb, var(--fa-panel-2) 86%, transparent 14%);
+}
+
+.fa-agent-team-cockpit-not-deliverable {
+	display: inline-flex;
+	width: fit-content;
+	max-width: 100%;
+	padding: 4px 8px;
+	overflow: hidden;
+	border-radius: 999px;
+	background: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 14%,
+		transparent
+	);
+	color: var(--fa-status-warning-text);
+	font-size: 0.72rem;
+	font-weight: 800;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-inspector-entry {
+	display: grid;
+	gap: 5px;
+	width: 100%;
+	color: var(--fa-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.fa-agent-team-inspector-entry code,
+.fa-agent-team-inspector-entry p {
+	min-width: 0;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-cockpit-empty {
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 0.84rem;
+}
+
+.fa-agent-team-plan-review-shell {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(270px, 0.36fr);
+	gap: 12px;
+	align-items: start;
+	min-width: 0;
+}
+
+.fa-agent-team-plan-review-card {
+	align-content: start;
+}
+
+.fa-agent-team-plan-review-phases {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fa-agent-team-plan-review-phase > div:first-child,
+.fa-agent-team-plan-review-task-list article > div:first-child {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	justify-content: space-between;
+	min-width: 0;
+}
+
+.fa-agent-team-plan-review-phase > div:first-child span,
+.fa-agent-team-inspector-header span {
+	color: var(--fa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.68rem;
+	font-weight: 700;
+}
+
+.fa-agent-team-plan-review-task-list article {
+	display: grid;
+	gap: 8px;
+}
+
+.fa-agent-team-cockpit-secondary-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	justify-content: flex-end;
+	min-width: 0;
+}
+
+.fa-agent-team-inspector-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	display: flex;
+	justify-content: flex-end;
+	background: color-mix(in srgb, var(--fa-bg) 54%, transparent 46%);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.18s ease;
+}
+
+.fa-agent-team-inspector-overlay.is-open {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.fa-agent-team-inspector-drawer {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	gap: 12px;
+	width: min(720px, 100vw);
+	height: 100%;
+	overflow: auto;
+	padding: 16px;
+	border-left: 1px solid var(--fa-border-subtle);
+	background: var(--fa-panel-1);
+	box-shadow: -18px 0 42px color-mix(in srgb, #000 22%, transparent);
+	transform: translateX(100%);
+	transition: transform 0.22s ease;
+}
+
+.fa-agent-team-inspector-overlay.is-open .fa-agent-team-inspector-drawer {
+	transform: translateX(0);
+}
+
+.fa-agent-team-inspector-header {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	justify-content: space-between;
+	min-width: 0;
+}
+
+.fa-agent-team-inspector-header div {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.fa-agent-team-inspector-header strong {
+	color: var(--fa-text);
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-inspector-drawer > .fa-agent-team-panel {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+@media (max-width: 1180px) {
+	.fa-agent-team-plan-review-shell {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-cockpit-grid {
+		grid-template-columns: minmax(220px, 0.74fr) minmax(340px, 1.22fr) minmax(
+				260px,
+				0.9fr
+			);
+	}
+
+	.fa-agent-team-plan-review-phases {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@media (max-width: 900px) {
+	.fa-agent-team-collab-grid,
+	.fa-agent-team-cockpit-focus-meta {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-mission-header,
+	.fa-agent-team-cockpit-mission-header {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-cockpit-header-actions {
+		justify-items: stretch;
+	}
+
+	.fa-agent-team-cockpit-grid {
+		grid-template-areas:
+			"dock"
+			"focus"
+			"map";
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-decision-dock,
+	.fa-agent-team-cockpit-decision-dock {
+		order: 2;
+		width: 100%;
+		position: static;
+	}
+
+	.fa-agent-team-current-focus,
+	.fa-agent-team-cockpit-current-focus {
+		order: 3;
+		width: 100%;
+	}
+
+	.fa-agent-team-map-rail,
+	.fa-agent-team-cockpit-mission-map {
+		order: 4;
+		width: 100%;
+	}
+
+	.fa-agent-team-cockpit-secondary-bar {
+		justify-content: flex-start;
+	}
+}
+
+/* Agent Team Cockpit density and visual-weight pass. */
+.fa-agent-team-cockpit-shell {
+	--fa-agent-team-cockpit-gap: 10px;
+	--fa-agent-team-rail-line: color-mix(
+		in srgb,
+		var(--fa-border-subtle) 64%,
+		transparent
+	);
+}
+
+.fa-agent-team-mission-header,
+.fa-agent-team-cockpit-mission-header {
+	gap: 12px;
+	padding: 12px 14px;
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 16%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-panel-1) 92%, var(--fa-panel-2) 8%);
+	box-shadow: 0 6px 16px color-mix(in srgb, #000 8%, transparent);
+}
+
+.fa-agent-team-mission-header::before,
+.fa-agent-team-cockpit-mission-header::before {
+	height: 2px;
+	opacity: 0.78;
+}
+
+.fa-agent-team-cockpit-mission-header h1,
+.fa-agent-team-mission-header h1 {
+	font-size: clamp(1.18rem, 1.55vw, 1.55rem);
+}
+
+.fa-agent-team-cockpit-mission-header p,
+.fa-agent-team-mission-header p {
+	font-size: 0.86rem;
+	line-height: 1.38;
+}
+
+.fa-agent-team-cockpit-grid {
+	grid-template-columns: minmax(220px, 0.85fr) minmax(320px, 1.4fr) minmax(
+			250px,
+			0.95fr
+		);
+	gap: 10px;
+}
+
+.fa-agent-team-map-rail,
+.fa-agent-team-cockpit-mission-map,
+.fa-agent-team-current-focus,
+.fa-agent-team-cockpit-current-focus,
+.fa-agent-team-decision-dock,
+.fa-agent-team-cockpit-decision-dock,
+.fa-agent-team-plan-review-card {
+	gap: 9px;
+	padding: 11px;
+	background: color-mix(in srgb, var(--fa-panel-1) 90%, transparent 10%);
+	box-shadow: 0 4px 12px color-mix(in srgb, #000 7%, transparent);
+}
+
+.fa-agent-team-current-focus,
+.fa-agent-team-cockpit-current-focus {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 24%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-panel-1) 91%, var(--fa-accent) 9%);
+	box-shadow:
+		inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 7%, transparent),
+		0 5px 14px color-mix(in srgb, #000 8%, transparent);
+}
+
+.fa-agent-team-decision-dock,
+.fa-agent-team-cockpit-decision-dock {
+	box-shadow: 0 4px 12px color-mix(in srgb, #000 7%, transparent);
+}
+
+.fa-agent-team-cockpit-panel-header strong {
+	font-size: 0.9rem;
+}
+
+.fa-agent-team-cockpit-mission-meta {
+	gap: 5px;
+}
+
+.fa-agent-team-cockpit-mission-meta > span {
+	min-height: 20px;
+	padding: 1px 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: var(--fa-text-muted);
+	font-size: 0.66rem;
+}
+
+.fa-agent-team-cockpit-mission-meta > span + span::before {
+	content: "/";
+	margin-right: 5px;
+	color: var(--fa-text-subtle);
+}
+
+.fa-agent-team-cockpit-mission-status-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-status-label {
+	color: var(--fa-text-muted);
+	font-size: 0.76rem;
+	line-height: 1.2;
+}
+
+.fa-agent-team-cockpit-metadata-row {
+	row-gap: 3px;
+}
+
+.fa-agent-team-cockpit-metadata-item {
+	gap: 4px;
+}
+
+.fa-agent-team-cockpit-metadata-item small {
+	color: var(--fa-text-subtle);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	font-size: 0.6rem;
+	font-weight: 700;
+}
+
+.fa-agent-team-cockpit-metadata-item span {
+	color: var(--fa-text-muted);
+	font-size: 0.68rem;
+}
+
+.fa-agent-team-cockpit-progress {
+	height: 5px;
+	border-color: color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-2) 44%, transparent);
+}
+
+.fa-agent-team-cockpit-button {
+	min-height: 32px;
+	padding: 6px 10px;
+	font-size: 0.8rem;
+	box-shadow: none;
+}
+
+.fa-agent-team-cockpit-button:hover:not(:disabled) {
+	transform: none;
+	box-shadow: none;
+}
+
+.fa-agent-team-cockpit-button.is-primary {
+	background: color-mix(
+		in srgb,
+		var(--fa-accent) 88%,
+		var(--fa-status-success-text) 12%
+	);
+	box-shadow: 0 5px 14px color-mix(in srgb, var(--fa-accent) 16%, transparent);
+}
+
+.fa-agent-team-cockpit-phase-track,
+.fa-agent-team-cockpit-phase-stack,
+.fa-agent-team-cockpit-task-stack,
+.fa-agent-team-plan-review-phases,
+.fa-agent-team-plan-review-task-list {
+	gap: 7px;
+}
+
+.fa-agent-team-cockpit-phase {
+	gap: 5px;
+	padding-left: 13px;
+}
+
+.fa-agent-team-cockpit-phase::after {
+	top: 8px;
+	width: 6px;
+	height: 6px;
+	box-shadow: none;
+}
+
+.fa-agent-team-cockpit-phase-heading strong {
+	font-size: 0.8rem;
+}
+
+.fa-agent-team-cockpit-phase p {
+	font-size: 0.74rem;
+	line-height: 1.3;
+}
+
+.fa-agent-team-map-task-card,
+.fa-agent-team-cockpit-task-card,
+.fa-agent-team-cockpit-task-node {
+	grid-template-columns: 24px minmax(0, 1fr) auto;
+	gap: 3px 7px;
+	min-height: 42px;
+	padding: 7px 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 36%, transparent);
+}
+
+.fa-agent-team-map-task-card::before,
+.fa-agent-team-cockpit-task-card::before,
+.fa-agent-team-cockpit-task-node::before {
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--fa-text-muted);
+	font-size: 0.62rem;
+}
+
+.fa-agent-team-map-task-card:hover,
+.fa-agent-team-map-task-card.is-selected,
+.fa-agent-team-cockpit-task-card:hover,
+.fa-agent-team-cockpit-task-card.is-selected,
+.fa-agent-team-cockpit-task-node:hover,
+.fa-agent-team-cockpit-task-node.is-selected {
+	background: color-mix(in srgb, var(--fa-accent) 6%, var(--fa-panel-2) 94%);
+	box-shadow: inset 2px 0 0 color-mix(in srgb, var(--fa-accent) 72%, white 28%);
+}
+
+.fa-agent-team-map-task-card.is-danger,
+.fa-agent-team-cockpit-task-card.is-danger,
+.fa-agent-team-cockpit-task-node.is-danger {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 54%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 8%,
+		var(--fa-panel-2) 92%
+	);
+}
+
+.fa-agent-team-map-task-card.is-warning,
+.fa-agent-team-cockpit-task-card.is-warning,
+.fa-agent-team-cockpit-task-node.is-warning {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 54%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 8%,
+		var(--fa-panel-2) 92%
+	);
+}
+
+.fa-agent-team-map-task-card span,
+.fa-agent-team-cockpit-task-card span,
+.fa-agent-team-cockpit-task-node span,
+.fa-agent-team-plan-review-task-list strong {
+	font-size: 0.8rem;
+}
+
+.fa-agent-team-cockpit-task-title {
+	grid-column: 2 / -1;
+}
+
+.fa-agent-team-cockpit-task-subtle-row {
+	display: flex;
+	grid-column: 2 / -1;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-map-task-card .fa-agent-team-cockpit-task-subtle-row,
+.fa-agent-team-cockpit-task-card .fa-agent-team-cockpit-task-subtle-row,
+.fa-agent-team-cockpit-task-node .fa-agent-team-cockpit-task-subtle-row {
+	color: var(--fa-text-muted);
+	font-weight: 500;
+}
+
+.fa-agent-team-map-task-card small,
+.fa-agent-team-cockpit-task-card small,
+.fa-agent-team-cockpit-task-node small,
+.fa-agent-team-cockpit-task-meta {
+	font-size: 0.68rem;
+}
+
+.fa-agent-team-map-task-card .fa-agent-team-pill,
+.fa-agent-team-cockpit-task-card .fa-agent-team-pill,
+.fa-agent-team-cockpit-task-node .fa-agent-team-pill,
+.fa-agent-team-cockpit-status,
+.fa-agent-team-plan-review-status,
+.fa-agent-team-inspector-status,
+.fa-agent-team-collab-status {
+	min-width: auto;
+	min-height: 20px;
+	padding: 2px 6px;
+	border-color: color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+	background: transparent;
+	font-size: 0.64rem;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+}
+
+.fa-agent-team-map-task-card .fa-agent-team-pill.is-danger,
+.fa-agent-team-cockpit-task-card .fa-agent-team-pill.is-danger,
+.fa-agent-team-cockpit-task-node .fa-agent-team-pill.is-danger,
+.fa-agent-team-cockpit-status.is-danger,
+.fa-agent-team-plan-review-status.is-danger,
+.fa-agent-team-inspector-status.is-danger,
+.fa-agent-team-collab-status.is-danger {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 58%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-status-danger-text) 10%, transparent);
+}
+
+.fa-agent-team-map-task-card .fa-agent-team-pill.is-warning,
+.fa-agent-team-cockpit-task-card .fa-agent-team-pill.is-warning,
+.fa-agent-team-cockpit-task-node .fa-agent-team-pill.is-warning,
+.fa-agent-team-cockpit-status.is-warning,
+.fa-agent-team-plan-review-status.is-warning,
+.fa-agent-team-inspector-status.is-warning,
+.fa-agent-team-collab-status.is-warning {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 58%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 10%,
+		transparent
+	);
+}
+
+.fa-agent-team-cockpit-focus-meta {
+	grid-template-columns: minmax(0, 1fr);
+	gap: 0;
+	overflow: hidden;
+	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 22%, transparent);
+}
+
+.fa-agent-team-cockpit-focus-meta > div {
+	display: grid;
+	grid-template-columns: minmax(82px, 0.34fr) minmax(0, 1fr);
+	gap: 8px;
+	align-items: center;
+	padding: 7px 9px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
+.fa-agent-team-cockpit-focus-meta > div + div {
+	border-top: 1px solid
+		color-mix(in srgb, var(--fa-border-subtle) 64%, transparent);
+}
+
+.fa-agent-team-cockpit-focus-meta span {
+	font-size: 0.62rem;
+}
+
+.fa-agent-team-cockpit-focus-meta strong,
+.fa-agent-team-inspector-entry strong {
+	margin-top: 0;
+	font-size: 0.8rem;
+}
+
+.fa-agent-team-cockpit-key-value-row {
+	font-size: 0.8rem;
+}
+
+.fa-agent-team-cockpit-key-value-item small {
+	color: var(--fa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	font-size: 0.6rem;
+	font-weight: 700;
+}
+
+.fa-agent-team-cockpit-key-value-item > span {
+	color: var(--fa-text);
+	text-transform: none;
+	letter-spacing: 0;
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+
+.fa-agent-team-current-focus section,
+.fa-agent-team-cockpit-current-focus section {
+	gap: 6px;
+	padding: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 24%, transparent);
+}
+
+.fa-agent-team-focus-evidence-grid {
+	gap: 0;
+	overflow: hidden;
+	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 68%, transparent);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-1) 54%, transparent);
+}
+
+.fa-agent-team-focus-evidence-grid article {
+	gap: 2px;
+	padding: 7px 9px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
+.fa-agent-team-focus-evidence-grid article + article {
+	border-left: 1px solid
+		color-mix(in srgb, var(--fa-border-subtle) 64%, transparent);
+}
+
+.fa-agent-team-focus-evidence-grid span {
+	font-size: 0.6rem;
+	font-weight: 700;
+}
+
+.fa-agent-team-focus-evidence-grid strong {
+	font-size: 0.8rem;
+}
+
+.fa-agent-team-decision-next-card,
+.fa-agent-team-cockpit-next-action {
+	min-height: 132px;
+	padding: 11px;
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 48%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--fa-accent) 10%, transparent),
+			transparent 54%
+		), color-mix(in srgb, var(--fa-panel-2) 58%, transparent);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--fa-accent) 9%, transparent);
+}
+
+.fa-agent-team-cockpit-dock-section,
+.fa-agent-team-final-preview-card,
+.fa-agent-team-cockpit-final-preview,
+.fa-agent-team-plan-review-task-list article,
+.fa-agent-team-plan-review-phase {
+	padding: 9px;
+	background: color-mix(in srgb, var(--fa-panel-2) 36%, transparent);
+}
+
+.fa-agent-team-cockpit-dock-section.is-warning,
+.fa-agent-team-final-preview-card.is-placeholder,
+.fa-agent-team-final-preview-card.is-blocked,
+.fa-agent-team-final-preview-card.is-error,
+.fa-agent-team-cockpit-final-preview.is-placeholder,
+.fa-agent-team-cockpit-final-preview.is-blocked,
+.fa-agent-team-cockpit-final-preview.is-error {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 54%,
+		var(--fa-border-subtle)
+	);
+	background:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--fa-status-warning-text) 10%, transparent),
+			transparent 50%
+		), color-mix(in srgb, var(--fa-panel-2) 70%, transparent);
+}
+
+.fa-agent-team-final-preview-card.is-ready,
+.fa-agent-team-cockpit-final-preview.is-ready {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-success-text) 42%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-success-text) 7%,
+		var(--fa-panel-2) 93%
+	);
+}
+
+.fa-agent-team-cockpit-dock-section-light {
+	border-color: color-mix(in srgb, var(--fa-border-subtle) 66%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-1) 64%, transparent);
+}
+
+.fa-agent-team-cockpit-not-deliverable {
+	padding: 3px 7px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-status-warning-text) 48%, transparent);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-warning-text) 10%,
+		transparent
+	);
+}
+
+.fa-agent-team-inspector-overlay {
+	background: color-mix(in srgb, var(--fa-bg) 34%, transparent);
+}
+
+.fa-agent-team-inspector-drawer {
+	gap: 10px;
+	width: min(620px, 100vw);
+	padding: 12px;
+	box-shadow: -10px 0 26px color-mix(in srgb, #000 16%, transparent);
+}
+
+.fa-agent-team-inspector-entry {
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 3px 10px;
+	align-items: center;
+	padding: 8px 9px;
+	background: transparent;
+}
+
+.fa-agent-team-inspector-row {
+	border-color: color-mix(in srgb, var(--fa-border-subtle) 62%, transparent);
+}
+
+.fa-agent-team-inspector-entry span {
+	grid-column: 1 / -1;
+	font-size: 0.62rem;
+}
+
+.fa-agent-team-inspector-entry p,
+.fa-agent-team-inspector-entry code {
+	grid-column: 1 / -1;
+	color: var(--fa-text-muted);
+	font-size: 0.76rem;
+	line-height: 1.35;
+}
+
+@media (max-width: 1180px) {
+	.fa-agent-team-cockpit-grid {
+		grid-template-columns: minmax(220px, 0.85fr) minmax(320px, 1.4fr) minmax(
+				250px,
+				0.95fr
+			);
+	}
+}
+
+@media (max-width: 900px) {
+	.fa-agent-team-cockpit-grid {
+		grid-template-areas:
+			"dock"
+			"focus"
+			"map";
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-decision-dock,
+	.fa-agent-team-cockpit-decision-dock {
+		order: 2;
+		position: static;
+	}
+
+	.fa-agent-team-current-focus,
+	.fa-agent-team-cockpit-current-focus {
+		order: 3;
+	}
+
+	.fa-agent-team-map-rail,
+	.fa-agent-team-cockpit-mission-map {
+		order: 4;
+	}
+
+	.fa-agent-team-focus-evidence-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-focus-evidence-grid article + article {
+		border-top: 1px solid
+			color-mix(in srgb, var(--fa-border-subtle) 64%, transparent);
+		border-left: 0;
+	}
+}
+
+@media (max-width: 560px) {
+	.fa-agent-team-mission-header,
+	.fa-agent-team-cockpit-mission-header,
+	.fa-agent-team-map-rail,
+	.fa-agent-team-cockpit-mission-map,
+	.fa-agent-team-current-focus,
+	.fa-agent-team-cockpit-current-focus,
+	.fa-agent-team-decision-dock,
+	.fa-agent-team-cockpit-decision-dock {
+		padding: 9px;
+	}
+
+	.fa-agent-team-cockpit-focus-meta > div {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2px;
+	}
+}
+
+.fa-agent-team-cockpit-shell {
+	--fa-agent-team-cockpit-gap: 12px;
+	gap: var(--fa-agent-team-cockpit-gap);
+}
+
+.fa-agent-team-cockpit-mission-header {
+	grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
+	align-items: stretch;
+	padding: 16px;
+	border-radius: 22px;
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 20%,
+		var(--fa-border-subtle)
+	);
+	background:
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-accent) 12%, transparent),
+			transparent 40%
+		), color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
+	box-shadow: 0 10px 28px color-mix(in srgb, #000 10%, transparent);
+}
+
+.fa-agent-team-cockpit-mission-header::before {
+	height: 0;
+}
+
+.fa-agent-team-cockpit-mission-copy {
+	gap: 8px;
+}
+
+.fa-agent-team-cockpit-kicker {
+	color: color-mix(in srgb, var(--fa-accent) 70%, var(--fa-text-muted) 30%);
+}
+
+.fa-agent-team-cockpit-mission-header h1 {
+	font-size: clamp(1.35rem, 2vw, 1.9rem);
+	letter-spacing: -0.03em;
+}
+
+.fa-agent-team-cockpit-metadata-row {
+	gap: 6px;
+}
+
+.fa-agent-team-cockpit-metadata-item {
+	display: inline-flex;
+	gap: 5px;
+	align-items: center;
+	min-height: 24px;
+	padding: 3px 8px;
+	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-2) 48%, transparent);
+}
+
+.fa-agent-team-cockpit-mission-meta > span + span::before {
+	content: none;
+}
+
+.fa-agent-team-cockpit-metadata-item small,
+.fa-agent-team-cockpit-metadata-item span {
+	font-size: 0.68rem;
+}
+
+.fa-agent-team-cockpit-progress {
+	height: 6px;
+	margin-top: 2px;
+}
+
+.fa-agent-team-cockpit-header-actions {
+	align-content: center;
+	justify-items: stretch;
+}
+
+.fa-agent-team-cockpit-header-actions .fa-agent-team-cockpit-button {
+	min-height: 44px;
+	padding-inline: 18px;
+	border-radius: 14px;
+	font-size: 0.9rem;
+}
+
+.fa-agent-team-cockpit-button {
+	border-radius: 12px;
+}
+
+.fa-agent-team-cockpit-button.is-primary {
+	background: linear-gradient(
+		135deg,
+		var(--fa-accent),
+		color-mix(in srgb, var(--fa-accent) 72%, var(--fa-status-success-text) 28%)
+	);
+	color: white;
+	box-shadow: 0 10px 24px color-mix(in srgb, var(--fa-accent) 20%, transparent);
+}
+
+.fa-agent-team-flow-strip {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	min-width: 0;
+}
+
+.fa-agent-team-flow-step {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 4px 10px;
+	min-width: 0;
+	padding: 12px;
+	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 78%, transparent);
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent);
+}
+
+.fa-agent-team-flow-step > span {
+	display: grid;
+	grid-row: 1 / span 2;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-2) 70%, transparent);
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	font-weight: 800;
+}
+
+.fa-agent-team-flow-step div {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	justify-content: space-between;
+	min-width: 0;
+}
+
+.fa-agent-team-flow-step strong {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: 0.86rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-flow-step small {
+	flex: 0 0 auto;
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+}
+
+.fa-agent-team-flow-step p {
+	grid-column: 2;
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 0.78rem;
+	line-height: 1.35;
+}
+
+.fa-agent-team-flow-step.is-active,
+.fa-agent-team-flow-step.is-ready {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 42%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-1) 92%);
+}
+
+.fa-agent-team-flow-step.is-done > span,
+.fa-agent-team-flow-step.is-ready > span {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-success-text) 42%,
+		var(--fa-border-subtle)
+	);
+	color: var(--fa-status-success-text);
+}
+
+.fa-agent-team-cockpit-grid {
+	display: grid;
+	grid-template-areas: none;
+	grid-template-columns: minmax(0, 1.48fr) minmax(320px, 0.82fr);
+	gap: var(--fa-agent-team-cockpit-gap);
+	align-items: start;
+}
+
+.fa-agent-team-cockpit-main-column,
+.fa-agent-team-cockpit-side-column {
+	display: grid;
+	gap: var(--fa-agent-team-cockpit-gap);
+	min-width: 0;
+}
+
+.fa-agent-team-cockpit-side-column {
+	position: sticky;
+	top: 12px;
+}
+
+.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-mission-map,
+.fa-agent-team-cockpit-grid .fa-agent-team-plan-review-card,
+.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-current-focus,
+.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-decision-dock {
+	grid-area: auto;
+	order: initial;
+	position: static;
+	width: 100%;
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--fa-panel-1) 86%, transparent);
+	box-shadow: 0 6px 18px color-mix(in srgb, #000 7%, transparent);
+}
+
+.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-decision-dock {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 28%,
+		var(--fa-border-subtle)
+	);
+}
+
+.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-current-focus {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 20%,
+		var(--fa-border-subtle)
+	);
+}
+
+.fa-agent-team-cockpit-next-action {
+	min-height: auto;
+	border-radius: 16px;
+}
+
+.fa-agent-team-cockpit-phase {
+	padding-left: 0;
+}
+
+.fa-agent-team-cockpit-phase::before,
+.fa-agent-team-cockpit-phase::after {
+	content: none;
+}
+
+.fa-agent-team-cockpit-phase-heading {
+	padding: 6px 0;
+	border-bottom: 1px solid
+		color-mix(in srgb, var(--fa-border-subtle) 62%, transparent);
+}
+
+.fa-agent-team-cockpit-phase-heading strong {
+	font-size: 0.88rem;
+}
+
+.fa-agent-team-cockpit-task-stack {
+	gap: 8px;
+}
+
+.fa-agent-team-cockpit-task-node {
+	grid-template-columns: 28px minmax(0, 1fr);
+	gap: 4px 9px;
+	min-height: 54px;
+	padding: 9px 10px;
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--fa-panel-2) 42%, transparent);
+}
+
+.fa-agent-team-cockpit-task-node::before {
+	width: 26px;
+	height: 26px;
+	border-radius: 999px;
+}
+
+.fa-agent-team-cockpit-task-title,
+.fa-agent-team-cockpit-task-subtle-row,
+.fa-agent-team-cockpit-task-node .fa-agent-team-cockpit-task-meta {
+	grid-column: 2;
+}
+
+.fa-agent-team-cockpit-task-node.is-recommended:not(.is-selected) {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 44%,
+		var(--fa-border-subtle)
+	);
+}
+
+.fa-agent-team-cockpit-task-node.is-selected {
+	box-shadow: inset 3px 0 0 var(--fa-accent);
+}
+
+.fa-agent-team-cockpit-focus-body section,
+.fa-agent-team-cockpit-dock-section,
+.fa-agent-team-cockpit-final-preview,
+.fa-agent-team-plan-review-phase,
+.fa-agent-team-plan-review-task-list article {
+	border-radius: 14px;
+}
+
+.fa-agent-team-cockpit-focus-body section:nth-of-type(2) {
+	display: none;
+}
+
+.fa-agent-team-cockpit-focus-meta {
+	border-radius: 14px;
+}
+
+.fa-agent-team-cockpit-secondary-bar {
+	padding: 0 2px;
+}
+
+@media (max-width: 1180px) {
+	.fa-agent-team-cockpit-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-cockpit-side-column {
+		position: static;
+	}
+}
+
+@media (max-width: 900px) {
+	.fa-agent-team-cockpit-mission-header {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-flow-strip {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-cockpit-header-actions .fa-agent-team-cockpit-button {
+		width: 100%;
+	}
+}
+
+@media (max-width: 560px) {
+	.fa-agent-team-cockpit-mission-header,
+	.fa-agent-team-flow-step,
+	.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-mission-map,
+	.fa-agent-team-cockpit-grid .fa-agent-team-plan-review-card,
+	.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-current-focus,
+	.fa-agent-team-cockpit-grid .fa-agent-team-cockpit-decision-dock {
+		padding: 10px;
+		border-radius: 16px;
+	}
+
+	.fa-agent-team-cockpit-task-node {
+		grid-template-columns: 24px minmax(0, 1fr);
+	}
+}

@@ -10,6 +10,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.core.agent_team import (
+    AgentTeamMergeReview,
+    AgentTeamMergeReviewEvent,
     AgentTeamSession,
     AgentTeamTask,
     AgentTeamTaskOutput,
@@ -32,7 +34,13 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     @staticmethod
-    def _model_payload(value: AgentTeamSession | AgentTeamTask | AgentTeamTaskOutput) -> dict[str, Any]:
+    def _model_payload(
+        value: AgentTeamSession
+        | AgentTeamTask
+        | AgentTeamTaskOutput
+        | AgentTeamMergeReview
+        | AgentTeamMergeReviewEvent,
+    ) -> dict[str, Any]:
         return value.model_dump(mode="json")
 
     @staticmethod
@@ -54,6 +62,14 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
     @classmethod
     def _output_from_row(cls, row: dict[str, object]) -> AgentTeamTaskOutput:
         return AgentTeamTaskOutput.model_validate(cls._decode_payload(row["data_json"]))
+
+    @classmethod
+    def _merge_review_from_row(cls, row: dict[str, object]) -> AgentTeamMergeReview:
+        return AgentTeamMergeReview.model_validate(cls._decode_payload(row["data_json"]))
+
+    @classmethod
+    def _merge_review_event_from_row(cls, row: dict[str, object]) -> AgentTeamMergeReviewEvent:
+        return AgentTeamMergeReviewEvent.model_validate(cls._decode_payload(row["data_json"]))
 
     def create_session(self, session: AgentTeamSession) -> None:
         self._upsert_session(session)
@@ -364,6 +380,99 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                 )
                 rows = cur.fetchall()
         return [self._output_from_row(row) for row in rows]
+
+    def save_merge_review(self, review: AgentTeamMergeReview) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO focus_agent_team_merge_reviews (
+                        review_id, session_id, status, created_at, updated_at, data_json
+                    ) VALUES (
+                        %(review_id)s, %(session_id)s, %(status)s,
+                        %(created_at)s, %(updated_at)s, %(data_json)s
+                    )
+                    ON CONFLICT (review_id) DO UPDATE SET
+                        session_id = EXCLUDED.session_id,
+                        status = EXCLUDED.status,
+                        updated_at = EXCLUDED.updated_at,
+                        data_json = EXCLUDED.data_json
+                    """,
+                    {
+                        "review_id": review.review_id,
+                        "session_id": review.session_id,
+                        "status": review.status.value,
+                        "created_at": review.created_at,
+                        "updated_at": review.updated_at,
+                        "data_json": Jsonb(self._model_payload(review)),
+                    },
+                )
+
+    def get_merge_review(self, review_id: str) -> AgentTeamMergeReview:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT data_json FROM focus_agent_team_merge_reviews WHERE review_id = %s",
+                    (review_id,),
+                )
+                row = cur.fetchone()
+        if row is None:
+            raise KeyError(f"Unknown agent team merge review: {review_id}")
+        return self._merge_review_from_row(row)
+
+    def list_merge_reviews(self, *, session_id: str) -> list[AgentTeamMergeReview]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT data_json FROM focus_agent_team_merge_reviews
+                    WHERE session_id = %s
+                    ORDER BY created_at DESC, review_id DESC
+                    """,
+                    (session_id,),
+                )
+                rows = cur.fetchall()
+        return [self._merge_review_from_row(row) for row in rows]
+
+    def add_merge_review_event(self, event: AgentTeamMergeReviewEvent) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO focus_agent_team_merge_review_events (
+                        event_id, review_id, session_id, created_at, data_json
+                    ) VALUES (
+                        %(event_id)s, %(review_id)s, %(session_id)s,
+                        %(created_at)s, %(data_json)s
+                    )
+                    ON CONFLICT (event_id) DO UPDATE SET
+                        review_id = EXCLUDED.review_id,
+                        session_id = EXCLUDED.session_id,
+                        created_at = EXCLUDED.created_at,
+                        data_json = EXCLUDED.data_json
+                    """,
+                    {
+                        "event_id": event.event_id,
+                        "review_id": event.review_id,
+                        "session_id": event.session_id,
+                        "created_at": event.created_at,
+                        "data_json": Jsonb(self._model_payload(event)),
+                    },
+                )
+
+    def list_merge_review_events(self, *, review_id: str) -> list[AgentTeamMergeReviewEvent]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT data_json FROM focus_agent_team_merge_review_events
+                    WHERE review_id = %s
+                    ORDER BY created_at, event_id
+                    """,
+                    (review_id,),
+                )
+                rows = cur.fetchall()
+        return [self._merge_review_event_from_row(row) for row in rows]
 
 
 __all__ = ["PostgresAgentTeamRepository"]

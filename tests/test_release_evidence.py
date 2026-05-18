@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from scripts._report_io import load_json, write_json_report
 from scripts import release_evidence
+from scripts._report_io import load_json, write_json_report
 
 
 def _artifact_path(artifact: dict[str, object]) -> Path:
@@ -220,19 +220,51 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
     assert Path(saved["summary"]["summary_json"]).exists()
 
 
+def test_release_evidence_manifest_records_github_actions_metadata(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT_NAME", "production")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "3")
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+    monkeypatch.setenv("GITHUB_WORKFLOW_REF", "owner/repo/.github/workflows/release-gate.yml@refs/tags/v1")
+    monkeypatch.setenv("RELEASE_GATE_ARTIFACT_NAME", "release-gate-reports-12345-3")
+
+    manifest = release_evidence.run_release_evidence(
+        release_id="dry-run-gha",
+        dry_run=True,
+        output_root=tmp_path / "packs",
+        storage_dir=tmp_path / "storage",
+    )
+    saved = _read_report(manifest["manifest_json"])
+
+    assert saved["meta"]["ci"]["environment_name"] == "production"
+    assert saved["meta"]["ci"]["run_attempt"] == "3"
+    assert saved["meta"]["ci"]["run_id"] == "12345"
+    assert (
+        saved["meta"]["ci"]["workflow_ref"]
+        == "owner/repo/.github/workflows/release-gate.yml@refs/tags/v1"
+    )
+    assert saved["artifact_storage"]["artifact_name"] == "release-gate-reports-12345-3"
+
+
 def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path: Path) -> None:
     source_dir = _source_dir(tmp_path)
     manifest = release_evidence.run_release_evidence(
         release_id="prod-release",
         output_root=tmp_path / "packs",
+        storage_dir=tmp_path / "storage",
         **_production_inputs(source_dir, include_optional_reports=True),
         approval_id="approval-1",
         approval_status="approved",
+        approval_url="https://github.example/actions/runs/1",
     )
     saved = _read_report(manifest["manifest_json"])
     pack_dir = tmp_path / "packs" / "prod-release"
 
     assert saved["summary"]["status"] == "passed"
+    assert saved["artifact_storage"]["enabled"] is True
+    assert saved["artifact_storage"]["retention_days"] == 90
+    assert saved["artifact_storage"]["stored_manifest_normalized_sha256"]
+    assert saved["approval"]["approval_url"] == "https://github.example/actions/runs/1"
     assert saved["release_health"]["passed"] is True
     assert saved["production_validation"]["passed"] is True
     assert _artifact_path(saved["artifacts"]["readyz"]) == pack_dir / "inputs" / "readyz.json"
@@ -286,7 +318,11 @@ def test_release_evidence_requires_baseline_eval_report_for_production_pack(tmp_
     manifest = release_evidence.run_release_evidence(
         release_id="missing-baseline",
         output_root=tmp_path / "packs",
+        storage_dir=tmp_path / "storage",
         **_production_inputs(source_dir, include_baseline=False),
+        approval_id="approval-1",
+        approval_status="approved",
+        approval_url="https://github.example/actions/runs/1",
     )
     saved = _read_report(manifest["manifest_json"])
 
@@ -328,6 +364,7 @@ def test_release_evidence_writes_summary_and_copies_pack_to_storage(tmp_path: Pa
         **_production_inputs(source_dir),
         approval_id="approval-1",
         approval_status="approved",
+        approval_url="https://github.example/actions/runs/1",
     )
     saved = _read_report(manifest["manifest_json"])
     summary = _read_report(saved["summary"]["summary_json"])
@@ -338,8 +375,12 @@ def test_release_evidence_writes_summary_and_copies_pack_to_storage(tmp_path: Pa
     assert saved["storage"]["enabled"] is True
     assert saved["storage"]["status"] == "stored"
     assert saved["storage"]["verification"]["status"] == "verified"
+    assert saved["artifact_storage"]["artifact_name"] is None
+    assert saved["artifact_storage"]["retention"]["days"] == 7
+    assert saved["artifact_storage"]["stored_manifest_normalized_sha256"]
     assert summary["release_id"] == "prod-release"
     assert summary["status"] == "passed"
+    assert summary["artifact_storage"]["stored_manifest_normalized_sha256"]
     assert summary["approval"]["approved"] is True
     assert summary["artifact_summary"]["total"] == saved["artifact_summary"]["total"]
     assert stored_pack_dir.exists()

@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class UserStatus(str, Enum):
+class UserStatus(StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"
     INVITED = "invited"
     DELETED = "deleted"
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     ADMIN = "admin"
     MEMBER = "member"
     VIEWER = "viewer"
@@ -68,7 +68,7 @@ class UserListResult(BaseModel):
     offset: int = 0
 
 
-class AuditDecision(str, Enum):
+class AuditDecision(StrEnum):
     ALLOW = "allow"
     DENY = "deny"
     SUCCESS = "success"

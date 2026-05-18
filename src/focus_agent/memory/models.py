@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class MemoryModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MemoryKind(str, Enum):
+class MemoryKind(StrEnum):
     USER_PREFERENCE = "user_preference"
     USER_PROFILE = "user_profile"
     PROJECT_FACT = "project_fact"
@@ -26,7 +26,7 @@ class MemoryKind(str, Enum):
     TOOL_OBSERVATION = "tool_observation"
 
 
-class MemoryScope(str, Enum):
+class MemoryScope(StrEnum):
     USER = "user"
     ROOT_THREAD = "root_thread"
     BRANCH = "branch"
@@ -34,13 +34,13 @@ class MemoryScope(str, Enum):
     SKILL = "skill"
 
 
-class MemoryVisibility(str, Enum):
+class MemoryVisibility(StrEnum):
     PRIVATE = "private"
     PROMOTABLE = "promotable"
     SHARED = "shared"
 
 
-class MemoryStatus(str, Enum):
+class MemoryStatus(StrEnum):
     ACTIVE = "active"
     CONFLICT = "conflict"
     NEEDS_REVIEW = "needs_review"
@@ -48,7 +48,7 @@ class MemoryStatus(str, Enum):
     DISCARDED = "discarded"
 
 
-class MemoryWriteDecisionStatus(str, Enum):
+class MemoryWriteDecisionStatus(StrEnum):
     ACCEPTED = "accepted"
     MERGED = "merged"
     SKIPPED = "skipped"

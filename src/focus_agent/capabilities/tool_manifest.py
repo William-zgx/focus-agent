@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-
 _BOOL_METADATA_FIELDS = frozenset(
     {
         "side_effect",
@@ -189,6 +188,79 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "intent_policies": ("workspace_lookup", "execution"),
         "allowed_roles": ("orchestrator", "planner", "skill_scout"),
     },
+    "skill_sources": {
+        "toolset": "skill",
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+        "intent_policies": ("workspace_lookup", "planning"),
+        "allowed_roles": ("orchestrator", "planner", "skill_scout"),
+    },
+    "skills_search": {
+        "toolset": "skill",
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+        "intent_policies": ("workspace_lookup", "planning", "execution"),
+        "allowed_roles": ("orchestrator", "planner", "skill_scout"),
+    },
+    "skill_install": {
+        "toolset": "skill",
+        "side_effect": True,
+        "side_effect_kind": "workspace_write",
+        "requires_workspace_write": True,
+        "risk_level": "medium",
+        "intent_policies": ("planning", "execution"),
+        "allowed_roles": ("skill_scout",),
+    },
+    "skills_refresh_index": {
+        "toolset": "skill",
+        "side_effect": True,
+        "side_effect_kind": "runtime_index_refresh",
+        "risk_level": "low",
+        "intent_policies": ("workspace_lookup", "planning"),
+        "allowed_roles": ("planner", "skill_scout"),
+    },
+    "notes_create": {
+        "toolset": "productivity",
+        "side_effect": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+    },
+    "notes_search": {
+        "toolset": "productivity",
+        "parallel_safe": True,
+        "intent_policies": ("workspace_lookup", "execution"),
+    },
+    "notes_update": {
+        "toolset": "productivity",
+        "side_effect": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+    },
+    "tasks_create": {
+        "toolset": "productivity",
+        "side_effect": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+    },
+    "tasks_list": {
+        "toolset": "productivity",
+        "parallel_safe": True,
+        "intent_policies": ("workspace_lookup", "execution"),
+    },
+    "tasks_update": {
+        "toolset": "productivity",
+        "side_effect": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+    },
+    "productivity_capture": {
+        "toolset": "productivity",
+        "side_effect": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+    },
 }
 
 
@@ -286,7 +358,7 @@ class ToolManifest:
         *,
         provider_id: str = "builtin",
         overlay: Mapping[str, Any] | None = None,
-    ) -> "ToolManifest":
+    ) -> ToolManifest:
         name = str(getattr(tool_obj, "name", "")).strip()
         metadata = normalize_tool_metadata(
             name=name,
@@ -301,7 +373,7 @@ class ToolManifest:
             metadata=metadata,
         )
 
-    def with_overlay(self, overlay: Mapping[str, Any] | None) -> "ToolManifest":
+    def with_overlay(self, overlay: Mapping[str, Any] | None) -> ToolManifest:
         if not overlay:
             return self
         return ToolManifest(

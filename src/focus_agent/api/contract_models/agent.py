@@ -27,6 +27,147 @@ class AgentRoleDryRunResponse(BaseModel):
     plan: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentSkillSelectRequest(BaseModel):
+    message: str
+    skill_hints: list[str] = Field(default_factory=list)
+    semantic_enabled: bool | None = None
+    semantic_threshold: float | None = None
+
+
+class AgentSkillSemanticCandidateResponse(BaseModel):
+    skill_id: str
+    score: float
+    matched_terms: list[str] = Field(default_factory=list)
+    auto_activate: bool = False
+    rationale: str = ""
+
+
+class AgentSkillSelectionResponse(BaseModel):
+    selection_id: str | None = None
+    skill_ids: list[str] = Field(default_factory=list)
+    stripped_message: str = ""
+    prompt_mode: str | None = None
+    selection_source: str = "none"
+    matched_triggers: list[str] = Field(default_factory=list)
+    semantic_candidates: list[AgentSkillSemanticCandidateResponse] = Field(default_factory=list)
+    confidence: float = 0.0
+    rationale: str = ""
+    semantic_enabled: bool = True
+    semantic_threshold: float = 0.22
+
+
+class AgentSkillSelectionEventResponse(BaseModel):
+    selection_id: str
+    user_id: str | None = None
+    message_preview: str | None = None
+    selection_source: str = "none"
+    explicit_hints: list[str] = Field(default_factory=list)
+    activated_skill_ids: list[str] = Field(default_factory=list)
+    matched_triggers: list[str] = Field(default_factory=list)
+    semantic_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    confidence: float = 0.0
+    rationale: str = ""
+    feedback: str | None = None
+    feedback_reason: str | None = None
+    user_override: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AgentSkillSelectionEventListResponse(BaseModel):
+    items: list[AgentSkillSelectionEventResponse] = Field(default_factory=list)
+    count: int = 0
+    filters: dict[str, Any] = Field(default_factory=dict)
+    limit: int = 50
+    backend: str = "governance"
+    available: bool = True
+
+
+class AgentSkillSelectionFeedbackRequest(BaseModel):
+    feedback: str
+    reason: str | None = None
+    user_override: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentSkillSelectionFeedbackResponse(BaseModel):
+    item: AgentSkillSelectionEventResponse
+    feedback_event_id: str | None = None
+
+
+class AgentSkillPreferenceRequest(BaseModel):
+    state: str = "default"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentSkillPreferenceResponse(BaseModel):
+    preference_id: str
+    user_id: str
+    skill_id: str
+    state: str = "default"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AgentSkillCatalogItemResponse(BaseModel):
+    skill_id: str
+    description: str = ""
+    triggers: list[str] = Field(default_factory=list)
+    when_to_use: list[str] = Field(default_factory=list)
+    recommended_tools: list[str] = Field(default_factory=list)
+    prompt_mode: str | None = None
+    path: str | None = None
+    preference: AgentSkillPreferenceResponse | None = None
+
+
+class AgentSkillCatalogResponse(BaseModel):
+    items: list[AgentSkillCatalogItemResponse] = Field(default_factory=list)
+    count: int = 0
+
+
+class AgentContextExplainRequest(BaseModel):
+    thread_id: str | None = None
+    turn_id: str | None = None
+    selected_memories: list[dict[str, Any]] = Field(default_factory=list)
+    excluded_memories: list[dict[str, Any]] = Field(default_factory=list)
+    compaction_summary: dict[str, Any] = Field(default_factory=dict)
+    drift_report: dict[str, Any] = Field(default_factory=dict)
+    artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    token_counting: dict[str, Any] = Field(default_factory=dict)
+    risk_flags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentContextEvidenceResponse(BaseModel):
+    evidence_id: str
+    user_id: str | None = None
+    thread_id: str | None = None
+    turn_id: str | None = None
+    source_kind: str = "context_explain"
+    selected_memories: list[dict[str, Any]] = Field(default_factory=list)
+    excluded_memories: list[dict[str, Any]] = Field(default_factory=list)
+    compaction_summary: dict[str, Any] = Field(default_factory=dict)
+    drift_report: dict[str, Any] = Field(default_factory=dict)
+    artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    token_counting: dict[str, Any] = Field(default_factory=dict)
+    risk_flags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+
+
+class AgentContextEvidenceListResponse(BaseModel):
+    items: list[AgentContextEvidenceResponse] = Field(default_factory=list)
+    count: int = 0
+    filters: dict[str, Any] = Field(default_factory=dict)
+    limit: int = 50
+    backend: str = "governance"
+    available: bool = True
+
+
+class AgentContextExplainResponse(BaseModel):
+    item: AgentContextEvidenceResponse
+
+
 class AgentRoleDecisionListResponse(BaseModel):
     items: list[dict[str, Any]] = Field(default_factory=list)
     count: int = 0
@@ -212,7 +353,7 @@ class AgentContextPolicyResponse(BaseModel):
     enabled: bool = False
     artifactize_long_observations: bool = False
     role_views_enabled: bool = False
-    tokenizer_mode: str = "chars_fallback"
+    tokenizer_mode: str = "tokenizer_first"
     artifact_min_chars: int = 12000
     default_off_legacy_safe: bool = True
 
@@ -305,6 +446,21 @@ class AgentCriticEvaluateResponse(BaseModel):
 
 __all__ = [
     "AgentRolePolicyResponse",
+    "AgentSkillSelectRequest",
+    "AgentSkillSemanticCandidateResponse",
+    "AgentSkillSelectionResponse",
+    "AgentSkillSelectionEventResponse",
+    "AgentSkillSelectionEventListResponse",
+    "AgentSkillSelectionFeedbackRequest",
+    "AgentSkillSelectionFeedbackResponse",
+    "AgentSkillPreferenceRequest",
+    "AgentSkillPreferenceResponse",
+    "AgentSkillCatalogItemResponse",
+    "AgentSkillCatalogResponse",
+    "AgentContextExplainRequest",
+    "AgentContextExplainResponse",
+    "AgentContextEvidenceResponse",
+    "AgentContextEvidenceListResponse",
     "AgentRoleDryRunRequest",
     "AgentRoleDryRunResponse",
     "AgentRoleDecisionListResponse",

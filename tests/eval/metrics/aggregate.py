@@ -12,9 +12,10 @@ Metrics:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from statistics import mean
-from typing import Any, Iterable
+from typing import Any
 
 from ..schema import EvalResult
 

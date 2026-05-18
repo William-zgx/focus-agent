@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Callable
 from uuid import uuid4
 
 import pytest
@@ -18,7 +17,10 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
-from focus_agent.repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
+from focus_agent.repositories.agent_team_repository import (
+    AgentTeamRepository,
+    InMemoryAgentTeamRepository,
+)
 from focus_agent.repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 

@@ -5,10 +5,18 @@ import { useAdminUsers } from "@/features/admin-users/use-admin-users";
 import { readAdminSearchParam, useAdminUrlSync } from "./admin-url-state";
 
 export function useAdminUsersListState() {
-	const [statusFilter, setStatusFilter] = useState(() => readAdminSearchParam("status"));
-	const [roleFilter, setRoleFilter] = useState(() => readAdminSearchParam("role"));
-	const [tenantFilter, setTenantFilter] = useState(() => readAdminSearchParam("tenant"));
-	const [queryFilter, setQueryFilter] = useState(() => readAdminSearchParam("query"));
+	const [statusFilter, setStatusFilter] = useState(() =>
+		readAdminSearchParam("status"),
+	);
+	const [roleFilter, setRoleFilter] = useState(() =>
+		readAdminSearchParam("role"),
+	);
+	const [tenantFilter, setTenantFilter] = useState(() =>
+		readAdminSearchParam("tenant"),
+	);
+	const [queryFilter, setQueryFilter] = useState(() =>
+		readAdminSearchParam("query"),
+	);
 
 	const filters = useMemo(
 		() => ({
@@ -35,7 +43,9 @@ export function useAdminUsersListState() {
 	const usersQuery = useAdminUsers(filters);
 	const users = usersQuery.data?.items ?? [];
 	const activeCount = users.filter((user) => user.status === "active").length;
-	const adminCount = users.filter((user) => user.roles.includes("admin")).length;
+	const adminCount = users.filter((user) =>
+		user.roles.includes("admin"),
+	).length;
 
 	return {
 		activeCount,

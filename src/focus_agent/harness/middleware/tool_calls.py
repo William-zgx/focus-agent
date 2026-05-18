@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import functools
 import inspect
-from dataclasses import dataclass
 import json
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from langchain.messages import AIMessage, ToolMessage

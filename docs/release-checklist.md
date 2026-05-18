@@ -105,7 +105,9 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 - Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
+- `make ui-smoke-agent-team-adoption` is the command name for the Agent Team adoption browser/source smoke. It should cover task selection, diff/test evidence, conflict/apply state, capture to Notes/Tasks, context evidence, and skill feedback once the Web adoption script is present.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
+- `scripts/feedback_regression.py` summarizes online feedback and adoption/governance signals into `reports/nightly/feedback-regression.json`. It is non-blocking when no production feedback artifact exists, but nightly reports must include its `feedback_pipeline` when events are provided.
 - `focus-agent-memory-embedding doctor` is the memory embedding/pgvector release preflight. Include its JSON output as release evidence when PostgreSQL memory embedding is enabled; it should show provider readiness, table dimension compatibility, extension status, and vector index state without exposing API keys or vector values.
 - `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, Agent governance quality, baseline eval reports, and current eval JSON reports into release-blocking health signals. Current release-blocking eval reports include smoke, observability, golden multi-agent, and memory/context. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real `--readyz-json` or `--ready-url`, `--trajectory-stats-json` or `--trajectory-stats-url`, `--replay-comparisons-json`, `--eval-report-json`, `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json` inputs. Missing required inputs fail closed with exit code 1; dry-run smoke / ops / OTel reports are rejected in production unless the caller explicitly uses the deterministic evidence-pack escape hatch `--allow-dry-run-reports`.
 - `make release-evidence` builds the production evidence pack. Use it for production release review after collecting real deployment signals; the manifest is written to `reports/release-gate/<release-id>/manifest.json` and includes artifact hashes, artifact summary, failure summary, retention metadata, approval metadata, storage verification metadata, release-health summary, and missing-required-artifact checks. Production packs require an explicit `--release-id`, approved deployment-platform `--approval-status approved` with `--approval-id`, plus readyz, trajectory stats, replay comparison, eval report, baseline eval report, production smoke, Postgres ops, OTel smoke, and governance report artifacts. Add `--storage-dir` when the release job should copy the evidence pack to a retained artifact location; the manifest records whether the stored manifest and summary matched local hashes.
@@ -119,6 +121,7 @@ Nightly and production smoke entrypoints:
 
 ```bash
 make nightly-regression
+make feedback-regression
 uv run python -m tests.eval --suite model_matrix --concurrency 1 --report-json reports/nightly/eval-model-matrix.json
 uv run python -m tests.eval --suite trajectory_failures --concurrency 1 --report-json reports/nightly/eval-trajectory-failures.json
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
@@ -126,6 +129,12 @@ make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
 make agent-governance-report
 ```
+
+Schema v14 adoption/governance migration evidence:
+
+- Confirm Postgres ops reports the current schema version as v14 before production promotion.
+- Confirm `reports/nightly/latest.json` contains `summary.feedback_pipeline` and `artifacts.feedback_regression`.
+- If production feedback exports are available, pass them through `FEEDBACK_REGRESSION_ARGS`, for example `--feedback-events-json`, `--merge-review-json`, `--skill-selection-json`, `--context-evidence-json`, and `--productivity-capture-json`.
 
 Production examples with live evidence:
 

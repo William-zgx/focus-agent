@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from focus_agent.core.users import User
 from focus_agent.security.tokens import Principal
 
-
 ADMIN_ROLE = "admin"
 MEMBER_ROLE = "member"
 VIEWER_ROLE = "viewer"

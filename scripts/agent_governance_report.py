@@ -4,14 +4,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 import shlex
 import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
-
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_JSON = Path("reports/agent-governance/latest.json")

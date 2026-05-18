@@ -10,7 +10,8 @@ from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecisi
 from ..core.types import ConversationRecord
 from ..security.ownership import OwnershipAuditEvent, allow_ownership, deny_ownership
 from .branch_repository import BranchRepository
-from .postgres_branch_mappers import PostgresBranchMapperMixin, branch_params as _branch_params, branch_row_params
+from .postgres_branch_mappers import PostgresBranchMapperMixin, branch_row_params
+from .postgres_branch_mappers import branch_params as _branch_params
 from .postgres_schema import ensure_app_postgres_schema_on_connection
 
 

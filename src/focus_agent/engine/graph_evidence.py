@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import urlparse
 
 from langchain.messages import AIMessage, ToolMessage
-
 
 TrustTier = str
 
@@ -124,6 +124,56 @@ def normalize_evidence_bundle(
             if item is not None:
                 items.append(item)
     return [item.as_dict() for item in _dedupe_items(items)]
+
+
+def normalize_evidence_ledger(
+    messages: Iterable[Any],
+    *,
+    observed_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Normalize web evidence and attach stable per-turn ledger metadata."""
+
+    message_list = list(messages)
+    call_names = _tool_call_names(message_list)
+    ledger: list[dict[str, Any]] = []
+    for message in message_list:
+        if not isinstance(message, ToolMessage):
+            continue
+        tool_call_id = str(message.tool_call_id or "").strip()
+        tool_name = _tool_name_for_message(message, call_names=call_names)
+        if tool_name not in _WEB_EVIDENCE_TOOLS:
+            continue
+        payload = _json_payload(message)
+        if not isinstance(payload, dict) or _tool_message_status(message, payload) == "error":
+            continue
+        if tool_name == "web_search":
+            items = _search_payload_items(payload, observed_at=observed_at)
+        else:
+            item = _fetch_payload_item(payload, observed_at=observed_at)
+            items = [item] if item is not None else []
+        for item in items:
+            ledger.append(
+                {
+                    **item.as_dict(),
+                    "id": f"ev-{len(ledger) + 1}",
+                    "source_tool": tool_name,
+                    "tool_call_id": tool_call_id,
+                }
+            )
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in ledger:
+        key = (
+            _clean_text(item.get("url")),
+            _clean_text(item.get("title")),
+            _clean_text(item.get("snippet")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        item["id"] = f"ev-{len(deduped) + 1}"
+        deduped.append(item)
+    return deduped
 
 
 def evidence_bundle_to_citation_refs(
@@ -389,4 +439,5 @@ __all__ = [
     "evidence_bundle_source_snippets",
     "evidence_bundle_to_citation_refs",
     "normalize_evidence_bundle",
+    "normalize_evidence_ledger",
 ]

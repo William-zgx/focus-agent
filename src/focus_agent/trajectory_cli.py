@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, is_dataclass
-from datetime import date, datetime
 import json
 import os
-from pathlib import Path
 import sys
-from typing import Any, Iterable, Protocol, Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any, Protocol
 
 from .repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sqlite3
+import uuid
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import json
+from datetime import UTC, datetime
 from pathlib import Path
-import sqlite3
 from typing import Any, Protocol, TypeVar
-import uuid
 
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.observability.trajectory import TrajectoryStep
 
 from ..streaming import END_SENTINEL, InMemoryStreamBridge, StreamEvent
-
 
 T = TypeVar("T")
 
@@ -977,7 +976,7 @@ def _json_loads_any(value: str | None) -> Any:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _event_id() -> str:

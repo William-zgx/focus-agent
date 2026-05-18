@@ -1,5 +1,9 @@
 from focus_agent.agent_delegation import AgentTask, build_agent_delegation_plan
-from focus_agent.agent_execution import FakeDelegatedRunExecutor, SubagentRegistry, run_delegated_tasks
+from focus_agent.agent_execution import (
+    FakeDelegatedRunExecutor,
+    SubagentRegistry,
+    run_delegated_tasks,
+)
 from focus_agent.agent_roles import AgentRole
 from focus_agent.agent_task_ledger import (
     apply_critic_retry_tasks,

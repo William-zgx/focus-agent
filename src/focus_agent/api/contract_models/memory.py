@@ -54,6 +54,29 @@ class MemoryRecordDetailResponse(BaseModel):
     error: str | None = None
 
 
+class MemoryUsageEvidenceResponse(BaseModel):
+    evidence_id: str
+    user_id: str | None = None
+    thread_id: str | None = None
+    turn_id: str | None = None
+    source_kind: str = "context_explain"
+    usage: str = "unknown"
+    selected_memories: list[dict[str, Any]] = Field(default_factory=list)
+    excluded_memories: list[dict[str, Any]] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+
+
+class MemoryUsageResponse(BaseModel):
+    memory_id: str
+    items: list[MemoryUsageEvidenceResponse] = Field(default_factory=list)
+    count: int = 0
+    limit: int = 50
+    backend: str = "governance"
+    available: bool = True
+    error: str | None = None
+
+
 class ForgetMemoryRecordRequest(BaseModel):
     namespace: str | list[str] | None = None
     reason: str | None = None
@@ -140,6 +163,8 @@ __all__ = [
     "MemoryCandidateResponse",
     "MemoryRecordDetailResponse",
     "MemoryRecordListResponse",
+    "MemoryUsageEvidenceResponse",
+    "MemoryUsageResponse",
     "MemoryDetailResponse",
     "ForgetMemoryRecordRequest",
     "ForgetMemoryRecordResponse",

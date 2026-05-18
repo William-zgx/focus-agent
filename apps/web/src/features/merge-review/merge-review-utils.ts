@@ -93,12 +93,17 @@ export function mergedBranchReadOnlyLabel(isChineseUi: boolean) {
 export function createMergeReviewDraft(
 	proposal?: FocusAgentMergeProposal | null,
 ): MergeReviewDraft {
+	const recommendedMode = proposal?.recommended_import_mode;
+	const defaultMode =
+		recommendedMode && recommendedMode !== "none"
+			? recommendedMode
+			: "summary_only";
 	return {
 		artifacts: (proposal?.artifacts ?? []).join("\n"),
 		decision: "approve",
 		evidenceRefs: (proposal?.evidence_refs ?? []).join("\n"),
 		findings: (proposal?.key_findings ?? []).join("\n"),
-		mode: proposal?.recommended_import_mode ?? "summary_only",
+		mode: defaultMode,
 		openQuestions: (proposal?.open_questions ?? []).join("\n"),
 		rationale: "",
 		selectedArtifacts: "",

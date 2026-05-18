@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import re
-from typing import Any, Callable
 import unicodedata
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from langchain.tools import tool
 
@@ -84,10 +85,10 @@ def build_artifact_tools(
     def _artifact_payload_from_metadata(record: Any) -> dict[str, Any]:
         updated_at = getattr(record, "updated_at", None)
         return {
-            "artifact_id": str(getattr(record, "artifact_id")),
-            "path": str(getattr(record, "path")),
-            "title": str(getattr(record, "title")),
-            "size_bytes": int(getattr(record, "size_bytes")),
+            "artifact_id": str(record.artifact_id),
+            "path": str(record.path),
+            "title": str(record.title),
+            "size_bytes": int(record.size_bytes),
             "updated_at": (
                 updated_at.isoformat()
                 if isinstance(updated_at, datetime)
@@ -112,7 +113,7 @@ def build_artifact_tools(
                     "path": str(candidate),
                     "title": _artifact_title_from_id(relative),
                     "size_bytes": stat.st_size,
-                    "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                    "updated_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
                 }
             )
             if len(artifacts) >= limit:
@@ -216,7 +217,7 @@ def build_artifact_tools(
                     )
                 else:
                     if metadata_record is not None:
-                        metadata_path = Path(str(getattr(metadata_record, "path"))).expanduser()
+                        metadata_path = Path(str(metadata_record.path)).expanduser()
                         if not metadata_path.is_absolute():
                             metadata_path = metadata_path.resolve()
                         try:

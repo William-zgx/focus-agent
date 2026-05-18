@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
+import focus_agent.memory.embedding as embedding_mod
 from focus_agent.api.route_utils.readiness import _build_runtime_readiness
 from focus_agent.config import Settings
 from focus_agent.config_parts.agent import load_agent_config
-import focus_agent.memory.embedding as embedding_mod
 from focus_agent.memory.embedding import (
     DeterministicTestEmbeddingProvider,
     EmbeddingProviderConfigError,
@@ -24,7 +24,7 @@ class _FakeEmbeddingResponse:
     def __init__(self, payload: object):
         self.payload = payload
 
-    def __enter__(self) -> "_FakeEmbeddingResponse":
+    def __enter__(self) -> _FakeEmbeddingResponse:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:

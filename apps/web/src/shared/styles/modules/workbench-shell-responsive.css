@@ -1,68 +1,68 @@
 /* Workbench responsive shell integration. */
 .fa-sidebar-scroll {
-  padding: 14px;
+	padding: 14px;
 }
 
 .fa-app-shell.is-sidebar-collapsed.is-agent-workbench-shell,
 .fa-app-shell.is-sidebar-collapsed.is-admin-shell {
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: 0;
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: 0;
 }
 
 @media (max-width: 900px) {
-  .fa-app-shell,
-    .fa-app-shell.is-agent-workbench-shell,
-    .fa-app-shell.is-admin-shell,
-    .fa-app-shell.is-sidebar-collapsed.is-agent-workbench-shell,
-    .fa-app-shell.is-sidebar-collapsed.is-admin-shell {
-      grid-template-columns: minmax(0, 1fr);
-      column-gap: 0;
-    }
+	.fa-app-shell,
+	.fa-app-shell.is-agent-workbench-shell,
+	.fa-app-shell.is-admin-shell,
+	.fa-app-shell.is-sidebar-collapsed.is-agent-workbench-shell,
+	.fa-app-shell.is-sidebar-collapsed.is-admin-shell {
+		grid-template-columns: minmax(0, 1fr);
+		column-gap: 0;
+	}
 
-  .fa-app-shell:not(.is-sidebar-collapsed)::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: 24;
-      background: color-mix(in srgb, #05070d 56%, transparent);
-    }
+	.fa-app-shell:not(.is-sidebar-collapsed)::before {
+		content: "";
+		position: fixed;
+		inset: 0;
+		z-index: 24;
+		background: color-mix(in srgb, #05070d 56%, transparent);
+	}
 
-  .fa-sidebar-panel,
-    .fa-sidebar-panel.is-global-shell {
-      position: fixed;
-      inset: 12px auto 12px 12px;
-      z-index: 30;
-      width: min(86vw, 320px);
-      max-width: calc(100vw - 24px);
-      display: grid;
-      transform: translateX(0);
-      opacity: 1;
-      pointer-events: auto;
-      transition:
-        opacity 0.18s ease,
-        transform 0.18s ease;
-    }
+	.fa-sidebar-panel,
+	.fa-sidebar-panel.is-global-shell {
+		position: fixed;
+		inset: 12px auto 12px 12px;
+		z-index: 30;
+		width: min(86vw, 320px);
+		max-width: calc(100vw - 24px);
+		display: grid;
+		transform: translateX(0);
+		opacity: 1;
+		pointer-events: auto;
+		transition:
+			opacity 0.18s ease,
+			transform 0.18s ease;
+	}
 
-  .fa-app-shell.is-sidebar-collapsed .fa-sidebar-panel {
-      display: grid;
-      transform: translateX(calc(-100% - 24px));
-      opacity: 0;
-      pointer-events: none;
-    }
+	.fa-app-shell.is-sidebar-collapsed .fa-sidebar-panel {
+		display: grid;
+		transform: translateX(calc(-100% - 24px));
+		opacity: 0;
+		pointer-events: none;
+	}
 
-  .fa-panel-resizer {
-      display: none;
-    }
+	.fa-panel-resizer {
+		display: none;
+	}
 
-  .fa-workspace-sidebar-toggle {
-      top: 12px;
-      left: 12px;
-      min-width: 32px;
-      justify-content: center;
-      padding: 7px;
-    }
+	.fa-workspace-sidebar-toggle {
+		top: 12px;
+		left: 12px;
+		min-width: 32px;
+		justify-content: center;
+		padding: 7px;
+	}
 
-  .fa-workspace-sidebar-toggle span {
-      display: none;
-    }
+	.fa-workspace-sidebar-toggle span {
+		display: none;
+	}
 }

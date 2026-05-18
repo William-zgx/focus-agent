@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
-import uuid
 
 from ..runtime import RunManager, RunRecord, RunStatus
 from ..tools.envelope import ToolResultContent, ToolResultEnvelope
@@ -193,4 +193,4 @@ class SubagentExecutor:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

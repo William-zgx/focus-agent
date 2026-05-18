@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -60,7 +61,7 @@ class RuntimeFeatures(BaseModel):
         return value
 
     @classmethod
-    def from_settings(cls, settings: Any) -> "RuntimeFeatures":
+    def from_settings(cls, settings: Any) -> RuntimeFeatures:
         """Build feature switches from a Focus Agent ``Settings``-like object."""
 
         delegation = bool(getattr(settings, "agent_delegation_enabled", False))
@@ -158,7 +159,7 @@ class HarnessConfig(BaseModel):
     middleware: tuple[object, ...] = ()
 
     @classmethod
-    def from_settings(cls, settings: Any) -> "HarnessConfig":
+    def from_settings(cls, settings: Any) -> HarnessConfig:
         """Create harness defaults from a Focus Agent ``Settings``-like object."""
 
         from ..runtime.runs import DisconnectMode, MultitaskStrategy

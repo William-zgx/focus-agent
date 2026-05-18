@@ -4,7 +4,6 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Deque
 
 
 @dataclass(slots=True)
@@ -23,7 +22,7 @@ class SlidingWindowRateLimiter:
 
     def __init__(self, *, window_seconds: float = 60.0) -> None:
         self._window_seconds = float(window_seconds)
-        self._events: dict[str, Deque[float]] = defaultdict(deque)
+        self._events: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
     def check(self, *, key: str, limit: int) -> RateLimitResult:

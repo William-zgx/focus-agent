@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
-
+from collections.abc import Iterable
 
 TEXTUAL_TOOL_ARTIFACT_MARKERS = (
     "function_calls",
@@ -87,6 +86,15 @@ _DEGRADED_PARAMETER_TAIL_RE = re.compile(
     r"\s*(?:string|number|boolean|object|array)?\s*(?:true|false|null)?[0-9]{0,8}\s*"
     r"(?:parameter|invoke)>"
 )
+_DEGRADED_TOOL_REFERENCE_RE = re.compile(
+    r"(?is)(?:^|[\s,;])"
+    r"(?:[\w./-]+/)?[\w.-]+\.(?:py|ts|tsx|js|jsx|md|toml|json|yaml|yml)"
+    r"(?:"
+    r"\s*=\s*[\"']?(?:offset|line|lines|line_number|path|uri|read|filepath)[\"']?"
+    r"\s+(?:string|number|boolean|object|array)\w*"
+    r"|(?:true|false|null)?[\"']?>[0-9]{1,8}(?:alls?>?)?"
+    r")"
+)
 _TOOL_CALL_PREFIX_RE = re.compile(
     r"(?is)^\s*(?:"
     r"https?://[^\s<>\"']{1,512}|"
@@ -153,7 +161,11 @@ def looks_like_textual_tool_call_artifact(
         return True
     if _DEGRADED_TOOL_PROTOCOL_FRAGMENT_RE.search(lowered):
         return True
-    if _DEGRADED_PARAMETER_TAIL_RE.search(lowered) or _TOOL_RESULT_URI_RE.search(lowered):
+    if (
+        _DEGRADED_PARAMETER_TAIL_RE.search(lowered)
+        or _DEGRADED_TOOL_REFERENCE_RE.search(lowered)
+        or _TOOL_RESULT_URI_RE.search(lowered)
+    ):
         return True
 
     tool_names = _normalized_tool_names(known_tool_names)

@@ -1,6 +1,7 @@
-from focus_agent.config import Settings
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
+from focus_agent.config import Settings
+from focus_agent.core.branching import BranchMeta, BranchRole, BranchStatus
 from focus_agent.core.types import ContextBudget
 from focus_agent.observability.tracing import (
     build_trace_correlation,
@@ -8,7 +9,6 @@ from focus_agent.observability.tracing import (
     build_trace_tags,
     start_trace_span,
 )
-from focus_agent.core.branching import BranchMeta, BranchRole, BranchStatus
 
 
 def test_trace_metadata_contains_thread_fields():

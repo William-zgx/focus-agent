@@ -123,6 +123,46 @@ def test_admin_user_routes_use_persistent_roles_not_jwt_scopes(
     assert audit.json()["count"] >= 4
 
 
+def test_admin_background_jobs_summary_requires_admin_and_reports_warnings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings, service, _ = _build_client(monkeypatch, tmp_path)
+    service.create_user(user_id="admin-1", roles=["admin"])
+    service.create_user(user_id="member-1", roles=["member"])
+
+    class BackgroundWork:
+        def snapshot(self):
+            return {
+                "job_pending_total": 1,
+                "job_retrying_total": 2,
+                "job_dead_lettered_total": 1,
+                "job_oldest_pending_seconds": 1200,
+            }
+
+    client.app.state.runtime.background_work = BackgroundWork()
+    client.app.state.runtime.settings.background_job_old_pending_seconds = 900.0
+
+    member_response = client.get(
+        "/v1/admin/background-jobs/summary",
+        headers=_headers(settings, "member-1", scopes=["admin"]),
+    )
+    assert member_response.status_code == 403
+
+    response = client.get(
+        "/v1/admin/background-jobs/summary",
+        headers=_headers(settings, "admin-1"),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["ready"] is False
+    assert body["metrics"]["job_retrying_total"] == 2
+    assert body["metrics"]["job_dead_lettered_total"] == 1
+    assert "dead_lettered=1" in body["warnings"]
+    assert "oldest_pending_seconds=1200" in body["warnings"]
+
+
 def test_admin_can_reset_password_and_revoke_user_sessions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

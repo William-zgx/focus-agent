@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 
 from .models import MemoryKind, MemoryRecord, MemoryWriteRequest
 
@@ -60,7 +60,7 @@ def user_preference_topic(text: str) -> str | None:
 
 
 def merge_duplicate_records(existing: MemoryRecord, incoming: MemoryWriteRequest) -> MemoryRecord:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     merged = existing.model_copy(
         update={
             "content": incoming.content or existing.content,

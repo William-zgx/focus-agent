@@ -22,12 +22,19 @@ dependencies = [
   "ddgs>=9.6.0",
   "opentelemetry-sdk>=1.31.0,<2.0.0",
   "opentelemetry-exporter-otlp-proto-http>=1.31.0,<2.0.0",
+  "tiktoken>=0.12.0,<1.0.0",
+  "networkx>=3.1",
 ]
 
 [project.optional-dependencies]
 openai = ["langchain-openai>=1.0.0"]
 anthropic = ["langchain-anthropic>=1.0.0"]
-dev = ["pytest>=8.2.0", "ruff>=0.8.0", "httpx>=0.28.0"]
+dev = [
+    "pytest>=8.2.0",
+    "ruff>=0.8.0",
+    "httpx>=0.28.0",
+    "coverage[toml]>=7.4",
+]
 
 [project.scripts]
 focus-agent-demo = "focus_agent.demo:main"

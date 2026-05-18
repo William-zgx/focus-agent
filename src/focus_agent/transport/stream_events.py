@@ -10,7 +10,6 @@ from ..core.tool_protocol import (
     safe_visible_text_transition,
 )
 
-
 VISIBLE_TEXT_BLOCK_TYPES = {
     "text",
     "text_delta",

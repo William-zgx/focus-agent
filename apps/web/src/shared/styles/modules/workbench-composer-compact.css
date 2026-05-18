@@ -1,334 +1,330 @@
 /* Workbench compact composer integration. */
 .fa-composer-shell.fa-composer-input-shell {
-  grid-template-columns: minmax(0, 1fr) clamp(228px, 22vw, 252px);
-  align-items: stretch;
-  gap: 8px;
+	grid-template-columns: minmax(0, 1fr) clamp(228px, 22vw, 252px);
+	align-items: stretch;
+	gap: 8px;
 }
 
 .fa-composer-footer-row {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 116px;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  width: 100%;
-  min-width: 0;
+	display: grid;
+	grid-template-columns: 38px minmax(0, 1fr) 116px;
+	align-items: center;
+	gap: 6px;
+	min-height: 34px;
+	width: 100%;
+	min-width: 0;
 }
 
 .fa-composer-actions-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  flex: 0 0 116px;
-  width: 116px;
-  order: 2;
-  grid-column: 3;
-  justify-self: end;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	flex: 0 0 116px;
+	width: 116px;
+	order: 2;
+	grid-column: 3;
+	justify-self: end;
 }
 
 .fa-composer-inline-actions {
-  display: grid;
-  grid-template-columns: 34px 34px;
-  align-items: center;
-  gap: 6px;
-  width: 74px;
-  flex: 0 0 auto;
-  justify-content: end;
+	display: grid;
+	grid-template-columns: 34px 34px;
+	align-items: center;
+	gap: 6px;
+	width: 74px;
+	flex: 0 0 auto;
+	justify-content: end;
 }
 
 .fa-composer-model-row {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  min-width: 0;
-  flex: 0 0 38px;
-  width: 38px;
-  max-width: 38px;
-  order: 1;
-  grid-column: 1;
-  justify-self: start;
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	min-width: 0;
+	flex: 0 0 38px;
+	width: 38px;
+	max-width: 38px;
+	order: 1;
+	grid-column: 1;
+	justify-self: start;
 }
 
 .fa-composer-model-controls {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  min-width: 0;
-  width: 100%;
-  flex: 1 1 auto;
-  flex-direction: row;
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	min-width: 0;
+	width: 100%;
+	flex: 1 1 auto;
+	flex-direction: row;
 }
 
 .fa-composer-model-anchor {
-  position: relative;
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: none;
-  min-width: 0;
+	position: relative;
+	flex: 1 1 auto;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
 }
 
 .fa-composer-model-shell {
-  width: 100%;
-  min-width: 0;
-  max-width: none;
-  flex: 1 1 auto;
+	width: 100%;
+	min-width: 0;
+	max-width: none;
+	flex: 1 1 auto;
 }
 
 .fa-composer-model-trigger,
 .fa-composer-model-trigger-copy,
 .fa-composer-model-trigger-label,
 .fa-composer-model-trigger-provider {
-  min-width: 0;
+	min-width: 0;
 }
 
 .fa-composer-model-trigger {
-  min-height: 34px;
-  width: 100%;
-  max-width: none;
-  padding: 0 8px 0 6px;
-  gap: 6px;
-  border-radius: 12px;
-  overflow: hidden;
+	min-height: 34px;
+	width: 100%;
+	max-width: none;
+	padding: 0 8px 0 6px;
+	gap: 6px;
+	border-radius: 12px;
+	overflow: hidden;
 }
 
 .fa-composer-model-trigger-copy {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1 1 auto;
-  overflow: hidden;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1 1 auto;
+	overflow: hidden;
 }
 
 .fa-composer-model-trigger-label {
-  display: block;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  line-height: normal;
+	display: block;
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 10px;
+	line-height: normal;
 }
 
 .fa-composer-model-trigger-provider {
-  display: none;
+	display: none;
 }
 
 .fa-composer-model-trigger-icon {
-  width: 16px;
-  height: 16px;
-  margin-left: 4px;
-  transform: rotate(-90deg);
+	width: 16px;
+	height: 16px;
+	margin-left: 4px;
+	transform: rotate(-90deg);
 }
 
 @media (max-width: 900px) {
-  .fa-composer-shell.fa-composer-input-shell {
-      grid-template-columns: minmax(0, 1fr);
-    }
+	.fa-composer-shell.fa-composer-input-shell {
+		grid-template-columns: minmax(0, 1fr);
+	}
 
-  .fa-composer-input-row {
-      min-height: unset;
-    }
+	.fa-composer-input-row {
+		min-height: unset;
+	}
 
-  .fa-composer-footer-row {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      min-height: unset;
-    }
+	.fa-composer-footer-row {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		min-height: unset;
+	}
 
-  .fa-composer-actions-row {
-      justify-content: flex-end;
-    }
+	.fa-composer-actions-row {
+		justify-content: flex-end;
+	}
 
-  .fa-composer-model-row {
-      align-items: stretch;
-      width: 100%;
-      flex: 0 0 auto;
-    }
+	.fa-composer-model-row {
+		align-items: stretch;
+		width: 100%;
+		flex: 0 0 auto;
+	}
 
-  .fa-composer-model-controls {
-      width: 100%;
-    }
+	.fa-composer-model-controls {
+		width: 100%;
+	}
 
-  .fa-composer-model-anchor {
-      max-width: none;
-      flex-basis: 100%;
-    }
+	.fa-composer-model-anchor {
+		max-width: none;
+		flex-basis: 100%;
+	}
 
-  .fa-composer-model-trigger {
-      max-width: none;
-      width: 100%;
-    }
+	.fa-composer-model-trigger {
+		max-width: none;
+		width: 100%;
+	}
 
-  .fa-composer-model-panel {
-      width: 100%;
-    }
+	.fa-composer-model-panel {
+		width: 100%;
+	}
 
-  .fa-composer-inline-actions {
-      width: auto;
-      grid-template-columns: auto 34px;
-    }
+	.fa-composer-inline-actions {
+		width: auto;
+		grid-template-columns: auto 34px;
+	}
 
-  .fa-composer-actions-row .fa-composer-inline-actions {
-      margin-left: auto;
-    }
+	.fa-composer-actions-row .fa-composer-inline-actions {
+		margin-left: auto;
+	}
 }
 
 .fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
-  grid-template-columns: minmax(0, 1fr) clamp(228px, 22vw, 252px) !important;
-  align-items: stretch !important;
+	grid-template-columns: minmax(0, 1fr) clamp(228px, 22vw, 252px);
+	align-items: stretch;
 }
 
 .fa-chat-main-body .fa-composer-footer-row {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 100px 74px !important;
-  align-items: center !important;
-  gap: 4px !important;
-  width: 100% !important;
-  min-width: 0 !important;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 100px 74px;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	min-width: 0;
 }
 
 .fa-chat-main-body .fa-composer-model-row {
-  grid-column: 2 !important;
-  justify-self: end !important;
-  width: 100px !important;
-  min-width: 100px !important;
-  max-width: 100px !important;
-  flex: 0 0 100px !important;
-  position: relative;
-  z-index: 1;
+	grid-column: 2;
+	justify-self: end;
+	width: 100px;
+	min-width: 100px;
+	max-width: 100px;
+	flex: 0 0 100px;
+	position: relative;
+	z-index: 1;
 }
 
 .fa-chat-main-body .fa-composer-model-controls,
 .fa-chat-main-body .fa-composer-model-anchor,
 .fa-chat-main-body .fa-composer-model-shell {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: none !important;
+	width: 100%;
+	min-width: 0;
+	max-width: none;
 }
 
 .fa-chat-main-body .fa-composer-model-trigger {
-  width: 100px !important;
-  min-width: 100px !important;
-  max-width: 100px !important;
+	width: 100px;
+	min-width: 100px;
+	max-width: 100px;
 }
 
 .fa-chat-main-body .fa-composer-actions-row {
-  grid-column: 3 !important;
-  justify-self: end !important;
-  width: 74px !important;
-  min-width: 74px !important;
-  max-width: 74px !important;
-  flex: 0 0 74px !important;
-  position: relative;
-  z-index: 2;
+	grid-column: 3;
+	justify-self: end;
+	width: 74px;
+	min-width: 74px;
+	max-width: 74px;
+	flex: 0 0 74px;
+	position: relative;
+	z-index: 2;
 }
 
 .fa-chat-main-body .fa-composer-inline-actions {
-  width: 74px !important;
-  min-width: 74px !important;
-  grid-template-columns: 34px 34px !important;
+	width: 74px;
+	min-width: 74px;
+	grid-template-columns: 34px 34px;
 }
 
 .fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
-  grid-template-columns: minmax(0, 1fr) max-content !important;
-  align-items: end !important;
-  column-gap: 10px !important;
+	grid-template-columns: minmax(0, 1fr) max-content;
+	align-items: end;
+	column-gap: 10px;
 }
 
 .fa-chat-main-body .fa-composer-input-row {
-  grid-column: 1 !important;
-  grid-row: 1 !important;
-  min-width: 0 !important;
+	grid-column: 1;
+	grid-row: 1;
+	min-width: 0;
 }
 
 .fa-chat-main-body .fa-composer-footer-row {
-  display: flex !important;
-  grid-column: 2 !important;
-  grid-row: 1 !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  justify-self: end !important;
-  gap: 8px !important;
-  width: auto !important;
-  min-width: 0 !important;
+	display: flex;
+	grid-column: 2;
+	grid-row: 1;
+	align-items: center;
+	justify-content: flex-end;
+	justify-self: end;
+	gap: 8px;
+	width: auto;
+	min-width: 0;
 }
 
 .fa-chat-main-body .fa-composer-model-row {
-  width: clamp(118px, 10vw, 136px) !important;
-  min-width: clamp(118px, 10vw, 136px) !important;
-  max-width: clamp(118px, 10vw, 136px) !important;
-  flex: 0 0 clamp(118px, 10vw, 136px) !important;
+	width: clamp(118px, 10vw, 136px);
+	min-width: clamp(118px, 10vw, 136px);
+	max-width: clamp(118px, 10vw, 136px);
+	flex: 0 0 clamp(118px, 10vw, 136px);
 }
 
 .fa-chat-main-body .fa-composer-model-controls,
 .fa-chat-main-body .fa-composer-model-anchor,
 .fa-chat-main-body .fa-composer-model-shell,
 .fa-chat-main-body .fa-composer-model-trigger {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: none !important;
+	width: 100%;
+	min-width: 0;
+	max-width: none;
 }
 
 .fa-chat-main-body .fa-composer-actions-row {
-  width: 116px !important;
-  min-width: 116px !important;
-  max-width: 116px !important;
-  flex: 0 0 116px !important;
+	width: 116px;
+	min-width: 116px;
+	max-width: 116px;
+	flex: 0 0 116px;
 }
 
 .fa-chat-main-body .fa-composer-inline-actions {
-  width: 74px !important;
-  min-width: 74px !important;
-  max-width: 74px !important;
-  flex: 0 0 74px !important;
+	width: 74px;
+	min-width: 74px;
+	max-width: 74px;
+	flex: 0 0 74px;
 }
 
 .fa-chat-main-body .fa-composer-textarea:focus,
 .fa-chat-main-body .fa-composer-textarea:focus-visible {
-  border-color: transparent !important;
-  box-shadow: none !important;
-  outline: none !important;
+	border-color: transparent;
+	box-shadow: none;
+	outline: none;
 }
 
 .fa-chat-main-body
-  .fa-composer-shell.fa-composer-input-shell:not(.is-streaming):not(
-    .is-readonly
-  ):focus-within {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-border) 82%,
-    transparent
-  ) !important;
-  box-shadow:
-    0 14px 30px rgba(4, 10, 22, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+	.fa-composer-shell.fa-composer-input-shell:not(.is-streaming):not(
+		.is-readonly
+	):focus-within {
+	border-color: color-mix(in srgb, var(--fa-border) 82%, transparent);
+	box-shadow:
+		0 14px 30px rgba(4, 10, 22, 0.14),
+		inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 @media (max-width: 900px) {
-  .fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
-      grid-template-columns: minmax(0, 1fr) !important;
-      row-gap: 8px !important;
-    }
+	.fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: 8px;
+	}
 
-  .fa-chat-main-body .fa-composer-footer-row {
-      grid-column: 1 !important;
-      grid-row: 2 !important;
-      flex-direction: column !important;
-      align-items: stretch !important;
-      justify-self: stretch !important;
-      width: 100% !important;
-    }
+	.fa-chat-main-body .fa-composer-footer-row {
+		grid-column: 1;
+		grid-row: 2;
+		flex-direction: column;
+		align-items: stretch;
+		justify-self: stretch;
+		width: 100%;
+	}
 
-  .fa-chat-main-body .fa-composer-model-row {
-      width: 100% !important;
-      min-width: 0 !important;
-      max-width: none !important;
-      flex: 0 0 auto !important;
-    }
+	.fa-chat-main-body .fa-composer-model-row {
+		width: 100%;
+		min-width: 0;
+		max-width: none;
+		flex: 0 0 auto;
+	}
 
-  .fa-chat-main-body .fa-composer-actions-row {
-      margin-left: auto !important;
-    }
+	.fa-chat-main-body .fa-composer-actions-row {
+		margin-left: auto;
+	}
 }

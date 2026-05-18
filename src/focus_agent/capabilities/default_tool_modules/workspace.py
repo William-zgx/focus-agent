@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections import Counter
 import fnmatch
 import json
 import os
-from pathlib import Path
 import re
-from typing import Any, Callable, Iterable
+from collections import Counter
+from collections.abc import Callable, Iterable
+from pathlib import Path
+from typing import Any
 
 from langchain.tools import tool
 
@@ -26,6 +27,7 @@ _SKIP_DIR_NAMES = {
     ".next",
     ".tox",
     ".cache",
+    ".claude",
     ".focus_agent",
     "dist",
     "build",
@@ -99,6 +101,14 @@ def _iter_workspace_files(root: Path) -> Iterable[Path]:
 def _format_numbered_lines(lines: list[str], *, start_line: int) -> str:
     width = max(len(str(start_line + len(lines) - 1)), 2)
     return "\n".join(f"{start_line + index:{width}d} | {line}" for index, line in enumerate(lines))
+
+
+def _search_result_context(lines: list[str], *, line_number: int) -> str | None:
+    line = lines[line_number - 1] if 0 < line_number <= len(lines) else ""
+    if not line.rstrip().endswith("{"):
+        return None
+    end_line = min(len(lines), line_number + 16)
+    return _format_numbered_lines(lines[line_number - 1 : end_line], start_line=line_number)
 
 
 def build_workspace_tools(
@@ -264,13 +274,15 @@ def build_workspace_tools(
                 for line_number, line in enumerate(lines, start=1):
                     if not matcher(line):
                         continue
-                    matches.append(
-                        {
-                            "path": relative,
-                            "line_number": line_number,
-                            "line": line,
-                        }
-                    )
+                    item = {
+                        "path": relative,
+                        "line_number": line_number,
+                        "line": line,
+                    }
+                    context = _search_result_context(lines, line_number=line_number)
+                    if context:
+                        item["context"] = context
+                    matches.append(item)
                     if len(matches) >= capped_results:
                         truncated = True
                         break

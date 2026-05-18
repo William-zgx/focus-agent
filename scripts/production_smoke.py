@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
-
 
 DEFAULT_REPORT_JSON = Path("reports/release-gate/production-smoke.json")
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"

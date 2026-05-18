@@ -64,7 +64,7 @@ class UserResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_user(cls, user: User) -> "UserResponse":
+    def from_user(cls, user: User) -> UserResponse:
         payload = user.model_dump(mode="json")
         return cls.model_validate(payload)
 
@@ -95,7 +95,7 @@ class UserSessionResponse(BaseModel):
         session: UserSession,
         *,
         current_session_id: str | None = None,
-    ) -> "UserSessionResponse":
+    ) -> UserSessionResponse:
         payload = session.model_dump(mode="json")
         payload["current"] = bool(current_session_id and session.session_id == current_session_id)
         return cls.model_validate(payload)
@@ -154,7 +154,7 @@ class AuditEventResponse(BaseModel):
     created_at: str
 
     @classmethod
-    def from_event(cls, event: AdminAuditEvent) -> "AuditEventResponse":
+    def from_event(cls, event: AdminAuditEvent) -> AuditEventResponse:
         return cls.model_validate(event.model_dump(mode="json"))
 
 
@@ -163,6 +163,14 @@ class AuditEventListResponse(BaseModel):
     count: int = 0
     limit: int = 50
     offset: int = 0
+
+
+class BackgroundJobSummaryResponse(BaseModel):
+    generated_at: str
+    status: str = "ok"
+    ready: bool = True
+    metrics: dict[str, int] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TokenResponse(BaseModel):
@@ -208,6 +216,7 @@ __all__ = [
     "UpdateUserRolesRequest",
     "AuditEventResponse",
     "AuditEventListResponse",
+    "BackgroundJobSummaryResponse",
     "TokenResponse",
     "AuthTokenResponse",
     "PrincipalResponse",

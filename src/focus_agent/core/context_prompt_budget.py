@@ -26,22 +26,26 @@ def apply_prompt_budget_guard(
     guarded = [
         _trim_message_tool_observation(message, budget=budget) for message in prompt_messages
     ]
-    if counter.count(guarded) <= budget.prompt_token_limit:
+    if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
     main_system_index = _first_main_system_index(guarded)
     if main_system_index is not None:
         mandatory_indices = _mandatory_prompt_indices(guarded)
-        other_units = counter.count(
-            [
-                message
-                for index, message in enumerate(guarded)
-                if index != main_system_index
-                and (index in mandatory_indices or isinstance(message, SystemMessage))
-            ]
-        )
+        other_messages = [
+            message
+            for index, message in enumerate(guarded)
+            if index != main_system_index
+            and (index in mandatory_indices or isinstance(message, SystemMessage))
+        ]
+        other_units = counter.count(other_messages)
         target_units = max(0, budget.prompt_token_limit - other_units)
         target_chars = _units_to_char_budget(target_units, budget=budget)
+        if _enforce_prompt_char_budget(budget):
+            target_chars = min(
+                target_chars,
+                max(0, _prompt_char_limit(budget) - _prompt_char_count(other_messages)),
+            )
         trimmed_system = _trim_system_text_by_blocks(
             _text_for_budget(guarded[main_system_index]),
             max_chars=target_chars,
@@ -53,7 +57,7 @@ def apply_prompt_budget_guard(
             trimmed_system,
         )
 
-    if counter.count(guarded) <= budget.prompt_token_limit:
+    if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
     mandatory_indices = _mandatory_prompt_indices(guarded)
@@ -63,16 +67,16 @@ def apply_prompt_budget_guard(
         if index not in mandatory_indices and not isinstance(message, SystemMessage)
     ]
     for index in reversed(removable):
-        if counter.count(guarded) <= budget.prompt_token_limit:
+        if _within_prompt_budget(guarded, budget=budget, counter=counter):
             break
         del guarded[index]
         mandatory_indices = _mandatory_prompt_indices(guarded)
 
-    if counter.count(guarded) <= budget.prompt_token_limit:
+    if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
     guarded = _shrink_tool_messages_to_fit(guarded, budget=budget, counter=counter)
-    if counter.count(guarded) <= budget.prompt_token_limit:
+    if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
     return _hard_limit_prompt_messages(guarded, budget=budget, counter=counter)
@@ -84,6 +88,27 @@ def _prompt_char_limit(budget: ContextBudget) -> int:
 
 def _prompt_char_count(messages: list[AnyMessage]) -> int:
     return sum(len(_text_for_budget(message)) for message in messages)
+
+
+def _within_prompt_budget(
+    messages: list[AnyMessage],
+    *,
+    budget: ContextBudget,
+    counter: _PromptBudgetCounter,
+) -> bool:
+    if counter.count(messages) > budget.prompt_token_limit:
+        return False
+    if not _enforce_prompt_char_budget(budget):
+        return True
+    return _prompt_char_count(messages) <= _prompt_char_limit(budget)
+
+
+def _enforce_prompt_char_budget(budget: ContextBudget) -> bool:
+    return (
+        budget.token_budget_mode != "tokenizer_first"
+        or not budget.tokenizer_id
+        or budget.chars_per_token <= 1
+    )
 
 
 def _copy_message_with_content(message: AnyMessage, content: str) -> AnyMessage:
@@ -253,20 +278,30 @@ def _shrink_tool_messages_to_fit(
     messages: list[AnyMessage],
     *,
     budget: ContextBudget,
-    counter: "_PromptBudgetCounter | None" = None,
+    counter: _PromptBudgetCounter | None = None,
 ) -> list[AnyMessage]:
     guarded = list(messages)
     budget_counter = counter or _PromptBudgetCounter(budget)
     for index in range(len(guarded) - 1, -1, -1):
         current_count = budget_counter.count(guarded)
-        if current_count <= budget.prompt_token_limit:
+        if _within_prompt_budget(guarded, budget=budget, counter=budget_counter):
             break
         message = guarded[index]
         if not isinstance(message, ToolMessage):
             continue
-        overflow_units = current_count - budget.prompt_token_limit
+        overflow_units = max(0, current_count - budget.prompt_token_limit)
+        overflow_chars = (
+            max(0, _prompt_char_count(guarded) - _prompt_char_limit(budget))
+            if _enforce_prompt_char_budget(budget)
+            else 0
+        )
         current = _text_for_budget(message)
-        target = max(200, len(current) - _units_to_char_budget(overflow_units, budget=budget) - 16)
+        target = max(
+            200,
+            len(current)
+            - max(_units_to_char_budget(overflow_units, budget=budget), overflow_chars)
+            - 16,
+        )
         guarded[index] = _copy_message_with_content(
             message,
             trim_tool_observation(
@@ -286,7 +321,7 @@ def _hard_limit_prompt_messages(
     messages: list[AnyMessage],
     *,
     budget: ContextBudget,
-    counter: "_PromptBudgetCounter | None" = None,
+    counter: _PromptBudgetCounter | None = None,
 ) -> list[AnyMessage]:
     guarded = list(messages)
     budget_counter = counter or _PromptBudgetCounter(budget)
@@ -318,12 +353,22 @@ def _hard_limit_prompt_messages(
             continue
         seen.add(index)
         current_count = budget_counter.count(guarded)
-        if current_count <= budget.prompt_token_limit:
+        if _within_prompt_budget(guarded, budget=budget, counter=budget_counter):
             break
         message = guarded[index]
         current = _text_for_budget(message)
-        overflow_units = current_count - budget.prompt_token_limit
-        target = max(0, len(current) - _units_to_char_budget(overflow_units, budget=budget) - 16)
+        overflow_units = max(0, current_count - budget.prompt_token_limit)
+        overflow_chars = (
+            max(0, _prompt_char_count(guarded) - _prompt_char_limit(budget))
+            if _enforce_prompt_char_budget(budget)
+            else 0
+        )
+        target = max(
+            0,
+            len(current)
+            - max(_units_to_char_budget(overflow_units, budget=budget), overflow_chars)
+            - 16,
+        )
         if isinstance(message, ToolMessage):
             content = trim_tool_observation(
                 current,

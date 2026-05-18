@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from focus_agent.memory.models import (
@@ -17,8 +17,8 @@ from focus_agent.memory.models import (
 from focus_agent.repositories.memory_repository import MemoryEmbeddingListQuery, MemoryListQuery
 from focus_agent.repositories.postgres_memory_repository import PostgresMemoryRepository
 from focus_agent.repositories.postgres_schema import (
-    SCHEMA_VERSION,
     _MIGRATIONS,
+    SCHEMA_VERSION,
     _run_migration_v10,
     rebuild_memory_embedding_index_on_connection,
 )
@@ -703,7 +703,7 @@ def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 11
+    assert SCHEMA_VERSION == 15
     assert len(executed) == 1
     sql = " ".join(executed[0].split())
     assert sql.startswith("UPDATE focus_memories SET")
@@ -805,7 +805,7 @@ def _memory_record(
     fingerprint: str,
     semantic_key: str,
 ) -> MemoryRecord:
-    now = datetime(2026, 5, 6, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 6, tzinfo=UTC)
     return MemoryRecord(
         memory_id=memory_id,
         kind=MemoryKind.PROJECT_FACT,

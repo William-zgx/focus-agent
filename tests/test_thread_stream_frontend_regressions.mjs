@@ -12,6 +12,10 @@ const typescriptModuleUrl = pathToFileURL(
 ).href;
 const ts = await import(typescriptModuleUrl);
 
+function compactSource(sourceText) {
+  return sourceText.split(/\s+/u).join(" ");
+}
+
 function extractFunction(sourceText, functionName) {
   const signature = new RegExp(`(?:export\\s+)?function\\s+${functionName}\\s*\\(`);
   const start = sourceText.search(signature);
@@ -1294,9 +1298,17 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(approvalCardSource.includes("interrupt.args"), false);
   assert.equal(threadPageSource.includes("handleDecideToolApproval"), true);
   assert.equal(streamHookSource.includes("client.streamResume"), true);
-  assert.equal(streamHookSource.includes("createToolApprovalDecision(interrupt, approved)"), true);
+  assert.equal(
+    compactSource(streamHookSource).includes("createToolApprovalDecision(interrupt, approved)"),
+    true,
+  );
   assert.equal(streamHookSource.includes("activeRunIdsRef"), true);
-  assert.equal(streamHookSource.includes("client.cancelHarnessRun(runId, { action: \"interrupt\" })"), true);
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      'client .cancelHarnessRun(runId, { action: "interrupt" })',
+    ),
+    true,
+  );
 });
 
 test("SSE parser ignores trailing blank frames after stream completion", () => {

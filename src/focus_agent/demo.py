@@ -3,12 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 
+from .config import load_local_env_file
 from .core.branching import BranchRole, MergeDecision
 from .core.request_context import RequestContext
-from .config import load_local_env_file
 from .engine.runtime import create_runtime
 from .services.chat import ChatService
-
 
 load_local_env_file()
 

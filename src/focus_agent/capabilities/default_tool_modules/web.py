@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from html.parser import HTMLParser
 import ipaddress
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from html.parser import HTMLParser
+from typing import Any
 from urllib import error as stdlib_urllib_error
 from urllib import parse as stdlib_urllib_parse
 from urllib import request as stdlib_urllib_request
@@ -11,7 +12,6 @@ from urllib import request as stdlib_urllib_request
 from langchain.tools import tool
 
 from .common import _collapse_whitespace, _require_non_empty_text_arg
-
 
 _TAVILY_MAX_ATTEMPTS = 2
 _WEB_SEARCH_ERROR_CATEGORIES = {

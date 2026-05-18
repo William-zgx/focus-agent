@@ -7,7 +7,6 @@ from typing import Any
 
 from ..schema import EvalCase, JudgeVerdict, TrajectoryStep
 
-
 _MISSING = object()
 
 

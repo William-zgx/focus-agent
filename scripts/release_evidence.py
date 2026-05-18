@@ -4,19 +4,19 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import os
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Mapping, Sequence
-
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -27,6 +27,7 @@ from scripts._report_io import (  # noqa: E402
     resolve_optional_path,
     write_json_report,
 )
+from scripts.release_evidence_inputs import prepare_dry_run_inputs  # noqa: E402
 
 DEFAULT_OUTPUT_ROOT = Path("reports/release-gate")
 TAIL_LINE_LIMIT = 80
@@ -125,192 +126,12 @@ def _copy_or_reference_json(source: str | Path | None, target: Path, *, root: Pa
     return target, source_path
 
 
-def _sample_readyz() -> dict[str, Any]:
-    return {
-        "checks": [{"detail": "dry-run sample", "name": "trajectory_recorder", "ready": True}],
-        "ready": True,
-        "status": "ok",
-    }
-
-
-def _sample_trajectory_stats() -> dict[str, Any]:
-    return {
-        "overview": {
-            "non_succeeded_count": 0,
-            "total_fallback_uses": 0,
-            "total_tool_calls": 40,
-            "turn_count": 40,
-        }
-    }
-
-
-def _sample_replay_comparisons() -> list[dict[str, Any]]:
-    return [
-        {
-            "case_id": "dry-run-trajectory",
-            "replay_passed": True,
-            "tool_path_changed": False,
-        }
-    ]
-
-
-def _sample_eval_report() -> dict[str, Any]:
-    return {
-        "comparison": {"regressions": []},
-        "results": [],
-        "summary": {
-            "avg_cost_usd": 0.01,
-            "avg_input_tokens": 1200,
-            "avg_llm_calls": 1,
-            "avg_output_tokens": 240,
-            "avg_tool_calls": 2,
-            "errors": 0,
-            "failed": 0,
-            "forbidden_tool_violation_rate": 0.0,
-            "passed": 2,
-            "p95_latency_ms": 800,
-            "task_success": 1.0,
-            "total": 2,
-        },
-    }
-
-
-def _sample_alert_report() -> dict[str, Any]:
-    return {
-        "alerts": [],
-        "passed": True,
-        "rules": [
-            {"name": "focus_agent_runtime_ready", "query": "focus_agent_runtime_ready == 0"},
-            {
-                "name": "focus_agent_trajectory_recorder_ready",
-                "query": 'focus_agent_runtime_component_ready{component="trajectory_recorder"} == 0',
-            },
-        ],
-        "status": "passed",
-        "summary": {"rules_checked": 2},
-    }
-
-
-def _sample_postgres_migration_report() -> dict[str, Any]:
-    return {
-        "command": (
-            "uv run python -m focus_agent.migrate_local_state --database-uri "
-            "<postgres-uri> --artifact-scan --report-path reports/release-gate/postgres-migration.json"
-        ),
-        "errors": [],
-        "migrations": [{"name": "schema_migrations", "status": "verified"}],
-        "passed": True,
-        "status": "passed",
-    }
-
-
-def _sample_production_smoke_report() -> dict[str, Any]:
-    return {
-        "checks": [
-            {"category": "api", "name": "api_readyz", "status": "dry-run"},
-            {"category": "sdk", "name": "sdk_client_healthz", "status": "dry-run"},
-            {"category": "web", "name": "web_app", "status": "dry-run"},
-            {"category": "graph", "name": "graph_min_chat_turn", "status": "dry-run"},
-            {"category": "security", "name": "security_wrong_jwt_denied", "status": "dry-run"},
-            {"category": "rate-limit", "name": "rate_limit_probe", "status": "dry-run"},
-        ],
-        "passed": True,
-        "report_type": "production_smoke",
-        "status": "dry-run",
-        "summary": {"failed": 0, "passed": 6, "total": 6},
-    }
-
-
-def _sample_postgres_ops_report() -> dict[str, Any]:
-    checks = [
-        {"name": "connectivity", "status": "dry-run"},
-        {"name": "migration_table", "status": "dry-run"},
-        {"name": "backup_restore_runbook", "status": "dry-run"},
-    ]
-    return {
-        "artifacts": [],
-        "checks": checks,
-        "command": "uv run python scripts/postgres_ops.py --dry-run",
-        "errors": [],
-        "operations": checks,
-        "passed": True,
-        "report_type": "postgres_ops",
-        "status": "dry-run",
-        "summary": {"failed": 0, "passed": len(checks), "total": len(checks)},
-    }
-
-
-def _sample_otel_smoke_report() -> dict[str, Any]:
-    return {
-        "checks": [{"name": "span_export", "status": "dry-run"}],
-        "passed": True,
-        "report_type": "otel_smoke",
-        "spans": [{"name": "focus_agent.release.otel_smoke", "status": "dry-run"}],
-        "status": "dry-run",
-        "summary": {"failed": 0, "passed": 1, "spans": 1, "total": 1},
-    }
-
-
-def _sample_governance_report() -> dict[str, Any]:
-    return {
-        "report_type": "agent_governance_quality",
-        "signals": [],
-        "status": "passed",
-        "summary": {
-            "blocking_signals": [],
-            "status": "passed",
-            "warning_signals": [],
-        },
-        "thresholds": {},
-    }
-
-
 def _prepare_dry_run_inputs(pack_dir: Path) -> dict[str, list[EvidenceInput] | EvidenceInput]:
-    inputs_dir = pack_dir / "inputs"
-    readyz = _write_json(inputs_dir / "readyz.json", _sample_readyz())
-    trajectory_stats = _write_json(inputs_dir / "trajectory-stats.json", _sample_trajectory_stats())
-    replay_comparisons = _write_json(inputs_dir / "replay-comparisons.json", _sample_replay_comparisons())
-    eval_report = _write_json(inputs_dir / "eval-sample.json", _sample_eval_report())
-    baseline_eval_report = _write_json(inputs_dir / "baseline-eval-sample.json", _sample_eval_report())
-    alert_report = _write_json(inputs_dir / "alert-report.json", _sample_alert_report())
-    postgres_migration_report = _write_json(
-        inputs_dir / "postgres-migration-report.json",
-        _sample_postgres_migration_report(),
+    return prepare_dry_run_inputs(
+        pack_dir,
+        evidence_input=EvidenceInput,
+        write_json=_write_json,
     )
-    production_smoke_report = _write_json(
-        inputs_dir / "production-smoke-report.json",
-        _sample_production_smoke_report(),
-    )
-    postgres_ops_report = _write_json(inputs_dir / "postgres-ops-report.json", _sample_postgres_ops_report())
-    otel_smoke_report = _write_json(inputs_dir / "otel-smoke-report.json", _sample_otel_smoke_report())
-    governance_report = _write_json(inputs_dir / "governance-report.json", _sample_governance_report())
-    return {
-        "alert_report": EvidenceInput("alert_report", alert_report, None, False, "generated"),
-        "production_smoke_report": EvidenceInput(
-            "production_smoke_report",
-            production_smoke_report,
-            None,
-            True,
-            "generated",
-        ),
-        "postgres_ops_report": EvidenceInput("postgres_ops_report", postgres_ops_report, None, True, "generated"),
-        "otel_smoke_report": EvidenceInput("otel_smoke_report", otel_smoke_report, None, True, "generated"),
-        "governance_report": EvidenceInput("governance_report", governance_report, None, True, "generated"),
-        "readyz": EvidenceInput("readyz", readyz, None, True, "generated"),
-        "trajectory_stats": EvidenceInput("trajectory_stats", trajectory_stats, None, True, "generated"),
-        "replay_comparisons": EvidenceInput("replay_comparisons", replay_comparisons, None, True, "generated"),
-        "eval_reports": [EvidenceInput("eval_report", eval_report, None, True, "generated")],
-        "baseline_eval_reports": [
-            EvidenceInput("baseline_eval_report", baseline_eval_report, None, True, "generated")
-        ],
-        "postgres_migration_report": EvidenceInput(
-            "postgres_migration_report",
-            postgres_migration_report,
-            None,
-            False,
-            "generated",
-        ),
-    }
 
 
 def _prepare_provided_inputs(
@@ -450,6 +271,7 @@ def _release_health_command(
     *,
     allow_dry_run_reports: bool = False,
     artifacts: dict[str, list[EvidenceInput] | EvidenceInput],
+    mode: str = "production",
     report_json: Path,
     root: Path,
 ) -> tuple[str, ...]:
@@ -457,7 +279,7 @@ def _release_health_command(
         sys.executable,
         str(root / "scripts" / "release_health_check.py"),
         "--mode",
-        "production",
+        mode,
     ]
     readyz = artifacts["readyz"]
     trajectory_stats = artifacts["trajectory_stats"]
@@ -547,20 +369,27 @@ def _ci_metadata(env: Mapping[str, str] | None = None) -> dict[str, Any]:
     elif generic_ci:
         provider = "generic"
 
+    run_id = env.get("GITHUB_RUN_ID") or env.get("BUILDKITE_BUILD_ID") or env.get("CI_PIPELINE_ID")
+    artifact_name = env.get("RELEASE_GATE_ARTIFACT_NAME") or (
+        f"release-gate-reports-{run_id}" if github_actions and run_id else None
+    )
     return {
+        "artifact_name": artifact_name,
         "branch": env.get("GITHUB_REF_NAME") or env.get("BUILDKITE_BRANCH") or env.get("CI_COMMIT_BRANCH"),
         "commit_sha": env.get("GITHUB_SHA") or env.get("BUILDKITE_COMMIT") or env.get("CI_COMMIT_SHA"),
+        "environment_name": env.get("ENVIRONMENT_NAME"),
         "is_ci": bool(provider),
         "job": env.get("GITHUB_JOB") or env.get("BUILDKITE_LABEL") or env.get("CI_JOB_NAME"),
         "provider": provider,
         "ref": env.get("GITHUB_REF") or env.get("BUILDKITE_BRANCH") or env.get("CI_COMMIT_REF_NAME"),
         "repository": env.get("GITHUB_REPOSITORY") or env.get("BUILDKITE_PROJECT_SLUG") or env.get("CI_PROJECT_PATH"),
         "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
-        "run_id": env.get("GITHUB_RUN_ID") or env.get("BUILDKITE_BUILD_ID") or env.get("CI_PIPELINE_ID"),
+        "run_id": run_id,
         "run_number": env.get("GITHUB_RUN_NUMBER")
         or env.get("BUILDKITE_BUILD_NUMBER")
         or env.get("CI_PIPELINE_IID"),
         "workflow": env.get("GITHUB_WORKFLOW") or env.get("BUILDKITE_PIPELINE_NAME") or env.get("CI_PIPELINE_SOURCE"),
+        "workflow_ref": env.get("GITHUB_WORKFLOW_REF"),
     }
 
 
@@ -706,6 +535,7 @@ def _retention_metadata(*, generated_at: datetime, retention_days: int) -> dict[
 
 def _storage_metadata(
     *,
+    artifact_name: str | None,
     manifest_json: Path,
     pack_dir: Path,
     release_id: str,
@@ -715,6 +545,7 @@ def _storage_metadata(
 ) -> dict[str, Any]:
     if storage_dir is None:
         return {
+            "artifact_name": artifact_name,
             "enabled": False,
             "manifest_json": str(manifest_json),
             "status": "disabled",
@@ -730,6 +561,7 @@ def _storage_metadata(
         raise ValueError("storage directory could not be resolved")
     stored_pack_dir = storage_base / release_id
     return {
+        "artifact_name": artifact_name,
         "enabled": True,
         "manifest_json": str(manifest_json),
         "status": "stored",
@@ -772,6 +604,57 @@ def _verify_storage_metadata(*, storage: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _manifest_hash_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _manifest_hash_payload(item)
+            for key, item in value.items()
+            if key
+            not in {
+                "manifest_normalized_sha256",
+                "stored_manifest_normalized_sha256",
+            }
+        }
+    if isinstance(value, list):
+        return [_manifest_hash_payload(item) for item in value]
+    return value
+
+
+def _normalized_manifest_sha256(manifest: dict[str, Any]) -> str:
+    payload = json.dumps(
+        _manifest_hash_payload(manifest),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _artifact_storage_metadata(
+    *,
+    ci: dict[str, Any],
+    manifest: dict[str, Any],
+    retention: dict[str, Any],
+    storage: dict[str, Any],
+) -> dict[str, Any]:
+    manifest_hash = _normalized_manifest_sha256(manifest)
+    return {
+        "artifact_name": storage.get("artifact_name") or ci.get("artifact_name"),
+        "enabled": bool(storage.get("enabled")),
+        "manifest_json": storage.get("manifest_json"),
+        "manifest_normalized_sha256": manifest_hash,
+        "retention": retention,
+        "retention_days": retention.get("days"),
+        "status": storage.get("status"),
+        "storage_dir": storage.get("storage_dir"),
+        "stored_manifest_json": storage.get("stored_manifest_json"),
+        "stored_manifest_normalized_sha256": manifest_hash if storage.get("stored_manifest_json") else None,
+        "stored_pack_dir": storage.get("stored_pack_dir"),
+        "stored_summary_json": storage.get("stored_summary_json"),
+        "verification": storage.get("verification"),
+    }
+
+
 def _copy_pack_to_storage(*, pack_dir: Path, storage: dict[str, Any]) -> None:
     if not storage.get("enabled"):
         return
@@ -809,6 +692,7 @@ def _approval_metadata(
         "approval_id": approval_id,
         "approval_url": approval_url,
         "approved": approved,
+        "provider": "github_actions",
         "required": not dry_run,
         "status": status,
     }
@@ -827,14 +711,18 @@ def _production_validation(
     report_status = str(release_health.get("status") or "unknown")
     report_passed = bool(release_health.get("passed"))
     storage_verification = storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    storage_required = bool(approval.get("required"))
+    storage_enabled = bool(storage.get("enabled"))
     storage_ok = (
-        not storage.get("enabled")
-        or not storage_verification
-        or storage_verification.get("status") == "verified"
+        storage_enabled and storage_verification.get("status") == "verified"
+        if storage_required
+        else (not storage_enabled or not storage_verification or storage_verification.get("status") == "verified")
     )
     approval_ok = bool(approval.get("approved")) if approval.get("required") else True
+    approval_url_present = bool(approval.get("approval_url")) if approval.get("required") else True
     return {
         "approval_approved": approval_ok,
+        "approval_url_present": approval_url_present,
         "missing_required_artifacts": list(missing_required_artifacts),
         "passed": (
             not missing_required_artifacts
@@ -843,11 +731,14 @@ def _production_validation(
             and report_status == "passed"
             and storage_ok
             and approval_ok
+            and approval_url_present
         ),
         "release_health_passed": report_passed,
         "release_health_report_exists": report_exists,
         "release_health_status": report_status,
         "required_artifacts": list(REQUIRED_PRODUCTION_ARTIFACT_KEYS),
+        "storage_enabled": storage_enabled,
+        "storage_required": storage_required,
         "storage_verified": storage_ok,
     }
 
@@ -878,8 +769,12 @@ def _failure_summary(
         reasons.append({"detail": list(missing_required_artifacts), "kind": "missing_required_artifacts"})
     if approval.get("required") and not approval.get("approved"):
         reasons.append({"detail": approval, "kind": "release_approval_missing"})
+    if approval.get("required") and not approval.get("approval_url"):
+        reasons.append({"detail": approval, "kind": "release_approval_url_missing"})
     storage_verification = storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
-    if storage.get("enabled") and storage_verification.get("status") != "verified":
+    if approval.get("required") and not storage.get("enabled"):
+        reasons.append({"detail": storage, "kind": "artifact_storage_missing"})
+    elif storage.get("enabled") and storage_verification.get("status") != "verified":
         reasons.append({"detail": storage_verification, "kind": "artifact_storage_verification_failed"})
     if not bool(release_health.get("passed")):
         reasons.append(
@@ -907,6 +802,7 @@ def _summary_payload(
     *,
     approval: dict[str, Any],
     artifact_summary: dict[str, Any],
+    artifact_storage: dict[str, Any],
     failure_summary: dict[str, Any],
     manifest_json: Path,
     release_health: dict[str, Any],
@@ -917,6 +813,7 @@ def _summary_payload(
 ) -> dict[str, Any]:
     return {
         "artifact_summary": artifact_summary,
+        "artifact_storage": artifact_storage,
         "approval": approval,
         "failure_summary": failure_summary,
         "manifest_json": str(manifest_json),
@@ -1062,6 +959,7 @@ def run_release_evidence(
     command = _release_health_command(
         allow_dry_run_reports=dry_run,
         artifacts=prepared_inputs,
+        mode="local" if dry_run else "production",
         report_json=report_json,
         root=root,
     )
@@ -1079,6 +977,7 @@ def run_release_evidence(
     retention = _retention_metadata(generated_at=generated_at, retention_days=retention_days)
     manifest_json = pack_dir / "manifest.json"
     summary_json = pack_dir / "summary.json"
+    ci = _ci_metadata()
     approval = _approval_metadata(
         approval_id=approval_id,
         approval_status=approval_status,
@@ -1086,6 +985,7 @@ def run_release_evidence(
         dry_run=dry_run,
     )
     storage = _storage_metadata(
+        artifact_name=ci.get("artifact_name") if isinstance(ci.get("artifact_name"), str) else None,
         manifest_json=manifest_json,
         pack_dir=pack_dir,
         release_id=resolved_release_id,
@@ -1128,11 +1028,13 @@ def run_release_evidence(
     manifest = {
         "approval": approval,
         "artifact_summary": artifact_summary,
+        "artifact_storage": {},
         "artifacts": artifacts,
+        "ci": ci,
         "commands": commands,
         "failure_summary": failure_summary,
         "meta": {
-            "ci": _ci_metadata(),
+            "ci": ci,
             "dry_run": dry_run,
             "generated_at": _format_utc(generated_at),
             "output_dir": str(pack_dir),
@@ -1147,12 +1049,19 @@ def run_release_evidence(
         "storage": storage,
         "summary": summary,
     }
+    manifest["artifact_storage"] = _artifact_storage_metadata(
+        ci=ci,
+        manifest=manifest,
+        retention=retention,
+        storage=storage,
+    )
     _write_json(manifest_json, manifest)
     _write_json(
         summary_json,
         _summary_payload(
             approval=approval,
             artifact_summary=artifact_summary,
+            artifact_storage=manifest["artifact_storage"],
             failure_summary=failure_summary,
             manifest_json=manifest_json,
             release_health=release_health,
@@ -1187,12 +1096,19 @@ def run_release_evidence(
         release_health=release_health,
         storage=storage,
     )
+    manifest["artifact_storage"] = _artifact_storage_metadata(
+        ci=ci,
+        manifest=manifest,
+        retention=retention,
+        storage=storage,
+    )
     _write_json(manifest_json, manifest)
     _write_json(
         summary_json,
         _summary_payload(
             approval=approval,
             artifact_summary=artifact_summary,
+            artifact_storage=manifest["artifact_storage"],
             failure_summary=manifest["failure_summary"],
             manifest_json=manifest_json,
             release_health=release_health,

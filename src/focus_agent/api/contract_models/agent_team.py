@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from focus_agent.core.agent_team import (
     AgentTeamArtifactKind,
     AgentTeamMergeDecision,
+    AgentTeamMergeReview,
+    AgentTeamMergeReviewEvent,
+    AgentTeamMergeReviewStatus,
     AgentTeamRecommendedAction,
     AgentTeamSessionStatus,
     AgentTeamTaskOutput,
@@ -44,6 +47,19 @@ class AgentTeamRunMetadata(BaseModel):
     max_parallel_runs: int = 1
 
 
+class AgentTeamToolApprovalContract(BaseModel):
+    request_id: str
+    session_id: str
+    agent_id: str
+    tool_name: str
+    tool_args: dict[str, Any] = Field(default_factory=dict)
+    risk_level: str = "low"
+    status: str = "pending"
+    submitted_at: float = 0.0
+    timeout_at: float = 0.0
+    decided_by: str | None = None
+
+
 class AgentTeamSessionContract(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -64,6 +80,7 @@ class AgentTeamSessionContract(BaseModel):
     plan_hash: str | None = None
     planning_error: str | None = None
     planning: AgentTeamPlanningMetadata | None = None
+    skill_plan: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentTeamTaskContract(BaseModel):
@@ -87,11 +104,14 @@ class AgentTeamTaskContract(BaseModel):
     capability_requirements: list[str] = Field(default_factory=list)
     risk_level: str | None = None
     write_scope: list[str] = Field(default_factory=list)
+    resource_claims: list[str] = Field(default_factory=list)
     replan_policy: dict[str, Any] | None = None
     scope: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     context_refs: list[dict[str, Any]] = Field(default_factory=list)
+    active_skill_ids: list[str] = Field(default_factory=list)
+    skill_resolution_events: list[dict[str, Any]] = Field(default_factory=list)
     status: AgentTeamTaskStatus
     run_status: str | None = None
     output_artifact_ids: list[str] = Field(default_factory=list)
@@ -99,6 +119,13 @@ class AgentTeamTaskContract(BaseModel):
     delegated_task_id: str | None = None
     artifact_ids: list[str] = Field(default_factory=list)
     execution_status: str | None = None
+    workspace_id: str | None = None
+    workspace_branch: str | None = None
+    workspace_path: str | None = None
+    base_commit: str | None = None
+    diff_summary: str | None = None
+    test_evidence: list[str] = Field(default_factory=list)
+    workspace_status: str | None = None
     changed_files: list[str] = Field(default_factory=list)
     verification_summary: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
@@ -163,11 +190,14 @@ class CreateAgentTeamTaskRequest(BaseModel):
     capability_requirements: list[str] = Field(default_factory=list)
     risk_level: str | None = None
     write_scope: list[str] = Field(default_factory=list)
+    resource_claims: list[str] = Field(default_factory=list)
     replan_policy: dict[str, Any] | None = None
     scope: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     context_refs: list[dict[str, Any]] = Field(default_factory=list)
+    active_skill_ids: list[str] = Field(default_factory=list)
+    skill_resolution_events: list[dict[str, Any]] = Field(default_factory=list)
     create_branch: bool = True
     auto_fork_branch: bool | None = None
     branch_name: str | None = None
@@ -205,19 +235,29 @@ class UpdateAgentTeamTaskRequest(BaseModel):
     dependencies: list[str] | None = None
     acceptance_criteria: list[str] | None = None
     context_refs: list[dict[str, Any]] | None = None
+    active_skill_ids: list[str] | None = None
+    skill_resolution_events: list[dict[str, Any]] | None = None
     input_contract: dict[str, Any] | None = None
     output_contract: dict[str, Any] | None = None
     evidence_required: list[str] | None = None
     capability_requirements: list[str] | None = None
     risk_level: str | None = None
     write_scope: list[str] | None = None
+    resource_claims: list[str] | None = None
     replan_policy: dict[str, Any] | None = None
     branch_id: str | None = None
     child_thread_id: str | None = None
     output_artifact_ids: list[str] | None = None
     changed_files: list[str] | None = None
+    test_evidence: list[str] | None = None
     verification_summary: str | None = None
     risk_notes: list[str] | None = None
+    workspace_id: str | None = None
+    workspace_branch: str | None = None
+    workspace_path: str | None = None
+    base_commit: str | None = None
+    diff_summary: str | None = None
+    workspace_status: str | None = None
     run_status: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
@@ -252,6 +292,26 @@ class AgentTeamSessionViewResponse(BaseModel):
     merge_bundle: AgentTeamMergeBundleContract | None = None
     planning: AgentTeamPlanningMetadata | None = None
     run: AgentTeamRunMetadata | None = None
+    pending_tool_approvals: list[AgentTeamToolApprovalContract] = Field(default_factory=list)
+
+
+class AgentTeamToolApprovalListResponse(BaseModel):
+    approvals: list[AgentTeamToolApprovalContract] = Field(default_factory=list)
+    items: list[AgentTeamToolApprovalContract] = Field(default_factory=list)
+    count: int = 0
+
+
+class DecideAgentTeamToolApprovalRequest(BaseModel):
+    approved: bool
+    reason: str | None = None
+
+
+class AgentTeamToolApprovalActionRequest(BaseModel):
+    reason: str | None = None
+
+
+class AgentTeamToolApprovalDecisionResponse(BaseModel):
+    approval: AgentTeamToolApprovalContract
 
 
 class RecordAgentTeamTaskOutputRequest(BaseModel):
@@ -263,6 +323,12 @@ class RecordAgentTeamTaskOutputRequest(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     test_evidence: list[str] = Field(default_factory=list)
     verification_summary: str | None = None
+    workspace_id: str | None = None
+    workspace_branch: str | None = None
+    workspace_path: str | None = None
+    base_commit: str | None = None
+    diff_summary: str | None = None
+    workspace_status: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -293,12 +359,52 @@ class AgentTeamMergeDecisionResponse(BaseModel):
     applied: bool = False
 
 
+class CreateAgentTeamMergeReviewRequest(BaseModel):
+    selected_task_ids: list[str] | None = None
+    excluded_task_ids: list[str] | None = None
+    title: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class UpdateAgentTeamMergeReviewRequest(BaseModel):
+    selected_task_ids: list[str] | None = None
+    excluded_task_ids: list[str] | None = None
+    status: AgentTeamMergeReviewStatus | None = None
+    title: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ApplyAgentTeamMergeReviewRequest(BaseModel):
+    apply_target_path: str | None = None
+
+
+class RejectAgentTeamMergeReviewRequest(BaseModel):
+    rationale: str | None = None
+
+
+class AgentTeamMergeReviewResponse(BaseModel):
+    review: AgentTeamMergeReview
+    events: list[AgentTeamMergeReviewEvent] = Field(default_factory=list)
+
+
+class AgentTeamMergeReviewListResponse(BaseModel):
+    reviews: list[AgentTeamMergeReview] = Field(default_factory=list)
+    items: list[AgentTeamMergeReview] = Field(default_factory=list)
+    count: int = 0
+    latest: AgentTeamMergeReview | None = None
+
+
+class AgentTeamMergeReviewCaptureResponse(BaseModel):
+    capture: dict[str, Any] = Field(default_factory=dict)
+
+
 __all__ = [
     "CreateAgentTeamSessionRequest",
     "AgentTeamPlanGranularity",
     "AgentTeamPlanFocus",
     "AgentTeamPlanningMetadata",
     "AgentTeamRunMetadata",
+    "AgentTeamToolApprovalContract",
     "RunAgentTeamSessionRequest",
     "AgentTeamFinalAnswerStatus",
     "AgentTeamSessionContract",
@@ -314,9 +420,20 @@ __all__ = [
     "AgentTeamTaskListResponse",
     "AgentTeamDispatchResponse",
     "AgentTeamSessionViewResponse",
+    "AgentTeamToolApprovalListResponse",
+    "DecideAgentTeamToolApprovalRequest",
+    "AgentTeamToolApprovalActionRequest",
+    "AgentTeamToolApprovalDecisionResponse",
     "RecordAgentTeamTaskOutputRequest",
     "AgentTeamTaskOutputResponse",
     "AgentTeamMergeBundleResponse",
     "ApplyAgentTeamMergeDecisionRequest",
     "AgentTeamMergeDecisionResponse",
+    "CreateAgentTeamMergeReviewRequest",
+    "UpdateAgentTeamMergeReviewRequest",
+    "ApplyAgentTeamMergeReviewRequest",
+    "RejectAgentTeamMergeReviewRequest",
+    "AgentTeamMergeReviewResponse",
+    "AgentTeamMergeReviewListResponse",
+    "AgentTeamMergeReviewCaptureResponse",
 ]

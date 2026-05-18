@@ -19,6 +19,7 @@ from .dedupe import (
     merge_duplicate_records,
     user_preference_topic,
 )
+from .embedding_service import MemoryEmbeddingService
 from .models import (
     MemoryKind,
     MemoryRecord,
@@ -26,7 +27,6 @@ from .models import (
     MemoryVisibility,
     MemoryWriteRequest,
 )
-from .embedding_service import MemoryEmbeddingService
 from .policy import MemoryPolicy
 from .service import MemoryService
 

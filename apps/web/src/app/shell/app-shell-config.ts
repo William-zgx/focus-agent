@@ -1,4 +1,8 @@
-import type { ColorPreference, LanguagePreference, ThemePreference } from "@/app/shell/shell-ui-context";
+import type {
+	ColorPreference,
+	LanguagePreference,
+	ThemePreference,
+} from "@/app/shell/shell-ui-context";
 
 export const SIDEBAR_COLLAPSED_KEY = "fa:sidebar-collapsed";
 export const SIDEBAR_WIDTH_KEY = "fa:sidebar-width";
@@ -20,120 +24,137 @@ export const RESIZER_WIDTH_DESKTOP = 16;
 export const RESIZER_WIDTH_TABLET = 12;
 
 export const LANGUAGE_OPTIONS = [
-  { value: "zh", shortLabel: "中", labelZh: "中文", labelEn: "Chinese" },
-  { value: "en", shortLabel: "EN", labelZh: "英文", labelEn: "English" },
+	{ value: "zh", shortLabel: "中", labelZh: "中文", labelEn: "Chinese" },
+	{ value: "en", shortLabel: "EN", labelZh: "英文", labelEn: "English" },
 ] as const;
 
 export const THEME_OPTIONS = [
-  { value: "system", labelZh: "跟随系统", labelEn: "Follow system" },
-  { value: "light", labelZh: "浅色", labelEn: "Light" },
-  { value: "dark", labelZh: "深色", labelEn: "Dark" },
+	{ value: "system", labelZh: "跟随系统", labelEn: "Follow system" },
+	{ value: "light", labelZh: "浅色", labelEn: "Light" },
+	{ value: "dark", labelZh: "深色", labelEn: "Dark" },
 ] as const;
 
 export const COLOR_OPTIONS = [
-  { value: "white", labelZh: "白色", labelEn: "White" },
-  { value: "blue", labelZh: "蓝色", labelEn: "Blue" },
-  { value: "mint", labelZh: "薄荷", labelEn: "Mint" },
-  { value: "sunset", labelZh: "暮光", labelEn: "Sunset" },
-  { value: "graphite", labelZh: "石墨", labelEn: "Graphite" },
+	{ value: "white", labelZh: "白色", labelEn: "White" },
+	{ value: "blue", labelZh: "蓝色", labelEn: "Blue" },
+	{ value: "mint", labelZh: "薄荷", labelEn: "Mint" },
+	{ value: "sunset", labelZh: "暮光", labelEn: "Sunset" },
+	{ value: "graphite", labelZh: "石墨", labelEn: "Graphite" },
 ] as const;
 
 export type ChatNavTarget = {
-  conversationId: string;
-  threadId: string;
+	conversationId: string;
+	threadId: string;
 };
 
 export type AgentTeamNavTarget = {
-  rootThreadId?: string;
-  sessionId?: string;
+	rootThreadId?: string;
+	sessionId?: string;
 };
 
 export type AdminNavTarget =
-  | { page: "audit" }
-  | { page: "user"; userId: string }
-  | { page: "users" };
+	| { page: "audit" }
+	| { page: "user"; userId: string }
+	| { page: "users" };
 
 export type ShellMode = "admin" | "agent-workbench" | "chat";
 
+export function isProductivityPath(pathname: string) {
+	return (
+		pathname === "/productivity/notes" ||
+		pathname === "/productivity/tasks" ||
+		pathname.startsWith("/productivity/")
+	);
+}
+
 export function isAgentWorkbenchPath(pathname: string) {
-  return (
-    pathname === "/agent-team" ||
-    pathname.startsWith("/agent-team/") ||
-    pathname === "/observability/overview" ||
-    pathname === "/observability/trajectory" ||
-    pathname === "/agent/governance" ||
-    pathname === "/agent/memory" ||
-    pathname === "/agent/roles"
-  );
+	return (
+		pathname === "/agent-team" ||
+		pathname.startsWith("/agent-team/") ||
+		pathname === "/observability/overview" ||
+		pathname === "/observability/trajectory" ||
+		pathname === "/agent/governance" ||
+		pathname === "/agent/memory" ||
+		pathname === "/agent/roles" ||
+		isProductivityPath(pathname)
+	);
 }
 
 export function isAdminPath(pathname: string) {
-  return (
-    pathname === "/admin/users" ||
-    pathname.startsWith("/admin/users/") ||
-    pathname === "/admin/audit-events" ||
-    pathname.startsWith("/account/")
-  );
+	return (
+		pathname === "/admin/users" ||
+		pathname.startsWith("/admin/users/") ||
+		pathname === "/admin/audit-events" ||
+		pathname.startsWith("/account/")
+	);
 }
 
 export function resolveShellMode(pathname: string): ShellMode {
-  if (pathname === "/" || pathname.startsWith("/c/")) return "chat";
-  if (isAgentWorkbenchPath(pathname)) return "agent-workbench";
-  if (isAdminPath(pathname)) return "admin";
-  return "chat";
+	if (pathname === "/" || pathname.startsWith("/c/")) return "chat";
+	if (isAgentWorkbenchPath(pathname)) return "agent-workbench";
+	if (isAdminPath(pathname)) return "admin";
+	return "chat";
 }
 
 export function getSidebarAvailableWidth() {
-  if (typeof window === "undefined") {
-    return SIDEBAR_WIDTH_DEFAULT;
-  }
+	if (typeof window === "undefined") {
+		return SIDEBAR_WIDTH_DEFAULT;
+	}
 
-  if (window.innerWidth <= 900) {
-    return SIDEBAR_WIDTH_MIN;
-  }
+	if (window.innerWidth <= 900) {
+		return SIDEBAR_WIDTH_MIN;
+	}
 
-  const shellPadding = window.innerWidth <= 900 ? SHELL_PADDING_MOBILE : SHELL_PADDING_DESKTOP;
-  const resizerWidth = window.innerWidth <= 1280 ? RESIZER_WIDTH_TABLET : RESIZER_WIDTH_DESKTOP;
-  return Math.max(SIDEBAR_WIDTH_MIN, window.innerWidth - shellPadding * 2 - resizerWidth);
+	const shellPadding =
+		window.innerWidth <= 900 ? SHELL_PADDING_MOBILE : SHELL_PADDING_DESKTOP;
+	const resizerWidth =
+		window.innerWidth <= 1280 ? RESIZER_WIDTH_TABLET : RESIZER_WIDTH_DESKTOP;
+	return Math.max(
+		SIDEBAR_WIDTH_MIN,
+		window.innerWidth - shellPadding * 2 - resizerWidth,
+	);
 }
 
 export function getSidebarViewportMax() {
-  if (typeof window === "undefined") {
-    return SIDEBAR_WIDTH_DEFAULT;
-  }
+	if (typeof window === "undefined") {
+		return SIDEBAR_WIDTH_DEFAULT;
+	}
 
-  if (window.innerWidth <= 900) {
-    return SIDEBAR_WIDTH_MIN;
-  }
+	if (window.innerWidth <= 900) {
+		return SIDEBAR_WIDTH_MIN;
+	}
 
-  return Math.max(
-    SIDEBAR_WIDTH_MIN,
-    Math.floor(getSidebarAvailableWidth() * SIDEBAR_MAX_RATIO),
-  );
+	return Math.max(
+		SIDEBAR_WIDTH_MIN,
+		Math.floor(getSidebarAvailableWidth() * SIDEBAR_MAX_RATIO),
+	);
 }
 
 export function clampSidebarWidth(value: number) {
-  const viewportMax = getSidebarViewportMax();
-  return Math.max(SIDEBAR_WIDTH_MIN, Math.min(viewportMax, Math.round(value)));
+	const viewportMax = getSidebarViewportMax();
+	return Math.max(SIDEBAR_WIDTH_MIN, Math.min(viewportMax, Math.round(value)));
 }
 
 export function getSidebarDefaultWidth() {
-  if (typeof window === "undefined") {
-    return SIDEBAR_WIDTH_DEFAULT;
-  }
+	if (typeof window === "undefined") {
+		return SIDEBAR_WIDTH_DEFAULT;
+	}
 
-  if (window.innerWidth <= 900) {
-    return SIDEBAR_WIDTH_MIN;
-  }
+	if (window.innerWidth <= 900) {
+		return SIDEBAR_WIDTH_MIN;
+	}
 
-  return clampSidebarWidth(Math.floor(getSidebarAvailableWidth() * SIDEBAR_DEFAULT_RATIO));
+	return clampSidebarWidth(
+		Math.floor(getSidebarAvailableWidth() * SIDEBAR_DEFAULT_RATIO),
+	);
 }
 
 export function cycleOptionValue<T extends string>(
-  current: T,
-  options: readonly { value: T }[],
+	current: T,
+	options: readonly { value: T }[],
 ) {
-  const currentIndex = options.findIndex((option) => option.value === current);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
-  return options[nextIndex].value;
+	const currentIndex = options.findIndex((option) => option.value === current);
+	const nextIndex =
+		currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
+	return options[nextIndex].value;
 }

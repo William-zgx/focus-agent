@@ -206,6 +206,18 @@
     },
     {
       "method": "GET",
+      "operation_id": "background_jobs_summary_v1_admin_background_jobs_summary_get",
+      "parameters": [],
+      "path": "/v1/admin/background-jobs/summary",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BackgroundJobSummaryResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "list_users_v1_admin_users_get",
       "parameters": [
         {
@@ -818,6 +830,291 @@
       }
     },
     {
+      "method": "GET",
+      "operation_id": "list_agent_team_merge_reviews_v1_agent_team_sessions__session_id__merge_review_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_agent_team_merge_review_v1_agent_team_sessions__session_id__merge_review_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CreateAgentTeamMergeReviewRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_agent_team_merge_review_v1_agent_team_sessions__session_id__merge_review__review_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "review_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateAgentTeamMergeReviewRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "apply_agent_team_merge_review_v1_agent_team_sessions__session_id__merge_review__review_id__apply_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "review_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/apply",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ApplyAgentTeamMergeReviewRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "capture_agent_team_merge_review_v1_agent_team_sessions__session_id__merge_review__review_id__capture_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "review_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/capture",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewCaptureResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "preview_agent_team_merge_review_v1_agent_team_sessions__session_id__merge_review__review_id__preview_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "review_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/preview",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "reject_agent_team_merge_review_v1_agent_team_sessions__session_id__merge_review__review_id__reject_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "review_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/reject",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RejectAgentTeamMergeReviewRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
       "method": "POST",
       "operation_id": "plan_agent_team_session_v1_agent_team_sessions__session_id__plan_post",
       "parameters": [
@@ -943,6 +1240,174 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentTeamTaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_team_tool_approvals_v1_agent_team_sessions__session_id__tool_approvals_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/tool-approvals",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamToolApprovalListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "approve_agent_team_tool_approval_v1_agent_team_sessions__session_id__tool_approvals__request_id__approve_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "request_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/AgentTeamToolApprovalActionRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamToolApprovalDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "decide_agent_team_tool_approval_v1_agent_team_sessions__session_id__tool_approvals__request_id__decision_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "request_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/decision",
+      "request": {
+        "$ref": "#/components/schemas/DecideAgentTeamToolApprovalRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamToolApprovalDecisionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "reject_agent_team_tool_approval_v1_agent_team_sessions__session_id__tool_approvals__request_id__reject_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "request_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/AgentTeamToolApprovalActionRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamToolApprovalDecisionResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -1265,6 +1730,92 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentContextDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_context_evidence_v1_agent_context_evidence_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "thread_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "turn_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/context/evidence",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentContextEvidenceListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "explain_agent_context_v1_agent_context_explain_post",
+      "parameters": [],
+      "path": "/v1/agent/context/explain",
+      "request": {
+        "$ref": "#/components/schemas/AgentContextExplainRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentContextExplainResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -1717,6 +2268,145 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/AgentSelfRepairPromotePreviewResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_skill_catalog_v1_agent_skills_catalog_get",
+      "parameters": [],
+      "path": "/v1/agent/skills/catalog",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSkillCatalogResponse"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "select_agent_skills_v1_agent_skills_select_post",
+      "parameters": [],
+      "path": "/v1/agent/skills/select",
+      "request": {
+        "$ref": "#/components/schemas/AgentSkillSelectRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSkillSelectionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_skill_selections_v1_agent_skills_selections_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "skill_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/skills/selections",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSkillSelectionEventListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "record_agent_skill_selection_feedback_v1_agent_skills_selections__selection_id__feedback_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "selection_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/skills/selections/{selection_id}/feedback",
+      "request": {
+        "$ref": "#/components/schemas/AgentSkillSelectionFeedbackRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSkillSelectionFeedbackResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_agent_skill_preference_v1_agent_skills__skill_id__preference_patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "skill_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/agent/skills/{skill_id}/preference",
+      "request": {
+        "$ref": "#/components/schemas/AgentSkillPreferenceRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentSkillPreferenceResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -2744,6 +3434,49 @@
     },
     {
       "method": "GET",
+      "operation_id": "list_memory_usage_v1_memory__memory_id__usage_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "memory_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/memory/{memory_id}/usage",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/MemoryUsageResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "list_models_v1_models_get",
       "parameters": [],
       "path": "/v1/models",
@@ -2751,6 +3484,180 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/ModelCatalogResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_notes_v1_notes_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "q",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "tag",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "include_archived",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/notes",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/NoteListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_note_v1_notes_post",
+      "parameters": [],
+      "path": "/v1/notes",
+      "request": {
+        "$ref": "#/components/schemas/CreateNoteRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/NoteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_note_v1_notes__note_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "note_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/notes/{note_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/NoteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_note_v1_notes__note_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "note_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/notes/{note_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateNoteRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/NoteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
         }
       }
     },
@@ -4249,6 +5156,248 @@
       }
     },
     {
+      "method": "POST",
+      "operation_id": "capture_note_v1_productivity_capture_note_post",
+      "parameters": [],
+      "path": "/v1/productivity/capture/note",
+      "request": {
+        "$ref": "#/components/schemas/CaptureNoteRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/NoteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "capture_task_v1_productivity_capture_task_post",
+      "parameters": [],
+      "path": "/v1/productivity/capture/task",
+      "request": {
+        "$ref": "#/components/schemas/CaptureTaskRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/TaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_tasks_v1_tasks_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FocusTaskStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "include_archived",
+          "required": false,
+          "schema": {
+            "default": false,
+            "type": "boolean"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/tasks",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TaskListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create_task_v1_tasks_post",
+      "parameters": [],
+      "path": "/v1/tasks",
+      "request": {
+        "$ref": "#/components/schemas/CreateTaskRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/TaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "operation_id": "update_task_v1_tasks__task_id__patch",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/tasks/{task_id}",
+      "request": {
+        "$ref": "#/components/schemas/UpdateTaskRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "archive_task_v1_tasks__task_id__archive_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/tasks/{task_id}/archive",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "complete_task_v1_tasks__task_id__complete_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/tasks/{task_id}/complete",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TaskResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_task_events_v1_tasks__task_id__events_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/tasks/{task_id}/events",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/TaskEventListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
       "method": "GET",
       "operation_id": "get_thread_snapshot_v1_threads__thread_id__get",
       "parameters": [
@@ -4978,6 +6127,214 @@
       },
       "type": "object"
     },
+    "AgentContextEvidenceListResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "governance",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentContextEvidenceResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AgentContextEvidenceResponse": {
+      "properties": {
+        "artifact_refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "compaction_summary": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "drift_report": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "excluded_memories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "risk_flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "selected_memories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "source_kind": {
+          "default": "context_explain",
+          "type": "string"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "token_counting": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "evidence_id"
+      ],
+      "type": "object"
+    },
+    "AgentContextExplainRequest": {
+      "properties": {
+        "artifact_refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "compaction_summary": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "drift_report": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "excluded_memories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "risk_flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "selected_memories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "token_counting": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentContextExplainResponse": {
+      "properties": {
+        "item": {
+          "$ref": "#/components/schemas/AgentContextEvidenceResponse"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "type": "object"
+    },
     "AgentContextPolicyResponse": {
       "properties": {
         "artifact_min_chars": {
@@ -5001,7 +6358,7 @@
           "type": "boolean"
         },
         "tokenizer_mode": {
-          "default": "chars_fallback",
+          "default": "tokenizer_first",
           "type": "string"
         }
       },
@@ -5655,6 +7012,466 @@
       },
       "type": "object"
     },
+    "AgentSkillCatalogItemResponse": {
+      "properties": {
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preference": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentSkillPreferenceResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prompt_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommended_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skill_id": {
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "when_to_use": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "skill_id"
+      ],
+      "type": "object"
+    },
+    "AgentSkillCatalogResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentSkillCatalogItemResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentSkillPreferenceRequest": {
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "state": {
+          "default": "default",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentSkillPreferenceResponse": {
+      "properties": {
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "preference_id": {
+          "type": "string"
+        },
+        "skill_id": {
+          "type": "string"
+        },
+        "state": {
+          "default": "default",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "preference_id",
+        "user_id",
+        "skill_id"
+      ],
+      "type": "object"
+    },
+    "AgentSkillSelectRequest": {
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "semantic_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "semantic_threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "AgentSkillSelectionEventListResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "governance",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentSkillSelectionEventResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AgentSkillSelectionEventResponse": {
+      "properties": {
+        "activated_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "explicit_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "feedback": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "feedback_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "matched_triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message_preview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "selection_id": {
+          "type": "string"
+        },
+        "selection_source": {
+          "default": "none",
+          "type": "string"
+        },
+        "semantic_candidates": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_override": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "selection_id"
+      ],
+      "type": "object"
+    },
+    "AgentSkillSelectionFeedbackRequest": {
+      "properties": {
+        "feedback": {
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_override": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "feedback"
+      ],
+      "type": "object"
+    },
+    "AgentSkillSelectionFeedbackResponse": {
+      "properties": {
+        "feedback_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "item": {
+          "$ref": "#/components/schemas/AgentSkillSelectionEventResponse"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "type": "object"
+    },
+    "AgentSkillSelectionResponse": {
+      "properties": {
+        "confidence": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "matched_triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prompt_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "selection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection_source": {
+          "default": "none",
+          "type": "string"
+        },
+        "semantic_candidates": {
+          "items": {
+            "$ref": "#/components/schemas/AgentSkillSemanticCandidateResponse"
+          },
+          "type": "array"
+        },
+        "semantic_enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "semantic_threshold": {
+          "default": 0.22,
+          "type": "number"
+        },
+        "skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "stripped_message": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AgentSkillSemanticCandidateResponse": {
+      "properties": {
+        "auto_activate": {
+          "default": false,
+          "type": "boolean"
+        },
+        "matched_terms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "skill_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id",
+        "score"
+      ],
+      "type": "object"
+    },
     "AgentTaskLedgerPlanRequest": {
       "properties": {
         "delegation_plan": {
@@ -6018,6 +7835,283 @@
       ],
       "type": "object"
     },
+    "AgentTeamMergeReview": {
+      "properties": {
+        "applied_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "apply_target_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changed_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "conflict_files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "diffstat": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "excluded_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "previewed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejected_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review_id": {
+          "type": "string"
+        },
+        "risk_items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "selected_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/AgentTeamMergeReviewStatus"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_summaries": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "test_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "review_id",
+        "session_id",
+        "user_id",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeReviewCaptureResponse": {
+      "properties": {
+        "capture": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamMergeReviewEvent": {
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "review_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamMergeReviewStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "event_id",
+        "review_id",
+        "session_id",
+        "event_type",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeReviewListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamMergeReview"
+          },
+          "type": "array"
+        },
+        "latest": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamMergeReview"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviews": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamMergeReview"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamMergeReviewResponse": {
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamMergeReviewEvent"
+          },
+          "type": "array"
+        },
+        "review": {
+          "$ref": "#/components/schemas/AgentTeamMergeReview"
+        }
+      },
+      "required": [
+        "review"
+      ],
+      "type": "object"
+    },
+    "AgentTeamMergeReviewStatus": {
+      "enum": [
+        "draft",
+        "ready",
+        "approved",
+        "applied",
+        "rejected",
+        "conflict",
+        "error"
+      ],
+      "type": "string"
+    },
     "AgentTeamPlanSessionRequest": {
       "properties": {
         "auto_fork_branch": {
@@ -6318,6 +8412,10 @@
         "session_id": {
           "type": "string"
         },
+        "skill_plan": {
+          "additionalProperties": true,
+          "type": "object"
+        },
         "status": {
           "$ref": "#/components/schemas/AgentTeamSessionStatus"
         },
@@ -6422,6 +8520,12 @@
           },
           "type": "array"
         },
+        "pending_tool_approvals": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamToolApprovalContract"
+          },
+          "type": "array"
+        },
         "planning": {
           "anyOf": [
             {
@@ -6465,6 +8569,12 @@
           },
           "type": "array"
         },
+        "active_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "agent_run_id": {
           "anyOf": [
             {
@@ -6484,6 +8594,16 @@
         "attempt": {
           "default": 0,
           "type": "integer"
+        },
+        "base_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "branch_id": {
           "anyOf": [
@@ -6572,6 +8692,16 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "diff_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "evidence_required": {
           "items": {
@@ -6705,6 +8835,12 @@
             }
           ]
         },
+        "resource_claims": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "risk_level": {
           "anyOf": [
             {
@@ -6742,6 +8878,13 @@
         },
         "session_id": {
           "type": "string"
+        },
+        "skill_resolution_events": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         },
         "sort_order": {
           "anyOf": [
@@ -6789,6 +8932,12 @@
             }
           ]
         },
+        "test_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "title": {
           "anyOf": [
             {
@@ -6803,6 +8952,46 @@
           "type": "string"
         },
         "verification_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_status": {
           "anyOf": [
             {
               "type": "string"
@@ -6863,6 +9052,16 @@
             }
           ]
         },
+        "base_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "changed_files": {
           "items": {
             "type": "string"
@@ -6871,6 +9070,16 @@
         },
         "created_at": {
           "type": "string"
+        },
+        "diff_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "kind": {
           "$ref": "#/components/schemas/AgentTeamArtifactKind"
@@ -6900,6 +9109,46 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "workspace_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -6965,6 +9214,106 @@
         "cancelled"
       ],
       "type": "string"
+    },
+    "AgentTeamToolApprovalActionRequest": {
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamToolApprovalContract": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "decided_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "risk_level": {
+          "default": "low",
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "type": "string"
+        },
+        "submitted_at": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "timeout_at": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "tool_args": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "tool_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "session_id",
+        "agent_id",
+        "tool_name"
+      ],
+      "type": "object"
+    },
+    "AgentTeamToolApprovalDecisionResponse": {
+      "properties": {
+        "approval": {
+          "$ref": "#/components/schemas/AgentTeamToolApprovalContract"
+        }
+      },
+      "required": [
+        "approval"
+      ],
+      "type": "object"
+    },
+    "AgentTeamToolApprovalListResponse": {
+      "properties": {
+        "approvals": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamToolApprovalContract"
+          },
+          "type": "array"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamToolApprovalContract"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
     },
     "AgentToolRouteDecisionListResponse": {
       "properties": {
@@ -7189,6 +9538,21 @@
       },
       "type": "object"
     },
+    "ApplyAgentTeamMergeReviewRequest": {
+      "properties": {
+        "apply_target_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ApplyMergeDecisionRequest": {
       "properties": {
         "approved": {
@@ -7246,6 +9610,16 @@
           "anyOf": [
             {
               "$ref": "#/components/schemas/ImportedConclusion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"
@@ -7472,6 +9846,37 @@
         "issuer",
         "refresh_token",
         "user"
+      ],
+      "type": "object"
+    },
+    "BackgroundJobSummaryResponse": {
+      "properties": {
+        "generated_at": {
+          "type": "string"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "ready": {
+          "default": true,
+          "type": "boolean"
+        },
+        "status": {
+          "default": "ok",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "generated_at"
       ],
       "type": "object"
     },
@@ -7866,8 +10271,286 @@
       ],
       "type": "object"
     },
+    "CaptureNoteRequest": {
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "pinned_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_kind"
+      ],
+      "type": "object"
+    },
+    "CaptureTaskRequest": {
+      "properties": {
+        "assignee_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "pinned_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "source_note_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_kind"
+      ],
+      "type": "object"
+    },
     "ContextUsageResponse": {
       "properties": {
+        "counting_backend": {
+          "default": "chars_fallback",
+          "type": "string"
+        },
+        "drift_risk": {
+          "default": "low",
+          "type": "string"
+        },
+        "estimated": {
+          "default": true,
+          "type": "boolean"
+        },
         "last_compacted_at": {
           "anyOf": [
             {
@@ -7905,6 +10588,16 @@
         "token_limit": {
           "default": 0,
           "type": "integer"
+        },
+        "tokenizer_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "tokenizer_mode": {
           "default": "chars_fallback",
@@ -7987,6 +10680,58 @@
       ],
       "type": "object"
     },
+    "CreateAgentTeamMergeReviewRequest": {
+      "properties": {
+        "excluded_task_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_task_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "CreateAgentTeamSessionRequest": {
       "properties": {
         "goal": {
@@ -8021,6 +10766,12 @@
     "CreateAgentTeamTaskRequest": {
       "properties": {
         "acceptance_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "active_skill_ids": {
           "items": {
             "type": "string"
           },
@@ -8141,6 +10892,12 @@
             }
           ]
         },
+        "resource_claims": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "risk_level": {
           "anyOf": [
             {
@@ -8157,6 +10914,13 @@
         "scope": {
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "skill_resolution_events": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
           },
           "type": "array"
         },
@@ -8196,6 +10960,252 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "CreateNoteRequest": {
+      "properties": {
+        "body": {
+          "default": "",
+          "type": "string"
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "CreateTaskRequest": {
+      "properties": {
+        "assignee_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_note_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
       "type": "object"
     },
     "CreateUserRequest": {
@@ -8269,6 +11279,27 @@
       ],
       "type": "object"
     },
+    "DecideAgentTeamToolApprovalRequest": {
+      "properties": {
+        "approved": {
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "approved"
+      ],
+      "type": "object"
+    },
     "DemoTokenRequest": {
       "properties": {
         "scopes": {
@@ -8322,6 +11353,352 @@
         }
       },
       "type": "object"
+    },
+    "FocusNote": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "default": "",
+          "type": "string"
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "is_archived": {
+          "default": false,
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "pinned_context": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/components/schemas/FocusNoteStatus"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "user_id",
+        "title",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "FocusNoteStatus": {
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "type": "string"
+    },
+    "FocusTask": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assignee_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "pinned_context": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_note_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/components/schemas/FocusTaskStatus"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "user_id",
+        "title",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "FocusTaskEvent": {
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/FocusTaskEventKind"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "task_id",
+        "user_id",
+        "kind",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "FocusTaskEventKind": {
+      "enum": [
+        "created",
+        "updated",
+        "completed",
+        "archived"
+      ],
+      "type": "string"
+    },
+    "FocusTaskStatus": {
+      "enum": [
+        "todo",
+        "in_progress",
+        "completed",
+        "archived"
+      ],
+      "type": "string"
     },
     "ForgetMemoryRecordRequest": {
       "properties": {
@@ -9338,6 +12715,128 @@
       ],
       "type": "object"
     },
+    "MemoryUsageEvidenceResponse": {
+      "properties": {
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "excluded_memories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "risk_flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "selected_memories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "source_kind": {
+          "default": "context_explain",
+          "type": "string"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usage": {
+          "default": "unknown",
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "evidence_id"
+      ],
+      "type": "object"
+    },
+    "MemoryUsageResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "governance",
+          "type": "string"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryUsageEvidenceResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "memory_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
     "MergeMode": {
       "enum": [
         "none",
@@ -9507,6 +13006,34 @@
       ],
       "type": "object"
     },
+    "NoteListResponse": {
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/FocusNote"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
+    "NoteResponse": {
+      "properties": {
+        "note": {
+          "$ref": "#/components/schemas/FocusNote"
+        }
+      },
+      "required": [
+        "note"
+      ],
+      "type": "object"
+    },
     "ObservabilityOverviewResponse": {
       "properties": {
         "filters": {
@@ -9637,6 +13164,16 @@
             }
           ]
         },
+        "base_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "changed_files": {
           "items": {
             "type": "string"
@@ -9644,6 +13181,16 @@
           "type": "array"
         },
         "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diff_summary": {
           "anyOf": [
             {
               "type": "string"
@@ -9684,6 +13231,61 @@
           "type": "array"
         },
         "verification_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RejectAgentTeamMergeReviewRequest": {
+      "properties": {
+        "rationale": {
           "anyOf": [
             {
               "type": "string"
@@ -9851,6 +13453,51 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "TaskEventListResponse": {
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/FocusTaskEvent"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
+    "TaskListResponse": {
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/FocusTask"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
+    "TaskResponse": {
+      "properties": {
+        "task": {
+          "$ref": "#/components/schemas/FocusTask"
+        }
+      },
+      "required": [
+        "task"
+      ],
       "type": "object"
     },
     "ThreadContextCompactRequest": {
@@ -11936,6 +15583,68 @@
       ],
       "type": "object"
     },
+    "UpdateAgentTeamMergeReviewRequest": {
+      "properties": {
+        "excluded_task_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_task_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamMergeReviewStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "UpdateAgentTeamTaskRequest": {
       "properties": {
         "acceptance_criteria": {
@@ -11945,6 +15654,29 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "active_skill_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base_commit": {
+          "anyOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"
@@ -12018,6 +15750,16 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diff_summary": {
+          "anyOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"
@@ -12113,6 +15855,19 @@
             }
           ]
         },
+        "resource_claims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "risk_level": {
           "anyOf": [
             {
@@ -12159,6 +15914,20 @@
             }
           ]
         },
+        "skill_resolution_events": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "started_at": {
           "anyOf": [
             {
@@ -12179,7 +15948,60 @@
             }
           ]
         },
+        "test_evidence": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "verification_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_status": {
           "anyOf": [
             {
               "type": "string"
@@ -12225,6 +16047,316 @@
       "required": [
         "title"
       ],
+      "type": "object"
+    },
+    "UpdateNoteRequest": {
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "is_archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/FocusNoteStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UpdateTaskRequest": {
+      "properties": {
+        "assignee_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_note_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/FocusTaskStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "type": "object"
     },
     "UpdateUserRequest": {

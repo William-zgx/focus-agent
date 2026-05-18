@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from scripts import release_gate
 
@@ -260,3 +260,46 @@ def test_release_gate_deployment_binding_cli_writes_report(tmp_path: Path, monke
     assert exit_code == 0
     assert payload["summary"]["status"] == "passed"
     assert payload["meta"]["suite"] == "deployment_binding"
+
+
+def test_release_gate_deployment_binding_cli_reads_process_argv(tmp_path: Path, monkeypatch) -> None:
+    report_json = tmp_path / "deployment-binding.json"
+    monkeypatch.setenv("DRY_RUN", "true")
+    monkeypatch.setenv("GITHUB_RUN_ID", "789")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["release_gate.py", "deployment-binding", "--output", str(report_json)],
+    )
+
+    exit_code = release_gate.main()
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["summary"]["status"] == "passed"
+
+
+def test_release_gate_deployment_binding_records_github_actions_metadata(tmp_path: Path) -> None:
+    payload = release_gate.validate_deployment_binding(
+        env={
+            "DRY_RUN": "true",
+            "ENVIRONMENT_NAME": "release-dry-run",
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_RUN_ATTEMPT": "2",
+            "GITHUB_RUN_ID": "789",
+            "GITHUB_WORKFLOW_REF": "owner/repo/.github/workflows/release-gate.yml@refs/heads/main",
+            "RELEASE_GATE_ARTIFACT_NAME": "release-gate-reports-789-2",
+            "RETENTION_DAYS": "30",
+        },
+        deployment_binding_json=tmp_path / "deployment-binding.json",
+    )
+
+    assert payload["github_actions"]["artifact_name"] == "release-gate-reports-789-2"
+    assert payload["github_actions"]["environment_name"] == "release-dry-run"
+    assert payload["github_actions"]["run_attempt"] == "2"
+    assert payload["github_actions"]["run_id"] == "789"
+    assert (
+        payload["github_actions"]["workflow_ref"]
+        == "owner/repo/.github/workflows/release-gate.yml@refs/heads/main"
+    )

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
-from typing import Any, Sequence
+from typing import Any
 
 from .postgres_trajectory_mappers import parse_datetime_like
 

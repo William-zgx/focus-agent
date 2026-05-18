@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from focus_agent.agent_roles import AgentRole, RoleModelResolver, build_role_route_plan
+from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
 from focus_agent.capabilities.tool_router import (
     build_capability_registry,
     build_tool_route_plan,
@@ -16,7 +16,6 @@ from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTu
 
 from ..contracts import (
     AgentCapabilityListResponse,
-    AgentToolsetListResponse,
     AgentRoleDecisionListResponse,
     AgentRoleDryRunRequest,
     AgentRoleDryRunResponse,
@@ -24,6 +23,7 @@ from ..contracts import (
     AgentToolRouteDecisionListResponse,
     AgentToolRouteRequest,
     AgentToolRouteResponse,
+    AgentToolsetListResponse,
 )
 from .agent_governance_trajectory_responses import _list_response_fields, _role_route_decision_items
 from .trajectory import _maybe_get_trajectory_repository

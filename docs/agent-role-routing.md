@@ -115,7 +115,7 @@ These rules are regression-sensitive:
 - `AGENT_DELEGATION_ENABLED=false` keeps legacy execution unchanged even if role routing records `role_route_plan`.
 - Routed roles use the current role set: `orchestrator`, `planner`, `executor`, `critic`, `memory_curator`, and `skill_scout`.
 - Workspace lookup must stay local-first and must not call web tools when the user says not to browse.
-- Symbol, definition, usage, or location lookup should start with `search_code` when that tool is available; `.focus_agent/` runtime files are excluded from code search.
+- Symbol, definition, usage, or location lookup should start with `search_code` when that tool is available; `.claude/` and `.focus_agent/` runtime files are excluded from default workspace search.
 - Memory preview is prompt evidence only; uncommitted preview content must not leak into durable memory or final answers.
 - Role-specific model settings use `AGENT_ROLE_*_MODEL`.
 - If a role model is unset, `executor` falls back to the main selected model; planning, critique, memory, skill, and orchestration roles fall back to `helper_model`, then the main model.
@@ -211,11 +211,24 @@ Self Repair records structured failure candidates such as planning gaps, tool de
 
 Review Queue turns governance uncertainty into pending human-review items. It should expose risk rather than pretending the system is certain.
 
+### Skill Discovery Tool Surface
+
+The current skill/tool autonomy surface is discover-first and install-gated:
+
+| Tool | Allowed Roles | Notes |
+|------|---------------|-------|
+| `skill_sources` | `orchestrator`, `planner`, `skill_scout` | Lists configured skill sources and index status. |
+| `skills_search` | `orchestrator`, `planner`, `skill_scout` | Searches the local skill index for relevant skills. |
+| `skills_refresh_index` | `planner`, `skill_scout` | Rebuilds the skill search index from configured sources. |
+| `skill_install` | `skill_scout` | Medium-risk workspace write tool for installing a selected skill. |
+
+`skill_install` is intentionally not an orchestrator tool. The orchestrator may discover available sources and search results, then route install-capable work to `skill_scout` under normal workspace-write governance.
+
 ### Observe-First Autonomy Outputs
 
 The autonomy surface is intentionally report-first before it is action-first. When governance is enabled without enforcement, it may emit:
 
-- skill selection: `skill_scout` role decisions use `skills_list` and `skill_view` to recommend prompt-first skills and toolsets.
+- skill selection: `skill_scout` role decisions use `skill_sources`, `skills_search`, `skills_refresh_index`, and guarded `skill_install` to recommend prompt-first skills and safe toolsets.
 - branch suggestion: delegated role decisions include `run_isolation_key` values such as `role:planner`, `role:executor`, and `role:skill_scout`; these are branch/run hints, not background spawns.
 - risk-aware workflow policy: denied high-risk workspace tools are represented as `tool_denied` failure records and `agent_review_queue` items.
 - model routing report: high-risk tool usage can produce a Model Router observe-mode rationale while keeping `effective_model` equal to the selected model.

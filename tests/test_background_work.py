@@ -10,7 +10,11 @@ from focus_agent.services.background_work import (
     DurableBackgroundWorker,
     register_default_background_job_handlers,
 )
-from focus_agent.services.coordination import BackgroundJobClaim, BackgroundJobSpec
+from focus_agent.services.coordination import (
+    BackgroundJobClaim,
+    BackgroundJobSpec,
+    InMemoryBackgroundJobDeduperBackend,
+)
 
 
 def test_background_queue_deduplicates_pending_keys_and_tracks_metrics() -> None:
@@ -350,6 +354,34 @@ def test_durable_background_worker_does_not_succeed_when_heartbeat_is_lost() -> 
     assert snapshot["durable_worker_completed_total"] == 0
     assert snapshot["durable_worker_failed_total"] == 1
     assert snapshot["durable_worker_heartbeat_lost_total"] == 1
+
+
+def test_durable_background_worker_retries_then_dead_letters_failed_jobs() -> None:
+    backend = InMemoryBackgroundJobDeduperBackend(retry_base_delay_seconds=0.0)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-retry",
+        payload={"root_thread_id": "thread-retry", "user_id": "user-1"},
+        max_attempts=2,
+    )
+    registry = BackgroundJobHandlerRegistry(
+        {
+            "conversation_title": lambda payload: (_ for _ in ()).throw(RuntimeError("boom")),
+        }
+    )
+    worker = DurableBackgroundWorker(name="retry", job_backend=backend, handlers=registry)
+
+    assert backend.enqueue_job(spec)
+    assert worker.run_once()
+    snapshot = backend.snapshot()
+    assert snapshot["job_retrying_total"] == 1
+    assert snapshot["job_dead_lettered_total"] == 0
+
+    assert worker.run_once()
+    snapshot = backend.snapshot()
+    assert snapshot["job_retrying_total"] == 0
+    assert snapshot["job_dead_lettered_total"] == 1
+    assert worker.snapshot()["durable_worker_failed_total"] == 2
 
 
 def test_default_durable_handlers_call_fixed_service_methods() -> None:

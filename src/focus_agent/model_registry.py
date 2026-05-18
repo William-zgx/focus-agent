@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib.resources import files
-import os
 
 from langchain.chat_models import init_chat_model
 
@@ -16,7 +16,6 @@ from .config import (
     Settings,
     load_model_catalog_toml,
 )
-
 
 _BUILTIN_MODEL_CATALOG_RESOURCE = "defaults/models.toml"
 

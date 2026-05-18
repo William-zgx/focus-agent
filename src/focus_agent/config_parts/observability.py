@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from typing import Any
 
 from .common import _coerce_bool, _split_csv
 

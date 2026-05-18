@@ -11,7 +11,6 @@ from .graph_tool_call_repair import _known_tool_names
 from .graph_tool_history_repair import _message_text
 from .graph_tool_result_fallback import _invoke_with_tool_result_fallback
 
-
 _TOOL_EXHAUSTION_NOTE = (
     "You have enough tool results for this turn. Do not call more tools. "
     "Answer the user directly using the information already gathered, and state any uncertainty plainly."

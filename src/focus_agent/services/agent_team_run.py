@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from focus_agent.agent_delegation import AgentDelegationPlan, AgentTask, build_agent_delegation_plan
-from focus_agent.agent_execution import (
+from focus_agent.delegation.delegation import AgentDelegationPlan, AgentTask, build_agent_delegation_plan
+from focus_agent.delegation.execution import (
     DelegatedRunExecutor,
     FakeDelegatedRunExecutor,
     SubagentRegistry,
@@ -13,26 +13,55 @@ from focus_agent.agent_execution import (
     normalize_delegation_execution_mode,
     run_delegated_tasks,
 )
-from focus_agent.agent_roles import AgentRole
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
-    AgentTeamArtifactKind,
     AgentTeamSession,
     AgentTeamSessionStatus,
     AgentTeamTask,
-    AgentTeamTaskRole,
     AgentTeamTaskStatus,
     agent_role_for_team_task_role,
 )
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.multi_agent.contracts import (
+    AgentMessageType,
+    DAGTaskNode,
+    FailureStrategy,
+    LockMode,
+    ResourceClaim,
+)
+from focus_agent.multi_agent.dag_scheduler import DAGScheduler
+from focus_agent.multi_agent.errors import DAGValidationError
+from focus_agent.multi_agent.failure_handler import FailureHandler
 from focus_agent.services.coordination import BackgroundJobSpec
 
 from .agent_team_helpers import _dedupe, _now
-
-
-_MAX_MISSION_SCHEDULER_WAVES = 16
-_MAX_MISSION_SCHEDULER_TASKS = 64
-_AGENT_TEAM_TASK_CLAIM_TTL_SECONDS = 300.0
+from .agent_team_run_helpers import (
+    _AGENT_TEAM_TASK_CLAIM_TTL_SECONDS,
+    _MAX_MISSION_SCHEDULER_TASKS,
+    _MAX_MISSION_SCHEDULER_WAVES,
+    _agent_team_execution_mode,
+    _allowed_tools_for_task,
+    _artifact_kind_for_task,
+    _changed_files_for_run,
+    _is_runnable_task,
+    _is_writable_team_task,
+    _max_parallel_runs_for,
+    _risk_notes_for_run,
+    _run_metadata,
+    _scheduler_state,
+    _should_use_task_workspace,
+    _task_identity,
+    _task_wave,
+    _team_role_for_agent_role,
+    _team_status_for_run_status,
+    _test_evidence_for_run,
+    _workspace_metadata_for_run,
+)
+from .agent_team_workspace import (
+    AgentTeamWorkspace,
+    AgentTeamWorkspaceService,
+    AgentTeamWorkspaceStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -45,14 +74,43 @@ class _TaskExecutionResult:
     task_updates: dict[str, Any]
     output: dict[str, Any] | None = None
 
-_AGENT_ROLE_TO_TEAM_ROLE: dict[AgentRole, AgentTeamTaskRole] = {
-    AgentRole.ORCHESTRATOR: AgentTeamTaskRole.ARCHITECT,
-    AgentRole.PLANNER: AgentTeamTaskRole.PLANNER,
-    AgentRole.EXECUTOR: AgentTeamTaskRole.BACKEND_EXECUTOR,
-    AgentRole.CRITIC: AgentTeamTaskRole.REVIEWER,
-    AgentRole.MEMORY_CURATOR: AgentTeamTaskRole.PLANNER,
-    AgentRole.SKILL_SCOUT: AgentTeamTaskRole.PLANNER,
-}
+
+def _multi_agent_v2_enabled(settings: Any | None) -> bool:
+    return bool(settings is not None and getattr(settings, "multi_agent_v2_enabled", False))
+
+
+def _multi_agent_dag_scheduler_enabled(settings: Any | None) -> bool:
+    return _multi_agent_v2_enabled(settings) and bool(
+        getattr(settings, "multi_agent_dag_scheduler_enabled", False)
+    )
+
+
+def _multi_agent_failure_handler_enabled(settings: Any | None) -> bool:
+    return _multi_agent_v2_enabled(settings) and bool(
+        getattr(settings, "multi_agent_failure_handler_enabled", False)
+    )
+
+
+def _multi_agent_resource_lock_enabled(settings: Any | None) -> bool:
+    return _multi_agent_v2_enabled(settings) and bool(
+        getattr(settings, "multi_agent_resource_lock_enabled", False)
+    )
+
+
+def _failure_strategy_for_exception(
+    *,
+    settings: Any | None,
+    task_id: str,
+    exc: Exception,
+    attempt: int,
+) -> FailureStrategy | None:
+    if not _multi_agent_failure_handler_enabled(settings):
+        return None
+    return FailureHandler().decide(
+        task_id=task_id,
+        error_category=type(exc).__name__,
+        attempt=attempt,
+    )
 
 
 class AgentTeamRunMixin:
@@ -61,6 +119,7 @@ class AgentTeamRunMixin:
     executor: DelegatedRunExecutor | None
     coordination_backend: Any | None
     background_work: Any | None
+    workspace_service: AgentTeamWorkspaceService
 
     def plan_session(
         self,
@@ -145,6 +204,11 @@ class AgentTeamRunMixin:
                 session_id=session_id,
                 limit=_MAX_MISSION_SCHEDULER_TASKS,
             )
+            if _multi_agent_dag_scheduler_enabled(self.settings):
+                runnable = self._compute_dag_runnable_tasks(
+                    tasks=tasks,
+                    max_parallel=remaining_capacity,
+                )
             if selected_task_ids:
                 runnable = [task for task in runnable if task.task_id in selected_task_ids]
             runnable = runnable[: min(remaining_capacity, _MAX_MISSION_SCHEDULER_TASKS)]
@@ -168,6 +232,50 @@ class AgentTeamRunMixin:
                 self._refresh_session_status(session_id)
         session = self.get_session(session_id, user_id=user_id)
         return session, self.list_tasks(session_id=session_id, user_id=user_id)
+
+    def _compute_dag_runnable_tasks(
+        self,
+        *,
+        tasks: list[AgentTeamTask],
+        max_parallel: int,
+    ) -> list[AgentTeamTask]:
+        task_by_id = {task.task_id: task for task in tasks}
+        nodes = [
+            DAGTaskNode(
+                task_id=task.task_id,
+                role=task.role.value,
+                dependencies=tuple(task.dependencies),
+                resource_claims=tuple(task.resource_claims),
+                priority=int(task.sort_order or _MAX_MISSION_SCHEDULER_TASKS),
+                timeout_seconds=0.0,
+                max_retries=max(1, int(task.max_attempts or 1)),
+            )
+            for task in tasks
+        ]
+        completed = {task.task_id for task in tasks if task.status == AgentTeamTaskStatus.DONE}
+        failed = {
+            task.task_id
+            for task in tasks
+            if task.status in {AgentTeamTaskStatus.FAILED, AgentTeamTaskStatus.CANCELLED}
+        }
+        in_progress = {
+            task.task_id
+            for task in tasks
+            if task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
+        }
+        try:
+            wave = DAGScheduler(nodes, max_parallel_runs=max_parallel).compute_next_wave(
+                completed=completed,
+                failed=failed,
+                in_progress=in_progress,
+            )
+        except DAGValidationError:
+            return []
+        return [
+            task_by_id[node.task_id]
+            for node in wave
+            if task_by_id[node.task_id].status == AgentTeamTaskStatus.PENDING
+        ]
 
     def run_task(
         self, *, task_id: str, user_id: str, scheduler_wave: int | None = None
@@ -233,6 +341,30 @@ class AgentTeamRunMixin:
             )
         if claimed is None:
             return self.get_task(task_id, user_id=user_id)
+        resource_locks_required = bool(
+            _multi_agent_resource_lock_enabled(self.settings)
+            and getattr(self.coordination_backend, "resource_locks", None) is not None
+        )
+        resource_claims = self._acquire_task_resource_claims(claimed)
+        if resource_locks_required and claimed.resource_claims and not resource_claims:
+            with self._lock:
+                task = self.repository.release_task_claim(
+                    task_id=task_id,
+                    claim_token=claimed.claim_token or "",
+                    final_status=AgentTeamTaskStatus.PENDING,
+                    error="Required multi-agent resource lock is unavailable.",
+                )
+                task = task.model_copy(
+                    update={
+                        "run_status": None,
+                        "execution_status": "waiting_resource_lock",
+                        "queued_at": None,
+                        "updated_at": _now(),
+                    }
+                )
+                self.repository.save_task(task)
+                self._refresh_session_status(task.session_id)
+            return task
         try:
             result = self._execute_task_body(claimed, user_id=user_id)
         except Exception as exc:  # noqa: BLE001
@@ -242,6 +374,31 @@ class AgentTeamRunMixin:
                 if current.attempt >= max(1, int(current.max_attempts or 1))
                 else AgentTeamTaskStatus.QUEUED
             )
+            failure_strategy = _failure_strategy_for_exception(
+                settings=self.settings,
+                task_id=task_id,
+                exc=exc,
+                attempt=max(1, int(current.attempt or 1)),
+            )
+            if failure_strategy in {FailureStrategy.RETRY, FailureStrategy.REASSIGN}:
+                final_status = AgentTeamTaskStatus.QUEUED
+            elif failure_strategy == FailureStrategy.DEGRADE:
+                final_status = AgentTeamTaskStatus.DONE
+                self.record_task_output(
+                    task_id=task_id,
+                    user_id=user_id,
+                    summary=f"[DEGRADED] Task failed with {type(exc).__name__}: {exc}",
+                    risk_notes=["Task output was generated by the multi-agent degradation path."],
+                    metadata={
+                        "multi_agent": {
+                            "degraded": True,
+                            "failure_strategy": failure_strategy.value,
+                            "error_category": type(exc).__name__,
+                        }
+                    },
+                )
+            elif failure_strategy == FailureStrategy.ESCALATE:
+                final_status = AgentTeamTaskStatus.BLOCKED
             with self._lock:
                 task = self.repository.release_task_claim(
                     task_id=task_id,
@@ -249,6 +406,8 @@ class AgentTeamRunMixin:
                     final_status=final_status,
                     error=str(exc),
                 )
+                self._release_task_resource_claims(resource_claims)
+                resource_claims = []
                 if final_status == AgentTeamTaskStatus.QUEUED:
                     self._enqueue_task_run(task_id=task_id, user_id=user_id)
                 self._refresh_session_status(task.session_id)
@@ -258,6 +417,50 @@ class AgentTeamRunMixin:
         final_status = result.final_status
         if latest.cancel_requested_at:
             final_status = AgentTeamTaskStatus.CANCELLED
+        elif final_status == AgentTeamTaskStatus.FAILED:
+            failure_strategy = (
+                FailureHandler().decide(
+                    task_id=task_id,
+                    error_category="execution_error",
+                    attempt=max(1, int(latest.attempt or 1)),
+                )
+                if _multi_agent_failure_handler_enabled(self.settings)
+                else None
+            )
+            if failure_strategy in {FailureStrategy.RETRY, FailureStrategy.REASSIGN}:
+                final_status = AgentTeamTaskStatus.QUEUED
+            elif failure_strategy == FailureStrategy.DEGRADE:
+                final_status = AgentTeamTaskStatus.DONE
+                result = _TaskExecutionResult(
+                    session_id=result.session_id,
+                    final_status=AgentTeamTaskStatus.DONE,
+                    run_status="degraded",
+                    execution_status="degraded",
+                    last_error="",
+                    task_updates={
+                        **result.task_updates,
+                        "finished_at": result.task_updates.get("finished_at") or _now(),
+                    },
+                    output={
+                        "kind": _artifact_kind_for_task(latest),
+                        "artifact_id": None,
+                        "summary": f"[DEGRADED] Task failed after retries: {result.last_error}",
+                        "changed_files": [],
+                        "test_evidence": [],
+                        "risk_notes": [
+                            "Task output was generated by the multi-agent degradation path."
+                        ],
+                        "metadata": {
+                            "multi_agent": {
+                                "degraded": True,
+                                "failure_strategy": failure_strategy.value,
+                                "error_category": "run_failed",
+                            }
+                        },
+                    },
+                )
+            elif failure_strategy == FailureStrategy.ESCALATE:
+                final_status = AgentTeamTaskStatus.BLOCKED
         with self._lock:
             claim_alive = self.repository.heartbeat_task_claim(
                 task_id=task_id,
@@ -280,8 +483,12 @@ class AgentTeamRunMixin:
                 if released.claim_token is None and stale_status == AgentTeamTaskStatus.QUEUED:
                     self._enqueue_task_run(task_id=task_id, user_id=user_id)
                 self._refresh_session_status(released.session_id)
+                self._release_task_resource_claims(resource_claims)
                 return self.get_task(task_id, user_id=user_id)
-            if result.output is not None and final_status != AgentTeamTaskStatus.CANCELLED:
+            if result.output is not None and final_status not in {
+                AgentTeamTaskStatus.CANCELLED,
+                AgentTeamTaskStatus.QUEUED,
+            }:
                 self.record_task_output(task_id=task_id, user_id=user_id, **result.output)
             if final_status == AgentTeamTaskStatus.CANCELLED:
                 latest = self.update_task(
@@ -310,8 +517,11 @@ class AgentTeamRunMixin:
                 error=latest.last_error,
             )
             self._refresh_session_status(released.session_id)
+        self._release_task_resource_claims(resource_claims)
         if final_status == AgentTeamTaskStatus.DONE:
             self.maybe_schedule_next_wave(session_id=released.session_id, user_id=user_id)
+        elif final_status == AgentTeamTaskStatus.QUEUED:
+            self._enqueue_task_run(task_id=task_id, user_id=user_id)
         return released
 
     def maybe_schedule_next_wave(self, *, session_id: str, user_id: str) -> None:
@@ -454,6 +664,39 @@ class AgentTeamRunMixin:
             started_at=started_at,
             last_error="",
         )
+        self._publish_agent_team_progress(
+            task=task,
+            event="started",
+            payload={"scheduler_wave": scheduler_wave},
+        )
+        executor = self._delegated_executor()
+        workspace: AgentTeamWorkspace | None = None
+        workspace_status: AgentTeamWorkspaceStatus | None = None
+        if _should_use_task_workspace(task, executor):
+            try:
+                workspace = self.workspace_service.ensure_workspace(
+                    session=self.get_session(task.session_id, user_id=user_id),
+                    task=task,
+                )
+                task = self.update_task(
+                    task_id=task.task_id,
+                    user_id=user_id,
+                    workspace_id=workspace.workspace_id,
+                    workspace_branch=workspace.workspace_branch,
+                    workspace_path=workspace.workspace_path,
+                    base_commit=workspace.base_commit,
+                    workspace_status="created",
+                )
+            except Exception as exc:  # noqa: BLE001
+                finished_at = _now()
+                return _TaskExecutionResult(
+                    session_id=task.session_id,
+                    final_status=AgentTeamTaskStatus.FAILED,
+                    run_status="failed",
+                    execution_status="workspace_failed",
+                    last_error=f"Failed to prepare task workspace: {exc}",
+                    task_updates={"finished_at": finished_at},
+                )
         delegated = self._to_delegated_task(task, user_id=user_id)
         result = run_delegated_tasks(
             tasks=[delegated],
@@ -461,7 +704,7 @@ class AgentTeamRunMixin:
                 self.settings or Settings(),
                 context_refs=task.context_refs,
             ),
-            executor=self._delegated_executor(),
+            executor=executor,
             max_parallel_runs=1,
         )
         if not result:
@@ -476,17 +719,51 @@ class AgentTeamRunMixin:
             )
 
         run = result[0]
+        if workspace is not None:
+            try:
+                workspace_status = self.workspace_service.collect_status(workspace.workspace_path)
+                run = run.model_copy(
+                    update={
+                        "workspace_id": workspace.workspace_id,
+                        "workspace_path": workspace.workspace_path,
+                        "workspace_branch": workspace.workspace_branch,
+                        "base_commit": workspace.base_commit,
+                        "changed_files": _dedupe(
+                            [*run.changed_files, *workspace_status.changed_files]
+                        ),
+                        "diff_summary": workspace_status.diff_summary,
+                        "workspace_status": workspace_status.workspace_status,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                run = run.model_copy(
+                    update={
+                        "workspace_id": workspace.workspace_id,
+                        "workspace_path": workspace.workspace_path,
+                        "workspace_branch": workspace.workspace_branch,
+                        "base_commit": workspace.base_commit,
+                        "workspace_status": "status_failed",
+                    }
+                )
+                workspace_status = AgentTeamWorkspaceStatus(
+                    changed_files=[],
+                    diff_summary="",
+                    workspace_status="status_failed",
+                    porcelain=[str(exc)],
+                )
         artifact_ids = [artifact.artifact_id for artifact in run.artifacts]
         status = _team_status_for_run_status(run.status)
         changed_files = _changed_files_for_run(run)
         test_evidence = _test_evidence_for_run(run)
         risk_notes = _risk_notes_for_run(run)
+        workspace_metadata = _workspace_metadata_for_run(run, workspace_status)
         output = {
             "kind": _artifact_kind_for_task(task),
             "artifact_id": artifact_ids[0] if artifact_ids else None,
             "summary": run.summary,
             "changed_files": changed_files,
             "test_evidence": test_evidence,
+            **workspace_metadata,
             "risk_notes": risk_notes,
             "metadata": {
                 "execution": {
@@ -498,6 +775,7 @@ class AgentTeamRunMixin:
                     "started_at": run.started_at,
                     "finished_at": run.finished_at,
                     "model_id": run.model_id,
+                    **workspace_metadata,
                 },
                 "scheduler": {
                     "wave": scheduler_wave,
@@ -506,8 +784,14 @@ class AgentTeamRunMixin:
                 },
                 "artifacts": [artifact.model_dump(mode="json") for artifact in run.artifacts],
                 "run": run.model_dump(mode="json"),
+                **({"workspace": workspace_status.as_metadata()} if workspace_status else {}),
             },
         }
+        self._publish_agent_team_progress(
+            task=task,
+            event="finished",
+            payload={"status": status.value, "run_status": run.status},
+        )
         return _TaskExecutionResult(
             session_id=task.session_id,
             final_status=status,
@@ -519,6 +803,8 @@ class AgentTeamRunMixin:
                 "delegated_task_id": run.task_id,
                 "artifact_ids": artifact_ids,
                 "changed_files": changed_files,
+                "test_evidence": test_evidence,
+                **workspace_metadata,
                 "verification_summary": run.summary,
                 "risk_notes": risk_notes,
                 "started_at": run.started_at or started_at,
@@ -526,6 +812,71 @@ class AgentTeamRunMixin:
             },
             output=output,
         )
+
+    def _publish_agent_team_progress(
+        self,
+        *,
+        task: AgentTeamTask,
+        event: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if not (
+            _multi_agent_v2_enabled(self.settings)
+            and bool(getattr(self.settings, "multi_agent_message_bus_enabled", False))
+        ):
+            return
+        message_bus = getattr(self.coordination_backend, "message_bus", None)
+        if message_bus is None:
+            return
+        message_bus.publish(
+            session_id=task.session_id,
+            source_agent=f"{task.role.value}:{task.task_id}",
+            target_agent=None,
+            message_type=AgentMessageType.PROGRESS,
+            payload={
+                "task_id": task.task_id,
+                "role": task.role.value,
+                "event": event,
+                **dict(payload or {}),
+            },
+        )
+
+    def _acquire_task_resource_claims(self, task: AgentTeamTask) -> list[ResourceClaim]:
+        if not task.resource_claims:
+            return []
+        if not _multi_agent_resource_lock_enabled(self.settings):
+            return []
+        lock_backend = getattr(self.coordination_backend, "resource_locks", None)
+        if lock_backend is None:
+            return []
+        acquired: list[ResourceClaim] = []
+        ttl = float(getattr(self.settings, "multi_agent_resource_lock_ttl_seconds", 60.0) or 60.0)
+        agent_id = f"{task.role.value}:{task.task_id}"
+        for resource_id in task.resource_claims:
+            claim = lock_backend.try_acquire(
+                resource_id=resource_id,
+                agent_id=agent_id,
+                session_id=task.session_id,
+                mode=LockMode.EXCLUSIVE,
+                ttl_seconds=ttl,
+            )
+            if claim is None:
+                self._release_task_resource_claims(acquired)
+                return []
+            acquired.append(claim)
+        return acquired
+
+    def _release_task_resource_claims(self, claims: list[ResourceClaim]) -> None:
+        if not claims:
+            return
+        lock_backend = getattr(self.coordination_backend, "resource_locks", None)
+        if lock_backend is None:
+            return
+        for claim in claims:
+            try:
+                lock_backend.release(claim)
+            except Exception:
+                continue
 
     def _enqueue_task_run(self, *, task_id: str, user_id: str) -> bool:
         key = f"agent-team:task:{task_id}"
@@ -613,6 +964,10 @@ class AgentTeamRunMixin:
                 "task_count": len(tasks),
             },
             "scheduler": _scheduler_state(tasks),
+            "pending_tool_approvals": _pending_tool_approvals_for_session(
+                self.coordination_backend,
+                session=session,
+            ),
         }
 
     def _build_delegation_plan(self, session: AgentTeamSession) -> AgentDelegationPlan | None:
@@ -649,6 +1004,7 @@ class AgentTeamRunMixin:
                 "capability_requirements": task.capability_requirements,
                 "risk_level": task.risk_level,
                 "write_scope": task.write_scope,
+                "resource_claims": task.resource_claims,
                 "replan_policy": task.replan_policy,
             },
             {
@@ -666,14 +1022,41 @@ class AgentTeamRunMixin:
             constraints.append(f"Required evidence: {', '.join(task.evidence_required)}")
         if task.write_scope:
             constraints.append(f"Write scope: {', '.join(task.write_scope)}")
+        if task.resource_claims:
+            constraints.append(f"Resource claims: {', '.join(task.resource_claims)}")
         return AgentTask(
             task_id=task.task_id,
             role=agent_role_for_team_task_role(task.role),
             goal=task.goal,
             constraints=constraints,
+            allowed_tools=_allowed_tools_for_task(task),
             acceptance_criteria=list(task.acceptance_criteria),
+            requires_workspace_write=_is_writable_team_task(task),
             context_refs=context_refs,
             run_isolation_key=f"agent-team:{task.session_id}:{task.task_id}",
+            workspace_id=task.workspace_id,
+            workspace_path=task.workspace_path,
+            workspace_branch=task.workspace_branch,
+            base_commit=task.base_commit,
+        )
+
+    def cleanup_task_workspace(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        task_id: str | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        self.get_session(session_id, user_id=user_id)
+        if task_id is not None:
+            task = self.get_task(task_id, user_id=user_id)
+            if task.session_id != session_id:
+                raise PermissionError("Agent team task belongs to another session.")
+        return self.workspace_service.cleanup_workspace(
+            session_id=session_id,
+            task_id=task_id,
+            force=force,
         )
 
     def _delegated_executor(self) -> DelegatedRunExecutor | None:
@@ -687,148 +1070,38 @@ class AgentTeamRunMixin:
         return executor_for_mode(mode, model_factory=self.model_factory, settings=self.settings)
 
 
-def _task_identity(task: AgentTeamTask) -> tuple[AgentTeamTaskRole, str]:
-    return (task.role, task.goal.strip())
-
-
-def _team_role_for_agent_role(role: AgentRole) -> AgentTeamTaskRole:
-    return _AGENT_ROLE_TO_TEAM_ROLE.get(role, AgentTeamTaskRole.BACKEND_EXECUTOR)
-
-
-def _is_runnable_task(task: AgentTeamTask) -> bool:
-    if task.status == AgentTeamTaskStatus.PENDING:
-        return True
-    return (
-        task.status == AgentTeamTaskStatus.RUNNING
-        and not task.run_status
-        and not task.execution_status
-        and not task.agent_run_id
-    )
-
-
-def _max_parallel_runs_for(settings: Any | None) -> int:
-    return max(1, min(16, int(getattr(settings, "agent_role_max_parallel_runs", 2) or 2)))
-
-
-def _agent_team_execution_mode(settings: Any | None) -> str:
-    return str(getattr(settings, "background_job_execution", "best_effort") or "best_effort")
-
-
-def _run_metadata(*, tasks: list[AgentTeamTask], settings: Any | None) -> dict[str, Any]:
-    return {
-        "execution_mode": _agent_team_execution_mode(settings),
-        "scheduled_task_ids": [
-            task.task_id
-            for task in tasks
-            if task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
-        ],
-        "running_task_ids": [
-            task.task_id for task in tasks if task.status == AgentTeamTaskStatus.RUNNING
-        ],
-        "max_parallel_runs": _max_parallel_runs_for(settings),
-    }
-
-
-def _is_terminal_blocker(task: AgentTeamTask) -> bool:
-    return task.status in {
-        AgentTeamTaskStatus.BLOCKED,
-        AgentTeamTaskStatus.FAILED,
-        AgentTeamTaskStatus.CANCELLED,
-    }
-
-
-def _team_status_for_run_status(status: str) -> AgentTeamTaskStatus:
-    if status == "completed":
-        return AgentTeamTaskStatus.DONE
-    if status == "failed":
-        return AgentTeamTaskStatus.FAILED
-    return AgentTeamTaskStatus.BLOCKED
-
-
-def _artifact_kind_for_task(task: AgentTeamTask) -> AgentTeamArtifactKind:
-    if task.role == AgentTeamTaskRole.PLANNER:
-        return AgentTeamArtifactKind.PLAN
-    if task.role in {AgentTeamTaskRole.TEST_ENGINEER, AgentTeamTaskRole.VERIFIER}:
-        return AgentTeamArtifactKind.TEST_REPORT
-    if task.role == AgentTeamTaskRole.REVIEWER:
-        return AgentTeamArtifactKind.REVIEW_REPORT
-    if task.role in {AgentTeamTaskRole.BACKEND_EXECUTOR, AgentTeamTaskRole.FRONTEND_EXECUTOR}:
-        return AgentTeamArtifactKind.PATCH_SUMMARY
-    return AgentTeamArtifactKind.HANDOFF
-
-
-def _test_evidence_for_run(run: Any) -> list[str]:
-    items = [f"delegated {run.execution_mode} run {run.run_id}: {run.status}"]
-    items.extend(_metadata_list_values(run, "test_evidence", "verification_evidence", "tests"))
-    return _dedupe(items)
-
-
-def _changed_files_for_run(run: Any) -> list[str]:
-    return _dedupe(_metadata_list_values(run, "changed_files", "modified_files", "files"))
-
-
-def _risk_notes_for_run(run: Any) -> list[str]:
-    items = [run.error] if getattr(run, "error", None) else []
-    items.extend(_metadata_list_values(run, "risk_notes", "risk_items", "risks"))
-    return _dedupe(items)
-
-
-def _metadata_list_values(run: Any, *keys: str) -> list[str]:
-    values: list[str] = []
-    payloads: list[Any] = [run.model_dump(mode="json") if hasattr(run, "model_dump") else {}]
-    payloads.extend(
-        getattr(artifact, "payload", None) for artifact in getattr(run, "artifacts", []) or []
-    )
-    for payload in payloads:
-        if not isinstance(payload, dict):
+def _pending_tool_approvals_for_session(
+    coordination_backend: Any | None,
+    *,
+    session: AgentTeamSession,
+) -> list[dict[str, Any]]:
+    approval_queue = getattr(coordination_backend, "approval_queue", None)
+    if not has_repo_method(approval_queue, "list_pending"):
+        return []
+    session_ids = {session.session_id, session.root_thread_id}
+    approvals = []
+    for request in approval_queue.list_pending():
+        if str(request.session_id) not in session_ids:
             continue
-        for key in keys:
-            raw = payload.get(key)
-            if isinstance(raw, str):
-                values.append(raw)
-            elif isinstance(raw, list):
-                values.extend(str(item) for item in raw if item)
-    return values
+        approvals.append(_tool_approval_payload(request))
+    return approvals
 
 
-def _scheduler_state(tasks: list[AgentTeamTask]) -> dict[str, object]:
-    done_ids = {task.task_id for task in tasks if task.status == AgentTeamTaskStatus.DONE}
-    blocked_ids = [task.task_id for task in tasks if _is_terminal_blocker(task)]
-    ready_ids = [
-        task.task_id
-        for task in tasks
-        if _is_runnable_task(task)
-        and all(dependency in done_ids for dependency in task.dependencies)
-    ]
-    waiting_ids = [
-        task.task_id
-        for task in tasks
-        if _is_runnable_task(task)
-        and any(dependency not in done_ids for dependency in task.dependencies)
-    ]
+def _tool_approval_payload(request: Any) -> dict[str, Any]:
+    status = getattr(request, "status", "pending")
+    status_value = getattr(status, "value", status)
     return {
-        "ready_task_ids": ready_ids,
-        "waiting_task_ids": waiting_ids,
-        "blocked_task_ids": blocked_ids,
-        "max_waves": _MAX_MISSION_SCHEDULER_WAVES,
-        "max_tasks": _MAX_MISSION_SCHEDULER_TASKS,
+        "request_id": str(getattr(request, "request_id", "")),
+        "session_id": str(getattr(request, "session_id", "")),
+        "agent_id": str(getattr(request, "agent_id", "")),
+        "tool_name": str(getattr(request, "tool_name", "")),
+        "tool_args": dict(getattr(request, "tool_args", {}) or {}),
+        "risk_level": str(getattr(request, "risk_level", "low") or "low"),
+        "status": str(status_value or "pending"),
+        "submitted_at": float(getattr(request, "submitted_at", 0.0) or 0.0),
+        "timeout_at": float(getattr(request, "timeout_at", 0.0) or 0.0),
+        "decided_by": getattr(request, "decided_by", None),
     }
-
-
-def _task_wave(task: AgentTeamTask, tasks: list[AgentTeamTask]) -> int:
-    by_id = {item.task_id: item for item in tasks}
-    seen: set[str] = set()
-
-    def depth(item: AgentTeamTask) -> int:
-        if item.task_id in seen:
-            return 1
-        seen.add(item.task_id)
-        parents = [by_id[dependency] for dependency in item.dependencies if dependency in by_id]
-        if not parents:
-            return 1
-        return 1 + max(depth(parent) for parent in parents)
-
-    return depth(task)
 
 
 __all__ = ["AgentTeamRunMixin"]

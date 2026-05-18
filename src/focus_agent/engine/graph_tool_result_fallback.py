@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -12,7 +13,6 @@ from ..core.types import ContextBudget
 from .graph_evidence import evidence_bundle_source_snippets, normalize_evidence_bundle
 from .graph_tool_history_repair import _message_text
 
-
 _TOOL_CALL_REPAIR_FALLBACK_TEXT = (
     "我已经拿到工具结果，但还没有足够可用的信息形成完整结论。请稍后重试，或换一个更稳定的模型。"
 )
@@ -23,6 +23,20 @@ _TOOL_RESULT_SYNTHESIS_NOTE = (
     "Use only the tool observations provided below. If the user wrote Chinese, answer in Chinese. "
     "Do not mention formatting failures or internal retries. State uncertainty plainly, and include "
     "dates, numbers, and source names when available."
+)
+
+
+_UNFOUND_ANSWER_MARKERS = (
+    "未找到",
+    "没有找到",
+    "找不到",
+    "无法确认",
+    "不能确认",
+    "not found",
+    "did not find",
+    "cannot confirm",
+    "can't confirm",
+    "could not confirm",
 )
 
 
@@ -153,6 +167,7 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
             payload = json.loads(raw)
         except json.JSONDecodeError:
             payload = None
+        prompt_payload = _prompt_observation_payload(message)
 
         call_id = str(getattr(message, "tool_call_id", "") or "")
         call = pending_calls.pop(call_id, None)
@@ -192,8 +207,11 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
                     path = result.get("path")
                     line_number = result.get("line_number")
                     line = result.get("line")
+                    context = result.get("context")
                     if path and line_number:
                         snippets.append(f"- {path}:{line_number} {_truncate_inline(line)}")
+                        if context:
+                            snippets.append(f"- {path}:{line_number} context: {_truncate_inline(context, max_chars=360)}")
                     elif path:
                         snippets.append(f"- {path} {_truncate_inline(line or result)}")
                     else:
@@ -214,10 +232,80 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
                 if start_line and end_line:
                     line_hint = f":{start_line}-{end_line}"
                 snippets.append(f"- {path}{line_hint}")
-        elif raw:
+        if isinstance(prompt_payload, dict):
+            refs = prompt_payload.get("refs")
+            if isinstance(refs, list):
+                for ref in refs[:8]:
+                    if ref:
+                        snippets.append(f"- 来源：{_truncate_inline(ref)}")
+            results = prompt_payload.get("results")
+            if isinstance(results, list):
+                for result in results[:8]:
+                    if not isinstance(result, dict):
+                        continue
+                    ref = str(result.get("ref") or "").strip()
+                    if ref:
+                        snippets.append(f"- 来源：{_truncate_inline(ref)}")
+                        continue
+                    path = result.get("path")
+                    line_number = result.get("line_number")
+                    if path and line_number:
+                        snippets.append(f"- {path}:{line_number}")
+                    elif path:
+                        snippets.append(f"- {path}")
+        elif not isinstance(payload, dict) and raw:
             snippets.append(f"- {_truncate_inline(raw)}")
 
     return list(dict.fromkeys(snippets))
+
+
+def _prompt_observation_payload(message: ToolMessage) -> Any | None:
+    artifact = getattr(message, "artifact", None)
+    if not isinstance(artifact, dict):
+        return None
+    prompt_observation = artifact.get("prompt_observation")
+    if not isinstance(prompt_observation, str) or not prompt_observation.strip():
+        return None
+    try:
+        return json.loads(prompt_observation)
+    except json.JSONDecodeError:
+        return None
+
+
+def _should_replace_unfound_workspace_answer(answer: str, source_messages: list[Any]) -> bool:
+    answer_text = " ".join(str(answer or "").lower().split())
+    if not answer_text or not any(marker in answer_text for marker in _UNFOUND_ANSWER_MARKERS):
+        return False
+
+    latest_turn = _latest_turn_messages(source_messages)
+    positive_result_seen = False
+    requested_terms = _workspace_lookup_terms(_latest_human_message_text(latest_turn))
+    for message in latest_turn:
+        if not isinstance(message, ToolMessage):
+            continue
+        raw = _message_text(message)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        if not isinstance(payload, dict):
+            continue
+        results = payload.get("results")
+        if isinstance(results, list) and results:
+            return True
+        content = str(payload.get("content") or "")
+        if content and requested_terms and any(term in content for term in requested_terms):
+            positive_result_seen = True
+    return positive_result_seen
+
+
+def _workspace_lookup_terms(text: str) -> set[str]:
+    terms = {
+        token
+        for token in re.findall(r"(?<![\w.])\.?[A-Za-z_][A-Za-z0-9_]{2,}(?![\w.])", text)
+        if "/" not in token and token not in {"src", "py"}
+    }
+    return terms
 
 
 def _tool_result_synthesis_prompt(source_messages: list[Any]) -> list[Any]:
@@ -300,6 +388,7 @@ __all__ = [
     "_tool_observation_summary",
     "_tool_result_snippets",
     "_tool_result_synthesis_prompt",
+    "_should_replace_unfound_workspace_answer",
     "_has_tool_result_messages",
     "_tool_result_fallback_message",
     "_invoke_tool_result_synthesis",

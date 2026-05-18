@@ -5,10 +5,18 @@ import time
 from focus_agent.services.coordination import (
     BackgroundJobClaim,
     BackgroundJobSpec,
+    InMemoryAgentMessageBus,
+    InMemoryApprovalQueue,
     InMemoryBackgroundJobDeduperBackend,
+    InMemoryResourceLockManager,
     InMemoryThreadTurnLockBackend,
+    PostgresAgentMessageBus,
+    PostgresApprovalQueue,
     PostgresBackgroundJobDeduperBackend,
+    PostgresResourceLockManager,
     PostgresThreadTurnLockBackend,
+    create_coordination_backend,
+    create_in_memory_coordination_backend,
 )
 
 
@@ -28,8 +36,30 @@ def test_in_memory_thread_turn_lock_respects_owner_and_ttl() -> None:
     assert backend.acquire_thread_turn(thread_id="thread-expiring", owner="owner-b", ttl_seconds=1.0)
 
 
+def test_coordination_backend_includes_in_memory_multi_agent_ports() -> None:
+    backend = create_in_memory_coordination_backend()
+
+    assert isinstance(backend.resource_locks, InMemoryResourceLockManager)
+    assert isinstance(backend.message_bus, InMemoryAgentMessageBus)
+    assert isinstance(backend.approval_queue, InMemoryApprovalQueue)
+
+
+def test_coordination_backend_uses_postgres_multi_agent_ports_when_enabled() -> None:
+    backend = create_coordination_backend(
+        database_uri="postgresql://example/db",
+        multi_agent_enabled=True,
+        multi_agent_message_ttl_seconds=123,
+    )
+
+    assert isinstance(backend.thread_turns, PostgresThreadTurnLockBackend)
+    assert isinstance(backend.resource_locks, PostgresResourceLockManager)
+    assert isinstance(backend.message_bus, PostgresAgentMessageBus)
+    assert isinstance(backend.approval_queue, PostgresApprovalQueue)
+    assert backend.message_bus.default_ttl_seconds == 123
+
+
 def test_in_memory_background_job_heartbeats_and_rejects_stale_claims() -> None:
-    backend = InMemoryBackgroundJobDeduperBackend()
+    backend = InMemoryBackgroundJobDeduperBackend(retry_base_delay_seconds=0.0)
     spec = BackgroundJobSpec(
         kind="conversation_title",
         key="chat:conversation_title:thread-1",
@@ -75,6 +105,38 @@ def test_in_memory_background_job_does_not_duplicate_live_pending_claim() -> Non
 
     assert first_claimed is not None
     assert backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0) is None
+
+
+def test_in_memory_background_job_retries_with_backoff_then_dead_letters() -> None:
+    backend = InMemoryBackgroundJobDeduperBackend(retry_base_delay_seconds=0.0)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-retry",
+        payload={"root_thread_id": "thread-retry", "user_id": "user-1"},
+        max_attempts=2,
+    )
+
+    assert backend.enqueue_job(spec)
+    first_claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    assert first_claimed is not None
+    _, first_claim = first_claimed
+    backend.mark_job_claim_failed(spec.key, first_claim, "transient")
+
+    snapshot = backend.snapshot()
+    assert snapshot["job_retrying_total"] == 1
+    assert snapshot["job_dead_lettered_total"] == 0
+    assert snapshot["job_oldest_retry_seconds"] >= 0
+
+    second_claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    assert second_claimed is not None
+    _, second_claim = second_claimed
+    assert second_claim.attempt == 2
+    backend.mark_job_claim_failed(spec.key, second_claim, "permanent")
+
+    snapshot = backend.snapshot()
+    assert snapshot["job_retrying_total"] == 0
+    assert snapshot["job_dead_lettered_total"] == 1
+    assert snapshot["job_oldest_dead_lettered_seconds"] >= 0
 
 
 def test_postgres_thread_turn_lock_uses_owner_ttl_heartbeat_and_release(monkeypatch) -> None:
@@ -192,10 +254,10 @@ def test_postgres_background_job_backend_claim_retry_release_and_metrics(monkeyp
     assert "SET claimed_until = %s" in statements[2]
     assert "WHERE job_key = %s AND claimed_by = %s AND claim_token = %s" in statements[2]
     assert "claimed_until > now()" in statements[2]
-    assert "WHEN attempt >= max_attempts THEN 'failed'" in statements[3]
-    assert "ELSE 'pending'" in statements[3]
+    assert "WHEN attempt >= max_attempts THEN 'dead_lettered'" in statements[3]
+    assert "ELSE 'retrying'" in statements[3]
+    assert "make_interval" in statements[3]
     assert "claim_token = %s" in statements[3]
-    assert "claimed_until > now()" in statements[3]
     assert "status = 'released'" in statements[4]
     assert "claim_token = %s" in statements[4]
     assert executed[0][1][0] == "chat:context_compaction:thread-1"
@@ -203,10 +265,11 @@ def test_postgres_background_job_backend_claim_retry_release_and_metrics(monkeyp
     assert executed[0][1][2] == "worker-1"
     assert isinstance(executed[0][1][4], str)
     assert executed[2][1][1:] == ("chat:context_compaction:thread-1", "worker-1", "claim-token-1")
-    assert executed[3][1] == ("busy", "chat:context_compaction:thread-1", "worker-1", "claim-token-1")
+    assert executed[3][1][2:] == ("busy", "chat:context_compaction:thread-1", "worker-1", "claim-token-1")
     assert snapshot["job_backend_durable"] == 1
     assert snapshot["job_pending_total"] == 1
     assert snapshot["job_failed_total"] == 1
+    assert snapshot["job_dead_lettered_total"] == 0
     assert snapshot["job_attempt_total"] == 5
 
 
@@ -253,7 +316,9 @@ def test_postgres_background_job_heartbeat_guards_claim_and_extends_ttl(monkeypa
     assert backend.heartbeat_job_claim("chat:branch_title:thread-1", claim, ttl_seconds=30.0)
 
     statement = " ".join(executed[0][0].split())
-    assert "UPDATE focus_background_jobs SET claimed_until = %s, updated_at = now()" in statement
+    assert "UPDATE focus_background_jobs SET claimed_until = %s" in statement
+    assert "last_heartbeat_at = now()" in statement
+    assert "updated_at = now()" in statement
     assert "WHERE job_key = %s AND claimed_by = %s AND claim_token = %s" in statement
     assert "status = 'running'" in statement
     assert "claimed_until > now()" in statement
@@ -377,6 +442,7 @@ def test_postgres_background_job_backend_enqueues_and_claims_specs(monkeypatch) 
     assert "claim_token" in statements[0]
     assert "FOR UPDATE SKIP LOCKED" in statements[2]
     assert "kind = ANY(%s)" in statements[2]
+    assert "status IN ('pending', 'retrying')" in statements[2]
     assert "claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now()" in statements[2]
     assert "SET status = 'running'" in statements[2]
     assert "claim_token = %s" in statements[2]

@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from ..schema import EvalCase, JudgeVerdict, TrajectoryStep
-
 
 _JUDGE_SYSTEM_PROMPT = """You are an evaluator for an AI agent. Given a user task,
 the agent's final answer, and its tool-call trace, decide whether the answer satisfies

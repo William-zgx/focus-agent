@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass, field
 import inspect
 import re
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 from langchain.tools import tool
 
 from ..config import Settings
 from ..skills import SkillRegistry
-from ..skills.registry import render_skill_view_json, render_skills_list_json
+from ..skills.registry import (
+    render_skill_install_json,
+    render_skill_sources_json,
+    render_skill_view_json,
+    render_skills_list_json,
+    render_skills_refresh_index_json,
+    render_skills_search_json,
+)
 from .default_tools import get_default_tools
 from .tool_manifest import StaticToolProvider, ToolManifest, ToolProvider, normalize_tool_metadata
 
@@ -28,6 +35,7 @@ class ToolProviderFactoryContext:
     artifact_metadata_repository: Any = None
     memory_repository: Any = None
     memory_embedding_service: Any = None
+    productivity_repository: Any = None
 
 
 ToolProviderFactory = Callable[[ToolProviderFactoryContext], ToolProvider]
@@ -240,6 +248,7 @@ def build_tool_registry(
     artifact_metadata_repository=None,
     memory_repository=None,
     memory_embedding_service=None,
+    productivity_repository=None,
     explicit_providers: Iterable[ToolProvider] | None = None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None = None,
 ) -> ToolRegistry:
@@ -251,6 +260,7 @@ def build_tool_registry(
         artifact_metadata_repository=artifact_metadata_repository,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
+        productivity_repository=productivity_repository,
         explicit_providers=explicit_providers,
         explicit_provider_factories=explicit_provider_factories,
     )
@@ -288,6 +298,7 @@ def _build_controlled_tool_provider_registry(
     artifact_metadata_repository: Any,
     memory_repository: Any,
     memory_embedding_service: Any,
+    productivity_repository: Any,
     explicit_providers: Iterable[ToolProvider] | None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None,
 ) -> tuple[ToolProvider, ...]:
@@ -299,6 +310,7 @@ def _build_controlled_tool_provider_registry(
         artifact_metadata_repository=artifact_metadata_repository,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
+        productivity_repository=productivity_repository,
     )
     registered: dict[str, tuple[int, ToolProvider]] = {}
     explicit_provider_list = tuple(explicit_providers or ())
@@ -425,6 +437,51 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         """Load the full instructions for a named skill."""
         return render_skill_view_json(skill_registry, skill_id=name)
 
+    @tool
+    def skills_search(
+        query: str,
+        scope: str = "installed",
+        sources: list[str] | None = None,
+        limit: int | None = None,
+    ) -> str:
+        """Search installed and configured skill sources for relevant capabilities."""
+        default_limit = settings.tool_catalog.skills_search.default_limit
+        max_limit = settings.tool_catalog.skills_search.max_limit_cap
+        resolved_limit = max(0, min(max_limit, int(limit or default_limit)))
+        return render_skills_search_json(
+            skill_registry,
+            query=query,
+            scope=scope,
+            sources=sources or (),
+            limit=resolved_limit,
+        )
+
+    @tool
+    def skill_install(
+        skill_id: str,
+        source_id: str = "installed",
+        version: str | None = None,
+        mode: str | None = None,
+    ) -> str:
+        """Install a trusted local skill or report that external review is required."""
+        return render_skill_install_json(
+            skill_registry,
+            skill_id=skill_id,
+            source_id=source_id,
+            version=version,
+            mode=mode or getattr(settings, "skill_install_mode", "project"),
+        )
+
+    @tool
+    def skills_refresh_index(sources: list[str] | None = None) -> str:
+        """Refresh the runtime skill index after project or source changes."""
+        return render_skills_refresh_index_json(skill_registry, sources=sources or ())
+
+    @tool
+    def skill_sources() -> str:
+        """List configured skill sources and trust metadata."""
+        return render_skill_sources_json(skill_registry)
+
     skills_list.description = settings.tool_catalog.skills_list.description
     skills_list.metadata = {
         "display_name": settings.tool_catalog.skills_list.label,
@@ -445,12 +502,65 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         "toolset": "skill",
         "intent_policies": ("workspace_lookup", "execution"),
     }
+    skills_search.description = settings.tool_catalog.skills_search.description
+    skills_search.metadata = {
+        "display_name": settings.tool_catalog.skills_search.label,
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+        "max_observation_chars": 8000,
+        "toolset": "skill",
+        "intent_policies": ("workspace_lookup", "planning", "execution"),
+    }
+    skill_install.description = settings.tool_catalog.skill_install.description
+    skill_install.metadata = {
+        "display_name": settings.tool_catalog.skill_install.label,
+        "parallel_safe": False,
+        "side_effect": True,
+        "side_effect_kind": "workspace_write",
+        "requires_workspace_write": True,
+        "requires_approval": False,
+        "risk_level": "medium",
+        "max_observation_chars": 8000,
+        "toolset": "skill",
+        "intent_policies": ("planning", "execution"),
+    }
+    skills_refresh_index.description = settings.tool_catalog.skills_refresh_index.description
+    skills_refresh_index.metadata = {
+        "display_name": settings.tool_catalog.skills_refresh_index.label,
+        "parallel_safe": False,
+        "cacheable": False,
+        "side_effect": True,
+        "side_effect_kind": "runtime_index_refresh",
+        "risk_level": "low",
+        "max_observation_chars": 8000,
+        "toolset": "skill",
+        "intent_policies": ("workspace_lookup", "planning"),
+    }
+    skill_sources.description = settings.tool_catalog.skill_sources.description
+    skill_sources.metadata = {
+        "display_name": settings.tool_catalog.skill_sources.label,
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+        "max_observation_chars": 6000,
+        "toolset": "skill",
+        "intent_policies": ("workspace_lookup", "planning"),
+    }
 
     tools: list[Any] = []
     if settings.tool_catalog.skills_list.enabled:
         tools.append(skills_list)
     if settings.tool_catalog.skill_view.enabled:
         tools.append(skill_view)
+    if settings.tool_catalog.skills_search.enabled:
+        tools.append(skills_search)
+    if settings.tool_catalog.skill_install.enabled:
+        tools.append(skill_install)
+    if settings.tool_catalog.skills_refresh_index.enabled:
+        tools.append(skills_refresh_index)
+    if settings.tool_catalog.skill_sources.enabled:
+        tools.append(skill_sources)
     return tools
 
 
@@ -472,6 +582,8 @@ def _call_default_tools(context: ToolProviderFactoryContext) -> list[Any]:
         kwargs["memory_repository"] = context.memory_repository
     if "memory_embedding_service" in signature.parameters:
         kwargs["memory_embedding_service"] = context.memory_embedding_service
+    if "productivity_repository" in signature.parameters:
+        kwargs["productivity_repository"] = context.productivity_repository
     return get_default_tools(context.settings, **kwargs)
 
 

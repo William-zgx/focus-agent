@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, AsyncIterator, Literal
+from collections.abc import AsyncIterator
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -28,9 +29,14 @@ from focus_agent.harness.runtime.rollback import (
     CheckpointRollbackTarget,
     capture_checkpoint_rollback_target,
 )
-from focus_agent.harness.streaming import END_SENTINEL, HEARTBEAT_SENTINEL, canonical_event_payload, sse_frame
-from focus_agent.observability.trajectory import utc_now
+from focus_agent.harness.streaming import (
+    END_SENTINEL,
+    HEARTBEAT_SENTINEL,
+    canonical_event_payload,
+    sse_frame,
+)
 from focus_agent.observability.tracing import build_invoke_config, build_trace_correlation
+from focus_agent.observability.trajectory import utc_now
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
 from focus_agent.transport.stream_events import (
@@ -43,12 +49,27 @@ from focus_agent.transport.stream_events import (
     looks_like_stream_visible_text_artifact,
     map_custom_payload_to_event,
     safe_stream_visible_text_transition,
-    sanitize_stream_visible_text,
     sanitize_stream_metadata,
+    sanitize_stream_visible_text,
     stream_visibility_phase_from_metadata,
 )
 
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
+from ..route_utils.harness_run_helpers import (
+    _canonical_custom_event,
+    _canonical_payload_extras,
+    _event_store_for_runtime,
+    _get_persisted_run,
+    _is_tool_result_fallback_visible_delta,
+    _journal_method,
+    _journal_method_optional,
+    _json_safe,
+    _run_record_payload,
+    _safe_completed_visible_text,
+    _should_hide_completed_visible_text,
+    _source_node,
+    _tool_result_is_error,
+)
 
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 logger = logging.getLogger("focus_agent.api.harness_runs")
@@ -56,9 +77,6 @@ logger = logging.getLogger("focus_agent.api.harness_runs")
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
-_TOOL_RESULT_FALLBACK_VISIBLE_PREFIX = "我先根据已拿到的工具结果给出一个保守整理："
-
-
 class HarnessRunRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -1261,7 +1279,7 @@ async def _await_rollback_completion(
             rollback_completed.wait(),
             timeout=_ROLLBACK_CLOSE_WAIT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "Timed out waiting for rollback completion before closing run stream %s",
             run_id,
@@ -1295,65 +1313,6 @@ async def _close_run_stream(
         ),
     )
     await runtime.stream_bridge.publish_end(run_id)
-
-
-def _source_node(metadata: dict[str, Any], namespace: list[str]) -> str:
-    return str(metadata.get("langgraph_node") or (namespace[-1] if namespace else "") or "harness")
-
-
-def _canonical_custom_event(event: str, payload: dict[str, Any]) -> str:
-    if event in {"tool.requested", "tool.result", "tool.error"}:
-        if not (payload.get("tool_call_id") or payload.get("id")):
-            return "state.update"
-        return event
-    if event in {"run.status", "state.update"}:
-        return event
-    return "state.update"
-
-
-def _canonical_payload_extras(data: dict[str, Any]) -> dict[str, Any]:
-    reserved = {"run_id", "thread_id", "turn_id", "sequence", "source_node"}
-    return {key: value for key, value in data.items() if key not in reserved}
-
-
-def _tool_result_is_error(item: dict[str, Any]) -> bool:
-    content = str(item.get("content") or "").lower()
-    return '"status": "error"' in content or '"status":"error"' in content
-
-
-def _is_tool_result_fallback_visible_delta(delta: str) -> bool:
-    return delta.lstrip().startswith(_TOOL_RESULT_FALLBACK_VISIBLE_PREFIX)
-
-
-def _should_hide_completed_visible_text(text: str) -> bool:
-    return not sanitize_stream_visible_text(text)
-
-
-def _safe_completed_visible_text(text: str) -> str:
-    return sanitize_stream_visible_text(text)
-
-
-def _json_safe(value: Any) -> Any:
-    if hasattr(value, "value") and hasattr(value, "interrupts"):
-        return _json_safe(value.value)
-    if hasattr(value, "model_dump"):
-        try:
-            return value.model_dump(mode="json")
-        except Exception:  # noqa: BLE001
-            return str(value)
-    if isinstance(value, dict):
-        return {str(key): _json_safe(nested) for key, nested in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return str(value)
-
-
-def _run_record_payload(record: Any) -> dict[str, Any]:
-    if hasattr(record, "to_dict"):
-        return _json_safe(record.to_dict())
-    return _json_safe(record)
 
 
 def _harness_run_response(
@@ -1390,26 +1349,6 @@ async def _load_authorized_run_payload(
     return run_payload
 
 
-def _event_store_for_runtime(runtime: AppRuntime) -> Any:
-    return getattr(runtime, "event_store", None) or getattr(
-        getattr(runtime, "harness", None),
-        "event_store",
-        None,
-    )
-
-
-def _journal_method(runtime: AppRuntime, name: str) -> Any:
-    method = _journal_method_optional(runtime, name)
-    if method is None:
-        raise HTTPException(status_code=503, detail="Harness run journal is unavailable.")
-    return method
-
-
-def _journal_method_optional(runtime: AppRuntime, name: str) -> Any:
-    event_store = _event_store_for_runtime(runtime)
-    return getattr(event_store, name) if has_repo_method(event_store, name) else None
-
-
 def _authorize_run_access(
     *,
     chat: ChatService,
@@ -1431,18 +1370,6 @@ def _authorize_run_access(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
-async def _get_persisted_run(runtime: AppRuntime, run_id: str) -> dict[str, Any] | None:
-    get_run = _journal_method_optional(runtime, "get_run")
-    if get_run is None:
-        return None
-    run = await get_run(run_id)
-    if run is None:
-        return None
-    if hasattr(run, "to_dict"):
-        return _json_safe(run.to_dict())
-    return _json_safe(run)
 
 
 def _run_event_streaming_response(
@@ -1496,3 +1423,25 @@ def _run_event_streaming_response(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+__all__ = [
+    "_canonical_custom_event",
+    "_canonical_payload_extras",
+    "_event_store_for_runtime",
+    "_get_persisted_run",
+    "_is_tool_result_fallback_visible_delta",
+    "_journal_method",
+    "_journal_method_optional",
+    "_json_safe",
+    "_run_record_payload",
+    "_safe_completed_visible_text",
+    "_should_hide_completed_visible_text",
+    "_source_node",
+    "_tool_result_is_error",
+    "HarnessResumeRequest",
+    "HarnessRunCancelRequest",
+    "HarnessRunRequest",
+    "HarnessRunResponse",
+    "router",
+]

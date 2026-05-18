@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 
-import type { SortMode, StatusMode } from "@/features/trajectory-observability/trajectory-utils";
+import type {
+	SortMode,
+	StatusMode,
+} from "@/features/trajectory-observability/trajectory-utils";
 
 type UseTrajectoryUrlSyncProps = {
 	statusFilter: StatusMode;
@@ -35,7 +38,11 @@ function syncParam(
 	defaultValue?: string | boolean,
 ) {
 	const normalized =
-		typeof value === "boolean" ? (value ? BOOLEAN_TRUE : BOOLEAN_FALSE) : value.trim();
+		typeof value === "boolean"
+			? value
+				? BOOLEAN_TRUE
+				: BOOLEAN_FALSE
+			: value.trim();
 	const normalizedDefault = normalizeDefaultValue(defaultValue);
 	if (!normalized || normalized === normalizedDefault) {
 		params.delete(key);
@@ -55,7 +62,7 @@ export function useTrajectoryUrlSync({
 	sortMode,
 	statusFilter,
 	threadFilter,
-toolFilter,
+	toolFilter,
 	traceFilter,
 }: UseTrajectoryUrlSyncProps) {
 	useEffect(() => {
@@ -90,7 +97,7 @@ toolFilter,
 		sortMode,
 		statusFilter,
 		threadFilter,
-	toolFilter,
+		toolFilter,
 		traceFilter,
 	]);
 }

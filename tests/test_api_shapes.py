@@ -13,38 +13,39 @@ from focus_agent.api.route_utils.token_usage import (
     _token_usage_for_root_thread,
 )
 from focus_agent.api.schemas import (
-    AgentRoleDecisionListResponse,
-    AgentRoleDryRunRequest,
-    AgentRoleDryRunResponse,
-    AgentRolePolicyResponse,
-    AgentDelegationPlanRequest,
-    AgentDelegationPlanResponse,
-    AgentDelegationPolicyResponse,
-    AgentDelegationRunListResponse,
-    AgentModelRouteRequest,
-    AgentModelRouteResponse,
-    AgentModelRouterDecisionListResponse,
-    AgentModelRouterPolicyResponse,
-    AgentReviewQueueDecisionResponse,
-    AgentReviewQueueListResponse,
+    AgentArtifactListResponse,
+    AgentArtifactSynthesisRequest,
+    AgentArtifactSynthesisResponse,
     AgentContextArtifactListResponse,
     AgentContextDecisionListResponse,
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
-    AgentArtifactListResponse,
-    AgentArtifactSynthesisRequest,
-    AgentArtifactSynthesisResponse,
     AgentCriticEvaluateRequest,
     AgentCriticEvaluateResponse,
     AgentCriticVerdictListResponse,
+    AgentDelegationPlanRequest,
+    AgentDelegationPlanResponse,
+    AgentDelegationPolicyResponse,
+    AgentDelegationRunListResponse,
+    AgentModelRouterDecisionListResponse,
+    AgentModelRouteRequest,
+    AgentModelRouteResponse,
+    AgentModelRouterPolicyResponse,
+    AgentReviewQueueDecisionResponse,
+    AgentReviewQueueListResponse,
+    AgentRoleDecisionListResponse,
+    AgentRoleDryRunRequest,
+    AgentRoleDryRunResponse,
+    AgentRolePolicyResponse,
+    AgentSelfRepairFailureListResponse,
+    AgentSelfRepairPromotePreviewRequest,
+    AgentSelfRepairPromotePreviewResponse,
     AgentTaskLedgerPlanRequest,
     AgentTaskLedgerPlanResponse,
     AgentTaskLedgerPolicyResponse,
     AgentTaskLedgerRunListResponse,
-    AgentSelfRepairFailureListResponse,
-    AgentSelfRepairPromotePreviewRequest,
-    AgentSelfRepairPromotePreviewResponse,
+    BackgroundJobSummaryResponse,
     BranchActionExecuteResponse,
     BranchActionNavigation,
     BranchActionProposal,
@@ -55,20 +56,20 @@ from focus_agent.api.schemas import (
     CreateConversationRequest,
     ForkBranchRequest,
     ModelCatalogResponse,
-    TrajectoryBatchPromotionPreviewRequest,
-    TrajectoryBatchPromotionPreviewResponse,
-    TrajectoryBatchReplayCompareRequest,
-    TrajectoryBatchReplayCompareResponse,
-    TrajectoryPromotionResponse,
-    TrajectoryPromotionRequest,
-    TrajectoryReplayResponse,
-    TrajectoryReplayRequest,
-    TrajectoryTurnListResponse,
-    TrajectoryTurnStatsEnvelopeResponse,
     ThreadContextCompactRequest,
     ThreadContextPreviewRequest,
     ThreadContextPreviewResponse,
     ThreadStateResponse,
+    TrajectoryBatchPromotionPreviewRequest,
+    TrajectoryBatchPromotionPreviewResponse,
+    TrajectoryBatchReplayCompareRequest,
+    TrajectoryBatchReplayCompareResponse,
+    TrajectoryPromotionRequest,
+    TrajectoryPromotionResponse,
+    TrajectoryReplayRequest,
+    TrajectoryReplayResponse,
+    TrajectoryTurnListResponse,
+    TrajectoryTurnStatsEnvelopeResponse,
     UpdateBranchNameRequest,
     UpdateConversationRequest,
 )
@@ -167,6 +168,28 @@ def test_model_catalog_response_shape():
     assert dumped["models"][0]["name"] == "kimi-k2.6"
     assert dumped["models"][0]["supports_thinking"] is True
     assert dumped["models"][0]["default_thinking_enabled"] is True
+
+
+def test_background_job_summary_contract_shape():
+    response = BackgroundJobSummaryResponse(
+        generated_at="2026-05-14T00:00:00Z",
+        status="degraded",
+        ready=False,
+        metrics={
+            "job_pending_total": 1,
+            "job_retrying_total": 2,
+            "job_dead_lettered_total": 1,
+            "job_oldest_pending_seconds": 1200,
+        },
+        warnings=["dead_lettered=1", "oldest_pending_seconds=1200"],
+    )
+
+    dumped = response.model_dump(mode="json")
+
+    assert dumped["status"] == "degraded"
+    assert dumped["ready"] is False
+    assert dumped["metrics"]["job_retrying_total"] == 2
+    assert dumped["warnings"] == ["dead_lettered=1", "oldest_pending_seconds=1200"]
 
 
 def test_thread_context_usage_contract_shape_is_separate_from_token_usage():
@@ -295,8 +318,6 @@ def test_agent_role_contract_shapes():
     from focus_agent.api.contracts import (
         AgentCapabilityListResponse,
         AgentCapabilityResponse,
-        AgentToolsetListResponse,
-        AgentToolsetResponse,
         AgentMemoryCuratorDecisionListResponse,
         AgentMemoryCuratorEvaluateRequest,
         AgentMemoryCuratorEvaluateResponse,
@@ -304,6 +325,8 @@ def test_agent_role_contract_shapes():
         AgentToolRouteDecisionListResponse,
         AgentToolRouteRequest,
         AgentToolRouteResponse,
+        AgentToolsetListResponse,
+        AgentToolsetResponse,
     )
 
     capabilities = AgentCapabilityListResponse(
@@ -431,7 +454,7 @@ def test_agent_role_contract_shapes():
     assert promote_response.preview["candidates"] == []
     assert review_queue.items[0]["item_id"] == "review-1"
     assert review_response.item["status"] == "approved"
-    assert context_policy.tokenizer_mode == "chars_fallback"
+    assert context_policy.tokenizer_mode == "tokenizer_first"
     assert context_preview_request.prompt_mode == "explore"
     assert context_preview.decision["budget"]["prompt_chars"] == 12
     assert context_decisions.count == 1
@@ -816,6 +839,7 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/conversations/{root_thread_id:path}/activate" in route_paths
     assert "/readyz" in route_paths
     assert "/metrics" in route_paths
+    assert "/v1/admin/background-jobs/summary" in route_paths
     assert "/v1/agent/roles/policy" in route_paths
     assert "/v1/agent/roles/dry-run" in route_paths
     assert "/v1/agent/roles/decisions" in route_paths
@@ -846,6 +870,15 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/observability/trajectory/batch/promote-preview" in route_paths
     assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
+    assert "/v1/agent-team/sessions/{session_id}/tool-approvals" in route_paths
+    assert (
+        "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve"
+        in route_paths
+    )
+    assert (
+        "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject"
+        in route_paths
+    )
     assert "/v2/threads/{thread_id:path}/runs" in route_paths
     assert "/v2/threads/{thread_id:path}/runs/stream" in route_paths
     assert "/v2/threads/{thread_id:path}/runs/resume/stream" in route_paths

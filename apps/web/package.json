@@ -7,10 +7,14 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "lint": "pnpm dlx @biomejs/biome@2.2.4 lint src/entities src/features/trajectory-observability",
+    "lint:full": "pnpm dlx @biomejs/biome@2.2.4 lint src",
     "format": "pnpm run format:write",
     "format:write": "pnpm dlx @biomejs/biome@2.2.4 format --write src/entities src/features/trajectory-observability",
     "format:check": "pnpm dlx @biomejs/biome@2.2.4 format src/entities src/features/trajectory-observability",
+    "format:check:full": "pnpm dlx @biomejs/biome@2.2.4 format src",
     "smoke:observability": "node ./scripts/observability-smoke.mjs",
+    "smoke:productivity": "node ./scripts/productivity-smoke.mjs",
+    "smoke:agent-team-adoption": "node ./scripts/agent-team-adoption-smoke.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

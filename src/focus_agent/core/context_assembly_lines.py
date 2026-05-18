@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-from typing import Any, Iterable
-
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
 _LINE_SCORE_RE = re.compile(r"\[score\s+([0-9.]+)\]\s*$", re.IGNORECASE)
 

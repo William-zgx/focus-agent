@@ -51,7 +51,6 @@ from .graph_tool_result_fallback import (
     _truncate_inline,
 )
 
-
 __all__ = [
     "_MAX_CONSECUTIVE_TOOL_CALL_ROUNDS",
     "_TOOL_EXHAUSTION_NOTE",

@@ -1,41 +1,43 @@
 import type { PropsWithChildren, ReactNode } from "react";
 
 export function AdminPanelHeader({
-  eyebrow,
-  title,
-  status,
+	eyebrow,
+	title,
+	status,
 }: {
-  eyebrow: string;
-  title: string;
-  status?: ReactNode;
+	eyebrow: string;
+	title: string;
+	status?: ReactNode;
 }) {
-  return (
-    <div className="fa-observability-panel-header">
-      <div>
-        <strong>{eyebrow}</strong>
-        <h2>{title}</h2>
-      </div>
-      {status ? <div className="fa-admin-panel-header-status">{status}</div> : null}
-    </div>
-  );
+	return (
+		<div className="fa-observability-panel-header">
+			<div>
+				<strong>{eyebrow}</strong>
+				<h2>{title}</h2>
+			</div>
+			{status ? (
+				<div className="fa-admin-panel-header-status">{status}</div>
+			) : null}
+		</div>
+	);
 }
 
 export function AdminField({
-  label,
-  children,
+	label,
+	children,
 }: PropsWithChildren<{ label: ReactNode }>) {
-  return (
-    // biome-ignore lint/a11y/noLabelWithoutControl: concrete callers always pass an input/select/textarea as children.
-    <label className="fa-observability-filter">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
+	return (
+		// biome-ignore lint/a11y/noLabelWithoutControl: concrete callers always pass an input/select/textarea as children.
+		<label className="fa-observability-filter">
+			<span>{label}</span>
+			{children}
+		</label>
+	);
 }
 
 export function AdminFiltersRow({
-  children,
-  className = "fa-observability-filters fa-admin-filters",
+	children,
+	className = "fa-observability-filters fa-admin-filters",
 }: PropsWithChildren<{ className?: string }>) {
-  return <div className={className}>{children}</div>;
+	return <div className={className}>{children}</div>;
 }

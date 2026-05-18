@@ -11,7 +11,6 @@ from focus_agent.repositories.user_repository import UserRepository
 from focus_agent.security.passwords import hash_password, password_needs_rehash, verify_password
 from focus_agent.security.tokens import Principal, create_access_token
 
-
 ERROR_INVALID_CREDENTIALS = "invalid_credentials"
 ERROR_ACCOUNT_LOCKED = "account_locked"
 ERROR_USERNAME_TAKEN = "username_taken"

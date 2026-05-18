@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -23,17 +23,17 @@ from ..contracts import (
     TrajectoryTurnStatsResponse,
 )
 from ..deps import get_app_runtime, get_current_principal
-from ..route_utils.observability_filters import (
-    ObservabilityTrajectoryParams,
-    observability_trajectory_list_params,
-    observability_trajectory_params,
-)
 from ..route_utils.observability_actions import (
     build_batch_promotion_preview_response,
     build_batch_replay_compare_response,
     build_trajectory_promotion_response,
     build_trajectory_replay_response,
     load_exported_turn,
+)
+from ..route_utils.observability_filters import (
+    ObservabilityTrajectoryParams,
+    observability_trajectory_list_params,
+    observability_trajectory_params,
 )
 from ..route_utils.readiness import _build_runtime_readiness
 from ..route_utils.trajectory import (
@@ -73,7 +73,7 @@ def get_observability_overview(
         else:
             trajectory_available = True
     return ObservabilityOverviewResponse(
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         filters=filters,
         runtime=runtime_status,
         trajectory_available=trajectory_available,

@@ -4,7 +4,10 @@ import type {
 	MergeTarget,
 } from "@focus-agent/web-sdk";
 
-import type { MergeReviewDecision, MergeReviewDraft } from "./merge-review-utils";
+import type {
+	MergeReviewDecision,
+	MergeReviewDraft,
+} from "./merge-review-utils";
 import {
 	mergeReviewStatusLabel,
 	modeOptionLabel,
@@ -15,7 +18,9 @@ import {
 type MergeReviewDraftField = keyof MergeReviewDraft;
 
 function updateDraftField<K extends MergeReviewDraftField>(
-	onDraftChange: (next: (current: MergeReviewDraft) => MergeReviewDraft) => void,
+	onDraftChange: (
+		next: (current: MergeReviewDraft) => MergeReviewDraft,
+	) => void,
 	field: K,
 	value: MergeReviewDraft[K],
 ) {
@@ -39,7 +44,9 @@ function MergeReviewTextSection({
 	isChineseUi: boolean;
 	labelEn: string;
 	labelZh: string;
-	onDraftChange: (next: (current: MergeReviewDraft) => MergeReviewDraft) => void;
+	onDraftChange: (
+		next: (current: MergeReviewDraft) => MergeReviewDraft,
+	) => void;
 	placeholderEn: string;
 	placeholderZh: string;
 	value: string;
@@ -124,7 +131,9 @@ export function MergeReviewProposalForm({
 	isSubmitting: boolean;
 	modeOptions: Array<{ label: string; value: MergeMode }>;
 	onClose?: () => void | Promise<void>;
-	onDraftChange: (next: (current: MergeReviewDraft) => MergeReviewDraft) => void;
+	onDraftChange: (
+		next: (current: MergeReviewDraft) => MergeReviewDraft,
+	) => void;
 	onSubmit: () => void;
 	pendingStatus?: string;
 	proposal: FocusAgentMergeProposal;
@@ -137,7 +146,9 @@ export function MergeReviewProposalForm({
 		<>
 			{branchName || pendingStatus ? (
 				<div className="fa-focus-modal-note">
-					{branchName ? `${isChineseUi ? "分支" : "Branch"}: ${branchName}` : null}
+					{branchName
+						? `${isChineseUi ? "分支" : "Branch"}: ${branchName}`
+						: null}
 					{branchName && pendingStatus ? " · " : null}
 					{pendingStatus
 						? `${isChineseUi ? "状态" : "Status"}: ${mergeReviewStatusLabel(
@@ -199,7 +210,10 @@ export function MergeReviewProposalForm({
 			/>
 
 			<div className="fa-focus-modal-note">
-				{recommendedImportModeLabel(proposal.recommended_import_mode, isChineseUi)}
+				{recommendedImportModeLabel(
+					proposal.recommended_import_mode,
+					isChineseUi,
+				)}
 			</div>
 
 			<div className="fa-focus-modal-form">
@@ -224,7 +238,11 @@ export function MergeReviewProposalForm({
 					<span>{isChineseUi ? "导入方式" : "Import mode"}</span>
 					<select
 						onChange={(event) =>
-							updateDraftField(onDraftChange, "mode", event.target.value as MergeMode)
+							updateDraftField(
+								onDraftChange,
+								"mode",
+								event.target.value as MergeMode,
+							)
 						}
 						value={draft.mode}
 					>
@@ -283,7 +301,9 @@ export function MergeReviewProposalForm({
 						onChange={(event) =>
 							updateDraftField(onDraftChange, "rationale", event.target.value)
 						}
-						placeholder={isChineseUi ? "可选的审阅备注" : "Optional reviewer notes"}
+						placeholder={
+							isChineseUi ? "可选的审阅备注" : "Optional reviewer notes"
+						}
 						value={draft.rationale}
 					/>
 				</label>
@@ -319,7 +339,11 @@ export function MergeReviewProposalForm({
 
 export function createModeOptions(isChineseUi: boolean) {
 	return (
-		["summary_only", "summary_plus_evidence", "selected_artifacts"] as MergeMode[]
+		[
+			"summary_only",
+			"summary_plus_evidence",
+			"selected_artifacts",
+		] as MergeMode[]
 	).map((value) => ({
 		value,
 		label: modeOptionLabel(value, isChineseUi),

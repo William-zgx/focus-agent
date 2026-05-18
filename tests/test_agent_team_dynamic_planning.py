@@ -5,6 +5,33 @@ import pytest
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import AgentTeamSession, AgentTeamTask, AgentTeamTaskStatus
 from focus_agent.services.agent_team import AgentTeamService
+from focus_agent.services.agent_team_run_helpers import _allowed_tools_for_task
+
+
+def _write_skill(
+    root,
+    *,
+    name: str,
+    description: str,
+    triggers: str = "",
+    when_to_use: str = "",
+    recommended_tools: str = "",
+):
+    skill_dir = root / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "---",
+        f"name: {name}",
+        f"description: {description}",
+    ]
+    if triggers:
+        lines.append(f"triggers: {triggers}")
+    if when_to_use:
+        lines.append(f"when_to_use: {when_to_use}")
+    if recommended_tools:
+        lines.append(f"recommended_tools: {recommended_tools}")
+    lines.extend(["---", "", f"# {name}", "", "Follow this skill."])
+    (skill_dir / "SKILL.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def test_agent_team_plan_uses_adaptive_dynamic_model_plan_and_is_idempotent() -> None:
@@ -40,6 +67,42 @@ def test_agent_team_plan_uses_adaptive_dynamic_model_plan_and_is_idempotent() ->
     assert [task.sort_order for task in planned] == [1, 2]
     assert planned[1].dependencies == [planned[0].task_id]
     assert "Plan the work, clarify boundaries" not in planned[0].goal
+
+
+def test_agent_team_plan_prefetches_skills_and_injects_allowed_tools(tmp_path) -> None:
+    _write_skill(
+        tmp_path,
+        name="team-support",
+        description="Agent team implementation support",
+        triggers="team:",
+        when_to_use="The user needs agent team implementation support",
+        recommended_tools="read_file,git_diff",
+    )
+    service = AgentTeamService(
+        branch_service=None,
+        settings=Settings(skill_directories=(str(tmp_path),)),
+    )
+    session = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="team: Implement backend orchestration support.",
+    )
+
+    planned_session, tasks = service.plan_session(
+        session_id=session.session_id,
+        user_id="user-1",
+        create_branches=False,
+        max_tasks=2,
+    )
+
+    assert planned_session.skill_plan["selected_skill_ids"] == ["team-support"]
+    assert planned_session.skill_plan["recommended_tools"] == ["read_file", "git_diff"]
+    assert all(task.active_skill_ids == ["team-support"] for task in tasks)
+    assert all(task.skill_resolution_events for task in tasks)
+    assert any(ref.get("skill_id") == "team-support" for ref in tasks[0].context_refs)
+    assert "skill:team-support" in tasks[0].capability_requirements
+    assert "git_diff" in _allowed_tools_for_task(tasks[0])
+    assert "skills_search" in _allowed_tools_for_task(tasks[0])
 
 
 def test_agent_team_plan_replace_cancels_unstarted_tasks_without_repository_delete() -> None:

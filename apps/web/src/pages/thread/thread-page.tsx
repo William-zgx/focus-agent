@@ -130,7 +130,7 @@ export function ThreadPage() {
 				},
 			);
 		},
-		[previewThreadContextMutate, threadId],
+		[previewThreadContextMutate, threadId, setPreviewContextUsage],
 	);
 
 	async function handleCompactContext() {
@@ -164,6 +164,7 @@ export function ThreadPage() {
 
 	return (
 		<ThreadPageContent
+			activeSkillIds={data?.active_skill_ids ?? []}
 			assistantMessage={data?.assistant_message}
 			branchActionErrors={branchActionErrors}
 			branchActionInFlightId={branchActionInFlightId}

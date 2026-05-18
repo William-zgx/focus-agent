@@ -9,7 +9,6 @@ from focus_agent.core.agent_team import (
 
 from .agent_team_helpers import _now
 
-
 _DEFAULT_DISPATCH_TASKS: tuple[
     tuple[AgentTeamTaskRole, str, tuple[str, ...], tuple[AgentTeamTaskRole, ...]], ...
 ] = (

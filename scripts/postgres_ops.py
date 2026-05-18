@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
-from pathlib import Path
+import os
+import re
 import shlex
 import subprocess
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 try:
     import psycopg
@@ -20,17 +23,56 @@ except Exception:  # pragma: no cover - exercised when optional runtime deps are
 DEFAULT_REPORT_JSON = Path("reports/release-gate/postgres-ops.json")
 DEFAULT_OPERATIONS: tuple[str, ...] = (
     "connectivity",
-    "migration_table",
-    "trajectory_write_readiness",
+    "schema_version",
+    "migration_state",
+    "advisory_lock",
+    "pgvector_readiness",
+    "background_job_readiness",
+    "trajectory_readiness",
     "backup_restore_runbook",
 )
 PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok", "dry-run", "skipped"}
 FAIL_STATUSES = {"fail", "failed", "error"}
 MAX_EVIDENCE_CHARS = 4000
+_POSTGRES_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "src/focus_agent/repositories/postgres_schema.py"
+_FALLBACK_SCHEMA_VERSION = 11
+_FALLBACK_SCHEMA_MIGRATION_LOCK_ID = 7612044473148256129
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _postgres_schema_source() -> str:
+    try:
+        return _POSTGRES_SCHEMA_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _expected_schema_version() -> int:
+    match = re.search(r"^SCHEMA_VERSION\s*=\s*(\d+)", _postgres_schema_source(), flags=re.MULTILINE)
+    if match:
+        return int(match.group(1))
+    return _FALLBACK_SCHEMA_VERSION
+
+
+def _expected_migration_versions() -> list[int]:
+    source = _postgres_schema_source()
+    versions = [
+        int(match.group(1))
+        for match in re.finditer(r"^\s*\((\d+),\s*_run_migration_v\d+\)", source, flags=re.MULTILINE)
+    ]
+    if versions:
+        return versions
+    return list(range(1, _expected_schema_version() + 1))
+
+
+def _schema_migration_lock_id() -> int:
+    match = re.search(r"^_SCHEMA_MIGRATION_LOCK_ID\s*=\s*(\d+)", _postgres_schema_source(), flags=re.MULTILINE)
+    if match:
+        return int(match.group(1))
+    return _FALLBACK_SCHEMA_MIGRATION_LOCK_ID
 
 
 def _operation_passed(operation: Mapping[str, Any]) -> bool:
@@ -79,16 +121,25 @@ def _truncate(value: str) -> str:
     return value[:MAX_EVIDENCE_CHARS] + "...<truncated>"
 
 
-def _run_query(database_uri: str, query: str) -> tuple[Any, ...] | None:
+def _run_query(database_uri: str, query: str, params: Sequence[Any] | None = None) -> tuple[Any, ...] | None:
     if psycopg is None:
         raise RuntimeError("psycopg is unavailable")
     with psycopg.connect(database_uri) as conn:
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, params)
             row = cur.fetchone()
             if row is None:
                 return None
             return tuple(row)
+
+
+def _run_query_rows(database_uri: str, query: str, params: Sequence[Any] | None = None) -> list[tuple[Any, ...]]:
+    if psycopg is None:
+        raise RuntimeError("psycopg is unavailable")
+    with psycopg.connect(database_uri) as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return [tuple(row) for row in cur.fetchall()]
 
 
 def _truthy_query_result(row: tuple[Any, ...] | None) -> bool:
@@ -130,6 +181,152 @@ def _query_operation(
         detail=detail_on_pass if passed else detail_on_false,
         query=query,
         row=list(row) if row is not None else None,
+    )
+
+
+def _table_readiness_operation(name: str, *, database_uri: str, table_name: str, detail_name: str) -> dict[str, Any]:
+    return _query_operation(
+        name,
+        database_uri=database_uri,
+        query=f"SELECT to_regclass('public.{table_name}') IS NOT NULL",
+        detail_on_pass=f"{detail_name} table exists",
+        detail_on_false=f"{detail_name} table is missing",
+    )
+
+
+def _migration_state_operations(*, database_uri: str) -> list[dict[str, Any]]:
+    expected_schema_version = _expected_schema_version()
+    expected_versions = _expected_migration_versions()
+    try:
+        rows = _run_query_rows(database_uri, "SELECT version FROM focus_schema_migrations ORDER BY version")
+    except Exception as exc:  # noqa: BLE001
+        failed = _operation(
+            "migration_state",
+            status="failed",
+            passed=False,
+            detail=str(exc),
+            expected_schema_version=expected_schema_version,
+            expected_versions=expected_versions,
+            applied_versions=[],
+            missing_versions=expected_versions,
+            future_versions=[],
+        )
+        return [
+            _operation(
+                "schema_version",
+                status="failed",
+                passed=False,
+                detail="could not read focus_schema_migrations",
+                expected_schema_version=expected_schema_version,
+            ),
+            failed,
+        ]
+
+    applied_versions = sorted({int(row[0]) for row in rows if row})
+    expected_set = set(expected_versions)
+    missing_versions = [version for version in expected_versions if version not in applied_versions]
+    future_versions = [version for version in applied_versions if version not in expected_set]
+    max_applied = max(applied_versions, default=0)
+    schema_version_passed = max_applied == expected_schema_version and not future_versions
+    migrations_passed = not missing_versions and not future_versions
+    return [
+        _operation(
+            "schema_version",
+            status="passed" if schema_version_passed else "failed",
+            passed=schema_version_passed,
+            detail=(
+                f"database schema is at expected version {expected_schema_version}"
+                if schema_version_passed
+                else f"database schema version {max_applied} does not match expected {expected_schema_version}"
+            ),
+            expected_schema_version=expected_schema_version,
+            max_applied_version=max_applied,
+            applied_versions=applied_versions,
+            future_versions=future_versions,
+        ),
+        _operation(
+            "migration_state",
+            status="passed" if migrations_passed else "failed",
+            passed=migrations_passed,
+            detail=(
+                "all expected migrations are applied"
+                if migrations_passed
+                else "migration table has missing or future versions"
+            ),
+            expected_versions=expected_versions,
+            applied_versions=applied_versions,
+            missing_versions=missing_versions,
+            future_versions=future_versions,
+        ),
+    ]
+
+
+def _advisory_lock_operation(*, database_uri: str) -> dict[str, Any]:
+    lock_id = _schema_migration_lock_id()
+    query = "SELECT pg_try_advisory_lock(%s)"
+    try:
+        row = _run_query(database_uri, query, (lock_id,))
+        acquired = _truthy_query_result(row)
+        if acquired:
+            _run_query(database_uri, "SELECT pg_advisory_unlock(%s)", (lock_id,))
+    except Exception as exc:  # noqa: BLE001
+        return _operation(
+            "advisory_lock",
+            status="failed",
+            passed=False,
+            detail=str(exc),
+            lock_id=lock_id,
+            query=query,
+        )
+    return _operation(
+        "advisory_lock",
+        status="passed" if acquired else "failed",
+        passed=acquired,
+        detail=(
+            "schema migration advisory lock can be acquired"
+            if acquired
+            else "schema migration advisory lock is currently held"
+        ),
+        lock_id=lock_id,
+        row=list(row) if row is not None else None,
+    )
+
+
+def _pgvector_readiness_operation(*, database_uri: str) -> dict[str, Any]:
+    query = """
+        SELECT
+            EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS installed,
+            EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector') AS available,
+            (SELECT extversion FROM pg_extension WHERE extname = 'vector') AS version,
+            to_regclass('public.focus_memory_embeddings') IS NOT NULL AS embeddings_table_exists
+    """
+    try:
+        row = _run_query(database_uri, query)
+    except Exception as exc:  # noqa: BLE001
+        return _operation(
+            "pgvector_readiness",
+            status="failed",
+            passed=False,
+            detail=str(exc),
+            query=query,
+        )
+    installed = bool(row and row[0])
+    available = bool(row and row[1])
+    passed = installed or available
+    return _operation(
+        "pgvector_readiness",
+        status="passed" if passed else "failed",
+        passed=passed,
+        detail=(
+            "pgvector is installed"
+            if installed
+            else ("pgvector is available to install" if available else "pgvector extension is unavailable")
+        ),
+        installed=installed,
+        available=available,
+        extension_version=row[2] if row and len(row) > 2 else None,
+        embeddings_table_exists=bool(row and len(row) > 3 and row[3]),
+        query=query,
     )
 
 
@@ -264,6 +461,8 @@ def _live_database_operations(
     *,
     database_uri: str,
     backup_command: str | None,
+    doctor_command: str | None,
+    migration_command: str | None,
     restore_command: str | None,
     restore_verification_evidence: str | Path | None,
     restore_verification_query: str | None,
@@ -276,21 +475,26 @@ def _live_database_operations(
             detail_on_pass="Postgres connectivity query succeeded",
             detail_on_false="Postgres connectivity query returned an unexpected result",
         ),
-        _query_operation(
-            "migration_table",
-            database_uri=database_uri,
-            query="SELECT to_regclass('public.focus_schema_migrations') IS NOT NULL",
-            detail_on_pass="focus_schema_migrations table exists",
-            detail_on_false="focus_schema_migrations table is missing",
-        ),
-        _query_operation(
-            "trajectory_write_readiness",
-            database_uri=database_uri,
-            query="SELECT to_regclass('public.focus_trajectory_turns') IS NOT NULL",
-            detail_on_pass="focus_trajectory_turns table exists",
-            detail_on_false="focus_trajectory_turns table is missing",
-        ),
     ]
+    operations.extend(_migration_state_operations(database_uri=database_uri))
+    operations.append(_advisory_lock_operation(database_uri=database_uri))
+    operations.append(_pgvector_readiness_operation(database_uri=database_uri))
+    operations.append(
+        _table_readiness_operation(
+            "background_job_readiness",
+            database_uri=database_uri,
+            table_name="focus_background_jobs",
+            detail_name="focus_background_jobs",
+        )
+    )
+    operations.append(
+        _table_readiness_operation(
+            "trajectory_readiness",
+            database_uri=database_uri,
+            table_name="focus_trajectory_turns",
+            detail_name="focus_trajectory_turns",
+        )
+    )
     if backup_command or restore_command or restore_verification_evidence or restore_verification_query:
         operations.append(
             _operation(
@@ -298,6 +502,15 @@ def _live_database_operations(
                 status="passed",
                 passed=True,
                 detail="backup/restore drill evidence captured in v2 operations",
+            )
+        )
+    elif migration_command or doctor_command:
+        operations.append(
+            _operation(
+                "backup_restore_runbook",
+                status="passed",
+                passed=True,
+                detail="migration/doctor command evidence captured in v3 operations",
             )
         )
     else:
@@ -313,12 +526,18 @@ def _live_database_operations(
 def _planned_optional_operations(
     *,
     backup_command: str | None,
+    doctor_command: str | None,
+    migration_command: str | None,
     restore_command: str | None,
     restore_verification_evidence: str | Path | None,
     restore_verification_query: str | None,
     retention_cleanup_query: str | None,
 ) -> list[dict[str, Any]]:
     operations: list[dict[str, Any]] = []
+    if migration_command:
+        operations.append(_planned_operation("migration_command"))
+    if doctor_command:
+        operations.append(_planned_operation("doctor_command"))
     if backup_command:
         operations.append(_planned_operation("backup_command"))
     if restore_command:
@@ -330,11 +549,68 @@ def _planned_optional_operations(
     return operations
 
 
+def _operation_by_name(operations: Sequence[Mapping[str, Any]], name: str) -> Mapping[str, Any]:
+    for operation in operations:
+        if operation.get("name") == name:
+            return operation
+    return {}
+
+
+def _report_sections(operations: Sequence[Mapping[str, Any]], *, dry_run: bool) -> dict[str, Any]:
+    schema_version = _operation_by_name(operations, "schema_version")
+    migration_state = _operation_by_name(operations, "migration_state")
+    advisory_lock = _operation_by_name(operations, "advisory_lock")
+    pgvector = _operation_by_name(operations, "pgvector_readiness")
+    return {
+        "schema": {
+            "advisory_lock": {
+                "lock_id": advisory_lock.get("lock_id", _schema_migration_lock_id()),
+                "passed": bool(advisory_lock.get("passed", dry_run)),
+                "status": advisory_lock.get("status", "dry-run" if dry_run else "missing"),
+            },
+            "applied_migrations": migration_state.get("applied_versions", []),
+            "current_schema_version": schema_version.get("max_applied_version"),
+            "expected_migrations": migration_state.get("expected_versions", _expected_migration_versions()),
+            "expected_schema_version": schema_version.get(
+                "expected_schema_version",
+                _expected_schema_version(),
+            ),
+            "future_migrations": migration_state.get("future_versions", []),
+            "missing_migrations": migration_state.get("missing_versions", []),
+            "passed": bool(schema_version.get("passed", dry_run) and migration_state.get("passed", dry_run)),
+            "status": "dry-run" if dry_run else ("passed" if schema_version.get("passed") else "failed"),
+        },
+        "pgvector": {
+            "available": pgvector.get("available"),
+            "embeddings_table_exists": pgvector.get("embeddings_table_exists"),
+            "extension_version": pgvector.get("extension_version"),
+            "installed": pgvector.get("installed"),
+            "passed": bool(pgvector.get("passed", dry_run)),
+            "status": pgvector.get("status", "dry-run" if dry_run else "missing"),
+        },
+        "pool": {
+            "configured": bool(os.environ.get("POSTGRES_POOL_MIN_SIZE") or os.environ.get("POSTGRES_POOL_MAX_SIZE")),
+            "max_size": os.environ.get("POSTGRES_POOL_MAX_SIZE"),
+            "min_size": os.environ.get("POSTGRES_POOL_MIN_SIZE"),
+            "snapshot_error": None,
+            "status": "dry-run" if dry_run else "not-collected",
+        },
+        "slow_query": {
+            "configured": bool(os.environ.get("POSTGRES_SLOW_QUERY_MS")),
+            "threshold_ms": os.environ.get("POSTGRES_SLOW_QUERY_MS"),
+            "warning_count": 0,
+            "status": "dry-run" if dry_run else "not-collected",
+        },
+    }
+
+
 def build_report(
     *,
     backup_command: str | None = None,
     database_uri: str | None = None,
+    doctor_command: str | None = None,
     dry_run: bool = False,
+    migration_command: str | None = None,
     restore_command: str | None = None,
     restore_verification_evidence: str | Path | None = None,
     restore_verification_query: str | None = None,
@@ -347,6 +623,8 @@ def build_report(
         operations.extend(
             _planned_optional_operations(
                 backup_command=backup_command,
+                doctor_command=doctor_command,
+                migration_command=migration_command,
                 restore_command=restore_command,
                 restore_verification_evidence=restore_verification_evidence,
                 restore_verification_query=restore_verification_query,
@@ -365,12 +643,30 @@ def build_report(
         operations = _live_database_operations(
             database_uri=database_uri,
             backup_command=backup_command,
+            doctor_command=doctor_command,
+            migration_command=migration_command,
             restore_command=restore_command,
             restore_verification_evidence=restore_verification_evidence,
             restore_verification_query=restore_verification_query,
         )
 
     if not dry_run:
+        if migration_command:
+            operation, evidence = _run_command_operation(
+                "migration_command",
+                command=migration_command,
+                timeout_seconds=timeout_seconds,
+            )
+            operations.append(operation)
+            artifacts.append(evidence)
+        if doctor_command:
+            operation, evidence = _run_command_operation(
+                "doctor_command",
+                command=doctor_command,
+                timeout_seconds=timeout_seconds,
+            )
+            operations.append(operation)
+            artifacts.append(evidence)
         if backup_command:
             operation, evidence = _run_command_operation(
                 "backup_command",
@@ -407,6 +703,7 @@ def build_report(
         if dry_run
         else "uv run python scripts/postgres_ops.py --database-uri <redacted>"
     )
+    sections = _report_sections(operations, dry_run=dry_run)
     return {
         "artifacts": artifacts,
         "checks": operations,
@@ -414,11 +711,12 @@ def build_report(
         "errors": errors,
         "generated_at": _now(),
         "report_type": "postgres_ops",
-        "report_version": 2,
+        "report_version": 3,
         "status": status,
         "passed": not failed,
         "dry_run": dry_run,
         "database_uri_configured": bool(database_uri),
+        **sections,
         "summary": {
             "total": len(operations),
             "passed": len(operations) - len(failed),
@@ -431,6 +729,11 @@ def build_report(
             "restore_command_configured": bool(restore_command),
             "restore_verification_configured": bool(restore_verification_evidence or restore_verification_query),
             "retention_cleanup_dry_run_configured": bool(retention_cleanup_query),
+        },
+        "v3": {
+            "expected_schema_version": _expected_schema_version(),
+            "migration_command_configured": bool(migration_command),
+            "doctor_command_configured": bool(doctor_command),
         },
     }
 
@@ -450,6 +753,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--backup-command",
         help="Explicit backup command to run, parsed with shlex and executed without a shell.",
+    )
+    parser.add_argument(
+        "--migration-command",
+        help="Explicit migration command to run, parsed with shlex and executed without a shell.",
+    )
+    parser.add_argument(
+        "--doctor-command",
+        help="Explicit doctor command to run, parsed with shlex and executed without a shell.",
     )
     parser.add_argument(
         "--restore-command",
@@ -476,7 +787,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = build_report(
         backup_command=args.backup_command,
         database_uri=args.database_uri,
+        doctor_command=args.doctor_command,
         dry_run=bool(args.dry_run),
+        migration_command=args.migration_command,
         restore_command=args.restore_command,
         restore_verification_evidence=args.restore_verification_evidence,
         restore_verification_query=args.restore_verification_query,

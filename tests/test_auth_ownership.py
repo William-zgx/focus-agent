@@ -8,7 +8,13 @@ from fastapi.testclient import TestClient
 
 from focus_agent.api.main import create_app
 from focus_agent.config import Settings
-from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus, BranchTreeNode
+from focus_agent.core.branching import (
+    BranchRecord,
+    BranchRole,
+    BranchStatus,
+    BranchTreeNode,
+    ImportedConclusion,
+)
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.security.ownership import (
     OwnershipAuditEvent,
@@ -141,7 +147,12 @@ class _OwnershipBranchService:
     def apply_merge_decision(self, *, child_thread_id: str, decision, context, proposal_overrides=None):
         del child_thread_id, decision, proposal_overrides
         self._assert_owner(context.user_id)
-        return None
+        return ImportedConclusion(
+            branch_id="branch-1",
+            branch_name="Owner Branch",
+            mode="summary_only",
+            summary="ready",
+        )
 
 
 def _context_usage() -> dict[str, object]:
@@ -528,6 +539,22 @@ def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata
         body = response.json()
         assert body["code"] == 403
         assert "User intruder-1 cannot access thread root-1." in body["message"]
+
+
+def test_merge_response_includes_target_thread_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings = _build_client(monkeypatch, tmp_path)
+    owner_headers = _auth_header(settings, user_id="owner-1")
+
+    response = client.post(
+        "/v1/branches/child-1/merge",
+        headers=owner_headers,
+        json={"approved": True, "mode": "summary_only", "target": "return_thread"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["target_thread_id"] == "root-1"
 
 
 def test_thread_routes_accept_encoded_slashes_for_existing_user_ids(

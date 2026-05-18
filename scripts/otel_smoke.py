@@ -4,16 +4,16 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import json
 import os
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 from uuid import uuid4
-
 
 DEFAULT_REPORT_JSON = Path("reports/release-gate/otel-smoke.json")
 DEFAULT_SERVICE_NAME = "focus-agent"

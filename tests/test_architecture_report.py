@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from scripts import architecture_report
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_architecture_report_collects_large_files_and_import_boundary_issues(tmp_path: Path) -> None:
+    _write(tmp_path / "src/focus_agent/service.py", "import scripts.release_gate\n")
+    _write(tmp_path / "scripts/tool.py", "print('ok')\n")
+    _write(tmp_path / "apps/web/src/view.ts", "import x from 'src/focus_agent/api'\n")
+    _write(tmp_path / "frontend-sdk/src/client.ts", "\n".join(["export const x = 1;"] * 6))
+
+    report = architecture_report.build_architecture_report(
+        root=tmp_path,
+        scan_paths=["src/focus_agent", "scripts", "apps/web/src", "frontend-sdk/src"],
+        large_file_threshold=5,
+    )
+
+    assert report["summary"]["blocking"] is False
+    assert report["summary"]["status"] == "issues"
+    assert {item["path"] for item in report["large_files"]} == {"frontend-sdk/src/client.ts"}
+    assert {item["path"] for item in report["import_boundary_issues"]} == {
+        "apps/web/src/view.ts",
+        "src/focus_agent/service.py",
+    }
+
+
+def test_architecture_report_cli_is_non_blocking(tmp_path: Path, capsys) -> None:
+    _write(tmp_path / "src/focus_agent/large.py", "\n".join(["x = 1"] * 4))
+    report_json = tmp_path / "report.json"
+
+    exit_code = architecture_report.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--path",
+            "src/focus_agent",
+            "--large-file-threshold",
+            "1",
+            "--report-json",
+            str(report_json),
+        ]
+    )
+
+    stdout = json.loads(capsys.readouterr().out)
+    saved = json.loads(report_json.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert stdout["blocking"] is False
+    assert stdout["issue_count"] == 1
+    assert saved["summary"]["status"] == "issues"

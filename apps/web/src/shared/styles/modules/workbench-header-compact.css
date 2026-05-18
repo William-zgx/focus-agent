@@ -1,99 +1,99 @@
 /* Workbench compact header integration. */
 .fa-header-card {
-  border-radius: 20px;
-  padding: 10px 12px;
+	border-radius: 20px;
+	padding: 10px 12px;
 }
 
 .fa-chat-header-top {
-  gap: 12px;
+	gap: 12px;
 }
 
 .fa-chat-header-copy,
 .fa-toolbar-cluster {
-  gap: 8px;
+	gap: 8px;
 }
 
 .fa-chat-header-actions {
-  gap: 10px;
-  padding-bottom: 0;
+	gap: 10px;
+	padding-bottom: 0;
 }
 
 .fa-chat-header-right-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
 }
 
 .fa-chat-header-primary-actions,
 .fa-chat-header-nav {
-  gap: 8px;
+	gap: 8px;
 }
 
 .fa-chat-logo-toggle .fa-brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  box-shadow: 0 8px 18px rgba(4, 10, 22, 0.16);
+	width: 36px;
+	height: 36px;
+	border-radius: 11px;
+	box-shadow: 0 8px 18px rgba(4, 10, 22, 0.16);
 }
 
 .fa-chat-logo-toggle .fa-brand-mark svg {
-  width: 23px;
-  height: 23px;
+	width: 23px;
+	height: 23px;
 }
 
 .fa-conversation-switcher {
-  flex-basis: 110px;
-  max-width: 150px;
+	flex-basis: 110px;
+	max-width: 150px;
 }
 
 .fa-conversation-switcher::after {
-  right: 12px;
-  width: 7px;
-  height: 7px;
+	right: 12px;
+	width: 7px;
+	height: 7px;
 }
 
 .fa-conversation-select {
-  min-height: 34px;
-  padding: 8px 32px 8px 10px;
-  border-radius: 11px;
-  font-size: 12px;
+	min-height: 34px;
+	padding: 8px 32px 8px 10px;
+	border-radius: 11px;
+	font-size: 12px;
 }
 
 .fa-chat-toolbar-pill,
 .fa-chat-toolbar-button {
-  min-height: 34px;
-  padding: 6px 10px;
-  border-radius: 11px;
-  gap: 6px;
-  font-size: 12px;
+	min-height: 34px;
+	padding: 6px 10px;
+	border-radius: 11px;
+	gap: 6px;
+	font-size: 12px;
 }
 
 .fa-conversation-icon-button,
 .fa-conversation-token-trigger,
 .fa-chat-header-actions.is-compact [data-compact-button="true"],
 .fa-chat-header-actions.is-compact .fa-focus-branches-button {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  padding: 0;
+	width: 34px;
+	min-width: 34px;
+	height: 34px;
+	padding: 0;
 }
 
 .fa-toolbar-icon,
 .fa-toolbar-icon svg {
-  width: 16px;
-  height: 16px;
+	width: 16px;
+	height: 16px;
 }
 
 @media (max-width: 900px) {
-  .fa-header-card {
-      padding: 10px;
-    }
+	.fa-header-card {
+		padding: 10px;
+	}
 
-  .fa-chat-header-top {
-      gap: 8px;
-    }
+	.fa-chat-header-top {
+		gap: 8px;
+	}
 }

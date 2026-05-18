@@ -10,8 +10,8 @@ from .core.context_policy import (
     apply_prompt_budget_guard,
     assemble_context,
 )
+from .core.context_token_counting import estimate_messages_token_count
 from .core.types import ContextBudget, PromptMode
-
 
 ContextUsageStatus = Literal["ok", "warm", "hot", "over", "compacting", "error"]
 
@@ -26,6 +26,10 @@ class ContextUsage:
     prompt_chars: int
     prompt_budget_chars: int
     tokenizer_mode: str
+    counting_backend: str
+    tokenizer_id: str | None
+    estimated: bool
+    drift_risk: str
     last_compacted_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,6 +42,10 @@ class ContextUsage:
             "prompt_chars": self.prompt_chars,
             "prompt_budget_chars": self.prompt_budget_chars,
             "tokenizer_mode": self.tokenizer_mode,
+            "counting_backend": self.counting_backend,
+            "tokenizer_id": self.tokenizer_id,
+            "estimated": self.estimated,
+            "drift_risk": self.drift_risk,
             "last_compacted_at": self.last_compacted_at,
         }
 
@@ -74,12 +82,18 @@ def build_context_usage(
 
     guarded = apply_prompt_budget_guard(prompt_messages, budget=budget)
     used_tokens = max(0, int(_prompt_budget_count(guarded, budget=budget)))
+    count_estimate = estimate_messages_token_count(guarded, budget=budget)
     token_limit = max(1, int(budget.prompt_token_limit))
     remaining_tokens = max(0, token_limit - used_tokens)
     used_ratio = min(1.0, used_tokens / token_limit) if token_limit else 0.0
     prompt_chars = sum(len(_message_text_for_chars(message)) for message in guarded)
     prompt_budget_chars = max(1, token_limit * max(1, int(budget.chars_per_token)))
     compaction = state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}
+    drift_report = (
+        compaction.get("context_compaction_drift_report")
+        if isinstance(compaction.get("context_compaction_drift_report"), dict)
+        else {}
+    )
     return ContextUsage(
         used_tokens=used_tokens,
         token_limit=token_limit,
@@ -89,6 +103,14 @@ def build_context_usage(
         prompt_chars=prompt_chars,
         prompt_budget_chars=prompt_budget_chars,
         tokenizer_mode=str(budget.token_budget_mode),
+        counting_backend=count_estimate.counting_backend,
+        tokenizer_id=count_estimate.tokenizer_id or budget.tokenizer_id,
+        estimated=bool(count_estimate.estimated),
+        drift_risk=_context_drift_risk(
+            used_ratio=used_ratio,
+            estimated=bool(count_estimate.estimated),
+            drift_report=drift_report,
+        ),
         last_compacted_at=str(compaction.get("last_compacted_at") or "") or None,
     )
 
@@ -129,6 +151,26 @@ def _message_text_for_chars(message: AnyMessage) -> str:
     if isinstance(content, list):
         return "".join(str(item) for item in content)
     return str(content)
+
+
+def _context_drift_risk(
+    *,
+    used_ratio: float,
+    estimated: bool,
+    drift_report: dict[str, Any],
+) -> str:
+    try:
+        overall_drift = float(drift_report.get("overall_drift") or 0.0)
+    except (TypeError, ValueError):
+        overall_drift = 0.0
+    explicit_risk = str(drift_report.get("drift_risk") or "").strip().lower()
+    if explicit_risk in {"high", "medium", "low"}:
+        return explicit_risk
+    if overall_drift >= 0.34 or used_ratio >= 1.0 or (estimated and used_ratio >= 0.85):
+        return "high"
+    if overall_drift > 0.0 or estimated or used_ratio >= 0.70:
+        return "medium"
+    return "low"
 
 
 __all__ = ["ContextUsage", "ContextUsageStatus", "build_context_usage", "context_usage_status"]

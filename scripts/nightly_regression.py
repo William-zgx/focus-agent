@@ -7,14 +7,15 @@ import argparse
 import json
 import shlex
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts import memory_context_eval  # noqa: E402
+from scripts import feedback_regression, memory_context_eval  # noqa: E402
 
 DEFAULT_REPORT_JSON = Path("reports/nightly/latest.json")
 DEFAULT_HISTORY_DIR = Path("reports/nightly/history")
@@ -22,9 +23,26 @@ DEFAULT_MEMORY_EVAL_JSON = Path("reports/release-gate/memory-context-eval.json")
 DEFAULT_MEMORY_TREND_JSON = Path("reports/release-gate/memory-context-trend.json")
 DEFAULT_REPLAY_JSON = Path("reports/nightly/trajectory-replay.json")
 DEFAULT_ALERT_JSON = Path("reports/nightly/alerts.json")
+DEFAULT_FEEDBACK_REGRESSION_JSON = feedback_regression.DEFAULT_REPORT_JSON
+DEFAULT_CANDIDATE_JSONL = memory_context_eval.DEFAULT_CANDIDATE_JSONL
+DEFAULT_REVIEWED_JSONL = memory_context_eval.DEFAULT_REVIEWED_JSONL
+DEFAULT_PROMOTED_JSONL = memory_context_eval.DEFAULT_PROMOTED_JSONL
 DELTA_NUMERIC_SUMMARY_KEYS = (
     "alert_count",
+    "candidate_pending",
+    "candidate_promoted",
+    "candidate_reviewed",
+    "candidate_sla_overdue",
+    "candidate_total",
+    "context_compaction_overall_drift_bp",
     "failed_replay_cases",
+    "feedback_context_high_drift",
+    "feedback_merge_review_conflicts",
+    "feedback_negative",
+    "feedback_notes_tasks_captures",
+    "feedback_skill_low_confidence",
+    "feedback_skill_overrides",
+    "feedback_top_failing_trajectories",
     "memory_review_approved",
     "memory_review_pending",
     "memory_review_rejected",
@@ -266,15 +284,45 @@ def _trend_summary(path: str | Path) -> dict[str, Any]:
         return {"kind": "memory_trend", "path": str(target), "status": "missing"}
     alerts = list(payload.get("pollution_alerts") or [])
     promotion = payload.get("promotion_history") if isinstance(payload.get("promotion_history"), dict) else {}
+    drift_report = _trend_drift_report(payload)
     return {
         "kind": "memory_trend",
         "path": str(target),
         "status": str(payload.get("status") or ("alert" if alerts else "ok")),
         "suite": _suite_name(payload),
         "trend": list(payload.get("trend") or []),
+        "context_compaction_drift_report": drift_report,
         "promotion_history": promotion,
         "pollution_alerts": alerts,
     }
+
+
+def _trend_drift_report(payload: dict[str, Any]) -> dict[str, Any]:
+    stages = payload.get("stages") if isinstance(payload.get("stages"), dict) else {}
+    reports = [
+        stage.get("context_compaction_drift_report")
+        for stage in stages.values()
+        if isinstance(stage, dict) and isinstance(stage.get("context_compaction_drift_report"), dict)
+    ]
+    if not reports:
+        for item in list(payload.get("trend") or []):
+            if not isinstance(item, dict):
+                continue
+            report = item.get("context_compaction_drift_report")
+            if isinstance(report, dict):
+                reports.append(report)
+    if not reports:
+        return {
+            "recall": 1.0,
+            "precision": 1.0,
+            "grounding": 1.0,
+            "answerability": 1.0,
+            "overall_drift": 0.0,
+            "drift_risk": "low",
+            "case_count": 0,
+        }
+    worst = max(reports, key=lambda report: float(report.get("overall_drift") or 0.0))
+    return dict(worst)
 
 
 def _replay_summary(path: str | Path) -> dict[str, Any]:
@@ -314,8 +362,182 @@ def _alert_summary(path: str | Path) -> dict[str, Any]:
     }
 
 
+def _feedback_report_summary(path: str | Path) -> dict[str, Any]:
+    target = _resolve(path)
+    payload = _read_json(target)
+    if payload is None:
+        return {
+            "kind": "feedback_regression",
+            "path": str(target),
+            "status": "not_configured",
+            "summary": {
+                "negative_feedback_count": 0,
+                "merge_review_conflict_count": 0,
+                "skill_low_confidence_count": 0,
+                "skill_override_count": 0,
+                "context_high_drift_count": 0,
+                "notes_tasks_capture_count": 0,
+                "top_failing_trajectory_sample_count": 0,
+            },
+            "feedback_pipeline": {
+                "status": "not_configured",
+                "negative_feedback": {"count": 0, "sample_ids": []},
+                "merge_review": {
+                    "record_count": 0,
+                    "apply_success_count": 0,
+                    "conflict_count": 0,
+                    "rejected_count": 0,
+                    "error_count": 0,
+                    "apply_attempt_count": 0,
+                    "apply_success_rate": None,
+                },
+                "skill_selection": {
+                    "record_count": 0,
+                    "low_confidence_count": 0,
+                    "override_count": 0,
+                    "override_rate": None,
+                },
+                "context_memory": {"record_count": 0, "high_drift_count": 0},
+                "productivity_capture": {"record_count": 0, "capture_count": 0},
+                "trajectory_failures": {"top_failing_samples": [], "top_failing_sample_count": 0},
+            },
+        }
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    pipeline = payload.get("feedback_pipeline") if isinstance(payload.get("feedback_pipeline"), dict) else {}
+    return {
+        "kind": "feedback_regression",
+        "path": str(target),
+        "status": str(summary.get("status") or pipeline.get("status") or "unknown"),
+        "summary": summary,
+        "feedback_pipeline": pipeline,
+    }
+
+
 def _existing_default_artifacts(*paths: Path) -> list[Path]:
-    return [path for path in paths if _resolve(path).exists()]
+    return [_resolve(path) for path in paths if _resolve(path).exists()]
+
+
+def _load_jsonl_cases(path: str | Path) -> list[dict[str, Any]]:
+    target = _resolve(path)
+    if not target.exists():
+        return []
+    return memory_context_eval.load_dataset(target)
+
+
+def _candidate_artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any]:
+    target = _resolve(path)
+    if not target.exists():
+        return {"kind": kind, "path": str(target), "status": "missing", "total": 0}
+    cases = _load_jsonl_cases(target)
+    review_status_counts: dict[str, int] = {}
+    for case in cases:
+        review = case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
+        status = str(review.get("status") or "")
+        if status:
+            review_status_counts[status] = review_status_counts.get(status, 0) + 1
+    return {
+        "kind": kind,
+        "path": str(target),
+        "status": "available",
+        "total": len(cases),
+        "case_ids": [str(case.get("id") or "unknown") for case in cases],
+        "review_status_counts": review_status_counts,
+        "promotion_sla_summary": memory_context_eval._promotion_sla_summary(cases),
+    }
+
+
+def _candidate_pipeline_summary(
+    *,
+    candidate_jsonl: Sequence[str | Path],
+    reviewed_jsonl: Sequence[str | Path],
+    promoted_jsonl: Sequence[str | Path],
+    memory_review: dict[str, Any],
+) -> dict[str, Any]:
+    candidate_artifacts = [
+        _candidate_artifact_summary(path, kind="candidate") for path in candidate_jsonl
+    ]
+    reviewed_artifacts = [
+        _candidate_artifact_summary(path, kind="reviewed") for path in reviewed_jsonl
+    ]
+    promoted_artifacts = [
+        _candidate_artifact_summary(path, kind="promoted") for path in promoted_jsonl
+    ]
+    candidate_total = sum(int(item.get("total") or 0) for item in candidate_artifacts)
+    reviewed_total = sum(int(item.get("total") or 0) for item in reviewed_artifacts)
+    promoted_count = sum(int(item.get("total") or 0) for item in promoted_artifacts)
+
+    review_counts: dict[str, int] = {}
+    sla_overdue = 0
+    pending_sla_overdue = 0
+    for artifact in reviewed_artifacts:
+        for status, count in (artifact.get("review_status_counts") or {}).items():
+            review_counts[str(status)] = review_counts.get(str(status), 0) + int(count)
+        sla = artifact.get("promotion_sla_summary") if isinstance(artifact.get("promotion_sla_summary"), dict) else {}
+        sla_overdue += int(sla.get("overdue") or 0)
+        pending_sla_overdue += int(sla.get("pending_overdue") or 0)
+
+    queue = memory_review.get("queue") if isinstance(memory_review.get("queue"), dict) else {}
+    review_payload = memory_review.get("review") if isinstance(memory_review.get("review"), dict) else {}
+    review_sla = (
+        review_payload.get("promotion_sla_summary")
+        if isinstance(review_payload.get("promotion_sla_summary"), dict)
+        else {}
+    )
+    if not candidate_total:
+        candidate_total = int(queue.get("records") or 0)
+    if not reviewed_total and memory_review.get("status") == "ready":
+        reviewed_total = int(
+            review_payload.get("reviewed")
+            if "reviewed" in review_payload
+            else queue.get("records") or 0
+        )
+    if not review_counts:
+        review_counts = {
+            key: int(queue.get(key) or 0)
+            for key in ("approved", "rejected", "pending")
+            if int(queue.get(key) or 0)
+        }
+    if not promoted_count:
+        promoted_count = len(memory_review.get("promoted_case_ids") or [])
+    if not sla_overdue:
+        sla_overdue = int(review_sla.get("overdue") or 0)
+    if not pending_sla_overdue:
+        pending_sla_overdue = int(review_sla.get("pending_overdue") or 0)
+
+    return {
+        "status": "ready" if candidate_total or reviewed_total or promoted_count else "not_configured",
+        "candidate_total": candidate_total,
+        "reviewed_total": reviewed_total,
+        "pending": int(review_counts.get("pending") or queue.get("pending") or 0),
+        "approved": int(review_counts.get("approved") or queue.get("approved") or 0),
+        "rejected": int(review_counts.get("rejected") or queue.get("rejected") or 0),
+        "sla_overdue": sla_overdue,
+        "pending_sla_overdue": pending_sla_overdue,
+        "promoted_count": promoted_count,
+        "artifacts": {
+            "candidate": candidate_artifacts,
+            "reviewed": reviewed_artifacts,
+            "promoted": promoted_artifacts,
+        },
+        "baseline_delta": {},
+    }
+
+
+def _replay_pipeline_summary(replay: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    failed_case_ids = [
+        str(case_id)
+        for artifact in replay
+        for case_id in (artifact.get("failed_case_ids") or [])
+    ]
+    return {
+        "status": "ready" if replay else "not_configured",
+        "report_count": len(replay),
+        "total_cases": sum(int((item.get("summary") or {}).get("total") or 0) for item in replay),
+        "failed_replay_cases": len(failed_case_ids),
+        "failed_case_ids": failed_case_ids,
+        "alert_count": 0,
+        "baseline_delta": {},
+    }
 
 
 def _build_memory_review(
@@ -371,12 +593,16 @@ def build_nightly_report(
     history_dir: str | Path | None = DEFAULT_HISTORY_DIR,
     replay_json: Sequence[str | Path] | None = None,
     alert_json: Sequence[str | Path] | None = None,
-    candidate_review_jsonl: Sequence[str | Path] = (),
+    candidate_jsonl: Sequence[str | Path] | None = None,
+    candidate_review_jsonl: Sequence[str | Path] | None = None,
+    candidate_reviewed_jsonl: Sequence[str | Path] | None = None,
+    candidate_promoted_jsonl: Sequence[str | Path] | None = None,
     candidate_approve_id: Sequence[str] = (),
     candidate_reject_id: Sequence[str] = (),
     candidate_approve_all: bool = False,
     candidate_reviewer: str | None = None,
     candidate_review_note: str | None = None,
+    feedback_report_json: str | Path = DEFAULT_FEEDBACK_REGRESSION_JSON,
 ) -> dict[str, Any]:
     memory_eval = _artifact_summary(memory_eval_json, kind="memory_eval")
     memory_trend = _trend_summary(memory_trend_json)
@@ -390,31 +616,83 @@ def build_nightly_report(
         if alert_json is None
         else list(alert_json)
     )
+    candidate_inputs = (
+        _existing_default_artifacts(DEFAULT_CANDIDATE_JSONL)
+        if candidate_jsonl is None
+        else list(candidate_jsonl)
+    )
+    if candidate_jsonl is None and candidate_review_jsonl is not None:
+        candidate_inputs = list(candidate_review_jsonl)
+    candidate_review_inputs = (
+        list(candidate_review_jsonl)
+        if candidate_review_jsonl is not None
+        else list(candidate_inputs)
+    )
+    reviewed_inputs = (
+        _existing_default_artifacts(DEFAULT_REVIEWED_JSONL)
+        if candidate_reviewed_jsonl is None
+        else list(candidate_reviewed_jsonl)
+    )
+    promoted_inputs = (
+        _existing_default_artifacts(DEFAULT_PROMOTED_JSONL)
+        if candidate_promoted_jsonl is None
+        else list(candidate_promoted_jsonl)
+    )
     replay = [_replay_summary(path) for path in replay_inputs]
     alerts = [_alert_summary(path) for path in alert_inputs]
+    feedback_report = _feedback_report_summary(feedback_report_json)
+    feedback_summary = (
+        feedback_report.get("summary")
+        if isinstance(feedback_report.get("summary"), dict)
+        else {}
+    )
+    feedback_pipeline = (
+        feedback_report.get("feedback_pipeline")
+        if isinstance(feedback_report.get("feedback_pipeline"), dict)
+        else {}
+    )
     memory_review = _build_memory_review(
-        candidate_jsonl=candidate_review_jsonl,
+        candidate_jsonl=candidate_review_inputs,
         approved_ids=candidate_approve_id,
         rejected_ids=candidate_reject_id,
         approve_all=candidate_approve_all,
         reviewer=candidate_reviewer,
         note=candidate_review_note,
     )
+    candidate_pipeline = _candidate_pipeline_summary(
+        candidate_jsonl=candidate_inputs,
+        reviewed_jsonl=reviewed_inputs,
+        promoted_jsonl=promoted_inputs,
+        memory_review=memory_review,
+    )
+    replay_pipeline = _replay_pipeline_summary(replay)
     alert_count = len(memory_trend.get("pollution_alerts") or []) + sum(
         int(item.get("alert_count") or 0) for item in alerts
     )
     failed_replays = sum(int(item.get("failed") or 0) for item in replay)
+    replay_pipeline["failed_replay_cases"] = failed_replays
+    replay_pipeline["alert_count"] = sum(int(item.get("alert_count") or 0) for item in alerts)
+    candidate_pipeline["alert_count"] = len(memory_trend.get("pollution_alerts") or [])
+    compaction_drift_report = (
+        memory_trend.get("context_compaction_drift_report")
+        if isinstance(memory_trend.get("context_compaction_drift_report"), dict)
+        else {}
+    )
+    context_compaction_overall_drift = float(
+        compaction_drift_report.get("overall_drift") or 0.0
+    )
     missing_artifacts = [
         item["path"]
         for item in [memory_eval, memory_trend, *replay, *alerts]
         if item.get("status") == "missing"
     ]
     has_failed_eval = memory_eval.get("status") == "failed"
+    has_feedback_alert = feedback_report.get("status") == "alert"
     status = (
         "failed"
         if has_failed_eval or failed_replays or missing_artifacts
         else "alert"
-        if alert_count
+        if alert_count or has_feedback_alert
         else "passed"
     )
     regressions = _build_regressions(
@@ -425,13 +703,16 @@ def build_nightly_report(
     )
     candidate_outputs = {
         "golden_write": "disabled",
-        "sources": [str(_resolve(path)) for path in candidate_review_jsonl],
+        "sources": [str(_resolve(path)) for path in candidate_inputs],
+        "review_sources": [str(_resolve(path)) for path in candidate_review_inputs],
+        "reviewed_outputs": [str(_resolve(path)) for path in reviewed_inputs],
+        "promoted_outputs": [str(_resolve(path)) for path in promoted_inputs],
         "review_status": memory_review["status"],
         "pending_case_ids": list(memory_review.get("pending_case_ids") or []),
         "promoted_case_ids": list(memory_review.get("promoted_case_ids") or []),
         "review_summary": memory_review["queue"],
+        "candidate_pipeline": candidate_pipeline,
     }
-
     commands = [
         {
             "label": "memory-context-eval",
@@ -497,6 +778,21 @@ def build_nightly_report(
             "artifact": [str(_resolve(path)) for path in (alert_inputs or [DEFAULT_ALERT_JSON])],
             "status": "available" if alert_inputs else "not_configured",
         },
+        {
+            "label": "feedback-regression",
+            "command": _command_text(
+                (
+                    "uv",
+                    "run",
+                    "python",
+                    "scripts/feedback_regression.py",
+                    "--report-json",
+                    str(feedback_report_json),
+                )
+            ),
+            "artifact": str(_resolve(feedback_report_json)),
+            "status": "available" if feedback_report.get("status") != "not_configured" else "not_configured",
+        },
     ]
     summary = {
         "status": status,
@@ -506,9 +802,29 @@ def build_nightly_report(
         "failed_replay_cases": failed_replays,
         "missing_artifacts": len(missing_artifacts),
         "missing_artifact_paths": missing_artifacts,
+        "candidate_total": candidate_pipeline["candidate_total"],
+        "candidate_reviewed": candidate_pipeline["reviewed_total"],
+        "candidate_pending": candidate_pipeline["pending"],
+        "candidate_sla_overdue": candidate_pipeline["sla_overdue"],
+        "candidate_promoted": candidate_pipeline["promoted_count"],
+        "context_compaction_drift_report": compaction_drift_report,
+        "context_compaction_overall_drift": context_compaction_overall_drift,
+        "context_compaction_overall_drift_bp": int(round(context_compaction_overall_drift * 10000)),
         "memory_review_pending": memory_review["queue"]["pending"],
         "memory_review_approved": memory_review["queue"].get("approved", 0),
         "memory_review_rejected": memory_review["queue"].get("rejected", 0),
+        "candidate_pipeline": candidate_pipeline,
+        "replay_pipeline": replay_pipeline,
+        "feedback_pipeline": feedback_pipeline,
+        "feedback_negative": int(feedback_summary.get("negative_feedback_count") or 0),
+        "feedback_merge_review_conflicts": int(feedback_summary.get("merge_review_conflict_count") or 0),
+        "feedback_skill_low_confidence": int(feedback_summary.get("skill_low_confidence_count") or 0),
+        "feedback_skill_overrides": int(feedback_summary.get("skill_override_count") or 0),
+        "feedback_context_high_drift": int(feedback_summary.get("context_high_drift_count") or 0),
+        "feedback_notes_tasks_captures": int(feedback_summary.get("notes_tasks_capture_count") or 0),
+        "feedback_top_failing_trajectories": int(
+            feedback_summary.get("top_failing_trajectory_sample_count") or 0
+        ),
     }
     history = _history_metadata(
         previous_report_json=previous_report_json,
@@ -527,6 +843,28 @@ def build_nightly_report(
     )
     baseline_status = str(delta["baseline_status"])
     summary["baseline_status"] = baseline_status
+    baseline_delta = {
+        key: int(value.get("delta") or 0)
+        for key, value in (delta.get("numeric") or {}).items()
+        if isinstance(value, dict)
+    }
+    summary["baseline_delta"] = baseline_delta
+    candidate_pipeline["baseline_delta"] = {
+        key: baseline_delta[key]
+        for key in (
+            "candidate_total",
+            "candidate_reviewed",
+            "candidate_pending",
+            "candidate_sla_overdue",
+            "candidate_promoted",
+        )
+        if key in baseline_delta
+    }
+    replay_pipeline["baseline_delta"] = {
+        key: baseline_delta[key]
+        for key in ("failed_replay_cases", "alert_count")
+        if key in baseline_delta
+    }
 
     return {
         "baseline_status": baseline_status,
@@ -544,6 +882,8 @@ def build_nightly_report(
             "memory_trend": memory_trend,
             "replay": replay,
             "alerts": alerts,
+            "feedback_regression": feedback_report,
+            "candidate_pipeline": candidate_pipeline["artifacts"],
         },
         "memory_review": memory_review,
         "regressions": regressions,
@@ -621,12 +961,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--previous-report-json")
     parser.add_argument("--replay-json", action="append", default=[])
     parser.add_argument("--alert-json", action="append", default=[])
-    parser.add_argument("--candidate-review-jsonl", action="append", default=[])
+    parser.add_argument("--candidate-jsonl", action="append", default=None)
+    parser.add_argument("--candidate-review-jsonl", action="append", default=None)
+    parser.add_argument("--candidate-reviewed-jsonl", action="append", default=None)
+    parser.add_argument("--candidate-promoted-jsonl", action="append", default=None)
     parser.add_argument("--candidate-approve-id", action="append", default=[])
     parser.add_argument("--candidate-reject-id", action="append", default=[])
     parser.add_argument("--candidate-approve-all", action="store_true")
     parser.add_argument("--candidate-reviewer")
     parser.add_argument("--candidate-review-note")
+    parser.add_argument("--feedback-report-json", default=str(DEFAULT_FEEDBACK_REGRESSION_JSON))
     parser.add_argument("--skip-history-append", action="store_true")
     return parser.parse_args(argv)
 
@@ -644,12 +988,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             memory_trend_json=args.memory_trend_json,
             replay_json=args.replay_json,
             alert_json=args.alert_json,
+            candidate_jsonl=args.candidate_jsonl,
             candidate_review_jsonl=args.candidate_review_jsonl,
+            candidate_reviewed_jsonl=args.candidate_reviewed_jsonl,
+            candidate_promoted_jsonl=args.candidate_promoted_jsonl,
             candidate_approve_id=args.candidate_approve_id,
             candidate_reject_id=args.candidate_reject_id,
             candidate_approve_all=bool(args.candidate_approve_all),
             candidate_reviewer=args.candidate_reviewer,
             candidate_review_note=args.candidate_review_note,
+            feedback_report_json=args.feedback_report_json,
         )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[nightly-regression] {exc}", file=sys.stderr)

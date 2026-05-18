@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from .branching import MergeMode, MergeProposal
 
-
 JSON_SYSTEM_PROMPT = """You generate a JSON merge proposal for a branch conversation.
 Return valid JSON only. No markdown fences. No prose outside JSON.
 Schema:
@@ -36,7 +35,7 @@ def _extract_text_messages(state: dict[str, Any], limit: int = 10) -> list[str]:
 
 def _coerce_finding_text(item: Any) -> str:
     if hasattr(item, "finding"):
-        return str(getattr(item, "finding") or "").strip()
+        return str(item.finding or "").strip()
     if isinstance(item, dict):
         return str(item.get("finding") or "").strip()
     return str(item or "").strip()
@@ -55,7 +54,9 @@ def _contains_cjk(text: str) -> bool:
 
 def _preferred_output_language(state: dict[str, Any]) -> str:
     samples: list[str] = []
-    samples.extend(_coerce_finding_text(item) for item in state.get("branch_local_findings", [])[:6])
+    samples.extend(
+        _coerce_finding_text(item) for item in state.get("branch_local_findings", [])[:6]
+    )
     samples.extend(_extract_text_messages(state, limit=6))
     if state.get("rolling_summary"):
         samples.append(str(state.get("rolling_summary")))
@@ -80,7 +81,9 @@ def _brief_inherited_context(state: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         summary = _normalize_inline_text(item.get("summary", ""), max_chars=80)
-        branch_name = _normalize_inline_text(item.get("branch_name", "branch"), max_chars=40) or "branch"
+        branch_name = (
+            _normalize_inline_text(item.get("branch_name", "branch"), max_chars=40) or "branch"
+        )
         if summary:
             parts.append(f"{branch_name}: {summary}")
     if not parts:
@@ -105,12 +108,22 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def fallback_merge_proposal(state: dict[str, Any]) -> MergeProposal:
     output_language = _preferred_output_language(state)
-    findings = [_coerce_finding_text(item) for item in list(state.get("branch_local_findings", []))[:8]]
+    findings = [
+        _coerce_finding_text(item) for item in list(state.get("branch_local_findings", []))[:8]
+    ]
     findings = [item for item in findings if item]
     artifacts = [str(item) for item in state.get("artifacts", [])[:8]]
     if not findings:
-        findings = ["暂无明确的分支交互结论记录。"] if output_language == "Chinese" else ["No explicit branch interaction conclusions were recorded yet."]
-    summary = findings[0] if findings else _normalize_inline_text(_local_interaction_summary(state), max_chars=220)
+        findings = (
+            ["暂无明确的分支交互结论记录。"]
+            if output_language == "Chinese"
+            else ["No explicit branch interaction conclusions were recorded yet."]
+        )
+    summary = (
+        findings[0]
+        if findings
+        else _normalize_inline_text(_local_interaction_summary(state), max_chars=220)
+    )
     return MergeProposal(
         summary=str(summary)[:1200],
         key_findings=findings,
@@ -121,7 +134,9 @@ def fallback_merge_proposal(state: dict[str, Any]) -> MergeProposal:
     )
 
 
-def generate_merge_proposal(model, state: dict[str, Any], branch_meta: dict[str, Any] | None) -> MergeProposal:
+def generate_merge_proposal(
+    model, state: dict[str, Any], branch_meta: dict[str, Any] | None
+) -> MergeProposal:
     transcript = "\n".join(_extract_text_messages(state))
     finding_lines = [_coerce_finding_text(item) for item in state.get("branch_local_findings", [])]
     findings = "\n".join(f"- {item}" for item in finding_lines if item) or "- none"
@@ -151,15 +166,18 @@ Recorded findings:
 {findings}
 
 Recent transcript:
-{transcript or '(empty)'}
+{transcript or "(empty)"}
 """.strip()
 
-    response = model.invoke(
-        [
-            SystemMessage(content=JSON_SYSTEM_PROMPT),
-            HumanMessage(content=prompt),
-        ]
-    )
+    try:
+        response = model.invoke(
+            [
+                SystemMessage(content=JSON_SYSTEM_PROMPT),
+                HumanMessage(content=prompt),
+            ]
+        )
+    except Exception:
+        return fallback_merge_proposal(state)
     content = response.content
     if isinstance(content, list):
         content = json.dumps(content, ensure_ascii=False)

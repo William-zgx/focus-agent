@@ -1,7 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import type { FocusAgentUser } from "@focus-agent/web-sdk";
 
-import { formatAdminDate, formatUserLabel, statusTone } from "@/features/admin-users/admin-user-utils";
+import {
+	formatAdminDate,
+	formatUserLabel,
+	statusTone,
+} from "@/features/admin-users/admin-user-utils";
 
 function userStatusClass(user: FocusAgentUser) {
 	return `fa-observability-pill is-${statusTone(user.status)}`;
@@ -37,7 +41,12 @@ export function AdminUsersTable({
 				</thead>
 				<tbody>
 					{users.map((user) => (
-						<tr className={selectedUserId === user.user_id ? "is-selected" : undefined} key={user.user_id}>
+						<tr
+							className={
+								selectedUserId === user.user_id ? "is-selected" : undefined
+							}
+							key={user.user_id}
+						>
 							<td>
 								<div className="fa-admin-identity-cell">
 									<strong>{formatUserLabel(user)}</strong>
@@ -55,7 +64,9 @@ export function AdminUsersTable({
 									))}
 								</div>
 							</td>
-							<td>{formatAdminDate(user.updated_at ?? user.created_at, locale)}</td>
+							<td>
+								{formatAdminDate(user.updated_at ?? user.created_at, locale)}
+							</td>
 							<td>
 								<Link
 									className="fa-admin-row-link"
@@ -71,7 +82,9 @@ export function AdminUsersTable({
 						<tr>
 							<td colSpan={6}>
 								<div className="fa-observability-empty is-compact">
-									{isChineseUi ? "没有匹配的用户。" : "No users match these filters."}
+									{isChineseUi
+										? "没有匹配的用户。"
+										: "No users match these filters."}
 								</div>
 							</td>
 						</tr>

@@ -7,7 +7,8 @@ the case is marked failed without invoking the LLM judge.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from ..schema import EvalCase, JudgeVerdict, TrajectoryStep
 

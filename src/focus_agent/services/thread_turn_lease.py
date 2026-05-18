@@ -10,7 +10,7 @@ from .coordination import ThreadTurnLease, ThreadTurnLockBackend, new_thread_tur
 logger = logging.getLogger("focus_agent.chat")
 
 
-class ThreadTurnLeaseLost(ConcurrentTurnError):
+class ThreadTurnLeaseLost(ConcurrentTurnError):  # noqa: N818
     """Raised when a turn loses ownership of its thread lock mid-flight."""
 
 

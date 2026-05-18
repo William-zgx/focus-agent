@@ -71,6 +71,10 @@ class ContextUsageResponse(BaseModel):
     prompt_chars: int = 0
     prompt_budget_chars: int = 0
     tokenizer_mode: str = "chars_fallback"
+    counting_backend: str = "chars_fallback"
+    tokenizer_id: str | None = None
+    estimated: bool = True
+    drift_risk: str = "low"
     last_compacted_at: str | None = None
 
 

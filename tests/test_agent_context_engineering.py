@@ -13,7 +13,7 @@ def test_context_engineering_policy_defaults_are_legacy_safe():
 
     assert policy["enabled"] is False
     assert policy["artifactize_long_observations"] is False
-    assert policy["tokenizer_mode"] == "chars_fallback"
+    assert policy["tokenizer_mode"] == "tokenizer_first"
     assert policy["default_off_legacy_safe"] is True
 
 

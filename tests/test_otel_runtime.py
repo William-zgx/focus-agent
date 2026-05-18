@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import sys
 from types import ModuleType
 from typing import Any
-import sys
 
 from focus_agent.config import Settings
 from focus_agent.observability.otel_runtime import initialize_otel_runtime

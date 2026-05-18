@@ -1,4 +1,11 @@
-from focus_agent import AppRuntime, BranchService, ChatService, RequestContext, Settings, create_runtime
+from focus_agent import (
+    AppRuntime,
+    BranchService,
+    ChatService,
+    RequestContext,
+    Settings,
+    create_runtime,
+)
 from focus_agent.api import app, create_app
 from focus_agent.api.contracts import ChatTurnRequest
 from focus_agent.api.schemas import ChatTurnRequest as LegacyChatTurnRequest
@@ -15,11 +22,16 @@ from focus_agent.core.branching import (
     MergeMode,
     MergeProposal,
 )
-from focus_agent.core.state import AgentState, initial_agent_state, normalize_agent_state, serialize_agent_state
-from focus_agent.engine.graph_builder import build_graph as CanonicalBuildGraph
+from focus_agent.core.state import (
+    AgentState,
+    initial_agent_state,
+    normalize_agent_state,
+    serialize_agent_state,
+)
+from focus_agent.engine.graph_builder import build_graph as canonical_build_graph
 from focus_agent.engine.runtime import AppRuntime as CanonicalAppRuntime
 from focus_agent.engine.runtime import create_runtime as canonical_create_runtime
-from focus_agent.graph import build_graph as LegacyBuildGraph
+from focus_agent.graph import build_graph as legacy_build_graph
 from focus_agent.runtime import AppRuntime as LegacyAppRuntime
 from focus_agent.runtime import create_runtime as legacy_create_runtime
 from focus_agent.schemas import BranchMeta as LegacyBranchMeta
@@ -58,7 +70,7 @@ def test_service_and_runtime_shims_remain_stable_public_facades():
     assert LegacyChatService is CanonicalChatService
     assert LegacyAppRuntime is CanonicalAppRuntime
     assert legacy_create_runtime is canonical_create_runtime
-    assert LegacyBuildGraph is CanonicalBuildGraph
+    assert legacy_build_graph is canonical_build_graph
 
 
 def test_schema_and_state_shims_remain_stable_public_facades():

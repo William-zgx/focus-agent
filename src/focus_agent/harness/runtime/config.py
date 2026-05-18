@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from ..schemas.config import HarnessConfig, RuntimeFeatureSpec, RuntimeFeatures
-
+from ..schemas.config import HarnessConfig, RuntimeFeatures, RuntimeFeatureSpec
 
 __all__ = [
     "HarnessConfig",

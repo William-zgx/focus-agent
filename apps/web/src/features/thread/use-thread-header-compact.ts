@@ -1,8 +1,4 @@
-import {
-	type DependencyList,
-	type RefObject,
-	useLayoutEffect,
-} from "react";
+import { type DependencyList, type RefObject, useLayoutEffect } from "react";
 
 import { syncTooltipText } from "@/shared/ui/tooltip";
 
@@ -45,7 +41,9 @@ function compactButtonsAreClipped(
 	const actionsRect = actions.getBoundingClientRect();
 	return compactButtons.some((button) => {
 		const rect = button.getBoundingClientRect();
-		return rect.left < actionsRect.left - 1 || rect.right > actionsRect.right + 1;
+		return (
+			rect.left < actionsRect.left - 1 || rect.right > actionsRect.right + 1
+		);
 	});
 }
 

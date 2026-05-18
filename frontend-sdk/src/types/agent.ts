@@ -38,6 +38,88 @@ export interface FocusAgentRoleDryRunResponse {
   plan: Record<string, unknown>;
 }
 
+export interface FocusAgentSkillSelectRequest {
+  message: string;
+  skill_hints?: string[];
+  semantic_enabled?: boolean | null;
+  semantic_threshold?: number | null;
+}
+
+export interface FocusAgentSkillSemanticCandidate {
+  skill_id: string;
+  score: number;
+  matched_terms: string[];
+  auto_activate: boolean;
+  rationale: string;
+}
+
+export interface FocusAgentSkillSelectionResponse {
+  skill_ids: string[];
+  stripped_message: string;
+  prompt_mode?: string | null;
+  selection_source: string;
+  matched_triggers: string[];
+  semantic_candidates: FocusAgentSkillSemanticCandidate[];
+  confidence: number;
+  rationale: string;
+  semantic_enabled: boolean;
+  semantic_threshold: number;
+}
+
+export interface FocusAgentSkillSelectionEvent {
+  selection_id: string;
+  created_at: string;
+  message?: string | null;
+  selection_source: string;
+  explicit_hints: string[];
+  matched_triggers: string[];
+  semantic_candidates: FocusAgentSkillSemanticCandidate[];
+  activated_skills: string[];
+  confidence: number;
+  rationale?: string | null;
+  user_override?: string | null;
+  feedback?: string | null;
+}
+
+export interface FocusAgentSkillSelectionListResponse {
+  items: FocusAgentSkillSelectionEvent[];
+  count: number;
+}
+
+export interface FocusAgentSkillCatalogItem {
+  skill_id: string;
+  name: string;
+  description?: string | null;
+  when_to_use?: string | null;
+  triggers: string[];
+  recommended_tools: string[];
+  enabled: boolean;
+  pinned: boolean;
+  disabled_until?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentSkillCatalogResponse {
+  items: FocusAgentSkillCatalogItem[];
+  count: number;
+}
+
+export interface FocusAgentSkillSelectionFeedbackRequest {
+  feedback: "useful" | "misfire" | "ignored" | string;
+  note?: string | null;
+}
+
+export interface FocusAgentSkillPreferenceRequest {
+  enabled?: boolean | null;
+  pinned?: boolean | null;
+  disabled_for_session?: boolean | null;
+  reason?: string | null;
+}
+
+export interface FocusAgentSkillPreferenceResponse {
+  skill: FocusAgentSkillCatalogItem;
+}
+
 export interface FocusAgentRoleDecisionListResponse {
   items: Array<Record<string, unknown>>;
   count: number;
@@ -248,6 +330,57 @@ export interface FocusAgentContextArtifactListResponse {
   count: number;
   trajectory_available: boolean;
   trajectory_error?: string | null;
+}
+
+export interface FocusAgentContextMemoryEvidence {
+  evidence_id: string;
+  thread_id?: string | null;
+  turn_id?: string | null;
+  created_at: string;
+  selected_memories: Array<Record<string, unknown>>;
+  excluded_memories: Array<Record<string, unknown>>;
+  compaction_summary?: string | null;
+  drift_report?: Record<string, unknown> | null;
+  artifact_refs: Array<Record<string, unknown>>;
+  token_counting_backend?: string | null;
+  tokenizer_id?: string | null;
+  estimated?: boolean | null;
+  risk_flags: string[];
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentContextMemoryEvidenceListResponse {
+  items: FocusAgentContextMemoryEvidence[];
+  count: number;
+}
+
+export interface FocusAgentContextExplainRequest {
+  thread_id?: string | null;
+  turn_id?: string | null;
+  message?: string | null;
+}
+
+export interface FocusAgentContextExplainResponse {
+  evidence: FocusAgentContextMemoryEvidence;
+  answerability?: Record<string, unknown> | null;
+}
+
+export interface FocusAgentMemoryUsageResponse {
+  memory_id: string;
+  usage: Array<Record<string, unknown>>;
+  count: number;
+}
+
+export interface FocusAgentFeedbackTrendResponse {
+  negative_feedback_count: number;
+  merge_review_apply_success_rate?: number | null;
+  merge_review_conflict_rate?: number | null;
+  skill_low_confidence_rate?: number | null;
+  skill_override_rate?: number | null;
+  context_high_drift_count: number;
+  notes_tasks_capture_count: number;
+  top_failing_trajectory_samples: Array<Record<string, unknown>>;
+  generated_at?: string | null;
 }
 
 export interface FocusAgentTaskLedgerPolicyResponse {

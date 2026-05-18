@@ -27,6 +27,7 @@ def _build_prometheus_metrics_payload(
     trajectory_available: bool,
     agent_governance_metrics: dict[str, int] | None = None,
     background_metrics: dict[str, int] | None = None,
+    postgres_metrics: dict[str, int | float] | None = None,
     tool_runtime_metrics: dict[str, int] | None = None,
 ) -> str:
     lines = [
@@ -70,6 +71,7 @@ def _build_prometheus_metrics_payload(
     if not trajectory_available or not trajectory_stats:
         lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
         lines.extend(_background_metric_lines(background_metrics or {}))
+        lines.extend(_postgres_metric_lines(postgres_metrics or {}))
         lines.extend(_tool_runtime_metric_lines(tool_runtime_metrics or {}))
         return "\n".join(lines) + "\n"
 
@@ -123,6 +125,7 @@ def _build_prometheus_metrics_payload(
         )
     lines.extend(_agent_governance_metric_lines(agent_governance_metrics or {}))
     lines.extend(_background_metric_lines(background_metrics or {}))
+    lines.extend(_postgres_metric_lines(postgres_metrics or {}))
     lines.extend(_tool_runtime_metric_lines(tool_runtime_metrics or {}))
     return "\n".join(lines) + "\n"
 
@@ -254,6 +257,11 @@ def _background_metric_lines(metrics: dict[str, int]) -> list[str]:
         ),
         _prometheus_metric_line(
             "focus_agent_background_job_status_count",
+            int(metrics.get("job_retrying_total") or 0),
+            labels={"status": "retrying"},
+        ),
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
             int(metrics.get("job_running_total") or 0),
             labels={"status": "running"},
         ),
@@ -272,11 +280,34 @@ def _background_metric_lines(metrics: dict[str, int]) -> list[str]:
             int(metrics.get("job_released_total") or 0),
             labels={"status": "released"},
         ),
+        _prometheus_metric_line(
+            "focus_agent_background_job_status_count",
+            int(metrics.get("job_dead_lettered_total") or 0),
+            labels={"status": "dead_lettered"},
+        ),
         "# HELP focus_agent_background_job_attempt_total Total durable background job attempts.",
         "# TYPE focus_agent_background_job_attempt_total counter",
         _prometheus_metric_line(
             "focus_agent_background_job_attempt_total",
             int(metrics.get("job_attempt_total") or 0),
+        ),
+        "# HELP focus_agent_background_job_oldest_pending_seconds Age in seconds of the oldest pending durable background job.",
+        "# TYPE focus_agent_background_job_oldest_pending_seconds gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_job_oldest_pending_seconds",
+            int(metrics.get("job_oldest_pending_seconds") or 0),
+        ),
+        "# HELP focus_agent_background_job_oldest_retry_seconds Age in seconds of the oldest retrying durable background job.",
+        "# TYPE focus_agent_background_job_oldest_retry_seconds gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_job_oldest_retry_seconds",
+            int(metrics.get("job_oldest_retry_seconds") or 0),
+        ),
+        "# HELP focus_agent_background_job_oldest_dead_lettered_seconds Age in seconds of the oldest dead-lettered durable background job.",
+        "# TYPE focus_agent_background_job_oldest_dead_lettered_seconds gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_job_oldest_dead_lettered_seconds",
+            int(metrics.get("job_oldest_dead_lettered_seconds") or 0),
         ),
         "# HELP focus_agent_background_durable_worker_active Active durable background job handlers.",
         "# TYPE focus_agent_background_durable_worker_active gauge",
@@ -302,11 +333,23 @@ def _background_metric_lines(metrics: dict[str, int]) -> list[str]:
             "focus_agent_background_durable_worker_failed_total",
             int(metrics.get("durable_worker_failed_total") or 0),
         ),
+        "# HELP focus_agent_background_durable_worker_heartbeat_lost_total Durable jobs whose claim heartbeat was lost by this worker.",
+        "# TYPE focus_agent_background_durable_worker_heartbeat_lost_total counter",
+        _prometheus_metric_line(
+            "focus_agent_background_durable_worker_heartbeat_lost_total",
+            int(metrics.get("durable_worker_heartbeat_lost_total") or 0),
+        ),
         "# HELP focus_agent_background_job_backend_error Whether the background job backend snapshot failed.",
         "# TYPE focus_agent_background_job_backend_error gauge",
         _prometheus_metric_line(
             "focus_agent_background_job_backend_error",
             int(metrics.get("job_backend_error") or 0),
+        ),
+        "# HELP focus_agent_background_durable_worker_snapshot_error Whether the durable background worker snapshot failed.",
+        "# TYPE focus_agent_background_durable_worker_snapshot_error gauge",
+        _prometheus_metric_line(
+            "focus_agent_background_durable_worker_snapshot_error",
+            int(metrics.get("durable_worker_snapshot_error") or 0),
         ),
     ]
 
@@ -330,6 +373,71 @@ def _tool_runtime_metric_lines(metrics: dict[str, int]) -> list[str]:
         _prometheus_metric_line(
             "focus_agent_tool_timeout_max_workers",
             int(metrics.get("max_workers") or 0),
+        ),
+    ]
+
+
+def _postgres_metric_lines(metrics: dict[str, int | float]) -> list[str]:
+    return [
+        "# HELP focus_agent_postgres_pool_enabled Whether Postgres pooling is configured.",
+        "# TYPE focus_agent_postgres_pool_enabled gauge",
+        _prometheus_metric_line(
+            "focus_agent_postgres_pool_enabled",
+            int(metrics.get("postgres_pool_enabled") or 0),
+        ),
+        "# HELP focus_agent_postgres_pool_available Whether a Postgres pool is currently available.",
+        "# TYPE focus_agent_postgres_pool_available gauge",
+        _prometheus_metric_line(
+            "focus_agent_postgres_pool_available",
+            int(metrics.get("postgres_pool_available") or 0),
+        ),
+        "# HELP focus_agent_postgres_pool_fallback_direct Whether Postgres connections use direct fallback.",
+        "# TYPE focus_agent_postgres_pool_fallback_direct gauge",
+        _prometheus_metric_line(
+            "focus_agent_postgres_pool_fallback_direct",
+            int(metrics.get("postgres_pool_fallback_direct") or 0),
+        ),
+        "# HELP focus_agent_postgres_connection_opened_total Postgres connection checkouts opened by the provider.",
+        "# TYPE focus_agent_postgres_connection_opened_total counter",
+        _prometheus_metric_line(
+            "focus_agent_postgres_connection_opened_total",
+            int(metrics.get("postgres_connection_opened_total") or 0),
+        ),
+        "# HELP focus_agent_postgres_connection_in_use Postgres connections currently checked out.",
+        "# TYPE focus_agent_postgres_connection_in_use gauge",
+        _prometheus_metric_line(
+            "focus_agent_postgres_connection_in_use",
+            int(metrics.get("postgres_connection_in_use") or 0),
+        ),
+        "# HELP focus_agent_postgres_query_total Postgres queries observed by the provider.",
+        "# TYPE focus_agent_postgres_query_total counter",
+        _prometheus_metric_line(
+            "focus_agent_postgres_query_total",
+            int(metrics.get("postgres_query_total") or 0),
+        ),
+        "# HELP focus_agent_postgres_query_error_total Postgres query errors observed by the provider.",
+        "# TYPE focus_agent_postgres_query_error_total counter",
+        _prometheus_metric_line(
+            "focus_agent_postgres_query_error_total",
+            int(metrics.get("postgres_query_error_total") or 0),
+        ),
+        "# HELP focus_agent_postgres_slow_query_total Slow Postgres queries observed by the provider.",
+        "# TYPE focus_agent_postgres_slow_query_total counter",
+        _prometheus_metric_line(
+            "focus_agent_postgres_slow_query_total",
+            int(metrics.get("postgres_slow_query_total") or 0),
+        ),
+        "# HELP focus_agent_postgres_slow_query_threshold_ms Slow Postgres query threshold in milliseconds.",
+        "# TYPE focus_agent_postgres_slow_query_threshold_ms gauge",
+        _prometheus_metric_line(
+            "focus_agent_postgres_slow_query_threshold_ms",
+            float(metrics.get("postgres_slow_query_threshold_ms") or 0.0),
+        ),
+        "# HELP focus_agent_postgres_metrics_error Whether Postgres provider metrics snapshot failed.",
+        "# TYPE focus_agent_postgres_metrics_error gauge",
+        _prometheus_metric_line(
+            "focus_agent_postgres_metrics_error",
+            int(metrics.get("postgres_metrics_error") or 0),
         ),
     ]
 

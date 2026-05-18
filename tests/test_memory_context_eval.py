@@ -661,20 +661,73 @@ def test_memory_context_candidate_review_cli_writes_review_and_promotion(
     assert [case["promotion_review"]["status"] for case in reviewed] == ["approved", "pending"]
     assert [case["id"] for case in promoted] == ["mc_candidate_approved"]
 
-    blocked_out = tmp_path / "blocked.jsonl"
-    blocked_exit_code, _, blocked_stderr = _run_cli(
+    no_approval_reviewed_out = tmp_path / "reviewed-no-approval.jsonl"
+    no_approval_promoted_out = tmp_path / "empty-promoted.jsonl"
+    no_approval_exit_code, no_approval_stdout, _ = _run_cli(
         [
             "--candidate-review-jsonl",
             str(candidate_jsonl),
+            "--candidate-reviewed-out",
+            str(no_approval_reviewed_out),
             "--candidate-promoted-out",
-            str(blocked_out),
+            str(no_approval_promoted_out),
         ],
         capsys,
     )
 
-    assert blocked_exit_code == 2
-    assert "--candidate-promoted-out requires" in blocked_stderr
-    assert not blocked_out.exists()
+    assert no_approval_exit_code == 0
+    assert no_approval_stdout["promoted"] == 0
+    assert no_approval_stdout["promoted_dataset"] == str(no_approval_promoted_out)
+    assert _read_jsonl(no_approval_promoted_out) == []
+
+
+def test_memory_context_candidate_cli_uses_default_pipeline_paths(
+    tmp_path: Path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "replay-report.json"
+    candidate_out = tmp_path / "reports" / "nightly" / "memory-context-candidates.jsonl"
+    reviewed_out = tmp_path / "reports" / "nightly" / "memory-context-reviewed.jsonl"
+    promoted_out = tmp_path / "reports" / "nightly" / "memory-context-promoted.jsonl"
+    _write_json(
+        source,
+        {
+            "meta": {"suite": "trajectory_replay"},
+            "results": [
+                {
+                    "case_id": "ctx-reg-9",
+                    "passed": False,
+                    "input": {
+                        "rendered_context": "Context mentions the Postgres fix.",
+                        "answer": "Use the Postgres fix.",
+                    },
+                    "expected": {"required_facts": ["Postgres fix"]},
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(memory_context_eval, "DEFAULT_CANDIDATE_JSONL", candidate_out)
+    monkeypatch.setattr(memory_context_eval, "DEFAULT_REVIEWED_JSONL", reviewed_out)
+    monkeypatch.setattr(memory_context_eval, "DEFAULT_PROMOTED_JSONL", promoted_out)
+
+    import_exit_code, import_stdout, _ = _run_cli(
+        ["--candidate-source-json", str(source), "--candidate-source-type", "replay"],
+        capsys,
+    )
+    review_exit_code, review_stdout, _ = _run_cli(
+        ["--candidate-review-jsonl", str(candidate_out)],
+        capsys,
+    )
+
+    assert import_exit_code == 0
+    assert import_stdout["dataset"] == str(candidate_out)
+    assert review_exit_code == 0
+    assert review_stdout["reviewed_dataset"] == str(reviewed_out)
+    assert review_stdout["promoted_dataset"] == str(promoted_out)
+    assert len(_read_jsonl(candidate_out)) == 1
+    assert len(_read_jsonl(reviewed_out)) == 1
+    assert _read_jsonl(promoted_out) == []
 
 
 def test_memory_context_compaction_semantic_metrics_report_drift(tmp_path: Path) -> None:
@@ -701,8 +754,18 @@ def test_memory_context_compaction_semantic_metrics_report_drift(tmp_path: Path)
     assert result["summary"]["context_compaction_semantic_recall"] == 0.0
     assert result["summary"]["context_compaction_semantic_precision"] == 0.0
     assert result["summary"]["context_compaction_semantic_grounding"] == 0.0
+    assert result["summary"]["context_compaction_semantic_answerability"] == 0.0
     assert result["summary"]["context_compaction_semantic_quality"] == 0.0
     assert result["summary"]["context_compaction_semantic_drift"] == 1.0
+    assert result["summary"]["context_compaction_drift_report"] == {
+        "answerability": 0.0,
+        "case_count": 1,
+        "drift_risk": "high",
+        "grounding": 0.0,
+        "overall_drift": 1.0,
+        "precision": 0.0,
+        "recall": 0.0,
+    }
 
 
 def test_memory_regression_trend_report_summarizes_stages_and_alerts(
@@ -759,6 +822,8 @@ def test_memory_regression_trend_report_summarizes_stages_and_alerts(
     assert report["stages"]["candidate"]["pollution_case_ids"] == ["candidate-polluted"]
     assert report["stages"]["reviewed"]["review_status_counts"] == {"approved": 1}
     assert report["promotion_history"]["promoted_case_ids"] == ["reviewed-approved"]
+    assert report["stages"]["golden"]["context_compaction_drift_report"]["overall_drift"] == 0.0
+    assert report["trend"][3]["context_compaction_drift_report"]["drift_risk"] == "low"
     assert report["stages"]["golden"]["context_compaction_semantic_quality"] == 1.0
     assert report["pollution_alerts"][0]["kind"] == "irrelevant_memory_pollution"
 

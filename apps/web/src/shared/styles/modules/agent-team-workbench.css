@@ -1,0 +1,1237 @@
+/* Agent Team as a chat-native collaboration mode. */
+.fa-agent-team-layout.is-create {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.fa-agent-team-studio {
+	gap: 14px;
+}
+
+.fa-agent-team-studio-header {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: center;
+	min-width: 0;
+	padding: 10px 12px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border-subtle));
+	border-radius: 18px;
+	background:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--fa-accent) 7%, transparent),
+			transparent 46%
+		), color-mix(in srgb, var(--fa-panel-2) 66%, transparent 34%);
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fa-text) 6%, transparent);
+}
+
+.fa-agent-team-studio-header > div:first-child {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.fa-agent-team-studio-header h1 {
+	margin: 0;
+	color: var(--fa-text);
+	font-size: clamp(1.08rem, 1.6vw, 1.38rem);
+	line-height: 1.08;
+	letter-spacing: -0.02em;
+}
+
+.fa-agent-team-studio-header p {
+	margin: 0;
+	max-width: 820px;
+	color: var(--fa-text-muted);
+	line-height: 1.25;
+	font-size: 0.82rem;
+}
+
+.fa-agent-team-studio-dag {
+	width: 236px;
+	height: 82px;
+	color: var(--fa-accent);
+	overflow: visible;
+	filter: drop-shadow(
+		0 10px 18px color-mix(in srgb, var(--fa-bg) 42%, transparent)
+	);
+}
+
+.fa-agent-team-studio-dag .edge {
+	fill: none;
+	stroke: url(#agent-team-dag-edge);
+	stroke-width: 1.5;
+	stroke-linecap: round;
+}
+
+.fa-agent-team-studio-dag .edge-strong {
+	stroke-width: 2;
+}
+
+.fa-agent-team-studio-dag .node rect {
+	fill: color-mix(in srgb, var(--fa-panel-1) 86%, transparent 14%);
+	stroke: color-mix(in srgb, var(--fa-accent) 30%, var(--fa-border-subtle));
+	stroke-width: 1;
+}
+
+.fa-agent-team-studio-dag .node-root rect {
+	fill: color-mix(in srgb, var(--fa-accent) 20%, var(--fa-panel-1) 80%);
+	stroke: color-mix(in srgb, var(--fa-accent) 62%, var(--fa-border-subtle));
+}
+
+.fa-agent-team-studio-dag .node-final rect {
+	fill: color-mix(in srgb, var(--fa-success) 18%, var(--fa-panel-1) 82%);
+	stroke: color-mix(in srgb, var(--fa-success) 58%, var(--fa-border-subtle));
+}
+
+.fa-agent-team-studio-dag text {
+	fill: var(--fa-text);
+	font-size: 8px;
+	font-weight: 800;
+	letter-spacing: 0.01em;
+	text-anchor: middle;
+}
+
+.fa-agent-team-studio-grid {
+	display: grid;
+	grid-template-columns: minmax(420px, 1.1fr) minmax(320px, 0.72fr);
+	gap: 12px;
+	align-items: start;
+}
+
+.fa-agent-team-studio-form {
+	gap: 14px;
+}
+
+.fa-agent-team-studio-section {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+
+.fa-agent-team-studio-section-heading {
+	position: relative;
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+	padding-right: 28px;
+}
+
+.fa-agent-team-studio-section-heading strong {
+	color: var(--fa-text);
+}
+
+.fa-agent-team-studio-section-heading .fa-agent-team-help-tip {
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+
+.fa-agent-team-preset-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 4px;
+}
+
+.fa-agent-team-preset {
+	position: relative;
+	display: grid;
+	gap: 1px;
+	min-width: 0;
+	min-height: 42px;
+	padding: 5px 8px 5px 24px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+	color: var(--fa-text);
+	cursor: pointer;
+	font: inherit;
+	text-align: left;
+}
+
+.fa-agent-team-preset:hover {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 46%,
+		var(--fa-border-strong)
+	);
+	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-1) 92%);
+}
+
+.fa-agent-team-preset.is-selected {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 86%,
+		var(--fa-border-strong)
+	);
+	background:
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--fa-accent) 18%, transparent),
+			transparent 42%
+		), color-mix(in srgb, var(--fa-accent) 18%, var(--fa-panel-1) 82%);
+	box-shadow:
+		inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 36%, transparent),
+		0 0 0 2px color-mix(in srgb, var(--fa-accent) 12%, transparent);
+}
+
+.fa-agent-team-preset::before {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 8px;
+	width: 9px;
+	height: 9px;
+	border: 1px solid color-mix(in srgb, var(--fa-text-muted) 72%, transparent);
+	border-radius: 999px;
+	transform: translateY(-50%);
+}
+
+.fa-agent-team-preset.is-selected::before {
+	border-color: var(--fa-accent);
+	background: radial-gradient(circle, var(--fa-accent) 0 50%, transparent 54%);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--fa-accent) 16%, transparent);
+}
+
+.fa-agent-team-preset strong {
+	color: var(--fa-text);
+	font-size: 0.82rem;
+	line-height: 1.05;
+}
+
+.fa-agent-team-preset span {
+	overflow: hidden;
+	color: var(--fa-text-muted);
+	line-height: 1.1;
+	font-size: 0.68rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-studio-rail {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: center;
+	min-width: 0;
+	padding: 12px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--fa-panel-2) 58%, transparent 42%);
+}
+
+.fa-agent-team-studio-rail-main {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-studio-rail-step {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 3px 8px;
+	align-items: center;
+	min-width: 0;
+	padding: 9px 10px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 13px;
+	background: color-mix(in srgb, var(--fa-panel-1) 72%, transparent 28%);
+	opacity: 0.72;
+}
+
+.fa-agent-team-studio-rail-step.is-active {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 42%,
+		var(--fa-border-subtle)
+	);
+	opacity: 1;
+}
+
+.fa-agent-team-studio-rail-step span {
+	display: grid;
+	grid-row: 1 / span 2;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	color: var(--fa-text);
+	font-size: 0.72rem;
+	font-weight: 800;
+}
+
+.fa-agent-team-studio-rail-step strong,
+.fa-agent-team-studio-rail-step small {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.fa-agent-team-studio-rail-step strong {
+	color: var(--fa-text);
+	font-size: 0.88rem;
+}
+
+.fa-agent-team-studio-rail-step small {
+	color: var(--fa-text-muted);
+	font-size: 0.74rem;
+}
+
+.fa-agent-team-studio-rail-action {
+	min-width: 150px;
+}
+
+.fa-agent-team-compact-header {
+	padding: 10px 12px;
+	border-radius: 20px;
+}
+
+.fa-agent-team-compact-header .fa-chat-header-top {
+	gap: 12px;
+}
+
+.fa-agent-team-title-block {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.fa-agent-team-title-block h1 {
+	margin: 0;
+	max-width: min(46vw, 680px);
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: clamp(1rem, 1.4vw, 1.2rem);
+	line-height: 1.15;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-title-block p {
+	margin: 0;
+	max-width: min(52vw, 760px);
+	overflow: hidden;
+	color: var(--fa-text-muted);
+	font-size: 0.82rem;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-execution-mode {
+	display: inline-flex;
+	width: fit-content;
+	min-height: 26px;
+	align-items: center;
+	padding: 4px 8px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+	color: var(--fa-text-muted);
+	font-size: 0.76rem;
+}
+
+.fa-agent-team-tool-approvals {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	padding: 10px 12px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-warning) 38%, var(--fa-border-subtle));
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--fa-warning) 8%, var(--fa-panel-1));
+}
+
+.fa-agent-team-tool-approvals > div:first-child {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+}
+
+.fa-agent-team-tool-approvals span {
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	text-transform: uppercase;
+}
+
+.fa-agent-team-tool-approvals strong {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	color: var(--fa-text);
+}
+
+.fa-agent-team-tool-approval-list {
+	display: grid;
+	gap: 6px;
+}
+
+.fa-agent-team-tool-approval {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 10px;
+	align-items: center;
+	min-width: 0;
+	padding: 8px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--fa-panel-2) 74%, transparent 26%);
+}
+
+.fa-agent-team-tool-approval > div:first-child {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.fa-agent-team-tool-approval code {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--fa-text-muted);
+	font-size: 0.7rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-tool-approval-actions {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.fa-agent-team-tool-approval-actions button {
+	min-height: 30px;
+	padding: 5px 9px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 9px;
+	background: color-mix(in srgb, var(--fa-success) 14%, var(--fa-panel-1));
+	color: var(--fa-text);
+	font: inherit;
+	cursor: pointer;
+}
+
+.fa-agent-team-tool-approval-actions button.is-danger {
+	background: color-mix(in srgb, var(--fa-danger) 12%, var(--fa-panel-1));
+}
+
+.fa-agent-team-tool-approval-actions button:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.fa-agent-team-header-actions {
+	flex-wrap: nowrap;
+}
+
+.fa-agent-team-header-actions .fa-observability-route-tabs {
+	display: flex;
+	width: auto;
+	min-width: 124px;
+	padding: 3px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: var(--fa-toolbar-shell-bg);
+	box-shadow: var(--fa-toolbar-shell-shadow);
+}
+
+.fa-agent-team-header-actions .fa-observability-route-tab {
+	min-height: 28px;
+	padding: 5px 9px;
+	border-radius: 999px;
+}
+
+.fa-agent-team-header-actions .fa-agent-team-pill {
+	min-height: 34px;
+	padding: 6px 10px;
+	border-radius: 11px;
+}
+
+.fa-agent-team-create-grid {
+	display: grid;
+	grid-template-columns: minmax(360px, 0.95fr) minmax(300px, 0.7fr);
+	gap: 12px;
+	align-items: start;
+}
+
+.fa-agent-team-create-side {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+}
+
+.fa-agent-team-create-form {
+	min-height: 0;
+}
+
+.fa-agent-team-create-form .fa-agent-team-field textarea {
+	min-height: 118px;
+}
+
+.fa-agent-team-guide.is-compact {
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	padding: 7px 9px;
+	border-radius: 16px;
+	opacity: 0.86;
+}
+
+.fa-agent-team-guide.is-compact .fa-agent-team-guide-heading {
+	min-width: 136px;
+}
+
+.fa-agent-team-guide.is-compact .fa-agent-team-step-strip {
+	display: flex;
+	gap: 6px;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.fa-agent-team-guide.is-compact .fa-agent-team-step-strip::-webkit-scrollbar {
+	display: none;
+}
+
+.fa-agent-team-guide.is-compact .fa-agent-team-step {
+	flex: 1 0 108px;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	padding: 6px 8px;
+}
+
+.fa-agent-team-guide.is-compact .fa-agent-team-step strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-next-step {
+	gap: 8px;
+}
+
+.fa-agent-team-next-step > strong {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.fa-agent-team-progress-strip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	flex: 0 0 auto;
+	min-width: 0;
+}
+
+.fa-agent-team-progress-strip > span,
+.fa-agent-team-progress-strip .fa-agent-team-legend-chip {
+	display: inline-flex;
+	align-items: center;
+	min-height: 26px;
+	padding: 4px 8px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	white-space: nowrap;
+}
+
+.fa-agent-team-roles-panel.is-secondary,
+.fa-agent-team-recent-panel {
+	background: color-mix(in srgb, var(--fa-panel-2) 72%, transparent 28%);
+	box-shadow: none;
+}
+
+.fa-agent-team-roles-panel.is-secondary .fa-agent-team-role-grid {
+	gap: 6px;
+}
+
+.fa-agent-team-task-card .fa-route-state-link {
+	width: fit-content;
+	color: var(--fa-text-muted);
+	font-size: 0.78rem;
+}
+
+.fa-agent-team-workbench-grid {
+	grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1fr) minmax(
+			260px,
+			0.82fr
+		);
+}
+
+.fa-agent-team-workbench-grid > .fa-agent-team-panel:nth-child(3) {
+	grid-column: auto;
+}
+
+.fa-agent-team-panel {
+	border-radius: 16px;
+}
+
+.fa-agent-team-panel-header {
+	align-items: center;
+}
+
+.fa-agent-team-task-card {
+	padding: 9px;
+}
+
+.fa-agent-team-task-binding code,
+.fa-agent-team-meta-grid code {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-detail section {
+	padding: 9px;
+}
+
+.fa-agent-team-merge-card {
+	grid-column: auto;
+}
+
+.fa-agent-team-mission-header .fa-chat-header-top {
+	align-items: center;
+}
+
+.fa-agent-team-primary-action {
+	min-width: 132px;
+}
+
+.fa-agent-team-more-menu {
+	position: relative;
+}
+
+.fa-agent-team-more-menu > summary {
+	list-style: none;
+	cursor: pointer;
+}
+
+.fa-agent-team-more-menu > summary::-webkit-details-marker {
+	display: none;
+}
+
+.fa-agent-team-more-menu-panel {
+	position: absolute;
+	z-index: 20;
+	top: calc(100% + 8px);
+	right: 0;
+	display: grid;
+	gap: 6px;
+	min-width: 190px;
+	padding: 8px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--fa-panel-2) 96%, transparent 4%);
+	box-shadow: var(--fa-shadow);
+}
+
+.fa-agent-team-more-menu-panel button,
+.fa-agent-team-more-menu-panel a {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	width: 100%;
+	min-height: 30px;
+	padding: 6px 8px;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	background: transparent;
+	color: var(--fa-text);
+	font: inherit;
+	text-align: left;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.fa-agent-team-more-menu-panel button:hover,
+.fa-agent-team-more-menu-panel a:hover {
+	border-color: var(--fa-border-subtle);
+	background: color-mix(in srgb, var(--fa-accent) 10%, transparent);
+}
+
+.fa-agent-team-more-menu-panel button:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+.fa-agent-team-progress-overview {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.fa-agent-team-task-return-preview p {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.fa-agent-team-task-detail-shell {
+	display: grid;
+	gap: 10px;
+}
+
+.fa-agent-team-progress-overview > div {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	padding: 10px 12px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--fa-panel-1) 80%, transparent 20%);
+}
+
+.fa-agent-team-progress-overview span,
+.fa-agent-team-progress-lead span {
+	color: var(--fa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.7rem;
+}
+
+.fa-agent-team-progress-overview strong {
+	overflow: hidden;
+	color: var(--fa-text);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-workbench-grid {
+	grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+}
+
+.fa-agent-team-task-timeline {
+	position: relative;
+}
+
+.fa-agent-team-task-step {
+	position: relative;
+}
+
+.fa-agent-team-task-dependency-marker {
+	display: inline-grid;
+	grid-template-columns: auto auto;
+	gap: 5px;
+	align-items: center;
+	flex: 0 0 auto;
+	max-width: 120px;
+	padding: 4px 8px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border-subtle));
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-accent) 9%, var(--fa-panel-1) 91%);
+	color: var(--fa-text-muted);
+	font-size: 0.68rem;
+	font-weight: 800;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.fa-agent-team-task-dependency-marker span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fa-agent-team-task-dependency-marker i {
+	width: 6px;
+	height: 6px;
+	border: 1px solid color-mix(in srgb, var(--fa-accent) 70%, transparent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-accent) 38%, transparent);
+}
+
+.fa-agent-team-task-result-summary {
+	padding: 8px 9px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--fa-panel-2) 68%, transparent 32%);
+}
+
+.fa-agent-team-task-return-preview {
+	display: grid;
+	gap: 3px;
+}
+
+.fa-agent-team-task-return-preview span,
+.fa-agent-team-task-return-preview small {
+	color: var(--fa-text-muted);
+	font-size: 0.74rem;
+	font-weight: 700;
+}
+
+.fa-agent-team-task-return-preview p {
+	color: var(--fa-text);
+}
+
+.fa-agent-team-output-list {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-output-row {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	padding: 9px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-2) 70%, transparent 30%);
+}
+
+.fa-agent-team-output-row-heading {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.fa-agent-team-output-row-heading span,
+.fa-agent-team-output-columns span,
+.fa-agent-team-output-row > div > span {
+	color: var(--fa-text-muted);
+	font-size: 0.74rem;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.fa-agent-team-output-row-heading strong {
+	color: var(--fa-text);
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-output-columns {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-advanced-details,
+.fa-agent-team-task-detail-shell,
+.fa-agent-team-advanced-shell {
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 16px;
+	background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent 18%);
+	box-shadow: var(--fa-message-shadow);
+}
+
+.fa-agent-team-advanced-details {
+	padding: 8px;
+}
+
+.fa-agent-team-task-detail-shell,
+.fa-agent-team-advanced-shell {
+	padding: 10px;
+}
+
+.fa-agent-team-advanced-details > summary,
+.fa-agent-team-task-detail-shell > summary,
+.fa-agent-team-advanced-shell > summary {
+	cursor: pointer;
+	color: var(--fa-text);
+	font-weight: 700;
+}
+
+.fa-agent-team-advanced-details > div,
+.fa-agent-team-advanced-details > section,
+.fa-agent-team-task-detail-shell > .fa-agent-team-panel,
+.fa-agent-team-advanced-shell > .fa-agent-team-panel {
+	margin-top: 10px;
+}
+
+.fa-agent-team-guided-layout {
+	width: 100%;
+	min-width: 0;
+	gap: 14px;
+	overflow-x: clip;
+}
+
+.fa-agent-team-guided-layout *,
+.fa-agent-team-guided-layout *::before,
+.fa-agent-team-guided-layout *::after {
+	box-sizing: border-box;
+}
+
+.fa-agent-team-mission-header {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+	padding: 12px 14px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--fa-panel-2) 72%, transparent 28%);
+	box-shadow: none;
+}
+
+.fa-agent-team-mission-copy {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.fa-agent-team-mission-copy h1 {
+	margin: 0;
+	max-width: 100%;
+	color: var(--fa-text);
+	font-size: 1.15rem;
+	line-height: 1.2;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-mission-copy p {
+	margin: 0;
+	max-width: 900px;
+	color: var(--fa-text-muted);
+	font-size: 0.86rem;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-mission-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	width: auto;
+	max-width: 100%;
+	min-height: 38px;
+	padding: 8px 12px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-1) 84%, transparent 16%);
+	color: var(--fa-text);
+	box-shadow: 0 8px 18px rgba(4, 10, 22, 0.12);
+	cursor: pointer;
+	font: inherit;
+	font-weight: 700;
+	line-height: 1.1;
+	text-align: center;
+	text-decoration: none;
+	white-space: normal;
+	transition:
+		border-color 0.16s ease,
+		background 0.16s ease,
+		box-shadow 0.16s ease,
+		transform 0.16s ease;
+}
+
+.fa-agent-team-button:hover:not(:disabled):not(.is-disabled) {
+	border-color: var(--fa-border-strong);
+	background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-1) 90%);
+}
+
+.fa-agent-team-button.is-primary {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-accent) 58%,
+		var(--fa-border-strong)
+	);
+	background: color-mix(in srgb, var(--fa-accent) 42%, var(--fa-panel-3) 58%);
+	color: var(--fa-text);
+	box-shadow: 0 0 20px color-mix(in srgb, var(--fa-accent) 22%, transparent);
+}
+
+.fa-agent-team-button.is-secondary {
+	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+	color: var(--fa-text);
+}
+
+.fa-agent-team-button.is-danger {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 50%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 12%,
+		var(--fa-panel-1) 88%
+	);
+	color: var(--fa-status-danger-text);
+}
+
+.fa-agent-team-button.is-loading {
+	cursor: progress;
+}
+
+.fa-agent-team-button:disabled,
+.fa-agent-team-button.is-disabled {
+	cursor: not-allowed;
+	opacity: 0.58;
+	filter: grayscale(0.15);
+	box-shadow: none;
+}
+
+.fa-agent-team-mission-progress {
+	display: grid;
+	grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
+	gap: 12px;
+	align-items: center;
+	min-width: 0;
+	padding: 12px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent 38%);
+	box-shadow: none;
+}
+
+.fa-agent-team-progress-lead {
+	display: grid;
+	grid-column: 1;
+	grid-row: 1;
+	gap: 4px;
+	min-width: 0;
+}
+
+.fa-agent-team-progress-lead strong {
+	color: var(--fa-text);
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-progress-lead p {
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 0.82rem;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-team-progress-meter {
+	position: relative;
+	grid-column: 1 / -1;
+	grid-row: 2;
+	height: 8px;
+	overflow: hidden;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
+}
+
+.fa-agent-team-progress-meter span {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: color-mix(
+		in srgb,
+		var(--fa-accent) 64%,
+		var(--fa-status-success-text) 36%
+	);
+	transition: width 0.22s ease;
+}
+
+.fa-agent-team-mission-progress.is-needs_attention
+	.fa-agent-team-progress-meter
+	span,
+.fa-agent-team-mission-progress.is-warning .fa-agent-team-progress-meter span {
+	background: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 72%,
+		var(--fa-status-warning-text) 28%
+	);
+}
+
+.fa-agent-team-mission-progress.is-running .fa-agent-team-progress-meter span,
+.fa-agent-team-mission-progress.is-ready .fa-agent-team-progress-meter span {
+	background: color-mix(
+		in srgb,
+		var(--fa-accent) 76%,
+		var(--fa-status-warning-text) 24%
+	);
+}
+
+.fa-agent-team-mission-progress.is-result .fa-agent-team-progress-meter span {
+	background: color-mix(
+		in srgb,
+		var(--fa-status-success-text) 76%,
+		var(--fa-accent) 24%
+	);
+}
+
+.fa-agent-team-mission-progress .fa-agent-team-progress-overview {
+	grid-column: 2;
+	grid-row: 1;
+}
+
+.fa-agent-team-mission-progress .fa-agent-team-progress-overview > div,
+.fa-agent-team-guided-layout .fa-agent-team-panel,
+.fa-agent-team-guided-layout .fa-agent-team-task-detail-shell,
+.fa-agent-team-guided-layout .fa-agent-team-advanced-shell {
+	box-shadow: none;
+}
+
+.fa-agent-team-mission-progress .fa-agent-team-progress-overview > div {
+	padding: 9px 10px;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-1) 68%, transparent 32%);
+}
+
+.fa-agent-team-guided-grid {
+	display: grid;
+	grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+	gap: 12px;
+	align-items: start;
+	min-width: 0;
+}
+
+.fa-agent-team-task-timeline-panel,
+.fa-agent-team-mission-result-panel {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+	align-content: start;
+}
+
+.fa-agent-team-task-timeline-panel > .fa-agent-team-panel,
+.fa-agent-team-mission-result-panel > .fa-agent-team-panel {
+	min-width: 0;
+	border-radius: 18px;
+}
+
+.fa-agent-team-task-detail-shell > .fa-agent-team-panel,
+.fa-agent-team-guided-advanced > .fa-agent-team-panel {
+	padding: 10px 0 0;
+	border: 0;
+	background: transparent;
+}
+
+.fa-agent-team-guided-advanced {
+	background: color-mix(in srgb, var(--fa-panel-2) 48%, transparent 52%);
+}
+
+.fa-agent-team-guided-advanced:not([open]) {
+	opacity: 0.82;
+}
+
+.fa-agent-team-menu-divider {
+	height: 1px;
+	margin: 2px 0;
+	background: var(--fa-border-subtle);
+}
+
+.fa-agent-team-more-menu-panel button.is-danger {
+	color: var(--fa-status-danger-text);
+}
+
+.fa-agent-team-more-menu-panel button.is-danger:hover {
+	border-color: color-mix(
+		in srgb,
+		var(--fa-status-danger-text) 38%,
+		var(--fa-border-subtle)
+	);
+	background: color-mix(in srgb, var(--fa-status-danger-text) 10%, transparent);
+}
+
+@media (max-width: 1280px) {
+	.fa-agent-team-workbench-grid,
+	.fa-agent-team-guided-grid,
+	.fa-agent-team-create-grid,
+	.fa-agent-team-studio-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-planning-meta {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.fa-agent-team-workbench-grid > .fa-agent-team-panel:nth-child(3) {
+		grid-column: 1;
+	}
+}
+
+@media (max-width: 900px) {
+	.fa-agent-team-compact-header .fa-chat-header-top,
+	.fa-agent-team-studio-header,
+	.fa-agent-team-studio-rail,
+	.fa-agent-team-mission-header,
+	.fa-agent-team-mission-progress,
+	.fa-agent-team-next-step {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-header-actions,
+	.fa-agent-team-mission-actions,
+	.fa-agent-team-progress-strip,
+	.fa-agent-team-plan-banner {
+		justify-content: flex-start;
+		flex-wrap: wrap;
+	}
+
+	.fa-agent-team-progress-overview {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.fa-agent-team-mission-progress .fa-agent-team-progress-overview {
+		grid-column: 1;
+		grid-row: auto;
+	}
+
+	.fa-agent-team-more-menu-panel {
+		right: auto;
+		left: 0;
+		max-width: min(280px, calc(100vw - 32px));
+	}
+
+	.fa-agent-team-title-block h1,
+	.fa-agent-team-title-block p {
+		max-width: 100%;
+	}
+
+	.fa-agent-team-guide.is-compact {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-studio-dag {
+		width: 210px;
+	}
+
+	.fa-agent-team-studio-rail-main {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@media (max-width: 560px) {
+	.fa-agent-team-mission-actions {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		width: 100%;
+	}
+
+	.fa-agent-team-mission-actions > .fa-agent-team-button {
+		width: 100%;
+	}
+
+	.fa-agent-team-progress-overview {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-output-columns {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-preset-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-studio-dag {
+		width: min(100%, 206px);
+		height: auto;
+	}
+}

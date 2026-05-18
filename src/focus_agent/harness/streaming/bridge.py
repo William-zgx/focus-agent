@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 import logging
 import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger("focus_agent.harness.streaming")

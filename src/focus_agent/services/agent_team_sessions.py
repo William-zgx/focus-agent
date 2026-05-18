@@ -93,8 +93,11 @@ class AgentTeamSessionTaskMixin:
         capability_requirements: list[str] | None = None,
         risk_level: str | None = None,
         write_scope: list[str] | None = None,
+        resource_claims: list[str] | None = None,
         replan_policy: dict | None = None,
         context_refs: list[dict] | None = None,
+        active_skill_ids: list[str] | None = None,
+        skill_resolution_events: list[dict] | None = None,
         create_branch: bool = True,
         branch_name: str | None = None,
         parent_thread_id: str | None = None,
@@ -138,8 +141,13 @@ class AgentTeamSessionTaskMixin:
             capability_requirements=list(capability_requirements or []),
             risk_level=risk_level,
             write_scope=list(write_scope or []),
+            resource_claims=list(resource_claims or []),
             replan_policy=dict(replan_policy) if isinstance(replan_policy, dict) else None,
             context_refs=[dict(item) for item in context_refs or [] if isinstance(item, dict)],
+            active_skill_ids=list(active_skill_ids or []),
+            skill_resolution_events=[
+                dict(item) for item in skill_resolution_events or [] if isinstance(item, dict)
+            ],
             created_at=now,
             updated_at=now,
         )
@@ -186,11 +194,21 @@ class AgentTeamSessionTaskMixin:
         capability_requirements: list[str] | None = None,
         risk_level: str | None = None,
         write_scope: list[str] | None = None,
+        resource_claims: list[str] | None = None,
         replan_policy: dict | None = None,
+        active_skill_ids: list[str] | None = None,
+        skill_resolution_events: list[dict] | None = None,
         agent_run_id: str | None = None,
         delegated_task_id: str | None = None,
         artifact_ids: list[str] | None = None,
         execution_status: str | None = None,
+        workspace_id: str | None = None,
+        workspace_branch: str | None = None,
+        workspace_path: str | None = None,
+        base_commit: str | None = None,
+        diff_summary: str | None = None,
+        test_evidence: list[str] | None = None,
+        workspace_status: str | None = None,
         run_status: str | None = None,
         started_at: str | None = None,
         finished_at: str | None = None,
@@ -229,8 +247,16 @@ class AgentTeamSessionTaskMixin:
                 updates["risk_level"] = risk_level
             if write_scope is not None:
                 updates["write_scope"] = list(write_scope)
+            if resource_claims is not None:
+                updates["resource_claims"] = list(resource_claims)
             if replan_policy is not None:
                 updates["replan_policy"] = dict(replan_policy)
+            if active_skill_ids is not None:
+                updates["active_skill_ids"] = list(active_skill_ids)
+            if skill_resolution_events is not None:
+                updates["skill_resolution_events"] = [
+                    dict(item) for item in skill_resolution_events if isinstance(item, dict)
+                ]
             if agent_run_id is not None:
                 updates["agent_run_id"] = agent_run_id
             if delegated_task_id is not None:
@@ -239,6 +265,20 @@ class AgentTeamSessionTaskMixin:
                 updates["artifact_ids"] = _dedupe([*task.artifact_ids, *artifact_ids])
             if execution_status is not None:
                 updates["execution_status"] = execution_status
+            if workspace_id is not None:
+                updates["workspace_id"] = workspace_id
+            if workspace_branch is not None:
+                updates["workspace_branch"] = workspace_branch
+            if workspace_path is not None:
+                updates["workspace_path"] = workspace_path
+            if base_commit is not None:
+                updates["base_commit"] = base_commit
+            if diff_summary is not None:
+                updates["diff_summary"] = diff_summary
+            if test_evidence is not None:
+                updates["test_evidence"] = _dedupe([*task.test_evidence, *test_evidence])
+            if workspace_status is not None:
+                updates["workspace_status"] = workspace_status
             if run_status is not None:
                 updates["run_status"] = run_status
             if started_at is not None:
@@ -262,6 +302,12 @@ class AgentTeamSessionTaskMixin:
         summary: str = "",
         changed_files: list[str] | None = None,
         test_evidence: list[str] | None = None,
+        workspace_id: str | None = None,
+        workspace_branch: str | None = None,
+        workspace_path: str | None = None,
+        base_commit: str | None = None,
+        diff_summary: str | None = None,
+        workspace_status: str | None = None,
         risk_notes: list[str] | None = None,
         metadata: dict | None = None,
     ) -> AgentTeamTaskOutput:
@@ -275,6 +321,12 @@ class AgentTeamSessionTaskMixin:
                 summary=summary,
                 changed_files=list(changed_files or []),
                 test_evidence=list(test_evidence or []),
+                workspace_id=workspace_id,
+                workspace_branch=workspace_branch,
+                workspace_path=workspace_path,
+                base_commit=base_commit,
+                diff_summary=diff_summary,
+                workspace_status=workspace_status,
                 risk_notes=list(risk_notes or []),
                 metadata=dict(metadata or {}),
                 created_at=_now(),
@@ -287,6 +339,13 @@ class AgentTeamSessionTaskMixin:
                 update={
                     "output_artifact_ids": _dedupe(artifact_ids),
                     "changed_files": _dedupe([*task.changed_files, *(changed_files or [])]),
+                    "test_evidence": _dedupe([*task.test_evidence, *(test_evidence or [])]),
+                    "workspace_id": workspace_id or task.workspace_id,
+                    "workspace_branch": workspace_branch or task.workspace_branch,
+                    "workspace_path": workspace_path or task.workspace_path,
+                    "base_commit": base_commit or task.base_commit,
+                    "diff_summary": diff_summary or task.diff_summary,
+                    "workspace_status": workspace_status or task.workspace_status,
                     "risk_notes": _dedupe([*task.risk_notes, *(risk_notes or [])]),
                     "verification_summary": self._merge_verification_summary(
                         task.verification_summary,

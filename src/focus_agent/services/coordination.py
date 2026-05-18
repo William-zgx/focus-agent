@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
 import json
 import threading
 import time
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -12,8 +12,21 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ..security.rate_limit import RateLimitResult
+from focus_agent.multi_agent.contracts import (
+    ApprovalQueuePort,
+    FailureHandlerPort,
+    MessageBusPort,
+    ResourceLockPort,
+)
+from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue, PostgresApprovalQueue
+from focus_agent.multi_agent.failure_handler import FailureHandler
+from focus_agent.multi_agent.message_bus import InMemoryAgentMessageBus, PostgresAgentMessageBus
+from focus_agent.multi_agent.resource_lock import (
+    InMemoryResourceLockManager,
+    PostgresResourceLockManager,
+)
 
+from ..security.rate_limit import RateLimitResult
 
 BACKGROUND_JOB_DEDUPE_POLICIES = frozenset({"skip", "replace"})
 
@@ -81,6 +94,10 @@ class CoordinationBackend:
     thread_turns: ThreadTurnLockBackend
     job_deduper: BackgroundJobDeduperBackend
     rate_limiter: RateLimitBackend
+    resource_locks: ResourceLockPort | None = None
+    message_bus: MessageBusPort | None = None
+    failure_handler: FailureHandlerPort | None = None
+    approval_queue: ApprovalQueuePort | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,18 +116,23 @@ class _MemoryThreadTurnLock:
 class _MemoryBackgroundJob:
     spec: BackgroundJobSpec
     status: str
+    created_at: float = field(default_factory=time.monotonic)
+    updated_at: float = field(default_factory=time.monotonic)
     attempt: int = 0
     claim: BackgroundJobClaim | None = None
     claimed_until: float = 0.0
+    last_heartbeat_at: float = 0.0
+    last_failed_at: float = 0.0
+    dead_lettered_at: float = 0.0
     last_error: str | None = None
 
 
 def _normalize_background_run_at(run_at: datetime | None) -> datetime:
     if run_at is None:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     if run_at.tzinfo is None:
-        return run_at.replace(tzinfo=timezone.utc)
-    return run_at.astimezone(timezone.utc)
+        return run_at.replace(tzinfo=UTC)
+    return run_at.astimezone(UTC)
 
 
 def _background_job_kind_from_key(key: str) -> str:
@@ -168,11 +190,18 @@ class InMemoryThreadTurnLockBackend:
 class InMemoryBackgroundJobDeduperBackend:
     durable = False
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        retry_base_delay_seconds: float = 5.0,
+        retry_max_delay_seconds: float = 300.0,
+    ) -> None:
         self._lock = threading.Lock()
         self._keys: set[str] = set()
         self._jobs: dict[str, _MemoryBackgroundJob] = {}
         self.owner = f"memory-background:{uuid4().hex}"
+        self.retry_base_delay_seconds = max(float(retry_base_delay_seconds or 0.0), 0.0)
+        self.retry_max_delay_seconds = max(float(retry_max_delay_seconds or 0.0), self.retry_base_delay_seconds)
 
     def try_claim_job_key(self, key: str) -> bool:
         return self.claim_job_key(key) is not None
@@ -217,6 +246,8 @@ class InMemoryBackgroundJobDeduperBackend:
             ):
                 return False
             job.claimed_until = claimed_until
+            job.last_heartbeat_at = now
+            job.updated_at = now
             return True
 
     def enqueue_job(self, spec: BackgroundJobSpec) -> bool:
@@ -240,32 +271,28 @@ class InMemoryBackgroundJobDeduperBackend:
         if not kinds:
             return None
         now = time.monotonic()
-        run_now = datetime.now(timezone.utc)
+        run_now = datetime.now(UTC)
         ttl = max(float(claim_ttl_seconds or 300.0), 1.0)
         with self._lock:
             for key in sorted(self._jobs):
                 job = self._jobs[key]
                 if job.spec.kind not in kinds:
                     continue
-                if job.status == "running" and job.claimed_until <= now and job.attempt >= job.spec.max_attempts:
-                    job.status = "failed"
-                    job.claim = None
-                    job.claimed_until = 0.0
-                    if job.last_error is None:
-                        job.last_error = "claim expired after max attempts"
-                    continue
+                if job.status == "running" and job.claimed_until <= now:
+                    if job.attempt >= job.spec.max_attempts:
+                        self._dead_letter_memory_job(job, "claim expired after max attempts", now)
+                        continue
+                    self._retry_memory_job(job, "claim expired before completion", now)
+                    run_now = datetime.now(UTC)
                 due_pending = (
-                    job.status == "pending"
+                    job.status in {"pending", "retrying"}
                     and job.spec.run_at <= run_now
                     and (job.claim is None or job.claimed_until <= now)
                 )
-                expired_running = job.status == "running" and job.claimed_until <= now
-                if not due_pending and not expired_running:
+                if not due_pending:
                     continue
                 if job.attempt >= job.spec.max_attempts:
-                    job.status = "failed"
-                    if job.last_error is None:
-                        job.last_error = "max attempts exhausted"
+                    self._dead_letter_memory_job(job, "max attempts exhausted", now)
                     continue
                 job.attempt += 1
                 claim = BackgroundJobClaim(
@@ -276,6 +303,8 @@ class InMemoryBackgroundJobDeduperBackend:
                 job.status = "running"
                 job.claim = claim
                 job.claimed_until = now + ttl
+                job.last_heartbeat_at = now
+                job.updated_at = now
                 return job.spec, claim
         return None
 
@@ -290,6 +319,8 @@ class InMemoryBackgroundJobDeduperBackend:
                 and job.claimed_until > now
             ):
                 job.status = "running"
+                job.last_heartbeat_at = now
+                job.updated_at = now
 
     def mark_job_claim_succeeded(self, key: str, claim: BackgroundJobClaim) -> None:
         now = time.monotonic()
@@ -300,16 +331,17 @@ class InMemoryBackgroundJobDeduperBackend:
                 job.claim = None
                 job.claimed_until = 0.0
                 job.last_error = None
+                job.updated_at = now
 
     def mark_job_claim_failed(self, key: str, claim: BackgroundJobClaim, error: str) -> None:
         now = time.monotonic()
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.claim == claim and job.status == "running" and job.claimed_until > now:
-                job.claim = None
-                job.claimed_until = 0.0
-                job.last_error = str(error)[:4000]
-                job.status = "failed" if job.attempt >= job.spec.max_attempts else "pending"
+            if job is not None and job.claim == claim and job.status == "running":
+                if job.attempt >= job.spec.max_attempts:
+                    self._dead_letter_memory_job(job, str(error)[:4000], now)
+                else:
+                    self._retry_memory_job(job, str(error)[:4000], now)
 
     def mark_job_running(self, key: str) -> None:
         return None
@@ -326,22 +358,82 @@ class InMemoryBackgroundJobDeduperBackend:
         with self._lock:
             status_counts = {
                 "job_pending_total": 0,
+                "job_retrying_total": 0,
                 "job_running_total": 0,
                 "job_succeeded_total": 0,
                 "job_failed_total": 0,
                 "job_released_total": 0,
+                "job_dead_lettered_total": 0,
                 "job_attempt_total": 0,
+                "job_oldest_pending_seconds": 0,
+                "job_oldest_retry_seconds": 0,
+                "job_oldest_dead_lettered_seconds": 0,
             }
+            now = time.monotonic()
+            oldest_pending_at: float | None = None
+            oldest_retry_at: float | None = None
+            oldest_dead_lettered_at: float | None = None
             for job in self._jobs.values():
                 status_key = f"job_{job.status}_total"
                 status_counts[status_key] = status_counts.get(status_key, 0) + 1
                 status_counts["job_attempt_total"] += job.attempt
+                if job.status == "pending":
+                    oldest_pending_at = job.created_at if oldest_pending_at is None else min(oldest_pending_at, job.created_at)
+                elif job.status == "retrying":
+                    timestamp = job.last_failed_at or job.updated_at
+                    oldest_retry_at = (
+                        timestamp
+                        if oldest_retry_at is None
+                        else min(oldest_retry_at, timestamp)
+                    )
+                elif job.status == "dead_lettered":
+                    timestamp = job.dead_lettered_at or job.updated_at
+                    oldest_dead_lettered_at = (
+                        timestamp if oldest_dead_lettered_at is None else min(oldest_dead_lettered_at, timestamp)
+                    )
+            if oldest_pending_at is not None:
+                status_counts["job_oldest_pending_seconds"] = int(max(0.0, now - oldest_pending_at))
+            if oldest_retry_at is not None:
+                status_counts["job_oldest_retry_seconds"] = int(max(0.0, now - oldest_retry_at))
+            if oldest_dead_lettered_at is not None:
+                status_counts["job_oldest_dead_lettered_seconds"] = int(max(0.0, now - oldest_dead_lettered_at))
             pending_total = len(self._keys) + status_counts["job_pending_total"]
             return {
                 **status_counts,
                 "job_backend_durable": 0,
                 "job_pending_total": pending_total,
             }
+
+    def _retry_delay_seconds(self, attempt: int) -> float:
+        if self.retry_base_delay_seconds <= 0:
+            return 0.0
+        return min(
+            self.retry_max_delay_seconds,
+            self.retry_base_delay_seconds * (2 ** max(int(attempt) - 1, 0)),
+        )
+
+    def _retry_memory_job(self, job: _MemoryBackgroundJob, error: str, now: float) -> None:
+        delay_seconds = self._retry_delay_seconds(job.attempt)
+        job.status = "retrying"
+        job.claim = None
+        job.claimed_until = 0.0
+        job.last_error = str(error)[:4000]
+        job.last_failed_at = now
+        job.updated_at = now
+        job.dead_lettered_at = 0.0
+        job.spec = replace(
+            job.spec,
+            run_at=datetime.now(UTC) + timedelta(seconds=delay_seconds),
+        )
+
+    def _dead_letter_memory_job(self, job: _MemoryBackgroundJob, error: str, now: float) -> None:
+        job.status = "dead_lettered"
+        job.claim = None
+        job.claimed_until = 0.0
+        job.last_error = str(error)[:4000]
+        job.last_failed_at = now
+        job.dead_lettered_at = now
+        job.updated_at = now
 
 
 class InMemoryRateLimitBackend:
@@ -384,7 +476,7 @@ class PostgresThreadTurnLockBackend:
 
     @staticmethod
     def _expires_at(ttl_seconds: float) -> datetime:
-        return datetime.now(timezone.utc) + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+        return datetime.now(UTC) + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
 
     def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
         with self._connect() as conn:
@@ -452,9 +544,19 @@ class PostgresBackgroundJobDeduperBackend:
 
     durable = True
 
-    def __init__(self, database_uri: str, *, claim_ttl_seconds: float = 300.0, owner: str | None = None) -> None:
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        claim_ttl_seconds: float = 300.0,
+        retry_base_delay_seconds: float = 5.0,
+        retry_max_delay_seconds: float = 300.0,
+        owner: str | None = None,
+    ) -> None:
         self.database_uri = database_uri
         self.claim_ttl_seconds = max(float(claim_ttl_seconds or 0.0), 1.0)
+        self.retry_base_delay_seconds = max(float(retry_base_delay_seconds or 0.0), 0.0)
+        self.retry_max_delay_seconds = max(float(retry_max_delay_seconds or 0.0), self.retry_base_delay_seconds)
         self.owner = owner or f"background:{uuid4().hex}"
         self._legacy_claims: dict[str, BackgroundJobClaim] = {}
         self._legacy_claims_lock = threading.Lock()
@@ -464,7 +566,7 @@ class PostgresBackgroundJobDeduperBackend:
 
     @staticmethod
     def _claimed_until_after(ttl_seconds: float) -> datetime:
-        return datetime.now(timezone.utc) + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
+        return datetime.now(UTC) + timedelta(seconds=max(float(ttl_seconds or 0.0), 0.001))
 
     def _claimed_until(self) -> datetime:
         return self._claimed_until_after(self.claim_ttl_seconds)
@@ -492,11 +594,14 @@ class PostgresBackgroundJobDeduperBackend:
                         claimed_until,
                         claim_token,
                         last_error,
+                        last_heartbeat_at,
+                        last_failed_at,
+                        dead_lettered_at,
                         created_at,
                         updated_at,
                         metadata
                     )
-                    VALUES (%s, %s, '{}'::jsonb, now(), 1, 'skip', 'pending', 1, %s, %s, %s, NULL, now(), now(), '{}'::jsonb)
+                    VALUES (%s, %s, '{}'::jsonb, now(), 1, 'skip', 'pending', 1, %s, %s, %s, NULL, now(), NULL, NULL, now(), now(), '{}'::jsonb)
                     ON CONFLICT (job_key) DO UPDATE SET
                         status = 'pending',
                         attempt = focus_background_jobs.attempt + 1,
@@ -504,8 +609,11 @@ class PostgresBackgroundJobDeduperBackend:
                         claimed_until = EXCLUDED.claimed_until,
                         claim_token = EXCLUDED.claim_token,
                         last_error = NULL,
+                        last_heartbeat_at = now(),
+                        last_failed_at = NULL,
+                        dead_lettered_at = NULL,
                         updated_at = now()
-                    WHERE focus_background_jobs.status IN ('succeeded', 'failed', 'released')
+                    WHERE focus_background_jobs.status IN ('succeeded', 'failed', 'released', 'dead_lettered')
                        OR focus_background_jobs.claimed_until <= now()
                     RETURNING attempt, claim_token
                     """,
@@ -547,11 +655,14 @@ class PostgresBackgroundJobDeduperBackend:
                         claimed_until,
                         claim_token,
                         last_error,
+                        last_heartbeat_at,
+                        last_failed_at,
+                        dead_lettered_at,
                         created_at,
                         updated_at,
                         metadata
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, 'pending', 0, NULL, NULL, NULL, NULL, now(), now(), '{}'::jsonb)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'pending', 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, now(), now(), '{}'::jsonb)
                     ON CONFLICT (job_key) DO UPDATE SET
                         kind = EXCLUDED.kind,
                         payload = EXCLUDED.payload,
@@ -564,8 +675,11 @@ class PostgresBackgroundJobDeduperBackend:
                         claimed_until = NULL,
                         claim_token = NULL,
                         last_error = NULL,
+                        last_heartbeat_at = NULL,
+                        last_failed_at = NULL,
+                        dead_lettered_at = NULL,
                         updated_at = now()
-                    WHERE focus_background_jobs.status IN ('succeeded', 'failed', 'released')
+                    WHERE focus_background_jobs.status IN ('succeeded', 'failed', 'released', 'dead_lettered')
                        OR (
                             EXCLUDED.dedupe_policy = 'replace'
                             AND focus_background_jobs.status != 'running'
@@ -593,7 +707,7 @@ class PostgresBackgroundJobDeduperBackend:
         if not kinds:
             return None
         claim_token = uuid4().hex
-        claim_until = datetime.now(timezone.utc) + timedelta(
+        claim_until = datetime.now(UTC) + timedelta(
             seconds=max(float(claim_ttl_seconds or self.claim_ttl_seconds), 1.0)
         )
         with self._connect() as conn:
@@ -601,16 +715,31 @@ class PostgresBackgroundJobDeduperBackend:
                 cur.execute(
                     """
                     UPDATE focus_background_jobs
-                    SET status = 'failed',
+                    SET status = CASE
+                            WHEN attempt >= max_attempts THEN 'dead_lettered'
+                            ELSE 'retrying'
+                        END,
+                        run_at = CASE
+                            WHEN attempt >= max_attempts THEN run_at
+                            ELSE now() + make_interval(secs => LEAST(%s, %s * POWER(2, GREATEST(attempt - 1, 0))))
+                        END,
                         claimed_by = NULL,
                         claimed_until = NULL,
                         claim_token = NULL,
-                        last_error = COALESCE(last_error, 'claim expired after max attempts'),
+                        last_error = CASE
+                            WHEN attempt >= max_attempts THEN COALESCE(last_error, 'claim expired after max attempts')
+                            ELSE 'claim expired before completion'
+                        END,
+                        last_failed_at = now(),
+                        dead_lettered_at = CASE
+                            WHEN attempt >= max_attempts THEN COALESCE(dead_lettered_at, now())
+                            ELSE NULL
+                        END,
                         updated_at = now()
                     WHERE status = 'running'
                       AND claimed_until <= now()
-                      AND attempt >= max_attempts
-                    """
+                    """,
+                    (self.retry_max_delay_seconds, self.retry_base_delay_seconds),
                 )
                 cur.execute(
                     """
@@ -620,7 +749,7 @@ class PostgresBackgroundJobDeduperBackend:
                         WHERE kind = ANY(%s)
                           AND (
                                 (
-                                    status = 'pending'
+                                    status IN ('pending', 'retrying')
                                     AND run_at <= now()
                                     AND (claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now())
                                 )
@@ -638,6 +767,7 @@ class PostgresBackgroundJobDeduperBackend:
                         claimed_until = %s,
                         claim_token = %s,
                         last_error = NULL,
+                        last_heartbeat_at = now(),
                         updated_at = now()
                     FROM next_job
                     WHERE jobs.job_key = next_job.job_key
@@ -678,6 +808,7 @@ class PostgresBackgroundJobDeduperBackend:
                     """
                     UPDATE focus_background_jobs
                     SET claimed_until = %s,
+                        last_heartbeat_at = now(),
                         updated_at = now()
                     WHERE job_key = %s
                       AND claimed_by = %s
@@ -707,6 +838,7 @@ class PostgresBackgroundJobDeduperBackend:
             UPDATE focus_background_jobs
             SET status = 'running',
                 claimed_until = %s,
+                last_heartbeat_at = now(),
                 updated_at = now()
             WHERE job_key = %s
               AND claimed_by = %s
@@ -754,21 +886,36 @@ class PostgresBackgroundJobDeduperBackend:
             """
             UPDATE focus_background_jobs
             SET status = CASE
-                    WHEN attempt >= max_attempts THEN 'failed'
-                    ELSE 'pending'
+                    WHEN attempt >= max_attempts THEN 'dead_lettered'
+                    ELSE 'retrying'
+                END,
+                run_at = CASE
+                    WHEN attempt >= max_attempts THEN run_at
+                    ELSE now() + make_interval(secs => LEAST(%s, %s * POWER(2, GREATEST(attempt - 1, 0))))
                 END,
                 claimed_by = NULL,
                 claimed_until = NULL,
                 claim_token = NULL,
                 last_error = %s,
+                last_failed_at = now(),
+                dead_lettered_at = CASE
+                    WHEN attempt >= max_attempts THEN COALESCE(dead_lettered_at, now())
+                    ELSE NULL
+                END,
                 updated_at = now()
             WHERE job_key = %s
               AND claimed_by = %s
               AND claim_token = %s
               AND status = 'running'
-              AND claimed_until > now()
             """,
-            (str(error)[:4000], str(key), claim.owner, claim.claim_token),
+            (
+                self.retry_max_delay_seconds,
+                self.retry_base_delay_seconds,
+                str(error)[:4000],
+                str(key),
+                claim.owner,
+                claim.claim_token,
+            ),
         )
         self._clear_legacy_claim(key, claim)
 
@@ -790,7 +937,7 @@ class PostgresBackgroundJobDeduperBackend:
             WHERE job_key = %s
               AND claimed_by = %s
               AND claim_token = %s
-              AND status NOT IN ('succeeded', 'failed')
+              AND status NOT IN ('succeeded', 'failed', 'dead_lettered')
               AND claimed_until > now()
             """,
             (str(key), claim.owner, claim.claim_token),
@@ -801,11 +948,16 @@ class PostgresBackgroundJobDeduperBackend:
         metrics = {
             "job_backend_durable": 1,
             "job_pending_total": 0,
+            "job_retrying_total": 0,
             "job_running_total": 0,
             "job_succeeded_total": 0,
             "job_failed_total": 0,
             "job_released_total": 0,
+            "job_dead_lettered_total": 0,
             "job_attempt_total": 0,
+            "job_oldest_pending_seconds": 0,
+            "job_oldest_retry_seconds": 0,
+            "job_oldest_dead_lettered_seconds": 0,
         }
         with self._connect() as conn:
             with conn.cursor() as cur:
@@ -822,6 +974,28 @@ class PostgresBackgroundJobDeduperBackend:
                     attempts = int(row.get("attempts") or 0)
                     metrics[f"job_{status}_total"] = count
                     metrics["job_attempt_total"] += attempts
+                cur.execute(
+                    """
+                    WITH oldest AS (
+                        SELECT
+                            MIN(created_at) FILTER (WHERE status = 'pending') AS pending_at,
+                            MIN(COALESCE(last_failed_at, updated_at)) FILTER (WHERE status = 'retrying') AS retry_at,
+                            MIN(COALESCE(dead_lettered_at, updated_at)) FILTER (WHERE status = 'dead_lettered') AS dead_lettered_at
+                        FROM focus_background_jobs
+                    )
+                    SELECT
+                        COALESCE(EXTRACT(EPOCH FROM (now() - pending_at)), 0) AS oldest_pending_seconds,
+                        COALESCE(EXTRACT(EPOCH FROM (now() - retry_at)), 0) AS oldest_retry_seconds,
+                        COALESCE(EXTRACT(EPOCH FROM (now() - dead_lettered_at)), 0) AS oldest_dead_lettered_seconds
+                    FROM oldest
+                    """
+                )
+                row = cur.fetchone() or {}
+                metrics["job_oldest_pending_seconds"] = int(float(row.get("oldest_pending_seconds") or 0))
+                metrics["job_oldest_retry_seconds"] = int(float(row.get("oldest_retry_seconds") or 0))
+                metrics["job_oldest_dead_lettered_seconds"] = int(
+                    float(row.get("oldest_dead_lettered_seconds") or 0)
+                )
         return metrics
 
     def _update_job(self, sql: str, params: tuple[Any, ...]) -> None:
@@ -845,6 +1019,10 @@ def create_in_memory_coordination_backend() -> CoordinationBackend:
         thread_turns=InMemoryThreadTurnLockBackend(),
         job_deduper=InMemoryBackgroundJobDeduperBackend(),
         rate_limiter=InMemoryRateLimitBackend(),
+        resource_locks=InMemoryResourceLockManager(),
+        message_bus=InMemoryAgentMessageBus(),
+        failure_handler=FailureHandler(),
+        approval_queue=InMemoryApprovalQueue(),
     )
 
 
@@ -853,6 +1031,10 @@ def create_coordination_backend(
     database_uri: str | None = None,
     background_job_backend: str = "memory",
     background_job_claim_ttl_seconds: float = 300.0,
+    background_job_retry_base_delay_seconds: float = 5.0,
+    background_job_retry_max_delay_seconds: float = 300.0,
+    multi_agent_enabled: bool = False,
+    multi_agent_message_ttl_seconds: float = 300.0,
 ) -> CoordinationBackend:
     in_memory = create_in_memory_coordination_backend()
     if not database_uri:
@@ -862,11 +1044,26 @@ def create_coordination_backend(
         job_backend = PostgresBackgroundJobDeduperBackend(
             database_uri,
             claim_ttl_seconds=background_job_claim_ttl_seconds,
+            retry_base_delay_seconds=background_job_retry_base_delay_seconds,
+            retry_max_delay_seconds=background_job_retry_max_delay_seconds,
         )
     return CoordinationBackend(
         thread_turns=PostgresThreadTurnLockBackend(database_uri),
         job_deduper=job_backend,
         rate_limiter=in_memory.rate_limiter,
+        resource_locks=PostgresResourceLockManager(database_uri)
+        if multi_agent_enabled
+        else in_memory.resource_locks,
+        message_bus=PostgresAgentMessageBus(
+            database_uri,
+            default_ttl_seconds=multi_agent_message_ttl_seconds,
+        )
+        if multi_agent_enabled
+        else in_memory.message_bus,
+        failure_handler=in_memory.failure_handler,
+        approval_queue=PostgresApprovalQueue(database_uri)
+        if multi_agent_enabled
+        else in_memory.approval_queue,
     )
 
 
@@ -885,9 +1082,15 @@ __all__ = [
     "BackgroundJobSpec",
     "CoordinationBackend",
     "InMemoryBackgroundJobDeduperBackend",
+    "InMemoryAgentMessageBus",
+    "InMemoryApprovalQueue",
     "InMemoryRateLimitBackend",
+    "InMemoryResourceLockManager",
     "InMemoryThreadTurnLockBackend",
+    "PostgresAgentMessageBus",
+    "PostgresApprovalQueue",
     "PostgresBackgroundJobDeduperBackend",
+    "PostgresResourceLockManager",
     "PostgresThreadTurnLockBackend",
     "RateLimitBackend",
     "ThreadTurnLease",

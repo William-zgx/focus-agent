@@ -1,5 +1,11 @@
 import type { FocusAgentConversationSummary } from "@focus-agent/web-sdk";
-import { type FormEvent, useEffect, useId, useRef } from "react";
+import {
+	type FormEvent,
+	type MouseEvent,
+	useEffect,
+	useId,
+	useRef,
+} from "react";
 
 import {
 	ArchiveIcon,
@@ -65,6 +71,15 @@ export function ConversationToolbarView({
 		renameInputRef.current?.focus();
 	}, [renameTarget]);
 
+	function handleConversationDoubleClick(
+		event: MouseEvent<HTMLLabelElement | HTMLSelectElement>,
+	) {
+		if (!activeConversation || isWorking) return;
+		event.preventDefault();
+		event.stopPropagation();
+		onRenameActiveConversation();
+	}
+
 	return (
 		<div className="fa-toolbar-cluster fa-conversation-toolbar">
 			<label
@@ -78,7 +93,7 @@ export function ConversationToolbarView({
 							? "切换或新建对话"
 							: "Switch or create a conversation",
 				)}
-				onDoubleClick={onRenameActiveConversation}
+				onDoubleClickCapture={handleConversationDoubleClick}
 			>
 				<span className="sr-only">{isChineseUi ? "对话" : "Conversation"}</span>
 				<select
@@ -86,7 +101,7 @@ export function ConversationToolbarView({
 					className="fa-conversation-select"
 					disabled={isLoading || isWorking || activeConversations.length === 0}
 					onChange={(event) => onSelectConversation(event.target.value)}
-					onDoubleClick={onRenameActiveConversation}
+					onDoubleClickCapture={handleConversationDoubleClick}
 					value={activeConversation?.root_thread_id ?? ""}
 				>
 					{isLoading ? (

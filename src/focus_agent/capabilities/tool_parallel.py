@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import atexit
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
-import threading
 
 from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, cache_key
 from .tool_events import emit_runtime_tool_event
-from .tool_execution_types import ToolExecutionInput, ToolExecutionResult, ToolParallelClassification
+from .tool_execution_types import (
+    ToolExecutionInput,
+    ToolExecutionResult,
+    ToolParallelClassification,
+)
 from .tool_messages import copy_result_for_tool_call
 from .tool_registry import ToolRuntimeMeta
-
 
 ExecuteSingle = Callable[
     [ToolExecutionInput, ContextBudget, ToolResultCacheStore | None, str | None, int | None],

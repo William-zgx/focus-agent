@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from typing import Any
 
 from .common import _env_bool, _normalize_agent_delegation_execution_mode, _split_csv
 
@@ -125,6 +126,35 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 )
             ),
         ),
+        "agent_team_skill_scout_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_SKILL_SCOUT_ENABLED",
+            default=defaults.agent_team_skill_scout_enabled,
+        ),
+        "agent_team_automation_level": str(
+            env.get("AGENT_TEAM_AUTOMATION_LEVEL") or defaults.agent_team_automation_level
+        ).strip().lower(),
+        "skill_install_directory": (
+            env.get("SKILL_INSTALL_DIRECTORY") or defaults.skill_install_directory
+        ),
+        "skill_sources_enabled": (
+            _split_csv(env.get("SKILL_SOURCES_ENABLED"))
+            if env.get("SKILL_SOURCES_ENABLED") is not None
+            else defaults.skill_sources_enabled
+        ),
+        "skill_source_locations": (
+            _split_csv(env.get("SKILL_SOURCE_LOCATIONS"))
+            if env.get("SKILL_SOURCE_LOCATIONS") is not None
+            else defaults.skill_source_locations
+        ),
+        "skill_trusted_sources": (
+            _split_csv(env.get("SKILL_TRUSTED_SOURCES"))
+            if env.get("SKILL_TRUSTED_SOURCES") is not None
+            else defaults.skill_trusted_sources
+        ),
+        "skill_install_mode": str(
+            env.get("SKILL_INSTALL_MODE") or defaults.skill_install_mode
+        ).strip().lower(),
         "agent_memory_backend": str(
             env.get("AGENT_MEMORY_BACKEND") or defaults.agent_memory_backend
         ).strip().lower(),

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-from dataclasses import dataclass, field
 import hashlib
 import json
 import threading
+from collections import OrderedDict
+from dataclasses import dataclass, field
 
 from .tool_execution_types import ToolExecutionInput
 
@@ -82,7 +82,7 @@ def cache_key(item: ToolExecutionInput, cache_scope_key: str | None) -> str | No
         return None
     scope_key = cache_scope_key or "thread:default"
     args_json = json.dumps(item.args, ensure_ascii=False, sort_keys=True, default=str)
-    digest = hashlib.sha256(f"{scope_key}|{item.tool_name}|{args_json}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{scope_key}|{item.tool_name}|{args_json}".encode()).hexdigest()
     return f"{scope_key}:{digest}"
 
 

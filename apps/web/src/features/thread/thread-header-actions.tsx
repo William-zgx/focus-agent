@@ -1,5 +1,5 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useBranchActions } from "@/features/branch-tree/use-branch-actions";
@@ -33,11 +33,13 @@ export function ThreadHeaderActions({
 	});
 	const { data } = useThreadState(threadId);
 	const branchMeta = data?.branch_meta;
-	const { prepareMergeProposal } = useBranchActions({
+	const { prepareMergeProposal, renameBranch } = useBranchActions({
 		rootThreadId: conversationId,
 		threadId,
 	});
 	const [isWorking, setIsWorking] = useState(false);
+	const [isRenamingCurrentBranch, setIsRenamingCurrentBranch] = useState(false);
+	const [renameBranchDraft, setRenameBranchDraft] = useState("");
 	const actionsRef = useRef<HTMLDivElement | null>(null);
 	const {
 		createBranch,
@@ -173,6 +175,29 @@ export function ThreadHeaderActions({
 		}
 	}
 
+	function handleRenameCurrentBranch() {
+		if (!branchMeta?.branch_id || !threadId || isWorking) return;
+		setRenameBranchDraft(branchMeta.branch_name || "");
+		setIsRenamingCurrentBranch(true);
+	}
+
+	async function handleRenameCurrentBranchSubmit(
+		event: FormEvent<HTMLFormElement>,
+	) {
+		event.preventDefault();
+		if (!branchMeta?.branch_id || !threadId) return;
+		const nextName = renameBranchDraft.trim();
+		if (!nextName) return;
+		setIsWorking(true);
+		try {
+			await renameBranch(threadId, nextName);
+			setIsRenamingCurrentBranch(false);
+			setRenameBranchDraft("");
+		} finally {
+			setIsWorking(false);
+		}
+	}
+
 	return (
 		<ThreadHeaderActionButtons
 			actionsRef={actionsRef}
@@ -186,14 +211,25 @@ export function ThreadHeaderActions({
 			isCreatingBranch={isCreatingBranch}
 			isGeneratingConclusion={isGeneratingConclusion}
 			isMergedBranch={isMergedBranch}
+			isRenamingCurrentBranch={isRenamingCurrentBranch}
 			isReviewRoute={isReviewRoute}
 			isWorking={isWorking}
 			newBranchTooltip={labels.newBranchTooltip}
 			onBackMain={() => void handleBackMain()}
 			onBackParent={() => void handleBackParent()}
+			onCancelRenameCurrentBranch={() => {
+				setIsRenamingCurrentBranch(false);
+				setRenameBranchDraft("");
+			}}
 			onFocusBranchPanel={focusBranchPanel}
 			onForkBranch={() => void handleForkBranch()}
+			onRenameCurrentBranch={handleRenameCurrentBranch}
+			onRenameCurrentBranchDraftChange={setRenameBranchDraft}
+			onRenameCurrentBranchSubmit={(event) =>
+				void handleRenameCurrentBranchSubmit(event)
+			}
 			onReviewAction={() => void handleReviewAction()}
+			renameCurrentBranchDraft={renameBranchDraft}
 			reviewActionText={labels.reviewActionText}
 			reviewActionTooltip={labels.reviewActionTooltip}
 			threadId={threadId}

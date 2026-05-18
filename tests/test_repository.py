@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.types import ConversationRecord
 from focus_agent.repositories.artifact_metadata_repository import ArtifactMetadataRepository
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
-from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 
 
 class _FakeArtifactMetadataCursor:
@@ -16,6 +16,9 @@ class _FakeArtifactMetadataCursor:
     def execute(self, query: str, params: dict[str, object] | None = None) -> None:
         normalized = " ".join(query.split())
         params = params or {}
+        if normalized.startswith("SELECT pg_advisory_xact_lock"):
+            self._rows = []
+            return
         if normalized.startswith("CREATE TABLE") or normalized.startswith("CREATE INDEX") or normalized.startswith("CREATE UNIQUE INDEX"):
             self._rows = []
             return

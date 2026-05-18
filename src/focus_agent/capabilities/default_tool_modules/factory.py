@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
-from urllib import parse as urllib_parse
 from urllib import error as urllib_error
+from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
 from langgraph.config import get_config
@@ -15,6 +15,7 @@ from .common import _apply_tool_metadata, build_utility_tools
 from .conversation import build_conversation_tools
 from .git import build_git_tools
 from .memory import build_memory_tools
+from .productivity import build_productivity_tools
 from .web import build_web_tools
 from .workspace import build_workspace_tools
 
@@ -29,6 +30,20 @@ def _get_current_thread_id() -> str | None:
     return str(value) if value else None
 
 
+def _get_current_user_id() -> str | None:
+    try:
+        config = get_config()
+    except Exception:  # noqa: BLE001
+        return None
+    configurable = dict(config.get("configurable") or {})
+    value = configurable.get("user_id")
+    if value:
+        return str(value)
+    metadata = dict(config.get("metadata") or {})
+    metadata_user = metadata.get("user_id")
+    return str(metadata_user) if metadata_user else None
+
+
 def get_default_tools(
     settings: Settings,
     *,
@@ -37,6 +52,7 @@ def get_default_tools(
     artifact_metadata_repository=None,
     memory_repository=None,
     memory_embedding_service=None,
+    productivity_repository=None,
 ):
     artifact_dir = Path(settings.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +134,14 @@ def get_default_tools(
             tool_catalog=tool_catalog,
             emit_tool_event=_emit_tool_event,
             get_current_thread_id=_get_current_thread_id,
+        )
+    )
+    _merge_tool_group(
+        *build_productivity_tools(
+            productivity_repository=productivity_repository,
+            emit_tool_event=_emit_tool_event,
+            get_current_thread_id=_get_current_thread_id,
+            get_current_user_id=_get_current_user_id,
         )
     )
     registered_tools = {

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from focus_agent.observability.release_health_models import FAIL, PASS, ReleaseHealthSignal
 

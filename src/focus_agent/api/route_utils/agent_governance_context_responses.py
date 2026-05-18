@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from focus_agent.agent_context_engineering import build_context_engineering_decision, build_context_policy
-from focus_agent.agent_delegation import build_agent_delegation_plan
-from focus_agent.agent_roles import build_role_route_plan
-from focus_agent.agent_task_ledger import (
+from focus_agent.delegation.context_engineering import (
+    build_context_engineering_decision,
+    build_context_policy,
+)
+from focus_agent.delegation.delegation import build_agent_delegation_plan
+from focus_agent.delegation.roles import build_role_route_plan
+from focus_agent.delegation.task_ledger import (
     build_agent_task_ledger,
     build_delegated_artifacts,
     build_task_ledger_policy,

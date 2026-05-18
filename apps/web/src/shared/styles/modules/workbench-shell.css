@@ -1,36 +1,36 @@
 /* Workbench shell width integration. */
 .fa-app-shell {
-  grid-template-columns:
-    minmax(
-      260px,
-      min(
-        var(--fa-sidebar-width, calc((100vw - 52px) / 3)),
-        calc((100vw - 52px) / 2)
-      )
-    )
-    16px
-    minmax(0, 1fr);
+	grid-template-columns:
+		minmax(
+			260px,
+			min(
+				var(--fa-sidebar-width, calc((100vw - 52px) / 3)),
+				calc((100vw - 52px) / 2)
+			)
+		)
+		16px
+		minmax(0, 1fr);
 }
 
 .fa-sidebar-panel {
-  max-width: calc((100vw - 52px) / 2);
+	max-width: calc((100vw - 52px) / 2);
 }
 
 @media (max-width: 1280px) {
-  .fa-app-shell {
-      grid-template-columns:
-        minmax(
-          240px,
-          min(
-            var(--fa-sidebar-width, calc((100vw - 48px) / 3)),
-            calc((100vw - 48px) / 2)
-          )
-        )
-        12px
-        minmax(0, 1fr);
-    }
+	.fa-app-shell {
+		grid-template-columns:
+			minmax(
+				240px,
+				min(
+					var(--fa-sidebar-width, calc((100vw - 48px) / 3)),
+					calc((100vw - 48px) / 2)
+				)
+			)
+			12px
+			minmax(0, 1fr);
+	}
 
-  .fa-sidebar-panel {
-      max-width: calc((100vw - 48px) / 2);
-    }
+	.fa-sidebar-panel {
+		max-width: calc((100vw - 48px) / 2);
+	}
 }

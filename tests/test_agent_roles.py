@@ -5,13 +5,13 @@ from fastapi.testclient import TestClient
 from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool
 
-from focus_agent.api.main import create_app
 from focus_agent.agent_roles import (
     AgentRole,
     RoleModelResolver,
     build_role_route_plan,
     infer_role_candidates,
 )
+from focus_agent.api.main import create_app
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext

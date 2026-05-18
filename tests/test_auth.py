@@ -7,8 +7,7 @@ import time
 import pytest
 
 from focus_agent.config import AuthJwtKey, Settings
-from focus_agent.security.tokens import AuthError
-from focus_agent.security.tokens import create_access_token, decode_access_token
+from focus_agent.security.tokens import AuthError, create_access_token, decode_access_token
 
 
 def _b64url_encode(raw: bytes) -> str:

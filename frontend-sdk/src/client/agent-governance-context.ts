@@ -3,6 +3,9 @@ import type { FocusAgentEndpointContext, FocusAgentEndpointMethodMap } from "./e
 import type {
   FocusAgentContextArtifactListResponse,
   FocusAgentContextDecisionListResponse,
+  FocusAgentContextExplainRequest,
+  FocusAgentContextExplainResponse,
+  FocusAgentContextMemoryEvidenceListResponse,
   FocusAgentContextPolicyResponse,
   FocusAgentContextPreviewRequest,
   FocusAgentContextPreviewResponse,
@@ -54,11 +57,43 @@ async function listAgentContextArtifacts(this: FocusAgentEndpointContext, limit 
   );
 }
 
+async function listAgentContextEvidence(
+  this: FocusAgentEndpointContext,
+  request: { thread_id?: string | null; turn_id?: string | null; limit?: number } = {},
+): Promise<FocusAgentContextMemoryEvidenceListResponse> {
+  const params = new URLSearchParams();
+  appendQueryValue(params, "thread_id", request.thread_id);
+  appendQueryValue(params, "turn_id", request.turn_id);
+  appendQueryValue(params, "limit", request.limit);
+  const query = params.toString();
+  return this.requestJson<FocusAgentContextMemoryEvidenceListResponse>(
+    `/v1/agent/context/evidence${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
+async function explainAgentContext(
+  this: FocusAgentEndpointContext,
+  request: FocusAgentContextExplainRequest,
+): Promise<FocusAgentContextExplainResponse> {
+  return this.requestJson<FocusAgentContextExplainResponse>("/v1/agent/context/explain", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }, true);
+}
+
 export interface AgentGovernanceContextEndpoints {
   getAgentContextPolicy: OmitThisParameter<typeof getAgentContextPolicy>;
   previewAgentContext: OmitThisParameter<typeof previewAgentContext>;
   listAgentContextDecisions: OmitThisParameter<typeof listAgentContextDecisions>;
   listAgentContextArtifacts: OmitThisParameter<typeof listAgentContextArtifacts>;
+  listAgentContextEvidence: OmitThisParameter<typeof listAgentContextEvidence>;
+  explainAgentContext: OmitThisParameter<typeof explainAgentContext>;
 }
 
 export const agentGovernanceContextEndpoints: FocusAgentEndpointMethodMap<AgentGovernanceContextEndpoints> = {
@@ -66,4 +101,6 @@ export const agentGovernanceContextEndpoints: FocusAgentEndpointMethodMap<AgentG
   previewAgentContext,
   listAgentContextDecisions,
   listAgentContextArtifacts,
+  listAgentContextEvidence,
+  explainAgentContext,
 };

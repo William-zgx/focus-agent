@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 import json
+from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
@@ -16,7 +16,6 @@ from .graph_turn_helpers import (
     _latest_human_message_text,
     _message_text,
 )
-
 
 _PLAN_TRIGGER_KEYWORDS = (
     "然后",

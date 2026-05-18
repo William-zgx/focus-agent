@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
 
 import pytest
 
@@ -71,7 +71,7 @@ def test_show_command_serializes_datetime(monkeypatch, capsys):
             calls["turn_id"] = turn_id
             return {
                 "id": turn_id,
-                "started_at": datetime(2026, 4, 21, 8, 30, tzinfo=timezone.utc),
+                "started_at": datetime(2026, 4, 21, 8, 30, tzinfo=UTC),
             }
 
     monkeypatch.setenv("DATABASE_URI", "postgresql://example/show")

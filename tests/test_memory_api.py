@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from focus_agent.api.routers.memory import router as memory_router
 from focus_agent.config import Settings
+from focus_agent.core.governance import ContextMemoryEvidence
 from focus_agent.memory.models import (
     MemoryAuditEvent,
     MemoryCandidate,
@@ -19,6 +20,7 @@ from focus_agent.memory.models import (
     MemoryVisibility,
     MemoryWriteRequest,
 )
+from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.memory_repository import MemoryListQuery
 from focus_agent.repositories.user_repository import InMemoryUserRepository
 from focus_agent.security.tokens import create_access_token
@@ -99,7 +101,7 @@ class _MemoryApiRepository:
         self.records[memory_id] = record.model_copy(
             update={
                 "status": MemoryStatus.FORGOTTEN,
-                "deleted_at": datetime.now(timezone.utc),
+                "deleted_at": datetime.now(UTC),
             }
         )
         return f"tombstone-{memory_id}"
@@ -228,6 +230,7 @@ def _client(
     *,
     users: dict[str, list[str]] | None = None,
     branch_repo: _BranchAccessRepository | None = None,
+    governance_repo: InMemoryGovernanceRepository | None = None,
 ) -> tuple[TestClient, Settings]:
     settings = Settings(
         auth_enabled=True,
@@ -243,6 +246,7 @@ def _client(
     app.state.runtime = SimpleNamespace(
         settings=settings,
         memory_repository=repo,
+        governance_repository=governance_repo or InMemoryGovernanceRepository(),
         repo=branch_repo,
         user_repository=user_repo,
         user_service=user_service,
@@ -311,6 +315,39 @@ def test_memory_api_hides_detail_and_forget_for_other_users() -> None:
     assert forgotten_detail.json()["item"]["payload_redacted"] is True
     assert forgotten_list.status_code == 200
     assert forgotten_list.json()["items"][0]["content"] == ""
+
+
+def test_memory_usage_lists_access_checked_context_evidence() -> None:
+    repo = _MemoryApiRepository()
+    repo.records = {
+        "mem-owner": _record("mem-owner", user_id="owner-1"),
+        "mem-other": _record("mem-other", user_id="other-1"),
+    }
+    governance_repo = InMemoryGovernanceRepository()
+    governance_repo.save_context_evidence(
+        ContextMemoryEvidence(
+            user_id="owner-1",
+            thread_id="thread-1",
+            turn_id="turn-1",
+            selected_memories=[{"memory_id": "mem-owner", "summary": "owner memory"}],
+            excluded_memories=[{"memory_id": "mem-other", "reason": "other"}],
+            risk_flags=["high_drift"],
+        )
+    )
+    client, settings = _client(
+        repo,
+        users={"owner-1": ["member"], "other-1": ["member"]},
+        governance_repo=governance_repo,
+    )
+
+    usage = client.get("/v1/memory/mem-owner/usage", headers=_headers(settings, "owner-1"))
+    hidden = client.get("/v1/memory/mem-other/usage", headers=_headers(settings, "owner-1"))
+
+    assert usage.status_code == 200
+    assert usage.json()["count"] == 1
+    assert usage.json()["items"][0]["usage"] == "selected"
+    assert usage.json()["items"][0]["risk_flags"] == ["high_drift"]
+    assert hidden.status_code == 404
 
 
 def test_memory_api_filters_audit_and_candidates_to_current_principal() -> None:

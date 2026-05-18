@@ -6,10 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 DEFAULT_KEY_ENVS = ("OPENAI_API_KEY",)
 DEFAULT_GATE_REPORT_JSON = Path("reports/eval-provider-gate.json")

@@ -1,20 +1,30 @@
 from __future__ import annotations
 
-from inspect import Parameter, signature
-from typing import Any
-
 from fastapi import APIRouter, Depends, Query, Response
 
-from focus_agent.core.repo_call import has_repo_method
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
 
+from ..contract_models.agent_team import (
+    AgentTeamMergeReviewCaptureResponse,
+    AgentTeamMergeReviewListResponse,
+    AgentTeamMergeReviewResponse,
+    AgentTeamToolApprovalContract,
+    AgentTeamToolApprovalActionRequest,
+    AgentTeamToolApprovalDecisionResponse,
+    AgentTeamToolApprovalListResponse,
+    ApplyAgentTeamMergeReviewRequest,
+    CreateAgentTeamMergeReviewRequest,
+    DecideAgentTeamToolApprovalRequest,
+    RejectAgentTeamMergeReviewRequest,
+    UpdateAgentTeamMergeReviewRequest,
+)
 from ..contracts import (
     AgentTeamDispatchResponse,
     AgentTeamMergeBundleResponse,
     AgentTeamMergeDecisionResponse,
-    AgentTeamPlanSessionRequest,
     AgentTeamPlanningMetadata,
+    AgentTeamPlanSessionRequest,
     AgentTeamSessionListResponse,
     AgentTeamSessionResponse,
     AgentTeamSessionViewResponse,
@@ -31,81 +41,16 @@ from ..contracts import (
 )
 from ..deps import get_app_runtime, get_current_principal
 from ..route_utils.agent_team import _agent_team_error, _agent_team_service_or_503
+from ..route_utils.agent_team_responses import (
+    _DEPRECATED_ROUTE_LINK_REL,
+    _call_plan_session,
+    _mark_deprecated_route,
+    _model_payload,
+    _planning_metadata_payload,
+    _view_response,
+)
 
 router = APIRouter()
-
-_DEPRECATED_ROUTE_LINK_REL = "successor-version"
-
-
-def _mark_deprecated_route(response: Response, *, canonical_path: str) -> None:
-    response.headers["Deprecation"] = "true"
-    response.headers["Link"] = f'<{canonical_path}>; rel="{_DEPRECATED_ROUTE_LINK_REL}"'
-    response.headers["X-Focus-Agent-Canonical-Path"] = canonical_path
-
-
-def _model_payload(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return dict(value)
-    if has_repo_method(value, "model_dump"):
-        return value.model_dump(mode="json")
-    return {}
-
-
-def _planning_metadata_payload(
-    payload: dict[str, Any],
-    *,
-    default_source: str | None = None,
-) -> dict[str, Any]:
-    session = _model_payload(payload.get("session"))
-    tasks = [_model_payload(task) for task in payload.get("tasks") or payload.get("items") or []]
-    planning = payload.get("planning")
-    if not isinstance(planning, dict):
-        planning = session.get("planning") if isinstance(session.get("planning"), dict) else {}
-    metadata: dict[str, Any] = {
-        "source": planning.get("source") or session.get("planning_source") or default_source,
-        "rationale": planning.get("rationale") or session.get("planning_rationale"),
-        "planner_model_id": planning.get("planner_model_id") or session.get("planner_model_id"),
-        "generated_at": planning.get("generated_at") or session.get("plan_generated_at"),
-        "plan_hash": planning.get("plan_hash") or session.get("plan_hash"),
-        "error": planning.get("error") or session.get("planning_error"),
-        "task_count": planning.get("task_count") if planning.get("task_count") is not None else len(tasks),
-    }
-    for task in tasks:
-        if metadata["source"] is None:
-            metadata["source"] = task.get("plan_source")
-        if metadata["rationale"] is None:
-            metadata["rationale"] = task.get("planning_rationale")
-        for ref in task.get("context_refs") or []:
-            if not isinstance(ref, dict):
-                continue
-            if metadata["source"] is None:
-                metadata["source"] = ref.get("plan_source") or ref.get("source")
-            if metadata["rationale"] is None:
-                metadata["rationale"] = ref.get("planning_rationale") or ref.get("rationale")
-            if metadata["planner_model_id"] is None:
-                metadata["planner_model_id"] = ref.get("planner_model_id") or ref.get("model_id")
-            if metadata["generated_at"] is None:
-                metadata["generated_at"] = ref.get("generated_at")
-            if metadata["plan_hash"] is None:
-                metadata["plan_hash"] = ref.get("plan_hash")
-            if metadata["error"] is None:
-                metadata["error"] = ref.get("error")
-    return metadata
-
-
-def _call_plan_session(service: Any, **kwargs: Any) -> tuple[Any, list[Any]]:
-    plan_session = service.plan_session
-    params = signature(plan_session).parameters
-    if any(param.kind == Parameter.VAR_KEYWORD for param in params.values()):
-        return plan_session(**kwargs)
-    return plan_session(**{key: value for key, value in kwargs.items() if key in params})
-
-
-def _view_response(payload: dict[str, Any]) -> AgentTeamSessionViewResponse:
-    data = dict(payload)
-    data["planning"] = _planning_metadata_payload(data)
-    return AgentTeamSessionViewResponse.model_validate(data)
-
 
 @router.post('/v1/agent-team/sessions', response_model=AgentTeamSessionResponse)
 def create_agent_team_session(
@@ -248,6 +193,110 @@ def get_agent_team_session_view(
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
 
+
+@router.get(
+    '/v1/agent-team/sessions/{session_id}/tool-approvals',
+    response_model=AgentTeamToolApprovalListResponse,
+)
+def list_agent_team_tool_approvals(
+    session_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamToolApprovalListResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        session = service.get_session(session_id, user_id=principal.user_id)
+        approvals = _pending_tool_approvals_for_session(service, session)
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamToolApprovalListResponse(
+        approvals=approvals,
+        items=approvals,
+        count=len(approvals),
+    )
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/decision',
+    response_model=AgentTeamToolApprovalDecisionResponse,
+)
+def decide_agent_team_tool_approval(
+    session_id: str,
+    request_id: str,
+    payload: DecideAgentTeamToolApprovalRequest,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamToolApprovalDecisionResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        session = service.get_session(session_id, user_id=principal.user_id)
+        approval_queue = _agent_team_approval_queue(service)
+        request = _get_tool_approval_request(approval_queue, request_id)
+        if request is None or str(request.session_id) not in {
+            session.session_id,
+            session.root_thread_id,
+        }:
+            raise KeyError(request_id)
+        approval_queue.decide(
+            request_id=request_id,
+            approved=payload.approved,
+            decided_by=principal.user_id,
+        )
+        decided = _get_tool_approval_request(approval_queue, request_id) or request
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamToolApprovalDecisionResponse(
+        approval=AgentTeamToolApprovalContract.model_validate(
+            _tool_approval_payload(decided)
+        )
+    )
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve',
+    response_model=AgentTeamToolApprovalDecisionResponse,
+)
+def approve_agent_team_tool_approval(
+    session_id: str,
+    request_id: str,
+    payload: AgentTeamToolApprovalActionRequest | None = None,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamToolApprovalDecisionResponse:
+    return decide_agent_team_tool_approval(
+        session_id=session_id,
+        request_id=request_id,
+        payload=DecideAgentTeamToolApprovalRequest(
+            approved=True,
+            reason=payload.reason if payload else None,
+        ),
+        principal=principal,
+        runtime=runtime,
+    )
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject',
+    response_model=AgentTeamToolApprovalDecisionResponse,
+)
+def reject_agent_team_tool_approval(
+    session_id: str,
+    request_id: str,
+    payload: AgentTeamToolApprovalActionRequest | None = None,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamToolApprovalDecisionResponse:
+    return decide_agent_team_tool_approval(
+        session_id=session_id,
+        request_id=request_id,
+        payload=DecideAgentTeamToolApprovalRequest(
+            approved=False,
+            reason=payload.reason if payload else None,
+        ),
+        principal=principal,
+        runtime=runtime,
+    )
+
 @router.post('/v1/agent-team/sessions/{session_id}/tasks', response_model=AgentTeamTaskResponse)
 def create_agent_team_task(
     session_id: str,
@@ -269,11 +318,14 @@ def create_agent_team_task(
             capability_requirements=payload.capability_requirements,
             risk_level=payload.risk_level,
             write_scope=payload.write_scope,
+            resource_claims=payload.resource_claims,
             replan_policy=payload.replan_policy,
             scope=payload.scope,
             dependencies=payload.dependencies,
             acceptance_criteria=payload.acceptance_criteria,
             context_refs=payload.context_refs,
+            active_skill_ids=payload.active_skill_ids,
+            skill_resolution_events=payload.skill_resolution_events,
             create_branch=payload.auto_fork_branch if payload.auto_fork_branch is not None else payload.create_branch,
             branch_name=payload.branch_name,
             parent_thread_id=payload.parent_thread_id,
@@ -358,10 +410,19 @@ def _update_agent_team_task_status(
             user_id=principal.user_id,
             status=payload.status,
             changed_files=payload.changed_files,
+            test_evidence=payload.test_evidence,
             verification_summary=payload.verification_summary,
             risk_notes=payload.risk_notes,
+            workspace_id=payload.workspace_id,
+            workspace_branch=payload.workspace_branch,
+            workspace_path=payload.workspace_path,
+            base_commit=payload.base_commit,
+            diff_summary=payload.diff_summary,
+            workspace_status=payload.workspace_status,
             acceptance_criteria=payload.acceptance_criteria,
             context_refs=payload.context_refs,
+            active_skill_ids=payload.active_skill_ids,
+            skill_resolution_events=payload.skill_resolution_events,
             dependencies=payload.dependencies,
             input_contract=payload.input_contract,
             output_contract=payload.output_contract,
@@ -369,6 +430,7 @@ def _update_agent_team_task_status(
             capability_requirements=payload.capability_requirements,
             risk_level=payload.risk_level,
             write_scope=payload.write_scope,
+            resource_claims=payload.resource_claims,
             replan_policy=payload.replan_policy,
             scope=payload.scope,
             run_status=payload.run_status,
@@ -449,6 +511,12 @@ def record_agent_team_task_output(
             summary=payload.summary or payload.content or "",
             changed_files=payload.changed_files,
             test_evidence=[*payload.test_evidence, *([payload.verification_summary] if payload.verification_summary else [])],
+            workspace_id=payload.workspace_id,
+            workspace_branch=payload.workspace_branch,
+            workspace_path=payload.workspace_path,
+            base_commit=payload.base_commit,
+            diff_summary=payload.diff_summary,
+            workspace_status=payload.workspace_status,
             risk_notes=payload.risk_notes,
             metadata=payload.metadata,
         )
@@ -576,3 +644,268 @@ def _apply_agent_team_merge_decision(
         merge_bundle=merge_bundle,
         applied=decision.approved,
     )
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge-review',
+    response_model=AgentTeamMergeReviewResponse,
+)
+def create_agent_team_merge_review(
+    session_id: str,
+    payload: CreateAgentTeamMergeReviewRequest | None = None,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewResponse:
+    service = _agent_team_service_or_503(runtime)
+    request = payload or CreateAgentTeamMergeReviewRequest()
+    try:
+        review = service.create_merge_review(
+            session_id=session_id,
+            user_id=principal.user_id,
+            selected_task_ids=request.selected_task_ids,
+            excluded_task_ids=request.excluded_task_ids,
+            title=request.title,
+            metadata=request.metadata,
+        )
+        events = service.list_merge_review_events(
+            session_id=session_id,
+            review_id=review.review_id,
+            user_id=principal.user_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewResponse(review=review, events=events)
+
+
+@router.get(
+    '/v1/agent-team/sessions/{session_id}/merge-review',
+    response_model=AgentTeamMergeReviewListResponse,
+)
+def list_agent_team_merge_reviews(
+    session_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewListResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        reviews = service.list_merge_reviews(session_id=session_id, user_id=principal.user_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewListResponse(
+        reviews=reviews,
+        items=reviews,
+        count=len(reviews),
+        latest=reviews[0] if reviews else None,
+    )
+
+
+@router.patch(
+    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}',
+    response_model=AgentTeamMergeReviewResponse,
+)
+def update_agent_team_merge_review(
+    session_id: str,
+    review_id: str,
+    payload: UpdateAgentTeamMergeReviewRequest,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        review = service.update_merge_review(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+            selected_task_ids=payload.selected_task_ids,
+            excluded_task_ids=payload.excluded_task_ids,
+            status=payload.status,
+            title=payload.title,
+            metadata=payload.metadata,
+        )
+        events = service.list_merge_review_events(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewResponse(review=review, events=events)
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/preview',
+    response_model=AgentTeamMergeReviewResponse,
+)
+def preview_agent_team_merge_review(
+    session_id: str,
+    review_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        review = service.preview_merge_review(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+        )
+        events = service.list_merge_review_events(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewResponse(review=review, events=events)
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/apply',
+    response_model=AgentTeamMergeReviewResponse,
+)
+def apply_agent_team_merge_review(
+    session_id: str,
+    review_id: str,
+    payload: ApplyAgentTeamMergeReviewRequest | None = None,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewResponse:
+    service = _agent_team_service_or_503(runtime)
+    request = payload or ApplyAgentTeamMergeReviewRequest()
+    try:
+        review = service.apply_merge_review(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+            apply_target_path=request.apply_target_path,
+        )
+        events = service.list_merge_review_events(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewResponse(review=review, events=events)
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/reject',
+    response_model=AgentTeamMergeReviewResponse,
+)
+def reject_agent_team_merge_review(
+    session_id: str,
+    review_id: str,
+    payload: RejectAgentTeamMergeReviewRequest | None = None,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewResponse:
+    service = _agent_team_service_or_503(runtime)
+    request = payload or RejectAgentTeamMergeReviewRequest()
+    try:
+        review = service.reject_merge_review(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+            rationale=request.rationale,
+        )
+        events = service.list_merge_review_events(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewResponse(review=review, events=events)
+
+
+@router.post(
+    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/capture',
+    response_model=AgentTeamMergeReviewCaptureResponse,
+)
+def capture_agent_team_merge_review(
+    session_id: str,
+    review_id: str,
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentTeamMergeReviewCaptureResponse:
+    service = _agent_team_service_or_503(runtime)
+    try:
+        capture = service.capture_merge_review(
+            session_id=session_id,
+            review_id=review_id,
+            user_id=principal.user_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _agent_team_error(exc) from exc
+    return AgentTeamMergeReviewCaptureResponse(capture=capture)
+
+
+def _agent_team_approval_queue(service: object):
+    coordination_backend = getattr(service, "coordination_backend", None)
+    approval_queue = getattr(coordination_backend, "approval_queue", None)
+    if approval_queue is None:
+        raise RuntimeError("Agent Team tool approval queue is unavailable.")
+    return approval_queue
+
+
+def _pending_tool_approvals_for_session(
+    service: object,
+    session: object,
+) -> list[AgentTeamToolApprovalContract]:
+    approval_queue = _agent_team_approval_queue(service)
+    if not hasattr(approval_queue, "list_pending"):
+        return []
+    session_ids = {
+        str(getattr(session, "session_id", "")),
+        str(getattr(session, "root_thread_id", "")),
+    }
+    approvals = []
+    for request in approval_queue.list_pending():
+        if str(getattr(request, "session_id", "")) in session_ids:
+            approvals.append(
+                AgentTeamToolApprovalContract.model_validate(
+                    _tool_approval_payload(request)
+                )
+            )
+    return approvals
+
+
+def _get_tool_approval_request(approval_queue: object, request_id: str):
+    get = getattr(approval_queue, "get", None)
+    if callable(get):
+        return get(request_id)
+    if not hasattr(approval_queue, "list_pending"):
+        return None
+    for request in approval_queue.list_pending():
+        if str(getattr(request, "request_id", "")) == request_id:
+            return request
+    return None
+
+
+def _tool_approval_payload(request: object) -> dict[str, object]:
+    status = getattr(request, "status", "pending")
+    status_value = getattr(status, "value", status)
+    return {
+        "request_id": str(getattr(request, "request_id", "")),
+        "session_id": str(getattr(request, "session_id", "")),
+        "agent_id": str(getattr(request, "agent_id", "")),
+        "tool_name": str(getattr(request, "tool_name", "")),
+        "tool_args": dict(getattr(request, "tool_args", {}) or {}),
+        "risk_level": str(getattr(request, "risk_level", "low") or "low"),
+        "status": str(status_value or "pending"),
+        "submitted_at": float(getattr(request, "submitted_at", 0.0) or 0.0),
+        "timeout_at": float(getattr(request, "timeout_at", 0.0) or 0.0),
+        "decided_by": getattr(request, "decided_by", None),
+    }
+
+
+__all__ = [
+    "_DEPRECATED_ROUTE_LINK_REL",
+    "_call_plan_session",
+    "_mark_deprecated_route",
+    "_model_payload",
+    "_planning_metadata_payload",
+    "_view_response",
+    "router",
+]

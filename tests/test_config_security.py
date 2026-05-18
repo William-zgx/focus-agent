@@ -6,7 +6,6 @@ import pytest
 
 from focus_agent.config import DEFAULT_AUTH_JWT_SECRET, Settings, ensure_runtime_directories
 
-
 _CONFIG_ENV_KEYS = (
     "APP_ENVIRONMENT",
     "ENVIRONMENT",
@@ -103,6 +102,9 @@ def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path
     monkeypatch.setenv("BACKGROUND_JOB_BACKEND", "postgres")
     monkeypatch.setenv("BACKGROUND_JOB_EXECUTION", "durable")
     monkeypatch.setenv("BACKGROUND_JOB_CLAIM_TTL_SECONDS", "45")
+    monkeypatch.setenv("BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS", "4")
+    monkeypatch.setenv("BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS", "60")
+    monkeypatch.setenv("BACKGROUND_JOB_OLD_PENDING_SECONDS", "120")
     monkeypatch.setenv("RUNTIME_THREAD_LOCK_TTL_SECONDS", "90")
     monkeypatch.setenv("RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS", "9")
 
@@ -117,6 +119,9 @@ def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path
     assert settings.background_job_backend == "postgres"
     assert settings.background_job_execution == "durable"
     assert settings.background_job_claim_ttl_seconds == 45.0
+    assert settings.background_job_retry_base_delay_seconds == 4.0
+    assert settings.background_job_retry_max_delay_seconds == 60.0
+    assert settings.background_job_old_pending_seconds == 120.0
     assert settings.runtime_thread_lock_ttl_seconds == 90.0
     assert settings.runtime_thread_lock_heartbeat_seconds == 9.0
 

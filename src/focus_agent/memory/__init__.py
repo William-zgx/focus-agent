@@ -1,12 +1,10 @@
 """Structured memory models plus compatibility exports for legacy helpers."""
 
-from .dedupe import (
-    has_textual_overlap,
-    memory_fingerprint,
-    memory_resolution_key,
-    memory_semantic_key,
-    merge_duplicate_records,
-    user_preference_topic,
+from ..storage.import_memory import (
+    branch_memory_namespace,
+    main_conversation_namespace,
+    persist_imported_conclusion,
+    user_profile_memory_namespace,
 )
 from .assembler import build_memory_blocks, render_memory_block, sanitize_memory_text
 from .curator import (
@@ -15,7 +13,14 @@ from .curator import (
     MemoryPromotionCandidate,
     MemorySemanticConflict,
 )
-from .extractor import MemoryExtractor
+from .dedupe import (
+    has_textual_overlap,
+    memory_fingerprint,
+    memory_resolution_key,
+    memory_semantic_key,
+    merge_duplicate_records,
+    user_preference_topic,
+)
 from .embedding import (
     DeterministicTestEmbeddingProvider,
     MemoryEmbeddingError,
@@ -24,6 +29,7 @@ from .embedding import (
 )
 from .embedding_policy import MemoryEmbeddingPolicy
 from .embedding_service import MemoryEmbeddingService
+from .extractor import MemoryExtractor
 from .models import (
     MemoryAuditEvent,
     MemoryCandidate,
@@ -45,12 +51,6 @@ from .retriever import MemoryRetriever
 from .scorer import score_memory_hit, score_memory_importance
 from .service import MemoryService
 from .writer import MemoryWriter
-from ..storage.import_memory import (
-    branch_memory_namespace,
-    main_conversation_namespace,
-    persist_imported_conclusion,
-    user_profile_memory_namespace,
-)
 
 __all__ = [
     "MemoryExtractionResult",

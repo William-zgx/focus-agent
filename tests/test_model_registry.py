@@ -1,3 +1,4 @@
+from focus_agent import model_registry
 from focus_agent.config import (
     ConfiguredModel,
     ModelCatalogConfig,
@@ -5,7 +6,6 @@ from focus_agent.config import (
     ProviderConfig,
     Settings,
 )
-from focus_agent import model_registry
 from focus_agent.model_registry import build_model_catalog, create_chat_model, resolve_model_config
 from focus_agent.providers.moonshot_openai import MoonshotChatOpenAI
 from focus_agent.providers.reasoning_openai import ReasoningAwareChatOpenAI

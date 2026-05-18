@@ -11,7 +11,6 @@ from langchain_openai.chat_models.base import (
     _convert_message_to_dict,
 )
 
-
 _REASONING_BLOCK_TYPES = {
     "reasoning",
     "reasoning_delta",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from threading import Lock
 import time
+from threading import Lock
 
 from langchain.messages import AIMessage
 
@@ -22,6 +22,7 @@ from focus_agent.agent_execution import (
 )
 from focus_agent.agent_roles import AgentRole, build_role_route_plan
 from focus_agent.config import Settings
+
 
 class RecordingFakeModel:
     def __init__(self, content: str = "delegated artifact", *, error: Exception | None = None, delay: float = 0.0):
@@ -76,6 +77,20 @@ def test_delegation_default_off_keeps_legacy_execution_safe():
     assert plan.enabled is False
     assert plan.legacy_execution_unchanged is True
     assert plan.tasks == []
+
+
+def test_delegation_skips_empty_route_decisions_instead_of_generic_executor():
+    plan = build_agent_delegation_plan(
+        settings=Settings(agent_delegation_enabled=True),
+        task_text="Answer the user.",
+        role_route_plan={"enabled": True, "decisions": [], "route_reason": "no split needed"},
+        available_tool_names=["search_code"],
+    )
+
+    assert plan.enabled is True
+    assert plan.tasks == []
+    assert plan.runs == []
+    assert plan.skipped_reason == "no_valid_route_decisions"
 
 
 def test_delegation_builds_role_tasks_when_enabled():

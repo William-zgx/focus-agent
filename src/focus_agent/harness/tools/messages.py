@@ -6,9 +6,7 @@ from typing import Any
 from langchain.messages import ToolMessage
 
 from ...capabilities.tool_messages import build_tool_message
-
 from .envelope import ToolResultContent, ToolResultEnvelope, ToolResultStatus
-
 
 _NORMALIZED_ARTIFACT_KEYS = frozenset({"runtime", "tool_name", "prompt_observation"})
 

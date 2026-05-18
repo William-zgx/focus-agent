@@ -1,26 +1,26 @@
 import asyncio
 import json
-from pathlib import Path
-from types import SimpleNamespace
 import threading
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
 from focus_agent.api.routers.harness_runs import _produce_run_stream
+from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
+from focus_agent.core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
+from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.services.branch_actions import is_branch_action_request
+from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
 from focus_agent.services.coordination import (
     CoordinationBackend,
     InMemoryBackgroundJobDeduperBackend,
-    InMemoryThreadTurnLockBackend,
     InMemoryRateLimitBackend,
+    InMemoryThreadTurnLockBackend,
 )
 from focus_agent.services.thread_turn_lease import ThreadTurnLeaseManager
-from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
-from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
-from focus_agent.core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
 from focus_agent.skills.registry import SkillRegistry
 
 
@@ -486,6 +486,12 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
                 "user_constraints": [
                     {"constraint": "Keep token usage separate from context usage."}
                 ],
+                "artifacts": [
+                    {
+                        "title": "Context usage decision",
+                        "uri": "artifact://context/usage-decision",
+                    }
+                ],
                 "context_budget": {"prompt_token_limit": 10000, "chars_per_token": 4},
             }
             self.updates = []
@@ -511,7 +517,17 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
     assert graph.updates[-1][1] == "context_compaction"
     assert graph.values["context_compaction"]["trigger"] == "manual"
     assert graph.values["context_compaction"]["non_destructive"] is True
+    drift_report = graph.values["context_compaction"]["context_compaction_drift_report"]
+    assert set(drift_report) >= {
+        "recall",
+        "precision",
+        "grounding",
+        "answerability",
+        "overall_drift",
+    }
+    assert drift_report["drift_risk"] in {"low", "medium", "high"}
     assert "Context compaction snapshot:" in graph.values["rolling_summary"]
+    assert "artifact://context/usage-decision" in graph.values["rolling_summary"]
     assert (
         payload["context_usage"]["last_compacted_at"]
         == graph.values["context_compaction"]["last_compacted_at"]
@@ -1130,6 +1146,62 @@ def test_send_message_activates_skills_from_prefix(tmp_path: Path):
     assert payload["selected_thinking_mode"] == "disabled"
 
 
+def test_send_message_semantically_activates_build_fix_for_real_failure_request(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    skill_dir = tmp_path / "skills"
+    build_fix_dir = skill_dir / "build-fix"
+    build_fix_dir.mkdir(parents=True, exist_ok=True)
+    (build_fix_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: build-fix",
+                (
+                    "description: Triage and fix repository build, type-check, lint, "
+                    "or test failures using the project's real commands and verification path."
+                ),
+                "triggers: build-fix:, fix-build:, check-fix:",
+                (
+                    "when_to_use: make check is failing, Frontend or SDK type-checks are broken, "
+                    "Lint or pytest failures need a focused repair workflow"
+                ),
+                "recommended_tools: git_status, git_diff, search_code, read_file, write_text_artifact",
+                "prompt_mode: execute",
+                "---",
+                "",
+                "# Build Fix",
+                "",
+                "Use the repository's real validation commands.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    graph = RecordingGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        skill_registry=SkillRegistry([skill_dir]),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="我这边 make check、lint、pytest 都失败了，帮我定位根因并修复。",
+        model="moonshot:kimi-k2.6",
+        thinking_mode="disabled",
+    )
+
+    assert graph.last_context.skill_hints == ("build-fix",)
+    assert graph.last_payload["active_skill_ids"] == ["build-fix"]
+    assert graph.last_payload["prompt_mode"] == "execute"
+    assert payload["active_skill_ids"] == ["build-fix"]
+
+
 def test_send_message_ignores_thinking_mode_for_models_without_thinking_support(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -1528,6 +1600,33 @@ def test_latest_final_ai_text_hides_english_process_narration():
     )
 
 
+def test_latest_final_ai_text_ignores_draft_before_later_tool_activity():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+
+    assert (
+        service._latest_final_ai_text(
+            [
+                HumanMessage(content="查证配置。"),
+                AIMessage(content="初步答复，但还不完整。"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "search_code",
+                            "args": {"query": "skill_install"},
+                        }
+                    ],
+                ),
+                ToolMessage(content='{"results":[]}', tool_call_id="call-1"),
+            ]
+        )
+        is None
+    )
+
+
 def test_thread_state_messages_hide_textual_tool_protocol_ai_messages():
     service = ChatService(
         ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
@@ -1545,6 +1644,34 @@ def test_thread_state_messages_hide_textual_tool_protocol_ai_messages():
 
     assert [message["type"] for message in payload] == ["human", "ai"]
     assert [message["content"] for message in payload] == ["Search this.", "最终安全回答。"]
+
+
+def test_thread_state_messages_hide_draft_answer_before_later_tool_activity():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+
+    payload = service._thread_state_messages(
+        [
+            HumanMessage(content="查证配置。"),
+            AIMessage(content="初步答复，但还不完整。"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "search_code",
+                        "args": {"query": "skill_install"},
+                    }
+                ],
+            ),
+            ToolMessage(content='{"results":[]}', tool_call_id="call-1"),
+        ]
+    )
+
+    assert [message["type"] for message in payload] == ["human", "ai", "tool"]
+    assert payload[1]["content"] == ""
+    assert payload[1]["tool_calls"][0]["name"] == "search_code"
 
 
 def test_thread_state_messages_hide_english_process_narration():
@@ -1630,6 +1757,33 @@ def test_thread_state_messages_clear_protocol_content_but_keep_tool_calls():
     assert payload[0]["tool_calls"][0]["name"] == "web_fetch"
 
 
+def test_thread_state_messages_preserve_dict_system_messages():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+
+    payload = service._thread_state_messages(
+        [
+            {
+                "type": "system",
+                "content": "Imported conclusion from branch 'explore-alternatives':\nDone.",
+                "id": "merge-notice-1",
+            }
+        ]
+    )
+
+    assert payload == [
+        {
+            "type": "system",
+            "content": "Imported conclusion from branch 'explore-alternatives':\nDone.",
+            "tool_calls": None,
+            "name": None,
+            "id": "merge-notice-1",
+            "usage_metadata": None,
+        }
+    ]
+
+
 def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -1659,6 +1813,42 @@ def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     )
     assert graph.updates
     assert graph.updates[0][1] == "bootstrap_turn"
+
+
+def test_get_thread_state_dedupes_dict_imported_conclusion_notice(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    graph = BackfillImportGraph()
+    graph.values["messages"] = [
+        {
+            "type": "system",
+            "content": (
+                "Imported conclusion from branch 'explore-alternatives':\n"
+                "Recovered conclusion from child branch.\n\n"
+                "Key findings:\n"
+                "- Finding A\n\n"
+                "Evidence refs: doc-1"
+            ),
+        }
+    ]
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.get_thread_state(
+        thread_id="root-1",
+        user_id="owner-1",
+        request_id="req-snapshot",
+    )
+
+    system_messages = [message for message in payload["messages"] if message["type"] == "system"]
+    assert len(system_messages) == 1
+    assert "Recovered conclusion from child branch." in system_messages[0]["content"]
+    assert graph.updates
+    assert "messages" not in graph.updates[0][0]
 
 
 def test_get_thread_state_returns_longer_recent_history_window(tmp_path: Path):

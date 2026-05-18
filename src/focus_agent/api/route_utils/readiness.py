@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from focus_agent.config import Settings
-from focus_agent.core.repo_call import has_repo_method
-from focus_agent.engine.runtime import AppRuntime
+from focus_agent.core.repo_call import has_repo_method, safe_repo_call
 
 from ..contracts import RuntimeComponentStatusResponse, RuntimeReadinessResponse
 
@@ -32,7 +31,7 @@ def _memory_embedding_configured(settings: Settings | Any) -> bool:
     )
 
 
-def _memory_embedding_backend_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusResponse:
+def _memory_embedding_backend_check(runtime: Any) -> RuntimeComponentStatusResponse:
     settings = getattr(runtime, "settings", None)
     enabled = bool(getattr(settings, "agent_memory_embedding_enabled", False))
     backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
@@ -83,7 +82,7 @@ def _memory_embedding_backend_check(runtime: AppRuntime | Any) -> RuntimeCompone
     )
 
 
-def _memory_embedding_unavailable_detail(runtime: AppRuntime | Any, *, backend: str) -> str:
+def _memory_embedding_unavailable_detail(runtime: Any, *, backend: str) -> str:
     settings = getattr(runtime, "settings", None)
     detail = (
         getattr(runtime, "memory_embedding_backend_error", None)
@@ -99,7 +98,7 @@ def _memory_embedding_unavailable_detail(runtime: AppRuntime | Any, *, backend: 
     return detail
 
 
-def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusResponse:
+def _memory_pgvector_check(runtime: Any) -> RuntimeComponentStatusResponse:
     settings = getattr(runtime, "settings", None)
     if not _memory_embedding_configured(settings):
         return RuntimeComponentStatusResponse(
@@ -167,7 +166,7 @@ def _memory_pgvector_check(runtime: AppRuntime | Any) -> RuntimeComponentStatusR
 
 
 def _component_status(
-    runtime: AppRuntime | Any,
+    runtime: Any,
     attr: str,
     *,
     name: str | None = None,
@@ -182,7 +181,61 @@ def _component_status(
     )
 
 
-def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessResponse:
+def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int]:
+    snapshot = safe_repo_call(
+        source,
+        "snapshot",
+        default_missing={},
+        default_error={error_key: 1},
+    )
+    try:
+        return {str(key): int(value) for key, value in dict(snapshot).items()}
+    except Exception:  # noqa: BLE001 - readiness must degrade instead of crashing.
+        return {error_key: 1}
+
+
+def _background_jobs_check(runtime: Any) -> RuntimeComponentStatusResponse:
+    settings = getattr(runtime, "settings", None)
+    metrics = {
+        **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
+        **_snapshot_metrics(getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"),
+    }
+    errors = [
+        key
+        for key in ("job_backend_error", "durable_worker_snapshot_error")
+        if int(metrics.get(key) or 0) > 0
+    ]
+    dead_lettered = int(metrics.get("job_dead_lettered_total") or 0)
+    oldest_pending_seconds = int(metrics.get("job_oldest_pending_seconds") or 0)
+    old_pending_threshold = max(
+        int(float(getattr(settings, "background_job_old_pending_seconds", 900.0) or 0.0)),
+        0,
+    )
+    problems: list[str] = []
+    if errors:
+        problems.append(f"snapshot_error={','.join(errors)}")
+    if dead_lettered > 0:
+        problems.append(f"dead_lettered={dead_lettered}")
+    if old_pending_threshold > 0 and oldest_pending_seconds > old_pending_threshold:
+        problems.append(f"oldest_pending_seconds={oldest_pending_seconds}")
+    if problems:
+        return RuntimeComponentStatusResponse(
+            name="background_jobs",
+            ready=False,
+            detail=" ".join(problems),
+        )
+    return RuntimeComponentStatusResponse(
+        name="background_jobs",
+        ready=True,
+        detail=(
+            f"pending={int(metrics.get('job_pending_total') or 0)} "
+            f"retrying={int(metrics.get('job_retrying_total') or 0)} "
+            f"dead_lettered={dead_lettered}"
+        ),
+    )
+
+
+def _build_runtime_readiness(runtime: Any) -> RuntimeReadinessResponse:
     settings = getattr(runtime, "settings", None)
     otel_runtime = getattr(runtime, "otel_runtime", None)
     checks = [
@@ -288,6 +341,7 @@ def _build_runtime_readiness(runtime: AppRuntime | Any) -> RuntimeReadinessRespo
 
     checks.append(_memory_embedding_backend_check(runtime))
     checks.append(_memory_pgvector_check(runtime))
+    checks.append(_background_jobs_check(runtime))
 
     trajectory_expected = _trajectory_expected(settings)
     if trajectory_expected:

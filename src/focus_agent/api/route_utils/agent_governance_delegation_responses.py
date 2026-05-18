@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from focus_agent.agent_delegation import (
+from focus_agent.delegation.delegation import (
     apply_review_decision,
     build_agent_delegation_plan,
     build_model_route_decision,
     build_self_repair_preview,
 )
-from focus_agent.agent_roles import AgentRole, RoleModelResolver, build_role_route_plan
+from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
 from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
 
@@ -17,9 +17,9 @@ from ..contracts import (
     AgentDelegationPlanResponse,
     AgentDelegationPolicyResponse,
     AgentDelegationRunListResponse,
+    AgentModelRouterDecisionListResponse,
     AgentModelRouteRequest,
     AgentModelRouteResponse,
-    AgentModelRouterDecisionListResponse,
     AgentModelRouterPolicyResponse,
     AgentReviewQueueDecisionResponse,
     AgentReviewQueueListResponse,

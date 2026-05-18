@@ -20,7 +20,7 @@ class _FakeResponse:
     def read(self) -> bytes:
         return self._body.encode("utf-8")
 
-    def __enter__(self) -> "_FakeResponse":
+    def __enter__(self) -> _FakeResponse:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:

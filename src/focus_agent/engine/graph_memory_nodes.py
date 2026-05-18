@@ -16,8 +16,8 @@ from ..core.types import PromptMode
 from ..memory import (
     MemoryExtractor,
     MemoryRetriever,
-    MemoryWriteRequest,
     MemoryWriter,
+    MemoryWriteRequest,
     render_memory_block,
 )
 from ..skills import SkillRegistry
@@ -165,6 +165,13 @@ def summarize_turn(state: AgentState) -> dict[str, Any]:
 
 
 def _should_extract_memories(state: AgentState) -> bool:
+    verification = state.get("answer_verification") or (state.get("plan_meta") or {}).get(
+        "answer_verification"
+    )
+    if isinstance(verification, dict):
+        status = str(verification.get("status") or "").strip()
+        if status in {"unsupported", "contradicted", "blocked"}:
+            return False
     reflection = state.get("reflection")
     reflection_status = getattr(reflection, "status", None) or (
         reflection.get("status") if isinstance(reflection, dict) else None
@@ -188,13 +195,28 @@ def make_extract_memories_node(
         runtime: Runtime[RequestContext],
     ) -> dict[str, Any]:
         if not _should_extract_memories(state):
+            verification = state.get("answer_verification") or (state.get("plan_meta") or {}).get(
+                "answer_verification"
+            )
+            skipped = []
+            if isinstance(verification, dict) and str(verification.get("status") or "") in {
+                "unsupported",
+                "contradicted",
+                "blocked",
+            }:
+                skipped.append(
+                    {
+                        "reason": "answer_verification_failed",
+                        "status": str(verification.get("status") or ""),
+                    }
+                )
             return {
                 "memory_write_requests": [],
                 "memory_write_result": {
                     "prepared": 0,
                     "written": [],
                     "merged": [],
-                    "skipped": [],
+                    "skipped": skipped,
                     "failed": [],
                 },
             }

@@ -56,8 +56,11 @@ export function MergeReviewCard({
 	const [lastImported, setLastImported] =
 		useState<FocusAgentImportedConclusion | null>(null);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
-	const proposalSignature = proposal ? JSON.stringify(proposal) : "no-proposal";
-	const isPreparingConclusion = isPreparing || isMergeProposalPreparing(threadId);
+	const _proposalSignature = proposal
+		? JSON.stringify(proposal)
+		: "no-proposal";
+	const isPreparingConclusion =
+		isPreparing || isMergeProposalPreparing(threadId);
 	const isMergedBranch = pendingStatus === "merged";
 
 	const modeOptions = useMemo(
@@ -73,7 +76,7 @@ export function MergeReviewCard({
 		setDraft(createMergeReviewDraft(proposal));
 		setLastImported(null);
 		setErrorMessage(null);
-	}, [threadId, proposalSignature, proposal]);
+	}, [proposal]);
 
 	function handleDraftChange(
 		next: (current: MergeReviewDraft) => MergeReviewDraft,

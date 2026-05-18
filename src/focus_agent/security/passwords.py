@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import secrets
 
-
 PBKDF2_ALGORITHM = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 210_000
 SALT_BYTES = 16

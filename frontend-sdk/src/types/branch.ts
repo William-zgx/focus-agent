@@ -155,4 +155,5 @@ export interface FocusAgentApplyMergeDecisionRequest {
 
 export interface FocusAgentApplyMergeDecisionResponse {
   imported?: FocusAgentImportedConclusion | null;
+  target_thread_id?: string | null;
 }

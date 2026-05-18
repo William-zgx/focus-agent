@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config_parts.agent import load_agent_config
 from .config_parts.auth import (
     DEFAULT_AUTH_JWT_SECRET,
     AuthJwtKey,
@@ -13,32 +14,36 @@ from .config_parts.auth_settings import load_auth_config
 from .config_parts.catalogs import (
     DEFAULT_MODEL_CATALOG_DOC,
     DEFAULT_TOOL_CATALOG_DOC,
-    ProviderConfig,
-    ConfiguredModel,
-    WebSearchConfig,
-    CurrentUtcTimeToolConfig,
-    WriteTextArtifactToolConfig,
     ArtifactListToolConfig,
     ArtifactReadToolConfig,
     ArtifactUpdateToolConfig,
-    ListFilesToolConfig,
-    ReadFileToolConfig,
-    SearchCodeToolConfig,
     CodebaseStatsToolConfig,
-    GitStatusToolConfig,
+    ConfiguredModel,
+    ConversationSummaryToolConfig,
+    CurrentUtcTimeToolConfig,
     GitDiffToolConfig,
     GitLogToolConfig,
-    WebFetchToolConfig,
+    GitStatusToolConfig,
+    ListFilesToolConfig,
+    MemoryForgetToolConfig,
     MemorySaveToolConfig,
     MemorySearchToolConfig,
-    MemoryForgetToolConfig,
-    ConversationSummaryToolConfig,
-    SkillsListToolConfig,
-    SkillViewToolConfig,
-    ModelCatalogValidationError,
     ModelCatalogConfig,
+    ModelCatalogValidationError,
+    ProviderConfig,
+    ReadFileToolConfig,
+    SearchCodeToolConfig,
+    SkillInstallToolConfig,
+    SkillsListToolConfig,
+    SkillSourcesToolConfig,
+    SkillsRefreshIndexToolConfig,
+    SkillsSearchToolConfig,
+    SkillViewToolConfig,
     ToolCatalogConfig,
     ToolCatalogSectionSpec,
+    WebFetchToolConfig,
+    WebSearchConfig,
+    WriteTextArtifactToolConfig,
     load_model_catalog_document,
     load_model_catalog_toml,
     load_tool_catalog_document,
@@ -47,15 +52,15 @@ from .config_parts.common import (
     DEFAULT_LOCAL_ENV_FILE,
     load_local_env_file,
 )
-from .config_parts.agent import load_agent_config
 from .config_parts.context import load_context_config
+from .config_parts.multi_agent import load_multi_agent_config
 from .config_parts.observability import load_observability_config
 from .config_parts.runtime import load_runtime_config
 from .config_parts.server import load_server_config
 from .config_parts.trajectory import load_trajectory_config
 
 
-def ensure_runtime_directories(settings: "Settings") -> None:
+def ensure_runtime_directories(settings: Settings) -> None:
     """Create directories required by runtime persistence and artifacts."""
     Path(settings.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
     Path(settings.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)
@@ -122,13 +127,32 @@ class Settings:
     background_job_backend: str = "memory"
     background_job_execution: str = "best_effort"
     background_job_claim_ttl_seconds: float = 300.0
+    background_job_retry_base_delay_seconds: float = 5.0
+    background_job_retry_max_delay_seconds: float = 300.0
+    background_job_old_pending_seconds: float = 900.0
     runtime_thread_lock_ttl_seconds: float = 300.0
     runtime_thread_lock_heartbeat_seconds: float = 30.0
+    postgres_pool_enabled: bool = True
+    postgres_pool_min_size: int = 1
+    postgres_pool_max_size: int = 4
+    postgres_slow_query_threshold_ms: float = 500.0
     local_checkpoint_path: str | None = None
     local_store_path: str | None = None
     branch_max_depth: int = 5
     skill_directories: tuple[str, ...] = (".focus_agent/skills",)
+    skill_install_directory: str = ".focus_agent/skills"
+    skill_sources_enabled: tuple[str, ...] = ("installed",)
+    skill_source_locations: tuple[str, ...] = ()
+    skill_trusted_sources: tuple[str, ...] = ("installed", "project", "builtin")
+    skill_install_mode: str = "project"
+    skill_semantic_match_enabled: bool = True
+    skill_semantic_match_threshold: float = 0.22
+    skill_selection_event_log_enabled: bool = True
     workspace_root: str = "."
+    agent_team_merge_apply_enabled: bool = True
+    agent_team_merge_review_max_diff_bytes: int = 1_048_576
+    feedback_capture_enabled: bool = True
+    context_memory_evidence_enabled: bool = True
     plan_act_reflect_enabled: bool = True
     plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
     plan_task_brief_min_chars: int = 120
@@ -141,6 +165,20 @@ class Settings:
     agent_role_memory_model: str | None = None
     agent_role_skill_model: str | None = None
     agent_role_max_parallel_runs: int = 2
+    multi_agent_v2_enabled: bool = False
+    multi_agent_dag_scheduler_enabled: bool = False
+    multi_agent_resource_lock_enabled: bool = False
+    multi_agent_message_bus_enabled: bool = False
+    multi_agent_async_approval_enabled: bool = False
+    multi_agent_failure_handler_enabled: bool = False
+    multi_agent_resource_lock_ttl_seconds: float = 60.0
+    multi_agent_resource_lock_heartbeat_seconds: float = 15.0
+    multi_agent_message_ttl_seconds: float = 300.0
+    multi_agent_approval_timeout_seconds: float = 60.0
+    multi_agent_deadlock_check_interval_seconds: float = 30.0
+    multi_agent_role_fallback_models: dict[str, str] = field(default_factory=dict)
+    agent_team_skill_scout_enabled: bool = True
+    agent_team_automation_level: str = "assisted"
     agent_memory_backend: str = "postgres"
     agent_memory_read_source: str = "postgres"
     agent_memory_extractor_mode: str = "heuristic"
@@ -173,7 +211,7 @@ class Settings:
     agent_context_engineering_v2_enabled: bool = False
     agent_context_artifactize_long_observations: bool = False
     agent_context_role_views_enabled: bool = False
-    agent_context_tokenizer_mode: str = "chars_fallback"
+    agent_context_tokenizer_mode: str = "tokenizer_first"
     agent_context_artifact_min_chars: int = 12000
     context_auto_compaction_enabled: bool = True
     context_auto_compaction_pre_send_ratio: float = 0.92
@@ -188,7 +226,7 @@ class Settings:
     trajectory_hash_user_id: bool = True
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         process_env = dict(os.environ)
         local_overrides = load_local_env_file(
             process_env.get("FOCUS_AGENT_LOCAL_ENV_FILE"),
@@ -214,6 +252,7 @@ class Settings:
         values.update(load_server_config(env, defaults))
         values.update(load_auth_config(env, defaults))
         values.update(load_agent_config(env, defaults))
+        values.update(load_multi_agent_config(env, defaults))
         values.update(load_context_config(env, defaults))
         values.update(
             load_trajectory_config(
@@ -254,6 +293,10 @@ __all__ = [
     "ConversationSummaryToolConfig",
     "SkillsListToolConfig",
     "SkillViewToolConfig",
+    "SkillSourcesToolConfig",
+    "SkillsSearchToolConfig",
+    "SkillInstallToolConfig",
+    "SkillsRefreshIndexToolConfig",
     "ModelCatalogValidationError",
     "ModelCatalogConfig",
     "ToolCatalogConfig",

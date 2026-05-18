@@ -4,7 +4,6 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeAlias, runtime_checkable
 
-
 MiddlewareHandler: TypeAlias = Callable[..., Any]
 
 

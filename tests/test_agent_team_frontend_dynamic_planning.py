@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_TEAM_ROOT = ROOT / "apps" / "web" / "src" / "features" / "agent-team"
 AGENT_TEAM_STYLES = ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
@@ -8,6 +7,30 @@ AGENT_TEAM_STYLES = ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modul
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _read_agent_team_styles() -> str:
+    facade_text = _read(AGENT_TEAM_STYLES)
+    module_dir = AGENT_TEAM_STYLES.parent
+    imported = [
+        _read(module_dir / line.split('"', 2)[1])
+        for line in facade_text.splitlines()
+        if line.startswith("@import ") and '"' in line
+    ]
+    return "\n".join([facade_text, *imported])
+
+
+def _read_task_surface_text() -> str:
+    return "\n".join(
+        _read(AGENT_TEAM_ROOT / name)
+        for name in [
+            "agent-team-workbench-task-lanes.tsx",
+            "agent-team-workbench-task-board.tsx",
+            "agent-team-workbench-task-detail.tsx",
+            "agent-team-workbench-task-returned-sections.tsx",
+            "agent-team-workbench-task-view-helpers.tsx",
+        ]
+    )
 
 
 def test_create_page_no_longer_shows_fixed_role_template():
@@ -39,7 +62,7 @@ def test_workbench_exposes_dynamic_planning_controls_and_metadata():
             _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
         ]
     )
-    styles_text = _read(AGENT_TEAM_STYLES)
+    styles_text = _read_agent_team_styles()
 
     for text in ["生成方案", "重新拆解", "运行 Mission", "生成最终结果"]:
         assert text in workbench_text or text in _read(AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts")
@@ -68,7 +91,7 @@ def test_workbench_exposes_dynamic_planning_controls_and_metadata():
 
 
 def test_task_surface_prefers_dynamic_plan_fields_over_roles():
-    task_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-task-lanes.tsx")
+    task_text = _read_task_surface_text()
     types_text = _read(AGENT_TEAM_ROOT / "types.ts")
 
     assert "taskTitle(task)" in task_text
@@ -115,7 +138,7 @@ def test_default_result_panel_summarizes_raw_execution_text():
         ]
     )
     result_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-merge-handoff.tsx")
-    styles_text = _read(AGENT_TEAM_STYLES)
+    styles_text = _read_agent_team_styles()
 
     assert "finalResultState" in workbench_text
     assert "Final Preview" in workbench_text

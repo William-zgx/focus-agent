@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from focus_agent.agent_roles import AgentRole
+from focus_agent.delegation.roles import AgentRole
 
 
-class AgentTeamSessionStatus(str, Enum):
+class AgentTeamSessionStatus(StrEnum):
     PLANNING = "planning"
     RUNNING = "running"
     AWAITING_REVIEW = "awaiting_review"
@@ -18,7 +18,7 @@ class AgentTeamSessionStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class AgentTeamTaskRole(str, Enum):
+class AgentTeamTaskRole(StrEnum):
     PLANNER = "planner"
     ARCHITECT = "architect"
     BACKEND_EXECUTOR = "backend_executor"
@@ -46,7 +46,7 @@ def agent_role_for_team_task_role(role: AgentTeamTaskRole | str) -> AgentRole:
     return _AGENT_TEAM_TASK_ROLE_TO_AGENT_ROLE[AgentTeamTaskRole(role)]
 
 
-class AgentTeamTaskStatus(str, Enum):
+class AgentTeamTaskStatus(StrEnum):
     PENDING = "pending"
     QUEUED = "queued"
     RUNNING = "running"
@@ -56,7 +56,7 @@ class AgentTeamTaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class AgentTeamArtifactKind(str, Enum):
+class AgentTeamArtifactKind(StrEnum):
     PLAN = "plan"
     PATCH_SUMMARY = "patch_summary"
     TEST_REPORT = "test_report"
@@ -66,17 +66,27 @@ class AgentTeamArtifactKind(str, Enum):
     MERGE_SUMMARY = "merge_summary"
 
 
-class AgentTeamRecommendedAction(str, Enum):
+class AgentTeamRecommendedAction(StrEnum):
     MERGE = "merge"
     REQUEST_CHANGES = "request_changes"
     SPLIT_FOLLOWUP = "split_followup"
     DISCARD = "discard"
 
 
-class AgentTeamFinalAnswerStatus(str, Enum):
+class AgentTeamFinalAnswerStatus(StrEnum):
     READY = "ready"
     PLACEHOLDER = "placeholder"
     BLOCKED = "blocked"
+    ERROR = "error"
+
+
+class AgentTeamMergeReviewStatus(StrEnum):
+    DRAFT = "draft"
+    READY = "ready"
+    APPROVED = "approved"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    CONFLICT = "conflict"
     ERROR = "error"
 
 
@@ -97,6 +107,7 @@ class AgentTeamSession(BaseModel):
     plan_generated_at: str | None = None
     plan_hash: str | None = None
     planning_error: str | None = None
+    skill_plan: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentTeamTask(BaseModel):
@@ -121,8 +132,11 @@ class AgentTeamTask(BaseModel):
     capability_requirements: list[str] = Field(default_factory=list)
     risk_level: str | None = None
     write_scope: list[str] = Field(default_factory=list)
+    resource_claims: list[str] = Field(default_factory=list)
     replan_policy: dict[str, Any] | None = None
     context_refs: list[dict[str, Any]] = Field(default_factory=list)
+    active_skill_ids: list[str] = Field(default_factory=list)
+    skill_resolution_events: list[dict[str, Any]] = Field(default_factory=list)
     status: AgentTeamTaskStatus = AgentTeamTaskStatus.PENDING
     run_status: str | None = None
     output_artifact_ids: list[str] = Field(default_factory=list)
@@ -130,6 +144,13 @@ class AgentTeamTask(BaseModel):
     delegated_task_id: str | None = None
     artifact_ids: list[str] = Field(default_factory=list)
     execution_status: str | None = None
+    workspace_id: str | None = None
+    workspace_branch: str | None = None
+    workspace_path: str | None = None
+    base_commit: str | None = None
+    diff_summary: str | None = None
+    test_evidence: list[str] = Field(default_factory=list)
+    workspace_status: str | None = None
     changed_files: list[str] = Field(default_factory=list)
     verification_summary: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
@@ -157,6 +178,12 @@ class AgentTeamTaskOutput(BaseModel):
     summary: str = ""
     changed_files: list[str] = Field(default_factory=list)
     test_evidence: list[str] = Field(default_factory=list)
+    workspace_id: str | None = None
+    workspace_branch: str | None = None
+    workspace_path: str | None = None
+    base_commit: str | None = None
+    diff_summary: str | None = None
+    workspace_status: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str
@@ -191,11 +218,50 @@ class AgentTeamMergeDecision(BaseModel):
     created_at: str
 
 
+class AgentTeamMergeReview(BaseModel):
+    review_id: str
+    session_id: str
+    user_id: str
+    status: AgentTeamMergeReviewStatus = AgentTeamMergeReviewStatus.DRAFT
+    title: str | None = None
+    summary: str | None = None
+    selected_task_ids: list[str] = Field(default_factory=list)
+    excluded_task_ids: list[str] = Field(default_factory=list)
+    changed_files: list[str] = Field(default_factory=list)
+    diffstat: str | None = None
+    test_evidence: list[str] = Field(default_factory=list)
+    risk_items: list[str] = Field(default_factory=list)
+    task_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    conflict_files: list[str] = Field(default_factory=list)
+    error_message: str | None = None
+    apply_target_path: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+    previewed_at: str | None = None
+    applied_at: str | None = None
+    rejected_at: str | None = None
+
+
+class AgentTeamMergeReviewEvent(BaseModel):
+    event_id: str
+    review_id: str
+    session_id: str
+    event_type: str
+    status: AgentTeamMergeReviewStatus | None = None
+    message: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
 __all__ = [
     "AgentTeamArtifactKind",
     "AgentTeamFinalAnswerStatus",
     "AgentTeamMergeBundle",
     "AgentTeamMergeDecision",
+    "AgentTeamMergeReview",
+    "AgentTeamMergeReviewEvent",
+    "AgentTeamMergeReviewStatus",
     "AgentTeamRecommendedAction",
     "AgentTeamSession",
     "AgentTeamSessionStatus",

@@ -1,17 +1,24 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
+from focus_agent.core.repo_call import (
+    REPO_METHOD_ERROR,
+    REPO_METHOD_MISSING,
+    has_repo_method,
+    safe_repo_call,
+)
 from focus_agent.core.token_usage import (
     accumulate_token_usage,
     messages_token_usage,
     normalize_token_usage,
 )
-from focus_agent.core.repo_call import REPO_METHOD_ERROR, REPO_METHOD_MISSING, has_repo_method, safe_repo_call
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 
 from .trajectory import _maybe_get_trajectory_repository
+
 
 def _aggregate_token_usage_from_turns(turns: Sequence[dict[str, Any]]) -> dict[str, int]:
     total = normalize_token_usage()

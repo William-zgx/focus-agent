@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from typing import Any
 
 from .catalogs import ModelCatalogConfig, ToolCatalogConfig
-from .common import _split_csv
+from .common import _env_bool, _split_csv
 
 
 def load_runtime_config(
@@ -52,6 +53,24 @@ def load_runtime_config(
                 str(defaults.background_job_claim_ttl_seconds),
             )
         ),
+        "background_job_retry_base_delay_seconds": float(
+            env.get(
+                "BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
+                str(defaults.background_job_retry_base_delay_seconds),
+            )
+        ),
+        "background_job_retry_max_delay_seconds": float(
+            env.get(
+                "BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
+                str(defaults.background_job_retry_max_delay_seconds),
+            )
+        ),
+        "background_job_old_pending_seconds": float(
+            env.get(
+                "BACKGROUND_JOB_OLD_PENDING_SECONDS",
+                str(defaults.background_job_old_pending_seconds),
+            )
+        ),
         "runtime_thread_lock_ttl_seconds": float(
             env.get(
                 "RUNTIME_THREAD_LOCK_TTL_SECONDS",
@@ -64,10 +83,56 @@ def load_runtime_config(
                 str(defaults.runtime_thread_lock_heartbeat_seconds),
             )
         ),
+        "postgres_pool_enabled": str(
+            env.get("POSTGRES_POOL_ENABLED", str(defaults.postgres_pool_enabled))
+        ).strip().lower()
+        not in {"0", "false", "no", "off"},
+        "postgres_pool_min_size": int(env.get("POSTGRES_POOL_MIN_SIZE", str(defaults.postgres_pool_min_size))),
+        "postgres_pool_max_size": int(env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.postgres_pool_max_size))),
+        "postgres_slow_query_threshold_ms": float(
+            env.get("POSTGRES_SLOW_QUERY_THRESHOLD_MS", str(defaults.postgres_slow_query_threshold_ms))
+        ),
         "skill_directories": (
             _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))
             if env.get("FOCUS_AGENT_SKILLS_DIRS") is not None
             else defaults.skill_directories
         ),
+        "skill_semantic_match_enabled": _env_bool(
+            env,
+            "SKILL_SEMANTIC_MATCH_ENABLED",
+            default=defaults.skill_semantic_match_enabled,
+        ),
+        "skill_semantic_match_threshold": float(
+            env.get(
+                "SKILL_SEMANTIC_MATCH_THRESHOLD",
+                str(defaults.skill_semantic_match_threshold),
+            )
+        ),
+        "skill_selection_event_log_enabled": _env_bool(
+            env,
+            "SKILL_SELECTION_EVENT_LOG_ENABLED",
+            default=defaults.skill_selection_event_log_enabled,
+        ),
         "workspace_root": env.get("WORKSPACE_ROOT", defaults.workspace_root),
+        "agent_team_merge_apply_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_MERGE_APPLY_ENABLED",
+            default=defaults.agent_team_merge_apply_enabled,
+        ),
+        "agent_team_merge_review_max_diff_bytes": int(
+            env.get(
+                "AGENT_TEAM_MERGE_REVIEW_MAX_DIFF_BYTES",
+                str(defaults.agent_team_merge_review_max_diff_bytes),
+            )
+        ),
+        "feedback_capture_enabled": _env_bool(
+            env,
+            "FEEDBACK_CAPTURE_ENABLED",
+            default=defaults.feedback_capture_enabled,
+        ),
+        "context_memory_evidence_enabled": _env_bool(
+            env,
+            "CONTEXT_MEMORY_EVIDENCE_ENABLED",
+            default=defaults.context_memory_evidence_enabled,
+        ),
     }

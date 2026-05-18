@@ -11,12 +11,11 @@ from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
 from focus_agent.engine.graph_builder import (
-    _classify_turn_tool_policy,
     _canonicalize_tool_call_args,
+    _classify_turn_tool_policy,
     _count_tool_call_rounds_since_latest_human,
     _ensure_reasoning_content_for_tool_call_history,
     _fallback_answer_from_tool_results,
-    build_tool_intent_plan,
     _live_web_research_should_start_with_search,
     _looks_like_textual_tool_call_artifact,
     _messages_for_model,
@@ -26,9 +25,12 @@ from focus_agent.engine.graph_builder import (
     _tool_policy_note,
     _tools_for_policy,
     build_graph,
+    build_tool_intent_plan,
 )
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
+from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue
+from focus_agent.skills import SkillRegistry
 
 
 class _StaticAIResponseRunnable:
@@ -510,7 +512,9 @@ def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
     tool_enabled_calls = [item for item in fake_model.invocations if item["allow_tools"]]
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
 
-    assert len(tool_enabled_calls) == 2
+    # The live-web execution contract now performs the first mandatory search
+    # deterministically before handing any follow-up tool choice to the model.
+    assert len(tool_enabled_calls) == 1
     assert len(tool_free_calls) == 2
     assert any(
         isinstance(message, SystemMessage) and "Do not call more tools" in message.content
@@ -740,6 +744,14 @@ def test_detects_textual_tool_call_artifacts():
             )
         )
     )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(content='src/focus_agent/capabilities/tool_manifest.py="offset" string20025.claude')
+    )
+    assert _looks_like_textual_tool_call_artifact(
+        AIMessage(
+            content='src/focus_agent/capabilities/default_tool_modules/workspace.pyfalse">1212alls>'
+        )
+    )
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="[背景] 北京今天晴。"))
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="北京今天晴，最高气温25℃。"))
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="我尝试过几种投资方法，最终更偏向长期持有。"))
@@ -798,6 +810,58 @@ def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
     assert "explicit_no_tool" in plan.reason_codes
     assert review.policy == "workspace_lookup"
     assert review.source == "skill:review"
+
+
+def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
+    plan = build_tool_intent_plan("帮我查一下项目里有没有 release readiness 相关 skill")
+    code_lookup = build_tool_intent_plan("当前项目里 web_search 工具在哪里？")
+    capability_lookup = build_tool_intent_plan("查一下有没有 release readiness 相关能力")
+    workflow_lookup = build_tool_intent_plan("我想做一次发布前检查，有没有现成流程可以用？")
+    tool_config_lookup = build_tool_intent_plan(
+        "请查证 src/focus_agent/capabilities/tool_manifest.py 中 skill_install 的 allowed_roles"
+    )
+
+    assert plan.policy == "workspace_lookup"
+    assert plan.preferred_first_tool == "skills_search"
+    assert plan.preferred_first_args == {
+        "query": "帮我查一下项目里有没有 release readiness 相关 skill"
+    }
+    assert plan.allowed_toolsets == ["skill"]
+    assert "skill_discovery_signal" in plan.reason_codes
+    for skill_lookup in (capability_lookup, workflow_lookup):
+        assert skill_lookup.policy == "workspace_lookup"
+        assert skill_lookup.preferred_first_tool == "skills_search"
+        assert skill_lookup.allowed_toolsets == ["skill"]
+    assert code_lookup.policy == "workspace_lookup"
+    assert code_lookup.preferred_first_tool == "search_code"
+    assert code_lookup.allowed_toolsets == ["workspace"]
+    assert tool_config_lookup.policy == "workspace_lookup"
+    assert tool_config_lookup.preferred_first_tool == "search_code"
+    assert tool_config_lookup.allowed_toolsets == ["workspace"]
+
+
+def test_tool_intent_plan_prefers_skill_search_for_discovery_with_execution_words():
+    plan = build_tool_intent_plan("我刚接手这个项目，有没有能做构建失败修复的 skill")
+
+    assert plan.policy == "workspace_lookup"
+    assert plan.preferred_first_tool == "skills_search"
+    assert plan.preferred_first_args == {
+        "query": "我刚接手这个项目，有没有能做构建失败修复的 skill"
+    }
+    assert plan.allowed_toolsets == ["skill"]
+    assert "skill_discovery_signal" in plan.reason_codes
+
+
+def test_tool_intent_plan_exposes_workspace_for_active_custom_skill():
+    plan = build_tool_intent_plan(
+        "帮我用 git-pr-workflow 梳理这个 PR 的状态",
+        active_skill_ids=["git-pr-workflow"],
+    )
+
+    assert plan.policy == "workspace_lookup"
+    assert plan.source == "skill:active"
+    assert plan.allowed_toolsets == ["workspace"]
+    assert "active_skill_workspace" in plan.reason_codes
 
 
 def test_tool_intent_plan_recovers_pending_web_search_from_confirmation():
@@ -1053,6 +1117,7 @@ def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
     ]
     assert result.value["tool_intent_plan"]["temporal_anchor_required"] is True
     assert result.value["plan_meta"]["tool_intent_plan"]["temporal_anchor_required"] is True
+    assert result.value["plan_meta"]["execution_contract"]["status"] == "missing_required_tools"
 
 
 def test_graph_recovers_pending_web_search_from_confirmation(monkeypatch):
@@ -1292,6 +1357,144 @@ def test_graph_routes_project_web_search_location_to_search_code_without_web_exp
     assert web_calls == 0
 
 
+def test_graph_routes_skill_discovery_requests_to_skills_search(monkeypatch):
+    captured = {"bound_tools": []}
+    skill_queries = []
+    search_calls = 0
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="可以用 release-readiness skill。")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def skills_search(query: str) -> str:
+        """Search installed skills."""
+        skill_queries.append(query)
+        return '{"results":[{"skill_id":"release-readiness"}]}'
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        nonlocal search_calls
+        search_calls += 1
+        return query
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(skills_search, search_code)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下项目里有没有 release readiness 相关 skill")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-search"),
+        version="v2",
+    )
+
+    first_call = _first_tool_call(result.value["messages"])
+    assert first_call["name"] == "skills_search"
+    assert first_call["args"] == {"query": "帮我查一下项目里有没有 release readiness 相关 skill"}
+    assert captured["bound_tools"] == [["skills_search"]]
+    assert skill_queries == ["帮我查一下项目里有没有 release readiness 相关 skill"]
+    assert search_calls == 0
+    assert result.value["tool_intent_plan"]["preferred_first_tool"] == "skills_search"
+    assert result.value["tool_route_plan"]["role"] == "skill_scout"
+
+
+def test_graph_adds_active_skill_recommended_read_tools_to_main_chat(tmp_path, monkeypatch):
+    skill_dir = tmp_path / "git-pr-workflow"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: git-pr-workflow",
+                "description: Review git history and pending PR state.",
+                "recommended_tools: git_log, write_text_artifact",
+                "---",
+                "# Git PR Workflow",
+                "Inspect the local change before summarizing it.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    captured = {"bound_tools": []}
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="PR state reviewed.")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        return query
+
+    @tool
+    def git_log(limit: int = 5) -> str:
+        """Read git history."""
+        return str(limit)
+
+    @tool
+    def write_text_artifact(title: str, content: str) -> str:
+        """Write an artifact."""
+        return f"{title}\n{content}"
+
+    graph = build_graph(
+        settings=Settings(),
+        skill_registry=SkillRegistry([tmp_path]),
+        tool_registry=ToolRegistry(tools=(search_code, git_log, write_text_artifact)),
+    )
+
+    graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我用 git-pr-workflow 梳理这个 PR 的状态。")],
+            "active_skill_ids": ["git-pr-workflow"],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-recommended-tools"),
+        version="v2",
+    )
+
+    assert captured["bound_tools"] == [["search_code", "git_log"]]
+
+
 def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(monkeypatch):
     captured = {"bound_tools": []}
     web_calls = 0
@@ -1455,6 +1658,108 @@ def test_fallback_answer_from_tool_results_preserves_workspace_findings():
 
     assert "graph_builder.py:512" in answer
     assert "context_policy.py:43" in answer
+
+
+def test_fallback_answer_from_tool_results_includes_search_code_context():
+    prompt_messages = [
+        HumanMessage(content="查证 skill_install 的 allowed_roles。"),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "query": "skill_install",
+                    "results": [
+                        {
+                            "path": "src/focus_agent/capabilities/tool_manifest.py",
+                            "line_number": 188,
+                            "line": '    "skill_install": {',
+                            "context": (
+                                '188 |     "skill_install": {\n'
+                                '199 |         "allowed_roles": ("skill_scout",),\n'
+                                '200 |         "requires_workspace_write": True,'
+                            ),
+                        }
+                    ],
+                }
+            ),
+            tool_call_id="call-1",
+        ),
+    ]
+
+    answer = _fallback_answer_from_tool_results(prompt_messages)
+
+    assert "tool_manifest.py:188" in answer
+    assert "allowed_roles" in answer
+    assert "requires_workspace_write" in answer
+
+
+def test_graph_replaces_unfound_workspace_answer_when_tool_results_have_hits(monkeypatch):
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            if any(isinstance(message, ToolMessage) for message in prompt_messages):
+                return AIMessage(content="我读取了文件，但未找到 skill_install 的相关配置。")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "search_code",
+                        "args": {"query": "skill_install"},
+                    }
+                ],
+            )
+
+    class FakeModel:
+        def bind_tools(self, _bound_tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search code."""
+        return json.dumps(
+            {
+                "query": query,
+                "results": [
+                    {
+                        "path": "src/focus_agent/capabilities/tool_manifest.py",
+                        "line_number": 188,
+                        "line": '    "skill_install": {',
+                        "context": (
+                            '188 |     "skill_install": {\n'
+                            '199 |         "allowed_roles": ("skill_scout",),\n'
+                            '200 |         "requires_workspace_write": True,'
+                        ),
+                    }
+                ],
+            }
+        )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(search_code,)))
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="请查证 skill_install 的 allowed_roles。")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="workspace-unfound-repair"),
+        version="v2",
+    )
+
+    final_message = result.value["messages"][-1]
+    assert isinstance(final_message, AIMessage)
+    assert "allowed_roles" in final_message.content
+    assert "requires_workspace_write" in final_message.content
+    assert "未找到" not in final_message.content
 
 
 def test_tools_for_policy_filters_web_and_write_tools():
@@ -2866,6 +3171,149 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
     assert approval_records[-1]["payload"]["risk_level"] == "high"
     assert tool_messages[-1].content == "approved:focus"
     assert resumed.value["messages"][-1].content == "approval handled"
+
+
+def test_graph_tool_executor_async_approval_records_pending_without_interrupt(monkeypatch):
+    call_count = 0
+
+    @tool
+    def approval_lookup(name: str) -> str:
+        """Lookup that requires approval."""
+        nonlocal call_count
+        call_count += 1
+        return f"approved:{name}"
+
+    approval_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+        "requires_approval": True,
+        "risk_level": "high",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+    }
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "approval-async", "name": "approval_lookup", "args": {"name": "focus"}},
+        ],
+        final_answer="approval queued",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    approval_queue = InMemoryApprovalQueue()
+    graph = build_graph(
+        settings=Settings(
+            multi_agent_v2_enabled=True,
+            multi_agent_async_approval_enabled=True,
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(approval_lookup,)),
+        approval_queue=approval_queue,
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="run approval lookup")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-async-approval"),
+        version="v2",
+    )
+
+    approval_records = [
+        record
+        for record in result.value["governance_records"]
+        if record["name"] == "tool_approval_request"
+    ]
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    assert call_count == 0
+    assert result.interrupts == ()
+    assert approval_records[-1]["payload"]["approval_status"] == "pending"
+    assert approval_records[-1]["payload"]["tool_name"] == "approval_lookup"
+    assert "args" not in approval_records[-1]["payload"]
+    queued = approval_queue.list_pending()
+    assert queued[-1].request_id == approval_records[-1]["payload"]["interrupt_id"]
+    assert queued[-1].tool_args == {"name": "focus"}
+    assert tool_messages[-1].status == "error"
+    assert tool_messages[-1].artifact["runtime"]["tool_approval_pending"] is True
+
+
+def test_graph_tool_executor_async_approval_does_not_block_other_tools(monkeypatch):
+    calls: list[str] = []
+
+    @tool
+    def approval_lookup(name: str) -> str:
+        """Lookup that requires approval."""
+        calls.append(f"approval:{name}")
+        return f"approved:{name}"
+
+    @tool
+    def safe_lookup(name: str) -> str:
+        """Lookup that does not require approval."""
+        calls.append(f"safe:{name}")
+        return f"safe:{name}"
+
+    approval_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+        "requires_approval": True,
+        "risk_level": "high",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+    }
+    safe_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+        "requires_approval": False,
+        "risk_level": "low",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+    }
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "approval-async", "name": "approval_lookup", "args": {"name": "focus"}},
+            {"id": "safe-async", "name": "safe_lookup", "args": {"name": "focus"}},
+        ],
+        final_answer="approval queued and safe completed",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(
+            multi_agent_v2_enabled=True,
+            multi_agent_async_approval_enabled=True,
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(approval_lookup, safe_lookup)),
+        approval_queue=InMemoryApprovalQueue(),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="run both lookups")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-async-approval-mixed"),
+        version="v2",
+    )
+
+    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    assert calls == ["safe:focus"]
+    assert [message.tool_call_id for message in tool_messages] == [
+        "approval-async",
+        "safe-async",
+    ]
+    assert tool_messages[0].status == "error"
+    assert tool_messages[0].artifact["runtime"]["tool_approval_pending"] is True
+    assert tool_messages[1].status == "success"
+    assert tool_messages[1].content == "safe:focus"
 
 
 def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatch, tmp_path):

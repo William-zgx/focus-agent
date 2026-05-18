@@ -1,11 +1,16 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool
 
 from focus_agent.api.main import create_app
+from focus_agent.api.route_utils.agent_governance_trajectory_responses import (
+    _agent_governance_metrics_from_turns,
+    _plan_meta_governance_payload,
+)
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.capabilities.tool_router import (
     build_capability_registry,
@@ -18,10 +23,8 @@ from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import make_agent_state_record
 from focus_agent.engine.graph_builder import _tools_for_policy, build_graph
 from focus_agent.memory.curator import MemoryCurator
-from focus_agent.api.route_utils.agent_governance_trajectory_responses import (
-    _agent_governance_metrics_from_turns,
-    _plan_meta_governance_payload,
-)
+from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
+from focus_agent.skills.registry import SkillRegistry, bundled_skills_dir
 
 
 class _Hit:
@@ -253,6 +256,106 @@ def _with_stub_frontend(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("WEB_APP_DIST_DIR", str(dist_dir))
     monkeypatch.setenv("WEB_APP_DEV_SERVER_URL", "")
     monkeypatch.setenv("AUTH_ENABLED", "false")
+
+
+def _agent_governance_client(
+    *,
+    settings: Settings | None = None,
+    repository: InMemoryGovernanceRepository | None = None,
+) -> tuple[TestClient, InMemoryGovernanceRepository]:
+    from focus_agent.api.routers.agent_governance import router
+
+    resolved_settings = settings or Settings(auth_enabled=False)
+    resolved_repository = repository or InMemoryGovernanceRepository()
+    app = FastAPI()
+    app.include_router(router)
+    app.state.runtime = SimpleNamespace(
+        settings=resolved_settings,
+        skill_registry=SkillRegistry([bundled_skills_dir()]),
+        governance_repository=resolved_repository,
+        tool_registry=ToolRegistry(tools=(search_code, write_text_artifact)),
+        trajectory_recorder=None,
+        store=_MemoryStore(),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+    )
+    return TestClient(app), resolved_repository
+
+
+def test_skill_selection_logs_feedback_and_preference() -> None:
+    client, repository = _agent_governance_client()
+
+    selection = client.post(
+        "/v1/agent/skills/select",
+        json={"message": "Please write an implementation plan.", "skill_hints": ["plan"]},
+    )
+    assert selection.status_code == 200
+    selection_payload = selection.json()
+    selection_id = selection_payload["selection_id"]
+
+    selections = client.get("/v1/agent/skills/selections")
+    feedback = client.post(
+        f"/v1/agent/skills/selections/{selection_id}/feedback",
+        json={"feedback": "useful", "reason": "matched planning work"},
+    )
+    preference = client.patch(
+        "/v1/agent/skills/plan/preference",
+        json={"state": "pinned", "metadata": {"scope": "composer"}},
+    )
+    catalog = client.get("/v1/agent/skills/catalog")
+
+    assert selections.status_code == 200
+    assert selections.json()["items"][0]["selection_id"] == selection_id
+    assert selections.json()["items"][0]["activated_skill_ids"] == ["plan"]
+    assert feedback.status_code == 200
+    assert feedback.json()["item"]["feedback"] == "useful"
+    assert preference.status_code == 200
+    assert preference.json()["state"] == "pinned"
+    plan_catalog_item = next(item for item in catalog.json()["items"] if item["skill_id"] == "plan")
+    assert plan_catalog_item["preference"]["state"] == "pinned"
+    assert repository.get_skill_selection_event(selection_id).feedback == "useful"
+
+
+def test_skill_selection_event_logging_can_be_disabled() -> None:
+    client, _repository = _agent_governance_client(
+        settings=Settings(auth_enabled=False, skill_selection_event_log_enabled=False)
+    )
+
+    selection = client.post(
+        "/v1/agent/skills/select",
+        json={"message": "Please write an implementation plan.", "skill_hints": ["plan"]},
+    )
+    selections = client.get("/v1/agent/skills/selections")
+
+    assert selection.status_code == 200
+    assert selection.json()["selection_id"] is None
+    assert selections.status_code == 200
+    assert selections.json()["items"] == []
+
+
+def test_context_explain_persists_evidence_for_listing() -> None:
+    client, _repository = _agent_governance_client()
+
+    explain = client.post(
+        "/v1/agent/context/explain",
+        json={
+            "thread_id": "thread-1",
+            "turn_id": "turn-1",
+            "selected_memories": [{"memory_id": "mem-1", "summary": "Uses project fact."}],
+            "excluded_memories": [{"memory_id": "mem-2", "reason": "stale"}],
+            "token_counting": {"counting_backend": "tiktoken"},
+            "risk_flags": ["high_drift"],
+        },
+    )
+    listed = client.get("/v1/agent/context/evidence?thread_id=thread-1")
+
+    assert explain.status_code == 200
+    assert explain.json()["item"]["selected_memories"][0]["memory_id"] == "mem-1"
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["items"][0]["turn_id"] == "turn-1"
+    assert listed.json()["items"][0]["risk_flags"] == ["high_drift"]
 
 
 def test_tool_router_builds_capability_registry_and_denies_critic_writes():

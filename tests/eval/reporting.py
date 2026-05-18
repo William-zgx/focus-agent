@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from html import escape
 import json
+from collections.abc import Iterable
+from html import escape
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .metrics import MetricSummary
 from .schema import EvalResult

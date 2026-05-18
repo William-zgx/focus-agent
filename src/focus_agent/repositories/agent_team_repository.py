@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from threading import RLock
 from uuid import uuid4
 
 from focus_agent.core.agent_team import (
+    AgentTeamMergeReview,
+    AgentTeamMergeReviewEvent,
     AgentTeamSession,
     AgentTeamTask,
     AgentTeamTaskOutput,
@@ -161,6 +163,26 @@ class AgentTeamRepository(ABC):
     def list_task_outputs(self, *, task_id: str) -> list[AgentTeamTaskOutput]:
         raise NotImplementedError
 
+    @abstractmethod
+    def save_merge_review(self, review: AgentTeamMergeReview) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_merge_review(self, review_id: str) -> AgentTeamMergeReview:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_merge_reviews(self, *, session_id: str) -> list[AgentTeamMergeReview]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_merge_review_event(self, event: AgentTeamMergeReviewEvent) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_merge_review_events(self, *, review_id: str) -> list[AgentTeamMergeReviewEvent]:
+        raise NotImplementedError
+
 
 class InMemoryAgentTeamRepository(AgentTeamRepository):
     def __init__(self) -> None:
@@ -168,6 +190,8 @@ class InMemoryAgentTeamRepository(AgentTeamRepository):
         self._sessions: dict[str, AgentTeamSession] = {}
         self._tasks: dict[str, AgentTeamTask] = {}
         self._outputs: dict[str, list[AgentTeamTaskOutput]] = {}
+        self._merge_reviews: dict[str, AgentTeamMergeReview] = {}
+        self._merge_review_events: dict[str, list[AgentTeamMergeReviewEvent]] = {}
 
     def create_session(self, session: AgentTeamSession) -> None:
         with self._lock:
@@ -259,20 +283,56 @@ class InMemoryAgentTeamRepository(AgentTeamRepository):
             outputs = list(self._outputs.get(task_id, []))
         return sorted(outputs, key=lambda item: (item.created_at, item.output_id))
 
+    def save_merge_review(self, review: AgentTeamMergeReview) -> None:
+        with self._lock:
+            self._merge_reviews[review.review_id] = review
+            self._merge_review_events.setdefault(review.review_id, [])
+
+    def get_merge_review(self, review_id: str) -> AgentTeamMergeReview:
+        with self._lock:
+            review = self._merge_reviews.get(review_id)
+        if review is None:
+            raise KeyError(f"Unknown agent team merge review: {review_id}")
+        return review
+
+    def list_merge_reviews(self, *, session_id: str) -> list[AgentTeamMergeReview]:
+        with self._lock:
+            reviews = [
+                review
+                for review in self._merge_reviews.values()
+                if review.session_id == session_id
+            ]
+        return sorted(reviews, key=lambda item: (item.created_at, item.review_id), reverse=True)
+
+    def add_merge_review_event(self, event: AgentTeamMergeReviewEvent) -> None:
+        with self._lock:
+            events = [
+                existing
+                for existing in self._merge_review_events.setdefault(event.review_id, [])
+                if existing.event_id != event.event_id
+            ]
+            events.append(event)
+            self._merge_review_events[event.review_id] = events
+
+    def list_merge_review_events(self, *, review_id: str) -> list[AgentTeamMergeReviewEvent]:
+        with self._lock:
+            events = list(self._merge_review_events.get(review_id, []))
+        return sorted(events, key=lambda item: (item.created_at, item.event_id))
+
 
 __all__ = ["AgentTeamRepository", "InMemoryAgentTeamRepository"]
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _format_time(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat()
+    return value.astimezone(UTC).isoformat()
 
 
 def _parse_time(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_TEAM_ROOT = ROOT / "apps" / "web" / "src" / "features" / "agent-team"
 AGENT_TEAM_STYLES = ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
@@ -10,14 +9,29 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _read_agent_team_styles() -> str:
+    facade_text = _read(AGENT_TEAM_STYLES)
+    module_dir = AGENT_TEAM_STYLES.parent
+    imported = [
+        _read(module_dir / line.split('"', 2)[1])
+        for line in facade_text.splitlines()
+        if line.startswith("@import ") and '"' in line
+    ]
+    return "\n".join([facade_text, *imported])
+
+
 def _assert_contains_all(text: str, expected: list[str]) -> None:
     for item in expected:
         assert item in text, f"missing expected frontend contract text: {item}"
 
 
+def _compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def test_create_page_exposes_cockpit_collaboration_modes():
     create_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-create.tsx")
-    styles_text = _read(AGENT_TEAM_STYLES)
+    styles_text = _read_agent_team_styles()
 
     for text in ["快一点", "稳一点", "细一点", "COLLABORATION_MODES", "selectedCollaboration"]:
         assert text in create_text
@@ -146,13 +160,19 @@ def test_cockpit_component_contains_required_surfaces():
             "fa-agent-team-inspector-drawer",
         ],
     )
-    assert "const primaryDisabled = Boolean(viewModel.primaryAction.disabledReason) || Boolean(viewModel.primaryAction.busy);" in cockpit_text
-    assert "const primaryClick = blockedTask ? () => actions.onSelectTask(blockedTask.task_id) : actions.onPrimaryAction;" in cockpit_text
+    assert (
+        "const primaryDisabled = Boolean(viewModel.primaryAction.disabledReason) || "
+        "Boolean(viewModel.primaryAction.busy);"
+    ) in _compact(cockpit_text)
+    assert (
+        "const primaryClick = blockedTask ? () => actions.onSelectTask(blockedTask.task_id) "
+        ": actions.onPrimaryAction;"
+    ) in _compact(cockpit_text)
     assert "onClick={primaryClick}" in cockpit_text
 
 
 def test_cockpit_css_keeps_lightweight_hierarchy_without_binding_visual_treatment():
-    styles_text = _read(AGENT_TEAM_STYLES)
+    styles_text = _read_agent_team_styles()
 
     _assert_contains_all(
         styles_text,

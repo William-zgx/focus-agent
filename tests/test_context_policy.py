@@ -3,7 +3,6 @@ import json
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 import focus_agent.core.context_policy as context_policy_module
-
 from focus_agent.core.context_policy import (
     apply_prompt_budget_guard,
     approximate_token_count,

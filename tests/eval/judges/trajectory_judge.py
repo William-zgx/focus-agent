@@ -7,8 +7,8 @@ fall back to "did we exceed max_tool_calls?" boolean.
 
 from __future__ import annotations
 
-from collections import Counter
 import json
+from collections import Counter
 from typing import Any
 
 from ..schema import EvalCase, JudgeVerdict, TrajectoryStep

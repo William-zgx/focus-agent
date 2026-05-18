@@ -56,7 +56,7 @@ def test_llm_error_middleware_opens_circuit_after_hard_failure():
 
 
 def test_llm_error_middleware_bubbles_graph_control_flow_without_retry():
-    class GraphBubbleUp(Exception):
+    class GraphBubbleUp(Exception):  # noqa: N818
         pass
 
     calls = 0

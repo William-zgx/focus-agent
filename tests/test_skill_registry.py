@@ -3,21 +3,31 @@ from pathlib import Path
 
 from langchain.tools import tool
 
+from focus_agent.api.contract_models.agent import AgentSkillSelectRequest
+from focus_agent.api.routers.agent_governance import _skill_selection_response
 from focus_agent.capabilities.tool_manifest import StaticToolProvider
 from focus_agent.capabilities.tool_registry import build_tool_registry
 from focus_agent.config import (
     Settings,
-    SkillViewToolConfig,
+    SkillInstallToolConfig,
     SkillsListToolConfig,
+    SkillSourcesToolConfig,
+    SkillsRefreshIndexToolConfig,
+    SkillsSearchToolConfig,
+    SkillViewToolConfig,
     ToolCatalogConfig,
 )
 from focus_agent.config_parts.catalogs import ToolProviderConfig
 from focus_agent.core.types import PromptMode
+from focus_agent.skills.models import SkillSourceDefinition
 from focus_agent.skills.registry import (
     SkillRegistry,
     bundled_skills_dir,
+    render_skill_install_json,
+    render_skill_sources_json,
     render_skill_view_json,
     render_skills_list_json,
+    render_skills_search_json,
 )
 
 
@@ -29,6 +39,7 @@ def _write_skill(
     triggers: str = "",
     when_to_use: str = "",
     recommended_tools: str = "",
+    capability_requirements: str = "",
     prompt_mode: str = "",
     body: str = "Follow the steps carefully.",
 ):
@@ -45,6 +56,8 @@ def _write_skill(
         lines.append(f"when_to_use: {when_to_use}")
     if recommended_tools:
         lines.append(f"recommended_tools: {recommended_tools}")
+    if capability_requirements:
+        lines.append(f"capability_requirements: {capability_requirements}")
     if prompt_mode:
         lines.append(f"prompt_mode: {prompt_mode}")
     lines.extend(
@@ -98,6 +111,95 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
     assert "Follow the steps carefully." in viewed["content"]
 
 
+def test_skill_registry_searches_chinese_task_phrases_without_generic_skill_bias(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="release-readiness",
+        description="Audit the repository against release and security checklists before a milestone.",
+        when_to_use="A release is being prepared, A maintainer wants a readiness review",
+    )
+    _write_skill(
+        tmp_path,
+        name="build-fix",
+        description="Triage and fix repository build, type-check, lint, or test failures.",
+        when_to_use="Build or test failures need a focused repair workflow",
+    )
+    _write_skill(
+        tmp_path,
+        name="skill-manager",
+        description="Manage AI agent skills and reusable skill sources.",
+        when_to_use="The user asks to install or publish skills",
+    )
+    registry = SkillRegistry([tmp_path])
+
+    release_results = registry.search_skills("有没有适合做发布前检查的 skill", limit=3)
+    build_results = registry.search_skills("我刚接手项目，有没有能做构建失败修复的 skill", limit=3)
+
+    assert release_results[0].skill_id == "release-readiness"
+    assert "skill-manager" not in [item.skill_id for item in release_results[:1]]
+    assert build_results[0].skill_id == "build-fix"
+
+
+def test_skill_registry_searches_sources_and_installs_trusted_local_skill(tmp_path):
+    installed_root = tmp_path / "installed"
+    source_root = tmp_path / "source"
+    install_root = tmp_path / "project-skills"
+    _write_skill(
+        source_root,
+        name="agent-toolsmith",
+        description="Design reusable agent tools and skills",
+        triggers="toolsmith:",
+        when_to_use="The task asks an agent to add common tools or discover skills",
+        recommended_tools="skills_search,skill_view",
+        capability_requirements="skill-discovery",
+        body="# Toolsmith\nSearch sources and install relevant trusted skills.",
+    )
+    registry = SkillRegistry(
+        [installed_root],
+        source_definitions=(
+            SkillSourceDefinition(
+                source_id="community",
+                source_type="local",
+                label="Community Skills",
+                enabled=True,
+                trusted=True,
+                location=str(source_root),
+            ),
+        ),
+        install_dir=install_root,
+    )
+
+    results = registry.search_skills("add common tools", scope="all")
+    assert results[0].skill_id == "agent-toolsmith"
+    assert results[0].installed is False
+    assert results[0].source_id == "community"
+
+    installed = registry.install_skill("agent-toolsmith", source_id="community")
+    assert installed.success is True
+    assert installed.installed is True
+    assert (install_root / "agent-toolsmith" / "SKILL.md").exists()
+    assert registry.resolve("agent-toolsmith") is not None
+
+    listed_sources = json.loads(render_skill_sources_json(registry))
+    assert any(source["source_id"] == "community" for source in listed_sources["sources"])
+    searched = json.loads(
+        render_skills_search_json(
+            registry,
+            query="discover skills",
+            scope="installed",
+        )
+    )
+    assert searched["results"][0]["installed"] is True
+    installed_json = json.loads(
+        render_skill_install_json(
+            registry,
+            skill_id="agent-toolsmith",
+            source_id="community",
+        )
+    )
+    assert installed_json["success"] is True
+
+
 def test_skill_registry_supports_stacked_prefix_activation(tmp_path):
     _write_skill(
         tmp_path,
@@ -120,6 +222,155 @@ def test_skill_registry_supports_stacked_prefix_activation(tmp_path):
     assert selection.skill_ids == ("plan", "review")
     assert selection.stripped_message == "inspect this patch"
     assert selection.prompt_mode == PromptMode.SYNTHESIZE
+    assert selection.selection_source == "prefix"
+    assert selection.matched_triggers == ("plan:", "review:")
+
+
+def test_skill_registry_semantic_selection_is_deterministic_fallback(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="docs",
+        description="Documentation writing support",
+        when_to_use="The user wants README or API docs",
+        recommended_tools="read_file,write_text_artifact",
+        prompt_mode="synthesize",
+        body="# Documentation workflow\nDraft clear README and API reference updates.",
+    )
+    _write_skill(
+        tmp_path,
+        name="review",
+        description="Code review support",
+        when_to_use="The user asks for a review",
+        recommended_tools="git_diff,read_file",
+        prompt_mode="explore",
+        body="# Review workflow\nInspect changes for regressions.",
+    )
+
+    registry = SkillRegistry([tmp_path], semantic_match_threshold=0.2)
+    selection = registry.select_for_message("Please write README and API docs")
+
+    assert selection.skill_ids == ("docs",)
+    assert selection.selection_source == "semantic"
+    assert selection.prompt_mode == PromptMode.SYNTHESIZE
+    assert selection.semantic_candidates[0].skill_id == "docs"
+    assert selection.semantic_candidates[0].auto_activate is True
+    assert selection.confidence == selection.semantic_candidates[0].score
+
+
+def test_skill_registry_default_threshold_activates_real_build_failure_request(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="build-fix",
+        description=(
+            "Triage and fix repository build, type-check, lint, or test failures "
+            "using the project's real commands and verification path."
+        ),
+        triggers="build-fix:, fix-build:, check-fix:",
+        when_to_use=(
+            "make check is failing, Frontend or SDK type-checks are broken, "
+            "Lint or pytest failures need a focused repair workflow"
+        ),
+        recommended_tools="git_status, git_diff, search_code, read_file, write_text_artifact",
+        prompt_mode="execute",
+        body="# Build Fix\nUse the repository's real validation commands.",
+    )
+
+    registry = SkillRegistry([tmp_path])
+    selection = registry.select_for_message(
+        "我这边 make check、lint、pytest 都失败了，帮我定位根因并修复。"
+    )
+
+    assert selection.skill_ids == ("build-fix",)
+    assert selection.selection_source == "semantic"
+    assert selection.prompt_mode == PromptMode.EXECUTE
+    assert selection.semantic_candidates[0].skill_id == "build-fix"
+    assert selection.semantic_candidates[0].auto_activate is True
+
+
+def test_skill_registry_low_confidence_semantic_candidate_does_not_activate(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="docs",
+        description="Documentation writing support",
+        when_to_use="The user wants README or API docs",
+        recommended_tools="read_file,write_text_artifact",
+        body="# Documentation workflow",
+    )
+
+    registry = SkillRegistry([tmp_path], semantic_match_threshold=0.95)
+    selection = registry.select_for_message("Please write README docs")
+
+    assert selection.skill_ids == ()
+    assert selection.selection_source == "none"
+    assert selection.semantic_candidates[0].skill_id == "docs"
+    assert selection.semantic_candidates[0].auto_activate is False
+    assert "below threshold" in selection.rationale
+
+
+def test_skill_registry_explicit_and_prefix_keep_priority_over_semantic(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="plan",
+        description="Planning mode",
+        triggers="plan:",
+        when_to_use="The user wants a plan first",
+        prompt_mode="explore",
+    )
+    _write_skill(
+        tmp_path,
+        name="docs",
+        description="Documentation writing support",
+        when_to_use="The user wants README or API docs",
+        recommended_tools="read_file,write_text_artifact",
+        prompt_mode="synthesize",
+        body="# Documentation workflow",
+    )
+
+    registry = SkillRegistry([tmp_path], semantic_match_threshold=0.2)
+    selection = registry.select_for_message(
+        "plan: Please write README and API docs",
+        explicit_hints=("docs",),
+    )
+
+    assert selection.skill_ids == ("docs", "plan")
+    assert selection.selection_source == "mixed"
+    assert selection.prompt_mode == PromptMode.EXPLORE
+    assert selection.matched_triggers == ("plan:",)
+    assert all(not candidate.auto_activate for candidate in selection.semantic_candidates)
+
+
+def test_agent_skill_select_api_response_shape_uses_registry(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="docs",
+        description="Documentation writing support",
+        when_to_use="The user wants README or API docs",
+        recommended_tools="read_file,write_text_artifact",
+        prompt_mode="synthesize",
+        body="# Documentation workflow",
+    )
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "settings": Settings(
+                skill_semantic_match_enabled=True,
+                skill_semantic_match_threshold=0.2,
+            ),
+            "skill_registry": SkillRegistry([tmp_path], semantic_match_threshold=0.2),
+        },
+    )()
+
+    response = _skill_selection_response(
+        payload=AgentSkillSelectRequest(message="Please write README and API docs"),
+        runtime=runtime,
+    )
+
+    assert response.skill_ids == ["docs"]
+    assert response.selection_source == "semantic"
+    assert response.prompt_mode == "synthesize"
+    assert response.semantic_candidates[0].skill_id == "docs"
+    assert response.semantic_threshold == 0.2
 
 
 def test_tool_registry_exposes_skill_tools(tmp_path):
@@ -147,6 +398,100 @@ def test_tool_registry_exposes_skill_tools(tmp_path):
     assert viewed["name"] == "plan"
     assert viewed["when_to_use"] == ["The user wants a plan first"]
     assert viewed["recommended_tools"] == ["list_files", "read_file"]
+
+
+def test_skill_registry_searches_sources_and_installs_local_skill_bundle(tmp_path):
+    installed_root = tmp_path / "installed"
+    source_root = tmp_path / "source"
+    _write_skill(
+        source_root,
+        name="docs",
+        description="Deploy docs helper",
+        when_to_use="The user needs deploy docs support",
+        recommended_tools="read_file,write_text_artifact",
+        body="# Docs\nUse the bundled template.",
+    )
+    template_path = source_root / "docs" / "template.md"
+    template_path.write_text("template", encoding="utf-8")
+    registry = SkillRegistry(
+        [installed_root],
+        source_definitions=(
+            SkillSourceDefinition(
+                source_id="vendor",
+                source_type="local",
+                label="Vendor skills",
+                enabled=True,
+                trusted=True,
+                location=str(source_root),
+            ),
+        ),
+        install_dir=installed_root,
+    )
+
+    sources = json.loads(render_skill_sources_json(registry))
+    searched = json.loads(
+        render_skills_search_json(
+            registry,
+            query="deploy docs",
+            scope="all",
+            sources=("vendor",),
+        )
+    )
+    installed = json.loads(
+        render_skill_install_json(registry, skill_id="docs", source_id="vendor")
+    )
+
+    assert sources["sources"][1]["source_id"] == "vendor"
+    assert searched["results"][0]["skill_id"] == "docs"
+    assert searched["results"][0]["installed"] is False
+    assert installed["success"] is True
+    assert registry.resolve("docs") is not None
+    assert (installed_root / "docs" / "template.md").read_text(encoding="utf-8") == "template"
+
+
+def test_tool_registry_exposes_skill_discovery_tools(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="plan",
+        description="Planning mode",
+        triggers="plan:",
+        when_to_use="The user wants a plan first",
+        recommended_tools="list_files,read_file",
+        prompt_mode="explore",
+    )
+    registry = SkillRegistry([tmp_path])
+    tool_registry = build_tool_registry(settings=Settings(), skill_registry=registry)
+
+    sources = json.loads(tool_registry.by_name["skill_sources"].invoke({}))
+    searched = json.loads(
+        tool_registry.by_name["skills_search"].invoke({"query": "planning", "limit": 3})
+    )
+    installed = json.loads(
+        tool_registry.by_name["skill_install"].invoke({"skill_id": "plan"})
+    )
+    refreshed = json.loads(tool_registry.by_name["skills_refresh_index"].invoke({}))
+
+    assert sources["success"] is True
+    assert searched["results"][0]["skill_id"] == "plan"
+    assert installed["success"] is True
+    assert installed["metadata"]["already_installed"] is True
+    assert refreshed["success"] is True
+    assert tool_registry.runtime_by_name["skills_search"].allowed_roles == (
+        "orchestrator",
+        "planner",
+        "skill_scout",
+    )
+    assert tool_registry.runtime_by_name["skill_sources"].allowed_roles == (
+        "orchestrator",
+        "planner",
+        "skill_scout",
+    )
+    assert tool_registry.runtime_by_name["skills_refresh_index"].allowed_roles == (
+        "planner",
+        "skill_scout",
+    )
+    assert tool_registry.runtime_by_name["skill_install"].allowed_roles == ("skill_scout",)
+    assert tool_registry.runtime_by_name["skill_install"].requires_workspace_write is True
 
 
 def test_tool_registry_passes_artifact_metadata_repository_to_default_tools(tmp_path, monkeypatch):
@@ -199,6 +544,10 @@ def test_tool_registry_respects_skill_tool_configuration(tmp_path):
         settings=Settings(
             tool_catalog=ToolCatalogConfig(
                 skills_list=SkillsListToolConfig(enabled=False),
+                skill_sources=SkillSourcesToolConfig(enabled=False),
+                skills_search=SkillsSearchToolConfig(enabled=False),
+                skill_install=SkillInstallToolConfig(enabled=False),
+                skills_refresh_index=SkillsRefreshIndexToolConfig(enabled=False),
                 skill_view=SkillViewToolConfig(enabled=True),
             )
         ),
@@ -206,6 +555,10 @@ def test_tool_registry_respects_skill_tool_configuration(tmp_path):
     )
 
     assert "skills_list" not in tool_registry.by_name
+    assert "skill_sources" not in tool_registry.by_name
+    assert "skills_search" not in tool_registry.by_name
+    assert "skill_install" not in tool_registry.by_name
+    assert "skills_refresh_index" not in tool_registry.by_name
     assert "skill_view" in tool_registry.by_name
 
 
@@ -230,6 +583,10 @@ def test_skill_tools_use_configured_label_and_description(tmp_path):
                     label="Skill Inspector",
                     description="Open one skill definition.",
                 ),
+                skill_sources=SkillSourcesToolConfig(
+                    label="Skill Source Catalog",
+                    description="Open skill source definitions.",
+                ),
             )
         ),
         skill_registry=registry,
@@ -239,6 +596,14 @@ def test_skill_tools_use_configured_label_and_description(tmp_path):
     assert tool_registry.by_name["skills_list"].metadata["display_name"] == "Skill Catalog"
     assert tool_registry.by_name["skill_view"].description == "Open one skill definition."
     assert tool_registry.by_name["skill_view"].metadata["display_name"] == "Skill Inspector"
+    assert (
+        tool_registry.by_name["skill_sources"].description
+        == "Open skill source definitions."
+    )
+    assert (
+        tool_registry.by_name["skill_sources"].metadata["display_name"]
+        == "Skill Source Catalog"
+    )
 
 
 def test_tool_registry_uses_tool_catalog_section_order(tmp_path):

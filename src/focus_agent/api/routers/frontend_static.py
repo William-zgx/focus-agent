@@ -9,6 +9,7 @@ from focus_agent.web.frontend_app import resolve_frontend_dev_server_url, resolv
 
 from ..route_utils.frontend import _frontend_dev_redirect, _render_frontend_or_raise
 
+
 def register_frontend_routes(app: FastAPI, *, settings: Settings) -> None:
     frontend_dist_dir = resolve_frontend_dist_dir(settings)
     frontend_assets_dir = frontend_dist_dir / "assets"

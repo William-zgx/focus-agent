@@ -1,1340 +1,1354 @@
 .fa-branch-panel {
-  display: grid;
-  gap: 14px;
+	display: grid;
+	gap: 14px;
 }
 
 .fa-tree-card {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  min-width: 0;
+	display: grid;
+	gap: 14px;
+	padding: 16px;
+	min-width: 0;
 }
 
 .fa-tree-card-head {
-  display: grid;
-  gap: 12px;
+	display: grid;
+	gap: 12px;
 }
 
 .fa-tree-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .fa-tree-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 1 1 auto;
-  min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
 .fa-tree-count-summary {
-  color: var(--fa-text-soft);
-  font-size: 12px;
+	color: var(--fa-text-soft);
+	font-size: 12px;
 }
 
 .fa-tree-viewport-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid
-    color-mix(in srgb, var(--fa-border) 84%, var(--fa-accent) 16%);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fa-panel-2) 94%, transparent),
-      var(--fa-panel-1)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--fa-accent) 12%, transparent),
-      transparent 48%
-    );
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	min-inline-size: 0;
+	padding: 4px;
+	border-radius: 999px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-border) 84%, var(--fa-accent) 16%);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--fa-panel-2) 94%, transparent),
+			var(--fa-panel-1)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-accent) 12%, transparent),
+			transparent 48%
+		);
+	box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
 }
 
 .fa-tree-zoom-button,
 .fa-tree-zoom-level,
 .fa-tree-locate-button {
-  min-height: 28px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent);
-  color: var(--fa-text);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  transition:
-    border-color 0.18s ease,
-    background 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease;
+	min-height: 28px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent);
+	color: var(--fa-text);
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 0.02em;
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		color 0.18s ease,
+		transform 0.18s ease;
 }
 
 .fa-tree-zoom-button {
-  width: 28px;
-  padding: 0;
+	width: 28px;
+	padding: 0;
 }
 
 .fa-tree-zoom-level {
-  min-width: 50px;
-  padding: 0 10px;
-  color: color-mix(in srgb, var(--fa-accent) 76%, var(--fa-text) 24%);
+	min-width: 50px;
+	padding: 0 10px;
+	color: color-mix(in srgb, var(--fa-accent) 76%, var(--fa-text) 24%);
 }
 
 .fa-tree-locate-button {
-  padding: 0 10px;
+	padding: 0 10px;
 }
 
 .fa-tree-zoom-button:hover:not(:disabled),
 .fa-tree-zoom-level:hover:not(:disabled),
 .fa-tree-locate-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--fa-accent) 32%, var(--fa-border) 68%);
-  background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-3) 86%);
+	transform: translateY(-1px);
+	border-color: color-mix(in srgb, var(--fa-accent) 32%, var(--fa-border) 68%);
+	background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-3) 86%);
 }
 
 .fa-tree-zoom-button:disabled,
 .fa-tree-zoom-level:disabled,
 .fa-tree-locate-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.46;
-  transform: none;
+	cursor: not-allowed;
+	opacity: 0.46;
+	transform: none;
 }
 
 .fa-branch-node {
-  display: grid;
-  gap: 8px;
+	display: grid;
+	gap: 8px;
 }
 
 .fa-branch-link {
-  display: grid;
-  gap: 8px;
-  padding: 13px 14px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(28, 28, 38, 0.82);
-  color: #e2e8f0;
-  text-decoration: none;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-  transition:
-    border-color 0.18s ease,
-    background 0.18s ease;
+	display: grid;
+	gap: 8px;
+	padding: 13px 14px;
+	border-radius: 20px;
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	background: rgba(28, 28, 38, 0.82);
+	color: #e2e8f0;
+	text-decoration: none;
+	box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease;
 }
 
 .fa-branch-link:hover,
 .fa-branch-link.is-active {
-  border-color: rgba(129, 140, 248, 0.32);
-  background: linear-gradient(
-    180deg,
-    rgba(99, 102, 241, 0.18),
-    rgba(28, 28, 38, 0.92)
-  );
+	border-color: rgba(129, 140, 248, 0.32);
+	background: linear-gradient(
+		180deg,
+		rgba(99, 102, 241, 0.18),
+		rgba(28, 28, 38, 0.92)
+	);
 }
 
 .fa-branch-link-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
 }
 
 .fa-branch-link-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 600;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 14px;
+	font-weight: 600;
 }
 
 .fa-branch-status-pill {
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(13, 13, 18, 0.48);
-  color: var(--fa-text-muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+	padding: 5px 8px;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgba(13, 13, 18, 0.48);
+	color: var(--fa-text-muted);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
 }
 
 .fa-branch-link-id {
-  color: var(--fa-text-soft);
-  font-size: 11px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	color: var(--fa-text-soft);
+	font-size: 11px;
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .fa-branch-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .fa-branch-action-button {
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 12px;
+	padding: 7px 12px;
+	border-radius: 999px;
+	font-size: 12px;
 }
 
 .fa-branch-children {
-  margin-left: 16px;
-  padding-left: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  display: grid;
-  gap: 12px;
+	margin-left: 16px;
+	padding-left: 12px;
+	border-left: 1px solid rgba(255, 255, 255, 0.08);
+	display: grid;
+	gap: 12px;
 }
 
 .fa-inspector-panel {
-  padding: 16px;
-  background:
-    linear-gradient(180deg, rgba(24, 24, 34, 0.96), rgba(12, 12, 17, 0.97)),
-    radial-gradient(
-      circle at top right,
-      rgba(99, 102, 241, 0.08),
-      transparent 44%
-    );
+	padding: 16px;
+	background:
+		linear-gradient(180deg, rgba(24, 24, 34, 0.96), rgba(12, 12, 17, 0.97)),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.08),
+			transparent 44%
+		);
 }
 
 .fa-side-card {
-  border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(39, 39, 51, 0.82), rgba(28, 28, 38, 0.76)),
-    radial-gradient(
-      circle at top right,
-      rgba(129, 140, 248, 0.06),
-      transparent 48%
-    );
+	border-radius: 20px;
+	background:
+		linear-gradient(180deg, rgba(39, 39, 51, 0.82), rgba(28, 28, 38, 0.76)),
+		radial-gradient(
+			circle at top right,
+			rgba(129, 140, 248, 0.06),
+			transparent 48%
+		);
 }
 
 .fa-tree-card {
-  gap: 12px;
-  padding: 14px;
+	gap: 12px;
+	padding: 14px;
 }
 
 .fa-tree-toolbar {
-  gap: 10px;
+	gap: 10px;
 }
 
 .fa-tree-panel-body {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
+	display: grid;
+	gap: 12px;
+	min-width: 0;
 }
 
 .fa-tree-graph-summary {
-  font-size: 11px;
-  line-height: 1.55;
-  color: var(--fa-text-muted);
+	font-size: 11px;
+	line-height: 1.55;
+	color: var(--fa-text-muted);
 }
 
 .fa-tree-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
 }
 
 .fa-tree-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  border: 1px solid
-    color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
-  background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-2) 90%);
-  color: var(--fa-text);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 7px;
+	border-radius: 999px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
+	background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-2) 90%);
+	color: var(--fa-text);
+	font-size: 9px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
 }
 
 .fa-tree-legend-item::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #818cf8;
-  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.12);
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 999px;
+	background: #818cf8;
+	box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.12);
 }
 
 .fa-tree-legend-item.is-review::before {
-  background: #f59e0b;
-  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+	background: #f59e0b;
+	box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
 }
 
 .fa-tree-legend-item.is-success::before {
-  background: #10b981;
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+	background: #10b981;
+	box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
 }
 
 .fa-tree-legend-item.is-paused::before {
-  background: #f97316;
-  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
+	background: #f97316;
+	box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
 }
 
 .fa-tree-canvas-shell {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
+	position: relative;
+	min-width: 0;
+	min-height: 0;
 }
 
 .fa-tree-canvas {
-  min-height: 220px;
-  display: block;
-  min-width: 0;
-  border-radius: 18px;
-  border: 1px solid rgba(129, 140, 248, 0.08);
-  background:
-    radial-gradient(
-      circle at top left,
-      rgba(99, 102, 241, 0.08),
-      transparent 36%
-    ),
-    linear-gradient(180deg, rgba(20, 20, 28, 0.96), rgba(12, 12, 17, 0.98));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  padding: 10px;
-  overflow: auto;
+	min-height: 220px;
+	display: block;
+	min-width: 0;
+	border-radius: 18px;
+	border: 1px solid rgba(129, 140, 248, 0.08);
+	background:
+		radial-gradient(
+			circle at top left,
+			rgba(99, 102, 241, 0.08),
+			transparent 36%
+		), linear-gradient(180deg, rgba(20, 20, 28, 0.96), rgba(12, 12, 17, 0.98));
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	padding: 10px;
+	overflow: auto;
 }
 
 .fa-tree-canvas-tools {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 6;
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 6;
 }
 
 .fa-tree-canvas-content {
-  display: block;
-  position: relative;
-  min-width: 100%;
-  min-height: 100%;
+	display: block;
+	position: relative;
+	min-width: 100%;
+	min-height: 100%;
 }
 
 .fa-tree-node {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: 12px;
+	display: grid;
+	grid-template-columns: 16px minmax(0, 1fr);
+	gap: 12px;
 }
 
 .fa-tree-node + .fa-tree-node {
-  margin-top: 10px;
+	margin-top: 10px;
 }
 
 .fa-tree-node-lane {
-  position: relative;
-  display: flex;
-  justify-content: center;
+	position: relative;
+	display: flex;
+	justify-content: center;
 }
 
 .fa-tree-node-lane::after {
-  content: "";
-  position: absolute;
-  top: 18px;
-  bottom: -12px;
-  width: 1px;
-  background: linear-gradient(
-    180deg,
-    rgba(99, 102, 241, 0.32),
-    rgba(255, 255, 255, 0.03)
-  );
+	content: "";
+	position: absolute;
+	top: 18px;
+	bottom: -12px;
+	width: 1px;
+	background: linear-gradient(
+		180deg,
+		rgba(99, 102, 241, 0.32),
+		rgba(255, 255, 255, 0.03)
+	);
 }
 
 .fa-tree-node:last-child > .fa-tree-node-lane::after,
 .fa-tree-node.is-root > .fa-tree-node-lane::after {
-  bottom: 0;
+	bottom: 0;
 }
 
 .fa-tree-node-dot {
-  position: relative;
-  z-index: 1;
-  width: 12px;
-  height: 12px;
-  margin-top: 12px;
-  border-radius: 999px;
-  border: 2px solid rgba(129, 140, 248, 0.64);
-  background: #818cf8;
-  box-shadow: 0 0 0 6px rgba(129, 140, 248, 0.08);
+	position: relative;
+	z-index: 1;
+	width: 12px;
+	height: 12px;
+	margin-top: 12px;
+	border-radius: 999px;
+	border: 2px solid rgba(129, 140, 248, 0.64);
+	background: #818cf8;
+	box-shadow: 0 0 0 6px rgba(129, 140, 248, 0.08);
 }
 
 .fa-tree-node-dot.is-active {
-  transform: scale(1.08);
-  box-shadow: 0 0 0 8px rgba(129, 140, 248, 0.12);
+	transform: scale(1.08);
+	box-shadow: 0 0 0 8px rgba(129, 140, 248, 0.12);
 }
 
 .fa-tree-node-dot.is-review {
-  border-color: rgba(245, 158, 11, 0.78);
-  background: #f59e0b;
-  box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.1);
+	border-color: rgba(245, 158, 11, 0.78);
+	background: #f59e0b;
+	box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.1);
 }
 
 .fa-tree-node-dot.is-success {
-  border-color: rgba(16, 185, 129, 0.78);
-  background: #10b981;
-  box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.1);
+	border-color: rgba(16, 185, 129, 0.78);
+	background: #10b981;
+	box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.1);
 }
 
 .fa-tree-node-dot.is-paused {
-  border-color: rgba(249, 115, 22, 0.78);
-  background: #f97316;
-  box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.1);
+	border-color: rgba(249, 115, 22, 0.78);
+	background: #f97316;
+	box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.1);
 }
 
 .fa-tree-node-dot.is-closed {
-  border-color: rgba(148, 163, 184, 0.7);
-  background: #64748b;
-  box-shadow: 0 0 0 6px rgba(100, 116, 139, 0.1);
+	border-color: rgba(148, 163, 184, 0.7);
+	background: #64748b;
+	box-shadow: 0 0 0 6px rgba(100, 116, 139, 0.1);
 }
 
 .fa-tree-node-main {
-  display: grid;
-  gap: 8px;
+	display: grid;
+	gap: 8px;
 }
 
 .fa-tree-node-card {
-  display: grid;
-  gap: 8px;
-  padding: 12px 13px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background:
-    linear-gradient(180deg, rgba(31, 31, 42, 0.94), rgba(18, 18, 25, 0.96)),
-    radial-gradient(
-      circle at top right,
-      rgba(99, 102, 241, 0.1),
-      transparent 40%
-    );
-  color: #e5e7eb;
-  text-decoration: none;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-  transition:
-    border-color 0.18s ease,
-    transform 0.18s ease,
-    background 0.18s ease;
+	display: grid;
+	gap: 8px;
+	padding: 12px 13px;
+	border-radius: 18px;
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	background:
+		linear-gradient(180deg, rgba(31, 31, 42, 0.94), rgba(18, 18, 25, 0.96)),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.1),
+			transparent 40%
+		);
+	color: #e5e7eb;
+	text-decoration: none;
+	box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+	transition:
+		border-color 0.18s ease,
+		transform 0.18s ease,
+		background 0.18s ease;
 }
 
 .fa-tree-node-card:hover,
 .fa-tree-node-card.is-active {
-  border-color: rgba(129, 140, 248, 0.34);
-  background:
-    linear-gradient(180deg, rgba(41, 41, 56, 0.96), rgba(24, 24, 34, 0.98)),
-    radial-gradient(
-      circle at top right,
-      rgba(99, 102, 241, 0.18),
-      transparent 42%
-    );
+	border-color: rgba(129, 140, 248, 0.34);
+	background:
+		linear-gradient(180deg, rgba(41, 41, 56, 0.96), rgba(24, 24, 34, 0.98)),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.18),
+			transparent 42%
+		);
 }
 
 .fa-tree-node-card.is-active {
-  box-shadow:
-    0 0 0 1px rgba(129, 140, 248, 0.12),
-    0 14px 30px rgba(0, 0, 0, 0.18);
+	box-shadow:
+		0 0 0 1px rgba(129, 140, 248, 0.12),
+		0 14px 30px rgba(0, 0, 0, 0.18);
 }
 
 .fa-tree-node-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
 }
 
 .fa-tree-node-title {
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.35;
-  word-break: break-word;
+	min-width: 0;
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.35;
+	word-break: break-word;
 }
 
 .fa-tree-node-status {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--fa-border);
-  background: color-mix(in srgb, var(--fa-panel-3) 76%, transparent);
-  color: var(--fa-text-muted);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+	flex: 0 0 auto;
+	padding: 4px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--fa-border);
+	background: color-mix(in srgb, var(--fa-panel-3) 76%, transparent);
+	color: var(--fa-text-muted);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
 }
 
 .fa-tree-node-status.is-review {
-  color: var(--fa-status-warning-text);
-  border-color: color-mix(in srgb, var(--fa-warning) 24%, var(--fa-border) 76%);
-  background: color-mix(in srgb, var(--fa-warning) 12%, var(--fa-panel-2) 88%);
+	color: var(--fa-status-warning-text);
+	border-color: color-mix(in srgb, var(--fa-warning) 24%, var(--fa-border) 76%);
+	background: color-mix(in srgb, var(--fa-warning) 12%, var(--fa-panel-2) 88%);
 }
 
 .fa-tree-node-status.is-success {
-  color: var(--fa-status-success-text);
-  border-color: color-mix(in srgb, var(--fa-success) 24%, var(--fa-border) 76%);
-  background: color-mix(in srgb, var(--fa-success) 12%, var(--fa-panel-2) 88%);
+	color: var(--fa-status-success-text);
+	border-color: color-mix(in srgb, var(--fa-success) 24%, var(--fa-border) 76%);
+	background: color-mix(in srgb, var(--fa-success) 12%, var(--fa-panel-2) 88%);
 }
 
 .fa-tree-node-status.is-paused {
-  color: var(--fa-status-warning-text);
-  border-color: color-mix(in srgb, #f97316 24%, var(--fa-border) 76%);
-  background: color-mix(in srgb, #f97316 12%, var(--fa-panel-2) 88%);
+	color: var(--fa-status-warning-text);
+	border-color: color-mix(in srgb, #f97316 24%, var(--fa-border) 76%);
+	background: color-mix(in srgb, #f97316 12%, var(--fa-panel-2) 88%);
 }
 
 .fa-tree-node-status.is-closed {
-  color: var(--fa-status-neutral-text);
-  border-color: color-mix(in srgb, #64748b 22%, var(--fa-border) 78%);
-  background: color-mix(in srgb, #64748b 14%, var(--fa-panel-2) 86%);
+	color: var(--fa-status-neutral-text);
+	border-color: color-mix(in srgb, #64748b 22%, var(--fa-border) 78%);
+	background: color-mix(in srgb, #64748b 14%, var(--fa-panel-2) 86%);
 }
 
 .fa-tree-node-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 
 .fa-tree-node-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fa-text-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 8px;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	background: rgba(255, 255, 255, 0.04);
+	color: var(--fa-text-muted);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
 }
 
 .fa-tree-node-badge.is-current {
-  color: var(--fa-accent-text);
-  border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
-  background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-2) 86%);
+	color: var(--fa-accent-text);
+	border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
+	background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-2) 86%);
 }
 
 .fa-tree-node-id {
-  color: var(--fa-text-soft);
-  font-size: 11px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  line-height: 1.5;
-  word-break: break-all;
+	color: var(--fa-text-soft);
+	font-size: 11px;
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+	line-height: 1.5;
+	word-break: break-all;
 }
 
 .fa-tree-node-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .fa-tree-node-children {
-  margin-left: 6px;
-  padding-left: 14px;
-  border-left: 1px solid rgba(255, 255, 255, 0.07);
-  display: grid;
-  gap: 10px;
+	margin-left: 6px;
+	padding-left: 14px;
+	border-left: 1px solid rgba(255, 255, 255, 0.07);
+	display: grid;
+	gap: 10px;
 }
 
 .fa-archived-list {
-  display: grid;
-  gap: 8px;
-  max-height: min(36vh, 320px);
-  overflow-y: auto;
-  padding-right: 6px;
+	display: grid;
+	gap: 8px;
+	max-height: min(36vh, 320px);
+	overflow-y: auto;
+	padding-right: 6px;
 }
 
 .fa-archived-item {
-  --fa-branch-role-color: var(--fa-accent);
-  border-radius: 14px;
-  border: 1px solid
-    color-mix(
-      in srgb,
-      var(--fa-branch-role-color) 18%,
-      rgba(255, 255, 255, 0.06)
-    );
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(
-        in srgb,
-        rgba(28, 28, 38, 0.84) 84%,
-        var(--fa-branch-role-color) 16%
-      ),
-      rgba(18, 18, 25, 0.88)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--fa-branch-role-color) 14%, transparent),
-      transparent 44%
-    );
-  padding: 8px 9px;
+	--fa-branch-role-color: var(--fa-accent);
+	border-radius: 14px;
+	border: 1px solid
+		color-mix(
+			in srgb,
+			var(--fa-branch-role-color) 18%,
+			rgba(255, 255, 255, 0.06)
+		);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(
+				in srgb,
+				rgba(28, 28, 38, 0.84) 84%,
+				var(--fa-branch-role-color) 16%
+			),
+			rgba(18, 18, 25, 0.88)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-branch-role-color) 14%, transparent),
+			transparent 44%
+		);
+	padding: 8px 9px;
 }
 
 .fa-tree-legend {
-  gap: 6px;
+	gap: 6px;
 }
 
 .fa-tree-legend-item {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fa-text-muted);
+	border-color: rgba(255, 255, 255, 0.08);
+	background: rgba(255, 255, 255, 0.04);
+	color: var(--fa-text-muted);
 }
 
 .fa-tree-legend-item::before {
-  background: var(--fa-legend-color, #818cf8);
-  box-shadow: 0 0 0 4px
-    color-mix(in srgb, var(--fa-legend-color, #818cf8) 18%, transparent);
+	background: var(--fa-legend-color, #818cf8);
+	box-shadow: 0 0 0 4px
+		color-mix(in srgb, var(--fa-legend-color, #818cf8) 18%, transparent);
 }
 
 .fa-tree-legend-item.is-role-main {
-  --fa-legend-color: #6ba9ff;
+	--fa-legend-color: #6ba9ff;
 }
 
 .fa-tree-legend-item.is-role-explore {
-  --fa-legend-color: #5ec2ff;
+	--fa-legend-color: #5ec2ff;
 }
 
 .fa-tree-legend-item.is-role-deep-dive {
-  --fa-legend-color: #a78bfa;
+	--fa-legend-color: #a78bfa;
 }
 
 .fa-tree-legend-item.is-role-execute {
-  --fa-legend-color: #fb7185;
+	--fa-legend-color: #fb7185;
 }
 
 .fa-tree-legend-item.is-role-verify {
-  --fa-legend-color: #f59e0b;
+	--fa-legend-color: #f59e0b;
 }
 
 .fa-tree-legend-item.is-role-writeup {
-  --fa-legend-color: #34d399;
+	--fa-legend-color: #34d399;
 }
 
 .fa-tree-canvas {
-  padding: 16px;
+	padding: 16px;
 }
 
 .fa-tree-node-lane::after {
-  background: linear-gradient(
-    180deg,
-    color-mix(
-      in srgb,
-      var(--fa-branch-role-color, var(--fa-accent)) 42%,
-      transparent
-    ),
-    rgba(255, 255, 255, 0.04)
-  );
+	background: linear-gradient(
+		180deg,
+		color-mix(
+			in srgb,
+			var(--fa-branch-role-color, var(--fa-accent)) 42%,
+			transparent
+		),
+		rgba(255, 255, 255, 0.04)
+	);
 }
 
 .fa-tree-node-dot {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color, var(--fa-accent)) 64%,
-    rgba(255, 255, 255, 0.16)
-  );
-  background: var(--fa-branch-role-color, #818cf8);
-  box-shadow: 0 0 0 6px
-    color-mix(
-      in srgb,
-      var(--fa-branch-role-color, var(--fa-accent)) 12%,
-      transparent
-    );
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color, var(--fa-accent)) 64%,
+		rgba(255, 255, 255, 0.16)
+	);
+	background: var(--fa-branch-role-color, #818cf8);
+	box-shadow: 0 0 0 6px
+		color-mix(
+			in srgb,
+			var(--fa-branch-role-color, var(--fa-accent)) 12%,
+			transparent
+		);
 }
 
 .fa-tree-node-card {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color, var(--fa-accent)) 18%,
-    rgba(255, 255, 255, 0.06)
-  );
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(
-        in srgb,
-        rgba(31, 31, 42, 0.94) 78%,
-        var(--fa-branch-role-color, var(--fa-accent)) 22%
-      ),
-      rgba(18, 18, 25, 0.96)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(
-        in srgb,
-        var(--fa-branch-role-color, var(--fa-accent)) 14%,
-        transparent
-      ),
-      transparent 40%
-    );
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color, var(--fa-accent)) 18%,
+		rgba(255, 255, 255, 0.06)
+	);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(
+				in srgb,
+				rgba(31, 31, 42, 0.94) 78%,
+				var(--fa-branch-role-color, var(--fa-accent)) 22%
+			),
+			rgba(18, 18, 25, 0.96)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(
+				in srgb,
+				var(--fa-branch-role-color, var(--fa-accent)) 14%,
+				transparent
+			),
+			transparent 40%
+		);
 }
 
 .fa-tree-node-card:hover,
 .fa-tree-node-card.is-active {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color, var(--fa-accent)) 34%,
-    rgba(255, 255, 255, 0.12)
-  );
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(
-        in srgb,
-        rgba(41, 41, 56, 0.96) 74%,
-        var(--fa-branch-role-color, var(--fa-accent)) 26%
-      ),
-      rgba(24, 24, 34, 0.98)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(
-        in srgb,
-        var(--fa-branch-role-color, var(--fa-accent)) 18%,
-        transparent
-      ),
-      transparent 42%
-    );
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color, var(--fa-accent)) 34%,
+		rgba(255, 255, 255, 0.12)
+	);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(
+				in srgb,
+				rgba(41, 41, 56, 0.96) 74%,
+				var(--fa-branch-role-color, var(--fa-accent)) 26%
+			),
+			rgba(24, 24, 34, 0.98)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(
+				in srgb,
+				var(--fa-branch-role-color, var(--fa-accent)) 18%,
+				transparent
+			),
+			transparent 42%
+		);
 }
 
 .fa-tree-node-card.is-active {
-  box-shadow:
-    0 0 0 1px
-      color-mix(
-        in srgb,
-        var(--fa-branch-role-color, var(--fa-accent)) 20%,
-        transparent
-      ),
-    0 14px 30px rgba(0, 0, 0, 0.18);
+	box-shadow:
+		0 0 0 1px
+		color-mix(
+			in srgb,
+			var(--fa-branch-role-color, var(--fa-accent)) 20%,
+			transparent
+		),
+		0 14px 30px rgba(0, 0, 0, 0.18);
 }
 
 .fa-tree-node-badge.is-current {
-  color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color, var(--fa-accent)) 74%,
-    var(--fa-text) 26%
-  );
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color, var(--fa-accent)) 24%,
-    rgba(255, 255, 255, 0.08)
-  );
-  background: color-mix(
-    in srgb,
-    var(--fa-branch-role-color, var(--fa-accent)) 16%,
-    rgba(255, 255, 255, 0.02)
-  );
+	color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color, var(--fa-accent)) 74%,
+		var(--fa-text) 26%
+	);
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color, var(--fa-accent)) 24%,
+		rgba(255, 255, 255, 0.08)
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-branch-role-color, var(--fa-accent)) 16%,
+		rgba(255, 255, 255, 0.02)
+	);
 }
 
 .fa-tree-node-actions .fa-branch-action-button {
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 11px;
+	padding: 6px 10px;
+	border-radius: 999px;
+	font-size: 11px;
 }
 
 .fa-archived-item {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 22%,
-    rgba(255, 255, 255, 0.05)
-  );
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 22%,
+		rgba(255, 255, 255, 0.05)
+	);
 }
 
 .fa-branch-graph-shell {
-  position: relative;
-  display: block;
-  flex: 0 0 auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  transition: transform 0.18s ease;
+	position: relative;
+	display: block;
+	flex: 0 0 auto;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+	transition: transform 0.18s ease;
 }
 
 .fa-branch-graph-main {
-  position: absolute;
-  inset: 0 auto auto 0;
-  min-height: 0;
-  min-width: 0;
-  transform-origin: top left;
-  will-change: transform;
+	position: absolute;
+	inset: 0 auto auto 0;
+	min-height: 0;
+	min-width: 0;
+	transform-origin: top left;
+	will-change: transform;
 }
 
 .fa-branch-graph-node-shell {
-  position: absolute;
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  transform: translate(-50%, -50%);
-  z-index: 1;
-  transition:
-    opacity 0.18s ease,
-    filter 0.18s ease;
+	position: absolute;
+	display: grid;
+	width: 24px;
+	height: 24px;
+	place-items: center;
+	transform: translate(-50%, -50%);
+	z-index: 1;
+	transition:
+		opacity 0.18s ease,
+		filter 0.18s ease;
 }
 
 .fa-branch-graph-node-shell.active-card,
 .fa-branch-graph-node-shell:hover {
-  z-index: 4;
+	z-index: 4;
 }
 
 .fa-branch-graph-main.has-active-selection .fa-branch-graph-node-shell {
-  opacity: 0.52;
-  filter: saturate(0.72);
+	opacity: 0.52;
+	filter: saturate(0.72);
 }
 
 .fa-branch-graph-main.has-active-selection
-  .fa-branch-graph-node-shell.active-card,
+	.fa-branch-graph-node-shell.active-card,
 .fa-branch-graph-main.has-active-selection .fa-branch-graph-node-shell:hover,
 .fa-branch-graph-main.has-active-selection
-  .fa-branch-graph-node-shell:focus-within {
-  opacity: 1;
-  filter: none;
+	.fa-branch-graph-node-shell:focus-within {
+	opacity: 1;
+	filter: none;
 }
 
 .fa-branch-graph-root-label {
-  --fa-branch-role-color: var(--fa-accent);
-  position: absolute;
-  top: 6px;
-  left: 0;
-  z-index: 2;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid
-    color-mix(in srgb, var(--fa-branch-role-color) 22%, var(--fa-border) 78%);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--fa-panel-2) 94%, var(--fa-branch-role-color) 6%),
-    color-mix(in srgb, var(--fa-panel-1) 88%, var(--fa-branch-role-color) 12%)
-  );
-  color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 70%,
-    var(--fa-text) 30%
-  );
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  box-shadow: 0 8px 20px rgba(4, 10, 22, 0.1);
+	--fa-branch-role-color: var(--fa-accent);
+	position: absolute;
+	top: 6px;
+	left: 0;
+	z-index: 2;
+	padding: 4px 8px;
+	border-radius: 999px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-branch-role-color) 22%, var(--fa-border) 78%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fa-panel-2) 94%, var(--fa-branch-role-color) 6%),
+		color-mix(in srgb, var(--fa-panel-1) 88%, var(--fa-branch-role-color) 12%)
+	);
+	color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 70%,
+		var(--fa-text) 30%
+	);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+	box-shadow: 0 8px 20px rgba(4, 10, 22, 0.1);
 }
 
 :root[data-theme="light"] .fa-branch-graph-root-label {
-  box-shadow:
-    0 8px 18px rgba(55, 68, 106, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+	box-shadow:
+		0 8px 18px rgba(55, 68, 106, 0.08),
+		inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 @keyframes fa-branch-node-breathe-ring {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.78;
-  }
+	0%,
+	100% {
+		transform: scale(1);
+		opacity: 0.78;
+	}
 
-  50% {
-    transform: scale(1.24);
-    opacity: 0.22;
-  }
+	50% {
+		transform: scale(1.24);
+		opacity: 0.22;
+	}
 }
 
 @keyframes fa-branch-node-breathe-core {
-  0%,
-  100% {
-    box-shadow: 0 0 0 4px
-      color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
-    filter: saturate(1);
-  }
+	0%,
+	100% {
+		box-shadow: 0 0 0 4px
+			color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
+		filter: saturate(1);
+	}
 
-  50% {
-    box-shadow: 0 0 0 8px
-      color-mix(in srgb, var(--fa-branch-role-color) 10%, transparent);
-    filter: saturate(1.08) brightness(1.04);
-  }
+	50% {
+		box-shadow: 0 0 0 8px
+			color-mix(in srgb, var(--fa-branch-role-color) 10%, transparent);
+		filter: saturate(1.08) brightness(1.04);
+	}
 }
 
 .fa-branch-graph-lines {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-  pointer-events: none;
+	position: absolute;
+	inset: 0;
+	overflow: visible;
+	pointer-events: none;
 }
 
 .fa-branch-graph-edge {
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.16;
-  transition:
-    opacity 0.18s ease,
-    stroke-width 0.18s ease;
+	fill: none;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	opacity: 0.16;
+	transition:
+		opacity 0.18s ease,
+		stroke-width 0.18s ease;
 }
 
 .fa-branch-graph-edge.is-context {
-  opacity: 0.42;
-  stroke-width: 2.3;
+	opacity: 0.42;
+	stroke-width: 2.3;
 }
 
 .fa-branch-graph-edge.is-focused {
-  opacity: 0.72;
-  stroke-width: 2.35;
+	opacity: 0.72;
+	stroke-width: 2.35;
 }
 
 .fa-branch-graph-node {
-  --fa-branch-role-color: var(--fa-accent);
-  position: relative;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  margin: 0;
-  border-radius: 999px;
-  border: 2px solid
-    color-mix(
-      in srgb,
-      var(--fa-branch-role-color) 58%,
-      rgba(255, 255, 255, 0.24)
-    );
-  background:
-    radial-gradient(
-      circle at 35% 35%,
-      rgba(255, 255, 255, 0.2),
-      transparent 32%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(
-        in srgb,
-        rgba(39, 39, 51, 0.9) 82%,
-        var(--fa-branch-role-color) 18%
-      ),
-      rgba(21, 21, 30, 0.92)
-    );
-  box-shadow: 0 8px 18px rgba(4, 10, 22, 0.16);
-  z-index: 1;
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    filter 0.18s ease;
+	--fa-branch-role-color: var(--fa-accent);
+	position: relative;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	margin: 0;
+	border-radius: 999px;
+	border: 2px solid
+		color-mix(
+			in srgb,
+			var(--fa-branch-role-color) 58%,
+			rgba(255, 255, 255, 0.24)
+		);
+	background:
+		radial-gradient(
+			circle at 35% 35%,
+			rgba(255, 255, 255, 0.2),
+			transparent 32%
+		),
+		linear-gradient(
+			180deg,
+			color-mix(
+				in srgb,
+				rgba(39, 39, 51, 0.9) 82%,
+				var(--fa-branch-role-color) 18%
+			),
+			rgba(21, 21, 30, 0.92)
+		);
+	box-shadow: 0 8px 18px rgba(4, 10, 22, 0.16);
+	z-index: 1;
+	transition:
+		transform 0.18s ease,
+		border-color 0.18s ease,
+		box-shadow 0.18s ease,
+		filter 0.18s ease;
 }
 
 .fa-branch-graph-node::before {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: 999px;
-  border: 1.5px solid transparent;
-  opacity: 0;
-  transform: scale(0.94);
-  pointer-events: none;
-  transition:
-    opacity 0.18s ease,
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+	content: "";
+	position: absolute;
+	inset: -5px;
+	border-radius: 999px;
+	border: 1.5px solid transparent;
+	opacity: 0;
+	transform: scale(0.94);
+	pointer-events: none;
+	transition:
+		opacity 0.18s ease,
+		transform 0.18s ease,
+		border-color 0.18s ease,
+		box-shadow 0.18s ease;
 }
 
 .fa-branch-graph-node::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  transform: translate(-50%, -50%);
-  border-radius: 999px;
-  background: var(--fa-branch-role-color);
-  pointer-events: none;
-  box-shadow: 0 0 0 4px
-    color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 8px;
+	height: 8px;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
+	background: var(--fa-branch-role-color);
+	pointer-events: none;
+	box-shadow: 0 0 0 4px
+		color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
 }
 
 .fa-branch-graph-node:hover,
 .fa-branch-graph-node.is-focused {
-  transform: scale(1.04);
+	transform: scale(1.04);
 }
 
 .fa-branch-graph-node:hover::before,
 .fa-branch-graph-node.is-focused::before,
 .fa-branch-graph-node.is-active::before {
-  transform: scale(1);
+	transform: scale(1);
 }
 
 .fa-branch-graph-node.is-active::before {
-  opacity: 0.78;
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 62%,
-    rgba(255, 255, 255, 0.14)
-  );
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--fa-branch-role-color) 12%, transparent);
-  animation: fa-branch-node-breathe-ring 2.8s ease-in-out infinite;
+	opacity: 0.78;
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 62%,
+		rgba(255, 255, 255, 0.14)
+	);
+	box-shadow: 0 0 0 3px
+		color-mix(in srgb, var(--fa-branch-role-color) 12%, transparent);
+	animation: fa-branch-node-breathe-ring 2.8s ease-in-out infinite;
 }
 
 .fa-branch-graph-node.is-active {
-  transform: scale(1.08);
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 86%,
-    rgba(255, 255, 255, 0.16)
-  );
-  box-shadow:
-    0 0 0 6px color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent),
-    0 14px 30px rgba(4, 10, 22, 0.24);
-  z-index: 3;
+	transform: scale(1.08);
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 86%,
+		rgba(255, 255, 255, 0.16)
+	);
+	box-shadow:
+		0 0 0 6px color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent),
+		0 14px 30px rgba(4, 10, 22, 0.24);
+	z-index: 3;
 }
 
 .fa-branch-graph-node.is-active::after {
-  animation: fa-branch-node-breathe-core 2.8s ease-in-out infinite;
+	animation: fa-branch-node-breathe-core 2.8s ease-in-out infinite;
 }
 
 .fa-branch-graph-node.is-pending::before {
-  opacity: 1;
-  border-color: rgba(245, 158, 11, 0.82);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+	opacity: 1;
+	border-color: rgba(245, 158, 11, 0.82);
+	box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
 }
 
 .fa-branch-graph-node.is-paused::before {
-  opacity: 1;
-  border-color: rgba(251, 146, 60, 0.82);
-  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.12);
+	opacity: 1;
+	border-color: rgba(251, 146, 60, 0.82);
+	box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.12);
 }
 
 .fa-branch-graph-node.is-ready::before {
-  opacity: 1;
-  border-color: rgba(16, 185, 129, 0.82);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+	opacity: 1;
+	border-color: rgba(16, 185, 129, 0.82);
+	box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
 .fa-branch-graph-node.is-merged::before {
-  opacity: 1;
-  border-color: rgba(244, 63, 94, 0.82);
-  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
+	opacity: 1;
+	border-color: rgba(244, 63, 94, 0.82);
+	box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fa-branch-graph-node.is-active::before,
-  .fa-branch-graph-node.is-active::after {
-    animation: none;
-  }
+	.fa-branch-graph-node.is-active::before,
+	.fa-branch-graph-node.is-active::after {
+		animation: none;
+	}
 }
 
 .fa-branch-detail-overlay {
-  position: fixed;
-  width: min(220px, calc(100vw - 32px));
-  z-index: 360;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.14s ease;
+	position: fixed;
+	width: min(220px, calc(100vw - 32px));
+	z-index: 360;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.14s ease;
 }
 
 .fa-branch-detail-overlay.is-visible {
-  pointer-events: auto;
-  opacity: 1;
+	pointer-events: auto;
+	opacity: 1;
 }
 
 .fa-branch-detail-overlay .fa-branch-node-detail {
-  pointer-events: auto;
+	pointer-events: auto;
 }
 
 .fa-branch-node-detail {
-  --fa-branch-role-color: var(--fa-accent);
-  display: grid;
-  gap: 10px;
-  border-radius: 18px;
-  border: 1px solid
-    color-mix(
-      in srgb,
-      var(--fa-branch-role-color) 24%,
-      rgba(255, 255, 255, 0.08)
-    );
-  background:
-    linear-gradient(180deg, rgba(28, 28, 38, 0.95), rgba(16, 16, 24, 0.95)),
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent),
-      transparent 44%
-    );
-  box-shadow: 0 18px 36px rgba(4, 10, 22, 0.18);
-  padding: 12px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+	--fa-branch-role-color: var(--fa-accent);
+	display: grid;
+	gap: 10px;
+	border-radius: 18px;
+	border: 1px solid
+		color-mix(
+			in srgb,
+			var(--fa-branch-role-color) 24%,
+			rgba(255, 255, 255, 0.08)
+		);
+	background:
+		linear-gradient(180deg, rgba(28, 28, 38, 0.95), rgba(16, 16, 24, 0.95)),
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent),
+			transparent 44%
+		);
+	box-shadow: 0 18px 36px rgba(4, 10, 22, 0.18);
+	padding: 12px;
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 }
 
 .fa-branch-node-detail.is-static {
-  margin-top: 4px;
+	margin-top: 4px;
 }
 
 .fa-branch-node-detail-head {
-  display: grid;
-  gap: 4px;
+	display: grid;
+	gap: 4px;
 }
 
 .fa-branch-node-title {
-  color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 74%,
-    var(--fa-text) 26%
-  );
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.4;
-  word-break: break-word;
+	color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 74%,
+		var(--fa-text) 26%
+	);
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.fa-branch-node-title-button {
+	border: 0;
+	padding: 0;
+	background: transparent;
+	text-align: left;
+	cursor: text;
+}
+
+.fa-branch-node-title-button:disabled {
+	cursor: wait;
+	opacity: 0.72;
 }
 
 .fa-branch-node-subtitle {
-  color: var(--fa-text-soft);
-  font-size: 11px;
-  line-height: 1.4;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  word-break: break-all;
+	color: var(--fa-text-soft);
+	font-size: 11px;
+	line-height: 1.4;
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+	word-break: break-all;
 }
 
 .fa-branch-node-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 
 .fa-branch-node-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fa-text-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 4px 8px;
+	display: inline-flex;
+	align-items: center;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgba(255, 255, 255, 0.04);
+	color: var(--fa-text-muted);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	padding: 4px 8px;
 }
 
 .fa-branch-node-badge.current {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 38%,
-    transparent
-  );
-  background: color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
-  color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 74%,
-    var(--fa-text) 26%
-  );
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 38%,
+		transparent
+	);
+	background: color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
+	color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 74%,
+		var(--fa-text) 26%
+	);
 }
 
 .fa-branch-node-badge.is-success {
-  border-color: color-mix(in srgb, var(--fa-success) 34%, transparent);
-  background: color-mix(in srgb, var(--fa-success) 14%, transparent);
-  color: var(--fa-status-success-text);
+	border-color: color-mix(in srgb, var(--fa-success) 34%, transparent);
+	background: color-mix(in srgb, var(--fa-success) 14%, transparent);
+	color: var(--fa-status-success-text);
 }
 
 .fa-branch-node-badge.is-warn {
-  border-color: color-mix(in srgb, var(--fa-warning) 34%, transparent);
-  background: color-mix(in srgb, var(--fa-warning) 14%, transparent);
-  color: var(--fa-status-warning-text);
+	border-color: color-mix(in srgb, var(--fa-warning) 34%, transparent);
+	background: color-mix(in srgb, var(--fa-warning) 14%, transparent);
+	color: var(--fa-status-warning-text);
 }
 
 .fa-branch-node-badge.is-danger {
-  border-color: color-mix(in srgb, var(--fa-danger) 34%, transparent);
-  background: color-mix(in srgb, var(--fa-danger) 14%, transparent);
-  color: var(--fa-status-danger-text);
+	border-color: color-mix(in srgb, var(--fa-danger) 34%, transparent);
+	background: color-mix(in srgb, var(--fa-danger) 14%, transparent);
+	color: var(--fa-status-danger-text);
 }
 
 .fa-branch-node-meta {
-  display: grid;
-  gap: 6px;
+	display: grid;
+	gap: 6px;
 }
 
 .fa-branch-node-meta-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 11px;
-  line-height: 1.45;
+	display: flex;
+	justify-content: space-between;
+	gap: 10px;
+	font-size: 11px;
+	line-height: 1.45;
 }
 
 .fa-branch-node-meta-label {
-  color: var(--fa-text-muted);
-  flex: 0 0 auto;
+	color: var(--fa-text-muted);
+	flex: 0 0 auto;
 }
 
 .fa-branch-node-meta-value {
-  color: var(--fa-text);
-  text-align: right;
-  word-break: break-word;
+	color: var(--fa-text);
+	text-align: right;
+	word-break: break-word;
 }
 
 .fa-branch-node-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding-top: 8px;
+	display: flex;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 8px;
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	padding-top: 8px;
 }
 
 .fa-branch-inline-action {
-  width: auto;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
-  color: var(--fa-text-muted);
-  box-shadow: none;
-  font-size: 11px;
+	width: auto;
+	padding: 5px 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent);
+	color: var(--fa-text-muted);
+	box-shadow: none;
+	font-size: 11px;
 }
 
 .fa-branch-inline-action:hover {
-  color: var(--fa-text);
-  background: color-mix(in srgb, var(--fa-panel-3) 70%, transparent);
-  transform: none;
+	color: var(--fa-text);
+	background: color-mix(in srgb, var(--fa-panel-3) 70%, transparent);
+	transform: none;
 }
 
 .fa-branch-inline-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
+	cursor: not-allowed;
+	opacity: 0.58;
 }
 
 .fa-branch-inline-action.is-primary {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 42%,
-    var(--fa-border) 58%
-  );
-  background: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 18%,
-    var(--fa-panel-2) 82%
-  );
-  color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 72%,
-    var(--fa-text) 28%
-  );
+	border-color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 42%,
+		var(--fa-border) 58%
+	);
+	background: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 18%,
+		var(--fa-panel-2) 82%
+	);
+	color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 72%,
+		var(--fa-text) 28%
+	);
 }
 
 .fa-branch-inline-action.warn {
-  background: color-mix(in srgb, var(--fa-panel-2) 82%, var(--fa-warning) 12%);
-  border-color: color-mix(in srgb, var(--fa-border) 68%, var(--fa-warning) 16%);
-  color: color-mix(in srgb, var(--fa-text) 82%, var(--fa-warning) 38%);
+	background: color-mix(in srgb, var(--fa-panel-2) 82%, var(--fa-warning) 12%);
+	border-color: color-mix(in srgb, var(--fa-border) 68%, var(--fa-warning) 16%);
+	color: color-mix(in srgb, var(--fa-text) 82%, var(--fa-warning) 38%);
 }
 
 .fa-branch-node-error {
-  flex-basis: 100%;
-  color: var(--fa-status-danger-text);
-  font-size: 11px;
-  line-height: 1.45;
-  text-align: right;
+	flex-basis: 100%;
+	color: var(--fa-status-danger-text);
+	font-size: 11px;
+	line-height: 1.45;
+	text-align: right;
 }
 
 .fa-archived-item-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 .fa-archived-item-copy {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: grid;
-  gap: 4px;
+	min-width: 0;
+	flex: 1 1 auto;
+	display: grid;
+	gap: 4px;
 }
 
 .fa-archived-item-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
-  flex: 0 0 auto;
-  justify-content: flex-end;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: nowrap;
+	flex: 0 0 auto;
+	justify-content: flex-end;
 }
 
 .fa-archived-item-token {
-  color: var(--fa-text-soft);
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  padding: 0 6px;
+	color: var(--fa-text-soft);
+	font-size: 10px;
+	font-weight: 600;
+	white-space: nowrap;
+	padding: 0 6px;
 }
 
 .fa-archived-item-name {
-  color: color-mix(
-    in srgb,
-    var(--fa-branch-role-color) 72%,
-    var(--fa-text) 28%
-  );
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.3;
-  min-width: 0;
-  word-break: break-word;
+	color: color-mix(
+		in srgb,
+		var(--fa-branch-role-color) 72%,
+		var(--fa-text) 28%
+	);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.3;
+	min-width: 0;
+	word-break: break-word;
 }
 
 .fa-archived-item-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid
-    color-mix(in srgb, var(--fa-border) 78%, var(--fa-panel-2) 22%);
-  background: color-mix(in srgb, var(--fa-panel-2) 92%, white 8%);
-  color: var(--fa-text-muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 22px;
+	padding: 0 8px;
+	border-radius: 999px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-border) 78%, var(--fa-panel-2) 22%);
+	background: color-mix(in srgb, var(--fa-panel-2) 92%, white 8%);
+	color: var(--fa-text-muted);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
 }
 
 .fa-archived-item-status.is-archived {
-  border-color: color-mix(
-    in srgb,
-    var(--fa-border) 70%,
-    var(--fa-text-soft) 30%
-  );
-  background: color-mix(in srgb, var(--fa-panel-2) 88%, var(--fa-border) 12%);
+	border-color: color-mix(
+		in srgb,
+		var(--fa-border) 70%,
+		var(--fa-text-soft) 30%
+	);
+	background: color-mix(in srgb, var(--fa-panel-2) 88%, var(--fa-border) 12%);
 }
 
 .fa-archived-item-status.is-success {
-  color: var(--fa-status-success-text);
+	color: var(--fa-status-success-text);
 }
 
 .fa-archived-item-status.is-warn {
-  color: var(--fa-status-warning-text);
+	color: var(--fa-status-warning-text);
 }
 
 .fa-archived-item-status.is-danger {
-  color: var(--fa-status-danger-text);
+	color: var(--fa-status-danger-text);
 }
 
 .fa-archived-item-id {
-  color: var(--fa-text-soft);
-  font-size: 10px;
-  line-height: 1.4;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  word-break: break-all;
+	color: var(--fa-text-soft);
+	font-size: 10px;
+	line-height: 1.4;
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+	word-break: break-all;
 }
 
 .fa-tree-node-actions.is-archived-actions {
-  gap: 6px;
-  flex-wrap: nowrap;
+	gap: 6px;
+	flex-wrap: nowrap;
 }
 
 .fa-tree-node-actions.is-archived-actions .fa-branch-action-button {
-  padding: 4px 8px;
-  font-size: 10px;
+	padding: 4px 8px;
+	font-size: 10px;
 }
 
 .fa-archived-empty {
-  color: var(--fa-text-muted);
-  border-style: dashed;
+	color: var(--fa-text-muted);
+	border-style: dashed;
 }

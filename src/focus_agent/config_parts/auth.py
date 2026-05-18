@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import json
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from dataclasses import dataclass
+from typing import Any
 
 from .common import _coerce_bool, _normalize_optional_string
-
 
 DEFAULT_AUTH_JWT_SECRET = "focus-agent-dev-secret"
 _INSECURE_AUTH_JWT_SECRETS = {

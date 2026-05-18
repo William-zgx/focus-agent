@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from focus_agent.core.agent_team import (
     AgentTeamRecommendedAction,
@@ -11,7 +11,7 @@ from focus_agent.core.branching import BranchRole
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _dedupe(values: Iterable[str]) -> list[str]:

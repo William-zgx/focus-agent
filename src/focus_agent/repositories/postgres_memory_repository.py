@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
-import hashlib
-import json
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -26,6 +24,27 @@ from .memory_repository import (
     MemoryEmbeddingSearchHit,
     MemoryListQuery,
     MemoryRepository,
+)
+from .postgres_memory_mappers import (
+    coalesce_int,
+    coalesce_text,
+    coerce_metadata,
+    decode_json,
+    embedding_extra_metadata,
+    embedding_metadata_from_row,
+    embedding_payload_dict,
+    embedding_values,
+    memory_embedding_id,
+    record_from_payload,
+    record_params,
+    vector_literal,
+)
+from .postgres_memory_queries import (
+    audit_event_filters,
+    candidate_filters,
+    embedding_list_filters,
+    memory_list_filters,
+    where_clause,
 )
 from .postgres_schema import (
     ensure_app_postgres_schema_on_connection,
@@ -197,7 +216,7 @@ class PostgresMemoryRepository(MemoryRepository):
                         deleted_at = EXCLUDED.deleted_at,
                         data_json = EXCLUDED.data_json
                     """,
-                    _record_params(record, payload=payload),
+                    record_params(record, payload=payload),
                 )
         return record.memory_id
 
@@ -242,7 +261,7 @@ class PostgresMemoryRepository(MemoryRepository):
                 row = cur.fetchone()
         if row is None:
             return None
-        return _record_from_payload(row["data_json"])
+        return record_from_payload(row["data_json"])
 
     def search(
         self,
@@ -289,31 +308,13 @@ class PostgresMemoryRepository(MemoryRepository):
                 rows = cur.fetchall()
         hits: list[MemorySearchHit] = []
         for row in rows:
-            record = _record_from_payload(row["data_json"])
+            record = record_from_payload(row["data_json"])
             score = float(row.get("text_score") or 0.0)
             hits.append(MemorySearchHit(record=record, score=score, namespace=record.namespace))
         return hits
 
     def list_records(self, query: MemoryListQuery) -> list[MemoryRecord]:
-        clauses = [] if query.status == MemoryStatus.FORGOTTEN.value else ["deleted_at IS NULL"]
-        params: dict[str, Any] = {"limit": max(1, int(query.limit)), "offset": max(0, int(query.offset))}
-        for field in (
-            "kind",
-            "scope",
-            "visibility",
-            "status",
-            "user_id",
-            "root_thread_id",
-            "source_thread_id",
-            "source_branch_id",
-        ):
-            value = getattr(query, field)
-            if value is not None:
-                clauses.append(f"{field} = %({field})s")
-                params[field] = value
-        if query.namespace is not None:
-            clauses.append("namespace = %(namespace)s")
-            params["namespace"] = list(query.namespace)
+        clauses, params = memory_list_filters(query)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -327,7 +328,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     params,
                 )
                 rows = cur.fetchall()
-        return [_record_from_payload(row["data_json"]) for row in rows]
+        return [record_from_payload(row["data_json"]) for row in rows]
 
     def get_record(self, memory_id: str) -> MemoryRecord | None:
         with self._connect() as conn:
@@ -336,7 +337,7 @@ class PostgresMemoryRepository(MemoryRepository):
                 row = cur.fetchone()
         if row is None:
             return None
-        return _record_from_payload(row["data_json"])
+        return record_from_payload(row["data_json"])
 
     def upsert_embedding(
         self,
@@ -358,18 +359,18 @@ class PostgresMemoryRepository(MemoryRepository):
             and not isinstance(record, MemoryEmbeddingRecord)
             and memory_id is None
         ):
-            payload = _embedding_payload_dict(record)
+            payload = embedding_payload_dict(record)
             memory_id = str(payload.get("memory_id") or "")
             namespace_value = payload.get("namespace") or ()
             namespace = tuple(str(part) for part in namespace_value)
             embedding_value = payload.get("embedding")
             embedding = embedding_value if isinstance(embedding_value, Sequence) else None
-            provider_id = _coalesce_text(payload.get("provider_id"), payload.get("provider"), provider_id)
-            model_id = _coalesce_text(payload.get("model_id"), payload.get("model"), model_id)
-            dimensions = _coalesce_int(payload.get("dimensions"), dimensions)
+            provider_id = coalesce_text(payload.get("provider_id"), payload.get("provider"), provider_id)
+            model_id = coalesce_text(payload.get("model_id"), payload.get("model"), model_id)
+            dimensions = coalesce_int(payload.get("dimensions"), dimensions)
             status = str(payload.get("status") or status)
-            content_hash = _coalesce_text(payload.get("content_hash"), content_hash)
-            metadata = _coerce_metadata(payload.get("metadata"))
+            content_hash = coalesce_text(payload.get("content_hash"), content_hash)
+            metadata = coerce_metadata(payload.get("metadata"))
             extra = {**{str(key): value for key, value in payload.items()}, **extra}
             created_at = payload.get("created_at")
             updated_at = payload.get("updated_at")
@@ -389,17 +390,17 @@ class PostgresMemoryRepository(MemoryRepository):
             created_at = None
             updated_at = None
         if provider_id is None:
-            provider_id = _coalesce_text(extra.get("provider"), extra.get("provider_id"), "unknown")
+            provider_id = coalesce_text(extra.get("provider"), extra.get("provider_id"), "unknown")
         if model_id is None:
-            model_id = _coalesce_text(extra.get("model"), extra.get("model_id"), "unknown")
+            model_id = coalesce_text(extra.get("model"), extra.get("model_id"), "unknown")
         if memory_id is None or not memory_id or namespace is None:
             raise ValueError("memory_id and namespace are required")
-        values = [] if embedding is None else _embedding_values(embedding)
+        values = [] if embedding is None else embedding_values(embedding)
         if not values:
             raise ValueError("embedding must not be empty")
         if dimensions is None:
             dimensions = len(values)
-        embedding_id = _memory_embedding_id(
+        embedding_id = memory_embedding_id(
             memory_id=memory_id,
             provider_id=provider_id,
             model_id=model_id,
@@ -407,9 +408,9 @@ class PostgresMemoryRepository(MemoryRepository):
         )
         metadata_payload = {
             **dict(metadata or {}),
-            **_embedding_extra_metadata(extra),
+            **embedding_extra_metadata(extra),
         }
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -472,7 +473,7 @@ class PostgresMemoryRepository(MemoryRepository):
                         "provider_id": provider_id,
                         "model_id": model_id,
                         "dimensions": len(values),
-                        "embedding": _vector_literal(values),
+                        "embedding": vector_literal(values),
                         "status": status,
                         "content_hash": content_hash or "",
                         "metadata_json": Jsonb(metadata_payload),
@@ -506,12 +507,12 @@ class PostgresMemoryRepository(MemoryRepository):
         model: str | None = None,
         status: str = "active",
     ) -> list[MemoryEmbeddingSearchHit]:
-        values = _embedding_values(embedding)
+        values = embedding_values(embedding)
         if model_id is None:
             model_id = model
         params: dict[str, Any] = {
             "namespace": list(namespace),
-            "embedding": _vector_literal(values),
+            "embedding": vector_literal(values),
             "dimensions": len(values),
             "status": status,
             "limit": max(1, int(limit)),
@@ -559,7 +560,7 @@ class PostgresMemoryRepository(MemoryRepository):
                 rows = cur.fetchall()
         hits: list[MemoryEmbeddingSearchHit] = []
         for row in rows:
-            record = _record_from_payload(row["data_json"])
+            record = record_from_payload(row["data_json"])
             score = float(row.get("score") or 0.0)
             hits.append(
                 MemoryEmbeddingSearchHit(
@@ -574,7 +575,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     dimensions=int(row["dimensions"]),
                     status=str(row["status"]),
                     content_hash=row["content_hash"],
-                    metadata=_decode_json(row["metadata_json"]),
+                    metadata=decode_json(row["metadata_json"]),
                 )
             )
         return hits
@@ -668,7 +669,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     (memory_id,),
                 )
                 row = cur.fetchone()
-        return None if row is None else _embedding_metadata_from_row(row)
+        return None if row is None else embedding_metadata_from_row(row)
 
     def update_embedding_status(
         self,
@@ -677,7 +678,7 @@ class PostgresMemoryRepository(MemoryRepository):
         status: str,
         metadata: Mapping[str, object] | None = None,
     ) -> bool:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 if metadata is None:
@@ -738,33 +739,17 @@ class PostgresMemoryRepository(MemoryRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> list[MemoryEmbeddingMetadata]:
-        if query is not None:
-            namespace = query.namespace
-            provider_id = query.provider_id
-            model_id = query.model_id
-            status = query.status
-            limit = query.limit
-            offset = query.offset
-        if model_id is None:
-            model_id = model
-        params: dict[str, Any] = {
-            "limit": max(1, int(limit)),
-            "offset": max(0, int(offset)),
-        }
-        clauses: list[str] = ["deleted_at IS NULL"]
-        if namespace is not None:
-            clauses.append("namespace = %(namespace)s")
-            params["namespace"] = list(namespace)
-        if provider_id is not None:
-            clauses.append("provider_id = %(provider_id)s")
-            params["provider_id"] = provider_id
-        if model_id is not None:
-            clauses.append("model_id = %(model_id)s")
-            params["model_id"] = model_id
-        if status is not None:
-            clauses.append("status = %(status)s")
-            params["status"] = status
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        clauses, params = embedding_list_filters(
+            query,
+            namespace=namespace,
+            provider_id=provider_id,
+            model_id=model_id,
+            model=model,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        where = where_clause(clauses)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -789,7 +774,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     params,
                 )
                 rows = cur.fetchall()
-        return [_embedding_metadata_from_row(row) for row in rows]
+        return [embedding_metadata_from_row(row) for row in rows]
 
     def list_memory_embedding_metadata(
         self,
@@ -840,7 +825,7 @@ class PostgresMemoryRepository(MemoryRepository):
             return None
         if namespace is not None and existing.namespace != namespace:
             return None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         updated = existing.model_copy(
             update={
                 "status": MemoryStatus.FORGOTTEN,
@@ -935,19 +920,15 @@ class PostgresMemoryRepository(MemoryRepository):
         source_branch_id: str | None = None,
         limit: int = 50,
     ) -> list[MemoryAuditEvent]:
-        params: dict[str, Any] = {"limit": max(1, int(limit))}
-        clauses: list[str] = []
-        for field, value in (
-            ("memory_id", memory_id),
-            ("user_id", user_id),
-            ("root_thread_id", root_thread_id),
-            ("source_thread_id", source_thread_id),
-            ("source_branch_id", source_branch_id),
-        ):
-            if value is not None:
-                clauses.append(f"{field} = %({field})s")
-                params[field] = value
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        clauses, params = audit_event_filters(
+            memory_id=memory_id,
+            user_id=user_id,
+            root_thread_id=root_thread_id,
+            source_thread_id=source_thread_id,
+            source_branch_id=source_branch_id,
+            limit=limit,
+        )
+        where = where_clause(clauses)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -961,7 +942,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     params,
                 )
                 rows = cur.fetchall()
-        return [MemoryAuditEvent.model_validate(_decode_json(row["data_json"])) for row in rows]
+        return [MemoryAuditEvent.model_validate(decode_json(row["data_json"])) for row in rows]
 
     def upsert_candidate(self, candidate: MemoryCandidate) -> str:
         payload = candidate.model_dump(mode="json")
@@ -1005,21 +986,14 @@ class PostgresMemoryRepository(MemoryRepository):
         branch_id: str | None = None,
         limit: int = 50,
     ) -> list[MemoryCandidate]:
-        clauses: list[str] = []
-        params: dict[str, Any] = {"limit": max(1, int(limit))}
-        if status:
-            clauses.append("status = %(status)s")
-            params["status"] = status
-        if root_thread_id:
-            clauses.append("root_thread_id = %(root_thread_id)s")
-            params["root_thread_id"] = root_thread_id
-        if user_id:
-            clauses.append("user_id = %(user_id)s")
-            params["user_id"] = user_id
-        if branch_id:
-            clauses.append("branch_id = %(branch_id)s")
-            params["branch_id"] = branch_id
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        clauses, params = candidate_filters(
+            status=status,
+            root_thread_id=root_thread_id,
+            user_id=user_id,
+            branch_id=branch_id,
+            limit=limit,
+        )
+        where = where_clause(clauses)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -1033,7 +1007,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     params,
                 )
                 rows = cur.fetchall()
-        return [MemoryCandidate.model_validate(_decode_json(row["data_json"])) for row in rows]
+        return [MemoryCandidate.model_validate(decode_json(row["data_json"])) for row in rows]
 
     def update_candidate_status(
         self,
@@ -1055,149 +1029,9 @@ class PostgresMemoryRepository(MemoryRepository):
                 row = cur.fetchone()
         if row is None:
             return
-        candidate = MemoryCandidate.model_validate(_decode_json(row["data_json"]))
-        now = datetime.now(timezone.utc)
+        candidate = MemoryCandidate.model_validate(decode_json(row["data_json"]))
+        now = datetime.now(UTC)
         updated = candidate.model_copy(update={"status": status, "reason": reason, "updated_at": now})
         self.upsert_candidate(updated)
-
-
-def _record_params(record: MemoryRecord, *, payload: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "memory_id": record.memory_id,
-        "namespace": list(record.namespace),
-        "kind": record.kind.value,
-        "scope": record.scope.value,
-        "visibility": record.visibility.value,
-        "status": record.status.value,
-        "user_id": record.user_id,
-        "root_thread_id": record.root_thread_id,
-        "source_thread_id": record.source_thread_id,
-        "source_branch_id": record.source_branch_id,
-        "semantic_key": record.semantic_key,
-        "fingerprint": record.fingerprint,
-        "confidence": record.confidence,
-        "importance": record.importance,
-        "summary": record.summary,
-        "content": record.content,
-        "promoted_to_main": record.promoted_to_main,
-        "created_at": record.created_at,
-        "updated_at": record.updated_at,
-        "deleted_at": record.deleted_at,
-        "data_json": Jsonb(payload),
-    }
-
-
-def _embedding_values(embedding: Sequence[float]) -> list[float]:
-    values = [float(value) for value in embedding]
-    if not values:
-        raise ValueError("embedding must not be empty")
-    return values
-
-
-def _vector_literal(values: Sequence[float]) -> str:
-    return "[" + ",".join(f"{float(value):.12g}" for value in values) + "]"
-
-
-def _memory_embedding_id(
-    *,
-    memory_id: str,
-    provider_id: str,
-    model_id: str,
-    content_hash: str,
-) -> str:
-    seed = json.dumps(
-        {
-            "memory_id": memory_id,
-            "provider_id": provider_id,
-            "model_id": model_id,
-            "content_hash": content_hash,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    return f"mem-emb:{hashlib.sha256(seed.encode('utf-8')).hexdigest()}"
-
-
-def _embedding_payload_dict(payload: object) -> dict[str, object]:
-    if isinstance(payload, dict):
-        return dict(payload)
-    model_dump = getattr(payload, "model_dump", None)
-    if callable(model_dump):
-        return dict(model_dump(mode="python"))
-    if hasattr(payload, "__dataclass_fields__"):
-        return {
-            field_name: getattr(payload, field_name)
-            for field_name in payload.__dataclass_fields__
-        }
-    return {
-        name: getattr(payload, name)
-        for name in dir(payload)
-        if not name.startswith("_") and not callable(getattr(payload, name))
-    }
-
-
-def _coalesce_text(*values: object) -> str | None:
-    for value in values:
-        if value is not None:
-            text = str(value)
-            if text:
-                return text
-    return None
-
-
-def _coalesce_int(*values: object) -> int | None:
-    for value in values:
-        if value is not None:
-            return int(value)
-    return None
-
-
-def _coerce_metadata(value: object) -> dict[str, object]:
-    if value is None:
-        return {}
-    if isinstance(value, dict):
-        return dict(value)
-    if isinstance(value, Mapping):
-        return {str(key): item for key, item in value.items()}
-    return {}
-
-
-def _embedding_extra_metadata(extra: Mapping[str, object]) -> dict[str, object]:
-    metadata: dict[str, object] = {}
-    for key in ("kind", "scope", "embedding_text", "text"):
-        value = extra.get(key)
-        if value is not None:
-            metadata[key] = value
-    return metadata
-
-
-def _embedding_metadata_from_row(row: dict[str, Any]) -> MemoryEmbeddingMetadata:
-    return MemoryEmbeddingMetadata(
-        embedding_id=str(row["embedding_id"]) if row.get("embedding_id") is not None else None,
-        memory_id=str(row["memory_id"]),
-        namespace=tuple(row["namespace"]),
-        provider_id=str(row["provider_id"]),
-        model_id=str(row["model_id"]),
-        dimensions=int(row["dimensions"]),
-        status=str(row["status"]),
-        content_hash=row["content_hash"],
-        metadata=_decode_json(row["metadata_json"]),
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
-
-
-def _record_from_payload(payload: object) -> MemoryRecord:
-    data = _decode_json(payload)
-    return MemoryRecord.model_validate(data)
-
-
-def _decode_json(value: object) -> dict[str, Any]:
-    if isinstance(value, str):
-        return json.loads(value)
-    if isinstance(value, dict):
-        return value
-    return dict(value)  # type: ignore[arg-type]
-
 
 __all__ = ["PostgresMemoryRepository"]

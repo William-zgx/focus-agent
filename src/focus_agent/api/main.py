@@ -17,16 +17,17 @@ from .route_utils.token_usage import (
     _annotate_branch_tree_token_usage,
 )
 from .routers import (
+    admin_users,
     agent_governance,
     agent_team,
-    admin_users,
     auth_models,
     branches_merge,
     conversation_chat_context,
-    health_metrics,
     harness_runs,
+    health_metrics,
     memory,
     observability,
+    productivity,
 )
 from .routers.frontend_static import register_frontend_routes
 
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_team.router)
     app.include_router(agent_governance.router)
     app.include_router(memory.router)
+    app.include_router(productivity.router)
     app.include_router(observability.router)
     app.include_router(conversation_chat_context.router)
     app.include_router(branches_merge.router)

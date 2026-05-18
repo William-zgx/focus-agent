@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from focus_agent.core.repo_call import safe_repo_call
 from focus_agent.core.users import AuditDecision
 from focus_agent.repositories.user_repository import AuditEventListFilters, UserListFilters
 from focus_agent.security.permissions import AuthContext
@@ -16,9 +18,10 @@ from focus_agent.services.users import (
 )
 
 from ..contracts import (
+    AdminResetPasswordRequest,
     AuditEventListResponse,
     AuditEventResponse,
-    AdminResetPasswordRequest,
+    BackgroundJobSummaryResponse,
     CreateUserRequest,
     RevokeUserSessionRequest,
     UpdateUserRequest,
@@ -29,7 +32,13 @@ from ..contracts import (
     UserSessionListResponse,
     UserSessionResponse,
 )
-from ..deps import get_auth_service, get_user_service, require_permission
+from ..deps import (
+    get_app_runtime,
+    get_auth_service,
+    get_user_service,
+    require_admin_user,
+    require_permission,
+)
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -280,6 +289,23 @@ def list_audit_events(
     )
 
 
+@router.get("/background-jobs/summary", response_model=BackgroundJobSummaryResponse)
+def background_jobs_summary(
+    runtime: Any = Depends(get_app_runtime),
+    context: AuthContext = Depends(require_admin_user),
+) -> BackgroundJobSummaryResponse:
+    del context
+    metrics = _background_job_metrics(runtime)
+    warnings = _background_job_warnings(runtime, metrics)
+    return BackgroundJobSummaryResponse(
+        generated_at=_now(),
+        status="degraded" if warnings else "ok",
+        ready=not warnings,
+        metrics=metrics,
+        warnings=warnings,
+    )
+
+
 __all__ = ["router"]
 
 
@@ -293,3 +319,42 @@ def _require_reason(reason: str | None) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Audit reason is required.",
         )
+
+
+def _background_job_metrics(runtime: Any) -> dict[str, int]:
+    metrics = {
+        **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
+        **_snapshot_metrics(getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"),
+    }
+    return {str(key): int(value) for key, value in metrics.items()}
+
+
+def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int]:
+    snapshot = safe_repo_call(
+        source,
+        "snapshot",
+        default_missing={},
+        default_error={error_key: 1},
+    )
+    try:
+        return dict(snapshot)
+    except Exception:  # noqa: BLE001
+        return {error_key: 1}
+
+
+def _background_job_warnings(runtime: Any, metrics: dict[str, int]) -> list[str]:
+    warnings: list[str] = []
+    for key in ("job_backend_error", "durable_worker_snapshot_error"):
+        if int(metrics.get(key) or 0) > 0:
+            warnings.append(key)
+    dead_lettered = int(metrics.get("job_dead_lettered_total") or 0)
+    if dead_lettered > 0:
+        warnings.append(f"dead_lettered={dead_lettered}")
+    threshold = max(
+        int(float(getattr(getattr(runtime, "settings", None), "background_job_old_pending_seconds", 900.0) or 0.0)),
+        0,
+    )
+    oldest_pending_seconds = int(metrics.get("job_oldest_pending_seconds") or 0)
+    if threshold > 0 and oldest_pending_seconds > threshold:
+        warnings.append(f"oldest_pending_seconds={oldest_pending_seconds}")
+    return warnings

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import re
 from types import SimpleNamespace
 from typing import Any
 
@@ -21,8 +21,8 @@ from focus_agent.storage.namespaces import (
     user_profile_namespace,
 )
 
-from .runner import load_dataset, run_case
 from .runner import harness as eval_harness
+from .runner import load_dataset, run_case
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "memory.jsonl"
 MEMORY_CASES = load_dataset(DATASET_PATH)
@@ -32,7 +32,7 @@ class DeterministicMemoryStore:
     def __init__(self):
         self.data: dict[tuple[str, ...], dict[str, dict[str, Any]]] = defaultdict(dict)
         self.queries: list[tuple[tuple[str, ...], str]] = []
-        self._base_time = datetime(2026, 4, 22, tzinfo=timezone.utc)
+        self._base_time = datetime(2026, 4, 22, tzinfo=UTC)
         self._tick = 0
 
     def put(self, namespace, key, payload):  # type: ignore[no-untyped-def]

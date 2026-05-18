@@ -24,11 +24,11 @@ Focus Agent 是一个 Web-first Agent 应用平台骨架。它已经超过单一
 | 能力 | 架构含义 | 主要模块 |
 |------|----------|----------|
 | Branch-aware conversation | root thread 派生 child thread，探索不污染主线 | `BranchService`、branch repository、branch tree UI |
-| Controlled merge-back | 分支结论通过 proposal / decision 回到主线 | merge review、imported findings、memory promotion |
+| Controlled merge-back | 分支结论和 Agent Team worktree 结果通过 proposal / adoption review 回到主线 | merge review、Agent Team adoption、imported findings、memory promotion |
 | Long-context governance | 对话、记忆、工具观察和 artifact 需要预算与引用 | context policy、Context Engineering |
 | Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
 | Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
-| Release confidence | 发布前把 readiness、trajectory、eval、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、release evidence |
+| Release confidence | 发布前把 readiness、trajectory、eval、feedback、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、nightly regression、release evidence |
 | Access and admin governance | 登录、注册、refresh session、持久化用户、角色、状态、密码重置和审计事件统一治理 | auth service、user repository、Auth / Admin API、Auth / Account / Admin Web |
 | Local-first development | 本地命令可以自动托管 repo-local PostgreSQL | `scripts/serve-*.sh`、`make serve-dev` |
 
@@ -127,6 +127,8 @@ Persistence
 | Agent Team module | `services/agent_team_*`、`apps/web/src/features/agent-team`、Agent Team API | 作为独立产品模块维护；planning/run/merge、workbench state、task output helper 分别收口，避免与普通 chat/harness 逻辑互相泄漏 |
 | Persistence adapters | Postgres / SQLite repositories、schema、migration、本地 fallback | schema 和 repository contract 是稳定边界；兼容路径先用引用扫描证明安全，再删除 |
 | Release and eval tooling | `scripts/`、release/eval/smoke tests、contract snapshots | CLI 参数、exit code、报告字段稳定；重复 I/O 和 report 读取可抽 helper，但不改变输出 shape |
+
+`make architecture-report` 生成 `reports/architecture/latest.json`，用于非阻断地观察大型文件和 import 边界信号。它不属于 CI/release gate 的阻断条件；发现问题后按模块边界拆小 helper 或调整依赖方向。
 
 当一个改动跨越两个以上边界时，默认拆成多阶段：先抽私有 helper 或 typed port，再迁移调用点，最后才考虑删除 compatibility alias。
 
@@ -411,15 +413,16 @@ flowchart TD
 配置 `DATABASE_URI` 后，主运行态数据走 Postgres primary persistence：
 
 - conversation / branch / thread access
-- Agent Team sessions / tasks / outputs
+- Agent Team sessions / tasks / outputs / merge reviews
 - users / roles / sessions / admin audit events
 - LangGraph checkpoint/store
 - artifact metadata
 - trajectory turn / step observability tables
+- feedback events、context/memory evidence、skill selection events
 
-应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 `focus_conversations`、`focus_thread_access`、`focus_branches`、`focus_artifacts`、`focus_agent_team_sessions`、`focus_agent_team_tasks`、`focus_agent_team_outputs` 等表。
+应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 conversation、thread access、branch、artifact、Agent Team、productivity、feedback、context/memory evidence 和 skill selection event 等表。schema v14 是 Agent Team adoption / governance suite 的迁移版本。
 
-Agent Team 的 Postgres 表使用 `data_json JSONB NOT NULL` 保存完整 Pydantic model，辅助列只用于按用户、root thread、session/task 和创建时间查询排序。schema migration 会逐版本执行，因此已有 v1 数据库会继续升级到包含 Agent Team 表的 v2。
+Agent Team 的 Postgres 主表使用 `data_json JSONB NOT NULL` 保存完整 Pydantic model，辅助列只用于按用户、root thread、session/task 和创建时间查询排序。schema migration 会逐版本执行，因此已有数据库会继续升级到 v14 的 merge review、feedback、context evidence 和 skill operation 表。
 
 Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、checksum、source thread / branch、summary 等字段。
 
@@ -622,6 +625,8 @@ make web-check
 make web-build
 make ui-smoke
 make ui-smoke-observability
+make ui-smoke-agent-team-adoption
+make feedback-regression
 ```
 
 影响 Admin Console、Auth UI 或访问治理：

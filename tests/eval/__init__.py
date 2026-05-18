@@ -6,8 +6,8 @@ Usage:
     pytest tests/eval/test_golden_suite.py
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 _SRC_DIR = Path(__file__).resolve().parents[2] / "src"
 if str(_SRC_DIR) not in sys.path:

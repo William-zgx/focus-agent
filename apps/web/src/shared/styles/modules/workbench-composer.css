@@ -1,278 +1,278 @@
 /* Workbench composer integration. */
 .fa-chat-main-body .fa-composer-panel {
-  width: 100%;
-  align-self: end;
-  border-radius: 24px;
+	width: 100%;
+	align-self: end;
+	border-radius: 24px;
 }
 
 .fa-chat-main-body .fa-composer-card {
-  display: grid;
-  gap: 8px;
+	display: grid;
+	gap: 8px;
 }
 
 .fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 18px;
+	gap: 8px;
+	padding: 10px 12px;
+	border-radius: 18px;
 }
 
 .fa-chat-main-body .fa-composer-footer-row {
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  min-height: 34px;
-  flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	min-height: 34px;
+	flex-wrap: nowrap;
 }
 
 .fa-chat-main-body .fa-composer-model-shell {
-  min-width: 210px;
-  max-width: 340px;
+	min-width: 210px;
+	max-width: 340px;
 }
 
 :root[data-theme="light"] .fa-chat-main-body .fa-composer-panel {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.98),
-      rgba(244, 246, 252, 0.96)
-    ),
-    radial-gradient(
-      circle at top right,
-      rgba(99, 102, 241, 0.06),
-      transparent 46%
-    );
+	background:
+		linear-gradient(
+			180deg,
+			rgba(255, 255, 255, 0.98),
+			rgba(244, 246, 252, 0.96)
+		),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.06),
+			transparent 46%
+		);
 }
 
 .fa-chat-header-actions {
-  scrollbar-color: color-mix(
-      in srgb,
-      var(--fa-accent) 24%,
-      var(--fa-border) 76%
-    )
-    transparent;
+	scrollbar-color: color-mix(
+			in srgb,
+			var(--fa-accent) 24%,
+			var(--fa-border) 76%
+		)
+		transparent;
 }
 
 .fa-chat-header-actions::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
+	background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
 }
 
 .fa-chat-toolbar-pill,
 .fa-chat-toolbar-button {
-  border-color: color-mix(in srgb, var(--fa-border) 68%, transparent);
-  background: var(--fa-toolbar-button-bg);
+	border-color: color-mix(in srgb, var(--fa-border) 68%, transparent);
+	background: var(--fa-toolbar-button-bg);
 }
 
 .fa-chat-toolbar-pill:hover,
 .fa-chat-toolbar-button:hover {
-  border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
-  background: var(--fa-toolbar-button-hover-bg);
+	border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
+	background: var(--fa-toolbar-button-hover-bg);
 }
 
 .fa-chat-toolbar-button.is-primary {
-  border-color: color-mix(in srgb, var(--fa-accent) 34%, var(--fa-border) 66%);
-  background: var(--fa-gradient-brand);
-  box-shadow: 0 0 20px
-    color-mix(in srgb, var(--fa-accent-primary-glow) 60%, transparent);
+	border-color: color-mix(in srgb, var(--fa-accent) 34%, var(--fa-border) 66%);
+	background: var(--fa-gradient-brand);
+	box-shadow: 0 0 20px
+		color-mix(in srgb, var(--fa-accent-primary-glow) 60%, transparent);
 }
 
 .fa-chat-toolbar-button.is-primary:hover {
-  background: linear-gradient(135deg, #7377f8 0%, #9567f8 100%);
-  box-shadow: 0 0 30px
-    color-mix(in srgb, var(--fa-accent-primary-glow) 72%, transparent);
+	background: linear-gradient(135deg, #7377f8 0%, #9567f8 100%);
+	box-shadow: 0 0 30px
+		color-mix(in srgb, var(--fa-accent-primary-glow) 72%, transparent);
 }
 
 .fa-toolbar-icon {
-  color: color-mix(in srgb, var(--fa-text) 74%, var(--fa-text-muted) 26%);
+	color: color-mix(in srgb, var(--fa-text) 74%, var(--fa-text-muted) 26%);
 }
 
 .fa-toolbar-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .fa-composer-panel {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fa-panel-2) 98%, transparent),
-      color-mix(in srgb, var(--fa-panel-1) 96%, transparent)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--fa-accent-soft) 14%, transparent),
-      transparent 44%
-    );
-  border-color: color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--fa-panel-2) 98%, transparent),
+			color-mix(in srgb, var(--fa-panel-1) 96%, transparent)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-accent-soft) 14%, transparent),
+			transparent 44%
+		);
+	border-color: color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
 }
 
 .fa-composer-shell.fa-composer-input-shell {
-  grid-template-columns: minmax(0, 1fr);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fa-panel-1) 86%, transparent),
-      color-mix(in srgb, var(--fa-panel-2) 96%, transparent)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--fa-accent) 12%, transparent),
-      transparent 56%
-    );
+	grid-template-columns: minmax(0, 1fr);
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--fa-panel-1) 86%, transparent),
+			color-mix(in srgb, var(--fa-panel-2) 96%, transparent)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-accent) 12%, transparent),
+			transparent 56%
+		);
 }
 
 .fa-composer-shell.fa-composer-input-shell:focus-within {
-  border-color: color-mix(in srgb, var(--fa-accent) 54%, var(--fa-border) 46%);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--fa-accent-primary-glow) 36%, transparent),
-    0 0 20px color-mix(in srgb, var(--fa-accent-primary-glow) 65%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	border-color: color-mix(in srgb, var(--fa-accent) 54%, var(--fa-border) 46%);
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--fa-accent-primary-glow) 36%, transparent),
+		0 0 20px color-mix(in srgb, var(--fa-accent-primary-glow) 65%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .fa-composer-shell.fa-composer-input-shell.is-readonly {
-  border-color: color-mix(in srgb, var(--fa-border) 82%, transparent);
-  box-shadow: none;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fa-panel-1) 90%, transparent),
-      color-mix(in srgb, var(--fa-panel-2) 92%, transparent)
-    ),
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--fa-text-muted) 8%, transparent),
-      transparent 56%
-    );
+	border-color: color-mix(in srgb, var(--fa-border) 82%, transparent);
+	box-shadow: none;
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--fa-panel-1) 90%, transparent),
+			color-mix(in srgb, var(--fa-panel-2) 92%, transparent)
+		),
+		radial-gradient(
+			circle at top right,
+			color-mix(in srgb, var(--fa-text-muted) 8%, transparent),
+			transparent 56%
+		);
 }
 
 .fa-composer-shell.fa-composer-input-shell.is-readonly:focus-within {
-  border-color: color-mix(in srgb, var(--fa-border) 82%, transparent);
-  box-shadow: none;
+	border-color: color-mix(in srgb, var(--fa-border) 82%, transparent);
+	box-shadow: none;
 }
 
 .fa-composer-textarea[readonly] {
-  cursor: not-allowed;
-  color: color-mix(in srgb, var(--fa-text) 74%, var(--fa-text-muted) 26%);
+	cursor: not-allowed;
+	color: color-mix(in srgb, var(--fa-text) 74%, var(--fa-text-muted) 26%);
 }
 
 .fa-composer-textarea[readonly]::placeholder {
-  color: color-mix(in srgb, var(--fa-text-muted) 86%, transparent);
+	color: color-mix(in srgb, var(--fa-text-muted) 86%, transparent);
 }
 
 .fa-composer-model-row {
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 0;
-  order: 1;
+	display: flex;
+	align-items: stretch;
+	justify-content: flex-end;
+	gap: 6px;
+	min-width: 0;
+	flex: 1 1 0;
+	order: 1;
 }
 
 .fa-composer-model-controls {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  min-width: 0;
-  width: auto;
-  flex: 1 1 auto;
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	min-width: 0;
+	width: auto;
+	flex: 1 1 auto;
 }
 
 .fa-composer-model-anchor {
-  position: relative;
-  flex: 1 1 auto;
-  width: auto;
-  max-width: none;
-  min-width: 0;
+	position: relative;
+	flex: 1 1 auto;
+	width: auto;
+	max-width: none;
+	min-width: 0;
 }
 
 .fa-composer-model-shell {
-  min-width: 220px;
-  max-width: 340px;
-  flex: 1 1 auto;
+	min-width: 220px;
+	max-width: 340px;
+	flex: 1 1 auto;
 }
 
 .fa-composer-model-trigger {
-  padding: 0 10px 0 6px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--fa-panel-2) 96%, var(--fa-accent) 4%),
-    color-mix(in srgb, var(--fa-panel-1) 94%, var(--fa-accent) 6%)
-  );
+	padding: 0 10px 0 6px;
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fa-panel-2) 96%, var(--fa-accent) 4%),
+		color-mix(in srgb, var(--fa-panel-1) 94%, var(--fa-accent) 6%)
+	);
 }
 
 .fa-composer-model-trigger-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 4px;
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 4px;
 }
 
 .fa-composer-model-trigger-provider {
-  display: none;
+	display: none;
 }
 
 .fa-composer-model-trigger-icon {
-  transform: rotate(-90deg);
+	transform: rotate(-90deg);
 }
 
 .fa-composer-model-trigger[aria-expanded="true"]
-  .fa-composer-model-trigger-icon {
-  transform: rotate(0deg);
+	.fa-composer-model-trigger-icon {
+	transform: rotate(0deg);
 }
 
 .fa-composer-model-thinking-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 0 0 auto;
 }
 
 .fa-thinking-toggle {
-  min-height: 26px;
-  padding: 0 11px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fa-border) 74%, transparent);
-  background: color-mix(in srgb, var(--fa-panel-3) 86%, transparent);
-  color: color-mix(in srgb, var(--fa-text) 84%, var(--fa-text-muted) 16%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+	min-height: 26px;
+	padding: 0 11px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 74%, transparent);
+	background: color-mix(in srgb, var(--fa-panel-3) 86%, transparent);
+	color: color-mix(in srgb, var(--fa-text) 84%, var(--fa-text-muted) 16%);
+	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.01em;
 }
 
 .fa-thinking-toggle:hover {
-  transform: none;
-  border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
-  background: color-mix(in srgb, var(--fa-panel-3) 76%, var(--fa-accent) 8%);
+	transform: none;
+	border-color: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
+	background: color-mix(in srgb, var(--fa-panel-3) 76%, var(--fa-accent) 8%);
 }
 
 .fa-thinking-toggle.is-active {
-  border-color: color-mix(in srgb, var(--fa-accent) 48%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--fa-accent) 72%, white 8%),
-    color-mix(in srgb, var(--fa-accent) 58%, var(--fa-panel-3) 42%)
-  );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 32%, transparent),
-    0 8px 18px
-      color-mix(in srgb, var(--fa-accent-primary-glow) 36%, transparent);
-  color: #fff;
+	border-color: color-mix(in srgb, var(--fa-accent) 48%, transparent);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fa-accent) 72%, white 8%),
+		color-mix(in srgb, var(--fa-accent) 58%, var(--fa-panel-3) 42%)
+	);
+	box-shadow:
+		inset 0 0 0 1px color-mix(in srgb, var(--fa-accent) 32%, transparent),
+		0 8px 18px
+		color-mix(in srgb, var(--fa-accent-primary-glow) 36%, transparent);
+	color: #fff;
 }
 
 .fa-composer-icon-button.is-send {
-  background: var(--fa-gradient-brand);
-  box-shadow: 0 0 20px
-    color-mix(in srgb, var(--fa-accent-primary-glow) 60%, transparent);
+	background: var(--fa-gradient-brand);
+	box-shadow: 0 0 20px
+		color-mix(in srgb, var(--fa-accent-primary-glow) 60%, transparent);
 }
 
 .fa-composer-icon-button.is-send:hover:not(:disabled) {
-  background: linear-gradient(135deg, #7377f8 0%, #9567f8 100%);
-  box-shadow: 0 0 30px
-    color-mix(in srgb, var(--fa-accent-primary-glow) 72%, transparent);
+	background: linear-gradient(135deg, #7377f8 0%, #9567f8 100%);
+	box-shadow: 0 0 30px
+		color-mix(in srgb, var(--fa-accent-primary-glow) 72%, transparent);
 }
 
 :root[data-theme="light"] .fa-chat-toolbar-pill,
@@ -281,95 +281,95 @@
 :root[data-theme="light"] .fa-conversation-select,
 :root[data-theme="light"] .fa-composer-model-trigger,
 :root[data-theme="light"] .fa-composer-icon-button.is-clear {
-  background: var(--fa-toolbar-button-bg);
+	background: var(--fa-toolbar-button-bg);
 }
 
 :root[data-theme="light"] .fa-conversation-token-trigger:hover,
 :root[data-theme="light"] .fa-conversation-token-trigger:focus-visible {
-  background: var(--fa-toolbar-button-hover-bg);
+	background: var(--fa-toolbar-button-hover-bg);
 }
 
 .fa-composer-shell.fa-composer-input-shell {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 10px;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 10px;
 }
 
 .fa-composer-input-row {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
+	grid-column: 1;
+	grid-row: 1;
+	min-width: 0;
 }
 
 .fa-composer-footer-row {
-  grid-column: 2;
-  grid-row: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-  width: clamp(178px, 19vw, 192px);
-  height: auto;
+	grid-column: 2;
+	grid-row: 1;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	min-width: 0;
+	width: clamp(178px, 19vw, 192px);
+	height: auto;
 }
 
 .fa-composer-model-row {
-  flex: 1 1 0;
-  width: auto;
+	flex: 1 1 0;
+	width: auto;
 }
 
 .fa-composer-model-controls {
-  flex-direction: row;
-  width: auto;
-  flex: 1 1 auto;
+	flex-direction: row;
+	width: auto;
+	flex: 1 1 auto;
 }
 
 .fa-composer-model-anchor {
-  width: auto;
-  flex: 1 1 auto;
+	width: auto;
+	flex: 1 1 auto;
 }
 
 .fa-composer-model-shell {
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+	max-width: none;
+	flex: 1 1 auto;
 }
 
 .fa-composer-model-thinking-toggle {
-  width: auto;
+	width: auto;
 }
 
 .fa-thinking-toggle {
-  width: auto;
-  justify-content: center;
+	width: auto;
+	justify-content: center;
 }
 
 .fa-composer-actions-row {
-  width: auto;
-  flex: 0 0 auto;
-  justify-content: flex-end;
+	width: auto;
+	flex: 0 0 auto;
+	justify-content: flex-end;
 }
 
 @media (max-width: 900px) {
-  .fa-composer-shell.fa-composer-input-shell {
-      grid-template-columns: minmax(0, 1fr);
-    }
+	.fa-composer-shell.fa-composer-input-shell {
+		grid-template-columns: minmax(0, 1fr);
+	}
 
-  .fa-composer-input-row {
-      grid-column: 1;
-      grid-row: 1;
-    }
+	.fa-composer-input-row {
+		grid-column: 1;
+		grid-row: 1;
+	}
 
-  .fa-composer-footer-row {
-      grid-column: 1;
-      grid-row: 2;
-      flex-direction: column;
-      align-items: stretch;
-      height: auto;
-    }
+	.fa-composer-footer-row {
+		grid-column: 1;
+		grid-row: 2;
+		flex-direction: column;
+		align-items: stretch;
+		height: auto;
+	}
 
-  .fa-composer-model-controls {
-      width: 100%;
-    }
+	.fa-composer-model-controls {
+		width: 100%;
+	}
 }

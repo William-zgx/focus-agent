@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -15,6 +15,7 @@ from .dedupe import (
     merge_duplicate_records,
     user_preference_topic,
 )
+from .embedding_service import MemoryEmbeddingService
 from .models import (
     MemoryAuditEvent,
     MemoryRecord,
@@ -24,7 +25,6 @@ from .models import (
     MemoryWriteDecisionStatus,
     MemoryWriteRequest,
 )
-from .embedding_service import MemoryEmbeddingService
 from .policy import MemoryPolicy
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,7 @@ class MemoryService:
             conflict = existing.model_copy(
                 update={
                     "status": MemoryStatus.CONFLICT,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             )
             self.repository.upsert_record(conflict)
@@ -266,7 +266,7 @@ class MemoryService:
 
 
 def _record_from_request(request: MemoryWriteRequest) -> MemoryRecord:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     record = MemoryRecord(
         memory_id=str(uuid4()),
         kind=request.kind,

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import logging
-
 from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
 from langchain.messages import AIMessage, HumanMessage
 
-from focus_agent.services.branches import BranchService
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.services.branches import BranchService
 from focus_agent.services.chat_turn_errors import ConcurrentTurnError
 from focus_agent.services.coordination import (
     CoordinationBackend,

@@ -7,11 +7,11 @@ import shlex
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
-
+from typing import Any
 
 TAIL_LINE_LIMIT = 80
 TAIL_CHAR_LIMIT = 12_000
@@ -75,6 +75,13 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
         "used_by": "release-evidence --alert-report-json",
     },
     {
+        "key": "postgres_migration_report",
+        "env": "POSTGRES_MIGRATION_REPORT_URL",
+        "source": "vars.FOCUS_AGENT_POSTGRES_MIGRATION_REPORT_URL",
+        "artifact_path": "reports/release-gate/postgres-migration.json",
+        "used_by": "release-evidence --postgres-migration-report-json",
+    },
+    {
         "key": "baseline_eval",
         "env": "BASELINE_EVAL_REPORT_URL",
         "source": "vars.FOCUS_AGENT_BASELINE_EVAL_REPORT_URL",
@@ -94,6 +101,12 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
         "used_by": "release-evidence --approval-status",
     },
     {
+        "key": "approval_url",
+        "env": "APPROVAL_URL",
+        "source": "workflow_dispatch.inputs.approval_url or github workflow run URL",
+        "used_by": "release-evidence --approval-url",
+    },
+    {
         "key": "artifact_storage",
         "env": "ARTIFACT_STORAGE_DIR",
         "source": "job.env.ARTIFACT_STORAGE_DIR",
@@ -104,6 +117,12 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
         "env": "RETENTION_DAYS",
         "source": "workflow_dispatch.inputs.retention_days",
         "used_by": "release-evidence --retention-days and actions/upload-artifact retention-days",
+    },
+    {
+        "key": "environment_name",
+        "env": "ENVIRONMENT_NAME",
+        "source": "workflow_dispatch.inputs.environment_name or release-dry-run",
+        "used_by": "GitHub protected Environment and release evidence ci metadata",
     },
     {
         "key": "smoke_auth_token",
@@ -182,6 +201,27 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
 )
 
 
+def _github_actions_metadata(env: Mapping[str, str], *, run_id: str, dry_run: bool) -> dict[str, Any]:
+    return {
+        "actor": env.get("GITHUB_ACTOR"),
+        "artifact_name": env.get("RELEASE_GATE_ARTIFACT_NAME")
+        or (f"release-gate-reports-{run_id}" if run_id else None),
+        "environment_name": env.get("ENVIRONMENT_NAME"),
+        "event_name": env.get("GITHUB_EVENT_NAME"),
+        "is_github_actions": env.get("GITHUB_ACTIONS") == "true",
+        "repository": env.get("GITHUB_REPOSITORY"),
+        "retention_days": env.get("RETENTION_DAYS"),
+        "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
+        "run_id": run_id,
+        "run_number": env.get("GITHUB_RUN_NUMBER"),
+        "server_url": env.get("GITHUB_SERVER_URL"),
+        "sha": env.get("GITHUB_SHA"),
+        "workflow": env.get("GITHUB_WORKFLOW"),
+        "workflow_ref": env.get("GITHUB_WORKFLOW_REF"),
+        "mode": "dry_run" if dry_run else "production",
+    }
+
+
 def validate_deployment_binding(
     *,
     env: Mapping[str, str] | None = None,
@@ -225,6 +265,7 @@ def validate_deployment_binding(
     status = "passed" if not missing and not invalid else "failed"
     payload = {
         "bindings": records,
+        "github_actions": _github_actions_metadata(env, run_id=run_id, dry_run=dry),
         "meta": {
             "ci_provider": "github_actions",
             "dry_run": dry,
@@ -685,6 +726,7 @@ def run_release_gate(
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    argv = list(sys.argv[1:] if argv is None else argv)
     if argv and len(argv) > 0 and argv[0] == "deployment-binding":
         parser = argparse.ArgumentParser(
             prog="release_gate.py deployment-binding",

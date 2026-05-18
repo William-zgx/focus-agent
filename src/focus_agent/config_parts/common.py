@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import re
-from typing import MutableMapping
-
+from collections.abc import MutableMapping
+from pathlib import Path
 
 DEFAULT_LOCAL_ENV_FILE = ".focus_agent/local.env"
 _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")

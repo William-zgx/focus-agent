@@ -1,0 +1,207 @@
+.fa-agent-team-adoption {
+	display: grid;
+	gap: 12px;
+	margin: 12px;
+	padding: 14px;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-1) 92%, transparent);
+	box-shadow: var(--fa-shadow);
+}
+
+.fa-agent-team-adoption-heading,
+.fa-agent-team-adoption-actions,
+.fa-agent-team-adoption-stats,
+.fa-agent-team-adoption-tags {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.fa-agent-team-adoption-heading {
+	justify-content: space-between;
+}
+
+.fa-agent-team-adoption-heading > div:first-child {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.fa-agent-team-adoption-heading span,
+.fa-agent-team-adoption-stats span,
+.fa-agent-team-adoption-block > span,
+.fa-agent-team-adoption-task > span {
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	font-weight: 800;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.fa-agent-team-adoption-heading strong {
+	color: var(--fa-text);
+	font-size: 1rem;
+}
+
+.fa-agent-team-adoption-actions {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.fa-agent-team-adoption-actions button {
+	min-height: 34px;
+	padding: 0 10px;
+	border: 1px solid var(--fa-border-strong);
+	border-radius: 7px;
+	background: var(--fa-panel-2);
+	color: var(--fa-text);
+	font-size: 0.78rem;
+	font-weight: 800;
+	cursor: pointer;
+}
+
+.fa-agent-team-adoption-actions button:hover:not(:disabled) {
+	border-color: var(--fa-accent);
+}
+
+.fa-agent-team-adoption-actions button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.fa-agent-team-adoption-stats {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.fa-agent-team-adoption-stats > div {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid var(--fa-border);
+	border-radius: 7px;
+	background: var(--fa-panel-2);
+}
+
+.fa-agent-team-adoption-stats strong {
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: 0.9rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-adoption-grid {
+	display: grid;
+	grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
+	gap: 12px;
+	min-width: 0;
+}
+
+.fa-agent-team-adoption-task-list,
+.fa-agent-team-adoption-detail {
+	display: grid;
+	align-content: start;
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-team-adoption-task {
+	display: grid;
+	gap: 5px;
+	width: 100%;
+	min-height: 84px;
+	padding: 10px;
+	border: 1px solid var(--fa-border);
+	border-radius: 7px;
+	background: var(--fa-panel-2);
+	color: var(--fa-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.fa-agent-team-adoption-task:hover:not(:disabled),
+.fa-agent-team-adoption-task.is-selected {
+	border-color: var(--fa-accent);
+	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-2));
+}
+
+.fa-agent-team-adoption-task.is-disabled {
+	opacity: 0.58;
+	cursor: not-allowed;
+}
+
+.fa-agent-team-adoption-task strong,
+.fa-agent-team-adoption-task small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-agent-team-adoption-task strong {
+	font-size: 0.88rem;
+}
+
+.fa-agent-team-adoption-task small {
+	color: var(--fa-text-muted);
+	font-size: 0.74rem;
+}
+
+.fa-agent-team-adoption-tags {
+	flex-wrap: wrap;
+}
+
+.fa-agent-team-adoption-tags em {
+	padding: 2px 6px;
+	border: 1px solid var(--fa-border);
+	border-radius: 999px;
+	color: var(--fa-text-muted);
+	font-size: 0.68rem;
+	font-style: normal;
+	font-weight: 800;
+}
+
+.fa-agent-team-adoption-block {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid var(--fa-border);
+	border-radius: 7px;
+	background: var(--fa-panel-2);
+}
+
+.fa-agent-team-adoption-block pre,
+.fa-agent-team-adoption-block ul {
+	max-height: 180px;
+	margin: 0;
+	overflow: auto;
+	color: var(--fa-text);
+	font-size: 0.76rem;
+	line-height: 1.45;
+}
+
+.fa-agent-team-adoption-block ul {
+	padding-left: 18px;
+}
+
+@media (max-width: 900px) {
+	.fa-agent-team-adoption-heading,
+	.fa-agent-team-adoption-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.fa-agent-team-adoption-heading {
+		align-items: stretch;
+	}
+
+	.fa-agent-team-adoption-actions {
+		justify-content: flex-start;
+	}
+
+	.fa-agent-team-adoption-stats {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}

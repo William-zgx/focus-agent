@@ -175,6 +175,30 @@ def test_extract_visible_text_delta_ignores_orphaned_tool_protocol_tail_fragment
         == ""
     )
     assert extract_visible_text_delta(DummyChunk(content="tool-result://web_search/call-123")) == ""
+    assert (
+        extract_visible_text_delta(
+            DummyChunk(
+                content='src/focus_agent/capabilities/tool_manifest.py="offset" string20025.claude'
+            )
+        )
+        == ""
+    )
+    assert (
+        extract_visible_text_delta(
+            DummyChunk(
+                content='src/focus_agent/capabilities/default_tool_modules/workspace.pyfalse">1212alls>'
+            )
+        )
+        == ""
+    )
+    assert (
+        extract_visible_text_delta(
+            DummyChunk(
+                content='src/focus_agent/capabilities/tool_manifest.py="line_number" string20520'
+            )
+        )
+        == ""
+    )
 
 
 def test_safe_visible_text_transition_holds_split_tool_call_prefixes():

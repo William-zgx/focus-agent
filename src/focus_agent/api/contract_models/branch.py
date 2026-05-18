@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 from focus_agent.core.branching import (
     BranchActionNavigation,
     BranchActionProposal,
-    BranchRole,
     BranchRecord,
+    BranchRole,
     BranchTreeNode,
     ImportedConclusion,
     MergeMode,
@@ -56,6 +56,7 @@ class ApplyMergeDecisionRequest(BaseModel):
 
 class ApplyMergeDecisionResponse(BaseModel):
     imported: ImportedConclusion | None = None
+    target_thread_id: str | None = None
 
 
 class BranchTreeResponse(BaseModel):

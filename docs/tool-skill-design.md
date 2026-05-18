@@ -234,6 +234,10 @@ Focus Agent already has these default tools:
 - `web_search`
 - `skills_list`
 - `skill_view`
+- `skill_sources`
+- `skills_search`
+- `skills_refresh_index`
+- `skill_install`
 
 The newer product primitives make the agent useful beyond repository work: explicit memory control, URL reading, artifact iteration, and conversation summarization.
 
@@ -369,7 +373,7 @@ The first general-agent batch is now part of the baseline:
 - Web retrieval: `web_search`, `web_fetch`
 - Explicit memory control: `memory_save`, `memory_search`, `memory_forget`
 - Conversation recovery: `conversation_summary`
-- Skill inspection: `skills_list`, `skill_view`
+- Skill discovery and installation: `skills_list`, `skill_view`, `skill_sources`, `skills_search`, `skills_refresh_index`, `skill_install`
 
 These capabilities are still primitives. For example, `research` decides how to gather and synthesize evidence, while `web_search`, `web_fetch`, and artifact tools perform the concrete operations.
 

@@ -4,16 +4,19 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "contract:check": "make contract-check",
+    "lint-strict": "make lint-strict",
     "sdk:build": "pnpm --filter @focus-agent/web-sdk build",
     "sdk:check": "pnpm --filter @focus-agent/web-sdk check",
     "sdk:validate:transport": "pnpm --filter @focus-agent/web-sdk validate:transport",
     "web:dev": "pnpm --filter @focus-agent/web-app dev",
     "web:build": "pnpm --filter @focus-agent/web-app build",
     "web:check": "pnpm --filter @focus-agent/web-app check",
+    "web:lint:full": "pnpm --filter @focus-agent/web-app lint:full",
     "web:format": "pnpm --filter @focus-agent/web-app format",
     "web:format:check": "pnpm --filter @focus-agent/web-app format:check",
+    "web:format:check:full": "pnpm --filter @focus-agent/web-app format:check:full",
     "test:thread-stream-frontend-regressions": "node --test tests/test_thread_stream_frontend_regressions.mjs",
-    "check": "pnpm contract:check && pnpm sdk:check && pnpm sdk:validate:transport && pnpm web:format:check && pnpm web:check && pnpm test:thread-stream-frontend-regressions",
+    "check": "pnpm lint-strict && pnpm contract:check && pnpm sdk:check && pnpm sdk:validate:transport && pnpm web:lint:full && pnpm web:format:check:full && pnpm web:check && pnpm test:thread-stream-frontend-regressions",
     "build": "pnpm sdk:build && pnpm web:build",
     "ci": "pnpm check && pnpm build"
   }

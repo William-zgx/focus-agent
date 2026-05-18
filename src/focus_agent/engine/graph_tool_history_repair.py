@@ -9,7 +9,6 @@ from ..config import Settings
 from ..core.state import AgentState
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 
-
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 2
 
 

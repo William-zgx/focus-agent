@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 import uuid
+from typing import Any
 
-from focus_agent.agent_delegation_models import AgentTask
-from focus_agent.agent_execution import (
+from focus_agent.delegation.delegation_models import AgentTask
+from focus_agent.delegation.execution import (
     DelegatedRunExecutor,
     SubagentRegistry,
     executor_for_mode,
     normalize_delegation_execution_mode,
     run_delegated_tasks,
 )
-from focus_agent.agent_roles import AgentRole, normalize_agent_role
+from focus_agent.delegation.roles import AgentRole, normalize_agent_role
 from focus_agent.config import Settings
 
 from ..runtime import RunRecord
@@ -81,6 +81,14 @@ class AgentTeamSubagentRunner:
                 "tool_calls": result.tool_calls,
                 "cost": result.cost,
                 "error": result.error,
+                "workspace_id": result.workspace_id,
+                "workspace_path": result.workspace_path,
+                "workspace_branch": result.workspace_branch,
+                "base_commit": result.base_commit,
+                "changed_files": list(result.changed_files),
+                "diff_summary": result.diff_summary,
+                "test_evidence": list(result.test_evidence),
+                "workspace_status": result.workspace_status,
             },
             artifact={
                 "run": result.model_dump(mode="json"),
@@ -153,6 +161,12 @@ def _task_from_request(request: SubagentTaskRequest, *, run_record: RunRecord) -
             or request.metadata.get("run_isolation_key")
             or f"harness:{run_record.run_id}"
         ),
+        workspace_id=_optional_str(request.input.get("workspace_id") or request.metadata.get("workspace_id")),
+        workspace_path=_optional_str(request.input.get("workspace_path") or request.metadata.get("workspace_path")),
+        workspace_branch=_optional_str(
+            request.input.get("workspace_branch") or request.metadata.get("workspace_branch")
+        ),
+        base_commit=_optional_str(request.input.get("base_commit") or request.metadata.get("base_commit")),
     )
 
 
@@ -202,6 +216,11 @@ def _bool_value(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _optional_str(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
 
 
 __all__ = ["AgentTeamSubagentRunner"]

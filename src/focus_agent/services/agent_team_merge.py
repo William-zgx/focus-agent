@@ -1,29 +1,81 @@
 from __future__ import annotations
 
-import json
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from focus_agent.core.agent_team import (
     AgentTeamFinalAnswerStatus,
     AgentTeamMergeBundle,
     AgentTeamMergeDecision,
+    AgentTeamMergeReview,
+    AgentTeamMergeReviewEvent,
+    AgentTeamMergeReviewStatus,
     AgentTeamRecommendedAction,
     AgentTeamSession,
     AgentTeamSessionStatus,
     AgentTeamTask,
-    AgentTeamTaskOutput,
-    AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.multi_agent.conflict_detector import MergeConflictDetector
 
 from .agent_team_helpers import _dedupe, _now
+from .agent_team_merge_helpers import (
+    _build_final_answer,
+    _execution_evidence,
+    _has_review_or_verification_evidence,
+    _merge_test_evidence,
+    _missing_required_evidence,
+    _planning_risk_notes,
+)
+from .agent_team_merge_preview import _build_merge_review_preview
+from .agent_team_merge_review_actions import (
+    _capture_merge_review_payload,
+    _merge_review_applied,
+    _merge_review_apply_conflict,
+    _merge_review_apply_error,
+    _merge_review_event,
+)
+from .agent_team_merge_review_git import (
+    check_patch as _check_patch,
+)
+from .agent_team_merge_review_git import (
+    repo_root as _repo_root,
+)
+from .agent_team_merge_review_git import (
+    run_git_apply as _run_git_apply,
+)
 
 
-_REVIEW_EVIDENCE_ROLES = {
-    "reviewer",
-    "test_engineer",
-    "verifier",
-}
+def _multi_agent_merge_conflict_detection_enabled(settings: Any | None) -> bool:
+    return bool(getattr(settings, "multi_agent_v2_enabled", False))
+
+
+def _task_outputs_for_conflict_detection(
+    *,
+    tasks: list[AgentTeamTask],
+    outputs: list[Any],
+) -> dict[str, dict[str, Any]]:
+    by_task: dict[str, dict[str, Any]] = {
+        task.task_id: {
+            "summary": task.verification_summary or "",
+            "changed_files": list(task.changed_files),
+        }
+        for task in tasks
+    }
+    for output in outputs:
+        payload = by_task.setdefault(
+            output.task_id,
+            {"summary": "", "changed_files": []},
+        )
+        if output.summary:
+            payload["summary"] = " ".join(
+                part for part in [payload.get("summary"), output.summary] if part
+            )
+        payload["changed_files"] = _dedupe(
+            [*payload.get("changed_files", []), *output.changed_files]
+        )
+    return by_task
 
 
 class AgentTeamMergeMixin:
@@ -45,7 +97,12 @@ class AgentTeamMergeMixin:
         pending = [
             task
             for task in tasks
-            if task.status in {AgentTeamTaskStatus.PENDING, AgentTeamTaskStatus.RUNNING}
+            if task.status
+            in {
+                AgentTeamTaskStatus.PENDING,
+                AgentTeamTaskStatus.QUEUED,
+                AgentTeamTaskStatus.RUNNING,
+            }
         ]
         risk_items = _dedupe(
             [note for task in tasks for note in task.risk_notes]
@@ -55,7 +112,7 @@ class AgentTeamMergeMixin:
         missing_required_evidence = _missing_required_evidence(tasks=tasks, outputs=outputs)
         risk_items = _dedupe([*risk_items, *missing_required_evidence])
         test_evidence = _merge_test_evidence(tasks=tasks, outputs=outputs)
-        execution_evidence = self._execution_evidence(tasks, outputs)
+        execution_evidence = _execution_evidence(tasks=tasks, outputs=outputs)
         has_review_evidence = _has_review_or_verification_evidence(
             tasks=tasks,
             outputs=outputs,
@@ -71,6 +128,19 @@ class AgentTeamMergeMixin:
             [path for task in tasks for path in task.changed_files]
             + [path for output in outputs for path in output.changed_files]
         )
+        conflict_reports = []
+        if _multi_agent_merge_conflict_detection_enabled(getattr(self, "settings", None)):
+            task_outputs = _task_outputs_for_conflict_detection(tasks=tasks, outputs=outputs)
+            conflict_reports = MergeConflictDetector().detect(task_outputs)
+            risk_items = _dedupe(
+                [
+                    *risk_items,
+                    *[
+                        f"Merge conflict {report.severity}: {report.description}"
+                        for report in conflict_reports
+                    ],
+                ]
+            )
         open_questions = _dedupe(
             [f"{task.role.value}: {self._compact_task_goal(task.goal)}" for task in blocked]
             + [
@@ -83,11 +153,24 @@ class AgentTeamMergeMixin:
                 else []
             )
         )
+        blocking_conflicts = [
+            report for report in conflict_reports if report.severity == "blocking"
+        ]
+        if blocking_conflicts:
+            open_questions = _dedupe(
+                [
+                    *open_questions,
+                    *[
+                        f"Resolve blocking conflict {report.conflict_id}: {report.suggested_resolution}"
+                        for report in blocking_conflicts
+                    ],
+                ]
+            )
         recommended = self._recommended_action(
             accepted_count=len(accepted),
             rejected_count=len(rejected),
             pending_count=len(pending),
-            blocked_count=len(blocked),
+            blocked_count=len(blocked) + len(blocking_conflicts),
             risk_count=len(risk_items),
         )
         final_answer = _build_final_answer(
@@ -99,6 +182,15 @@ class AgentTeamMergeMixin:
         )
         if final_answer["status"] == AgentTeamFinalAnswerStatus.PLACEHOLDER:
             recommended = AgentTeamRecommendedAction.REQUEST_CHANGES
+        if blocking_conflicts:
+            recommended = AgentTeamRecommendedAction.REQUEST_CHANGES
+            final_answer["status"] = AgentTeamFinalAnswerStatus.BLOCKED
+            final_answer["warnings"] = _dedupe(
+                [
+                    *list(final_answer["warnings"]),
+                    "Blocking multi-agent merge conflict detected.",
+                ]
+            )
         bundle = AgentTeamMergeBundle(
             session_id=session_id,
             summary=self._bundle_summary(session=session, tasks=tasks, key_findings=key_findings),
@@ -183,66 +275,312 @@ class AgentTeamMergeMixin:
             )
         return decision
 
-    @staticmethod
-    def _execution_evidence(
-        tasks: list[AgentTeamTask],
-        outputs: list[AgentTeamTaskOutput],
-    ) -> list[dict[str, object]]:
-        evidence: list[dict[str, object]] = []
-        seen: set[tuple[str, str, str, str, tuple[str, ...]]] = set()
-
-        def append_item(item: dict[str, object]) -> None:
-            artifact_ids = _dedupe(str(value) for value in item.get("artifact_ids", []) or [])
-            canonical: dict[str, object] = {"task_id": str(item.get("task_id") or "")}
-            role = str(item.get("role") or "").strip()
-            if role:
-                canonical["role"] = role
-            for field in ("agent_run_id", "delegated_task_id", "execution_status"):
-                value = str(item.get(field) or "").strip()
-                if value:
-                    canonical[field] = value
-            if artifact_ids:
-                canonical["artifact_ids"] = artifact_ids
-            key = (
-                str(canonical.get("task_id") or ""),
-                str(canonical.get("agent_run_id") or ""),
-                str(canonical.get("delegated_task_id") or ""),
-                str(canonical.get("execution_status") or ""),
-                tuple(artifact_ids),
+    def create_merge_review(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        selected_task_ids: list[str] | None = None,
+        excluded_task_ids: list[str] | None = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentTeamMergeReview:
+        session = self.get_session(session_id, user_id=user_id)
+        task_ids = {
+            task.task_id for task in self.list_tasks(session_id=session_id, user_id=user_id)
+        }
+        selected = _normalize_task_selection(selected_task_ids, known_task_ids=task_ids)
+        excluded = _normalize_task_selection(excluded_task_ids, known_task_ids=task_ids)
+        now = _now()
+        review = AgentTeamMergeReview(
+            review_id=str(uuid4()),
+            session_id=session.session_id,
+            user_id=user_id,
+            status=AgentTeamMergeReviewStatus.DRAFT,
+            title=title or f"{session.title} merge review",
+            selected_task_ids=selected,
+            excluded_task_ids=excluded,
+            metadata=dict(metadata or {}),
+            created_at=now,
+            updated_at=now,
+        )
+        with self._lock:
+            self.repository.save_merge_review(review)
+            self._record_merge_review_event(
+                review=review,
+                event_type="created",
+                message="Merge review created.",
             )
-            if key not in seen and any(key[1:]):
-                seen.add(key)
-                evidence.append(canonical)
+        return review
 
-        for task in tasks:
-            append_item(
-                {
-                    "task_id": task.task_id,
-                    "role": task.role.value,
-                    "agent_run_id": task.agent_run_id,
-                    "delegated_task_id": task.delegated_task_id,
-                    "artifact_ids": task.artifact_ids,
-                    "execution_status": task.execution_status,
-                }
+    def get_merge_review(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+    ) -> AgentTeamMergeReview:
+        self.get_session(session_id, user_id=user_id)
+        with self._lock:
+            review = self.repository.get_merge_review(review_id)
+        if review.session_id != session_id:
+            raise KeyError(f"Unknown agent team merge review: {review_id}")
+        if review.user_id != user_id:
+            raise PermissionError("Agent team merge review belongs to another user.")
+        return review
+
+    def list_merge_reviews(self, *, session_id: str, user_id: str) -> list[AgentTeamMergeReview]:
+        self.get_session(session_id, user_id=user_id)
+        with self._lock:
+            reviews = self.repository.list_merge_reviews(session_id=session_id)
+        return [review for review in reviews if review.user_id == user_id]
+
+    def list_merge_review_events(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+    ) -> list[AgentTeamMergeReviewEvent]:
+        self.get_merge_review(session_id=session_id, review_id=review_id, user_id=user_id)
+        with self._lock:
+            return self.repository.list_merge_review_events(review_id=review_id)
+
+    def update_merge_review(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+        selected_task_ids: list[str] | None = None,
+        excluded_task_ids: list[str] | None = None,
+        status: AgentTeamMergeReviewStatus | str | None = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentTeamMergeReview:
+        review = self.get_merge_review(session_id=session_id, review_id=review_id, user_id=user_id)
+        task_ids = {
+            task.task_id for task in self.list_tasks(session_id=session_id, user_id=user_id)
+        }
+        updates: dict[str, Any] = {"updated_at": _now()}
+        if selected_task_ids is not None:
+            updates["selected_task_ids"] = _normalize_task_selection(
+                selected_task_ids,
+                known_task_ids=task_ids,
             )
+        if excluded_task_ids is not None:
+            updates["excluded_task_ids"] = _normalize_task_selection(
+                excluded_task_ids,
+                known_task_ids=task_ids,
+            )
+        if title is not None:
+            updates["title"] = title
+        if metadata is not None:
+            updates["metadata"] = {**review.metadata, **metadata}
+        if status is not None:
+            updates["status"] = _allowed_review_transition(
+                current=review.status,
+                target=AgentTeamMergeReviewStatus(status),
+            )
+        updated = review.model_copy(update=updates)
+        with self._lock:
+            self.repository.save_merge_review(updated)
+            self._record_merge_review_event(
+                review=updated,
+                event_type="updated",
+                message="Merge review updated.",
+                metadata={"updated_fields": sorted(updates)},
+            )
+        return updated
 
-        for output in outputs:
-            execution_metadata = output.metadata.get("execution")
-            if not isinstance(execution_metadata, dict):
-                execution_metadata = {
-                    key: output.metadata[key]
-                    for key in (
-                        "agent_run_id",
-                        "delegated_task_id",
-                        "artifact_ids",
-                        "execution_status",
-                    )
-                    if key in output.metadata
-                }
-            if execution_metadata:
-                append_item({"task_id": output.task_id, **execution_metadata})
+    def preview_merge_review(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+    ) -> AgentTeamMergeReview:
+        review = self.get_merge_review(session_id=session_id, review_id=review_id, user_id=user_id)
+        tasks = self.list_tasks(session_id=session_id, user_id=user_id)
+        outputs = [
+            output
+            for task in tasks
+            for output in self.repository.list_task_outputs(task_id=task.task_id)
+        ]
+        selected_tasks = _selected_review_tasks(review=review, tasks=tasks)
+        preview = _build_merge_review_preview(review=review, tasks=selected_tasks, outputs=outputs)
+        target_root = _repo_root(self)
+        check = _check_patch(target_root=target_root, patch=preview["patch"])
+        status = AgentTeamMergeReviewStatus.READY
+        error_message = None
+        conflict_files: list[str] = []
+        if preview["non_adoptable_task_ids"]:
+            status = AgentTeamMergeReviewStatus.ERROR
+            error_message = (
+                "Selected tasks include fake or placeholder outputs and cannot be adopted."
+            )
+        elif preview["patch"] and not check["ok"]:
+            status = AgentTeamMergeReviewStatus.CONFLICT
+            error_message = check["message"]
+            conflict_files = list(check["files"])
+        updated = review.model_copy(
+            update={
+                "status": status,
+                "summary": preview["summary"],
+                "changed_files": preview["changed_files"],
+                "diffstat": preview["diffstat"],
+                "test_evidence": preview["test_evidence"],
+                "risk_items": preview["risk_items"],
+                "task_summaries": preview["task_summaries"],
+                "conflict_files": conflict_files,
+                "error_message": error_message,
+                "metadata": {
+                    **review.metadata,
+                    "patch": preview["patch"],
+                    "patch_bytes": len(preview["patch"].encode("utf-8")),
+                    "non_adoptable_task_ids": preview["non_adoptable_task_ids"],
+                    "preview_check": check,
+                },
+                "previewed_at": _now(),
+                "updated_at": _now(),
+            }
+        )
+        with self._lock:
+            self.repository.save_merge_review(updated)
+            self._record_merge_review_event(
+                review=updated,
+                event_type="previewed",
+                message=error_message or "Merge review preview generated.",
+                metadata={"status": updated.status.value, "changed_files": updated.changed_files},
+            )
+        return updated
 
-        return evidence
+    def apply_merge_review(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+        apply_target_path: str | None = None,
+    ) -> AgentTeamMergeReview:
+        review = self.get_merge_review(session_id=session_id, review_id=review_id, user_id=user_id)
+        patch = str(review.metadata.get("patch") or "")
+        if not patch or review.status not in {
+            AgentTeamMergeReviewStatus.READY,
+            AgentTeamMergeReviewStatus.APPROVED,
+        }:
+            review = self.preview_merge_review(
+                session_id=session_id,
+                review_id=review_id,
+                user_id=user_id,
+            )
+            patch = str(review.metadata.get("patch") or "")
+        if review.status == AgentTeamMergeReviewStatus.CONFLICT:
+            return review
+        if review.status == AgentTeamMergeReviewStatus.ERROR:
+            raise ValueError(review.error_message or "Merge review cannot be applied.")
+        if not patch.strip():
+            raise ValueError("Merge review has no patch to apply.")
+        target_root = (
+            Path(apply_target_path).expanduser().resolve()
+            if apply_target_path
+            else _repo_root(self)
+        )
+        check = _check_patch(target_root=target_root, patch=patch)
+        if not check["ok"]:
+            updated = _merge_review_apply_conflict(
+                review,
+                check=check,
+                target_root=target_root,
+            )
+            with self._lock:
+                self.repository.save_merge_review(updated)
+                self._record_merge_review_event(
+                    review=updated,
+                    event_type="apply_conflict",
+                    message=updated.error_message,
+                    metadata=check,
+                )
+            return updated
+        apply_result = _run_git_apply(target_root=target_root, patch=patch, check_only=False)
+        if apply_result["returncode"] != 0:
+            updated = _merge_review_apply_error(
+                review,
+                apply_result=apply_result,
+                target_root=target_root,
+            )
+            with self._lock:
+                self.repository.save_merge_review(updated)
+                self._record_merge_review_event(
+                    review=updated,
+                    event_type="apply_error",
+                    message=updated.error_message,
+                    metadata=apply_result,
+                )
+            return updated
+        updated = _merge_review_applied(review, target_root=target_root)
+        with self._lock:
+            self.repository.save_merge_review(updated)
+            self._record_merge_review_event(
+                review=updated,
+                event_type="applied",
+                message="Merge review patch applied.",
+                metadata={"apply_target_path": str(target_root)},
+            )
+        return updated
+
+    def reject_merge_review(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+        rationale: str | None = None,
+    ) -> AgentTeamMergeReview:
+        review = self.get_merge_review(session_id=session_id, review_id=review_id, user_id=user_id)
+        updated = review.model_copy(
+            update={
+                "status": AgentTeamMergeReviewStatus.REJECTED,
+                "metadata": {**review.metadata, "rejection_rationale": rationale},
+                "rejected_at": _now(),
+                "updated_at": _now(),
+            }
+        )
+        with self._lock:
+            self.repository.save_merge_review(updated)
+            self._record_merge_review_event(
+                review=updated,
+                event_type="rejected",
+                message=rationale or "Merge review rejected.",
+            )
+        return updated
+
+    def capture_merge_review(
+        self,
+        *,
+        session_id: str,
+        review_id: str,
+        user_id: str,
+    ) -> dict[str, Any]:
+        review = self.get_merge_review(session_id=session_id, review_id=review_id, user_id=user_id)
+        return _capture_merge_review_payload(review)
+
+    def _record_merge_review_event(
+        self,
+        *,
+        review: AgentTeamMergeReview,
+        event_type: str,
+        message: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.repository.add_merge_review_event(
+            _merge_review_event(
+                review=review,
+                event_type=event_type,
+                message=message,
+                metadata=metadata,
+            )
+        )
 
     @staticmethod
     def _bundle_summary(
@@ -256,333 +594,75 @@ class AgentTeamMergeMixin:
         return headline
 
 
-def _missing_required_evidence(
-    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
-) -> list[str]:
-    outputs_by_task: dict[str, list[AgentTeamTaskOutput]] = {}
-    for output in outputs:
-        outputs_by_task.setdefault(output.task_id, []).append(output)
-
-    missing: list[str] = []
-    for task in tasks:
-        if task.status != AgentTeamTaskStatus.DONE or not task.evidence_required:
-            continue
-        available = "\n".join(
-            _dedupe(
-                [task.verification_summary or ""]
-                + task.risk_notes
-                + task.changed_files
-                + [output.summary for output in outputs_by_task.get(task.task_id, [])]
-                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.test_evidence]
-                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.changed_files]
-                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.risk_notes]
-                + [
-                    value
-                    for output in outputs_by_task.get(task.task_id, [])
-                    for value in _artifact_payload_values(output.metadata)
-                ]
-            )
-        ).lower()
-        missing_items = [
-            item
-            for item in task.evidence_required
-            if str(item).strip() and str(item).strip().lower() not in available
-        ]
-        if missing_items:
-            label = task.title or task.goal
-            missing.append(
-                f"Missing required evidence for {task.role.value} task '{label}': {', '.join(missing_items)}."
-            )
-    return _dedupe(missing)
-
-def _merge_test_evidence(
-    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
-) -> list[str]:
-    values: list[str] = []
-    for output in outputs:
-        values.extend(_explicit_evidence_items(output.test_evidence))
-    values.extend(
-        _explicit_evidence_items(
-            _metadata_values(outputs, "test_evidence", "verification_evidence", "tests")
-        )
-    )
-    values.extend(
-        _explicit_evidence_items(
-            [
-                task.verification_summary or ""
-                for task in tasks
-                if task.role.value in _REVIEW_EVIDENCE_ROLES
-            ]
-        )
-    )
-    return _dedupe(values)
-
-
-def _has_review_or_verification_evidence(
+def _normalize_task_selection(
+    task_ids: list[str] | None,
     *,
-    tasks: list[AgentTeamTask],
-    outputs: list[AgentTeamTaskOutput],
-) -> bool:
-    task_by_id = {task.task_id: task for task in tasks}
-    for output in outputs:
-        task = task_by_id.get(output.task_id)
-        role = task.role.value if task is not None else ""
-        if _explicit_evidence_items(
-            [
-                *output.test_evidence,
-                *_values_for_keys(
-                    output.metadata, "test_evidence", "verification_evidence", "tests"
-                ),
-            ]
-        ):
-            return True
-        if role not in _REVIEW_EVIDENCE_ROLES and output.kind.value not in {
-            "review_report",
-            "test_report",
-        }:
-            continue
-        if output.summary or output.artifact_id or output.metadata:
-            return True
-    return any(
-        task.role.value in _REVIEW_EVIDENCE_ROLES and bool(task.verification_summary)
-        for task in tasks
-    )
-
-
-def _build_final_answer(
-    *,
-    session: AgentTeamSession,
-    tasks: list[AgentTeamTask],
-    outputs: list[AgentTeamTaskOutput],
-    open_questions: list[str],
-    risk_items: list[str],
-) -> dict[str, object]:
-    source_output_ids = _dedupe(output.output_id for output in outputs if output.output_id)
-    if not outputs:
-        return {
-            "status": AgentTeamFinalAnswerStatus.BLOCKED,
-            "answer": (
-                f"Agent Team 尚未产生可汇总的任务回传，无法回答：{session.goal}"
-            ),
-            "warnings": ["No task outputs are available for final answer synthesis."],
-            "source_output_ids": source_output_ids,
-        }
-
-    if _has_fake_outputs(outputs):
-        return {
-            "status": AgentTeamFinalAnswerStatus.PLACEHOLDER,
-            "answer": (
-                "当前是模拟执行，只验证了 Agent Team 的拆解、运行和回传流程，"
-                f"没有生成可交付的真实答案。请使用真实模型执行后再生成最终答案。\n\n目标：{session.goal}"
-            ),
-            "warnings": [
-                "Current mission outputs were produced by fake execution mode.",
-                "Fake execution validates workflow only; it must not be treated as a deliverable final answer.",
-            ],
-            "source_output_ids": source_output_ids,
-        }
-
-    if not _has_executor_or_writer_output(tasks=tasks, outputs=outputs):
-        return {
-            "status": AgentTeamFinalAnswerStatus.BLOCKED,
-            "answer": (
-                "Agent Team 已有部分任务回传，但缺少执行/撰写任务产出，"
-                f"暂时无法形成面向用户目标的最终答案。\n\n目标：{session.goal}"
-            ),
-            "warnings": ["Missing executor or writer output for final answer synthesis."],
-            "source_output_ids": source_output_ids,
-        }
-
-    body_items = _final_answer_content_items(
-        _deliverable_outputs(tasks=tasks, outputs=outputs)
-    )
-    if not body_items:
-        return {
-            "status": AgentTeamFinalAnswerStatus.BLOCKED,
-            "answer": (
-                "Agent Team 已完成任务，但回传内容为空，无法形成最终答案。"
-                f"\n\n目标：{session.goal}"
-            ),
-            "warnings": ["Task outputs did not include summary, raw_text, or parsed content."],
-            "source_output_ids": source_output_ids,
-        }
-
-    warnings = _dedupe([*risk_items, *open_questions])
-    sections = [
-        f"目标：{session.goal}",
-        "Agent Team 最终答案：",
-        *[f"{index}. {item}" for index, item in enumerate(body_items, start=1)],
-    ]
-    if warnings:
-        sections.extend(["需要注意：", *[f"- {item}" for item in warnings]])
-    return {
-        "status": AgentTeamFinalAnswerStatus.READY,
-        "answer": "\n".join(sections),
-        "warnings": warnings,
-        "source_output_ids": source_output_ids,
-    }
-
-
-def _has_fake_outputs(outputs: list[AgentTeamTaskOutput]) -> bool:
-    for output in outputs:
-        execution = output.metadata.get("execution")
-        execution_mode = execution.get("execution_mode") if isinstance(execution, dict) else None
-        if str(execution_mode or "").strip().lower() == "fake":
-            return True
-        run = output.metadata.get("run")
-        run_execution_mode = run.get("execution_mode") if isinstance(run, dict) else None
-        if str(run_execution_mode or "").strip().lower() == "fake":
-            return True
-        if str(output.metadata.get("execution_mode") or "").strip().lower() == "fake":
-            return True
-        if output.summary.strip().lower().startswith("fake delegated"):
-            return True
-    return False
-
-
-def _has_executor_or_writer_output(
-    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
-) -> bool:
-    task_by_id = {task.task_id: task for task in tasks}
-    for output in outputs:
-        task = task_by_id.get(output.task_id)
-        if task is None:
-            continue
-        if task.role in {
-            AgentTeamTaskRole.BACKEND_EXECUTOR,
-            AgentTeamTaskRole.FRONTEND_EXECUTOR,
-            AgentTeamTaskRole.WRITER,
-        }:
-            return True
-    return False
-
-
-def _deliverable_outputs(
-    *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
-) -> list[AgentTeamTaskOutput]:
-    task_by_id = {task.task_id: task for task in tasks}
-    deliverable_roles = {
-        AgentTeamTaskRole.BACKEND_EXECUTOR,
-        AgentTeamTaskRole.FRONTEND_EXECUTOR,
-        AgentTeamTaskRole.WRITER,
-    }
-    deliverables = [
-        output
-        for output in outputs
-        if task_by_id.get(output.task_id) is not None
-        and task_by_id[output.task_id].role in deliverable_roles
-    ]
-    return deliverables or outputs
-
-
-def _final_answer_content_items(outputs: list[AgentTeamTaskOutput]) -> list[str]:
-    items: list[str] = []
-    for output in outputs:
-        items.extend(_artifact_payload_values(output.metadata))
-        if output.summary:
-            items.append(output.summary)
-    return _dedupe(item.strip() for item in items if item and item.strip())
-
-
-def _artifact_payload_values(metadata: dict[str, object]) -> list[str]:
-    values: list[str] = []
-    direct_payload = metadata.get("payload")
-    if isinstance(direct_payload, dict):
-        values.extend(_payload_values(direct_payload))
-    artifacts = metadata.get("artifacts")
-    if not isinstance(artifacts, list):
-        return values
-    for artifact in artifacts:
-        if not isinstance(artifact, dict):
-            continue
-        payload = artifact.get("payload")
-        if not isinstance(payload, dict):
-            continue
-        values.extend(_payload_values(payload))
-    return values
-
-
-def _payload_values(payload: dict[str, object]) -> list[str]:
-    values: list[str] = []
-    raw_text = payload.get("raw_text")
-    if isinstance(raw_text, str) and raw_text.strip():
-        values.append(raw_text)
-    parsed = payload.get("parsed")
-    if isinstance(parsed, dict):
-        extracted = False
-        for key in ("summary", "final_answer", "answer", "findings"):
-            raw = parsed.get(key)
-            if isinstance(raw, str) and raw.strip():
-                values.append(raw)
-                extracted = True
-            elif isinstance(raw, list):
-                values.extend(str(item) for item in raw if item)
-                extracted = True
-        if not extracted:
-            values.append(json.dumps(parsed, ensure_ascii=False, sort_keys=True))
-    elif isinstance(parsed, list):
-        values.extend(str(item) for item in parsed if item)
-    elif isinstance(parsed, str) and parsed.strip():
-        values.append(parsed)
-    return values
-
-
-def _explicit_evidence_items(values: list[str]) -> list[str]:
-    return [value for value in values if _is_explicit_evidence(value)]
-
-
-def _is_explicit_evidence(value: str) -> bool:
-    text = value.strip().lower()
-    return bool(text) and not text.startswith("delegated ") and not text.startswith("completed ") and text != "completed"
-
-
-def _planning_risk_notes(
-    *, session: AgentTeamSession, outputs: list[AgentTeamTaskOutput]
+    known_task_ids: set[str],
 ) -> list[str]:
-    values: list[str] = []
-    latest_bundle = session.latest_merge_bundle or {}
-    if isinstance(latest_bundle, dict):
-        values.extend(_values_for_keys(latest_bundle, "risk_items", "risk_notes", "risks"))
-    for output in outputs:
-        values.extend(
-            _values_for_keys(
-                output.metadata,
-                "risk_items",
-                "risk_notes",
-                "risks",
-                "open_risks",
-            )
-        )
-        planning = output.metadata.get("planning")
-        if isinstance(planning, dict):
-            values.extend(
-                _values_for_keys(
-                    planning,
-                    "risk_items",
-                    "risk_notes",
-                    "risks",
-                    "open_risks",
-                )
-            )
-    return _dedupe(values)
-
-
-def _metadata_values(outputs: list[AgentTeamTaskOutput], *keys: str) -> list[str]:
-    values: list[str] = []
-    for output in outputs:
-        values.extend(_values_for_keys(output.metadata, *keys))
-    return _dedupe(values)
-
-
-def _values_for_keys(payload: dict[str, object], *keys: str) -> list[str]:
-    values: list[str] = []
-    for key in keys:
-        raw = payload.get(key)
-        if isinstance(raw, str):
-            values.append(raw)
-        elif isinstance(raw, list):
-            values.extend(str(item) for item in raw if item)
+    values = _dedupe(str(item).strip() for item in task_ids or [] if str(item).strip())
+    unknown = sorted(set(values) - known_task_ids)
+    if unknown:
+        raise ValueError(f"Unknown agent team task ids: {', '.join(unknown)}")
     return values
+
+
+def _selected_review_tasks(
+    *,
+    review: AgentTeamMergeReview,
+    tasks: list[AgentTeamTask],
+) -> list[AgentTeamTask]:
+    selected = set(review.selected_task_ids)
+    excluded = set(review.excluded_task_ids)
+    if selected:
+        candidates = [task for task in tasks if task.task_id in selected]
+    else:
+        candidates = [task for task in tasks if task.status == AgentTeamTaskStatus.DONE]
+    return [task for task in candidates if task.task_id not in excluded]
+
+
+def _allowed_review_transition(
+    *,
+    current: AgentTeamMergeReviewStatus,
+    target: AgentTeamMergeReviewStatus,
+) -> AgentTeamMergeReviewStatus:
+    if current == target:
+        return target
+    allowed = {
+        AgentTeamMergeReviewStatus.DRAFT: {
+            AgentTeamMergeReviewStatus.READY,
+            AgentTeamMergeReviewStatus.APPROVED,
+            AgentTeamMergeReviewStatus.REJECTED,
+            AgentTeamMergeReviewStatus.ERROR,
+        },
+        AgentTeamMergeReviewStatus.READY: {
+            AgentTeamMergeReviewStatus.APPROVED,
+            AgentTeamMergeReviewStatus.REJECTED,
+            AgentTeamMergeReviewStatus.CONFLICT,
+            AgentTeamMergeReviewStatus.ERROR,
+        },
+        AgentTeamMergeReviewStatus.APPROVED: {
+            AgentTeamMergeReviewStatus.APPLIED,
+            AgentTeamMergeReviewStatus.REJECTED,
+            AgentTeamMergeReviewStatus.CONFLICT,
+            AgentTeamMergeReviewStatus.ERROR,
+        },
+        AgentTeamMergeReviewStatus.CONFLICT: {
+            AgentTeamMergeReviewStatus.READY,
+            AgentTeamMergeReviewStatus.REJECTED,
+            AgentTeamMergeReviewStatus.ERROR,
+        },
+        AgentTeamMergeReviewStatus.ERROR: {
+            AgentTeamMergeReviewStatus.DRAFT,
+            AgentTeamMergeReviewStatus.REJECTED,
+        },
+        AgentTeamMergeReviewStatus.APPLIED: set(),
+        AgentTeamMergeReviewStatus.REJECTED: set(),
+    }
+    if target not in allowed[current]:
+        raise ValueError(
+            f"Invalid merge review status transition: {current.value} -> {target.value}"
+        )
+    return target
 
 
 __all__ = ["AgentTeamMergeMixin"]

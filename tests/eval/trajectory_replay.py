@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from .schema import EvalCase, EvalResult
-
 
 _DEFAULT_CASE_ID_PREFIX = "traj"
 _SUCCESS_STATUSES = {"succeeded", "success", "passed"}

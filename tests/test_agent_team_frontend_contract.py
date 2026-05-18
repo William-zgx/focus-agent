@@ -17,7 +17,6 @@ from focus_agent.api.contracts import (
 )
 from focus_agent.api.main import create_app
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "apps" / "web"
 SDK_ROOT = ROOT / "frontend-sdk"

@@ -52,6 +52,7 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
     replay = tmp_path / "replay.json"
     alert = tmp_path / "alerts.json"
     candidates = tmp_path / "candidates.jsonl"
+    feedback = tmp_path / "feedback-regression.json"
 
     _write_json(
         memory_eval,
@@ -66,7 +67,21 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
         {
             "meta": {"suite": "memory_context_regression_trend"},
             "status": "alert",
-            "trend": [{"stage": "candidate", "pollution_rate": 1.0}],
+            "trend": [
+                {
+                    "stage": "candidate",
+                    "pollution_rate": 1.0,
+                    "context_compaction_drift_report": {
+                        "recall": 0.5,
+                        "precision": 1.0,
+                        "grounding": 1.0,
+                        "answerability": 0.5,
+                        "overall_drift": 0.25,
+                        "drift_risk": "medium",
+                        "case_count": 1,
+                    },
+                }
+            ],
             "promotion_history": {"candidate_total": 1, "reviewed_total": 0},
             "pollution_alerts": [{"kind": "irrelevant_memory_pollution", "stage": "candidate"}],
         },
@@ -83,6 +98,26 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
         },
     )
     _write_json(alert, {"status": "alert", "alerts": [{"kind": "budget"}]})
+    _write_json(
+        feedback,
+        {
+            "meta": {"suite": "feedback_regression"},
+            "summary": {
+                "status": "alert",
+                "negative_feedback_count": 1,
+                "merge_review_conflict_count": 2,
+                "skill_low_confidence_count": 3,
+                "skill_override_count": 4,
+                "context_high_drift_count": 5,
+                "notes_tasks_capture_count": 6,
+                "top_failing_trajectory_sample_count": 7,
+            },
+            "feedback_pipeline": {
+                "status": "alert",
+                "negative_feedback": {"count": 1, "sample_ids": ["fb-1"]},
+            },
+        },
+    )
     _write_jsonl(
         candidates,
         [
@@ -108,6 +143,7 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
         alert_json=[alert],
         candidate_review_jsonl=[candidates],
         candidate_approve_id=["mc_candidate_1"],
+        feedback_report_json=feedback,
         history_dir=tmp_path / "history",
     )
 
@@ -119,6 +155,22 @@ def test_nightly_report_aggregates_memory_replay_alerts_and_review(tmp_path: Pat
     assert report["memory_review"]["queue"]["approved"] == 1
     assert report["memory_review"]["queue"]["pending"] == 1
     assert report["memory_review"]["promoted_case_ids"] == ["mc_candidate_1"]
+    assert report["summary"]["candidate_pipeline"]["candidate_total"] == 2
+    assert report["summary"]["context_compaction_drift_report"]["overall_drift"] == 0.25
+    assert report["summary"]["context_compaction_overall_drift_bp"] == 2500
+    assert report["summary"]["candidate_pipeline"]["pending"] == 1
+    assert report["summary"]["candidate_pipeline"]["promoted_count"] == 1
+    assert report["summary"]["replay_pipeline"]["failed_replay_cases"] == 1
+    assert report["summary"]["replay_pipeline"]["alert_count"] == 1
+    assert report["summary"]["feedback_negative"] == 1
+    assert report["summary"]["feedback_merge_review_conflicts"] == 2
+    assert report["summary"]["feedback_skill_low_confidence"] == 3
+    assert report["summary"]["feedback_skill_overrides"] == 4
+    assert report["summary"]["feedback_context_high_drift"] == 5
+    assert report["summary"]["feedback_notes_tasks_captures"] == 6
+    assert report["summary"]["feedback_top_failing_trajectories"] == 7
+    assert report["summary"]["feedback_pipeline"]["negative_feedback"]["sample_ids"] == ["fb-1"]
+    assert report["artifacts"]["feedback_regression"]["path"] == str(feedback)
     assert report["candidate_outputs"]["golden_write"] == "disabled"
     assert report["candidate_outputs"]["promoted_case_ids"] == ["mc_candidate_1"]
     assert {item["kind"] for item in report["regressions"]} == {
@@ -317,6 +369,88 @@ def test_nightly_report_auto_discovers_default_replay_and_alert_entrypoints(
     assert report["artifacts"]["alerts"][0]["path"] == str(default_alerts)
     assert commands["trajectory-replay"]["status"] == "available"
     assert commands["nightly-alerts"]["status"] == "available"
+
+
+def test_nightly_report_auto_discovers_default_candidate_pipeline_and_delta(
+    tmp_path: Path, monkeypatch
+) -> None:
+    memory_eval, memory_trend = _write_passing_memory_artifacts(tmp_path)
+    candidate_jsonl = tmp_path / "reports" / "nightly" / "memory-context-candidates.jsonl"
+    reviewed_jsonl = tmp_path / "reports" / "nightly" / "memory-context-reviewed.jsonl"
+    promoted_jsonl = tmp_path / "reports" / "nightly" / "memory-context-promoted.jsonl"
+    previous = tmp_path / "previous-nightly.json"
+    candidate_jsonl.parent.mkdir(parents=True)
+    candidate = {
+        "id": "mc_candidate_old_pending",
+        "tags": ["memory_context", "candidate_import"],
+        "input": {
+            "rendered_context": "Context mentions the Postgres path.",
+            "answer": "Use the Postgres path.",
+        },
+        "expected": {"required_facts": ["Postgres path"]},
+    }
+    reviewed = {
+        **candidate,
+        "promotion_review": {
+            "status": "pending",
+            "approved": False,
+            "sla": {
+                "overdue": True,
+                "reviewed_after_due": True,
+            },
+        },
+    }
+    _write_jsonl(candidate_jsonl, [candidate])
+    _write_jsonl(reviewed_jsonl, [reviewed])
+    _write_jsonl(promoted_jsonl, [])
+    _write_json(
+        previous,
+        {
+            "meta": {"generated_at": "2026-04-25T00:00:00Z", "suite": "nightly_regression"},
+            "summary": {
+                "alert_count": 0,
+                "candidate_pending": 0,
+                "candidate_promoted": 0,
+                "candidate_reviewed": 0,
+                "candidate_sla_overdue": 0,
+                "candidate_total": 0,
+                "failed_replay_cases": 0,
+                "memory_eval_status": "passed",
+                "memory_review_approved": 0,
+                "memory_review_pending": 0,
+                "memory_review_rejected": 0,
+                "memory_trend_status": "ok",
+                "missing_artifacts": 0,
+                "status": "passed",
+            },
+        },
+    )
+    monkeypatch.setattr(nightly_regression, "DEFAULT_CANDIDATE_JSONL", Path("reports/nightly/memory-context-candidates.jsonl"))
+    monkeypatch.setattr(nightly_regression, "DEFAULT_REVIEWED_JSONL", Path("reports/nightly/memory-context-reviewed.jsonl"))
+    monkeypatch.setattr(nightly_regression, "DEFAULT_PROMOTED_JSONL", Path("reports/nightly/memory-context-promoted.jsonl"))
+    monkeypatch.setattr(nightly_regression, "REPO_ROOT", tmp_path)
+
+    report = nightly_regression.build_nightly_report(
+        memory_eval_json=memory_eval,
+        memory_trend_json=memory_trend,
+        previous_report_json=previous,
+        history_dir=tmp_path / "history",
+    )
+
+    pipeline = report["summary"]["candidate_pipeline"]
+    assert pipeline["candidate_total"] == 1
+    assert pipeline["reviewed_total"] == 1
+    assert pipeline["pending"] == 1
+    assert pipeline["sla_overdue"] == 1
+    assert pipeline["promoted_count"] == 0
+    assert pipeline["baseline_delta"]["candidate_total"] == 1
+    assert report["summary"]["baseline_delta"]["candidate_sla_overdue"] == 1
+    assert report["delta"]["numeric"]["candidate_pending"] == {
+        "current": 1,
+        "delta": 1,
+        "previous": 0,
+    }
+    assert report["artifacts"]["candidate_pipeline"]["candidate"][0]["path"] == str(candidate_jsonl)
 
 
 def test_nightly_report_keeps_replay_and_alert_entrypoints_not_configured_when_absent(

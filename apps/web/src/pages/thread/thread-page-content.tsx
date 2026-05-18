@@ -13,6 +13,7 @@ import { ConversationViewport } from "./conversation-viewport";
 
 interface ThreadPageContentProps {
 	assistantMessage?: string | null;
+	activeSkillIds?: string[];
 	branchActionErrors: Record<string, string>;
 	branchActionInFlightId: string | null;
 	branchActions: FocusAgentBranchActionProposal[];
@@ -61,6 +62,7 @@ interface ThreadPageContentProps {
 
 export function ThreadPageContent({
 	assistantMessage,
+	activeSkillIds = [],
 	branchActionErrors,
 	branchActionInFlightId,
 	branchActions,
@@ -134,12 +136,16 @@ export function ThreadPageContent({
 					>
 						{isLoading ? (
 							<div className="fa-inline-notice">
-								{isChineseUi ? "正在加载线程状态..." : "Loading thread state..."}
+								{isChineseUi
+									? "正在加载线程状态..."
+									: "Loading thread state..."}
 							</div>
 						) : null}
 						{threadError ? (
 							<div className="fa-inline-notice is-danger">
-								{isChineseUi ? "加载线程状态失败。" : "Failed to load thread state."}
+								{isChineseUi
+									? "加载线程状态失败。"
+									: "Failed to load thread state."}
 							</div>
 						) : null}
 						{hasTranscriptContent ? (
@@ -156,6 +162,7 @@ export function ThreadPageContent({
 
 				<section className="fa-composer-slot">
 					<MessageComposer
+						activeSkillIds={activeSkillIds}
 						editDraft={editDraft}
 						isReadOnly={isMergedReadOnlyThread}
 						isStreaming={isStreaming}

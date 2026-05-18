@@ -5,7 +5,6 @@ from collections.abc import Iterable, MutableSequence
 from dataclasses import dataclass
 from typing import Any, Literal, NoReturn, Protocol
 
-
 OwnershipDecision = Literal["allow", "deny"]
 
 

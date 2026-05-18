@@ -7,8 +7,8 @@ against a scripted fake model. They deliberately DO NOT hit any real LLM.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import time
+from pathlib import Path
 
 from langchain.messages import AIMessage
 from langchain.tools import tool as langchain_tool

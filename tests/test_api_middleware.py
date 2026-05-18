@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from focus_agent.api.deps import require_roles, require_scopes
 from focus_agent.api.main import create_app
-from focus_agent.api.middleware import RateLimitMiddleware, REQUEST_ID_HEADER
+from focus_agent.api.middleware import REQUEST_ID_HEADER, RateLimitMiddleware
 from focus_agent.config import Settings
 from focus_agent.security.rate_limit import RateLimitResult, SlidingWindowRateLimiter
 from focus_agent.security.tokens import Principal, create_access_token

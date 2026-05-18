@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import math
 import os
 import urllib.error
+from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.request import Request, urlopen
 
@@ -222,7 +222,7 @@ class MemoryEmbeddingService:
         self.backend = provider if isinstance(provider, str) else self.provider.provider_id
 
     @classmethod
-    def from_repository(cls, repository: object | None) -> "MemoryEmbeddingService | None":
+    def from_repository(cls, repository: object | None) -> MemoryEmbeddingService | None:
         del repository
         return None
 

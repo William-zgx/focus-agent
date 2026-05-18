@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 import logging
 import queue
 import threading
 import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from ..core.repo_call import has_repo_method
@@ -56,7 +56,7 @@ class BackgroundTask:
 BackgroundJobHandler = Callable[[dict[str, Any]], Any]
 
 
-class _DurableJobClaimLost(RuntimeError):
+class _DurableJobClaimLostError(RuntimeError):
     pass
 
 
@@ -213,11 +213,11 @@ class DurableBackgroundWorker:
             heartbeat = self._start_job_claim_heartbeat(spec.key, claim)
             handler(dict(spec.payload))
             if not self._stop_job_claim_heartbeat(heartbeat):
-                raise _DurableJobClaimLost("durable background job claim heartbeat lost")
+                raise _DurableJobClaimLostError("durable background job claim heartbeat lost")
         except Exception as exc:  # noqa: BLE001 - durable worker records and moves to the next job
             heartbeat_lost = not self._stop_job_claim_heartbeat(heartbeat, confirm=False)
             error = str(exc)
-            if heartbeat_lost and not isinstance(exc, _DurableJobClaimLost):
+            if heartbeat_lost and not isinstance(exc, _DurableJobClaimLostError):
                 error = f"{error}; durable background job claim heartbeat lost"
             logger.warning(
                 "durable background job failed",
@@ -227,7 +227,7 @@ class DurableBackgroundWorker:
             self._mark_job_failed(spec.key, claim, error)
             with self._lock:
                 self._failed_total += 1
-                if heartbeat_lost or isinstance(exc, _DurableJobClaimLost):
+                if heartbeat_lost or isinstance(exc, _DurableJobClaimLostError):
                     self._heartbeat_lost_total += 1
         else:
             self._mark_job_succeeded(spec.key, claim)

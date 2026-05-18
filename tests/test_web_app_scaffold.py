@@ -14,6 +14,10 @@ def _join_text(*paths: Path) -> str:
     return "\n".join(path.read_text() for path in paths)
 
 
+def _compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def _shell_text(web_root: Path) -> str:
     shell_root = web_root / "src" / "app" / "shell"
     paths = sorted(shell_root.glob("*.tsx")) + sorted((shell_root / "hooks").glob("*.ts"))
@@ -48,8 +52,8 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "web:build" in root_package
 
     workspace = (root / "pnpm-workspace.yaml").read_text()
-    assert 'apps/*' in workspace
-    assert 'frontend-sdk' in workspace
+    assert "apps/*" in workspace
+    assert "frontend-sdk" in workspace
 
     web_package = (web_root / "package.json").read_text()
     assert '"@focus-agent/web-app"' in web_package
@@ -101,8 +105,10 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     )
     assert "useEffect" in merge_review_text
     assert "proposalSignature" in merge_review_text
-    assert "summary: proposal?.summary ?? \"\"" in merge_review_text
-    assert "mode: proposal?.recommended_import_mode ?? \"summary_only\"" in merge_review_text
+    assert 'summary: proposal?.summary ?? ""' in merge_review_text
+    assert "const recommendedMode = proposal?.recommended_import_mode;" in merge_review_text
+    assert 'recommendedMode !== "none"' in merge_review_text
+    assert ': "summary_only";' in merge_review_text
 
     conversation_toolbar_text = (
         web_root / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
@@ -120,7 +126,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'state.location.pathname.includes("/agent-team")' not in app_shell_text
     assert 'state.location.pathname.includes("/admin/")' not in app_shell_text
     assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
-    assert 'window.localStorage.getItem(LANGUAGE_KEY)' in app_shell_text
+    assert "window.localStorage.getItem(LANGUAGE_KEY)" in app_shell_text
     assert 'className="fa-sidebar-global-nav"' in app_shell_text
     assert 'className="fa-sidebar-dock"' in app_shell_text
     assert 'className="fa-sidebar-account"' in app_shell_text
@@ -150,7 +156,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "tooltipProps(adminNavLabel)" in app_shell_text
     assert 'to="/agent-team/$sessionId"' in app_shell_text
     assert "agentTeamRootThreadId" in app_shell_text
-    assert 'is-${shellMode}-shell' in app_shell_text
+    assert "is-${shellMode}-shell" in app_shell_text
     assert "fa-workspace-sidebar-toggle" in app_shell_text
     assert '"fa-workspace-sidebar"' in app_shell_text
     assert "isChatShell ? (" in app_shell_text
@@ -215,7 +221,9 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "AgentTeamRouteTabs" not in agent_team_text
 
     admin_chrome_text = (web_root / "src" / "pages" / "admin" / "admin-page-chrome.tsx").read_text()
-    admin_heading_text = admin_chrome_text.split("export function AdminPageHeading", maxsplit=1)[1].split(
+    admin_heading_text = admin_chrome_text.split("export function AdminPageHeading", maxsplit=1)[
+        1
+    ].split(
         "export function AdminErrorMessage",
         maxsplit=1,
     )[0]
@@ -270,7 +278,9 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
         web_root / "src" / "features" / "thread-stream" / "use-stream-request-registry.ts"
     ).read_text()
     assert "failed: {" in stream_errors_text
-    assert "resolveStreamRequestCleanup(sendSucceeded, controller.signal.aborted)" in stream_hook_text
+    assert "resolveStreamRequestCleanup( sendSucceeded, controller.signal.aborted, )" in _compact(
+        stream_hook_text
+    )
     assert "pendingUserMessage: cleanup.clearPendingUserMessage" in stream_hook_text
     assert 'event.event === "run.completed"' in stream_hook_text
     assert "queryClient.setQueryData(" in stream_cache_text
@@ -343,13 +353,16 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "disabled={isReadOnly}" in message_list_text
     assert "Merged branches are read-only" in composer_text
     assert 'const isMergedBranch = branchMeta?.branch_status === "merged";' in header_actions_text
-    assert "!threadId || isWorking || isMergedBranch || isCreatingBranch" in header_actions_text
+    assert "disabled={!threadId || isMergedBranch || isCreatingBranch}" in header_actions_text
     assert "Merged branches cannot create new branches" in header_actions_text
     assert "Merged branches cannot generate or merge conclusions" in header_actions_text
     assert "if (!isReviewRoute && isMergedBranch) return;" in header_actions_text
     assert "isWorking ||" in header_actions_text
     assert "(!isReviewRoute && (isGeneratingConclusion || isMergedBranch))" in header_actions_text
-    assert 'const isMergedCreateTarget = createBranchTargetNode?.branch_status === "merged";' in branch_tree_text
+    assert (
+        'const isMergedCreateTarget = createBranchTargetNode?.branch_status === "merged";'
+        in _compact(branch_tree_text)
+    )
     assert "createBranchDisabled={isMergedCreateTarget || isCreatingBranch}" in branch_tree_text
     assert "disabled={!canCreateBranch || createBranchDisabled}" in branch_tree_text
     assert "Create a branch from the selected node" in branch_tree_text
@@ -382,7 +395,7 @@ def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():
     assert "looksLikeTextualToolCallArtifact" in message_transcript_text
     assert 'kind: "tool-activity"' in message_transcript_text
     assert 'className="fa-tool-activity-card"' in message_list_text
-    assert 'id: `${lastItem.id}-summary`' not in message_transcript_text
+    assert "id: `${lastItem.id}-summary`" not in message_transcript_text
     assert ".fa-tool-activity-card" in styles_text
     assert ".fa-tool-activity-summary" in styles_text
 
@@ -397,8 +410,8 @@ def test_react_web_app_marks_merged_branch_status_in_danger_tone():
     )
     styles_text = _web_styles(root / "apps" / "web")
 
-    assert 'case "awaiting_merge_review":\n      return "is-ready";' in branch_tree_text
-    assert 'case "merged":\n      return "is-merged";' in branch_tree_text
+    assert 'case "awaiting_merge_review": return "is-ready";' in _compact(branch_tree_text)
+    assert 'case "merged": return "is-merged";' in _compact(branch_tree_text)
     assert ".fa-branch-node-badge.is-danger" in styles_text
     assert ".fa-archived-item-status.is-danger" in styles_text
 
@@ -407,32 +420,80 @@ def test_conversation_rename_uses_inline_form_not_browser_prompt():
     root = Path(__file__).resolve().parents[1]
     conversation_toolbar_text = _join_text(
         root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx",
-        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar-view.tsx",
+        root
+        / "apps"
+        / "web"
+        / "src"
+        / "features"
+        / "conversations"
+        / "conversation-toolbar-view.tsx",
     )
     branch_tree_text = _join_text(
         root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-panel.tsx",
-        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-detail-overlay.tsx",
+        root
+        / "apps"
+        / "web"
+        / "src"
+        / "features"
+        / "branch-tree"
+        / "branch-tree-detail-overlay.tsx",
     )
     styles_text = _web_styles(root / "apps" / "web")
 
-    assert 'const conversation = await createConversation();' in conversation_toolbar_text
+    assert "const conversation = await createConversation();" in conversation_toolbar_text
     assert "window.prompt" not in conversation_toolbar_text
     assert "window.prompt" not in branch_tree_text
+    assert "onDoubleClickCapture={handleConversationDoubleClick}" in conversation_toolbar_text
     assert 'className="fa-inline-rename-form"' in conversation_toolbar_text
     assert 'className="fa-inline-rename-form is-branch"' in branch_tree_text
+    assert "onDoubleClick={() => onStartRename(detailNode)}" in branch_tree_text
     assert ".fa-inline-rename-input" in styles_text
+
+
+def test_thread_header_allows_double_click_current_branch_rename():
+    root = Path(__file__).resolve().parents[1]
+    thread_header_text = _join_text(
+        root / "apps" / "web" / "src" / "features" / "thread" / "thread-header-actions.tsx",
+        root / "apps" / "web" / "src" / "features" / "thread" / "thread-header-action-buttons.tsx",
+    )
+
+    assert "onDoubleClick={onRenameCurrentBranch}" in thread_header_text
+    assert 'className="fa-inline-rename-form is-header-branch"' in thread_header_text
+    assert "await renameBranch(threadId, nextName);" in thread_header_text
+
+
+def test_thread_header_new_branch_stays_enabled_during_conclusion_generation():
+    root = Path(__file__).resolve().parents[1]
+    thread_header_text = (
+        root / "apps" / "web" / "src" / "features" / "thread" / "thread-header-action-buttons.tsx"
+    ).read_text()
+
+    assert (
+        'className="fa-chat-toolbar-button is-primary fa-new-branch-button"' in thread_header_text
+    )
+    assert "disabled={!threadId || isMergedBranch || isCreatingBranch}" in thread_header_text
+    assert "!threadId || isWorking || isMergedBranch || isCreatingBranch" not in thread_header_text
 
 
 def test_conversation_switcher_only_lists_active_conversations():
     root = Path(__file__).resolve().parents[1]
     conversation_toolbar_text = _join_text(
         root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar.tsx",
-        root / "apps" / "web" / "src" / "features" / "conversations" / "conversation-toolbar-view.tsx",
+        root
+        / "apps"
+        / "web"
+        / "src"
+        / "features"
+        / "conversations"
+        / "conversation-toolbar-view.tsx",
     )
 
     assert "const archivedConversations" not in conversation_toolbar_text
     assert "<optgroup" not in conversation_toolbar_text
-    assert "disabled={isLoading || isWorking || activeConversations.length === 0}" in conversation_toolbar_text
+    assert (
+        "disabled={isLoading || isWorking || activeConversations.length === 0}"
+        in conversation_toolbar_text
+    )
     assert "activeConversations.find(" in conversation_toolbar_text
     assert "conversation.root_thread_id === conversationId" in conversation_toolbar_text
     assert "?? activeConversations[0]" in conversation_toolbar_text
@@ -441,8 +502,20 @@ def test_conversation_switcher_only_lists_active_conversations():
 def test_archived_sidebar_sections_are_collapsible_and_compact():
     root = Path(__file__).resolve().parents[1]
     branch_tree_text = _join_text(
-        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-archived-sections.tsx",
-        root / "apps" / "web" / "src" / "features" / "branch-tree" / "branch-tree-archived-state.ts",
+        root
+        / "apps"
+        / "web"
+        / "src"
+        / "features"
+        / "branch-tree"
+        / "branch-tree-archived-sections.tsx",
+        root
+        / "apps"
+        / "web"
+        / "src"
+        / "features"
+        / "branch-tree"
+        / "branch-tree-archived-state.ts",
     )
     styles_text = _web_styles(root / "apps" / "web")
 

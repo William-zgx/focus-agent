@@ -7,6 +7,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from focus_agent.core.agent_team import (
+    AgentTeamMergeReview,
+    AgentTeamMergeReviewEvent,
     AgentTeamSession,
     AgentTeamTask,
     AgentTeamTaskOutput,
@@ -65,6 +67,30 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                 """
             )
             conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS focus_agent_team_merge_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    data_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS focus_agent_team_merge_review_events (
+                    event_id TEXT PRIMARY KEY,
+                    review_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    data_json TEXT NOT NULL,
+                    FOREIGN KEY(review_id) REFERENCES focus_agent_team_merge_reviews(review_id)
+                )
+                """
+            )
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_team_sessions_user_created ON agent_team_sessions(user_id, created_at DESC)"
             )
             conn.execute(
@@ -75,6 +101,12 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_team_outputs_task_created ON agent_team_outputs(task_id, created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_team_merge_reviews_session_created ON focus_agent_team_merge_reviews(session_id, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_team_merge_review_events_review_created ON focus_agent_team_merge_review_events(review_id, created_at)"
             )
             conn.commit()
 
@@ -89,6 +121,14 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
     @staticmethod
     def _output_from_row(row: sqlite3.Row) -> AgentTeamTaskOutput:
         return AgentTeamTaskOutput.model_validate(json.loads(row["data_json"]))
+
+    @staticmethod
+    def _merge_review_from_row(row: sqlite3.Row) -> AgentTeamMergeReview:
+        return AgentTeamMergeReview.model_validate(json.loads(row["data_json"]))
+
+    @staticmethod
+    def _merge_review_event_from_row(row: sqlite3.Row) -> AgentTeamMergeReviewEvent:
+        return AgentTeamMergeReviewEvent.model_validate(json.loads(row["data_json"]))
 
     def create_session(self, session: AgentTeamSession) -> None:
         self._upsert_session(session)
@@ -364,6 +404,87 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                 (task_id,),
             ).fetchall()
         return [self._output_from_row(row) for row in rows]
+
+    def save_merge_review(self, review: AgentTeamMergeReview) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO focus_agent_team_merge_reviews (
+                    review_id, session_id, status, created_at, updated_at, data_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(review_id) DO UPDATE SET
+                    session_id = excluded.session_id,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    data_json = excluded.data_json
+                """,
+                (
+                    review.review_id,
+                    review.session_id,
+                    review.status.value,
+                    review.created_at,
+                    review.updated_at,
+                    review.model_dump_json(),
+                ),
+            )
+            conn.commit()
+
+    def get_merge_review(self, review_id: str) -> AgentTeamMergeReview:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT data_json FROM focus_agent_team_merge_reviews WHERE review_id = ?",
+                (review_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown agent team merge review: {review_id}")
+        return self._merge_review_from_row(row)
+
+    def list_merge_reviews(self, *, session_id: str) -> list[AgentTeamMergeReview]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT data_json FROM focus_agent_team_merge_reviews
+                WHERE session_id = ?
+                ORDER BY created_at DESC, review_id DESC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [self._merge_review_from_row(row) for row in rows]
+
+    def add_merge_review_event(self, event: AgentTeamMergeReviewEvent) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO focus_agent_team_merge_review_events (
+                    event_id, review_id, session_id, created_at, data_json
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(event_id) DO UPDATE SET
+                    review_id = excluded.review_id,
+                    session_id = excluded.session_id,
+                    created_at = excluded.created_at,
+                    data_json = excluded.data_json
+                """,
+                (
+                    event.event_id,
+                    event.review_id,
+                    event.session_id,
+                    event.created_at,
+                    event.model_dump_json(),
+                ),
+            )
+            conn.commit()
+
+    def list_merge_review_events(self, *, review_id: str) -> list[AgentTeamMergeReviewEvent]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT data_json FROM focus_agent_team_merge_review_events
+                WHERE review_id = ?
+                ORDER BY created_at, event_id
+                """,
+                (review_id,),
+            ).fetchall()
+        return [self._merge_review_event_from_row(row) for row in rows]
 
 
 __all__ = ["SQLiteAgentTeamRepository"]

@@ -17,7 +17,11 @@ from .tool_invocation import (
     runtime_info_for_error,
     should_bypass_fallback,
 )
-from .tool_messages import annotate_tool_result_runtime, build_tool_error_message, build_tool_message
+from .tool_messages import (
+    annotate_tool_result_runtime,
+    build_tool_error_message,
+    build_tool_message,
+)
 
 
 def execute_single(
