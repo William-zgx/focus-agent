@@ -41,10 +41,14 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
                 payload = params["data_json"].obj
                 sessions[str(params["session_id"])] = {"data_json": payload}
                 return
-            if normalized.startswith("SELECT data_json FROM focus_agent_team_sessions WHERE session_id"):
+            if normalized.startswith(
+                "SELECT data_json FROM focus_agent_team_sessions WHERE session_id"
+            ):
                 self._fetchone = sessions.get(str(params[0]))
                 return
-            if normalized.startswith("SELECT data_json FROM focus_agent_team_sessions WHERE user_id"):
+            if normalized.startswith(
+                "SELECT data_json FROM focus_agent_team_sessions WHERE user_id"
+            ):
                 self._fetchall = [
                     value
                     for value in sessions.values()
@@ -61,7 +65,9 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
             if normalized.startswith("SELECT data_json FROM focus_agent_team_tasks WHERE task_id"):
                 self._fetchone = tasks.get(str(params[0]))
                 return
-            if normalized.startswith("SELECT data_json FROM focus_agent_team_tasks WHERE session_id"):
+            if normalized.startswith(
+                "SELECT data_json FROM focus_agent_team_tasks WHERE session_id"
+            ):
                 self._fetchall = [
                     value
                     for value in tasks.values()
@@ -72,7 +78,9 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
                 payload = params["data_json"].obj
                 outputs[str(params["output_id"])] = {"data_json": payload}
                 return
-            if normalized.startswith("SELECT data_json FROM focus_agent_team_outputs WHERE task_id"):
+            if normalized.startswith(
+                "SELECT data_json FROM focus_agent_team_outputs WHERE task_id"
+            ):
                 self._fetchall = [
                     value
                     for value in outputs.values()

@@ -58,6 +58,24 @@ from .config_parts.observability import load_observability_config
 from .config_parts.runtime import load_runtime_config
 from .config_parts.server import load_server_config
 from .config_parts.trajectory import load_trajectory_config
+from .runtime import secrets as secret_runtime
+
+_BASE_SECRET_ENV_KEYS = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "AUTH_JWT_JWKS",
+        "AUTH_JWT_KEYS",
+        "AUTH_JWT_SECRET",
+        "AUTH_JWT_SECRETS",
+        "DATABASE_URI",
+        "DEEPSEEK_API_KEY",
+        "MOONSHOT_API_KEY",
+        "OLLAMA_API_KEY",
+        "OPENAI_API_KEY",
+        "TAVILY_API_KEY",
+        "AGENT_MEMORY_EMBEDDING_API_KEY",
+    }
+)
 
 
 def ensure_runtime_directories(settings: Settings) -> None:
@@ -81,21 +99,26 @@ class Settings:
     langsmith_project: str = "focus-agent"
     branch_db_path: str = ".focus_agent/branches.sqlite3"
     artifact_dir: str = ".focus_agent/artifacts"
+    artifact_store_type: str = "local"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_reload: bool = False
     app_version: str = "1.0.0"
     app_environment: str = "development"
     deployment_name: str | None = None
+    secret_provider: str = "env"
     tracing_enabled: bool = False
     tracing_service_name: str = "focus-agent"
     otel_traces_exporters: tuple[str, ...] = ()
+    otel_metrics_exporters: tuple[str, ...] = ()
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_traces_endpoint: str | None = None
+    otel_exporter_otlp_metrics_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None
     otel_exporter_otlp_protocol: str = "http/protobuf"
     otel_exporter_otlp_timeout_ms: int = 10000
     otel_tracer_provider: object | None = field(default=None, repr=False)
+    otel_meter_provider: object | None = field(default=None, repr=False)
     web_app_dist_dir: str | None = None
     web_app_dev_server_url: str | None = None
     auth_enabled: bool = True
@@ -179,6 +202,16 @@ class Settings:
     multi_agent_role_fallback_models: dict[str, str] = field(default_factory=dict)
     agent_team_skill_scout_enabled: bool = True
     agent_team_automation_level: str = "assisted"
+    agent_branch_decision_enabled: bool = False
+    agent_branch_decision_mode: str = "shadow"
+    agent_branch_decision_min_confidence: float = 0.70
+    agent_branch_decision_split_threshold: float = 0.65
+    agent_branch_decision_conclude_threshold: float = 0.70
+    agent_branch_decision_merge_candidate_threshold: float = 0.75
+    agent_branch_decision_rate_limit_per_hour: int = 3
+    agent_branch_recommendation_enabled: bool = False
+    agent_branch_recommendation_mode: str = "shadow"
+    agent_branch_recommendation_min_confidence: float = 0.72
     agent_memory_backend: str = "postgres"
     agent_memory_read_source: str = "postgres"
     agent_memory_extractor_mode: str = "heuristic"
@@ -233,6 +266,10 @@ class Settings:
             environ={},
         )
         env = {**local_overrides, **process_env}
+        defaults = cls()
+        secret_provider = secret_runtime.build_secret_provider(
+            env.get("FOCUS_AGENT_SECRET_PROVIDER", defaults.secret_provider)
+        )
         model_catalog = load_model_catalog_document(
             env.get("FOCUS_AGENT_MODEL_CATALOG_DOC"),
             environ=env,
@@ -241,7 +278,12 @@ class Settings:
             env.get("FOCUS_AGENT_TOOL_CATALOG_DOC"),
             environ=env,
         )
-        defaults = cls()
+        env = _resolve_secret_provider_env(
+            env,
+            secret_provider=secret_provider,
+            model_catalog=model_catalog,
+            tool_catalog=tool_catalog,
+        )
         values = load_runtime_config(
             env,
             defaults,
@@ -309,3 +351,42 @@ __all__ = [
     "ensure_runtime_directories",
     "load_local_env_file",
 ]
+
+
+def _resolve_secret_provider_env(
+    env: dict[str, str],
+    *,
+    secret_provider: secret_runtime.SecretProvider,
+    model_catalog: ModelCatalogConfig,
+    tool_catalog: ToolCatalogConfig,
+) -> dict[str, str]:
+    resolved = dict(env)
+    for key in sorted(_secret_env_keys(resolved, model_catalog, tool_catalog)):
+        if resolved.get(key):
+            continue
+        value = secret_runtime.try_get_secret(secret_provider, key)
+        if value:
+            resolved[key] = str(value)
+    return resolved
+
+
+def _secret_env_keys(
+    env: dict[str, str],
+    model_catalog: ModelCatalogConfig,
+    tool_catalog: ToolCatalogConfig,
+) -> set[str]:
+    keys = set(_BASE_SECRET_ENV_KEYS)
+    for pointer_key in (
+        "AGENT_MEMORY_EMBEDDING_API_KEY_ENV",
+        "WEB_SEARCH_API_KEY_ENV",
+    ):
+        pointed = str(env.get(pointer_key) or "").strip()
+        if pointed:
+            keys.add(pointed)
+    web_search_key = getattr(tool_catalog.web_search, "api_key_env", None)
+    if web_search_key:
+        keys.add(str(web_search_key))
+    for provider in model_catalog.providers:
+        if provider.api_key_env:
+            keys.add(str(provider.api_key_env))
+    return {key for key in keys if key}

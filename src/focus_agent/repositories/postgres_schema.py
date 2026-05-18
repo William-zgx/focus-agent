@@ -9,7 +9,7 @@ from .postgres_schema_migrations import (
     _run_migration_v10,
 )
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 17
 _SCHEMA_MIGRATION_LOCK_ID = 7612044473148256129
 
 
@@ -52,7 +52,9 @@ def ensure_app_postgres_schema_on_connection(
         for version, migration in _MIGRATIONS:
             if version == 10 and not memory_embeddings_enabled:
                 continue
-            cur.execute("SELECT version FROM focus_schema_migrations WHERE version = %s", (version,))
+            cur.execute(
+                "SELECT version FROM focus_schema_migrations WHERE version = %s", (version,)
+            )
             existing = cur.fetchone()
             if existing is not None:
                 continue

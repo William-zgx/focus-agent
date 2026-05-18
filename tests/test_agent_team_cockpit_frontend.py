@@ -2,7 +2,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_TEAM_ROOT = ROOT / "apps" / "web" / "src" / "features" / "agent-team"
-AGENT_TEAM_STYLES = ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
+AGENT_TEAM_STYLES = (
+    ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
+)
 
 
 def _read(path: Path) -> str:
@@ -60,7 +62,7 @@ def test_workbench_uses_agent_team_cockpit_and_merge_decision_hook():
     assert "next_action?: AgentTeamMergeDecisionAction" in types_text
     assert "approved?: boolean" in types_text
     assert "action?: AgentTeamMergeDecisionAction" in types_text
-    assert "next_action: \"merge\"" in workbench_text
+    assert 'next_action: "merge"' in workbench_text
     assert "accepted_tasks: tasks.map" in workbench_text
     assert "PreMergeCheckPanel" not in workbench_text
     assert "TaskLanesPanel" not in workbench_text

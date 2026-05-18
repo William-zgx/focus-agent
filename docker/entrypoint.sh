@@ -39,4 +39,8 @@ mkdir -p "$ARTIFACT_DIR"
 mkdir -p "$(dirname "$LOCAL_CHECKPOINT_PATH")"
 mkdir -p "$(dirname "$LOCAL_STORE_PATH")"
 
+if [ -n "${DATABASE_URI:-}" ]; then
+  alembic upgrade head
+fi
+
 exec "$@"

@@ -29,6 +29,4 @@ def test_multi_agent_config_env_overrides(monkeypatch) -> None:
     assert settings.multi_agent_dag_scheduler_enabled is True
     assert settings.multi_agent_async_approval_enabled is True
     assert settings.multi_agent_resource_lock_ttl_seconds == 90.0
-    assert settings.multi_agent_role_fallback_models == {
-        "backend_executor": "openai:gpt-4.1"
-    }
+    assert settings.multi_agent_role_fallback_models == {"backend_executor": "openai:gpt-4.1"}

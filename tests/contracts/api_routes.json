@@ -206,6 +206,79 @@
     },
     {
       "method": "GET",
+      "operation_id": "list_background_dead_letter_jobs_v1_admin_background_jobs_dead_letter_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "offset",
+          "required": false,
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/background-jobs/dead-letter",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BackgroundDeadLetterJobListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "replay_background_dead_letter_job_v1_admin_background_jobs_dead_letter__job_key__replay_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "job_key",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/admin/background-jobs/dead-letter/{job_key}/replay",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BackgroundDeadLetterReplayResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "background_jobs_summary_v1_admin_background_jobs_summary_get",
       "parameters": [],
       "path": "/v1/admin/background-jobs/summary",
@@ -2687,6 +2760,18 @@
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_branch_decision_config_v1_branch_decisions_config_get",
+      "parameters": [],
+      "path": "/v1/branch-decisions/config",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BranchDecisionConfigResponse"
         }
       }
     },
@@ -5499,6 +5584,176 @@
       "responses": {
         "200": {
           "$ref": "#/components/schemas/BranchActionExecuteResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_thread_branch_decisions_v1_threads__thread_id__branch_decisions_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "action",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "query",
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/branch-decisions",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BranchDecisionListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "dismiss_thread_branch_decision_v1_threads__thread_id__branch_decisions__decision_id__dismiss_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "decision_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/branch-decisions/{decision_id}/dismiss",
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BranchDecisionDismissRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BranchDecisionEventResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "promote_thread_branch_decision_v1_threads__thread_id__branch_decisions__decision_id__promote_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        },
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "decision_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/branch-decisions/{decision_id}/promote",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/BranchDecisionEventResponse"
         },
         "422": {
           "$ref": "#/components/schemas/HTTPValidationError"
@@ -9849,6 +10104,123 @@
       ],
       "type": "object"
     },
+    "BackgroundDeadLetterJobListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/BackgroundDeadLetterJobResponse"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "BackgroundDeadLetterJobResponse": {
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "type": "integer"
+        },
+        "dead_lettered_age_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dead_lettered_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dedupe_policy": {
+          "default": "skip",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_key": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_attempts": {
+          "default": 1,
+          "type": "integer"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "status": {
+          "default": "dead_lettered",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_key",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "BackgroundDeadLetterReplayResponse": {
+      "properties": {
+        "job_key": {
+          "type": "string"
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_key",
+        "replayed",
+        "status"
+      ],
+      "type": "object"
+    },
     "BackgroundJobSummaryResponse": {
       "properties": {
         "generated_at": {
@@ -9947,6 +10319,16 @@
         "branch_role": {
           "$ref": "#/components/schemas/BranchRole"
         },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "created_at": {
           "type": "string"
         },
@@ -10003,12 +10385,42 @@
             }
           ]
         },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "reason": {
           "default": "",
           "type": "string"
         },
         "root_thread_id": {
           "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_decision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "source_thread_id": {
           "type": "string"
@@ -10048,6 +10460,555 @@
         "failed"
       ],
       "type": "string"
+    },
+    "BranchDecisionAction": {
+      "enum": [
+        "split",
+        "conclude",
+        "merge_candidate",
+        "continue_current",
+        "fork_child_branch",
+        "fork_sibling_branch"
+      ],
+      "type": "string"
+    },
+    "BranchDecisionConfigResponse": {
+      "properties": {
+        "conclude_threshold": {
+          "default": 0.7,
+          "type": "number"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "merge_candidate_threshold": {
+          "default": 0.75,
+          "type": "number"
+        },
+        "min_confidence": {
+          "default": 0.7,
+          "type": "number"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/BranchDecisionMode"
+        },
+        "rate_limit_per_hour": {
+          "default": 3,
+          "type": "integer"
+        },
+        "recommendation_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "recommendation_min_confidence": {
+          "default": 0.72,
+          "type": "number"
+        },
+        "recommendation_mode": {
+          "$ref": "#/components/schemas/BranchDecisionMode"
+        },
+        "split_threshold": {
+          "default": 0.65,
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "BranchDecisionDismissRequest": {
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "BranchDecisionEvent": {
+      "properties": {
+        "action": {
+          "$ref": "#/components/schemas/BranchDecisionAction"
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "dismiss_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/BranchDecisionMode"
+        },
+        "promoted_action_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "recommendation_target": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchDecisionRecommendationTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/components/schemas/BranchDecisionSignal"
+          },
+          "type": "array"
+        },
+        "source_thread_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/BranchDecisionStatus"
+        },
+        "suggested_branch_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "root_thread_id",
+        "source_thread_id",
+        "action"
+      ],
+      "type": "object"
+    },
+    "BranchDecisionEventResponse": {
+      "properties": {
+        "action": {
+          "$ref": "#/components/schemas/BranchDecisionAction"
+        },
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "dismiss_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/BranchDecisionMode"
+        },
+        "promoted_action_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "recommendation_target": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchDecisionRecommendationTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/components/schemas/BranchDecisionSignal"
+          },
+          "type": "array"
+        },
+        "source_thread_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/BranchDecisionStatus"
+        },
+        "suggested_branch_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_parent_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "root_thread_id",
+        "source_thread_id",
+        "action"
+      ],
+      "type": "object"
+    },
+    "BranchDecisionListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/BranchDecisionEventResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BranchDecisionMode": {
+      "enum": [
+        "shadow",
+        "suggest",
+        "execute"
+      ],
+      "type": "string"
+    },
+    "BranchDecisionRecommendationTarget": {
+      "enum": [
+        "continue_current",
+        "fork_child_branch",
+        "fork_sibling_branch"
+      ],
+      "type": "string"
+    },
+    "BranchDecisionSignal": {
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "weight": {
+          "default": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "BranchDecisionStatus": {
+      "enum": [
+        "shadowed",
+        "suggested",
+        "promoted",
+        "dismissed",
+        "skipped",
+        "blocked",
+        "error"
+      ],
+      "type": "string"
+    },
+    "BranchDecisionSummary": {
+      "properties": {
+        "actionable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "dismissed_count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "latest_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchDecisionEvent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pending_action_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
     },
     "BranchRecord": {
       "properties": {
@@ -13538,6 +14499,16 @@
           },
           "type": "array"
         },
+        "branch_decision_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchDecisionSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "branch_meta": {
           "anyOf": [
             {
@@ -13677,6 +14648,16 @@
             "$ref": "#/components/schemas/BranchActionProposal"
           },
           "type": "array"
+        },
+        "branch_decision_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BranchDecisionSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "branch_meta": {
           "anyOf": [

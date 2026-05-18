@@ -235,7 +235,9 @@ def evidence_bundle_source_snippets(
     return snippets
 
 
-def _search_payload_items(payload: dict[str, Any], *, observed_at: str | None) -> list[EvidenceItem]:
+def _search_payload_items(
+    payload: dict[str, Any], *, observed_at: str | None
+) -> list[EvidenceItem]:
     results = payload.get("results")
     if not isinstance(results, list):
         return []
@@ -309,9 +311,8 @@ def _is_weather_or_monthly_climate(*, host: str, haystack: str) -> bool:
     if _domain_matches(host, _WEATHER_BACKGROUND_DOMAINS):
         return True
     return (
-        ("monthly" in haystack or "climate" in haystack or "average weather" in haystack)
-        and "weather" in haystack
-    )
+        "monthly" in haystack or "climate" in haystack or "average weather" in haystack
+    ) and "weather" in haystack
 
 
 def _is_official_or_government(*, host: str, source_name: str) -> bool:

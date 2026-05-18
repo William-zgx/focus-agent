@@ -25,7 +25,13 @@ from focus_agent.config import Settings
 
 
 class RecordingFakeModel:
-    def __init__(self, content: str = "delegated artifact", *, error: Exception | None = None, delay: float = 0.0):
+    def __init__(
+        self,
+        content: str = "delegated artifact",
+        *,
+        error: Exception | None = None,
+        delay: float = 0.0,
+    ):
         self.content = content
         self.error = error
         self.delay = delay
@@ -183,6 +189,7 @@ def test_fake_delegated_executor_blocks_exhausted_budget_before_completion():
     assert "max_turns budget is exhausted" in str(results[0].error)
     assert results[0].artifacts == []
 
+
 def test_inline_and_background_execution_modes_are_not_stubbed():
     inline = executor_for_mode("inline")
     background = executor_for_mode("background")
@@ -234,7 +241,9 @@ def test_background_executor_runs_all_tasks_with_bounded_workers_and_preserves_o
 
     results = run_delegated_tasks(
         tasks=tasks,
-        registry=SubagentRegistry.from_settings(Settings(agent_delegation_execution_mode="background")),
+        registry=SubagentRegistry.from_settings(
+            Settings(agent_delegation_execution_mode="background")
+        ),
         executor=executor,
         max_parallel_runs=2,
     )
@@ -345,7 +354,13 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
         tool_route_plan={
             "role": "critic",
             "denied_tools": ["write_text_artifact"],
-            "decisions": [{"name": "write_text_artifact", "allowed": False, "reason": "critic_no_workspace_write"}],
+            "decisions": [
+                {
+                    "name": "write_text_artifact",
+                    "allowed": False,
+                    "reason": "critic_no_workspace_write",
+                }
+            ],
         },
         model_route_decision=model_route.model_dump(mode="json"),
     )
@@ -354,13 +369,21 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
         tool_route_plan={
             "role": "critic",
             "denied_tools": ["write_text_artifact"],
-            "decisions": [{"name": "write_text_artifact", "allowed": False, "reason": "critic_no_workspace_write"}],
+            "decisions": [
+                {
+                    "name": "write_text_artifact",
+                    "allowed": False,
+                    "reason": "critic_no_workspace_write",
+                }
+            ],
         },
         agent_failure_records=[item.model_dump(mode="json") for item in failures],
     )
 
     skill_task = next(task for task in delegation.tasks if task.role.value == "skill_scout")
-    skill_decision = next(decision for decision in delegation.decisions if decision.role.value == "skill_scout")
+    skill_decision = next(
+        decision for decision in delegation.decisions if decision.role.value == "skill_scout"
+    )
 
     assert delegation.enabled is True
     assert delegation.enforce is False

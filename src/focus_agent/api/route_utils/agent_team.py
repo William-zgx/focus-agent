@@ -24,7 +24,6 @@ def _agent_team_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=str(exc))
 
 
-
 __all__ = [
     "_agent_team_error",
     "_agent_team_service_or_503",

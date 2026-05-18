@@ -19,7 +19,11 @@ class _FakeArtifactMetadataCursor:
         if normalized.startswith("SELECT pg_advisory_xact_lock"):
             self._rows = []
             return
-        if normalized.startswith("CREATE TABLE") or normalized.startswith("CREATE INDEX") or normalized.startswith("CREATE UNIQUE INDEX"):
+        if (
+            normalized.startswith("CREATE TABLE")
+            or normalized.startswith("CREATE INDEX")
+            or normalized.startswith("CREATE UNIQUE INDEX")
+        ):
             self._rows = []
             return
         if normalized.startswith("ALTER TABLE"):
@@ -38,7 +42,9 @@ class _FakeArtifactMetadataCursor:
             artifact_id = str(params["relative_path"])
             previous = self.storage.get(artifact_id)
             row = dict(params)
-            row["created_at"] = previous["created_at"] if previous is not None else params["created_at"]
+            row["created_at"] = (
+                previous["created_at"] if previous is not None else params["created_at"]
+            )
             self.storage[artifact_id] = row
             self._rows = [
                 {
@@ -57,7 +63,8 @@ class _FakeArtifactMetadataCursor:
             rows = [
                 row
                 for row in self.storage.values()
-                if str(row["source_thread_id"]) == thread_id or str(row["root_thread_id"]) == thread_id
+                if str(row["source_thread_id"]) == thread_id
+                or str(row["root_thread_id"]) == thread_id
             ]
             rows.sort(key=lambda row: (-row["updated_at"].timestamp(), str(row["relative_path"])))
             limit = params.get("limit")
@@ -168,6 +175,7 @@ def test_sqlite_branch_repository_roundtrip(tmp_path: Path):
     retyped = repo.get("b1")
     assert retyped.branch_role == BranchRole.EXECUTE
 
+
 def test_sqlite_branch_repository_loads_old_rows_without_policy_column(tmp_path: Path):
     db_path = tmp_path / "branches.sqlite3"
     repo = SQLiteBranchRepository(str(db_path))
@@ -239,7 +247,9 @@ def test_thread_access_rejects_other_user(tmp_path: Path):
 
 def test_conversation_roundtrip_and_backfill(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
-    repo.ensure_thread_owner(thread_id="user-1-main", root_thread_id="user-1-main", owner_user_id="user-1")
+    repo.ensure_thread_owner(
+        thread_id="user-1-main", root_thread_id="user-1-main", owner_user_id="user-1"
+    )
     repo.ensure_thread_owner(thread_id="root-2", root_thread_id="root-2", owner_user_id="user-1")
 
     created = repo.create_conversation(
@@ -309,6 +319,7 @@ def test_artifact_metadata_repository_roundtrip(monkeypatch, tmp_path: Path):
     artifact_two.write_text("retro update\n", encoding="utf-8")
     artifact_two.touch()
     import os
+
     os.utime(artifact_two, (later_mtime, later_mtime))
     second = repo.upsert_from_file(
         thread_id="thread-1",
@@ -346,6 +357,7 @@ def test_artifact_metadata_repository_preserves_created_at_on_upsert(monkeypatch
     later_mtime = artifact.stat().st_mtime + 30
     artifact.write_text("two\n", encoding="utf-8")
     import os
+
     os.utime(artifact, (later_mtime, later_mtime))
     updated = repo.upsert_from_file(
         thread_id="thread-2",

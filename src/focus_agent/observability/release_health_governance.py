@@ -34,7 +34,9 @@ def evaluate_governance_quality_report(
         statuses={"warn", "warning"},
         severities={"warning"},
     )
-    report_status = str(summary.get("status") or governance_quality_report.get("status") or "").lower()
+    report_status = str(
+        summary.get("status") or governance_quality_report.get("status") or ""
+    ).lower()
     details = {
         "status": report_status or None,
         "blocking_signals": blocking_signals,

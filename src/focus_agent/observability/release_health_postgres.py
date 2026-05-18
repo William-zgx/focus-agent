@@ -13,12 +13,16 @@ from focus_agent.observability.release_health_utils import (
 )
 
 
-def evaluate_postgres_migration_report(postgres_migration_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+def evaluate_postgres_migration_report(
+    postgres_migration_report: Mapping[str, Any],
+) -> ReleaseHealthSignal:
     """Validate the machine-readable Postgres migration verification report."""
     status = str(postgres_migration_report.get("status") or "").lower()
     explicit_passed = postgres_migration_report.get("passed")
     migrations = postgres_migration_report.get("migrations")
-    command = postgres_migration_report.get("command") or postgres_migration_report.get("verification_command")
+    command = postgres_migration_report.get("command") or postgres_migration_report.get(
+        "verification_command"
+    )
     errors = postgres_migration_report.get("errors")
     if not isinstance(errors, list):
         errors = []
@@ -58,10 +62,16 @@ def evaluate_postgres_migration_report(postgres_migration_report: Mapping[str, A
 def evaluate_postgres_ops_report(postgres_ops_report: Mapping[str, Any]) -> ReleaseHealthSignal:
     """Validate a Postgres operations report collected by deployment jobs."""
     operations = postgres_ops_report.get("operations")
-    rows = [row for row in operations if isinstance(row, Mapping)] if isinstance(operations, list) else []
+    rows = (
+        [row for row in operations if isinstance(row, Mapping)]
+        if isinstance(operations, list)
+        else []
+    )
     if not rows:
         checks = postgres_ops_report.get("checks")
-        rows = [row for row in checks if isinstance(row, Mapping)] if isinstance(checks, list) else []
+        rows = (
+            [row for row in checks if isinstance(row, Mapping)] if isinstance(checks, list) else []
+        )
     failures = failed_report_rows(rows)
     status = str(postgres_ops_report.get("status") or "").lower()
     explicit_passed = postgres_ops_report.get("passed")

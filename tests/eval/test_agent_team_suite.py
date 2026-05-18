@@ -68,12 +68,13 @@ def test_agent_team_dataset_covers_mvp_attention_and_merge_gates():
         "gt_agent_team_attention_continuity_resumes_selected_task_after_interruption",
         "gt_agent_team_rejected_task_outputs_do_not_pollute_main_memory",
     } <= set(cases)
-    assert "attention" in cases[
-        "gt_agent_team_attention_continuity_resumes_selected_task_after_interruption"
-    ].tags
-    assert cases[
-        "gt_agent_team_rejected_task_outputs_do_not_pollute_main_memory"
-    ].expected["answer_must_not_contain"] == ["SECRET_REJECTED_FINDING"]
+    assert (
+        "attention"
+        in cases["gt_agent_team_attention_continuity_resumes_selected_task_after_interruption"].tags
+    )
+    assert cases["gt_agent_team_rejected_task_outputs_do_not_pollute_main_memory"].expected[
+        "answer_must_not_contain"
+    ] == ["SECRET_REJECTED_FINDING"]
 
 
 @pytest.mark.parametrize("case", load_dataset(DATASET_PATH), ids=lambda case: case.id)

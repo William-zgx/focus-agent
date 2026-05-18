@@ -95,13 +95,10 @@ class UserService:
             metadata=dict(metadata or {}),
         )
         user = self.repository.ensure_user_from_principal(principal, defaults=defaults)
-        if (
-            self._principal_is_configured_bootstrap_admin(
-                principal,
-                bootstrap_admin_user_ids=bootstrap_admin_user_ids,
-            )
-            and ADMIN_ROLE not in set(normalize_roles(user.roles))
-        ):
+        if self._principal_is_configured_bootstrap_admin(
+            principal,
+            bootstrap_admin_user_ids=bootstrap_admin_user_ids,
+        ) and ADMIN_ROLE not in set(normalize_roles(user.roles)):
             user = self.repository.save_user(
                 user.model_copy(
                     update={
@@ -219,7 +216,9 @@ class UserService:
                 reason="user_conflict",
                 request_id=request_id,
             )
-            raise UserConflictError(f"User update conflicts with an existing user: {user_id}") from exc
+            raise UserConflictError(
+                f"User update conflicts with an existing user: {user_id}"
+            ) from exc
         self._audit(
             actor=actor,
             action="users.update",

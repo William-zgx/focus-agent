@@ -253,7 +253,9 @@ class MemoryService:
         )
 
     @staticmethod
-    def _merge_decision_into_outcome(outcome: dict[str, Any], decision: MemoryWriteDecision) -> None:
+    def _merge_decision_into_outcome(
+        outcome: dict[str, Any], decision: MemoryWriteDecision
+    ) -> None:
         if decision.status == MemoryWriteDecisionStatus.ACCEPTED:
             outcome["written"].append(decision.memory_id)
         elif decision.status == MemoryWriteDecisionStatus.MERGED:
@@ -296,7 +298,14 @@ def _record_from_request(request: MemoryWriteRequest) -> MemoryRecord:
 def _sanitize_request(request: MemoryWriteRequest) -> MemoryWriteRequest:
     content = _redact_sensitive_text(request.content)
     summary = _redact_sensitive_text(request.summary or request.content[:240])
-    tags = sorted(set(request.tags) | ({"redacted"} if content != request.content or summary != (request.summary or request.content[:240]) else set()))
+    tags = sorted(
+        set(request.tags)
+        | (
+            {"redacted"}
+            if content != request.content or summary != (request.summary or request.content[:240])
+            else set()
+        )
+    )
     return request.model_copy(update={"content": content, "summary": summary, "tags": tags})
 
 
@@ -357,7 +366,9 @@ def _should_replace(existing: MemoryRecord, incoming: MemoryWriteRequest) -> boo
         incoming.importance > existing.importance
         or incoming_confidence > existing_confidence
         or _has_correction_signal(incoming.summary or incoming.content)
-        or has_textual_overlap(existing.summary or existing.content, incoming.summary or incoming.content)
+        or has_textual_overlap(
+            existing.summary or existing.content, incoming.summary or incoming.content
+        )
     )
 
 

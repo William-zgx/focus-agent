@@ -72,7 +72,9 @@ class PostgresConnectionProvider:
             return {
                 "postgres_pool_enabled": int(self.pool_enabled),
                 "postgres_pool_available": int(self.pool_enabled and self._pool is not None),
-                "postgres_pool_fallback_direct": int((not self.pool_enabled) or self._pool_unavailable),
+                "postgres_pool_fallback_direct": int(
+                    (not self.pool_enabled) or self._pool_unavailable
+                ),
                 "postgres_connection_opened_total": self._opened_total,
                 "postgres_connection_returned_total": self._returned_total,
                 "postgres_connection_in_use": self._in_use,
@@ -109,7 +111,9 @@ class PostgresConnectionProvider:
             self._returned_total += 1
             self._in_use = max(0, self._in_use - 1)
 
-    def _record_query(self, *, duration_ms: float, statement: Any, error: BaseException | None) -> None:
+    def _record_query(
+        self, *, duration_ms: float, statement: Any, error: BaseException | None
+    ) -> None:
         with self._lock:
             self._query_total += 1
             if error is not None:

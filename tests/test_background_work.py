@@ -21,7 +21,9 @@ def test_background_queue_deduplicates_pending_keys_and_tracks_metrics() -> None
     calls: list[str] = []
     queue = BoundedBackgroundQueue(name="test", max_concurrency=1, max_size=2)
     try:
-        assert queue.submit(key="thread-1", func=lambda: calls.append("thread-1"), delay_seconds=0.05)
+        assert queue.submit(
+            key="thread-1", func=lambda: calls.append("thread-1"), delay_seconds=0.05
+        )
         assert not queue.submit(key="thread-1", func=lambda: calls.append("duplicate"))
 
         deadline = time.monotonic() + 1.0
@@ -66,8 +68,12 @@ def test_background_queue_uses_shared_job_deduper() -> None:
             self.keys.discard(key)
 
     deduper = SharedDeduper()
-    queue_a = BoundedBackgroundQueue(name="shared-a", max_concurrency=1, max_size=2, job_deduper=deduper)
-    queue_b = BoundedBackgroundQueue(name="shared-b", max_concurrency=1, max_size=2, job_deduper=deduper)
+    queue_a = BoundedBackgroundQueue(
+        name="shared-a", max_concurrency=1, max_size=2, job_deduper=deduper
+    )
+    queue_b = BoundedBackgroundQueue(
+        name="shared-b", max_concurrency=1, max_size=2, job_deduper=deduper
+    )
     try:
         assert queue_a.submit(key="same-thread", func=lambda: None, delay_seconds=0.05)
         assert not queue_b.submit(key="same-thread", func=lambda: None, delay_seconds=0.05)
@@ -112,7 +118,9 @@ def test_background_queue_records_durable_job_lifecycle_and_snapshot() -> None:
 
     deduper = DurableDeduper()
     calls: list[str] = []
-    queue = BoundedBackgroundQueue(name="durable", max_concurrency=1, max_size=2, job_deduper=deduper)
+    queue = BoundedBackgroundQueue(
+        name="durable", max_concurrency=1, max_size=2, job_deduper=deduper
+    )
     try:
         assert queue.submit(key="job-1", func=lambda: calls.append("ran"))
         deadline = time.monotonic() + 1.0
@@ -160,7 +168,9 @@ def test_background_queue_uses_claim_token_lifecycle_when_backend_supports_it() 
 
     deduper = ClaimingDeduper()
     calls: list[str] = []
-    queue = BoundedBackgroundQueue(name="claiming", max_concurrency=1, max_size=2, job_deduper=deduper)
+    queue = BoundedBackgroundQueue(
+        name="claiming", max_concurrency=1, max_size=2, job_deduper=deduper
+    )
     try:
         assert queue.submit(key="job-claim", func=lambda: calls.append("ran"))
         deadline = time.monotonic() + 1.0
@@ -214,7 +224,9 @@ def test_durable_background_worker_runs_registered_handler_with_claim() -> None:
         def mark_job_claim_succeeded(self, key: str, job_claim: BackgroundJobClaim) -> None:
             self.events.append(("succeeded", key, job_claim.claim_token))
 
-        def mark_job_claim_failed(self, key: str, job_claim: BackgroundJobClaim, error: str) -> None:
+        def mark_job_claim_failed(
+            self, key: str, job_claim: BackgroundJobClaim, error: str
+        ) -> None:
             self.events.append(("failed", key, job_claim.claim_token))
 
     backend = Backend()
@@ -260,7 +272,9 @@ def test_durable_background_worker_heartbeats_long_handler_claim() -> None:
         def mark_job_claim_running(self, key: str, job_claim: BackgroundJobClaim) -> None:
             self.events.append(("running", key, job_claim.claim_token))
 
-        def heartbeat_job_claim(self, key: str, job_claim: BackgroundJobClaim, ttl_seconds: float) -> bool:
+        def heartbeat_job_claim(
+            self, key: str, job_claim: BackgroundJobClaim, ttl_seconds: float
+        ) -> bool:
             self.heartbeat_seen = True
             self.events.append(("heartbeat", key, job_claim.claim_token))
             return True
@@ -268,7 +282,9 @@ def test_durable_background_worker_heartbeats_long_handler_claim() -> None:
         def mark_job_claim_succeeded(self, key: str, job_claim: BackgroundJobClaim) -> None:
             self.events.append(("succeeded", key, job_claim.claim_token))
 
-        def mark_job_claim_failed(self, key: str, job_claim: BackgroundJobClaim, error: str) -> None:
+        def mark_job_claim_failed(
+            self, key: str, job_claim: BackgroundJobClaim, error: str
+        ) -> None:
             self.events.append(("failed", key, job_claim.claim_token))
 
     backend = Backend()
@@ -288,8 +304,16 @@ def test_durable_background_worker_heartbeats_long_handler_claim() -> None:
     )
 
     assert worker.run_once()
-    assert ("heartbeat", "chat:conversation_title:thread-heartbeat", "claim-heartbeat") in backend.events
-    assert ("succeeded", "chat:conversation_title:thread-heartbeat", "claim-heartbeat") in backend.events
+    assert (
+        "heartbeat",
+        "chat:conversation_title:thread-heartbeat",
+        "claim-heartbeat",
+    ) in backend.events
+    assert (
+        "succeeded",
+        "chat:conversation_title:thread-heartbeat",
+        "claim-heartbeat",
+    ) in backend.events
     assert not any(event[0] == "failed" for event in backend.events)
     assert worker.snapshot()["durable_worker_completed_total"] == 1
 
@@ -318,7 +342,9 @@ def test_durable_background_worker_does_not_succeed_when_heartbeat_is_lost() -> 
         def mark_job_claim_running(self, key: str, job_claim: BackgroundJobClaim) -> None:
             self.events.append(("running", key, job_claim.claim_token, ""))
 
-        def heartbeat_job_claim(self, key: str, job_claim: BackgroundJobClaim, ttl_seconds: float) -> bool:
+        def heartbeat_job_claim(
+            self, key: str, job_claim: BackgroundJobClaim, ttl_seconds: float
+        ) -> bool:
             self.heartbeat_seen = True
             self.events.append(("heartbeat", key, job_claim.claim_token, ""))
             return False
@@ -326,7 +352,9 @@ def test_durable_background_worker_does_not_succeed_when_heartbeat_is_lost() -> 
         def mark_job_claim_succeeded(self, key: str, job_claim: BackgroundJobClaim) -> None:
             self.events.append(("succeeded", key, job_claim.claim_token, ""))
 
-        def mark_job_claim_failed(self, key: str, job_claim: BackgroundJobClaim, error: str) -> None:
+        def mark_job_claim_failed(
+            self, key: str, job_claim: BackgroundJobClaim, error: str
+        ) -> None:
             self.events.append(("failed", key, job_claim.claim_token, error))
 
     backend = Backend()

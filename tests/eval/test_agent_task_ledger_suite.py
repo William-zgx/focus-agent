@@ -23,14 +23,22 @@ def _latest_user_text(messages: list[Any]) -> str:
 def _agent_task_ledger_script(messages: list[Any], allow_tools: bool) -> AIMessage:  # noqa: ARG001
     user_text = _latest_user_text(messages)
     if "legacy single-run" in user_text:
-        return AIMessage(content="Agent Task Ledger is default off, so legacy single-run behavior stays unchanged.")
+        return AIMessage(
+            content="Agent Task Ledger is default off, so legacy single-run behavior stays unchanged."
+        )
     if "orchestrator" in user_text and "critic" in user_text:
-        return AIMessage(content="Complex tasks can produce an orchestrator, planner, executor, and critic path.")
+        return AIMessage(
+            content="Complex tasks can produce an orchestrator, planner, executor, and critic path."
+        )
     if "accepted artifact" in user_text:
         return AIMessage(content="Only an accepted artifact participates in final synthesis.")
     if "rejected artifact" in user_text:
-        return AIMessage(content="A rejected artifact is blocked by the critic gate and skipped from final synthesis.")
-    return AIMessage(content="Memory candidates, tool route evidence, and context refs remain traceable artifacts.")
+        return AIMessage(
+            content="A rejected artifact is blocked by the critic gate and skipped from final synthesis."
+        )
+    return AIMessage(
+        content="Memory candidates, tool route evidence, and context refs remain traceable artifacts."
+    )
 
 
 def test_agent_task_ledger_dataset_covers_artifact_synthesis_and_gate():
@@ -43,9 +51,12 @@ def test_agent_task_ledger_dataset_covers_artifact_synthesis_and_gate():
         "gt_agent_task_ledger_rejected_artifact_blocked",
         "gt_agent_task_ledger_memory_tool_context_artifacts",
     } <= set(cases)
-    assert "write_text_artifact" in cases[
-        "gt_agent_task_ledger_memory_tool_context_artifacts"
-    ].expected["must_not_call_tools"]
+    assert (
+        "write_text_artifact"
+        in cases["gt_agent_task_ledger_memory_tool_context_artifacts"].expected[
+            "must_not_call_tools"
+        ]
+    )
 
 
 @pytest.mark.parametrize("case", load_dataset(DATASET_PATH), ids=lambda case: case.id)

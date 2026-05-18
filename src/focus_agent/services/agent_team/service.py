@@ -1,27 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from threading import RLock
+from uuid import uuid4
 
+from focus_agent.core.agent_team import (
+    AgentTeamArtifactKind,
+    AgentTeamRecommendedAction,
+    AgentTeamSession,
+    AgentTeamSessionStatus,
+    AgentTeamTask,
+    AgentTeamTaskOutput,
+    AgentTeamTaskRole,
+    AgentTeamTaskStatus,
+)
+from focus_agent.core.branching import BranchRole
 from focus_agent.repositories.agent_team_repository import (
     AgentTeamRepository,
     InMemoryAgentTeamRepository,
 )
+from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
 from focus_agent.services.branches import BranchService
 from focus_agent.services.coordination import create_in_memory_coordination_backend
 
-from .run import AgentTeamMergeMixin
 from .planning import AgentTeamPlanningMixin
-from .run import AgentTeamRunMixin
-
-
-from collections.abc import Iterable
-from datetime import UTC, datetime
-
-from focus_agent.core.agent_team import (
-    AgentTeamRecommendedAction,
-    AgentTeamTaskRole,
-)
-from focus_agent.core.branching import BranchRole
+from .run import AgentTeamMergeMixin, AgentTeamRunMixin
 
 
 def _now() -> str:
@@ -93,17 +97,6 @@ class AgentTeamHelperMixin:
         if pending_count:
             return AgentTeamRecommendedAction.SPLIT_FOLLOWUP
         return AgentTeamRecommendedAction.MERGE
-
-
-__all__ = ["AgentTeamHelperMixin", "_ROLE_TO_BRANCH_ROLE", "_dedupe", "_now"]
-
-
-from focus_agent.core.agent_team import (
-    AgentTeamSession,
-    AgentTeamTask,
-    AgentTeamTaskRole,
-    AgentTeamTaskStatus,
-)
 
 
 _DEFAULT_DISPATCH_TASKS: tuple[
@@ -215,23 +208,6 @@ class AgentTeamDispatchMixin:
             )
             self.repository.save_session(session)
         return session, tasks
-
-
-__all__ = ["AgentTeamDispatchMixin", "_DEFAULT_DISPATCH_TASKS"]
-
-
-from uuid import uuid4
-
-from focus_agent.core.agent_team import (
-    AgentTeamArtifactKind,
-    AgentTeamSession,
-    AgentTeamSessionStatus,
-    AgentTeamTask,
-    AgentTeamTaskOutput,
-    AgentTeamTaskRole,
-    AgentTeamTaskStatus,
-)
-
 
 
 class AgentTeamSessionTaskMixin:
@@ -601,7 +577,10 @@ class AgentTeamSessionTaskMixin:
         if not tasks:
             self._touch_session(session_id)
             return
-        if any(task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING} for task in tasks):
+        if any(
+            task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
+            for task in tasks
+        ):
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
         elif any(task.status == AgentTeamTaskStatus.FAILED for task in tasks):
             self._touch_session(session_id, status=AgentTeamSessionStatus.FAILED)
@@ -612,21 +591,6 @@ class AgentTeamSessionTaskMixin:
             self._touch_session(session_id, status=AgentTeamSessionStatus.AWAITING_REVIEW)
         else:
             self._touch_session(session_id)
-
-
-__all__ = ["AgentTeamSessionTaskMixin"]
-
-
-from threading import RLock
-
-from focus_agent.repositories.agent_team_repository import (
-    AgentTeamRepository,
-    InMemoryAgentTeamRepository,
-)
-from focus_agent.services.branches import BranchService
-from focus_agent.services.coordination import create_in_memory_coordination_backend
-
-from ..agent_team_workspace import AgentTeamWorkspaceService
 
 
 class AgentTeamService(
@@ -661,15 +625,6 @@ class AgentTeamService(
         self.workspace_service = workspace_service or AgentTeamWorkspaceService()
         self._lock = RLock()
 
-
-__all__ = [
-    "AgentTeamService",
-    "AgentTeamWorkspaceService",
-    "_DEFAULT_DISPATCH_TASKS",
-    "_ROLE_TO_BRANCH_ROLE",
-    "_dedupe",
-    "_now",
-]
 
 __all__ = [
     "AgentTeamService",

@@ -3,6 +3,7 @@ export * from "./types/agent-team.js";
 export * from "./types/agent.js";
 export * from "./types/auth.js";
 export * from "./types/branch.js";
+export * from "./types/branch-decision.js";
 export * from "./types/chat.js";
 export * from "./types/common.js";
 export * from "./types/memory.js";

@@ -237,6 +237,23 @@ def test_release_gate_deployment_binding_fails_closed_in_production(tmp_path: Pa
     assert payload["summary"]["invalid"] == ["approval_status"]
 
 
+def test_release_gate_production_signal_commands_wire_otel_smoke_inputs() -> None:
+    otel_command = next(
+        command
+        for command in release_gate.production_signal_commands()
+        if "scripts/otel_smoke.py" in command
+    )
+
+    assert "--endpoint" in otel_command
+    assert "$OTEL_ENDPOINT" in otel_command
+    assert "--collector-health-url" in otel_command
+    assert "$OTEL_COLLECTOR_HEALTH_URL" in otel_command
+    assert "--trace-query-url" in otel_command
+    assert "$OTEL_TRACE_QUERY_URL" in otel_command
+    assert "--report-json" in otel_command
+    assert "reports/release-gate/otel-smoke.json" in otel_command
+
+
 def test_release_gate_deployment_binding_allows_dry_run_defaults(tmp_path: Path) -> None:
     payload = release_gate.validate_deployment_binding(
         env={"DRY_RUN": "true", "GITHUB_RUN_ID": "123"},
@@ -262,7 +279,9 @@ def test_release_gate_deployment_binding_cli_writes_report(tmp_path: Path, monke
     assert payload["meta"]["suite"] == "deployment_binding"
 
 
-def test_release_gate_deployment_binding_cli_reads_process_argv(tmp_path: Path, monkeypatch) -> None:
+def test_release_gate_deployment_binding_cli_reads_process_argv(
+    tmp_path: Path, monkeypatch
+) -> None:
     report_json = tmp_path / "deployment-binding.json"
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("GITHUB_RUN_ID", "789")

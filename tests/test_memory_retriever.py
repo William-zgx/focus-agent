@@ -244,7 +244,10 @@ def test_memory_retriever_filters_synthesize_to_durable_memories_first():
     )
 
     assert bundle.total_hits == 2
-    assert [hit.record.kind.value for hit in bundle.hits] == ["user_preference", "imported_conclusion"]
+    assert [hit.record.kind.value for hit in bundle.hits] == [
+        "user_preference",
+        "imported_conclusion",
+    ]
 
 
 def test_memory_retriever_prefers_branch_findings_in_branch_review_mode():
@@ -375,8 +378,7 @@ def test_memory_retriever_extracts_matched_terms_for_chinese_query_without_space
 class RepositorySearchFake:
     def __init__(self, hits_by_namespace):
         self.hits_by_namespace = {
-            tuple(namespace): list(hits)
-            for namespace, hits in hits_by_namespace.items()
+            tuple(namespace): list(hits) for namespace, hits in hits_by_namespace.items()
         }
         self.calls = []
 
@@ -389,8 +391,7 @@ class RepositoryVectorSearchFake(RepositorySearchFake):
     def __init__(self, hits_by_namespace, vector_hits_by_namespace):
         super().__init__(hits_by_namespace)
         self.vector_hits_by_namespace = {
-            tuple(namespace): list(hits)
-            for namespace, hits in vector_hits_by_namespace.items()
+            tuple(namespace): list(hits) for namespace, hits in vector_hits_by_namespace.items()
         }
         self.vector_calls = []
 

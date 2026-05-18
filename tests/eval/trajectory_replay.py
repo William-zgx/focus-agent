@@ -33,7 +33,11 @@ def load_trajectory_records(path: str | Path) -> list[dict[str, Any]]:
         payload = json.loads(text)
         records = _extract_records(payload)
 
-    filtered = [record for record in records if isinstance(record, dict) and _looks_like_trajectory_record(record)]
+    filtered = [
+        record
+        for record in records
+        if isinstance(record, dict) and _looks_like_trajectory_record(record)
+    ]
     if not filtered:
         raise ValueError(f"unsupported trajectory payload: {source}")
     return filtered
@@ -99,7 +103,9 @@ def trajectory_record_to_eval_case(
     if kind:
         tags.append(f"kind:{_slug(kind)}")
 
-    case_id_source = source_id or f"thread-{record.get('thread_id') or 'unknown'}-turn-{turn_index or 'na'}"
+    case_id_source = (
+        source_id or f"thread-{record.get('thread_id') or 'unknown'}-turn-{turn_index or 'na'}"
+    )
     case_id = _prefixed_case_id(case_id_source, prefix=case_id_prefix)
     return EvalCase(
         id=case_id,

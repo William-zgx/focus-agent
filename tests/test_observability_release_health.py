@@ -180,10 +180,18 @@ def test_postgres_ops_report_fails_closed_on_missing_or_failed_operations() -> N
         }
     )
     checks_only = evaluate_postgres_ops_report(
-        {"status": "dry-run", "passed": True, "checks": [{"name": "backup_restore", "status": "dry-run"}]}
+        {
+            "status": "dry-run",
+            "passed": True,
+            "checks": [{"name": "backup_restore", "status": "dry-run"}],
+        }
     )
     passed = evaluate_postgres_ops_report(
-        {"status": "dry-run", "passed": True, "operations": [{"name": "connectivity", "status": "dry-run"}]}
+        {
+            "status": "dry-run",
+            "passed": True,
+            "operations": [{"name": "connectivity", "status": "dry-run"}],
+        }
     )
 
     assert missing.status == FAIL
@@ -196,7 +204,11 @@ def test_postgres_ops_report_fails_closed_on_missing_or_failed_operations() -> N
 def test_otel_smoke_report_fails_closed_on_missing_or_failed_checks() -> None:
     missing = evaluate_otel_smoke_report({"status": "passed", "passed": True})
     failed = evaluate_otel_smoke_report(
-        {"status": "passed", "passed": True, "checks": [{"name": "span_export", "status": "failed"}]}
+        {
+            "status": "passed",
+            "passed": True,
+            "checks": [{"name": "span_export", "status": "failed"}],
+        }
     )
     passed = evaluate_otel_smoke_report(
         {

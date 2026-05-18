@@ -207,12 +207,36 @@ def test_agent_team_plan_prefers_research_dag_over_generic_delegation() -> None:
 
 def test_agent_team_adaptive_planning_varies_dag_by_mission_profile() -> None:
     cases = [
-        ("Research database migration options", "research", ["coordination", "research", "documentation", "review"]),
-        ("Debug failing checkout regression", "debugging", ["diagnosis", "diagnosis", "implementation", "verification"]),
-        ("Review payment flow changes for risk", "review", ["coordination", "review", "documentation"]),
-        ("Implement backend API rate limits", "implementation", ["coordination", "implementation", "verification", "review"]),
-        ("Verify release candidate behavior", "verification", ["coordination", "verification", "review"]),
-        ("Write operator runbook", "writing", ["coordination", "research", "documentation", "review"]),
+        (
+            "Research database migration options",
+            "research",
+            ["coordination", "research", "documentation", "review"],
+        ),
+        (
+            "Debug failing checkout regression",
+            "debugging",
+            ["diagnosis", "diagnosis", "implementation", "verification"],
+        ),
+        (
+            "Review payment flow changes for risk",
+            "review",
+            ["coordination", "review", "documentation"],
+        ),
+        (
+            "Implement backend API rate limits",
+            "implementation",
+            ["coordination", "implementation", "verification", "review"],
+        ),
+        (
+            "Verify release candidate behavior",
+            "verification",
+            ["coordination", "verification", "review"],
+        ),
+        (
+            "Write operator runbook",
+            "writing",
+            ["coordination", "research", "documentation", "review"],
+        ),
     ]
     observed_shapes: set[tuple[str, ...]] = set()
 
@@ -374,7 +398,9 @@ def test_agent_team_research_and_implementation_have_distinct_deliverable_dags()
         focus="implementation",
     )
 
-    assert [task.task_type for task in research_tasks] != [task.task_type for task in implementation_tasks]
+    assert [task.task_type for task in research_tasks] != [
+        task.task_type for task in implementation_tasks
+    ]
     assert "research findings" in research_tasks[2].input_contract["requires"]
     assert "source notes" in research_tasks[1].evidence_required
     assert "patch summary" not in research_tasks[1].output_contract["produces"]

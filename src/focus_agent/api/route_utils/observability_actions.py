@@ -83,10 +83,7 @@ def build_batch_promotion_preview_response(
     payload: Any,
     filters: dict[str, Any],
 ) -> TrajectoryBatchPromotionPreviewResponse:
-    items = [
-        build_trajectory_promotion_response(record, payload=payload)
-        for record in records
-    ]
+    items = [build_trajectory_promotion_response(record, payload=payload) for record in records]
     return TrajectoryBatchPromotionPreviewResponse(
         items=items,
         count=len(items),

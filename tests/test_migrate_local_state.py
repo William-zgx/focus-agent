@@ -218,7 +218,9 @@ def _build_source_state(tmp_path: Path) -> tuple[Path, Path]:
     return workspace_dir, state_dir
 
 
-def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgres(tmp_path, monkeypatch):
+def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgres(
+    tmp_path, monkeypatch
+):
     workspace_dir, state_dir = _build_source_state(tmp_path)
     report_path = tmp_path / "dry-run-report.json"
 
@@ -228,7 +230,9 @@ def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgre
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _unexpected_call)
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _unexpected_call)
     monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _unexpected_call)
-    monkeypatch.setattr("focus_agent.migrate_local_state.create_memory_repository", _unexpected_call)
+    monkeypatch.setattr(
+        "focus_agent.migrate_local_state.create_memory_repository", _unexpected_call
+    )
 
     exit_code = main(
         [
@@ -280,7 +284,9 @@ def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monk
 
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _open_fake_store)
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _open_fake_saver)
-    monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory)
+    monkeypatch.setattr(
+        "focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory
+    )
     monkeypatch.setattr(
         "focus_agent.migrate_local_state.create_memory_repository",
         lambda _database_uri: fake_memory_repo,
@@ -367,7 +373,9 @@ def test_run_migration_backfills_memory_embeddings_idempotently(tmp_path, monkey
 
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _open_fake_store)
     monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _open_fake_saver)
-    monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory)
+    monkeypatch.setattr(
+        "focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory
+    )
     monkeypatch.setattr(
         "focus_agent.migrate_local_state.create_memory_repository",
         lambda _database_uri: fake_memory_repo,

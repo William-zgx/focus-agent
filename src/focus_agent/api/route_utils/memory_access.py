@@ -254,7 +254,10 @@ def _can_access_branch_memory(
         if branch_owner_matches is not None:
             return branch_owner_matches
         return record.user_id == user_id
-    return _can_access_thread_memory(record, user_id=user_id, runtime=runtime) or record.user_id == user_id
+    return (
+        _can_access_thread_memory(record, user_id=user_id, runtime=runtime)
+        or record.user_id == user_id
+    )
 
 
 def _can_access_record_fields(
@@ -344,9 +347,7 @@ def _parse_namespace(value: str | Sequence[str] | None) -> tuple[str, ...] | Non
     parts: list[str] = []
     for raw_value in raw_values:
         parts.extend(
-            part.strip()
-            for part in str(raw_value).replace("/", ",").split(",")
-            if part.strip()
+            part.strip() for part in str(raw_value).replace("/", ",").split(",") if part.strip()
         )
     return tuple(parts) if parts else None
 

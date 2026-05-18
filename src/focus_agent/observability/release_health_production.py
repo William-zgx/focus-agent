@@ -9,7 +9,9 @@ from focus_agent.observability.release_health_models import FAIL, PASS, ReleaseH
 from focus_agent.observability.release_health_utils import failed_report_rows, failed_report_status
 
 
-def evaluate_production_smoke_report(production_smoke_report: Mapping[str, Any]) -> ReleaseHealthSignal:
+def evaluate_production_smoke_report(
+    production_smoke_report: Mapping[str, Any],
+) -> ReleaseHealthSignal:
     """Validate a production endpoint smoke report collected by deployment jobs."""
     checks = production_smoke_report.get("checks")
     rows = [row for row in checks if isinstance(row, Mapping)] if isinstance(checks, list) else []

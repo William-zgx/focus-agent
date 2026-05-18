@@ -10,7 +10,7 @@ class TrajectoryStepResponse(BaseModel):
     step_index: int | None = None
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
-    observation: str = ''
+    observation: str = ""
     observation_truncated: bool = False
     duration_ms: float = 0.0
     error: str | None = None
@@ -100,7 +100,9 @@ class TrajectoryStatsBucketResponse(BaseModel):
 
 
 class TrajectoryTurnStatsResponse(BaseModel):
-    overview: TrajectoryStatsOverviewResponse = Field(default_factory=TrajectoryStatsOverviewResponse)
+    overview: TrajectoryStatsOverviewResponse = Field(
+        default_factory=TrajectoryStatsOverviewResponse
+    )
     by_status: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
     by_scene: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
     by_branch_role: list[TrajectoryStatsBucketResponse] = Field(default_factory=list)
@@ -211,7 +213,7 @@ class TrajectoryReplayCaseResponse(TrajectoryEvalCaseResponse):
 class TrajectoryJudgeVerdictResponse(BaseModel):
     kind: str
     passed: bool
-    reasoning: str = ''
+    reasoning: str = ""
     confidence: float = 1.0
     details: dict[str, Any] = Field(default_factory=dict)
 
@@ -245,8 +247,8 @@ class TrajectoryReplayComparisonResponse(BaseModel):
     replay_fallback_uses: int = 0
     source_cache_hits: int = 0
     replay_cache_hits: int = 0
-    source_answer_preview: str = ''
-    replay_answer_preview: str = ''
+    source_answer_preview: str = ""
+    replay_answer_preview: str = ""
 
 
 class TrajectoryReplayResponse(BaseModel):
@@ -255,7 +257,9 @@ class TrajectoryReplayResponse(BaseModel):
     replay_case: TrajectoryReplayCaseResponse
     replay_case_jsonl: str
     replay_result: TrajectoryReplayResultResponse
-    comparison: TrajectoryReplayComparisonResponse = Field(default_factory=TrajectoryReplayComparisonResponse)
+    comparison: TrajectoryReplayComparisonResponse = Field(
+        default_factory=TrajectoryReplayComparisonResponse
+    )
 
 
 class TrajectoryPromotionResponse(BaseModel):
@@ -271,7 +275,7 @@ class TrajectoryBatchPromotionPreviewResponse(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     limit: int
     offset: int
-    jsonl: str = ''
+    jsonl: str = ""
 
 
 class TrajectoryBatchReplaySummaryResponse(BaseModel):
@@ -284,7 +288,9 @@ class TrajectoryBatchReplaySummaryResponse(BaseModel):
 
 class TrajectoryBatchReplayCompareResponse(BaseModel):
     results: list[TrajectoryReplayResponse] = Field(default_factory=list)
-    summary: TrajectoryBatchReplaySummaryResponse = Field(default_factory=TrajectoryBatchReplaySummaryResponse)
+    summary: TrajectoryBatchReplaySummaryResponse = Field(
+        default_factory=TrajectoryBatchReplaySummaryResponse
+    )
     filters: dict[str, Any] = Field(default_factory=dict)
     limit: int
     offset: int

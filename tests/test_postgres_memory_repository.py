@@ -61,14 +61,20 @@ class _FakeCursor:
             row = self.db.memories.get(str(params[0]))
             self._fetchone = {"data_json": row["data_json"]} if row else None
             return
-        if normalized.startswith("SELECT data_json FROM focus_memories") and "fingerprint" in normalized:
+        if (
+            normalized.startswith("SELECT data_json FROM focus_memories")
+            and "fingerprint" in normalized
+        ):
             matches = [
                 row
                 for row in self.db.memories.values()
                 if row["namespace"] == params["namespace"]
                 and row["status"] != MemoryStatus.FORGOTTEN.value
                 and row["deleted_at"] is None
-                and (row["fingerprint"] == params["fingerprint"] or row["semantic_key"] == params["semantic_key"])
+                and (
+                    row["fingerprint"] == params["fingerprint"]
+                    or row["semantic_key"] == params["semantic_key"]
+                )
                 and (not params.get("kind") or row["kind"] == params["kind"])
                 and (not params.get("scope") or row["scope"] == params["scope"])
             ]
@@ -108,8 +114,7 @@ class _FakeCursor:
             offset = int(params["offset"])
             limit = int(params["limit"])
             self._fetchall = [
-                {"data_json": row["data_json"]}
-                for row in rows[offset : offset + limit]
+                {"data_json": row["data_json"]} for row in rows[offset : offset + limit]
             ]
             return
         if normalized.startswith("INSERT INTO focus_memory_embeddings"):
@@ -121,7 +126,9 @@ class _FakeCursor:
             row["embedding"] = _parse_vector_literal(params["embedding"])
             row["metadata_json"] = _json_payload(params["metadata_json"])
             row["deleted_at"] = None
-            row["created_at"] = previous["created_at"] if previous is not None else params["created_at"]
+            row["created_at"] = (
+                previous["created_at"] if previous is not None else params["created_at"]
+            )
             self.db.embeddings[embedding_id] = row
             self.rowcount = 1
             return
@@ -140,11 +147,20 @@ class _FakeCursor:
                     continue
                 if embedding_row["dimensions"] != params["dimensions"]:
                     continue
-                if params.get("provider_id") is not None and embedding_row["provider_id"] != params["provider_id"]:
+                if (
+                    params.get("provider_id") is not None
+                    and embedding_row["provider_id"] != params["provider_id"]
+                ):
                     continue
-                if params.get("model_id") is not None and embedding_row["model_id"] != params["model_id"]:
+                if (
+                    params.get("model_id") is not None
+                    and embedding_row["model_id"] != params["model_id"]
+                ):
                     continue
-                if memory_row["status"] != MemoryStatus.ACTIVE.value or memory_row["deleted_at"] is not None:
+                if (
+                    memory_row["status"] != MemoryStatus.ACTIVE.value
+                    or memory_row["deleted_at"] is not None
+                ):
                     continue
                 rows.append(
                     {
@@ -163,12 +179,16 @@ class _FakeCursor:
                         "score": _cosine_similarity(embedding_row["embedding"], query_embedding),
                     }
                 )
-            rows.sort(key=lambda row: (row["score"], row["updated_at"], row["memory_id"]), reverse=True)
+            rows.sort(
+                key=lambda row: (row["score"], row["updated_at"], row["memory_id"]), reverse=True
+            )
             self._fetchall = rows[: int(params["limit"])]
             return
         if normalized.startswith("SELECT status FROM focus_memory_embeddings WHERE memory_id = %s"):
             row = _latest_embedding_row(self.db, memory_id=str(params[0]))
-            self._fetchone = {"status": row["status"]} if row and row["deleted_at"] is None else None
+            self._fetchone = (
+                {"status": row["status"]} if row and row["deleted_at"] is None else None
+            )
             return
         if normalized.startswith("UPDATE focus_memory_embeddings SET status = 'stale'"):
             for row in self.db.embeddings.values():
@@ -203,7 +223,9 @@ class _FakeCursor:
                 self.rowcount += 1
             return
         if (
-            normalized.startswith("SELECT embedding_id, memory_id, namespace, provider_id, model_id")
+            normalized.startswith(
+                "SELECT embedding_id, memory_id, namespace, provider_id, model_id"
+            )
             and "WHERE memory_id = %s" in normalized
         ):
             row = _latest_embedding_row(self.db, memory_id=str(params[0]))
@@ -225,7 +247,9 @@ class _FakeCursor:
                 else None
             )
             return
-        if normalized.startswith("SELECT embedding_id, memory_id, namespace, provider_id, model_id"):
+        if normalized.startswith(
+            "SELECT embedding_id, memory_id, namespace, provider_id, model_id"
+        ):
             rows = [row for row in self.db.embeddings.values() if row["deleted_at"] is None]
             if params.get("namespace") is not None:
                 rows = [row for row in rows if row["namespace"] == params["namespace"]]
@@ -291,25 +315,18 @@ class _FakeCursor:
             if params.get("user_id"):
                 rows = [row for row in rows if row["user_id"] == params["user_id"]]
             if params.get("root_thread_id"):
-                rows = [
-                    row for row in rows if row["root_thread_id"] == params["root_thread_id"]
-                ]
+                rows = [row for row in rows if row["root_thread_id"] == params["root_thread_id"]]
             if params.get("source_thread_id"):
                 rows = [
-                    row
-                    for row in rows
-                    if row["source_thread_id"] == params["source_thread_id"]
+                    row for row in rows if row["source_thread_id"] == params["source_thread_id"]
                 ]
             if params.get("source_branch_id"):
                 rows = [
-                    row
-                    for row in rows
-                    if row["source_branch_id"] == params["source_branch_id"]
+                    row for row in rows if row["source_branch_id"] == params["source_branch_id"]
                 ]
             rows.sort(key=lambda row: (row["created_at"], row["event_id"]), reverse=True)
             self._fetchall = [
-                {"data_json": row["data_json"]}
-                for row in rows[: int(params["limit"])]
+                {"data_json": row["data_json"]} for row in rows[: int(params["limit"])]
             ]
             return
         if normalized.startswith("INSERT INTO focus_memory_candidates"):
@@ -335,8 +352,7 @@ class _FakeCursor:
                 rows = [row for row in rows if row["branch_id"] == params["branch_id"]]
             rows.sort(key=lambda row: (row["updated_at"], row["candidate_id"]), reverse=True)
             self._fetchall = [
-                {"data_json": row["data_json"]}
-                for row in rows[: int(params["limit"])]
+                {"data_json": row["data_json"]} for row in rows[: int(params["limit"])]
             ]
             return
         raise AssertionError(f"unexpected SQL: {normalized}")
@@ -402,27 +418,35 @@ def test_postgres_memory_repository_upsert_search_forget_and_audit(monkeypatch):
 
     assert repo.upsert_record(record) == "mem-1"
     assert repo.get_record("mem-1") == record
-    assert repo.find_existing(
-        namespace=record.namespace,
-        fingerprint="fp-1",
-        semantic_key="missing",
-        kind=MemoryKind.PROJECT_FACT.value,
-        scope=MemoryScope.ROOT_THREAD.value,
-    ) == record
-    assert repo.list_records(MemoryListQuery(namespace=record.namespace, status="active")) == [record]
+    assert (
+        repo.find_existing(
+            namespace=record.namespace,
+            fingerprint="fp-1",
+            semantic_key="missing",
+            kind=MemoryKind.PROJECT_FACT.value,
+            scope=MemoryScope.ROOT_THREAD.value,
+        )
+        == record
+    )
+    assert repo.list_records(MemoryListQuery(namespace=record.namespace, status="active")) == [
+        record
+    ]
 
     hits = repo.search(namespace=record.namespace, query="owner collision", limit=5)
     assert [hit.record.memory_id for hit in hits] == ["mem-1"]
     assert hits[0].namespace == record.namespace
 
-    assert repo.upsert_embedding(
-        memory_id="mem-1",
-        namespace=record.namespace,
-        embedding=[0.1, 0.2, 0.3],
-        model="test-embedding",
-        content_hash="hash-1",
-        metadata={"source": "unit-test"},
-    ) == "mem-1"
+    assert (
+        repo.upsert_embedding(
+            memory_id="mem-1",
+            namespace=record.namespace,
+            embedding=[0.1, 0.2, 0.3],
+            model="test-embedding",
+            content_hash="hash-1",
+            metadata={"source": "unit-test"},
+        )
+        == "mem-1"
+    )
     assert repo.get_embedding_status("mem-1") == "active"
     embedding_hits = repo.search_embeddings(
         namespace=record.namespace,
@@ -450,19 +474,25 @@ def test_postgres_memory_repository_upsert_search_forget_and_audit(monkeypatch):
         "reason": "content_changed",
     }
     assert repo.get_memory_embedding("mem-1") == metadata_rows[0]
-    assert repo.search_embeddings(
-        namespace=record.namespace,
-        embedding=[0.1, 0.2, 0.31],
-        model="test-embedding",
-        limit=5,
-    ) == []
-    assert repo.search_embeddings(
-        namespace=record.namespace,
-        embedding=[0.1, 0.2, 0.31],
-        model="test-embedding",
-        status="stale",
-        limit=5,
-    )[0].memory_id == "mem-1"
+    assert (
+        repo.search_embeddings(
+            namespace=record.namespace,
+            embedding=[0.1, 0.2, 0.31],
+            model="test-embedding",
+            limit=5,
+        )
+        == []
+    )
+    assert (
+        repo.search_embeddings(
+            namespace=record.namespace,
+            embedding=[0.1, 0.2, 0.31],
+            model="test-embedding",
+            status="stale",
+            limit=5,
+        )[0].memory_id
+        == "mem-1"
+    )
 
     audit = MemoryAuditEvent(
         event_id="audit-1",
@@ -505,7 +535,9 @@ def test_postgres_memory_repository_upsert_search_forget_and_audit(monkeypatch):
     assert memory_row["data_json"]["status"] == MemoryStatus.FORGOTTEN.value
     assert memory_row["data_json"]["deleted_at"] is not None
     assert db.embeddings == {}
-    assert repo.list_records(MemoryListQuery(namespace=record.namespace, status="forgotten")) == [forgotten]
+    assert repo.list_records(MemoryListQuery(namespace=record.namespace, status="forgotten")) == [
+        forgotten
+    ]
     assert repo.search(namespace=record.namespace, query="owner collision", limit=5) == []
 
 
@@ -674,18 +706,21 @@ def test_postgres_memory_repository_embedding_payload_aliases(monkeypatch):
     )
     repo = PostgresMemoryRepository("postgresql://example")
 
-    assert repo.upsert_memory_embedding(
-        {
-            "memory_id": "mem-1",
-            "namespace": ("conversation", "root-1", "main"),
-            "embedding": [0.4, 0.5],
-            "provider_id": "deterministic_test",
-            "model_id": "deterministic-test",
-            "dimensions": 2,
-            "content_hash": "hash-1",
-            "metadata": {"source": "payload"},
-        }
-    ) == "mem-1"
+    assert (
+        repo.upsert_memory_embedding(
+            {
+                "memory_id": "mem-1",
+                "namespace": ("conversation", "root-1", "main"),
+                "embedding": [0.4, 0.5],
+                "provider_id": "deterministic_test",
+                "model_id": "deterministic-test",
+                "dimensions": 2,
+                "content_hash": "hash-1",
+                "metadata": {"source": "payload"},
+            }
+        )
+        == "mem-1"
+    )
 
     metadata = repo.get_memory_embedding("mem-1")
     assert metadata is not None
@@ -703,7 +738,7 @@ def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 15
+    assert SCHEMA_VERSION == 17
     assert len(executed) == 1
     sql = " ".join(executed[0].split())
     assert sql.startswith("UPDATE focus_memories SET")

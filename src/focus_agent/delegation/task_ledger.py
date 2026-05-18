@@ -7,12 +7,14 @@ from uuid import uuid4
 
 from pydantic import Field
 
-from .delegation import AgentArtifact
-from .roles import AgentRole, normalize_agent_role
 from ..config import Settings
 from ..core.types import StateModel
+from .delegation import AgentArtifact
+from .roles import AgentRole, normalize_agent_role
 
-AgentTaskLedgerStatus = Literal["disabled", "planned", "running", "completed", "blocked", "rejected"]
+AgentTaskLedgerStatus = Literal[
+    "disabled", "planned", "running", "completed", "blocked", "rejected"
+]
 AgentTaskStatus = Literal["planned", "running", "blocked", "completed", "rejected", "skipped"]
 DelegatedArtifactKind = Literal[
     "plan",
@@ -94,7 +96,9 @@ class CriticGateResult(StateModel):
 def build_task_ledger_policy(settings: Settings | Any) -> dict[str, Any]:
     return {
         "enabled": bool(getattr(settings, "agent_task_ledger_enabled", False)),
-        "artifact_synthesis_enabled": bool(getattr(settings, "agent_artifact_synthesis_enabled", False)),
+        "artifact_synthesis_enabled": bool(
+            getattr(settings, "agent_artifact_synthesis_enabled", False)
+        ),
         "critic_gate_enabled": bool(getattr(settings, "agent_critic_gate_enabled", False)),
         "critic_gate_enforce": bool(getattr(settings, "agent_critic_gate_enforce", False)),
         "default_off_legacy_safe": True,
@@ -123,9 +127,13 @@ def build_agent_task_ledger(
                     task_id=task_id,
                     parent_task_id=_optional_str(raw.get("parent_task_id")),
                     role=role,
-                    goal=str(raw.get("goal") or raw.get("task_slice") or f"{role.value} delegated task"),
+                    goal=str(
+                        raw.get("goal") or raw.get("task_slice") or f"{role.value} delegated task"
+                    ),
                     status=_task_status_from_run(delegation_plan, task_id),
-                    acceptance_criteria=[str(item) for item in raw.get("acceptance_criteria") or []],
+                    acceptance_criteria=[
+                        str(item) for item in raw.get("acceptance_criteria") or []
+                    ],
                     retry_count=int(raw.get("retry_count") or 0),
                 )
             )
@@ -139,9 +147,7 @@ def build_agent_task_ledger(
             )
         )
     edges = [
-        {"from": task.parent_task_id, "to": task.task_id}
-        for task in tasks
-        if task.parent_task_id
+        {"from": task.parent_task_id, "to": task.task_id} for task in tasks if task.parent_task_id
     ]
     return AgentTaskLedger(
         enabled=True,
@@ -161,7 +167,11 @@ def build_delegated_artifacts(
     tool_route_plan: dict[str, Any] | None = None,
     context_artifact_refs: Iterable[dict[str, Any]] = (),
 ) -> list[DelegatedArtifact]:
-    ledger_model = ledger if isinstance(ledger, AgentTaskLedger) else AgentTaskLedger.model_validate(ledger or {})
+    ledger_model = (
+        ledger
+        if isinstance(ledger, AgentTaskLedger)
+        else AgentTaskLedger.model_validate(ledger or {})
+    )
     if not ledger_model.enabled:
         return []
 
@@ -193,7 +203,11 @@ def build_delegated_artifacts(
                 "acceptance_criteria": task.acceptance_criteria,
                 "run": run,
                 "executor_artifacts": produced_artifacts,
-                **({"executor_payload": produced.get("payload")} if isinstance(produced.get("payload"), dict) else {}),
+                **(
+                    {"executor_payload": produced.get("payload")}
+                    if isinstance(produced.get("payload"), dict)
+                    else {}
+                ),
             },
             status=status,
         )
@@ -249,9 +263,15 @@ def synthesize_delegated_artifacts(
     critic_gate_result: dict[str, Any] | CriticGateResult | None = None,
 ) -> ArtifactSynthesisResult:
     if not bool(getattr(settings, "agent_artifact_synthesis_enabled", False)):
-        return ArtifactSynthesisResult(enabled=False, reason="AGENT_ARTIFACT_SYNTHESIS_ENABLED is off.")
+        return ArtifactSynthesisResult(
+            enabled=False, reason="AGENT_ARTIFACT_SYNTHESIS_ENABLED is off."
+        )
 
-    critic = critic_gate_result if isinstance(critic_gate_result, CriticGateResult) else CriticGateResult.model_validate(critic_gate_result or {})
+    critic = (
+        critic_gate_result
+        if isinstance(critic_gate_result, CriticGateResult)
+        else CriticGateResult.model_validate(critic_gate_result or {})
+    )
     if critic.enforce and critic.verdict in {"reject", "retry", "needs_review"}:
         return ArtifactSynthesisResult(
             enabled=True,
@@ -262,12 +282,13 @@ def synthesize_delegated_artifacts(
 
     normalized = _normalize_artifacts(artifacts)
     accepted = [
-        item
-        for item in normalized
-        if item.status == "accepted" and item.kind != "critic_verdict"
+        item for item in normalized if item.status == "accepted" and item.kind != "critic_verdict"
     ]
     skipped = [item.artifact_id for item in normalized if item not in accepted]
-    summary = "\n".join(f"- {item.title}: {item.summary}" for item in accepted) or "No accepted delegated artifacts."
+    summary = (
+        "\n".join(f"- {item.title}: {item.summary}" for item in accepted)
+        or "No accepted delegated artifacts."
+    )
     return ArtifactSynthesisResult(
         enabled=True,
         artifact_id=f"artifact-final-synthesis-{uuid4().hex[:10]}",
@@ -288,13 +309,22 @@ def evaluate_critic_gate(
     enabled = bool(getattr(settings, "agent_critic_gate_enabled", False))
     enforce = bool(getattr(settings, "agent_critic_gate_enforce", False))
     if not enabled:
-        return CriticGateResult(enabled=False, enforce=enforce, verdict="skipped", reason="AGENT_CRITIC_GATE_ENABLED is off.")
+        return CriticGateResult(
+            enabled=False,
+            enforce=enforce,
+            verdict="skipped",
+            reason="AGENT_CRITIC_GATE_ENABLED is off.",
+        )
 
     normalized = _normalize_artifacts(artifacts)
     rejected = [item.artifact_id for item in normalized if item.status == "rejected"]
     needs_review = [item.artifact_id for item in normalized if item.status == "needs_review"]
     accepted = [item.artifact_id for item in normalized if item.status == "accepted"]
-    ledger_model = ledger if isinstance(ledger, AgentTaskLedger) else AgentTaskLedger.model_validate(ledger or {})
+    ledger_model = (
+        ledger
+        if isinstance(ledger, AgentTaskLedger)
+        else AgentTaskLedger.model_validate(ledger or {})
+    )
     retry_tasks: list[str] = []
     verdict: CriticVerdict = "pass"
     reason = "All accepted artifacts can be synthesized."
@@ -324,8 +354,16 @@ def apply_critic_retry_tasks(
     ledger: dict[str, Any] | AgentTaskLedger | None,
     critic_gate_result: dict[str, Any] | CriticGateResult | None,
 ) -> AgentTaskLedger:
-    ledger_model = ledger if isinstance(ledger, AgentTaskLedger) else AgentTaskLedger.model_validate(ledger or {})
-    critic = critic_gate_result if isinstance(critic_gate_result, CriticGateResult) else CriticGateResult.model_validate(critic_gate_result or {})
+    ledger_model = (
+        ledger
+        if isinstance(ledger, AgentTaskLedger)
+        else AgentTaskLedger.model_validate(ledger or {})
+    )
+    critic = (
+        critic_gate_result
+        if isinstance(critic_gate_result, CriticGateResult)
+        else CriticGateResult.model_validate(critic_gate_result or {})
+    )
     if not ledger_model.enabled or not critic.retry_task_ids:
         return ledger_model
     retry_targets = set(critic.retry_task_ids)
@@ -347,12 +385,21 @@ def apply_critic_retry_tasks(
                 retry_count=task.retry_count + 1,
             )
         )
-    edges = [{"from": task.parent_task_id, "to": task.task_id} for task in tasks if task.parent_task_id]
-    return ledger_model.model_copy(update={"tasks": tasks, "edges": edges, "updated_at": _utc_now()})
+    edges = [
+        {"from": task.parent_task_id, "to": task.task_id} for task in tasks if task.parent_task_id
+    ]
+    return ledger_model.model_copy(
+        update={"tasks": tasks, "edges": edges, "updated_at": _utc_now()}
+    )
 
 
-def _normalize_artifacts(artifacts: Iterable[dict[str, Any] | DelegatedArtifact]) -> list[DelegatedArtifact]:
-    return [item if isinstance(item, DelegatedArtifact) else DelegatedArtifact.model_validate(item) for item in artifacts]
+def _normalize_artifacts(
+    artifacts: Iterable[dict[str, Any] | DelegatedArtifact],
+) -> list[DelegatedArtifact]:
+    return [
+        item if isinstance(item, DelegatedArtifact) else DelegatedArtifact.model_validate(item)
+        for item in artifacts
+    ]
 
 
 def _artifact_status_for_run(run: dict[str, Any]) -> DelegatedArtifactStatus:

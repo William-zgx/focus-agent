@@ -11,7 +11,9 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def test_architecture_report_collects_large_files_and_import_boundary_issues(tmp_path: Path) -> None:
+def test_architecture_report_collects_large_files_and_import_boundary_issues(
+    tmp_path: Path,
+) -> None:
     _write(tmp_path / "src/focus_agent/service.py", "import scripts.release_gate\n")
     _write(tmp_path / "scripts/tool.py", "print('ok')\n")
     _write(tmp_path / "apps/web/src/view.ts", "import x from 'src/focus_agent/api'\n")

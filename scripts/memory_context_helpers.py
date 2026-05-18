@@ -278,7 +278,9 @@ def _candidate_age_summary(cases: Sequence[dict[str, Any]]) -> dict[str, Any]:
     buckets: dict[str, int] = {}
     overdue = 0
     for case in cases:
-        candidate_ops = case.get("candidate_ops") if isinstance(case.get("candidate_ops"), dict) else {}
+        candidate_ops = (
+            case.get("candidate_ops") if isinstance(case.get("candidate_ops"), dict) else {}
+        )
         age = candidate_ops.get("candidate_age_days")
         if age is not None:
             ages.append(_number(age))
@@ -302,7 +304,9 @@ def _promotion_sla_summary(cases: Sequence[dict[str, Any]]) -> dict[str, Any]:
     overdue = 0
     pending_overdue = 0
     for case in cases:
-        review = case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
+        review = (
+            case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
+        )
         sla = review.get("sla") if isinstance(review.get("sla"), dict) else {}
         if not sla:
             continue

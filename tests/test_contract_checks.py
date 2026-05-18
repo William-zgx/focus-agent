@@ -60,7 +60,9 @@ def test_api_schema_constraint_change_is_breaking() -> None:
 def test_sdk_contract_change_is_breaking() -> None:
     current = check_contracts.build_sdk_contract()
     expected = deepcopy(current)
-    expected["client_methods"] = [name for name in expected["client_methods"] if name != "streamTurn"]
+    expected["client_methods"] = [
+        name for name in expected["client_methods"] if name != "streamTurn"
+    ]
 
     failures = check_contracts.compare_sdk_contract(expected, current)
 
@@ -81,7 +83,9 @@ def test_sdk_type_shape_change_is_breaking() -> None:
 def test_sdk_package_export_change_is_breaking() -> None:
     current = check_contracts.build_sdk_contract()
     expected = deepcopy(current)
-    expected["package_exports"] = [value for value in expected["package_exports"] if value != "./toolProtocol"]
+    expected["package_exports"] = [
+        value for value in expected["package_exports"] if value != "./toolProtocol"
+    ]
 
     failures = check_contracts.compare_sdk_contract(expected, current)
 
@@ -93,7 +97,9 @@ def test_web_sdk_import_change_is_breaking() -> None:
     expected = deepcopy(current)
     import_path = next(iter(expected["web_sdk_imports"]))
     expected["web_sdk_imports"][import_path] = [
-        name for name in expected["web_sdk_imports"][import_path] if name != expected["web_sdk_imports"][import_path][0]
+        name
+        for name in expected["web_sdk_imports"][import_path]
+        if name != expected["web_sdk_imports"][import_path][0]
     ]
 
     failures = check_contracts.compare_sdk_contract(expected, current)
@@ -105,7 +111,10 @@ def test_web_sdk_import_scan_captures_app_usage() -> None:
     current = check_contracts.build_sdk_contract()
 
     assert "apps/web/src/shared/sdk/focus-agent-provider.tsx" in current["web_sdk_imports"]
-    assert "FocusAgentClient" in current["web_sdk_imports"]["apps/web/src/shared/sdk/focus-agent-provider.tsx"]
+    assert (
+        "FocusAgentClient"
+        in current["web_sdk_imports"]["apps/web/src/shared/sdk/focus-agent-provider.tsx"]
+    )
     assert current["package_exports"] == [
         "./client",
         "./guards",
@@ -130,6 +139,6 @@ def test_sdk_contract_scans_split_type_modules_not_barrel() -> None:
 
     assert "FocusAgentEvent" in current["exported_type_declarations"]
     assert "FocusAgentAgentTeamSession" in current["exported_type_declarations"]
-    assert "export * from \"./types/stream.js\";" in barrel_text
+    assert 'export * from "./types/stream.js";' in barrel_text
     assert "export interface FocusAgentEvent" not in barrel_text
     assert "export type FocusAgentEventName" not in barrel_text

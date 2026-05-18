@@ -117,7 +117,14 @@ class _DecisionRepo:
                     },
                     "agent_delegation_plan": {
                         "enabled": True,
-                        "runs": [{"run_id": "run-1", "task_id": "task-1", "role": "executor", "status": "completed"}],
+                        "runs": [
+                            {
+                                "run_id": "run-1",
+                                "task_id": "task-1",
+                                "role": "executor",
+                                "status": "completed",
+                            }
+                        ],
                     },
                     "model_route_decision": {
                         "enabled": True,
@@ -126,10 +133,18 @@ class _DecisionRepo:
                         "effective_model": "openai:gpt-4.1-mini",
                     },
                     "agent_failure_records": [
-                        {"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}
+                        {
+                            "failure_id": "failure-1",
+                            "failure_type": "tool_denied",
+                            "failed_role": "critic",
+                        }
                     ],
                     "agent_review_queue": [
-                        {"item_id": "review-1", "item_type": "workspace_write_with_high_risk_tool", "status": "pending"}
+                        {
+                            "item_id": "review-1",
+                            "item_type": "workspace_write_with_high_risk_tool",
+                            "status": "pending",
+                        }
                     ],
                     "agent_task_ledger": {
                         "enabled": True,
@@ -521,7 +536,9 @@ def test_tool_router_matches_graph_policy_filtering_for_core_policies():
         tool_policy="execution",
         available_tool_names=[item.name for item in tools],
     )
-    approval_decision = next(item for item in execution_plan.decisions if item.name == "approval_lookup")
+    approval_decision = next(
+        item for item in execution_plan.decisions if item.name == "approval_lookup"
+    )
     assert approval_decision.allowed is True
     assert approval_decision.reason == "approval_required"
     assert "approval_lookup" in execution_plan.allowed_tools
@@ -576,8 +593,7 @@ def test_graph_tool_router_filters_bound_tools_for_critic(monkeypatch):
     assert result.value["tool_route_plan"]["role"] == "critic"
     assert "write_text_artifact" in result.value["tool_route_plan"]["denied_tools"]
     assert any(
-        record["name"] == "tool_route_plan"
-        and record["mirror_key"] == "tool_route_plan"
+        record["name"] == "tool_route_plan" and record["mirror_key"] == "tool_route_plan"
         for record in result.value["governance_records"]
     )
 
@@ -588,7 +604,12 @@ def test_memory_curator_promotes_clean_branch_findings_and_blocks_discarded_bran
 
     decision = curator.evaluate_branch_promotion(
         branch_record=_branch_record(),
-        findings=[{"finding": "Use the agent governance console for tool routing.", "evidence_refs": ["doc-1"]}],
+        findings=[
+            {
+                "finding": "Use the agent governance console for tool routing.",
+                "evidence_refs": ["doc-1"],
+            }
+        ],
         context=context,
         auto_promote=True,
     )
@@ -667,7 +688,9 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
 
     metrics = _agent_governance_metrics_from_turns(rows)
 
-    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "tool_route_plan")["denied_tools"] == ["record_tool"]
+    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "tool_route_plan")[
+        "denied_tools"
+    ] == ["record_tool"]
     assert metrics["tool_router_denied"] == 1
     assert metrics["tool_router_enforced"] == 1
     assert metrics["tool_intent_live_web_research"] == 1
@@ -694,7 +717,9 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             agent_artifact_synthesis_enabled=True,
             agent_critic_gate_enabled=True,
         ),
-        tool_registry=ToolRegistry(tools=(search_code, write_text_artifact, web_search, skills_list, skill_view)),
+        tool_registry=ToolRegistry(
+            tools=(search_code, write_text_artifact, web_search, skills_list, skill_view)
+        ),
         trajectory_recorder=_DecisionRepo(),
         store=_MemoryStore(),
         graph=object(),
@@ -716,7 +741,11 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     )
     route = client.post(
         "/v1/agent/tool-router/route",
-        json={"role": "critic", "tool_policy": "execution", "available_tools": ["search_code", "write_text_artifact"]},
+        json={
+            "role": "critic",
+            "tool_policy": "execution",
+            "available_tools": ["search_code", "write_text_artifact"],
+        },
     )
     memory_policy = client.get("/v1/agent/memory/curator/policy")
     memory_eval = client.post(
@@ -730,7 +759,9 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     tool_decisions = client.get("/v1/agent/tool-router/decisions")
     memory_decisions = client.get("/v1/agent/memory/curator/decisions")
     delegation_policy = client.get("/v1/agent/delegation/policy")
-    delegation_plan = client.post("/v1/agent/delegation/plan", json={"message": "Plan and implement delegation."})
+    delegation_plan = client.post(
+        "/v1/agent/delegation/plan", json={"message": "Plan and implement delegation."}
+    )
     delegation_runs = client.get("/v1/agent/delegation/runs")
     model_policy = client.get("/v1/agent/model-router/policy")
     model_route = client.post("/v1/agent/model-router/route", json={"role": "critic"})
@@ -738,13 +769,19 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     failures = client.get("/v1/agent/self-repair/failures")
     promote_preview = client.post(
         "/v1/agent/self-repair/promote-preview",
-        json={"failures": [{"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}]},
+        json={
+            "failures": [
+                {"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}
+            ]
+        },
     )
     review_queue = client.get("/v1/agent/review-queue")
     review_approve = client.post("/v1/agent/review-queue/review-1/approve")
     review_reject = client.post("/v1/agent/review-queue/review-1/reject")
     task_ledger_policy = client.get("/v1/agent/task-ledger/policy")
-    task_ledger_plan = client.post("/v1/agent/task-ledger/plan", json={"message": "Plan task ledger handoff."})
+    task_ledger_plan = client.post(
+        "/v1/agent/task-ledger/plan", json={"message": "Plan task ledger handoff."}
+    )
     task_ledger_runs = client.get("/v1/agent/task-ledger/runs")
     artifacts = client.get("/v1/agent/artifacts")
     synthesis = client.post(
@@ -791,7 +828,9 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     role_plan = role_route.json()["plan"]
     assert role_plan["legacy_execution_unchanged"] is True
     assert any(decision["role"] == "skill_scout" for decision in role_plan["decisions"])
-    skill_decision = next(decision for decision in role_plan["decisions"] if decision["role"] == "skill_scout")
+    skill_decision = next(
+        decision for decision in role_plan["decisions"] if decision["role"] == "skill_scout"
+    )
     assert skill_decision["run_isolation_key"] == "role:skill_scout"
     assert skill_decision["tool_governance"]["allowed_tools"] == ["skills_list", "skill_view"]
     assert route.json()["plan"]["role"] == "critic"

@@ -24,6 +24,7 @@ REGISTERED_BACKGROUND_JOB_KINDS = frozenset(
         "context_compaction",
         "conversation_title",
         "branch_title",
+        "branch_decision_evaluate",
     }
 )
 
@@ -93,8 +94,11 @@ def register_default_background_job_handlers(
     chat_service: Any | None = None,
     branch_service: Any | None = None,
     agent_team_service: Any | None = None,
+    branch_decision_service: Any | None = None,
 ) -> None:
-    def _register(kind: str, handler: Any, payload_factory: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+    def _register(
+        kind: str, handler: Any, payload_factory: Callable[[dict[str, Any]], dict[str, Any]]
+    ) -> None:
         if not callable(handler):
             return
         registry.register(
@@ -139,15 +143,31 @@ def register_default_background_job_handlers(
                 "user_id": _required_payload_string(payload, "user_id"),
             },
         )
-        branch_title_handler = getattr(branch_service, "refresh_branch_metadata_after_first_turn", None)
+        branch_title_handler = getattr(
+            branch_service, "refresh_branch_metadata_after_first_turn", None
+        )
         if branch_title_handler is None:
-            branch_title_handler = getattr(branch_service, "refresh_branch_name_after_first_turn", None)
+            branch_title_handler = getattr(
+                branch_service, "refresh_branch_name_after_first_turn", None
+            )
         _register(
             "branch_title",
             branch_title_handler,
             lambda payload: {
                 "child_thread_id": _required_payload_string(payload, "child_thread_id"),
                 "user_id": _required_payload_string(payload, "user_id"),
+            },
+        )
+    if branch_decision_service is not None:
+        _register(
+            "branch_decision_evaluate",
+            getattr(branch_decision_service, "evaluate_thread_turn", None),
+            lambda payload: {
+                "thread_id": _required_payload_string(payload, "thread_id"),
+                "user_id": _required_payload_string(payload, "user_id"),
+                "root_thread_id": str(payload.get("root_thread_id") or "") or None,
+                "request_id": str(payload.get("request_id") or "") or None,
+                "trace_id": str(payload.get("trace_id") or "") or None,
             },
         )
 
@@ -204,7 +224,10 @@ class DurableBackgroundWorker:
         with self._lock:
             self._claimed_total += 1
             self._active += 1
-        heartbeat: tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread] | None = None
+        heartbeat: (
+            tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread]
+            | None
+        ) = None
         try:
             self._mark_job_running(spec.key, claim)
             handler = self._handlers.get(spec.kind)
@@ -296,9 +319,15 @@ class DurableBackgroundWorker:
         if not has_repo_method(self._job_backend, "heartbeat_job_claim"):
             return True
         try:
-            return bool(self._job_backend.heartbeat_job_claim(key, claim, self._claim_heartbeat_ttl_seconds()))
+            return bool(
+                self._job_backend.heartbeat_job_claim(
+                    key, claim, self._claim_heartbeat_ttl_seconds()
+                )
+            )
         except Exception:  # noqa: BLE001 - heartbeat failures must not mark success
-            logger.warning("durable background job heartbeat failed", extra={"job_key": key}, exc_info=True)
+            logger.warning(
+                "durable background job heartbeat failed", extra={"job_key": key}, exc_info=True
+            )
             return False
 
     def _start_job_claim_heartbeat(
@@ -328,7 +357,10 @@ class DurableBackgroundWorker:
 
     def _stop_job_claim_heartbeat(
         self,
-        heartbeat: tuple[str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread] | None,
+        heartbeat: tuple[
+            str, BackgroundJobClaim, threading.Event, threading.Event, threading.Thread
+        ]
+        | None,
         *,
         confirm: bool = True,
     ) -> bool:
@@ -430,7 +462,10 @@ class BoundedBackgroundQueue:
         job_metrics: dict[str, int] = {}
         if has_repo_method(self._job_deduper, "snapshot"):
             try:
-                job_metrics = {str(key): int(value) for key, value in dict(self._job_deduper.snapshot()).items()}
+                job_metrics = {
+                    str(key): int(value)
+                    for key, value in dict(self._job_deduper.snapshot()).items()
+                }
             except Exception:  # noqa: BLE001 - metrics must not break health scrapes
                 logger.warning("background job backend snapshot failed", exc_info=True)
                 job_metrics = {"job_backend_error": 1}
@@ -479,7 +514,9 @@ class BoundedBackgroundQueue:
                 try:
                     task.func(**task.kwargs)
                 except Exception as exc:  # noqa: BLE001 - best-effort background work must not break turns
-                    logger.warning("background task failed", extra={"task_key": task.key}, exc_info=True)
+                    logger.warning(
+                        "background task failed", extra={"task_key": task.key}, exc_info=True
+                    )
                     self._mark_job_failed(task.key, task.claim, str(exc))
                     with self._lock:
                         self._failed_total += 1

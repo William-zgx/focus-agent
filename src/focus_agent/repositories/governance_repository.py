@@ -5,6 +5,7 @@ from threading import RLock
 from typing import Protocol
 
 from focus_agent.core.governance import (
+    BranchDecisionEvent,
     ContextMemoryEvidence,
     FeedbackEvent,
     SkillPreference,
@@ -63,10 +64,30 @@ class FeedbackRepository(Protocol):
     def save_feedback_event(self, event: FeedbackEvent) -> str: ...
 
 
+class BranchDecisionRepository(Protocol):
+    def save_branch_decision_event(self, event: BranchDecisionEvent) -> str: ...
+
+    def get_branch_decision_event(self, decision_id: str) -> BranchDecisionEvent | None: ...
+
+    def list_branch_decision_events(
+        self,
+        *,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+        source_thread_id: str | None = None,
+        status: str | None = None,
+        action: str | None = None,
+        limit: int = 50,
+    ) -> list[BranchDecisionEvent]: ...
+
+    def update_branch_decision_event(self, event: BranchDecisionEvent) -> BranchDecisionEvent: ...
+
+
 class GovernanceRepository(
     ContextMemoryEvidenceRepository,
     SkillOperationsRepository,
     FeedbackRepository,
+    BranchDecisionRepository,
     Protocol,
 ):
     pass
@@ -79,6 +100,8 @@ class InMemoryGovernanceRepository:
         self._skill_events: dict[str, SkillSelectionEvent] = {}
         self._skill_preferences: dict[tuple[str, str], SkillPreference] = {}
         self._feedback_events: dict[str, FeedbackEvent] = {}
+        self._branch_decisions: dict[str, BranchDecisionEvent] = {}
+        self._branch_decision_idempotency: dict[str, str] = {}
 
     def save_context_evidence(self, evidence: ContextMemoryEvidence) -> str:
         with self._lock:
@@ -187,9 +210,58 @@ class InMemoryGovernanceRepository:
             self._feedback_events[event.event_id] = event
         return event.event_id
 
+    def save_branch_decision_event(self, event: BranchDecisionEvent) -> str:
+        with self._lock:
+            if event.idempotency_key:
+                existing_id = self._branch_decision_idempotency.get(event.idempotency_key)
+                if existing_id is not None:
+                    existing = self._branch_decisions.get(existing_id)
+                    if existing is not None:
+                        return existing.decision_id
+                self._branch_decision_idempotency[event.idempotency_key] = event.decision_id
+            self._branch_decisions[event.decision_id] = event
+        return event.decision_id
+
+    def get_branch_decision_event(self, decision_id: str) -> BranchDecisionEvent | None:
+        with self._lock:
+            return self._branch_decisions.get(decision_id)
+
+    def list_branch_decision_events(
+        self,
+        *,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+        source_thread_id: str | None = None,
+        status: str | None = None,
+        action: str | None = None,
+        limit: int = 50,
+    ) -> list[BranchDecisionEvent]:
+        with self._lock:
+            items = list(self._branch_decisions.values())
+        if user_id is not None:
+            items = [item for item in items if item.user_id in {None, user_id}]
+        if root_thread_id is not None:
+            items = [item for item in items if item.root_thread_id == root_thread_id]
+        if source_thread_id is not None:
+            items = [item for item in items if item.source_thread_id == source_thread_id]
+        if status is not None:
+            items = [item for item in items if item.status.value == status]
+        if action is not None:
+            items = [item for item in items if item.action.value == action]
+        items.sort(key=lambda item: (item.created_at, item.decision_id), reverse=True)
+        return items[: max(0, limit)]
+
+    def update_branch_decision_event(self, event: BranchDecisionEvent) -> BranchDecisionEvent:
+        with self._lock:
+            self._branch_decisions[event.decision_id] = event
+            if event.idempotency_key:
+                self._branch_decision_idempotency[event.idempotency_key] = event.decision_id
+        return event
+
 
 __all__ = [
     "ContextMemoryEvidenceRepository",
+    "BranchDecisionRepository",
     "FeedbackRepository",
     "GovernanceRepository",
     "InMemoryGovernanceRepository",

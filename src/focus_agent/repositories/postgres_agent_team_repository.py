@@ -195,9 +195,7 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                 rows = cur.fetchall()
         return [self._task_from_row(row) for row in rows]
 
-    def claim_task(
-        self, *, task_id: str, owner: str, ttl_seconds: float
-    ) -> AgentTeamTask | None:
+    def claim_task(self, *, task_id: str, owner: str, ttl_seconds: float) -> AgentTeamTask | None:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -211,7 +209,11 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                 now = _now()
                 if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
                     return None
-                if task.claimed_until and task.claim_token and _parse_time(task.claimed_until) > now:
+                if (
+                    task.claimed_until
+                    and task.claim_token
+                    and _parse_time(task.claimed_until) > now
+                ):
                     return None
                 claim_token = uuid4().hex
                 updated = task.model_copy(
@@ -242,9 +244,7 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                 )
         return updated
 
-    def heartbeat_task_claim(
-        self, *, task_id: str, claim_token: str, ttl_seconds: float
-    ) -> bool:
+    def heartbeat_task_claim(self, *, task_id: str, claim_token: str, ttl_seconds: float) -> bool:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -256,9 +256,8 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                     raise KeyError(f"Unknown agent team task: {task_id}")
                 task = self._task_from_row(row)
                 now = _now()
-                if (
-                    task.claim_token != claim_token
-                    or (task.claimed_until and _parse_time(task.claimed_until) <= now)
+                if task.claim_token != claim_token or (
+                    task.claimed_until and _parse_time(task.claimed_until) <= now
                 ):
                     return False
                 updated = task.model_copy(
@@ -303,9 +302,8 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                     raise KeyError(f"Unknown agent team task: {task_id}")
                 task = self._task_from_row(row)
                 now_dt = _now()
-                if (
-                    task.claim_token != claim_token
-                    or (task.claimed_until and _parse_time(task.claimed_until) <= now_dt)
+                if task.claim_token != claim_token or (
+                    task.claimed_until and _parse_time(task.claimed_until) <= now_dt
                 ):
                     return task
                 now = _format_time(now_dt)

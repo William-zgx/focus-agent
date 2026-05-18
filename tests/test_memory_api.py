@@ -69,7 +69,9 @@ class _MemoryApiRepository:
         if query.user_id is not None:
             records = [record for record in records if record.user_id == query.user_id]
         if query.root_thread_id is not None:
-            records = [record for record in records if record.root_thread_id == query.root_thread_id]
+            records = [
+                record for record in records if record.root_thread_id == query.root_thread_id
+            ]
         if query.source_thread_id is not None:
             records = [
                 record for record in records if record.source_thread_id == query.source_thread_id
@@ -130,9 +132,7 @@ class _MemoryApiRepository:
         if source_thread_id is not None:
             events = [event for event in events if event.source_thread_id == source_thread_id]
         if source_branch_id is not None:
-            events = [
-                event for event in events if event.source_branch_id == source_branch_id
-            ]
+            events = [event for event in events if event.source_branch_id == source_branch_id]
         return events[:limit]
 
     def upsert_candidate(self, candidate: MemoryCandidate) -> str:
@@ -158,9 +158,7 @@ class _MemoryApiRepository:
         if user_id is not None:
             candidates = [candidate for candidate in candidates if candidate.user_id == user_id]
         if branch_id is not None:
-            candidates = [
-                candidate for candidate in candidates if candidate.branch_id == branch_id
-            ]
+            candidates = [candidate for candidate in candidates if candidate.branch_id == branch_id]
         return candidates[:limit]
 
     def update_candidate_status(

@@ -123,9 +123,7 @@ class InMemoryProductivityRepository(ProductivityRepository):
             notes = [note for note in notes if tag_filter.issubset(set(note.tags))]
         if query_text:
             notes = [
-                note
-                for note in notes
-                if query_text in f"{note.title}\n{note.body}".casefold()
+                note for note in notes if query_text in f"{note.title}\n{note.body}".casefold()
             ]
         notes.sort(key=lambda item: (item.updated_at, item.note_id), reverse=True)
         return notes[max(0, offset) : max(0, offset) + max(0, limit)]

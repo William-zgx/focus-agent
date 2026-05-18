@@ -8,7 +8,9 @@ from focus_agent.core import context_token_counting
 from focus_agent.core.types import ContextBudget
 
 
-def test_context_usage_reports_tokenizer_fallback_and_drift_risk(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_context_usage_reports_tokenizer_fallback_and_drift_risk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def missing_tiktoken(_name: str):
         raise ImportError("tiktoken unavailable")
 

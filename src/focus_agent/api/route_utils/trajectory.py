@@ -337,7 +337,9 @@ def _export_trajectory_records(repo: Any, query: TrajectoryTurnQuery) -> list[di
     return [dict(record) for record in repo.export_turns(query)]
 
 
-def _build_batch_replay_summary(results: Sequence[TrajectoryReplayResponse]) -> TrajectoryBatchReplaySummaryResponse:
+def _build_batch_replay_summary(
+    results: Sequence[TrajectoryReplayResponse],
+) -> TrajectoryBatchReplaySummaryResponse:
     return TrajectoryBatchReplaySummaryResponse(
         total=len(results),
         passed=sum(1 for item in results if item.comparison.replay_passed),
@@ -347,7 +349,9 @@ def _build_batch_replay_summary(results: Sequence[TrajectoryReplayResponse]) -> 
     )
 
 
-def _maybe_get_trajectory_repository(runtime: AppRuntime | Any) -> PostgresTrajectoryRepository | Any | None:
+def _maybe_get_trajectory_repository(
+    runtime: AppRuntime | Any,
+) -> PostgresTrajectoryRepository | Any | None:
     repository = getattr(runtime, "trajectory_recorder", None)
     if repository is not None and all(
         has_repo_method(repository, name) for name in _TRAJECTORY_REPOSITORY_METHODS
@@ -357,8 +361,6 @@ def _maybe_get_trajectory_repository(runtime: AppRuntime | Any) -> PostgresTraje
     if database_uri:
         return PostgresTrajectoryRepository(database_uri)
     return None
-
-
 
 
 __all__ = [

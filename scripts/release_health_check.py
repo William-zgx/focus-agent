@@ -226,7 +226,9 @@ def _eval_report_signals(paths: Iterable[str | Path], *, root: Path) -> list[Rel
             continue
 
         summary = payload["summary"]
-        comparison = payload.get("comparison") if isinstance(payload.get("comparison"), dict) else {}
+        comparison = (
+            payload.get("comparison") if isinstance(payload.get("comparison"), dict) else {}
+        )
         failed = int(_number(summary.get("failed")))
         errors = int(_number(summary.get("errors")))
         passed = int(_number(summary.get("passed")))
@@ -435,10 +437,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Fall back to deterministic healthy samples if live JSON inputs or HTTP probes are unavailable.",
     )
-    parser.add_argument("--runtime-status-json", help="JSON payload from /readyz or an equivalent readiness probe.")
+    parser.add_argument(
+        "--runtime-status-json", help="JSON payload from /readyz or an equivalent readiness probe."
+    )
     parser.add_argument("--readyz-json", help="Alias for --runtime-status-json.")
     parser.add_argument("--trajectory-stats-json", help="Trajectory stats JSON payload.")
-    parser.add_argument("--baseline-trajectory-stats-json", help="Baseline trajectory stats JSON payload.")
+    parser.add_argument(
+        "--baseline-trajectory-stats-json", help="Baseline trajectory stats JSON payload."
+    )
     parser.add_argument(
         "--baseline-eval-report-json",
         action="append",
@@ -447,7 +453,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--replay-comparisons-json", help="Batch replay-compare JSON payload.")
     parser.add_argument("--alert-report-json", help="Executable alert rules report JSON.")
-    parser.add_argument("--postgres-migration-report-json", help="Postgres migration verification report JSON.")
+    parser.add_argument(
+        "--postgres-migration-report-json", help="Postgres migration verification report JSON."
+    )
     parser.add_argument("--production-smoke-report-json", help="Production smoke report JSON.")
     parser.add_argument("--postgres-ops-report-json", help="Postgres ops report JSON.")
     parser.add_argument("--otel-smoke-report-json", help="OpenTelemetry smoke report JSON.")
@@ -555,7 +563,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 runtime_status = _http_get_json(args.ready_url)
             except (OSError, TimeoutError, json.JSONDecodeError):
                 if live_mode:
-                    fail_closed_signals.append(_required_input_signal("readyz", "failed to load --ready-url"))
+                    fail_closed_signals.append(
+                        _required_input_signal("readyz", "failed to load --ready-url")
+                    )
                 elif not args.allow_self_check_fallback:
                     raise
         if trajectory_stats is None and args.trajectory_stats_url:
@@ -566,7 +576,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             except (OSError, TimeoutError, json.JSONDecodeError):
                 if live_mode:
                     fail_closed_signals.append(
-                        _required_input_signal("trajectory_stats", "failed to load --trajectory-stats-url")
+                        _required_input_signal(
+                            "trajectory_stats", "failed to load --trajectory-stats-url"
+                        )
                     )
                 elif not args.allow_self_check_fallback:
                     raise
@@ -577,9 +589,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if live_mode:
             if runtime_status_loaded and runtime_status is None:
                 fail_closed_signals.append(_required_input_signal("readyz", "invalid readyz input"))
-            if (trajectory_stats_loaded or trajectory_stats_url_loaded) and not _trajectory_stats_has_schema(
-                trajectory_stats
-            ):
+            if (
+                trajectory_stats_loaded or trajectory_stats_url_loaded
+            ) and not _trajectory_stats_has_schema(trajectory_stats):
                 fail_closed_signals.append(
                     _required_input_signal("trajectory_stats", "invalid trajectory stats input")
                 )
@@ -588,21 +600,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _required_input_signal("replay_comparisons", "empty replay comparison input")
                 )
             if alert_report_loaded and not isinstance(alert_report, dict):
-                fail_closed_signals.append(_required_input_signal("alert_report", "invalid alert report input"))
+                fail_closed_signals.append(
+                    _required_input_signal("alert_report", "invalid alert report input")
+                )
                 alert_report = None
             if postgres_migration_report_loaded and not isinstance(postgres_migration_report, dict):
                 fail_closed_signals.append(
-                    _required_input_signal("postgres_migration_report", "invalid postgres migration report input")
+                    _required_input_signal(
+                        "postgres_migration_report", "invalid postgres migration report input"
+                    )
                 )
                 postgres_migration_report = None
             if production_smoke_report_loaded and not isinstance(production_smoke_report, dict):
                 fail_closed_signals.append(
-                    _required_input_signal("production_smoke_report", "invalid production smoke report input")
+                    _required_input_signal(
+                        "production_smoke_report", "invalid production smoke report input"
+                    )
                 )
                 production_smoke_report = None
             if postgres_ops_report_loaded and not isinstance(postgres_ops_report, dict):
                 fail_closed_signals.append(
-                    _required_input_signal("postgres_ops_report", "invalid postgres ops report input")
+                    _required_input_signal(
+                        "postgres_ops_report", "invalid postgres ops report input"
+                    )
                 )
                 postgres_ops_report = None
             if otel_smoke_report_loaded and not isinstance(otel_smoke_report, dict):
@@ -617,7 +637,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 governance_quality_report = None
             if runtime_status is None and not _input_present(runtime_status_path, args.ready_url):
                 fail_closed_signals.append(_required_input_signal("readyz", "missing readyz input"))
-            if trajectory_stats is None and not _input_present(args.trajectory_stats_json, args.trajectory_stats_url):
+            if trajectory_stats is None and not _input_present(
+                args.trajectory_stats_json, args.trajectory_stats_url
+            ):
                 fail_closed_signals.append(
                     _required_input_signal("trajectory_stats", "missing trajectory stats input")
                 )
@@ -626,10 +648,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _required_input_signal("replay_comparisons", "missing replay comparison input")
                 )
             if not args.eval_report_json:
-                fail_closed_signals.append(_required_input_signal("eval_report", "missing eval report input"))
+                fail_closed_signals.append(
+                    _required_input_signal("eval_report", "missing eval report input")
+                )
             for input_name, arg_name in PRODUCTION_REPORT_INPUTS:
                 if not _input_present(getattr(args, arg_name)):
-                    fail_closed_signals.append(_required_input_signal(input_name, f"missing {input_name} input"))
+                    fail_closed_signals.append(
+                        _required_input_signal(input_name, f"missing {input_name} input")
+                    )
             if not args.allow_dry_run_reports:
                 for input_name, report in (
                     ("production_smoke_report", production_smoke_report),
@@ -639,7 +665,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ):
                     if _report_is_dry_run(report):
                         fail_closed_signals.append(
-                            _required_input_signal(input_name, f"{input_name} cannot be dry-run in production mode")
+                            _required_input_signal(
+                                input_name, f"{input_name} cannot be dry-run in production mode"
+                            )
                         )
         if (
             governance_quality_report_loaded
@@ -674,7 +702,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             production_smoke_report=production_smoke_report
             if isinstance(production_smoke_report, dict)
             else None,
-            postgres_ops_report=postgres_ops_report if isinstance(postgres_ops_report, dict) else None,
+            postgres_ops_report=postgres_ops_report
+            if isinstance(postgres_ops_report, dict)
+            else None,
             otel_smoke_report=otel_smoke_report if isinstance(otel_smoke_report, dict) else None,
             governance_quality_report=governance_quality_report
             if isinstance(governance_quality_report, dict)
@@ -713,7 +743,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[release-health] {exc}", file=sys.stderr)
         return 2
 
-    print_json_stdout({"status": "passed" if report.passed else "failed", "report_json": str(report_path)})
+    print_json_stdout(
+        {"status": "passed" if report.passed else "failed", "report_json": str(report_path)}
+    )
     return 0 if report.passed else 1
 
 
@@ -765,9 +797,10 @@ def _compare_eval_summaries(baseline: dict[str, float], current: dict[str, float
     task_success_drop = baseline.get("task_success", 0.0) - current.get("task_success", 0.0)
     if task_success_drop > 0.02:
         regressions.append(f"task_success dropped {task_success_drop * 100:.1f}pp")
-    if current.get("forbidden_tool_violation_rate", 0.0) > baseline.get(
-        "forbidden_tool_violation_rate", 0.0
-    ) + 1e-9:
+    if (
+        current.get("forbidden_tool_violation_rate", 0.0)
+        > baseline.get("forbidden_tool_violation_rate", 0.0) + 1e-9
+    ):
         regressions.append(
             "forbidden tool violations grew "
             f"{baseline.get('forbidden_tool_violation_rate', 0.0):.3f} -> "

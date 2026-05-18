@@ -55,6 +55,11 @@ jobs:
       - name: Run contract check
         run: make contract-check
 
+      - name: Check OpenAPI schema drift
+        run: |
+          uv run python scripts/export-openapi.py
+          git diff --exit-code docs/api/openapi.json
+
   frontend:
     name: SDK and Web check/build
     runs-on: ubuntu-latest
@@ -78,6 +83,9 @@ jobs:
 
       - name: Check frontend SDK
         run: make sdk-check
+
+      - name: Check generated SDK OpenAPI types
+        run: make sdk-openapi-types-check
 
       - name: Build frontend SDK
         run: make sdk-build

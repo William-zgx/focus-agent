@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Protocol
 
 
@@ -22,14 +22,12 @@ class DAGTaskNode:
 class DAGSchedulerPort(Protocol):
     def compute_next_wave(
         self, *, completed: set[str], failed: set[str], in_progress: set[str]
-    ) -> list[DAGTaskNode]:
-        ...
+    ) -> list[DAGTaskNode]: ...
 
-    def validate(self) -> None:
-        ...
+    def validate(self) -> None: ...
 
 
-class LockMode(str, Enum):
+class LockMode(StrEnum):
     EXCLUSIVE = "exclusive"
     SHARED = "shared"
 
@@ -53,23 +51,18 @@ class ResourceLockPort(Protocol):
         session_id: str,
         mode: LockMode,
         ttl_seconds: float,
-    ) -> ResourceClaim | None:
-        ...
+    ) -> ResourceClaim | None: ...
 
-    def heartbeat(self, claim: ResourceClaim, *, ttl_seconds: float) -> bool:
-        ...
+    def heartbeat(self, claim: ResourceClaim, *, ttl_seconds: float) -> bool: ...
 
-    def release(self, claim: ResourceClaim) -> None:
-        ...
+    def release(self, claim: ResourceClaim) -> None: ...
 
-    def cleanup_expired(self) -> int:
-        ...
+    def cleanup_expired(self) -> int: ...
 
-    def detect_deadlocks(self) -> list[list[str]]:
-        ...
+    def detect_deadlocks(self) -> list[list[str]]: ...
 
 
-class AgentMessageType(str, Enum):
+class AgentMessageType(StrEnum):
     PROGRESS = "progress"
     CHECKPOINT = "checkpoint"
     HELP_REQUEST = "help_request"
@@ -91,14 +84,11 @@ class AgentMessage:
 
 
 class MessageStream(Protocol):
-    def poll(self) -> list[AgentMessage]:
-        ...
+    def poll(self) -> list[AgentMessage]: ...
 
-    def ack(self, message_id: str) -> None:
-        ...
+    def ack(self, message_id: str) -> None: ...
 
-    def __iter__(self) -> Iterable[AgentMessage]:
-        ...
+    def __iter__(self) -> Iterable[AgentMessage]: ...
 
 
 class MessageBusPort(Protocol):
@@ -110,17 +100,14 @@ class MessageBusPort(Protocol):
         target_agent: str | None,
         message_type: AgentMessageType,
         payload: dict[str, Any],
-    ) -> str:
-        ...
+    ) -> str: ...
 
-    def subscribe(self, *, session_id: str, agent_id: str) -> MessageStream:
-        ...
+    def subscribe(self, *, session_id: str, agent_id: str) -> MessageStream: ...
 
-    def cleanup_expired(self) -> int:
-        ...
+    def cleanup_expired(self) -> int: ...
 
 
-class FailureStrategy(str, Enum):
+class FailureStrategy(StrEnum):
     RETRY = "retry"
     REASSIGN = "reassign"
     DEGRADE = "degrade"
@@ -128,11 +115,10 @@ class FailureStrategy(str, Enum):
 
 
 class FailureHandlerPort(Protocol):
-    def decide(self, *, task_id: str, error_category: str, attempt: int) -> FailureStrategy:
-        ...
+    def decide(self, *, task_id: str, error_category: str, attempt: int) -> FailureStrategy: ...
 
 
-class ApprovalStatus(str, Enum):
+class ApprovalStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -165,11 +151,9 @@ class ApprovalQueuePort(Protocol):
         tool_args: dict[str, Any],
         risk_level: str,
         timeout_seconds: float,
-    ) -> ApprovalStatus:
-        ...
+    ) -> ApprovalStatus: ...
 
-    def decide(self, *, request_id: str, approved: bool, decided_by: str) -> None:
-        ...
+    def decide(self, *, request_id: str, approved: bool, decided_by: str) -> None: ...
 
     def submit_pending(
         self,
@@ -181,17 +165,13 @@ class ApprovalQueuePort(Protocol):
         tool_args: dict[str, Any],
         risk_level: str,
         timeout_seconds: float,
-    ) -> ApprovalRequest:
-        ...
+    ) -> ApprovalRequest: ...
 
-    def list_pending(self) -> list[ApprovalRequest]:
-        ...
+    def list_pending(self) -> list[ApprovalRequest]: ...
 
-    def get(self, request_id: str) -> ApprovalRequest | None:
-        ...
+    def get(self, request_id: str) -> ApprovalRequest | None: ...
 
-    def expire_pending(self) -> int:
-        ...
+    def expire_pending(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,8 +186,7 @@ class ConflictReport:
 
 
 class ConflictDetectorPort(Protocol):
-    def detect(self, task_outputs: dict[str, dict[str, Any]]) -> list[ConflictReport]:
-        ...
+    def detect(self, task_outputs: dict[str, dict[str, Any]]) -> list[ConflictReport]: ...
 
 
 __all__ = [

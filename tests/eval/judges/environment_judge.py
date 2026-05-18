@@ -179,8 +179,7 @@ def _evaluate_assertion(
             failures.append(f"assertion[{index}] path={path!r} has no length")
         elif actual_len > expected_max:
             failures.append(
-                f"assertion[{index}] path={path!r} len={actual_len} "
-                f"exceeded max_len={expected_max}"
+                f"assertion[{index}] path={path!r} len={actual_len} exceeded max_len={expected_max}"
             )
 
     if len(detail["checks"]) == checks_before_value_assertions:

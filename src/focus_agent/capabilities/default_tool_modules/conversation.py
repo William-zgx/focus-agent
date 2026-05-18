@@ -49,8 +49,10 @@ def build_conversation_tools(
     @tool
     def conversation_summary(thread_id: str = "", recent_messages: int | None = None) -> str:
         """Return the latest saved rolling summary and recent messages for a thread."""
-        tool_name = 'conversation_summary'
-        emit_tool_event(tool_name=tool_name, stage='start', thread_id=thread_id, recent_messages=recent_messages)
+        tool_name = "conversation_summary"
+        emit_tool_event(
+            tool_name=tool_name, stage="start", thread_id=thread_id, recent_messages=recent_messages
+        )
         try:
             if checkpointer is None:
                 raise RuntimeError("Conversation checkpointer is not configured.")
@@ -86,10 +88,10 @@ def build_conversation_tools(
                 "recent_messages": recent,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), thread_id=thread_id)
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), thread_id=thread_id)
             raise
 
     return (

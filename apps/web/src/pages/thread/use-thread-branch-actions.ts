@@ -1,7 +1,8 @@
-import type {
-	FocusAgentBranchActionExecuteResponse,
-	FocusAgentBranchActionNavigation,
-	FocusAgentBranchActionProposal,
+import {
+	FocusAgentRequestError,
+	type FocusAgentBranchActionExecuteResponse,
+	type FocusAgentBranchActionNavigation,
+	type FocusAgentBranchActionProposal,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -29,6 +30,59 @@ function navigationFromBranchActionResult(
 	return null;
 }
 
+const THREAD_BUSY_RETRY_ATTEMPTS = 80;
+const THREAD_BUSY_RETRY_DELAY_MS = 500;
+
+class ThreadBranchActionRetryCancelled extends Error {
+	constructor() {
+		super("Branch action request was cancelled.");
+		this.name = "ThreadBranchActionRetryCancelled";
+	}
+}
+
+function isThreadBusyConflict(error: unknown): boolean {
+	if (!(error instanceof FocusAgentRequestError) || error.status !== 409) {
+		return false;
+	}
+	const text = [error.message, JSON.stringify(error.data ?? {})]
+		.join(" ")
+		.toLowerCase();
+	return text.includes("still processing") || text.includes("previous turn");
+}
+
+function delay(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function retryThreadBusyConflict<T>(
+	operation: () => Promise<T>,
+	shouldContinue: () => boolean,
+): Promise<T> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt < THREAD_BUSY_RETRY_ATTEMPTS; attempt += 1) {
+		if (!shouldContinue()) {
+			throw new ThreadBranchActionRetryCancelled();
+		}
+		try {
+			const result = await operation();
+			if (!shouldContinue()) {
+				throw new ThreadBranchActionRetryCancelled();
+			}
+			return result;
+		} catch (error) {
+			lastError = error;
+			if (error instanceof ThreadBranchActionRetryCancelled) {
+				throw error;
+			}
+			if (!isThreadBusyConflict(error)) {
+				throw error;
+			}
+			await delay(THREAD_BUSY_RETRY_DELAY_MS);
+		}
+	}
+	throw lastError;
+}
+
 export function useThreadBranchActions(threadId: string) {
 	const { client } = useFocusAgent();
 	const navigate = useNavigate();
@@ -41,6 +95,8 @@ export function useThreadBranchActions(threadId: string) {
 		Record<string, string>
 	>({});
 	const branchActionInFlightRef = useRef<string | null>(null);
+	const branchActionRequestEpochRef = useRef(0);
+	const branchActionThreadIdRef = useRef(threadId);
 
 	const refreshBranchActionSurfaces = useCallback(
 		async (rootThreadId: string, currentThreadId: string) => {
@@ -59,8 +115,9 @@ export function useThreadBranchActions(threadId: string) {
 
 	const beginBranchActionRequest = useCallback((actionId: string) => {
 		if (branchActionInFlightRef.current) {
-			return false;
+			return null;
 		}
+		branchActionRequestEpochRef.current += 1;
 		branchActionInFlightRef.current = actionId;
 		setBranchActionInFlightId(actionId);
 		setBranchActionErrors((current) => {
@@ -68,7 +125,7 @@ export function useThreadBranchActions(threadId: string) {
 			delete next[actionId];
 			return next;
 		});
-		return true;
+		return branchActionRequestEpochRef.current;
 	}, []);
 
 	const endBranchActionRequest = useCallback((actionId: string) => {
@@ -77,6 +134,13 @@ export function useThreadBranchActions(threadId: string) {
 			setBranchActionInFlightId(null);
 		}
 	}, []);
+
+	const isCurrentBranchActionRequest = useCallback(
+		(requestEpoch: number, sourceThreadId: string) =>
+			branchActionRequestEpochRef.current === requestEpoch &&
+			threadId === sourceThreadId,
+		[threadId],
+	);
 
 	const refreshThreadAfterBranchActionFailure = useCallback(
 		async (actionId: string, error: unknown) => {
@@ -96,24 +160,32 @@ export function useThreadBranchActions(threadId: string) {
 
 	const executeBranchAction = useCallback(
 		async (action: FocusAgentBranchActionProposal) => {
-			if (!beginBranchActionRequest(action.action_id)) {
+			const requestEpoch = beginBranchActionRequest(action.action_id);
+			if (requestEpoch === null) {
 				return;
 			}
+			const sourceThreadId = threadId;
 			try {
-				const result = await client.executeBranchAction(
-					threadId,
-					action.action_id,
+				const result = await retryThreadBusyConflict(
+					() => client.executeBranchAction(sourceThreadId, action.action_id),
+					() => isCurrentBranchActionRequest(requestEpoch, sourceThreadId),
 				);
+				if (!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+					return;
+				}
 				queryClient.setQueryData(
-					queryKeys.thread(threadId),
+					queryKeys.thread(sourceThreadId),
 					result.thread_state,
 				);
 				await refreshBranchActionSurfaces(
 					result.thread_state.root_thread_id,
-					threadId,
+					sourceThreadId,
 				);
 				const navigation = navigationFromBranchActionResult(result);
 				if (navigation) {
+					if (!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+						return;
+					}
 					await queryClient.invalidateQueries({
 						queryKey: queryKeys.thread(navigation.thread_id),
 					});
@@ -126,16 +198,25 @@ export function useThreadBranchActions(threadId: string) {
 					});
 				}
 			} catch (error) {
+				if (
+					error instanceof ThreadBranchActionRetryCancelled ||
+					!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)
+				) {
+					return;
+				}
 				console.error("Failed to execute branch action", error);
 				await refreshThreadAfterBranchActionFailure(action.action_id, error);
 			} finally {
-				endBranchActionRequest(action.action_id);
+				if (isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+					endBranchActionRequest(action.action_id);
+				}
 			}
 		},
 		[
 			beginBranchActionRequest,
 			client,
 			endBranchActionRequest,
+			isCurrentBranchActionRequest,
 			navigate,
 			queryClient,
 			refreshBranchActionSurfaces,
@@ -146,27 +227,44 @@ export function useThreadBranchActions(threadId: string) {
 
 	const dismissBranchAction = useCallback(
 		async (action: FocusAgentBranchActionProposal) => {
-			if (!beginBranchActionRequest(action.action_id)) {
+			const requestEpoch = beginBranchActionRequest(action.action_id);
+			if (requestEpoch === null) {
 				return;
 			}
+			const sourceThreadId = threadId;
 			try {
-				const threadState = await client.dismissBranchAction(
-					threadId,
-					action.action_id,
+				const threadState = await retryThreadBusyConflict(
+					() => client.dismissBranchAction(sourceThreadId, action.action_id),
+					() => isCurrentBranchActionRequest(requestEpoch, sourceThreadId),
 				);
-				queryClient.setQueryData(queryKeys.thread(threadId), threadState);
-				await refreshBranchActionSurfaces(threadState.root_thread_id, threadId);
+				if (!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+					return;
+				}
+				queryClient.setQueryData(queryKeys.thread(sourceThreadId), threadState);
+				await refreshBranchActionSurfaces(
+					threadState.root_thread_id,
+					sourceThreadId,
+				);
 			} catch (error) {
+				if (
+					error instanceof ThreadBranchActionRetryCancelled ||
+					!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)
+				) {
+					return;
+				}
 				console.error("Failed to dismiss branch action", error);
 				await refreshThreadAfterBranchActionFailure(action.action_id, error);
 			} finally {
-				endBranchActionRequest(action.action_id);
+				if (isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+					endBranchActionRequest(action.action_id);
+				}
 			}
 		},
 		[
 			beginBranchActionRequest,
 			client,
 			endBranchActionRequest,
+			isCurrentBranchActionRequest,
 			queryClient,
 			refreshBranchActionSurfaces,
 			refreshThreadAfterBranchActionFailure,
@@ -175,10 +273,18 @@ export function useThreadBranchActions(threadId: string) {
 	);
 
 	useEffect(() => {
+		branchActionThreadIdRef.current = threadId;
+		branchActionRequestEpochRef.current += 1;
 		setBranchActionInFlightId(null);
 		setBranchActionErrors({});
 		branchActionInFlightRef.current = null;
-	}, []);
+		return () => {
+			branchActionRequestEpochRef.current += 1;
+			if (branchActionThreadIdRef.current === threadId) {
+				branchActionInFlightRef.current = null;
+			}
+		};
+	}, [threadId]);
 
 	return {
 		branchActionErrors,

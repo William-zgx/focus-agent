@@ -203,7 +203,7 @@ class SQLiteProductivityRepository(ProductivityRepository):
             params.extend([like, like])
         sql = f"""
             SELECT data_json FROM focus_notes
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY updated_at DESC, note_id DESC
             LIMIT ? OFFSET ?
         """
@@ -316,7 +316,7 @@ class SQLiteProductivityRepository(ProductivityRepository):
             params.append(FocusTaskStatus.ARCHIVED.value)
         sql = f"""
             SELECT data_json FROM focus_tasks
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY updated_at DESC, task_id DESC
             LIMIT ? OFFSET ?
         """

@@ -138,7 +138,10 @@ class PostgresTrajectoryMapperMixin:
             error=optional_text(row.get("error")),
             started_at=row["started_at"],
             finished_at=row["finished_at"],
-            trajectory=[PostgresTrajectoryMapperMixin._step_dict_to_model(step_row) for step_row in (step_rows or [])],
+            trajectory=[
+                PostgresTrajectoryMapperMixin._step_dict_to_model(step_row)
+                for step_row in (step_rows or [])
+            ],
         )
 
     @staticmethod

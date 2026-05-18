@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-05-10
+更新时间：2026-05-16
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -23,6 +23,7 @@ run.completed
 run.failed
 run.interrupt
 run.closed
+server_shutdown
 heartbeat
 state.update
 message.delta
@@ -35,7 +36,19 @@ tool.result
 task.update
 ```
 
-Clients should treat `run.completed`, `run.failed`, and `run.closed` as terminal turn signals. `heartbeat` is transport liveness only.
+Clients should treat `run.completed`, `run.failed`, `run.closed`, and
+`server_shutdown` as terminal or reconnect-relevant turn signals. `heartbeat` is
+transport liveness only. `server_shutdown` is emitted during graceful shutdown so
+clients can stop reading the current stream and resume or reconnect according to
+their own policy.
+
+When pre-turn branch recommendation short-circuits a stream, the server may
+publish `message.completed` with `source="branch_recommendation"` and then
+`run.completed` with `thread_state`, `branch_action`, and an extra
+`branch_decision` payload field. That path intentionally has no `message.delta`
+chunks and does not invoke the normal graph turn. Clients should render the
+returned pending Branch Action from the same reducer/state path used for
+ordinary thread payloads.
 
 ## 2. Visible Text Boundary
 
@@ -106,6 +119,13 @@ When stream behavior, tool protocol filtering, frontend SDK reducers, or process
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check
+```
+
+When branch recommendation or Branch Action streaming behavior changes, include:
+
+```bash
+uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_repository.py tests/test_chat_service.py tests/test_harness_api.py
+make sdk-openapi-types-check
 ```
 
 For browser-level regressions, run a tool-using prompt through `make ui-smoke` or `scripts/ui_smoke_test.py` and confirm:

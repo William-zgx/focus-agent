@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 import math
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 import focus_agent.memory.embedding as embedding_mod
@@ -20,18 +20,26 @@ from focus_agent.memory.embedding import (
 from focus_agent.memory.embedding_service import MemoryEmbeddingService
 
 
-class _FakeEmbeddingResponse:
-    def __init__(self, payload: object):
-        self.payload = payload
+class _FakeEmbeddingHttpClient:
+    def __init__(self, handler):
+        self._handler = handler
 
-    def __enter__(self) -> _FakeEmbeddingResponse:
-        return self
+    def post(
+        self,
+        url: str,
+        *,
+        json: object | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> httpx.Response:
+        return self._response(self._handler("POST", url, json, headers or {}, timeout), url=url)
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        return False
+    def get(self, url: str, *, timeout: float | None = None) -> httpx.Response:
+        return self._response(self._handler("GET", url, None, {}, timeout), url=url)
 
-    def read(self) -> bytes:
-        return json.dumps(self.payload).encode("utf-8")
+    @staticmethod
+    def _response(payload: object, *, url: str) -> httpx.Response:
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
 
 
 def test_deterministic_embedding_provider_returns_stable_unit_vectors() -> None:
@@ -70,14 +78,16 @@ def test_memory_embedding_service_factory_supports_disabled_and_deterministic_ba
     assert len(provider.embed_query("hello")) == 4
 
 
-def test_memory_embedding_defaults_to_openai_compatible_and_inherits_model_provider_client_config() -> None:
+def test_memory_embedding_defaults_to_openai_compatible_and_inherits_model_provider_client_config() -> (
+    None
+):
     provider = create_memory_embedding_provider(
         Settings(
             agent_memory_embedding_backend="openai_compatible",
             resolved_env={
                 "OPENAI_BASE_URL": "https://models.example.test/v1",
                 "OPENAI_API_KEY": "model-secret",
-            }
+            },
         )
     )
 
@@ -143,34 +153,35 @@ def test_memory_embedding_config_defaults_pgvector_extension_mode_by_environment
 
 
 def test_openai_compatible_embedding_provider_posts_embeddings_request(monkeypatch) -> None:
+    del monkeypatch
     captured: dict[str, object] = {}
 
-    def fake_urlopen(request, timeout):
-        captured["url"] = request.full_url
+    def handler(method, url, payload, headers, timeout):
+        captured["method"] = method
+        captured["url"] = url
         captured["timeout"] = timeout
-        captured["authorization"] = request.get_header("Authorization")
-        captured["payload"] = json.loads(request.data.decode("utf-8"))
-        return _FakeEmbeddingResponse(
-            {
-                "data": [
-                    {"index": 1, "embedding": [0.3, 0.4]},
-                    {"index": 0, "embedding": [0.1, 0.2]},
-                ]
-            }
-        )
+        captured["authorization"] = headers["Authorization"]
+        captured["payload"] = payload
+        return {
+            "data": [
+                {"index": 1, "embedding": [0.3, 0.4]},
+                {"index": 0, "embedding": [0.1, 0.2]},
+            ]
+        }
 
-    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
     provider = OpenAICompatibleEmbeddingProvider(
         model_id="embed-small",
         base_url="https://embeddings.example.test/v1/",
         api_key="secret",
         dimensions=2,
         timeout_seconds=8.0,
+        http_client=_FakeEmbeddingHttpClient(handler),
     )
 
     vectors = provider.embed_texts(["alpha", "beta"])
 
     assert vectors == [[0.1, 0.2], [0.3, 0.4]]
+    assert captured["method"] == "POST"
     assert captured["url"] == "https://embeddings.example.test/v1/embeddings"
     assert captured["timeout"] == 8.0
     assert captured["authorization"] == "Bearer secret"
@@ -184,22 +195,26 @@ def test_openai_compatible_embedding_provider_posts_embeddings_request(monkeypat
 def test_auto_embedding_provider_prefers_available_ollama_embeddinggemma(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_urlopen(request, timeout):
-        captured.setdefault("urls", []).append(request.full_url)
+    def handler(method, url, payload, headers, timeout):
+        del headers
+        captured.setdefault("urls", []).append(url)
+        captured.setdefault("methods", []).append(method)
         captured["timeout"] = timeout
-        if request.full_url == "http://ollama.example.test/api/tags":
-            return _FakeEmbeddingResponse({"models": [{"name": "embeddinggemma:latest"}]})
-        captured["embed_payload"] = json.loads(request.data.decode("utf-8"))
-        return _FakeEmbeddingResponse(
-            {
-                "embeddings": [
-                    [1.0, *([0.0] * 767)],
-                    [0.0, 1.0, *([0.0] * 766)],
-                ]
-            }
-        )
+        if url == "http://ollama.example.test/api/tags":
+            return {"models": [{"name": "embeddinggemma:latest"}]}
+        captured["embed_payload"] = payload
+        return {
+            "embeddings": [
+                [1.0, *([0.0] * 767)],
+                [0.0, 1.0, *([0.0] * 766)],
+            ]
+        }
 
-    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        embedding_mod,
+        "shared_sync_http_client",
+        lambda: _FakeEmbeddingHttpClient(handler),
+    )
 
     provider = create_memory_embedding_provider(
         Settings(
@@ -221,6 +236,7 @@ def test_auto_embedding_provider_prefers_available_ollama_embeddinggemma(monkeyp
         "http://ollama.example.test/api/tags",
         "http://ollama.example.test/api/embed",
     ]
+    assert captured["methods"] == ["GET", "POST"]
     assert captured["timeout"] == 30.0
     assert captured["embed_payload"] == {
         "model": "embeddinggemma",
@@ -231,12 +247,17 @@ def test_auto_embedding_provider_prefers_available_ollama_embeddinggemma(monkeyp
 def test_auto_embedding_provider_reports_ollama_install_hint_when_no_backend_available(
     monkeypatch,
 ) -> None:
-    def fake_urlopen(request, timeout):
-        del timeout
-        assert request.full_url == "http://ollama.example.test/api/tags"
-        return _FakeEmbeddingResponse({"models": [{"name": "llama3.2:latest"}]})
+    def handler(method, url, payload, headers, timeout):
+        del payload, headers, timeout
+        assert method == "GET"
+        assert url == "http://ollama.example.test/api/tags"
+        return {"models": [{"name": "llama3.2:latest"}]}
 
-    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        embedding_mod,
+        "shared_sync_http_client",
+        lambda: _FakeEmbeddingHttpClient(handler),
+    )
 
     settings = Settings(
         model="unknown-provider:missing",
@@ -252,12 +273,17 @@ def test_auto_embedding_provider_reports_ollama_install_hint_when_no_backend_ava
 def test_auto_embedding_provider_does_not_inherit_chat_credentials_as_cloud_fallback(
     monkeypatch,
 ) -> None:
-    def fake_urlopen(request, timeout):
-        del timeout
-        assert request.full_url == "http://ollama.example.test/api/tags"
-        return _FakeEmbeddingResponse({"models": []})
+    def handler(method, url, payload, headers, timeout):
+        del payload, headers, timeout
+        assert method == "GET"
+        assert url == "http://ollama.example.test/api/tags"
+        return {"models": []}
 
-    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        embedding_mod,
+        "shared_sync_http_client",
+        lambda: _FakeEmbeddingHttpClient(handler),
+    )
 
     settings = Settings(
         agent_memory_embedding_backend="auto",
@@ -275,12 +301,17 @@ def test_auto_embedding_provider_does_not_inherit_chat_credentials_as_cloud_fall
 def test_auto_embedding_provider_uses_explicit_openai_compatible_fallback(
     monkeypatch,
 ) -> None:
-    def fake_urlopen(request, timeout):
-        del timeout
-        assert request.full_url == "http://127.0.0.1:11434/api/tags"
-        return _FakeEmbeddingResponse({"models": []})
+    def handler(method, url, payload, headers, timeout):
+        del payload, headers, timeout
+        assert method == "GET"
+        assert url == "http://127.0.0.1:11434/api/tags"
+        return {"models": []}
 
-    monkeypatch.setattr(embedding_mod, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        embedding_mod,
+        "shared_sync_http_client",
+        lambda: _FakeEmbeddingHttpClient(handler),
+    )
 
     provider = create_memory_embedding_provider(
         Settings(
@@ -296,11 +327,10 @@ def test_auto_embedding_provider_uses_explicit_openai_compatible_fallback(
 
 
 def test_explicit_openai_compatible_backend_does_not_probe_ollama(monkeypatch) -> None:
-    def fail_urlopen(request, timeout):
-        del request, timeout
+    def fail_http_client():
         raise AssertionError("explicit openai_compatible backend should not probe Ollama")
 
-    monkeypatch.setattr(embedding_mod, "urlopen", fail_urlopen)
+    monkeypatch.setattr(embedding_mod, "shared_sync_http_client", fail_http_client)
 
     provider = create_memory_embedding_provider(
         Settings(
@@ -326,7 +356,9 @@ def test_openai_compatible_factory_reports_missing_configured_api_key_env() -> N
 
 def test_readiness_reports_memory_embedding_backend_ready_and_keeps_trajectory_last() -> None:
     class _Repository:
-        def inspect_pgvector_support(self, *, dimensions: int, vector_index: bool) -> dict[str, object]:
+        def inspect_pgvector_support(
+            self, *, dimensions: int, vector_index: bool
+        ) -> dict[str, object]:
             return {
                 "extension_installed": True,
                 "extension_version": "0.8.0",
@@ -377,7 +409,9 @@ def test_readiness_reports_auto_selected_embedding_provider_metadata() -> None:
             return [[0.0] * self.dimensions for _ in texts]
 
     class _Repository:
-        def inspect_pgvector_support(self, *, dimensions: int, vector_index: bool) -> dict[str, object]:
+        def inspect_pgvector_support(
+            self, *, dimensions: int, vector_index: bool
+        ) -> dict[str, object]:
             return {
                 "extension_installed": True,
                 "extension_version": "0.8.0",
@@ -419,7 +453,9 @@ def test_readiness_reports_auto_selected_embedding_provider_metadata() -> None:
 
 def test_readiness_degrades_when_configured_pgvector_storage_is_missing() -> None:
     class _Repository:
-        def inspect_pgvector_support(self, *, dimensions: int, vector_index: bool) -> dict[str, object]:
+        def inspect_pgvector_support(
+            self, *, dimensions: int, vector_index: bool
+        ) -> dict[str, object]:
             return {
                 "extension_installed": False,
                 "extension_version": None,
@@ -513,7 +549,9 @@ def test_readiness_reports_ollama_install_hint_when_auto_backend_is_unavailable(
     assert "install_hint=ollama pull embeddinggemma" in check.detail
 
 
-def test_readiness_keeps_local_fallback_ready_when_default_embedding_credentials_are_absent() -> None:
+def test_readiness_keeps_local_fallback_ready_when_default_embedding_credentials_are_absent() -> (
+    None
+):
     runtime = SimpleNamespace(
         settings=Settings(agent_memory_embedding_backend="openai_compatible"),
         graph=object(),

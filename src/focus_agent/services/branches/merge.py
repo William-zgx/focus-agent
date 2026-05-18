@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from copy import deepcopy
 
 from langchain.messages import SystemMessage
 
 from ...core.branching import (
+    BranchRecord,
     BranchStatus,
     ImportedConclusion,
     MergeDecision,
@@ -15,6 +17,9 @@ from ...core.branching import (
 )
 from ...core.request_context import RequestContext
 from ...core.types import FindingItem
+from ...memory import MemoryCurator, MemoryWriter
+from ...memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
+from ...storage.namespaces import branch_namespace, conversation_main_namespace
 
 logger = logging.getLogger("focus_agent.branches")
 
@@ -255,14 +260,6 @@ def _merge_import_blocked_reason(values: dict) -> str:
     if status in {"unsupported", "contradicted", "blocked"}:
         return status
     return ""
-import uuid
-
-from ...core.branching import BranchRecord, ImportedConclusion
-from ...core.request_context import RequestContext
-from ...core.types import FindingItem
-from ...memory import MemoryCurator, MemoryWriter
-from ...memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
-from ...storage.namespaces import branch_namespace, conversation_main_namespace
 
 
 class BranchMemoryPromotionMixin:
@@ -309,7 +306,10 @@ class BranchMemoryPromotionMixin:
 
     @staticmethod
     def _imported_conclusion_message(imported: ImportedConclusion) -> str:
-        lines = [f"Imported conclusion from branch '{imported.branch_name}':", imported.summary.strip()]
+        lines = [
+            f"Imported conclusion from branch '{imported.branch_name}':",
+            imported.summary.strip(),
+        ]
         key_findings = [item.strip() for item in imported.key_findings if str(item).strip()]
         if key_findings:
             lines.append("")

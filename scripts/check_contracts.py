@@ -79,8 +79,7 @@ def _schema_signature(schema: Any) -> Any:
             kept[key] = [_schema_signature(item) for item in schema[key]]
     if "properties" in schema and isinstance(schema["properties"], dict):
         kept["properties"] = {
-            name: _schema_signature(value)
-            for name, value in sorted(schema["properties"].items())
+            name: _schema_signature(value) for name, value in sorted(schema["properties"].items())
         }
     return kept or schema
 
@@ -214,7 +213,9 @@ def _scan_braced_exports(source: str, keyword: str) -> dict[str, str]:
             elif char == "}":
                 depth -= 1
                 if depth == 0:
-                    declarations[name] = _normalize_ts_declaration(source[match.start() : index + 1])
+                    declarations[name] = _normalize_ts_declaration(
+                        source[match.start() : index + 1]
+                    )
                     break
     return declarations
 
@@ -290,10 +291,7 @@ def _sdk_client_sources() -> list[str]:
 def _sdk_type_sources() -> list[str]:
     if not SDK_TYPES_DIR.exists():
         return [SDK_TYPES_PATH.read_text(encoding="utf-8")]
-    sources = [
-        path.read_text(encoding="utf-8")
-        for path in sorted(SDK_TYPES_DIR.glob("*.ts"))
-    ]
+    sources = [path.read_text(encoding="utf-8") for path in sorted(SDK_TYPES_DIR.glob("*.ts"))]
     if not sources:
         raise FileNotFoundError(f"no TypeScript type sources found in {SDK_TYPES_DIR}")
     return sources

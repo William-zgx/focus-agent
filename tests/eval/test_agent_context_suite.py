@@ -23,12 +23,20 @@ def _latest_user_text(messages: list[Any]) -> str:
 def _agent_context_script(messages: list[Any], allow_tools: bool) -> AIMessage:  # noqa: ARG001
     user_text = _latest_user_text(messages)
     if "default off" in user_text:
-        return AIMessage(content="Context Engineering v2 is default off, so the legacy prompt path stays unchanged.")
+        return AIMessage(
+            content="Context Engineering v2 is default off, so the legacy prompt path stays unchanged."
+        )
     if "tool observation" in user_text:
-        return AIMessage(content="Long tool observation content becomes an artifact reference instead of raw prompt bloat.")
+        return AIMessage(
+            content="Long tool observation content becomes an artifact reference instead of raw prompt bloat."
+        )
     if "Critic role" in user_text:
-        return AIMessage(content="The critic role view uses acceptance criteria and artifact evidence with a smaller budget.")
-    return AIMessage(content="When context is over budget, semantic blocks are summarized and refs are kept.")
+        return AIMessage(
+            content="The critic role view uses acceptance criteria and artifact evidence with a smaller budget."
+        )
+    return AIMessage(
+        content="When context is over budget, semantic blocks are summarized and refs are kept."
+    )
 
 
 def test_agent_context_dataset_covers_budget_artifact_and_role_views():
@@ -40,7 +48,10 @@ def test_agent_context_dataset_covers_budget_artifact_and_role_views():
         "gt_agent_context_role_view_critic_budget",
         "gt_agent_context_over_budget_compression",
     } <= set(cases)
-    assert "write_text_artifact" in cases["gt_agent_context_role_view_critic_budget"].expected["must_not_call_tools"]
+    assert (
+        "write_text_artifact"
+        in cases["gt_agent_context_role_view_critic_budget"].expected["must_not_call_tools"]
+    )
 
 
 @pytest.mark.parametrize("case", load_dataset(DATASET_PATH), ids=lambda case: case.id)

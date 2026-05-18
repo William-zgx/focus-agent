@@ -382,7 +382,10 @@ class AgentTeamSessionTaskMixin:
         if not tasks:
             self._touch_session(session_id)
             return
-        if any(task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING} for task in tasks):
+        if any(
+            task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
+            for task in tasks
+        ):
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
         elif any(task.status == AgentTeamTaskStatus.FAILED for task in tasks):
             self._touch_session(session_id, status=AgentTeamSessionStatus.FAILED)

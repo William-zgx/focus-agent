@@ -69,9 +69,7 @@ def test_user_repository_crud_filters_and_admin_count(kind: str, tmp_path: Path)
 
 
 @pytest.mark.parametrize("kind", ["memory", "sqlite"])
-def test_user_repository_ensure_from_principal_and_audit_filters(
-    kind: str, tmp_path: Path
-) -> None:
+def test_user_repository_ensure_from_principal_and_audit_filters(kind: str, tmp_path: Path) -> None:
     repo = _repo(kind, tmp_path)
     principal = Principal(user_id="new-user", tenant_id="tenant-b")
     ensured = repo.ensure_user_from_principal(
@@ -142,7 +140,9 @@ def test_user_repository_sessions_create_save_list_and_revoke(kind: str, tmp_pat
     assert revoked_count == 1
     assert [item.session_id for item in repo.list_sessions(user_id="user-1")] == ["session-current"]
     assert repo.get_session("session-older").revoked_at == "2026-04-29T00:12:00Z"
-    assert [item.session_id for item in repo.list_sessions(user_id="user-1", include_revoked=True)] == [
+    assert [
+        item.session_id for item in repo.list_sessions(user_id="user-1", include_revoked=True)
+    ] == [
         current.session_id,
         older.session_id,
     ]

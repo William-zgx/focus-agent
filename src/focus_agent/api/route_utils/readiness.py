@@ -4,6 +4,7 @@ from typing import Any
 
 from focus_agent.config import Settings
 from focus_agent.core.repo_call import has_repo_method, safe_repo_call
+from focus_agent.runtime.lifecycle import is_shutting_down
 
 from ..contracts import RuntimeComponentStatusResponse, RuntimeReadinessResponse
 
@@ -24,9 +25,7 @@ def _memory_embedding_configured(settings: Settings | Any) -> bool:
     if enabled:
         return True
     return (
-        str(getattr(settings, "agent_memory_vector_search_mode", "off") or "")
-        .strip()
-        .lower()
+        str(getattr(settings, "agent_memory_vector_search_mode", "off") or "").strip().lower()
         == "hybrid"
     )
 
@@ -36,9 +35,11 @@ def _memory_embedding_backend_check(runtime: Any) -> RuntimeComponentStatusRespo
     enabled = bool(getattr(settings, "agent_memory_embedding_enabled", False))
     backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
     if backend in {"", "disabled", "none", "off"} and enabled:
-        backend = str(
-            getattr(settings, "agent_memory_embedding_provider", "openai_compatible")
-        ).strip().lower()
+        backend = (
+            str(getattr(settings, "agent_memory_embedding_provider", "openai_compatible"))
+            .strip()
+            .lower()
+        )
     if backend in {"", "disabled", "none", "off"}:
         return RuntimeComponentStatusResponse(
             name="memory_embedding_backend",
@@ -90,9 +91,7 @@ def _memory_embedding_unavailable_detail(runtime: Any, *, backend: str) -> str:
     )
     provider = str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
     if (
-        backend in {"auto", "ollama"}
-        or provider == "ollama"
-        or "ollama" in detail.lower()
+        backend in {"auto", "ollama"} or provider == "ollama" or "ollama" in detail.lower()
     ) and "ollama pull" not in detail:
         return f"{detail}; install_hint=ollama pull embeddinggemma"
     return detail
@@ -133,7 +132,9 @@ def _memory_pgvector_check(runtime: Any) -> RuntimeComponentStatusResponse:
         getattr(settings, "agent_memory_pgvector_extension_mode", "auto_create") or "auto_create"
     ).strip()
     try:
-        status = repository.inspect_pgvector_support(dimensions=dimensions, vector_index=vector_index)
+        status = repository.inspect_pgvector_support(
+            dimensions=dimensions, vector_index=vector_index
+        )
     except Exception as exc:  # pragma: no cover - concrete failures are driver-specific.
         return RuntimeComponentStatusResponse(
             name="memory_pgvector",
@@ -198,7 +199,9 @@ def _background_jobs_check(runtime: Any) -> RuntimeComponentStatusResponse:
     settings = getattr(runtime, "settings", None)
     metrics = {
         **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
-        **_snapshot_metrics(getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"),
+        **_snapshot_metrics(
+            getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"
+        ),
     }
     errors = [
         key
@@ -311,7 +314,9 @@ def _build_runtime_readiness(runtime: Any) -> RuntimeReadinessResponse:
                 RuntimeComponentStatusResponse(
                     name="tracing_exporter",
                     ready=bool(getattr(otel_runtime, "ready", False)),
-                    detail=str(getattr(otel_runtime, "detail", "tracing exporter state unavailable")),
+                    detail=str(
+                        getattr(otel_runtime, "detail", "tracing exporter state unavailable")
+                    ),
                 )
             )
         elif tracing_exporters:
@@ -363,6 +368,15 @@ def _build_runtime_readiness(runtime: Any) -> RuntimeReadinessResponse:
         )
 
     ready = all(check.ready for check in checks)
+    if is_shutting_down():
+        ready = False
+        checks.append(
+            RuntimeComponentStatusResponse(
+                name="shutdown_drain",
+                ready=False,
+                detail="shutdown in progress; refusing new traffic",
+            )
+        )
     return RuntimeReadinessResponse(
         status="ok" if ready else "degraded",
         ready=ready,
@@ -371,8 +385,6 @@ def _build_runtime_readiness(runtime: Any) -> RuntimeReadinessResponse:
         deployment=getattr(settings, "deployment_name", None),
         checks=checks,
     )
-
-
 
 
 __all__ = [

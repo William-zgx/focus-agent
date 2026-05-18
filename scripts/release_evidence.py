@@ -115,7 +115,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _copy_or_reference_json(source: str | Path | None, target: Path, *, root: Path) -> tuple[Path | None, Path | None]:
+def _copy_or_reference_json(
+    source: str | Path | None, target: Path, *, root: Path
+) -> tuple[Path | None, Path | None]:
     source_path = resolve_optional_path(source, root)
     if source_path is None:
         return None, None
@@ -151,7 +153,9 @@ def _prepare_provided_inputs(
     baseline_eval_report_json: Sequence[str | Path],
 ) -> dict[str, list[EvidenceInput] | EvidenceInput]:
     inputs_dir = pack_dir / "inputs"
-    readyz_path, readyz_source = _copy_or_reference_json(readyz_json, inputs_dir / "readyz.json", root=root)
+    readyz_path, readyz_source = _copy_or_reference_json(
+        readyz_json, inputs_dir / "readyz.json", root=root
+    )
     stats_path, stats_source = _copy_or_reference_json(
         trajectory_stats_json,
         inputs_dir / "trajectory-stats.json",
@@ -195,7 +199,9 @@ def _prepare_provided_inputs(
 
     eval_reports: list[EvidenceInput] = []
     for index, raw_path in enumerate(eval_report_json, start=1):
-        path, source_path = _copy_or_reference_json(raw_path, inputs_dir / f"eval-report-{index}.json", root=root)
+        path, source_path = _copy_or_reference_json(
+            raw_path, inputs_dir / f"eval-report-{index}.json", root=root
+        )
         eval_reports.append(EvidenceInput("eval_report", path, source_path, True, "input"))
 
     baseline_eval_reports: list[EvidenceInput] = []
@@ -205,7 +211,9 @@ def _prepare_provided_inputs(
             inputs_dir / f"baseline-eval-report-{index}.json",
             root=root,
         )
-        baseline_eval_reports.append(EvidenceInput("baseline_eval_report", path, source_path, True, "input"))
+        baseline_eval_reports.append(
+            EvidenceInput("baseline_eval_report", path, source_path, True, "input")
+        )
 
     return {
         "alert_report": EvidenceInput("alert_report", alert_path, alert_source, False, "input"),
@@ -238,8 +246,12 @@ def _prepare_provided_inputs(
             "input",
         ),
         "readyz": EvidenceInput("readyz", readyz_path, readyz_source, True, "input"),
-        "trajectory_stats": EvidenceInput("trajectory_stats", stats_path, stats_source, True, "input"),
-        "replay_comparisons": EvidenceInput("replay_comparisons", replay_path, replay_source, True, "input"),
+        "trajectory_stats": EvidenceInput(
+            "trajectory_stats", stats_path, stats_source, True, "input"
+        ),
+        "replay_comparisons": EvidenceInput(
+            "replay_comparisons", replay_path, replay_source, True, "input"
+        ),
         "eval_reports": eval_reports,
         "baseline_eval_reports": baseline_eval_reports,
         "postgres_migration_report": EvidenceInput(
@@ -263,7 +275,9 @@ def _artifact_record(input_artifact: EvidenceInput) -> dict[str, Any]:
         "required": input_artifact.required,
         "sha256": _sha256(path) if exists and path is not None else None,
         "source": input_artifact.source,
-        "source_path": str(input_artifact.source_path) if input_artifact.source_path is not None else None,
+        "source_path": str(input_artifact.source_path)
+        if input_artifact.source_path is not None
+        else None,
     }
 
 
@@ -298,9 +312,15 @@ def _release_health_command(
         command.extend(("--replay-comparisons-json", str(replay_comparisons.path)))
     if isinstance(alert_report, EvidenceInput) and alert_report.path is not None:
         command.extend(("--alert-report-json", str(alert_report.path)))
-    if isinstance(postgres_migration_report, EvidenceInput) and postgres_migration_report.path is not None:
+    if (
+        isinstance(postgres_migration_report, EvidenceInput)
+        and postgres_migration_report.path is not None
+    ):
         command.extend(("--postgres-migration-report-json", str(postgres_migration_report.path)))
-    if isinstance(production_smoke_report, EvidenceInput) and production_smoke_report.path is not None:
+    if (
+        isinstance(production_smoke_report, EvidenceInput)
+        and production_smoke_report.path is not None
+    ):
         command.extend(("--production-smoke-report-json", str(production_smoke_report.path)))
     if isinstance(postgres_ops_report, EvidenceInput) and postgres_ops_report.path is not None:
         command.extend(("--postgres-ops-report-json", str(postgres_ops_report.path)))
@@ -375,20 +395,30 @@ def _ci_metadata(env: Mapping[str, str] | None = None) -> dict[str, Any]:
     )
     return {
         "artifact_name": artifact_name,
-        "branch": env.get("GITHUB_REF_NAME") or env.get("BUILDKITE_BRANCH") or env.get("CI_COMMIT_BRANCH"),
-        "commit_sha": env.get("GITHUB_SHA") or env.get("BUILDKITE_COMMIT") or env.get("CI_COMMIT_SHA"),
+        "branch": env.get("GITHUB_REF_NAME")
+        or env.get("BUILDKITE_BRANCH")
+        or env.get("CI_COMMIT_BRANCH"),
+        "commit_sha": env.get("GITHUB_SHA")
+        or env.get("BUILDKITE_COMMIT")
+        or env.get("CI_COMMIT_SHA"),
         "environment_name": env.get("ENVIRONMENT_NAME"),
         "is_ci": bool(provider),
         "job": env.get("GITHUB_JOB") or env.get("BUILDKITE_LABEL") or env.get("CI_JOB_NAME"),
         "provider": provider,
-        "ref": env.get("GITHUB_REF") or env.get("BUILDKITE_BRANCH") or env.get("CI_COMMIT_REF_NAME"),
-        "repository": env.get("GITHUB_REPOSITORY") or env.get("BUILDKITE_PROJECT_SLUG") or env.get("CI_PROJECT_PATH"),
+        "ref": env.get("GITHUB_REF")
+        or env.get("BUILDKITE_BRANCH")
+        or env.get("CI_COMMIT_REF_NAME"),
+        "repository": env.get("GITHUB_REPOSITORY")
+        or env.get("BUILDKITE_PROJECT_SLUG")
+        or env.get("CI_PROJECT_PATH"),
         "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
         "run_id": run_id,
         "run_number": env.get("GITHUB_RUN_NUMBER")
         or env.get("BUILDKITE_BUILD_NUMBER")
         or env.get("CI_PIPELINE_IID"),
-        "workflow": env.get("GITHUB_WORKFLOW") or env.get("BUILDKITE_PIPELINE_NAME") or env.get("CI_PIPELINE_SOURCE"),
+        "workflow": env.get("GITHUB_WORKFLOW")
+        or env.get("BUILDKITE_PIPELINE_NAME")
+        or env.get("CI_PIPELINE_SOURCE"),
         "workflow_ref": env.get("GITHUB_WORKFLOW_REF"),
     }
 
@@ -648,7 +678,9 @@ def _artifact_storage_metadata(
         "status": storage.get("status"),
         "storage_dir": storage.get("storage_dir"),
         "stored_manifest_json": storage.get("stored_manifest_json"),
-        "stored_manifest_normalized_sha256": manifest_hash if storage.get("stored_manifest_json") else None,
+        "stored_manifest_normalized_sha256": manifest_hash
+        if storage.get("stored_manifest_json")
+        else None,
         "stored_pack_dir": storage.get("stored_pack_dir"),
         "stored_summary_json": storage.get("stored_summary_json"),
         "verification": storage.get("verification"),
@@ -706,17 +738,27 @@ def _production_validation(
     release_health: dict[str, Any],
     storage: dict[str, Any],
 ) -> dict[str, Any]:
-    report = artifacts.get("release_health_report") if isinstance(artifacts.get("release_health_report"), dict) else {}
+    report = (
+        artifacts.get("release_health_report")
+        if isinstance(artifacts.get("release_health_report"), dict)
+        else {}
+    )
     report_exists = bool(report.get("exists")) if isinstance(report, dict) else False
     report_status = str(release_health.get("status") or "unknown")
     report_passed = bool(release_health.get("passed"))
-    storage_verification = storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    storage_verification = (
+        storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    )
     storage_required = bool(approval.get("required"))
     storage_enabled = bool(storage.get("enabled"))
     storage_ok = (
         storage_enabled and storage_verification.get("status") == "verified"
         if storage_required
-        else (not storage_enabled or not storage_verification or storage_verification.get("status") == "verified")
+        else (
+            not storage_enabled
+            or not storage_verification
+            or storage_verification.get("status") == "verified"
+        )
     )
     approval_ok = bool(approval.get("approved")) if approval.get("required") else True
     approval_url_present = bool(approval.get("approval_url")) if approval.get("required") else True
@@ -751,7 +793,9 @@ def _failure_summary(
     release_health: dict[str, Any],
     storage: dict[str, Any],
 ) -> dict[str, Any]:
-    failed_commands = [str(command["label"]) for command in commands if command.get("status") == "failed"]
+    failed_commands = [
+        str(command["label"]) for command in commands if command.get("status") == "failed"
+    ]
     failed_signals = [
         {
             "detail": signal.get("detail"),
@@ -766,16 +810,22 @@ def _failure_summary(
     if failed_commands:
         reasons.append({"detail": failed_commands, "kind": "failed_commands"})
     if missing_required_artifacts:
-        reasons.append({"detail": list(missing_required_artifacts), "kind": "missing_required_artifacts"})
+        reasons.append(
+            {"detail": list(missing_required_artifacts), "kind": "missing_required_artifacts"}
+        )
     if approval.get("required") and not approval.get("approved"):
         reasons.append({"detail": approval, "kind": "release_approval_missing"})
     if approval.get("required") and not approval.get("approval_url"):
         reasons.append({"detail": approval, "kind": "release_approval_url_missing"})
-    storage_verification = storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    storage_verification = (
+        storage.get("verification") if isinstance(storage.get("verification"), dict) else {}
+    )
     if approval.get("required") and not storage.get("enabled"):
         reasons.append({"detail": storage, "kind": "artifact_storage_missing"})
     elif storage.get("enabled") and storage_verification.get("status") != "verified":
-        reasons.append({"detail": storage_verification, "kind": "artifact_storage_verification_failed"})
+        reasons.append(
+            {"detail": storage_verification, "kind": "artifact_storage_verification_failed"}
+        )
     if not bool(release_health.get("passed")):
         reasons.append(
             {
@@ -860,15 +910,23 @@ def _manifest_artifacts(
         raise TypeError("replay_comparisons artifact must be singular")
     return {
         "baseline_eval_reports": [
-            _artifact_record(artifact) for artifact in baseline_eval_reports if isinstance(artifact, EvidenceInput)
+            _artifact_record(artifact)
+            for artifact in baseline_eval_reports
+            if isinstance(artifact, EvidenceInput)
         ],
-        "eval_reports": [_artifact_record(artifact) for artifact in eval_reports if isinstance(artifact, EvidenceInput)],
+        "eval_reports": [
+            _artifact_record(artifact)
+            for artifact in eval_reports
+            if isinstance(artifact, EvidenceInput)
+        ],
         "alert_report": _artifact_record(alert_report)
         if isinstance(alert_report, EvidenceInput)
         else _artifact_record(EvidenceInput("alert_report", None, None, False, "input")),
         "postgres_migration_report": _artifact_record(postgres_migration_report)
         if isinstance(postgres_migration_report, EvidenceInput)
-        else _artifact_record(EvidenceInput("postgres_migration_report", None, None, False, "input")),
+        else _artifact_record(
+            EvidenceInput("postgres_migration_report", None, None, False, "input")
+        ),
         "production_smoke_report": _artifact_record(production_smoke_report)
         if isinstance(production_smoke_report, EvidenceInput)
         else _artifact_record(EvidenceInput("production_smoke_report", None, None, True, "input")),
@@ -883,7 +941,9 @@ def _manifest_artifacts(
         else _artifact_record(EvidenceInput("governance_report", None, None, True, "input")),
         "readyz": _artifact_record(readyz),
         "release_health_report": _artifact_record(
-            EvidenceInput("release_health_report", release_health_report_json, None, True, "generated")
+            EvidenceInput(
+                "release_health_report", release_health_report_json, None, True, "generated"
+            )
         ),
         "replay_comparisons": _artifact_record(replay_comparisons),
         "trajectory_stats": _artifact_record(trajectory_stats),
@@ -932,7 +992,11 @@ def run_release_evidence(
         pack_dir = output_base / resolved_release_id
     pack_dir.mkdir(parents=True, exist_ok=True)
 
-    report_json = resolve_optional_path(release_health_report_json, root) if release_health_report_json else None
+    report_json = (
+        resolve_optional_path(release_health_report_json, root)
+        if release_health_report_json
+        else None
+    )
     if report_json is None:
         report_json = pack_dir / "release-health.json"
 
@@ -968,10 +1032,16 @@ def run_release_evidence(
     outcome = selected_runner(command, root)
     duration_seconds = time.perf_counter() - started_at
 
-    commands = [_command_record(command=command, outcome=outcome, duration_seconds=duration_seconds)]
+    commands = [
+        _command_record(command=command, outcome=outcome, duration_seconds=duration_seconds)
+    ]
     artifacts = _manifest_artifacts(prepared_inputs, release_health_report_json=report_json)
     release_health = _load_release_health_summary(report_json)
-    failed_commands = [command_record["label"] for command_record in commands if command_record["status"] == "failed"]
+    failed_commands = [
+        command_record["label"]
+        for command_record in commands
+        if command_record["status"] == "failed"
+    ]
     missing_required_artifacts = _missing_required_artifacts(artifacts)
     generated_at = datetime.now(UTC)
     retention = _retention_metadata(generated_at=generated_at, retention_days=retention_days)
@@ -1125,7 +1195,9 @@ def run_release_evidence(
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Use deterministic sample artifacts.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Use deterministic sample artifacts."
+    )
     parser.add_argument(
         "--release-id",
         help="Release identifier. Required for production packs; dry-runs default to git short SHA or UTC timestamp.",
@@ -1143,7 +1215,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--trajectory-stats-json", help="Trajectory stats JSON payload.")
     parser.add_argument("--replay-comparisons-json", help="Replay comparison JSON payload.")
     parser.add_argument("--alert-report-json", help="Executable alert rules report JSON.")
-    parser.add_argument("--postgres-migration-report-json", help="Postgres migration verification report JSON.")
+    parser.add_argument(
+        "--postgres-migration-report-json", help="Postgres migration verification report JSON."
+    )
     parser.add_argument("--production-smoke-report-json", help="Production smoke report JSON.")
     parser.add_argument("--postgres-ops-report-json", help="Postgres ops report JSON.")
     parser.add_argument("--otel-smoke-report-json", help="OpenTelemetry smoke report JSON.")
@@ -1174,7 +1248,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--storage-dir",
         help="Optional artifact storage directory. The evidence pack is copied to <storage-dir>/<release-id>.",
     )
-    parser.add_argument("--approval-id", help="Release approval identifier from the deployment platform.")
+    parser.add_argument(
+        "--approval-id", help="Release approval identifier from the deployment platform."
+    )
     parser.add_argument(
         "--approval-status",
         choices=("approved", "pending", "rejected", "missing"),

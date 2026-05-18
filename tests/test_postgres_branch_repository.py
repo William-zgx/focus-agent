@@ -163,7 +163,9 @@ def test_postgres_schema_setup_runs_v8_when_prior_versions_exist(monkeypatch):
 
     statements = [sql for sql, _ in executed]
     assert not any("CREATE TABLE IF NOT EXISTS focus_conversations" in sql for sql in statements)
-    assert not any("CREATE TABLE IF NOT EXISTS focus_background_jobs" in sql for sql in statements)
+    assert not any(
+        "CREATE TABLE IF NOT EXISTS focus_background_jobs (" in sql for sql in statements
+    )
     assert any("CREATE TABLE IF NOT EXISTS focus_memories" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_memory_audit_events" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS focus_memory_tombstones" in sql for sql in statements)
@@ -322,7 +324,9 @@ def test_ensure_thread_owner_rechecks_final_owner_after_insert_conflict(monkeypa
                 thread_access.setdefault(thread_id, "owner-2")
                 self._fetchone = None
                 return
-            if normalized.startswith("SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s"):
+            if normalized.startswith(
+                "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s"
+            ):
                 owner = thread_access.get(str(params[0]))
                 self._fetchone = None if owner is None else {"owner_user_id": owner}
                 return
@@ -349,6 +353,8 @@ def test_ensure_thread_owner_rechecks_final_owner_after_insert_conflict(monkeypa
     repo = PostgresBranchRepository("postgresql://example")
 
     with pytest.raises(PermissionError, match="owner-1"):
-        repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+        repo.ensure_thread_owner(
+            thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1"
+        )
 
     assert thread_access["root-1"] == "owner-2"

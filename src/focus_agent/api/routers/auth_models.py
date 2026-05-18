@@ -47,10 +47,12 @@ from ..deps import (
 router = APIRouter()
 
 
-@router.post('/v1/auth/demo-token', response_model=TokenResponse)
-def issue_demo_token(payload: DemoTokenRequest, runtime: AppRuntime = Depends(get_app_runtime)) -> TokenResponse:
+@router.post("/v1/auth/demo-token", response_model=TokenResponse)
+def issue_demo_token(
+    payload: DemoTokenRequest, runtime: AppRuntime = Depends(get_app_runtime)
+) -> TokenResponse:
     if not runtime.settings.auth_demo_tokens_enabled:
-        raise HTTPException(status_code=404, detail='Demo token issuance is disabled.')
+        raise HTTPException(status_code=404, detail="Demo token issuance is disabled.")
     user_service = getattr(runtime, "user_service", None)
     if user_service is not None:
         try:
@@ -74,7 +76,9 @@ def issue_demo_token(payload: DemoTokenRequest, runtime: AppRuntime = Depends(ge
     )
 
 
-@router.post("/v1/auth/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/v1/auth/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED
+)
 def register(
     payload: AuthRegisterRequest,
     request: Request,
@@ -91,7 +95,12 @@ def register(
             ip_address=_client_ip(request),
         )
     except (UsernameTakenError, WeakPasswordError) as exc:
-        raise _auth_exception(exc, status.HTTP_409_CONFLICT if isinstance(exc, UsernameTakenError) else status.HTTP_400_BAD_REQUEST) from exc
+        raise _auth_exception(
+            exc,
+            status.HTTP_409_CONFLICT
+            if isinstance(exc, UsernameTakenError)
+            else status.HTTP_400_BAD_REQUEST,
+        ) from exc
     _set_auth_cookies(response, token_pair, runtime=runtime)
     return _token_response(token_pair)
 
@@ -205,15 +214,20 @@ def revoke_my_session(
     try:
         session = service.repository.get_session(session_id)
     except KeyError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown user session.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown user session."
+        ) from exc
     if session.user_id != principal.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown user session.")
     revoked = service.repository.revoke_session(session_id, revoked_at=_now())
     return UserSessionResponse.from_session(revoked)
 
 
-@router.get('/v1/auth/me', response_model=PrincipalResponse)
-def get_me(principal: Principal = Depends(get_current_principal), runtime: AppRuntime = Depends(get_app_runtime)) -> PrincipalResponse:
+@router.get("/v1/auth/me", response_model=PrincipalResponse)
+def get_me(
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> PrincipalResponse:
     user_response: UserResponse | None = None
     roles: list[str] = []
     permissions: list[str] = []
@@ -243,7 +257,8 @@ def get_me(principal: Principal = Depends(get_current_principal), runtime: AppRu
         is_admin=is_admin,
     )
 
-@router.get('/v1/models', response_model=ModelCatalogResponse)
+
+@router.get("/v1/models", response_model=ModelCatalogResponse)
 def list_models(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),

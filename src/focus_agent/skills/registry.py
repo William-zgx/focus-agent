@@ -256,9 +256,7 @@ class SkillRegistry:
         install_dir: Path | None = None,
     ):
         configured_skill_dirs = tuple(
-            path.expanduser().resolve()
-            for path in skill_dirs
-            if str(path).strip()
+            path.expanduser().resolve() for path in skill_dirs if str(path).strip()
         )
         resolved_install_dir = install_dir.expanduser().resolve() if install_dir else None
         if resolved_install_dir is not None and resolved_install_dir not in configured_skill_dirs:
@@ -304,21 +302,13 @@ class SkillRegistry:
         return tuple(sources)
 
     def _reindex(self) -> None:
-        self._skills_by_id = {
-            _normalize_skill_id(skill.skill_id): skill
-            for skill in self._skills
-        }
+        self._skills_by_id = {_normalize_skill_id(skill.skill_id): skill for skill in self._skills}
         self._semantic_vectors = {
-            skill.skill_id: _skill_semantic_vector(skill)
-            for skill in self._skills
+            skill.skill_id: _skill_semantic_vector(skill) for skill in self._skills
         }
         self._trigger_pairs = tuple(
             sorted(
-                (
-                    (trigger.lower(), skill)
-                    for skill in self._skills
-                    for trigger in skill.triggers
-                ),
+                ((trigger.lower(), skill) for skill in self._skills for trigger in skill.triggers),
                 key=lambda item: len(item[0]),
                 reverse=True,
             )
@@ -605,9 +595,7 @@ class SkillRegistry:
         if not query:
             return ()
         resolved_threshold = (
-            self._semantic_match_threshold
-            if threshold is None
-            else float(threshold)
+            self._semantic_match_threshold if threshold is None else float(threshold)
         )
         candidates: list[SkillSemanticCandidate] = []
         for skill in self._skills:
@@ -615,9 +603,7 @@ class SkillRegistry:
             score = round(_cosine_score(query, vector), 4)
             if score <= 0:
                 continue
-            matched_terms = tuple(
-                sorted(token for token in query if vector.get(token, 0.0) > 0)
-            )
+            matched_terms = tuple(sorted(token for token in query if vector.get(token, 0.0) > 0))
             candidates.append(
                 SkillSemanticCandidate(
                     skill_id=skill.skill_id,
@@ -800,8 +786,7 @@ class SkillRegistry:
             version=str(frontmatter.get("version") or "").strip() or None,
             trust_level="trusted" if resolved_source.trusted else "untrusted",
             install_state="installed",
-            provenance=str(frontmatter.get("provenance") or "").strip()
-            or resolved_source.location,
+            provenance=str(frontmatter.get("provenance") or "").strip() or resolved_source.location,
             checksum=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
             capability_requirements=_normalize_list(frontmatter.get("capability_requirements")),
         )
@@ -842,7 +827,9 @@ class SkillRegistry:
         limit: int,
     ) -> list[SkillSearchResult]:
         if query.strip():
-            candidates = self.semantic_candidates_for_message(query, threshold=0.0, limit=max(limit, len(self._skills)))
+            candidates = self.semantic_candidates_for_message(
+                query, threshold=0.0, limit=max(limit, len(self._skills))
+            )
             scores = {candidate.skill_id: candidate.score for candidate in candidates}
             ordered_skills = sorted(
                 self._skills,
@@ -853,7 +840,11 @@ class SkillRegistry:
             ordered_skills = sorted(self._skills, key=lambda skill: skill.skill_id)
         results: list[SkillSearchResult] = []
         for skill in ordered_skills:
-            if source_filter and "installed" not in source_filter and skill.source_id not in source_filter:
+            if (
+                source_filter
+                and "installed" not in source_filter
+                and skill.source_id not in source_filter
+            ):
                 continue
             score = scores.get(skill.skill_id, 1.0 if not query.strip() else 0.0)
             if query.strip() and score <= 0:
@@ -952,7 +943,9 @@ def _search_result_from_skill(
         recommended_tools=skill.recommended_tools,
         capability_requirements=skill.capability_requirements,
         score=round(float(score), 4),
-        rationale="Installed semantic/local match." if installed else "External local source match.",
+        rationale="Installed semantic/local match."
+        if installed
+        else "External local source match.",
     )
 
 
@@ -964,7 +957,10 @@ def _source_definitions_from_settings(settings: Settings) -> tuple[SkillSourceDe
     }
     trusted_sources = {
         str(source).strip().lower()
-        for source in getattr(settings, "skill_trusted_sources", ("installed", "project", "builtin")) or ()
+        for source in getattr(
+            settings, "skill_trusted_sources", ("installed", "project", "builtin")
+        )
+        or ()
         if str(source).strip()
     }
     sources = [
@@ -986,7 +982,9 @@ def _source_definitions_from_settings(settings: Settings) -> tuple[SkillSourceDe
         ),
     ]
     for raw in getattr(settings, "skill_source_locations", ()) or ():
-        source = _parse_source_location(str(raw), trusted_sources=trusted_sources, enabled_sources=enabled_sources)
+        source = _parse_source_location(
+            str(raw), trusted_sources=trusted_sources, enabled_sources=enabled_sources
+        )
         if source is not None:
             sources.append(source)
     return tuple(sources)
@@ -1018,7 +1016,9 @@ def _parse_source_location(
         source_id=source_id,
         source_type=source_type,
         label=source_id,
-        enabled=not enabled_sources or source_id in enabled_sources or "external" in enabled_sources,
+        enabled=not enabled_sources
+        or source_id in enabled_sources
+        or "external" in enabled_sources,
         trusted=source_id in trusted_sources,
         location=location,
     )

@@ -14,7 +14,10 @@ from focus_agent.core.types import ArtifactRef, ContextBudget, FindingItem, Prom
 
 def test_assemble_context_changes_output_by_mode():
     state = {
-        "messages": [HumanMessage(content="Need a recommendation"), AIMessage(content="Working on it")],
+        "messages": [
+            HumanMessage(content="Need a recommendation"),
+            AIMessage(content="Working on it"),
+        ],
         "rolling_summary": "We are comparing rollout options.",
         "memory_prompt_block": "## Retrieved long-term memories\n- 历史结论 A",
         "branch_meta": {
@@ -188,7 +191,9 @@ def test_prompt_budget_guard_preserves_current_user_and_active_constraints():
 
     rendered = "\n".join(str(message.content) for message in guarded)
     assert sum(len(str(message.content)) for message in guarded) <= 150
-    assert current_turn in [message.content for message in guarded if isinstance(message, HumanMessage)]
+    assert current_turn in [
+        message.content for message in guarded if isinstance(message, HumanMessage)
+    ]
     assert "Preserve this exact constraint." in rendered
     assert "low priority memory" not in rendered
     assert "older history can be removed" not in rendered
@@ -199,7 +204,10 @@ def test_prompt_budget_guard_prioritizes_imported_findings_over_summary_and_avai
         "messages": [HumanMessage(content="请继续基于已确认结论给出下一步建议。")],
         "rolling_summary": "old summary " * 80,
         "imported_findings": [
-            FindingItem(finding="Approved finding: switch to the postgres migration path", evidence_refs=["pr-12"])
+            FindingItem(
+                finding="Approved finding: switch to the postgres migration path",
+                evidence_refs=["pr-12"],
+            )
         ],
         "_available_skills_block": "## Available skills\n- low priority skill one\n- low priority skill two",
     }
@@ -355,7 +363,10 @@ def test_trim_tool_observation_artifactizes_prompt_view_with_refs():
     assert len(trimmed) <= 320
     assert parsed["artifact_ref"] == "tool-observation://search_code/call-1"
     assert parsed["refs"] == ["src/focus_agent/core/context_policy.py:42"]
-    assert parsed.get("results", []) == [] or parsed["results"][0]["ref"] == "src/focus_agent/core/context_policy.py:42"
+    assert (
+        parsed.get("results", []) == []
+        or parsed["results"][0]["ref"] == "src/focus_agent/core/context_policy.py:42"
+    )
     assert "POLLUTION" not in trimmed
 
 
@@ -383,7 +394,9 @@ def test_prompt_budget_guard_artifactizes_tool_messages_without_mutating_stored_
             HumanMessage(content="Where is assemble_context defined?"),
             original_tool,
         ],
-        budget=ContextBudget(prompt_token_limit=600, chars_per_token=1, tool_observation_token_limit=180),
+        budget=ContextBudget(
+            prompt_token_limit=600, chars_per_token=1, tool_observation_token_limit=180
+        ),
     )
 
     guarded_tool = next(message for message in guarded if isinstance(message, ToolMessage))
@@ -416,7 +429,9 @@ def test_render_prompt_reorders_blocks_by_prompt_mode():
     synthesize = assemble_context(state, PromptMode.SYNTHESIZE).render_prompt()
 
     assert review.index("## Findings") < review.index("## Constraints and goals")
-    assert synthesize.index("## Constraints and goals") < synthesize.index("## Retrieved long-term memories")
+    assert synthesize.index("## Constraints and goals") < synthesize.index(
+        "## Retrieved long-term memories"
+    )
 
 
 def test_trim_tool_observation_wraps_long_text_with_reference_summary():
@@ -425,7 +440,9 @@ def test_trim_tool_observation_wraps_long_text_with_reference_summary():
     trimmed = trim_tool_observation(
         text,
         tool_name="web_fetch",
-        budget=ContextBudget(tool_observation_token_limit=120, chars_per_token=1, tool_reference_token_limit=60),
+        budget=ContextBudget(
+            tool_observation_token_limit=120, chars_per_token=1, tool_reference_token_limit=60
+        ),
         artifactize_for_prompt=True,
     )
 

@@ -19,7 +19,9 @@ def _conversation_response(record: ConversationRecord) -> ConversationSummaryRes
     )
 
 
-def _list_or_bootstrap_conversations(*, runtime: AppRuntime, user_id: str) -> list[ConversationRecord]:
+def _list_or_bootstrap_conversations(
+    *, runtime: AppRuntime, user_id: str
+) -> list[ConversationRecord]:
     conversations = runtime.repo.list_conversations(owner_user_id=user_id)
     if conversations:
         return conversations
@@ -39,8 +41,6 @@ def _list_or_bootstrap_conversations(*, runtime: AppRuntime, user_id: str) -> li
         )
     )
     return runtime.repo.list_conversations(owner_user_id=user_id)
-
-
 
 
 __all__ = [

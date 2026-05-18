@@ -16,6 +16,7 @@ def run_api() -> None:
         port=settings.api_port,
         reload=settings.api_reload,
         factory=False,
+        timeout_graceful_shutdown=30,
     )
 
 

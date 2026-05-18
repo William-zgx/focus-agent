@@ -17,14 +17,22 @@ export interface FocusAgentTransportRequest {
 
 interface ErrorEnvelope {
   code?: string | number;
+  stable_code?: string | number;
   message?: string;
   data?: unknown;
+  details?: unknown;
+  trace_id?: string | null;
+  retryable?: boolean;
   request_id?: string | null;
 }
 
 interface ErrorDetailEnvelope {
   code?: string | number;
+  stable_code?: string | number;
   message?: string;
+  details?: unknown;
+  trace_id?: string | null;
+  retryable?: boolean;
 }
 
 const JSON_CONTENT_TYPE_PATTERN = /(^|[+\-/])json($|[;\s])/i;
@@ -59,11 +67,16 @@ function stringOrNull(value: unknown): string | null | undefined {
   return undefined;
 }
 
+function booleanOrUndefined(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function parseErrorEnvelope(raw: unknown): ErrorEnvelope {
   if (!isRecord(raw)) return {};
   const detail = isRecord(raw.detail) ? (raw.detail as ErrorDetailEnvelope) : undefined;
   return {
     code: stringOrNumber(detail?.code) ?? stringOrNumber(raw.code),
+    stable_code: stringOrNumber(detail?.stable_code) ?? stringOrNumber(raw.stable_code),
     message:
       typeof raw.message === "string"
         ? raw.message
@@ -71,6 +84,9 @@ function parseErrorEnvelope(raw: unknown): ErrorEnvelope {
           ? detail.message
           : undefined,
     data: "detail" in raw ? raw.detail : "data" in raw ? raw.data : undefined,
+    details: "details" in raw ? raw.details : detail?.details,
+    trace_id: stringOrNull(detail?.trace_id) ?? stringOrNull(raw.trace_id),
+    retryable: booleanOrUndefined(detail?.retryable) ?? booleanOrUndefined(raw.retryable),
     request_id: stringOrNull(raw.request_id),
   };
 }
@@ -104,8 +120,12 @@ export async function createFocusAgentRequestError(response: Response): Promise<
         status: response.status,
         statusText: response.statusText,
         code: envelope.code ?? response.status,
+        stable_code: envelope.stable_code,
         message: envelope.message,
         data: envelope.data,
+        details: envelope.details,
+        trace_id: envelope.trace_id,
+        retryable: envelope.retryable,
         request_id: envelope.request_id,
         raw: json.value,
       });

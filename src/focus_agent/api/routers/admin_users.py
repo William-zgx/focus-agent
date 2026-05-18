@@ -21,6 +21,9 @@ from ..contracts import (
     AdminResetPasswordRequest,
     AuditEventListResponse,
     AuditEventResponse,
+    BackgroundDeadLetterJobListResponse,
+    BackgroundDeadLetterJobResponse,
+    BackgroundDeadLetterReplayResponse,
     BackgroundJobSummaryResponse,
     CreateUserRequest,
     RevokeUserSessionRequest,
@@ -242,7 +245,9 @@ def reset_user_password(
     try:
         user = auth_service.reset_password(user_id=user_id, new_password=payload.new_password)
     except KeyError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user: {user_id}") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user: {user_id}"
+        ) from exc
     except WeakPasswordError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -306,6 +311,71 @@ def background_jobs_summary(
     )
 
 
+@router.get(
+    "/background-jobs/dead-letter",
+    response_model=BackgroundDeadLetterJobListResponse,
+)
+def list_background_dead_letter_jobs(
+    limit: int = Query(default=50, ge=0, le=200),
+    offset: int = Query(default=0, ge=0),
+    runtime: Any = Depends(get_app_runtime),
+    context: AuthContext = Depends(require_admin_user),
+) -> BackgroundDeadLetterJobListResponse:
+    del context
+    backend = _background_job_backend(runtime)
+    result = safe_repo_call(
+        backend,
+        "list_dead_letter_jobs",
+        limit=limit,
+        offset=offset,
+        default_missing={"items": [], "count": 0, "limit": limit, "offset": offset},
+        default_error={"items": [], "count": 0, "limit": limit, "offset": offset},
+    )
+    payload = dict(result or {})
+    return BackgroundDeadLetterJobListResponse(
+        items=[
+            BackgroundDeadLetterJobResponse.model_validate(item)
+            for item in list(payload.get("items") or [])
+            if isinstance(item, dict)
+        ],
+        count=int(payload.get("count") or 0),
+        limit=int(payload.get("limit") or limit),
+        offset=int(payload.get("offset") or offset),
+    )
+
+
+@router.post(
+    "/background-jobs/dead-letter/{job_key:path}/replay",
+    response_model=BackgroundDeadLetterReplayResponse,
+)
+def replay_background_dead_letter_job(
+    job_key: str,
+    runtime: Any = Depends(get_app_runtime),
+    context: AuthContext = Depends(require_admin_user),
+) -> BackgroundDeadLetterReplayResponse:
+    del context
+    backend = _background_job_backend(runtime)
+    replayed = bool(
+        safe_repo_call(
+            backend,
+            "replay_dead_letter_job",
+            job_key,
+            default_missing=False,
+            default_error=False,
+        )
+    )
+    if not replayed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dead-lettered background job not found.",
+        )
+    return BackgroundDeadLetterReplayResponse(
+        job_key=job_key,
+        replayed=True,
+        status="pending",
+    )
+
+
 __all__ = ["router"]
 
 
@@ -324,7 +394,9 @@ def _require_reason(reason: str | None) -> None:
 def _background_job_metrics(runtime: Any) -> dict[str, int]:
     metrics = {
         **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
-        **_snapshot_metrics(getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"),
+        **_snapshot_metrics(
+            getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"
+        ),
     }
     return {str(key): int(value) for key, value in metrics.items()}
 
@@ -351,10 +423,29 @@ def _background_job_warnings(runtime: Any, metrics: dict[str, int]) -> list[str]
     if dead_lettered > 0:
         warnings.append(f"dead_lettered={dead_lettered}")
     threshold = max(
-        int(float(getattr(getattr(runtime, "settings", None), "background_job_old_pending_seconds", 900.0) or 0.0)),
+        int(
+            float(
+                getattr(
+                    getattr(runtime, "settings", None), "background_job_old_pending_seconds", 900.0
+                )
+                or 0.0
+            )
+        ),
         0,
     )
     oldest_pending_seconds = int(metrics.get("job_oldest_pending_seconds") or 0)
     if threshold > 0 and oldest_pending_seconds > threshold:
         warnings.append(f"oldest_pending_seconds={oldest_pending_seconds}")
     return warnings
+
+
+def _background_job_backend(runtime: Any) -> Any:
+    worker = getattr(runtime, "durable_background_worker", None)
+    backend = getattr(worker, "_job_backend", None)
+    if backend is not None:
+        return backend
+    coordination_backend = getattr(runtime, "coordination_backend", None)
+    backend = getattr(coordination_backend, "job_deduper", None)
+    if backend is not None:
+        return backend
+    return getattr(runtime, "background_work", None)

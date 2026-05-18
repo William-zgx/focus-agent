@@ -4,10 +4,10 @@ from typing import Literal, Protocol
 
 from pydantic import Field
 
+from ..core.types import StateModel
 from .delegation_models import AgentArtifact, AgentRun, AgentTask
 from .execution_modes import DelegationExecutionMode
 from .roles import AgentRole
-from ..core.types import StateModel
 
 
 class SubagentConfig(StateModel):

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-from contextlib import suppress
 import logging
 import threading
+from collections.abc import AsyncIterator
+from contextlib import suppress
 from typing import Any
 
 from langchain.messages import HumanMessage
@@ -14,8 +14,8 @@ from ...core.branching import BranchMeta
 from ...core.repo_call import has_repo_method
 from ...observability.tracing import TraceCorrelation
 from ...observability.trajectory import utc_now
-from .threads import record_turn_trajectory_best_effort
 from ..coordination import background_job_key
+from .threads import record_turn_trajectory_best_effort
 
 logger = logging.getLogger("focus_agent.chat")
 
@@ -46,15 +46,15 @@ async def stream_graph_chunks(
         payload,
         config=config,
         context=context,
-        stream_mode=['messages', 'custom', 'updates', 'tasks'],
-        version='v2',
+        stream_mode=["messages", "custom", "updates", "tasks"],
+        version="v2",
     ).__aiter__()
 
     async for chunk in _consume_graph_stream(
         stream_iter=stream_iter,
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
         next_chunk=lambda: _next_graph_chunk(stream_iter),
-        close_method='aclose',
+        close_method="aclose",
     ):
         yield chunk
 
@@ -71,14 +71,14 @@ async def stream_graph_chunks_via_sync_stream(
         payload,
         config=config,
         context=context,
-        stream_mode=['messages', 'custom', 'updates', 'tasks'],
-        version='v2',
+        stream_mode=["messages", "custom", "updates", "tasks"],
+        version="v2",
     )
     async for chunk in _consume_graph_stream(
         stream_iter=stream_iter,
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
         next_chunk=lambda: asyncio.to_thread(next, stream_iter, _STREAM_END),
-        close_method='close',
+        close_method="close",
     ):
         yield chunk
 
@@ -124,7 +124,7 @@ async def _close_stream_iter(*, stream_iter: Any, close_method: str) -> None:
         return
     with suppress(Exception):  # noqa: BLE001
         result = getattr(stream_iter, close_method)()
-        if close_method == 'aclose' and hasattr(result, '__await__'):
+        if close_method == "aclose" and hasattr(result, "__await__"):
             await result
 
 
@@ -454,7 +454,9 @@ class ChatContextCompactionMixin:
                             self._release_background_job_key(job_key)
                         schedule_compact_later(delay=0.2, attempt=attempt + 1)
                         return
-                    logger.debug("post-turn context compaction skipped because the thread stayed busy")
+                    logger.debug(
+                        "post-turn context compaction skipped because the thread stayed busy"
+                    )
                 else:
                     logger.debug("post-turn context compaction skipped", exc_info=True)
 
@@ -605,7 +607,15 @@ class ChatContextCompactionMixin:
                 source_items.extend(str(value) for value in item.values() if value)
             else:
                 source_items.append(str(item))
-                for attr in ("fact", "constraint", "finding", "title", "summary", "uri", "artifact_id"):
+                for attr in (
+                    "fact",
+                    "constraint",
+                    "finding",
+                    "title",
+                    "summary",
+                    "uri",
+                    "artifact_id",
+                ):
                     value = getattr(item, attr, None)
                     if value:
                         source_items.append(str(value))
@@ -635,8 +645,15 @@ class ChatContextCompactionMixin:
                     value = getattr(item, attr, None)
                     if value:
                         targets.append(str(value).strip())
-        for item in [*list(values.get("imported_findings") or []), *list(values.get("branch_local_findings") or [])]:
-            refs = item.get("evidence_refs") if isinstance(item, dict) else getattr(item, "evidence_refs", [])
+        for item in [
+            *list(values.get("imported_findings") or []),
+            *list(values.get("branch_local_findings") or []),
+        ]:
+            refs = (
+                item.get("evidence_refs")
+                if isinstance(item, dict)
+                else getattr(item, "evidence_refs", [])
+            )
             targets.extend(str(ref).strip() for ref in list(refs or []) if str(ref).strip())
         return self._dedupe_compaction_targets(targets)
 

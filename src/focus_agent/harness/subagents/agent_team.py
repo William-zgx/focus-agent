@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from typing import Any
 
+from focus_agent.config import Settings
 from focus_agent.delegation.delegation_models import AgentTask
 from focus_agent.delegation.execution import (
     DelegatedRunExecutor,
@@ -13,7 +14,6 @@ from focus_agent.delegation.execution import (
     run_delegated_tasks,
 )
 from focus_agent.delegation.roles import AgentRole, normalize_agent_role
-from focus_agent.config import Settings
 
 from ..runtime import RunRecord
 from .executor import SubagentTaskRequest, SubagentTaskResult
@@ -92,9 +92,7 @@ class AgentTeamSubagentRunner:
             },
             artifact={
                 "run": result.model_dump(mode="json"),
-                "artifacts": [
-                    artifact.model_dump(mode="json") for artifact in result.artifacts
-                ],
+                "artifacts": [artifact.model_dump(mode="json") for artifact in result.artifacts],
             },
         )
 
@@ -115,9 +113,7 @@ class AgentTeamSubagentRunner:
 def _task_from_request(request: SubagentTaskRequest, *, run_record: RunRecord) -> AgentTask:
     role = _role_from_mapping(request.input) or _role_from_mapping(request.metadata)
     context_refs = _list_of_dicts(
-        request.input.get("context_refs")
-        or request.metadata.get("context_refs")
-        or []
+        request.input.get("context_refs") or request.metadata.get("context_refs") or []
     )
     task_id = str(
         request.input.get("task_id")
@@ -128,13 +124,14 @@ def _task_from_request(request: SubagentTaskRequest, *, run_record: RunRecord) -
         task_id=task_id,
         role=role or AgentRole.EXECUTOR,
         goal=request.instruction,
-        constraints=_str_list(request.input.get("constraints") or request.metadata.get("constraints")),
+        constraints=_str_list(
+            request.input.get("constraints") or request.metadata.get("constraints")
+        ),
         allowed_tools=_str_list(
             request.input.get("allowed_tools") or request.metadata.get("allowed_tools")
         ),
         acceptance_criteria=_str_list(
-            request.input.get("acceptance_criteria")
-            or request.metadata.get("acceptance_criteria")
+            request.input.get("acceptance_criteria") or request.metadata.get("acceptance_criteria")
         ),
         max_turns=_positive_int(
             request.input.get("max_turns") or request.metadata.get("max_turns"),
@@ -161,12 +158,18 @@ def _task_from_request(request: SubagentTaskRequest, *, run_record: RunRecord) -
             or request.metadata.get("run_isolation_key")
             or f"harness:{run_record.run_id}"
         ),
-        workspace_id=_optional_str(request.input.get("workspace_id") or request.metadata.get("workspace_id")),
-        workspace_path=_optional_str(request.input.get("workspace_path") or request.metadata.get("workspace_path")),
+        workspace_id=_optional_str(
+            request.input.get("workspace_id") or request.metadata.get("workspace_id")
+        ),
+        workspace_path=_optional_str(
+            request.input.get("workspace_path") or request.metadata.get("workspace_path")
+        ),
         workspace_branch=_optional_str(
             request.input.get("workspace_branch") or request.metadata.get("workspace_branch")
         ),
-        base_commit=_optional_str(request.input.get("base_commit") or request.metadata.get("base_commit")),
+        base_commit=_optional_str(
+            request.input.get("base_commit") or request.metadata.get("base_commit")
+        ),
     )
 
 

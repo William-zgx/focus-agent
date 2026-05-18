@@ -9,7 +9,9 @@ def _escape_prometheus_label_value(value: Any) -> str:
     return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
-def _prometheus_metric_line(name: str, value: int | float, labels: dict[str, Any] | None = None) -> str:
+def _prometheus_metric_line(
+    name: str, value: int | float, labels: dict[str, Any] | None = None
+) -> str:
     if labels:
         rendered = ",".join(
             f'{key}="{_escape_prometheus_label_value(label_value)}"'
@@ -65,7 +67,9 @@ def _build_prometheus_metrics_payload(
         [
             "# HELP focus_agent_trajectory_metrics_available Whether trajectory metrics were available for this scrape.",
             "# TYPE focus_agent_trajectory_metrics_available gauge",
-            _prometheus_metric_line("focus_agent_trajectory_metrics_available", 1 if trajectory_available else 0),
+            _prometheus_metric_line(
+                "focus_agent_trajectory_metrics_available", 1 if trajectory_available else 0
+            ),
         ]
     )
     if not trajectory_available or not trajectory_stats:
@@ -80,7 +84,9 @@ def _build_prometheus_metrics_payload(
         [
             "# HELP focus_agent_trajectory_turn_count Total recorded trajectory turns in the selected scope.",
             "# TYPE focus_agent_trajectory_turn_count gauge",
-            _prometheus_metric_line("focus_agent_trajectory_turn_count", int(overview.get("turn_count") or 0)),
+            _prometheus_metric_line(
+                "focus_agent_trajectory_turn_count", int(overview.get("turn_count") or 0)
+            ),
             "# HELP focus_agent_trajectory_non_succeeded_count Total non-succeeded trajectory turns in the selected scope.",
             "# TYPE focus_agent_trajectory_non_succeeded_count gauge",
             _prometheus_metric_line(
@@ -134,73 +140,129 @@ def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
     return [
         "# HELP focus_agent_memory_promotion_count Total memory promotions observed in governance records.",
         "# TYPE focus_agent_memory_promotion_count gauge",
-        _prometheus_metric_line("focus_agent_memory_promotion_count", int(metrics.get("memory_promotions") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_memory_promotion_count", int(metrics.get("memory_promotions") or 0)
+        ),
         "# HELP focus_agent_memory_conflict_count Total memory curator conflicts observed in governance records.",
         "# TYPE focus_agent_memory_conflict_count gauge",
-        _prometheus_metric_line("focus_agent_memory_conflict_count", int(metrics.get("memory_conflicts") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_memory_conflict_count", int(metrics.get("memory_conflicts") or 0)
+        ),
         "# HELP focus_agent_tool_router_denied_count Total denied tools observed in tool_route_plan records.",
         "# TYPE focus_agent_tool_router_denied_count gauge",
-        _prometheus_metric_line("focus_agent_tool_router_denied_count", int(metrics.get("tool_router_denied") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_router_denied_count", int(metrics.get("tool_router_denied") or 0)
+        ),
         "# HELP focus_agent_tool_router_enforced_count Total enforced tool_route_plan records.",
         "# TYPE focus_agent_tool_router_enforced_count gauge",
-        _prometheus_metric_line("focus_agent_tool_router_enforced_count", int(metrics.get("tool_router_enforced") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_router_enforced_count", int(metrics.get("tool_router_enforced") or 0)
+        ),
         "# HELP focus_agent_tool_intent_direct_answer_count Tool intent plans classified as direct_answer.",
         "# TYPE focus_agent_tool_intent_direct_answer_count gauge",
-        _prometheus_metric_line("focus_agent_tool_intent_direct_answer_count", int(metrics.get("tool_intent_direct_answer") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_intent_direct_answer_count",
+            int(metrics.get("tool_intent_direct_answer") or 0),
+        ),
         "# HELP focus_agent_tool_intent_workspace_lookup_count Tool intent plans classified as workspace_lookup.",
         "# TYPE focus_agent_tool_intent_workspace_lookup_count gauge",
-        _prometheus_metric_line("focus_agent_tool_intent_workspace_lookup_count", int(metrics.get("tool_intent_workspace_lookup") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_intent_workspace_lookup_count",
+            int(metrics.get("tool_intent_workspace_lookup") or 0),
+        ),
         "# HELP focus_agent_tool_intent_live_web_research_count Tool intent plans classified as live_web_research.",
         "# TYPE focus_agent_tool_intent_live_web_research_count gauge",
-        _prometheus_metric_line("focus_agent_tool_intent_live_web_research_count", int(metrics.get("tool_intent_live_web_research") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_intent_live_web_research_count",
+            int(metrics.get("tool_intent_live_web_research") or 0),
+        ),
         "# HELP focus_agent_tool_intent_execution_count Tool intent plans classified as execution.",
         "# TYPE focus_agent_tool_intent_execution_count gauge",
-        _prometheus_metric_line("focus_agent_tool_intent_execution_count", int(metrics.get("tool_intent_execution") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_intent_execution_count",
+            int(metrics.get("tool_intent_execution") or 0),
+        ),
         "# HELP focus_agent_tool_intent_first_tool_count Tool intent plans that selected a preferred first tool.",
         "# TYPE focus_agent_tool_intent_first_tool_count gauge",
-        _prometheus_metric_line("focus_agent_tool_intent_first_tool_count", int(metrics.get("tool_intent_first_tool") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_intent_first_tool_count",
+            int(metrics.get("tool_intent_first_tool") or 0),
+        ),
         "# HELP focus_agent_tool_intent_carryover_count Tool intent plans recovered from pending tool actions.",
         "# TYPE focus_agent_tool_intent_carryover_count gauge",
-        _prometheus_metric_line("focus_agent_tool_intent_carryover_count", int(metrics.get("tool_intent_carryover") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_tool_intent_carryover_count",
+            int(metrics.get("tool_intent_carryover") or 0),
+        ),
         "# HELP focus_agent_temporal_anchor_forced_count Live turns that forced a current-time anchor before search.",
         "# TYPE focus_agent_temporal_anchor_forced_count gauge",
-        _prometheus_metric_line("focus_agent_temporal_anchor_forced_count", int(metrics.get("temporal_anchor_forced") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_temporal_anchor_forced_count",
+            int(metrics.get("temporal_anchor_forced") or 0),
+        ),
         "# HELP focus_agent_memory_quality_skipped_count Memory writes skipped by quality gates.",
         "# TYPE focus_agent_memory_quality_skipped_count gauge",
-        _prometheus_metric_line("focus_agent_memory_quality_skipped_count", int(metrics.get("memory_quality_skipped") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_memory_quality_skipped_count",
+            int(metrics.get("memory_quality_skipped") or 0),
+        ),
         "# HELP focus_agent_external_answer_missing_citation_count External answers flagged for missing citations.",
         "# TYPE focus_agent_external_answer_missing_citation_count gauge",
-        _prometheus_metric_line("focus_agent_external_answer_missing_citation_count", int(metrics.get("external_answer_missing_citation") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_external_answer_missing_citation_count",
+            int(metrics.get("external_answer_missing_citation") or 0),
+        ),
         "# HELP focus_agent_delegation_run_count Total delegated agent runs observed in governance records.",
         "# TYPE focus_agent_delegation_run_count gauge",
-        _prometheus_metric_line("focus_agent_delegation_run_count", int(metrics.get("agent_delegation_runs") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_delegation_run_count", int(metrics.get("agent_delegation_runs") or 0)
+        ),
         "# HELP focus_agent_critic_reject_count Total critic rejection failures observed in governance records.",
         "# TYPE focus_agent_critic_reject_count gauge",
-        _prometheus_metric_line("focus_agent_critic_reject_count", int(metrics.get("critic_rejects") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_critic_reject_count", int(metrics.get("critic_rejects") or 0)
+        ),
         "# HELP focus_agent_review_pending_count Pending agent review queue items observed in governance records.",
         "# TYPE focus_agent_review_pending_count gauge",
-        _prometheus_metric_line("focus_agent_review_pending_count", int(metrics.get("agent_review_pending") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_review_pending_count", int(metrics.get("agent_review_pending") or 0)
+        ),
         "# HELP focus_agent_model_router_fallback_count Model Router fallback events observed in governance records.",
         "# TYPE focus_agent_model_router_fallback_count gauge",
-        _prometheus_metric_line("focus_agent_model_router_fallback_count", int(metrics.get("model_router_fallback") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_model_router_fallback_count",
+            int(metrics.get("model_router_fallback") or 0),
+        ),
         "# HELP focus_agent_failure_count Agent failure records observed in governance records.",
         "# TYPE focus_agent_failure_count gauge",
-        _prometheus_metric_line("focus_agent_failure_count", int(metrics.get("agent_failures") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_failure_count", int(metrics.get("agent_failures") or 0)
+        ),
         "# HELP focus_agent_context_artifact_ref_count Context Engineering artifact refs observed in governance records.",
         "# TYPE focus_agent_context_artifact_ref_count gauge",
-        _prometheus_metric_line("focus_agent_context_artifact_ref_count", int(metrics.get("context_artifact_refs") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_context_artifact_ref_count", int(metrics.get("context_artifact_refs") or 0)
+        ),
         "# HELP focus_agent_context_over_budget_count Context Engineering over-budget decisions observed in governance records.",
         "# TYPE focus_agent_context_over_budget_count gauge",
-        _prometheus_metric_line("focus_agent_context_over_budget_count", int(metrics.get("context_over_budget") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_context_over_budget_count", int(metrics.get("context_over_budget") or 0)
+        ),
         "# HELP focus_agent_task_ledger_task_count Agent Task Ledger tasks observed in governance records.",
         "# TYPE focus_agent_task_ledger_task_count gauge",
-        _prometheus_metric_line("focus_agent_task_ledger_task_count", int(metrics.get("agent_task_ledger_tasks") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_task_ledger_task_count", int(metrics.get("agent_task_ledger_tasks") or 0)
+        ),
         "# HELP focus_agent_delegated_artifact_count Delegated artifacts observed in governance records.",
         "# TYPE focus_agent_delegated_artifact_count gauge",
-        _prometheus_metric_line("focus_agent_delegated_artifact_count", int(metrics.get("delegated_artifacts") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_delegated_artifact_count", int(metrics.get("delegated_artifacts") or 0)
+        ),
         "# HELP focus_agent_critic_gate_rejected_count Rejected artifacts observed in critic gate results.",
         "# TYPE focus_agent_critic_gate_rejected_count gauge",
-        _prometheus_metric_line("focus_agent_critic_gate_rejected_count", int(metrics.get("critic_gate_rejected") or 0)),
+        _prometheus_metric_line(
+            "focus_agent_critic_gate_rejected_count", int(metrics.get("critic_gate_rejected") or 0)
+        ),
     ]
 
 
@@ -440,8 +502,6 @@ def _postgres_metric_lines(metrics: dict[str, int | float]) -> list[str]:
             int(metrics.get("postgres_metrics_error") or 0),
         ),
     ]
-
-
 
 
 __all__ = [

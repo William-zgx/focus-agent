@@ -343,7 +343,10 @@ def test_memory_writer_quality_gate_skips_unstable_turn_summary():
 
     assert outcome["written"] == []
     assert outcome["skipped"] == [
-        {"summary": "我错了，刚才没有实际调用工具，可能不准确。", "reason": "unstable_self_correction"}
+        {
+            "summary": "我错了，刚才没有实际调用工具，可能不准确。",
+            "reason": "unstable_self_correction",
+        }
     ]
     assert namespace not in store.data
 
@@ -441,7 +444,9 @@ def test_memory_writer_quality_gate_allows_external_claim_with_tool_result():
         state={
             "messages": [
                 HumanMessage(content="今天北京天气如何"),
-                AIMessage(content="", tool_calls=[{"id": "call-1", "name": "web_search", "args": {}}]),
+                AIMessage(
+                    content="", tool_calls=[{"id": "call-1", "name": "web_search", "args": {}}]
+                ),
                 ToolMessage(content='{"weather":"sunny"}', tool_call_id="call-1"),
                 AIMessage(content="根据查询结果，北京今天晴。"),
             ]

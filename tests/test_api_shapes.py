@@ -45,6 +45,9 @@ from focus_agent.api.schemas import (
     AgentTaskLedgerPlanResponse,
     AgentTaskLedgerPolicyResponse,
     AgentTaskLedgerRunListResponse,
+    BackgroundDeadLetterJobListResponse,
+    BackgroundDeadLetterJobResponse,
+    BackgroundDeadLetterReplayResponse,
     BackgroundJobSummaryResponse,
     BranchActionExecuteResponse,
     BranchActionNavigation,
@@ -190,6 +193,27 @@ def test_background_job_summary_contract_shape():
     assert dumped["ready"] is False
     assert dumped["metrics"]["job_retrying_total"] == 2
     assert dumped["warnings"] == ["dead_lettered=1", "oldest_pending_seconds=1200"]
+
+
+def test_background_dead_letter_contract_shapes():
+    item = BackgroundDeadLetterJobResponse(
+        job_key="chat:conversation_title:thread-1",
+        kind="conversation_title",
+        payload={"thread_id": "thread-1"},
+        attempt=3,
+        max_attempts=3,
+        last_error="boom",
+        dead_lettered_age_seconds=12,
+    )
+    listed = BackgroundDeadLetterJobListResponse(items=[item], count=1, limit=50, offset=0)
+    replayed = BackgroundDeadLetterReplayResponse(
+        job_key=item.job_key,
+        replayed=True,
+        status="pending",
+    )
+
+    assert listed.model_dump(mode="json")["items"][0]["last_error"] == "boom"
+    assert replayed.model_dump(mode="json")["status"] == "pending"
 
 
 def test_thread_context_usage_contract_shape_is_separate_from_token_usage():
@@ -840,6 +864,8 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/readyz" in route_paths
     assert "/metrics" in route_paths
     assert "/v1/admin/background-jobs/summary" in route_paths
+    assert "/v1/admin/background-jobs/dead-letter" in route_paths
+    assert "/v1/admin/background-jobs/dead-letter/{job_key:path}/replay" in route_paths
     assert "/v1/agent/roles/policy" in route_paths
     assert "/v1/agent/roles/dry-run" in route_paths
     assert "/v1/agent/roles/decisions" in route_paths
@@ -871,18 +897,16 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals" in route_paths
-    assert (
-        "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve"
-        in route_paths
-    )
-    assert (
-        "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject"
-        in route_paths
-    )
+    assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve" in route_paths
+    assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject" in route_paths
     assert "/v2/threads/{thread_id:path}/runs" in route_paths
     assert "/v2/threads/{thread_id:path}/runs/stream" in route_paths
     assert "/v2/threads/{thread_id:path}/runs/resume/stream" in route_paths
     assert "/v2/runs/{run_id}" in route_paths
+    assert "/v2/runs/{run_id}/stream" in route_paths
+    assert "/v2/runs/{run_id}/events" in route_paths
+    assert "/v2/runs/{run_id}/snapshot" in route_paths
+    assert "/v2/runs/{run_id}/trajectory" in route_paths
     assert "/v2/runs/{run_id}/cancel" in route_paths
     assert "/v1/chat/turns" not in route_paths
     assert "/v1/chat/turns/stream" not in route_paths

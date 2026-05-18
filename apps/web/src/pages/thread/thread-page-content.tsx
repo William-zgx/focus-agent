@@ -1,22 +1,25 @@
 import type {
 	ContextUsageResponse,
 	FocusAgentBranchActionProposal,
+	FocusAgentBranchDecisionSummary,
 	FocusAgentStreamState,
 	FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
 import type { StickToBottomInstance } from "use-stick-to-bottom";
 
 import { MessageList } from "@/entities/messages/message-list";
+import { BranchDecisionSummaryPanel } from "@/features/branch-decisions/branch-decision-summary-panel";
 import { MessageComposer } from "@/features/thread-stream/message-composer";
+import { EmptyState, Skeleton } from "@/shared/ui/primitives";
 
 import { ConversationViewport } from "./conversation-viewport";
 
 interface ThreadPageContentProps {
 	assistantMessage?: string | null;
-	activeSkillIds?: string[];
 	branchActionErrors: Record<string, string>;
 	branchActionInFlightId: string | null;
 	branchActions: FocusAgentBranchActionProposal[];
+	branchDecisionSummary?: FocusAgentBranchDecisionSummary | null;
 	compactContextError?: string;
 	contextUsage?: ContextUsageResponse | null;
 	editDraft: { id: string; content: string } | null;
@@ -54,6 +57,8 @@ interface ThreadPageContentProps {
 	streamState: FocusAgentStreamState | null;
 	threadContextUsage?: ContextUsageResponse | null;
 	threadError?: unknown;
+	threadId: string;
+	rootThreadId?: string;
 	toolApprovalError?: string;
 	toolApprovalErrorId?: string | null;
 	toolApprovalInFlightId?: string | null;
@@ -62,10 +67,10 @@ interface ThreadPageContentProps {
 
 export function ThreadPageContent({
 	assistantMessage,
-	activeSkillIds = [],
 	branchActionErrors,
 	branchActionInFlightId,
 	branchActions,
+	branchDecisionSummary,
 	compactContextError = "",
 	contextUsage,
 	editDraft,
@@ -94,6 +99,8 @@ export function ThreadPageContent({
 	streamState,
 	threadContextUsage,
 	threadError,
+	threadId,
+	rootThreadId,
 	toolApprovalError = "",
 	toolApprovalErrorId = null,
 	toolApprovalInFlightId = null,
@@ -136,9 +143,7 @@ export function ThreadPageContent({
 					>
 						{isLoading ? (
 							<div className="fa-inline-notice">
-								{isChineseUi
-									? "正在加载线程状态..."
-									: "Loading thread state..."}
+								<Skeleton lines={2} />
 							</div>
 						) : null}
 						{threadError ? (
@@ -148,21 +153,30 @@ export function ThreadPageContent({
 									: "Failed to load thread state."}
 							</div>
 						) : null}
+						<BranchDecisionSummaryPanel
+							isChineseUi={isChineseUi}
+							isReadOnly={isMergedReadOnlyThread}
+							rootThreadId={rootThreadId}
+							summary={branchDecisionSummary}
+							threadId={threadId}
+						/>
 						{hasTranscriptContent ? (
 							<MessageList {...messageListProps} />
 						) : (
-							<div className="fa-chat-empty">
-								{isChineseUi
-									? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
-									: "Start chatting here. Branches appear on the left whenever the agent forks work."}
-							</div>
+							<EmptyState
+								className="fa-chat-empty"
+								title={
+									isChineseUi
+										? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
+										: "Start chatting here. Branches appear on the left whenever the agent forks work."
+								}
+							/>
 						)}
 					</ConversationViewport>
 				</section>
 
 				<section className="fa-composer-slot">
 					<MessageComposer
-						activeSkillIds={activeSkillIds}
 						editDraft={editDraft}
 						isReadOnly={isMergedReadOnlyThread}
 						isStreaming={isStreaming}

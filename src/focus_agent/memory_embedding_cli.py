@@ -141,8 +141,14 @@ def _embedding_dimensions(*, settings: Settings, provider: object | None) -> int
         return configured
     model_id = str(getattr(settings, "agent_memory_embedding_model", "") or "").strip().lower()
     backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
-    provider_id = str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
-    if model_id in {"embeddinggemma", "embedding-gemma"} or backend == "ollama" or provider_id == "ollama":
+    provider_id = (
+        str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
+    )
+    if (
+        model_id in {"embeddinggemma", "embedding-gemma"}
+        or backend == "ollama"
+        or provider_id == "ollama"
+    ):
         return 768
     return 1536
 
@@ -304,7 +310,11 @@ def _ollama_install_hint(settings: Settings) -> str | None:
     backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
     provider = str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
     model = str(getattr(settings, "agent_memory_embedding_model", "") or "").strip().lower()
-    if backend in {"auto", "ollama"} or provider == "ollama" or model in {"embeddinggemma", "embedding-gemma"}:
+    if (
+        backend in {"auto", "ollama"}
+        or provider == "ollama"
+        or model in {"embeddinggemma", "embedding-gemma"}
+    ):
         return "ollama pull embeddinggemma"
     return None
 

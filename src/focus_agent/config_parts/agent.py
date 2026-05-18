@@ -6,7 +6,9 @@ from typing import Any
 from .common import _env_bool, _normalize_agent_delegation_execution_mode, _split_csv
 
 
-def _optional_string_env(env: MutableMapping[str, str], name: str, default: str | None) -> str | None:
+def _optional_string_env(
+    env: MutableMapping[str, str], name: str, default: str | None
+) -> str | None:
     if name not in env:
         return default
     value = env.get(name)
@@ -42,9 +44,21 @@ def _normalize_pgvector_extension_mode(value: object) -> str:
         return "auto_create"
     if normalized in {"require", "required", "require_installed", "preinstalled", "pre_installed"}:
         return "required"
-    raise ValueError(
-        "AGENT_MEMORY_PGVECTOR_EXTENSION_MODE must be one of: auto_create, required"
-    )
+    raise ValueError("AGENT_MEMORY_PGVECTOR_EXTENSION_MODE must be one of: auto_create, required")
+
+
+def _normalize_branch_decision_mode(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"shadow", "suggest", "execute"}:
+        return normalized
+    raise ValueError("AGENT_BRANCH_DECISION_MODE must be one of: shadow, suggest, execute")
+
+
+def _normalize_branch_recommendation_mode(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"shadow", "suggest"}:
+        return normalized
+    raise ValueError("AGENT_BRANCH_RECOMMENDATION_MODE must be one of: shadow, suggest")
 
 
 def _pgvector_extension_mode_env(env: MutableMapping[str, str], defaults: Any) -> str:
@@ -133,7 +147,62 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         ),
         "agent_team_automation_level": str(
             env.get("AGENT_TEAM_AUTOMATION_LEVEL") or defaults.agent_team_automation_level
-        ).strip().lower(),
+        )
+        .strip()
+        .lower(),
+        "agent_branch_decision_enabled": _env_bool(
+            env,
+            "AGENT_BRANCH_DECISION_ENABLED",
+            default=defaults.agent_branch_decision_enabled,
+        ),
+        "agent_branch_decision_mode": _normalize_branch_decision_mode(
+            env.get("AGENT_BRANCH_DECISION_MODE", defaults.agent_branch_decision_mode)
+        ),
+        "agent_branch_decision_min_confidence": _float_env(
+            env,
+            "AGENT_BRANCH_DECISION_MIN_CONFIDENCE",
+            defaults.agent_branch_decision_min_confidence,
+        ),
+        "agent_branch_decision_split_threshold": _float_env(
+            env,
+            "AGENT_BRANCH_DECISION_SPLIT_THRESHOLD",
+            defaults.agent_branch_decision_split_threshold,
+        ),
+        "agent_branch_decision_conclude_threshold": _float_env(
+            env,
+            "AGENT_BRANCH_DECISION_CONCLUDE_THRESHOLD",
+            defaults.agent_branch_decision_conclude_threshold,
+        ),
+        "agent_branch_decision_merge_candidate_threshold": _float_env(
+            env,
+            "AGENT_BRANCH_DECISION_MERGE_CANDIDATE_THRESHOLD",
+            defaults.agent_branch_decision_merge_candidate_threshold,
+        ),
+        "agent_branch_decision_rate_limit_per_hour": max(
+            0,
+            int(
+                env.get(
+                    "AGENT_BRANCH_DECISION_RATE_LIMIT_PER_HOUR",
+                    str(defaults.agent_branch_decision_rate_limit_per_hour),
+                )
+            ),
+        ),
+        "agent_branch_recommendation_enabled": _env_bool(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_ENABLED",
+            default=defaults.agent_branch_recommendation_enabled,
+        ),
+        "agent_branch_recommendation_mode": _normalize_branch_recommendation_mode(
+            env.get(
+                "AGENT_BRANCH_RECOMMENDATION_MODE",
+                defaults.agent_branch_recommendation_mode,
+            )
+        ),
+        "agent_branch_recommendation_min_confidence": _float_env(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE",
+            defaults.agent_branch_recommendation_min_confidence,
+        ),
         "skill_install_directory": (
             env.get("SKILL_INSTALL_DIRECTORY") or defaults.skill_install_directory
         ),
@@ -152,18 +221,24 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             if env.get("SKILL_TRUSTED_SOURCES") is not None
             else defaults.skill_trusted_sources
         ),
-        "skill_install_mode": str(
-            env.get("SKILL_INSTALL_MODE") or defaults.skill_install_mode
-        ).strip().lower(),
+        "skill_install_mode": str(env.get("SKILL_INSTALL_MODE") or defaults.skill_install_mode)
+        .strip()
+        .lower(),
         "agent_memory_backend": str(
             env.get("AGENT_MEMORY_BACKEND") or defaults.agent_memory_backend
-        ).strip().lower(),
+        )
+        .strip()
+        .lower(),
         "agent_memory_read_source": str(
             env.get("AGENT_MEMORY_READ_SOURCE") or defaults.agent_memory_read_source
-        ).strip().lower(),
+        )
+        .strip()
+        .lower(),
         "agent_memory_extractor_mode": str(
             env.get("AGENT_MEMORY_EXTRACTOR_MODE") or defaults.agent_memory_extractor_mode
-        ).strip().lower(),
+        )
+        .strip()
+        .lower(),
         "agent_memory_postgres_trigram_enabled": _env_bool(
             env,
             "AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED",
@@ -177,8 +252,7 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_memory_embedding_backend": _embedding_backend_env(env, defaults),
         "agent_memory_embedding_provider": _embedding_provider_env(env, defaults),
         "agent_memory_embedding_model": str(
-            env.get("AGENT_MEMORY_EMBEDDING_MODEL")
-            or defaults.agent_memory_embedding_model
+            env.get("AGENT_MEMORY_EMBEDDING_MODEL") or defaults.agent_memory_embedding_model
         ).strip(),
         "agent_memory_embedding_dimensions": int(
             env.get(

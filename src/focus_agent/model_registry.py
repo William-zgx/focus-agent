@@ -274,29 +274,31 @@ def resolve_model_config(
     env = (
         environ
         if environ is not None
-        else (settings.resolved_env if settings is not None and settings.resolved_env else os.environ)
+        else (
+            settings.resolved_env if settings is not None and settings.resolved_env else os.environ
+        )
     )
     provider, name = parse_model_id(model_id, settings=settings)
     _assert_known_provider(provider, model_id=model_id, settings=settings)
     provider_config = _merged_provider_configs(settings).get(provider)
-    backend_provider = provider_config.backend_provider if provider_config and provider_config.backend_provider else provider
+    backend_provider = (
+        provider_config.backend_provider
+        if provider_config and provider_config.backend_provider
+        else provider
+    )
     client_kwargs: dict[str, str] = {}
     request_kwargs: dict[str, object] = {}
 
     if provider_config is not None:
         if provider_config.base_url_env or provider_config.base_url_default:
             base_url = (
-                env.get(provider_config.base_url_env)
-                if provider_config.base_url_env
-                else None
+                env.get(provider_config.base_url_env) if provider_config.base_url_env else None
             ) or provider_config.base_url_default
             if base_url:
                 client_kwargs["base_url"] = base_url
         if provider_config.api_key_env or provider_config.api_key_default:
             api_key = (
-                env.get(provider_config.api_key_env)
-                if provider_config.api_key_env
-                else None
+                env.get(provider_config.api_key_env) if provider_config.api_key_env else None
             ) or provider_config.api_key_default
             if api_key:
                 client_kwargs["api_key"] = api_key

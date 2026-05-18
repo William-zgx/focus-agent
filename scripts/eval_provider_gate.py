@@ -47,7 +47,9 @@ def _write_gate_report(
         "command": list(command),
         "exit_code": exit_code,
     }
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
@@ -119,7 +121,9 @@ def run_provider_eval_gate(
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--key-env", action="append", default=[], help="Required provider key env var. May repeat.")
+    parser.add_argument(
+        "--key-env", action="append", default=[], help="Required provider key env var. May repeat."
+    )
     parser.add_argument(
         "--missing-policy",
         choices=("skip", "fail"),

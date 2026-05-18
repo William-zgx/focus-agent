@@ -24,7 +24,9 @@ def user_profile_memory_namespace(context: RequestContext) -> tuple[str, ...]:
     return user_profile_namespace(context.user_id)
 
 
-def persist_imported_conclusion(store, context: RequestContext, conclusion: ImportedConclusion) -> str:
+def persist_imported_conclusion(
+    store, context: RequestContext, conclusion: ImportedConclusion
+) -> str:
     key = str(uuid.uuid4())
     store.put(
         main_conversation_namespace(context),

@@ -1,6 +1,6 @@
 # Auth / Access / Account 操作与边界
 
-更新时间：2026-05-13
+更新时间：2026-05-16
 
 本文是 Focus Agent 当前认证、访问控制和普通账号自助页面的 canonical 文档。管理员用户治理见 [admin-console.md](admin-console.md)，部署侧生产安全配置见 [docker-deployment.md](docker-deployment.md)。
 
@@ -62,13 +62,13 @@ Frontend SDK 对应 `frontend-sdk/src/client/auth.ts` 和 `frontend-sdk/src/type
 
 - `AUTH_ENABLED=true`
 - `AUTH_DEMO_TOKENS_ENABLED=false`
-- `AUTH_JWT_SECRET` 或 `AUTH_JWT_KEYS` 使用非开发密钥
+- `AUTH_JWT_SECRET` 或 `AUTH_JWT_KEYS` 使用非开发密钥，且每个 active secret 至少 32 字符
 - `AUTH_JWT_ISSUER` 与签发方一致
 - 可选设置 `AUTH_JWT_AUDIENCE`
 - `AUTH_ACCESS_TOKEN_TTL_SECONDS` 使用短窗口
 - `RATE_LIMIT_ENABLED=true`
 
-JWT key rotation 支持 `AUTH_JWT_KEY_ID` / `AUTH_JWT_KEYS`、`AUTH_JWT_SECRETS` 或 `AUTH_JWT_JWKS`。只要配置 key set，当前 `kid` 必须匹配 active key；错误 `kid` 不会 fallback 到其他 secret。
+JWT key rotation 支持 `AUTH_JWT_KEY_ID` / `AUTH_JWT_KEYS`、`AUTH_JWT_SECRETS` 或 `AUTH_JWT_JWKS`。只要配置 key set，当前 `kid` 必须匹配 active key；错误 `kid` 不会 fallback 到其他 secret。非 development/local/test/ci 环境会在 `Settings.from_env()` 和 API lifespan 阶段 fail-fast：缺少签名密钥、使用开发默认密钥、active secret 少于 32 字符、关闭 auth、开启 demo token、关闭 rate limit、缺少 issuer 或 TTL 非法都会阻止启动。
 
 ## 6. 推荐验证
 

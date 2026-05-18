@@ -84,9 +84,8 @@ def _metric_mean(results: Iterable[EvalResult], key: str) -> float:
 def _metric_hit_rate(results: list[EvalResult], key: str) -> float:
     if not results:
         return 0.0
-    return (
-        sum(1 for result in results if _metric_number(_result_metrics(result), key) > 0)
-        / len(results)
+    return sum(1 for result in results if _metric_number(_result_metrics(result), key) > 0) / len(
+        results
     )
 
 
@@ -183,7 +182,9 @@ def _flaky_case_ids(results: Iterable[EvalResult]) -> list[str]:
         base_case_id = str(metrics.get("base_case_id") or getattr(result, "case_id", ""))
         if not base_case_id:
             continue
-        model_label = _first_metric_value(metrics, "model_label") or _first_metric_value(metrics, "model")
+        model_label = _first_metric_value(metrics, "model_label") or _first_metric_value(
+            metrics, "model"
+        )
         buckets[(base_case_id, model_label)].append(bool(getattr(result, "passed", False)))
 
     return sorted(
@@ -219,7 +220,9 @@ def _model_matrix(results: Iterable[EvalResult]) -> dict[str, dict[str, Any]]:
     raw: dict[str, dict[str, Any]] = {}
     for result in results:
         metrics = _result_metrics(result)
-        model_label = _first_metric_value(metrics, "model_label") or _first_metric_value(metrics, "model")
+        model_label = _first_metric_value(metrics, "model_label") or _first_metric_value(
+            metrics, "model"
+        )
         if not model_label:
             continue
         model = _first_metric_value(metrics, "model") or model_label
@@ -436,8 +439,7 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
         for tag in getattr(r, "tags", []) or []:
             tag_buckets.setdefault(str(tag), []).append(bool(getattr(r, "passed", False)))
     summary.per_tag_success = {
-        tag: sum(1 for v in passes if v) / len(passes)
-        for tag, passes in tag_buckets.items()
+        tag: sum(1 for v in passes if v) / len(passes) for tag, passes in tag_buckets.items()
     }
     summary.per_capability_success = _success_breakdown(results, "capability")
     summary.per_risk_level_success = _success_breakdown(results, "risk_level")
@@ -447,9 +449,7 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
     return summary
 
 
-def compare_baselines(
-    *, baseline: MetricSummary | None, current: MetricSummary
-) -> dict:
+def compare_baselines(*, baseline: MetricSummary | None, current: MetricSummary) -> dict:
     """Return a delta dict and a list of regression flags for CI gating."""
     delta: dict[str, dict] = {}
     regressions: list[str] = []
@@ -474,12 +474,10 @@ def compare_baselines(
         if base is None:
             continue
         if name == "task_success" and (cur - base) < -0.02:
-            regressions.append(f"task_success dropped {(cur-base)*100:.1f}pp")
+            regressions.append(f"task_success dropped {(cur - base) * 100:.1f}pp")
         if name == "forbidden_tool_violation_rate" and cur > base + 1e-9:
             regressions.append(f"forbidden tool violations grew {base:.3f} -> {cur:.3f}")
         if not higher_better and base > 0 and (cur - base) / base > 0.20:
-            regressions.append(
-                f"{name} grew >20%: {base:.3f} -> {cur:.3f}"
-            )
+            regressions.append(f"{name} grew >20%: {base:.3f} -> {cur:.3f}")
 
     return {"delta": delta, "regressions": regressions}

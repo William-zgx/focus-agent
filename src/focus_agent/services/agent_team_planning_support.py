@@ -4,14 +4,14 @@ import hashlib
 import json
 from typing import Any
 
-from focus_agent.delegation.delegation import AgentDelegationPlan
-from focus_agent.delegation.roles import AgentRole
 from focus_agent.core.agent_team import (
     AgentTeamSession,
     AgentTeamTask,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.delegation.delegation import AgentDelegationPlan
+from focus_agent.delegation.roles import AgentRole
 
 from .agent_team_planning_models import (
     AgentTeamPlanDraft,
@@ -165,9 +165,7 @@ def _adaptive_plan_rationale(
     planning_note: str | None,
 ) -> str:
     if language == "zh":
-        rationale = (
-            f"根据目标语义识别为「{focus}」型 Mission，并从交付物、依赖、合约和证据生成 {task_count} 个 DAG 任务。"
-        )
+        rationale = f"根据目标语义识别为「{focus}」型 Mission，并从交付物、依赖、合约和证据生成 {task_count} 个 DAG 任务。"
         if planning_note:
             rationale += " 已绕过不可用的 delegation 路径，改用自适应规划。"
         return rationale

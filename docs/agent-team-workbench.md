@@ -4,7 +4,7 @@
 
 本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主，需要采纳代码变更时再进入选择性应用流程。
 
-当前已落地的入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend SDK 的 Agent Team client 方法、Postgres/SQLite repository、模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。本文不再作为历史方案草稿保存；新改动应把这里当作当前操作和验证手册维护。
+当前已落地的入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend SDK 的 Agent Team client 方法、Postgres primary repository、本地 in-memory fallback、模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。本文不再作为历史方案草稿保存；新改动应把这里当作当前操作和验证手册维护。
 
 ## 1. 产品目标
 
@@ -357,8 +357,8 @@ POST  /v1/agent-team/sessions/{session_id}/merge            # use /merge-decisio
 
 Agent Team Workbench 已接入 runtime 的主持久化选择：
 
-- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema 初始化表结构；schema v14 额外记录 merge review / review event、feedback event、context/memory evidence 和 skill selection event，用于采纳审查、治理解释和 nightly feedback regression。
-- 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `SQLiteAgentTeamRepository`，作为本地 fallback。
+- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema 初始化表结构；当前 schema v17 覆盖 merge review / review event、feedback event、context/memory evidence、skill selection event、multi-agent coordination、Postgres-backed rate-limit buckets 和 branch decision events，用于采纳审查、治理解释、nightly feedback regression 和多副本部署治理。
+- 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `InMemoryAgentTeamRepository`，作为本地 fallback；harness run journal 仍使用 SQLite 文件保存 run/event 快照。
 - 通过 `make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod` 启动时，如果没有显式 `DATABASE_URI`，启动脚本会托管 repo-local PostgreSQL 并注入 `DATABASE_URI`，因此 Agent Team 也走 Postgres primary persistence。
 
 Postgres 表名固定为：
@@ -373,7 +373,7 @@ focus_agent_team_merge_review_events
 
 Agent Team 主表保留 `data_json JSONB NOT NULL` 作为 Pydantic model 的完整 round-trip 来源；其他列只做查询、排序和索引辅助。schema migration 会在已有数据库上继续创建新表和补齐列，不依赖全新数据库。
 
-当前不会自动把已有 SQLite fallback 数据迁移到 Postgres。需要跨后端迁移时，应通过显式迁移流程处理。
+当前不会自动把已有 local fallback 数据迁移到 Postgres。需要跨后端迁移时，应通过显式迁移流程处理。
 
 ## 6. Frontend / SDK 设计
 

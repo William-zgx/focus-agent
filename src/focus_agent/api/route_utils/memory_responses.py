@@ -194,7 +194,9 @@ def _embedding_metadata_payload(value: object) -> dict[str, object]:
     return {
         "memory_id": payload.get("memory_id"),
         "status": payload.get("embedding_status") or payload.get("status"),
-        "model_id": payload.get("embedding_model_id") or payload.get("model_id") or payload.get("model"),
+        "model_id": payload.get("embedding_model_id")
+        or payload.get("model_id")
+        or payload.get("model"),
         "updated_at": payload.get("embedding_updated_at") or payload.get("updated_at"),
     }
 

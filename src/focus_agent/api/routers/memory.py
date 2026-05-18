@@ -128,7 +128,9 @@ def list_memory(
         "source_thread_id": source_thread_id,
         "source_branch_id": source_branch_id,
     }
-    return MemoryRecordListResponse(items=items, count=len(items), filters=filters, limit=limit, offset=offset)
+    return MemoryRecordListResponse(
+        items=items, count=len(items), filters=filters, limit=limit, offset=offset
+    )
 
 
 @router.get("/v1/memory/audit", response_model=MemoryAuditEventListResponse)
@@ -155,7 +157,11 @@ def list_memory_audit(
             auth=auth,
             runtime=runtime,
         )
-    audit_user_id = None if _has_global_memory_audit_access(auth=auth, runtime=runtime) else auth.principal.user_id
+    audit_user_id = (
+        None
+        if _has_global_memory_audit_access(auth=auth, runtime=runtime)
+        else auth.principal.user_id
+    )
     items = [
         _audit_event_response(item)
         for item in repository.list_audit_events(
@@ -208,13 +214,17 @@ def list_memory_usage(
         runtime=runtime,
     )
     governance_repository = _governance_repository(runtime)
-    user_id = None if _has_global_memory_access(auth=auth, runtime=runtime) else auth.principal.user_id
+    user_id = (
+        None if _has_global_memory_access(auth=auth, runtime=runtime) else auth.principal.user_id
+    )
     evidence_rows = governance_repository.list_context_evidence(
         memory_id=memory_id,
         user_id=user_id,
         limit=limit,
     )
-    items = [_memory_usage_response(memory_id=memory_id, evidence=evidence) for evidence in evidence_rows]
+    items = [
+        _memory_usage_response(memory_id=memory_id, evidence=evidence) for evidence in evidence_rows
+    ]
     return MemoryUsageResponse(memory_id=memory_id, items=items, count=len(items), limit=limit)
 
 
@@ -236,7 +246,11 @@ def list_memory_candidates(
             filters={"status": status_filter, "root_thread_id": root_thread_id},
             limit=limit,
         )
-    candidate_user_id = None if _has_global_memory_audit_access(auth=auth, runtime=runtime) else auth.principal.user_id
+    candidate_user_id = (
+        None
+        if _has_global_memory_audit_access(auth=auth, runtime=runtime)
+        else auth.principal.user_id
+    )
     items = [
         _candidate_response(item)
         for item in repository.list_candidates(

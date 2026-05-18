@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from .branch_actions import ChatBranchActionFacadeMixin
-from .service import ChatService, ChatServicePorts, ConcurrentTurnError, execute_branch_action_navigation
+from .service import (
+    ChatService,
+    ChatServicePorts,
+    ConcurrentTurnError,
+    execute_branch_action_navigation,
+)
 from .threads import (
     ChatThreadAccessMixin,
     effective_thinking_mode,
+    json_safe,
     latest_final_ai_text,
     message_content_to_text,
-    json_safe,
     record_turn_trajectory_best_effort,
     response_payload,
     serialize_message,

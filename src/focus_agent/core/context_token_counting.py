@@ -112,7 +112,7 @@ def estimate_text_token_count(
             counting_backend="tiktoken" if tokenizer_first else "chars_fallback",
             tokenizer_id=str(tokenizer_id or DEFAULT_TOKENIZER_ID) if tokenizer_first else None,
             estimated=False,
-    )
+        )
     if tokenizer_first:
         patched_estimate = _estimate_with_tokenizer(text, tokenizer_id=tokenizer_id)
         if patched_estimate is not None:

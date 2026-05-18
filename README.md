@@ -19,6 +19,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 ## Core Capabilities
 
 - Branch-aware conversations with controlled merge-back
+- AI-assisted branch decisions and pre-turn branch recommendations that produce user-confirmed Branch Action cards
 - Streaming chat APIs and a built-in React web app at `/app`
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
@@ -77,7 +78,7 @@ For the full local startup flow, managed repo-local PostgreSQL behavior, Vite de
 - Full deployment guide: [docs/docker-deployment.md](docs/docker-deployment.md)
 
 ```bash
-export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret-at-least-32-chars
 export OPENAI_API_KEY=replace-me
 docker compose up --build
 ```
@@ -93,6 +94,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Auth / Access](docs/auth-access.md)
 - [Agent Team Workbench](docs/agent-team-workbench.md)
 - [Admin Console](docs/admin-console.md)
+- [Branch Decisions](docs/branch-decisions.md)
 - [Streaming Contract](docs/streaming-contract.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)

@@ -5,11 +5,12 @@ import json
 from collections.abc import Callable
 from html.parser import HTMLParser
 from typing import Any
-from urllib import error as stdlib_urllib_error
 from urllib import parse as stdlib_urllib_parse
-from urllib import request as stdlib_urllib_request
 
+import httpx
 from langchain.tools import tool
+
+from focus_agent.runtime.http_client import shared_sync_http_client
 
 from .common import _collapse_whitespace, _require_non_empty_text_arg
 
@@ -223,9 +224,8 @@ def build_web_tools(
     tool_catalog: Any,
     resolved_env: Any,
     emit_tool_event: Callable[..., None],
-    urllib_request_module: Any = stdlib_urllib_request,
-    urllib_error_module: Any = stdlib_urllib_error,
     urllib_parse_module: Any = stdlib_urllib_parse,
+    http_client: httpx.Client | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     def _validate_web_fetch_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "url")
@@ -233,20 +233,19 @@ def build_web_tools(
     def _validate_web_search_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "query")
 
-    preferred_web_search_provider = str(web_search_config.provider or "auto").strip().lower() or "auto"
+    preferred_web_search_provider = (
+        str(web_search_config.provider or "auto").strip().lower() or "auto"
+    )
     fallback_web_search_provider = (
         str(web_search_config.fallback_provider).strip().lower()
         if web_search_config.fallback_provider
         else None
     )
     tavily_api_key = (
-        (
-            resolved_env.get(web_search_config.api_key_env, "").strip()
-            if web_search_config.api_key_env
-            else ""
-        )
-        or str(web_search_config.api_key_default or "").strip()
-    )
+        resolved_env.get(web_search_config.api_key_env, "").strip()
+        if web_search_config.api_key_env
+        else ""
+    ) or str(web_search_config.api_key_default or "").strip()
     blocked_fetch_domains = tuple(getattr(tool_catalog.web_fetch, "blocked_domains", ()) or ())
     allowed_fetch_domains = tuple(getattr(tool_catalog.web_fetch, "allowed_domains", ()) or ())
 
@@ -269,6 +268,68 @@ def build_web_tools(
             attempt=attempt,
             errors=errors,
         )
+
+    def _http() -> httpx.Client:
+        return http_client or shared_sync_http_client()
+
+    def _tavily_status_error(exc: Exception) -> _WebSearchProviderError | None:
+        if not isinstance(exc, httpx.HTTPStatusError):
+            return None
+        status_code = int(exc.response.status_code)
+        body = exc.response.text
+        if status_code == 429:
+            category = "rate_limited"
+            retryable = True
+        elif status_code == 408:
+            category = "timeout"
+            retryable = False
+        elif 500 <= status_code < 600:
+            category = "provider_error"
+            retryable = True
+        else:
+            category = "provider_error"
+            retryable = False
+        return _make_provider_error(
+            provider="tavily",
+            category=category,
+            message=f"Tavily search failed with HTTP {status_code}: {body[:300]}",
+            retryable=retryable,
+            status_code=status_code,
+        )
+
+    def _tavily_post_raw(payload: dict[str, Any], *, attempt: int) -> str:
+        response = _http().post(
+            "https://api.tavily.com/search",
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {tavily_api_key}",
+            },
+            timeout=30,
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status_error = _tavily_status_error(exc)
+            if status_error is not None:
+                status_error.attempt = attempt
+                raise status_error from exc
+            raise
+        return response.text
+
+    def _fetch_url(
+        url: str,
+        *,
+        max_bytes: int,
+    ) -> tuple[bytes, str, Any, str]:
+        response = _http().get(
+            url,
+            headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        raw = response.content[:max_bytes]
+        return raw, str(response.url), response.headers, response.encoding or "utf-8"
 
     def _record_error(
         errors: list[dict[str, Any]],
@@ -392,54 +453,28 @@ def build_web_tools(
                 message="TAVILY_API_KEY is not configured.",
                 attempt=attempt,
             )
-        payload = json.dumps(
-            {
-                "query": query,
-                "max_results": max_results,
-                "include_answer": True,
-            }
-        ).encode("utf-8")
-        req = urllib_request_module.Request(
-            "https://api.tavily.com/search",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {tavily_api_key}",
-            },
-            method="POST",
-        )
+        payload = {
+            "query": query,
+            "max_results": max_results,
+            "include_answer": True,
+        }
         try:
-            with urllib_request_module.urlopen(req, timeout=30) as response:
-                raw = response.read().decode("utf-8")
-        except urllib_error_module.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            status_code = int(exc.code)
-            if status_code == 429:
-                category = "rate_limited"
-                retryable = True
-            elif status_code == 408:
-                category = "timeout"
-                retryable = False
-            elif 500 <= status_code < 600:
-                category = "provider_error"
-                retryable = True
-            else:
-                category = "provider_error"
-                retryable = False
+            raw = _tavily_post_raw(payload, attempt=attempt)
+        except _WebSearchProviderError:
+            raise
+        except httpx.TimeoutException as exc:
             raise _make_provider_error(
                 provider="tavily",
-                category=category,
-                message=f"Tavily search failed with HTTP {status_code}: {body[:300]}",
-                retryable=retryable,
-                status_code=status_code,
+                category="timeout",
+                message=f"Tavily search failed: {exc}",
+                retryable=True,
                 attempt=attempt,
             ) from exc
-        except urllib_error_module.URLError as exc:
-            category = "timeout" if _is_timeout_exception(exc) else "provider_error"
+        except httpx.HTTPError as exc:
             raise _make_provider_error(
                 provider="tavily",
-                category=category,
-                message=f"Tavily search failed: {exc.reason}",
+                category="provider_error",
+                message=f"Tavily search failed: {exc}",
                 retryable=True,
                 attempt=attempt,
             ) from exc
@@ -714,7 +749,9 @@ def build_web_tools(
             return result
 
         message = _provider_failure_summary(errors)
-        category = str(errors[-1].get("category") or "provider_error") if errors else "provider_error"
+        category = (
+            str(errors[-1].get("category") or "provider_error") if errors else "provider_error"
+        )
         emit_tool_event(
             tool_name=tool_name,
             stage="error",
@@ -792,26 +829,14 @@ def build_web_tools(
                     f"({policy_violation['category']}): {policy_violation['message']}"
                 )
             requested_chars = (
-                tool_catalog.web_fetch.default_max_chars
-                if max_chars is None
-                else int(max_chars)
+                tool_catalog.web_fetch.default_max_chars if max_chars is None else int(max_chars)
             )
             capped_chars = max(1, min(requested_chars, tool_catalog.web_fetch.max_chars_cap))
-            request = urllib_request_module.Request(
+            raw, final_url, headers, charset = _fetch_url(
                 urllib_parse_module.urlunparse(parsed),
-                headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
-                method="GET",
+                max_bytes=min(capped_chars * 4, tool_catalog.web_fetch.max_chars_cap * 4),
             )
-            with urllib_request_module.urlopen(request, timeout=30) as response:
-                raw = response.read(min(capped_chars * 4, tool_catalog.web_fetch.max_chars_cap * 4))
-                final_url = response.geturl() if hasattr(response, "geturl") else urllib_parse_module.urlunparse(parsed)
-                headers = getattr(response, "headers", {}) or {}
-                content_type = headers.get("content-type", "") if hasattr(headers, "get") else ""
-                charset = (
-                    headers.get_content_charset()
-                    if hasattr(headers, "get_content_charset")
-                    else None
-                ) or "utf-8"
+            content_type = headers.get("content-type", "") if hasattr(headers, "get") else ""
             decoded = raw.decode(charset, errors="replace")
             title = ""
             if "html" in content_type.lower() or "<html" in decoded[:500].lower():

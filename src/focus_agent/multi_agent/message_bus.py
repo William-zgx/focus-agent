@@ -36,7 +36,9 @@ class InMemoryAgentMessageBus:
     ) -> str:
         now = time.monotonic()
         resolved_type = AgentMessageType(message_type)
-        expires_at = None if resolved_type == AgentMessageType.DIRECTIVE else now + self.default_ttl_seconds
+        expires_at = (
+            None if resolved_type == AgentMessageType.DIRECTIVE else now + self.default_ttl_seconds
+        )
         message = AgentMessage(
             message_id=uuid4().hex,
             session_id=str(session_id),
@@ -51,7 +53,7 @@ class InMemoryAgentMessageBus:
             self._messages[message.message_id] = message
         return message.message_id
 
-    def subscribe(self, *, session_id: str, agent_id: str) -> "InMemoryMessageStream":
+    def subscribe(self, *, session_id: str, agent_id: str) -> InMemoryMessageStream:
         return InMemoryMessageStream(self, session_id=str(session_id), agent_id=str(agent_id))
 
     def _poll(self, *, session_id: str, agent_id: str) -> list[AgentMessage]:
@@ -163,7 +165,7 @@ class PostgresAgentMessageBus:
                 )
         return message_id
 
-    def subscribe(self, *, session_id: str, agent_id: str) -> "PostgresMessageStream":
+    def subscribe(self, *, session_id: str, agent_id: str) -> PostgresMessageStream:
         return PostgresMessageStream(self, session_id=str(session_id), agent_id=str(agent_id))
 
     def _poll(self, *, session_id: str, agent_id: str) -> list[AgentMessage]:

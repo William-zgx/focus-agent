@@ -144,9 +144,7 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
 
 
 def test_agent_state_domains_cover_existing_wire_fields():
-    registered_fields = {
-        field for fields in STATE_DOMAIN_FIELDS.values() for field in fields
-    }
+    registered_fields = {field for fields in STATE_DOMAIN_FIELDS.values() for field in fields}
 
     assert set(STATE_DOMAIN_FIELDS) == {
         "conversation",
@@ -273,9 +271,9 @@ def test_agent_state_record_accessors_prefer_latest_record_then_legacy_mirror():
         {"enabled": True, "denied_tools": ["new_tool"]},
     ]
     assert normalized["tool_route_plan"]["denied_tools"] == ["new_tool"]
-    assert latest_agent_state_record_payload({"tool_route_plan": {"enabled": False}}, "tool_route_plan") == {
-        "enabled": False
-    }
+    assert latest_agent_state_record_payload(
+        {"tool_route_plan": {"enabled": False}}, "tool_route_plan"
+    ) == {"enabled": False}
 
 
 def test_append_agent_state_record_accepts_request_id_and_actor():

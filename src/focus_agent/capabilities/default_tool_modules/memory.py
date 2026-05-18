@@ -25,11 +25,7 @@ from .common import _require_non_empty_text_arg
 
 
 def _parse_namespace(value: str) -> tuple[str, ...]:
-    parts = [
-        part.strip()
-        for part in re.split(r"[:/,]", value)
-        if part.strip()
-    ]
+    parts = [part.strip() for part in re.split(r"[:/,]", value) if part.strip()]
     if not parts:
         raise ValueError("namespace must not be empty.")
     return tuple(parts)
@@ -66,7 +62,9 @@ def _default_memory_namespaces(
         namespaces.append(conversation_main_namespace(effective_thread_id))
         if branch_id and branch_id.strip():
             namespaces.append(branch_local_memory_namespace(effective_thread_id, branch_id.strip()))
-            namespaces.append(branch_promoted_memory_namespace(effective_thread_id, branch_id.strip()))
+            namespaces.append(
+                branch_promoted_memory_namespace(effective_thread_id, branch_id.strip())
+            )
     return namespaces
 
 
@@ -85,10 +83,14 @@ def _resolve_memory_namespace(
     if scope == MemoryScope.PROJECT:
         return project_memory_namespace((project_id or "default").strip() or "default")
     if scope == MemoryScope.BRANCH and branch_id and branch_id.strip():
-        effective_thread_id = (root_thread_id or get_current_thread_id() or "default").strip() or "default"
+        effective_thread_id = (
+            root_thread_id or get_current_thread_id() or "default"
+        ).strip() or "default"
         return branch_local_memory_namespace(effective_thread_id, branch_id.strip())
     if scope == MemoryScope.ROOT_THREAD:
-        effective_thread_id = (root_thread_id or get_current_thread_id() or "default").strip() or "default"
+        effective_thread_id = (
+            root_thread_id or get_current_thread_id() or "default"
+        ).strip() or "default"
         if kind == MemoryKind.TURN_SUMMARY:
             return root_thread_episodic_namespace(effective_thread_id)
         return conversation_main_namespace(effective_thread_id)
@@ -118,7 +120,10 @@ def authorize_memory_tool_args(
     ):
         supplied = bound_args.get(field_name)
         if supplied is not None and str(supplied).strip() and str(supplied).strip() != expected:
-            return None, f"Memory tool argument {field_name} does not match the active request context."
+            return (
+                None,
+                f"Memory tool argument {field_name} does not match the active request context.",
+            )
         bound_args[field_name] = expected
 
     branch_id = str(getattr(context, "branch_id", "") or "").strip()
@@ -264,8 +269,10 @@ def build_memory_tools(
         importance: float = 0.6,
     ) -> str:
         """Save an explicit durable memory such as a user preference or project fact."""
-        tool_name = 'memory_save'
-        emit_tool_event(tool_name=tool_name, stage='start', kind=kind, scope=scope, namespace=namespace)
+        tool_name = "memory_save"
+        emit_tool_event(
+            tool_name=tool_name, stage="start", kind=kind, scope=scope, namespace=namespace
+        )
         try:
             if store is None and memory_repository is None:
                 raise RuntimeError("Memory store is not configured.")
@@ -322,10 +329,10 @@ def build_memory_tools(
                 "action": action,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc))
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
             raise
 
     @tool
@@ -339,17 +346,17 @@ def build_memory_tools(
         limit: int | None = None,
     ) -> str:
         """Search durable memories by query across the default memory namespaces."""
-        tool_name = 'memory_search'
-        emit_tool_event(tool_name=tool_name, stage='start', query=query, namespace=namespace, limit=limit)
+        tool_name = "memory_search"
+        emit_tool_event(
+            tool_name=tool_name, stage="start", query=query, namespace=namespace, limit=limit
+        )
         try:
             if store is None and memory_repository is None:
                 raise RuntimeError("Memory store is not configured.")
             if not query.strip():
                 raise ValueError("query must not be empty.")
             requested_limit = (
-                tool_catalog.memory_search.default_limit
-                if limit is None
-                else int(limit)
+                tool_catalog.memory_search.default_limit if limit is None else int(limit)
             )
             capped_limit = max(1, min(requested_limit, tool_catalog.memory_search.max_limit))
             search_limit = min(
@@ -402,10 +409,12 @@ def build_memory_tools(
                 "truncated": len(deduped_hits) > capped_limit,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage='end', result_count=len(results), output=result[:800])
+            emit_tool_event(
+                tool_name=tool_name, stage="end", result_count=len(results), output=result[:800]
+            )
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), query=query)
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), query=query)
             raise
 
     @tool
@@ -418,8 +427,10 @@ def build_memory_tools(
         project_id: str | None = None,
     ) -> str:
         """Delete a saved memory by id from an explicit or default memory namespace."""
-        tool_name = 'memory_forget'
-        emit_tool_event(tool_name=tool_name, stage='start', memory_id=memory_id, namespace=namespace)
+        tool_name = "memory_forget"
+        emit_tool_event(
+            tool_name=tool_name, stage="start", memory_id=memory_id, namespace=namespace
+        )
         try:
             if store is None and memory_repository is None:
                 raise RuntimeError("Memory store is not configured.")
@@ -466,10 +477,10 @@ def build_memory_tools(
                 "searched_namespaces": [list(item) for item in namespaces],
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), memory_id=memory_id)
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), memory_id=memory_id)
             raise
 
     return (

@@ -80,8 +80,12 @@ def branch_params(record: BranchRecord) -> dict[str, object]:
         "archived_at": record.archived_at,
         "fork_checkpoint_id": record.fork_checkpoint_id,
         "fork_strategy": record.fork_strategy,
-        "merge_proposal": Jsonb(record.merge_proposal) if record.merge_proposal is not None else None,
-        "merge_decision": Jsonb(record.merge_decision) if record.merge_decision is not None else None,
+        "merge_proposal": Jsonb(record.merge_proposal)
+        if record.merge_proposal is not None
+        else None,
+        "merge_decision": Jsonb(record.merge_decision)
+        if record.merge_decision is not None
+        else None,
     }
 
 
@@ -101,8 +105,12 @@ def branch_row_params(row: dict[str, object]) -> dict[str, object]:
         "archived_at": row.get("archived_at"),
         "fork_checkpoint_id": row.get("fork_checkpoint_id"),
         "fork_strategy": str(row.get("fork_strategy") or "copy_thread"),
-        "merge_proposal": Jsonb(row["merge_proposal"]) if row.get("merge_proposal") is not None else None,
-        "merge_decision": Jsonb(row["merge_decision"]) if row.get("merge_decision") is not None else None,
+        "merge_proposal": Jsonb(row["merge_proposal"])
+        if row.get("merge_proposal") is not None
+        else None,
+        "merge_decision": Jsonb(row["merge_decision"])
+        if row.get("merge_decision") is not None
+        else None,
     }
 
 

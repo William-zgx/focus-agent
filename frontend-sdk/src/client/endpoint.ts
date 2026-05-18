@@ -5,6 +5,10 @@ export interface FocusAgentStreamOptions {
   lastEventId?: string;
 }
 
+export interface FocusAgentStreamReconnectOptions {
+  resumePathForRunId?: (runId: string) => string;
+}
+
 export interface FocusAgentEndpointContext {
   requestJson<T>(path: string, init: RequestInit, auth: boolean): Promise<T>;
   setToken(token: string | undefined): void;
@@ -12,6 +16,7 @@ export interface FocusAgentEndpointContext {
     path: string,
     body: unknown,
     options?: FocusAgentStreamOptions,
+    reconnect?: FocusAgentStreamReconnectOptions,
   ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>>;
 }
 

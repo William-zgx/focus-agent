@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from focus_agent.core.branching import BranchActionProposal
+from focus_agent.core.governance import BranchDecisionSummary
 
 
 class ChatTurnRequest(BaseModel):
@@ -94,9 +95,9 @@ class ThreadStateResponse(BaseModel):
     thread_id: str
     root_thread_id: str
     assistant_message: str | None = None
-    rolling_summary: str = ''
-    selected_model: str = ''
-    selected_thinking_mode: str = ''
+    rolling_summary: str = ""
+    selected_model: str = ""
+    selected_thinking_mode: str = ""
     branch_meta: dict[str, Any] | None = None
     merge_proposal: dict[str, Any] | None = None
     merge_decision: dict[str, Any] | None = None
@@ -105,6 +106,7 @@ class ThreadStateResponse(BaseModel):
     messages: list[dict[str, Any]] = Field(default_factory=list)
     interrupts: list[Any] = Field(default_factory=list)
     branch_actions: list[BranchActionProposal] = Field(default_factory=list)
+    branch_decision_summary: BranchDecisionSummary | None = None
     trace: dict[str, Any] = Field(default_factory=dict)
     context_usage: ContextUsageResponse | None = None
 

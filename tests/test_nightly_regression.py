@@ -425,9 +425,21 @@ def test_nightly_report_auto_discovers_default_candidate_pipeline_and_delta(
             },
         },
     )
-    monkeypatch.setattr(nightly_regression, "DEFAULT_CANDIDATE_JSONL", Path("reports/nightly/memory-context-candidates.jsonl"))
-    monkeypatch.setattr(nightly_regression, "DEFAULT_REVIEWED_JSONL", Path("reports/nightly/memory-context-reviewed.jsonl"))
-    monkeypatch.setattr(nightly_regression, "DEFAULT_PROMOTED_JSONL", Path("reports/nightly/memory-context-promoted.jsonl"))
+    monkeypatch.setattr(
+        nightly_regression,
+        "DEFAULT_CANDIDATE_JSONL",
+        Path("reports/nightly/memory-context-candidates.jsonl"),
+    )
+    monkeypatch.setattr(
+        nightly_regression,
+        "DEFAULT_REVIEWED_JSONL",
+        Path("reports/nightly/memory-context-reviewed.jsonl"),
+    )
+    monkeypatch.setattr(
+        nightly_regression,
+        "DEFAULT_PROMOTED_JSONL",
+        Path("reports/nightly/memory-context-promoted.jsonl"),
+    )
     monkeypatch.setattr(nightly_regression, "REPO_ROOT", tmp_path)
 
     report = nightly_regression.build_nightly_report(

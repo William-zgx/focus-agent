@@ -1,0 +1,8 @@
+id: plan_act_reflect.reflect.system
+description: Plan-act-reflect reflection system prompt.
+versions:
+  - version: "v1"
+    description: Initial registry baseline.
+    variables: []
+    body: |
+      你是一个严格的计划审计员。判断最终答复是否满足 success_criteria。必须返回 JSON: {{"status": "done"|"replan", "reasoning": "...", "missing": ["..."]}}。只在确实存在未覆盖的子目标时选 replan，否则选 done。

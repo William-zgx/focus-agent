@@ -28,11 +28,12 @@ _DEFAULT_METRICS_CACHE_TTL_SECONDS = 15
 _DEFAULT_METRICS_GOVERNANCE_RECENT_LIMIT = 1000
 
 
-@router.get('/healthz')
+@router.get("/healthz")
 def health_check() -> dict[str, str]:
-    return {'status': 'ok'}
+    return {"status": "ok"}
 
-@router.get('/readyz', response_model=RuntimeReadinessResponse)
+
+@router.get("/readyz", response_model=RuntimeReadinessResponse)
 def readiness_check(
     response: Response,
     runtime: AppRuntime = Depends(get_app_runtime),
@@ -42,7 +43,8 @@ def readiness_check(
         response.status_code = 503
     return readiness
 
-@router.get('/metrics', response_class=PlainTextResponse)
+
+@router.get("/metrics", response_class=PlainTextResponse)
 def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextResponse:
     runtime_status = _build_runtime_readiness(runtime)
     repo = _maybe_get_trajectory_repository(runtime)
@@ -62,12 +64,16 @@ def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextR
 def _background_metrics(runtime: AppRuntime) -> dict[str, int]:
     return {
         **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
-        **_snapshot_metrics(getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"),
+        **_snapshot_metrics(
+            getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"
+        ),
     }
 
 
 def _postgres_metrics(runtime: AppRuntime) -> dict[str, int | float]:
-    return _snapshot_metrics(getattr(runtime, "postgres_connection_provider", None), "postgres_metrics_error")
+    return _snapshot_metrics(
+        getattr(runtime, "postgres_connection_provider", None), "postgres_metrics_error"
+    )
 
 
 def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int | float]:
@@ -104,7 +110,9 @@ def _metrics_trajectory_data(*, runtime: AppRuntime, repo: Any | None) -> dict[s
         1,
     )
     cache_ttl_seconds = max(
-        int(getattr(settings, "metrics_cache_ttl_seconds", _DEFAULT_METRICS_CACHE_TTL_SECONDS) or 0),
+        int(
+            getattr(settings, "metrics_cache_ttl_seconds", _DEFAULT_METRICS_CACHE_TTL_SECONDS) or 0
+        ),
         0,
     )
     governance_recent_limit = max(

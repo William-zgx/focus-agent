@@ -5,6 +5,13 @@ from typing import Any
 
 from langchain.messages import AnyMessage
 
+from ..context_budget_guard import (
+    _coerce_context_budget,
+    _coerce_prompt_mode,
+    _conversation_safe_messages,
+)
+from ..state import normalize_agent_state
+from ..types import ContextBudget, PromptMode
 from . import budget as _budget_guard
 from .assembly import (
     _branch_scope_block,
@@ -25,13 +32,6 @@ from .assembly import (
     _render_lines,
     _skill_system_block,
 )
-from ..context_budget_guard import (
-    _coerce_context_budget,
-    _coerce_prompt_mode,
-    _conversation_safe_messages,
-)
-from ..state import normalize_agent_state
-from ..types import ContextBudget, PromptMode
 
 _estimate_with_tokenizer = _budget_guard._estimate_with_tokenizer
 _message_budget_units = _budget_guard._message_budget_units

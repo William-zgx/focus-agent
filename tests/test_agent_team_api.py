@@ -285,9 +285,7 @@ def test_agent_team_api_lists_and_decides_pending_tool_approvals(
     )
 
     view_response = client.get(f"/v1/agent-team/sessions/{session['session_id']}/view")
-    list_response = client.get(
-        f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals"
-    )
+    list_response = client.get(f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals")
     decision_response = client.post(
         f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals/approval-1/approve",
         json={"reason": "Looks bounded."},
@@ -301,9 +299,12 @@ def test_agent_team_api_lists_and_decides_pending_tool_approvals(
     assert decision_response.status_code == 200
     assert decision_response.json()["approval"]["status"] == "approved"
     assert decision_response.json()["approval"]["decided_by"] == "anonymous"
-    assert client.get(
-        f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals"
-    ).json()["count"] == 0
+    assert (
+        client.get(f"/v1/agent-team/sessions/{session['session_id']}/tool-approvals").json()[
+            "count"
+        ]
+        == 0
+    )
 
 
 def test_agent_team_api_task_run_respects_dependencies(

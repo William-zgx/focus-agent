@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeVar
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.repositories.postgres_schema import ensure_app_postgres_schema_on_connection
+from focus_agent.runtime.thread_pool import shared_thread_pool
 
 from ..streaming import StreamEvent
 from .run_journal import (
@@ -25,6 +27,8 @@ from .run_journal import (
     _trajectory_summary,
 )
 
+T = TypeVar("T")
+
 
 class PostgresRunJournal:
     """PostgreSQL-backed harness run journal."""
@@ -39,6 +43,15 @@ class PostgresRunJournal:
 
     def _connect(self):
         return psycopg.connect(self.database_uri, row_factory=dict_row)
+
+    async def _run_db(self, operation: Callable[[Any], T]) -> T:
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(shared_thread_pool(), self._run_db_sync, operation)
+
+    def _run_db_sync(self, operation: Callable[[Any], T]) -> T:
+        with self._connect() as conn:
+            return operation(conn)
 
     async def put(
         self,
@@ -56,45 +69,47 @@ class PostgresRunJournal:
         created_at: str | None = None,
     ) -> None:
         now = created_at or _now_iso()
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        INSERT INTO focus_harness_runs (
-                            run_id, thread_id, assistant_id, user_id, status, on_disconnect,
-                            multitask_strategy, metadata_json, kwargs_json, error, created_at,
-                            updated_at, completion_json
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '{}'::jsonb
-                        )
-                        ON CONFLICT (run_id) DO UPDATE SET
-                            thread_id = EXCLUDED.thread_id,
-                            assistant_id = EXCLUDED.assistant_id,
-                            user_id = EXCLUDED.user_id,
-                            status = EXCLUDED.status,
-                            on_disconnect = EXCLUDED.on_disconnect,
-                            multitask_strategy = EXCLUDED.multitask_strategy,
-                            metadata_json = EXCLUDED.metadata_json,
-                            kwargs_json = EXCLUDED.kwargs_json,
-                            error = EXCLUDED.error,
-                            updated_at = EXCLUDED.updated_at
-                        """,
-                        (
-                            run_id,
-                            thread_id,
-                            assistant_id,
-                            user_id,
-                            status,
-                            on_disconnect,
-                            multitask_strategy,
-                            Jsonb(_copy_json(metadata or {})),
-                            Jsonb(_copy_json(kwargs or {})),
-                            error,
-                            now,
-                            now,
-                        ),
+
+        def operation(conn: Any) -> None:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO focus_harness_runs (
+                        run_id, thread_id, assistant_id, user_id, status, on_disconnect,
+                        multitask_strategy, metadata_json, kwargs_json, error, created_at,
+                        updated_at, completion_json
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '{}'::jsonb
                     )
+                    ON CONFLICT (run_id) DO UPDATE SET
+                        thread_id = EXCLUDED.thread_id,
+                        assistant_id = EXCLUDED.assistant_id,
+                        user_id = EXCLUDED.user_id,
+                        status = EXCLUDED.status,
+                        on_disconnect = EXCLUDED.on_disconnect,
+                        multitask_strategy = EXCLUDED.multitask_strategy,
+                        metadata_json = EXCLUDED.metadata_json,
+                        kwargs_json = EXCLUDED.kwargs_json,
+                        error = EXCLUDED.error,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        run_id,
+                        thread_id,
+                        assistant_id,
+                        user_id,
+                        status,
+                        on_disconnect,
+                        multitask_strategy,
+                        Jsonb(_copy_json(metadata or {})),
+                        Jsonb(_copy_json(kwargs or {})),
+                        error,
+                        now,
+                        now,
+                    ),
+                )
+
+        await self._run_db(operation)
 
     async def update_status(
         self,
@@ -103,66 +118,68 @@ class PostgresRunJournal:
         *,
         error: str | None = None,
     ) -> None:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        UPDATE focus_harness_runs
-                        SET status = %s, error = COALESCE(%s, error), updated_at = %s
-                        WHERE run_id = %s
-                        """,
-                        (status, error, _now_iso(), run_id),
-                    )
+        def operation(conn: Any) -> None:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE focus_harness_runs
+                    SET status = %s, error = COALESCE(%s, error), updated_at = %s
+                    WHERE run_id = %s
+                    """,
+                    (status, error, _now_iso(), run_id),
+                )
+
+        await self._run_db(operation)
 
     async def update_run_completion(self, run_id: str, **kwargs: Any) -> None:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT completion_json FROM focus_harness_runs WHERE run_id = %s",
-                        (run_id,),
-                    )
-                    row = cur.fetchone()
-                    if row is None:
-                        return
-                    completion = _dict_json(row.get("completion_json"))
-                    completion.update(_copy_json(kwargs))
-                    cur.execute(
-                        """
-                        UPDATE focus_harness_runs
-                        SET completion_json = %s, updated_at = %s
-                        WHERE run_id = %s
-                        """,
-                        (Jsonb(completion), _now_iso(), run_id),
-                    )
+        def operation(conn: Any) -> None:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT completion_json FROM focus_harness_runs WHERE run_id = %s",
+                    (run_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return
+                completion = _dict_json(row.get("completion_json"))
+                completion.update(_copy_json(kwargs))
+                cur.execute(
+                    """
+                    UPDATE focus_harness_runs
+                    SET completion_json = %s, updated_at = %s
+                    WHERE run_id = %s
+                    """,
+                    (Jsonb(completion), _now_iso(), run_id),
+                )
+
+        await self._run_db(operation)
 
     async def get_run(self, run_id: str) -> JournalRun | None:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT * FROM focus_harness_runs WHERE run_id = %s", (run_id,))
-                    row = cur.fetchone()
+        def operation(conn: Any) -> dict[str, Any] | None:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM focus_harness_runs WHERE run_id = %s", (run_id,))
+                return cur.fetchone()
+
+        row = await self._run_db(operation)
         return _row_to_run(row) if row is not None else None
 
     async def list_runs(self, *, thread_id: str | None = None) -> list[JournalRun]:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    if thread_id is None:
-                        cur.execute(
-                            "SELECT * FROM focus_harness_runs ORDER BY created_at, run_id"
-                        )
-                    else:
-                        cur.execute(
-                            """
-                            SELECT * FROM focus_harness_runs
-                            WHERE thread_id = %s
-                            ORDER BY created_at, run_id
-                            """,
-                            (thread_id,),
-                        )
-                    rows = cur.fetchall()
+        def operation(conn: Any) -> list[dict[str, Any]]:
+            with conn.cursor() as cur:
+                if thread_id is None:
+                    cur.execute("SELECT * FROM focus_harness_runs ORDER BY created_at, run_id")
+                else:
+                    cur.execute(
+                        """
+                        SELECT * FROM focus_harness_runs
+                        WHERE thread_id = %s
+                        ORDER BY created_at, run_id
+                        """,
+                        (thread_id,),
+                    )
+                return cur.fetchall()
+
+        rows = await self._run_db(operation)
         return [_row_to_run(row) for row in rows]
 
     async def append_event(
@@ -177,75 +194,78 @@ class PostgresRunJournal:
         created_at: str | None = None,
     ) -> JournalEvent:
         payload = _copy_json(data or {})
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    if sequence is None:
-                        cur.execute(
-                            "SELECT pg_advisory_xact_lock(hashtext(%s), 0)",
-                            (run_id,),
-                        )
-                        cur.execute(
-                            """
-                            SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
-                            FROM focus_harness_run_events
-                            WHERE run_id = %s
-                            """,
-                            (run_id,),
-                        )
-                        sequence = int(cur.fetchone()["sequence"])
-                    entry = JournalEvent(
-                        event_id=event_id or _event_id(),
-                        run_id=run_id,
-                        event=event,
-                        data=payload,
-                        sequence=sequence,
-                        stream_event_id=stream_event_id,
-                        created_at=created_at or _now_iso(),
+
+        def operation(conn: Any) -> JournalEvent:
+            with conn.cursor() as cur:
+                effective_sequence = sequence
+                if effective_sequence is None:
+                    cur.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s), 0)",
+                        (run_id,),
                     )
                     cur.execute(
                         """
-                        INSERT INTO focus_harness_run_events (
-                            event_id, run_id, event, data_json, sequence,
-                            stream_event_id, created_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
+                        FROM focus_harness_run_events
+                        WHERE run_id = %s
+                        """,
+                        (run_id,),
+                    )
+                    effective_sequence = int(cur.fetchone()["sequence"])
+                entry = JournalEvent(
+                    event_id=event_id or _event_id(),
+                    run_id=run_id,
+                    event=event,
+                    data=payload,
+                    sequence=effective_sequence,
+                    stream_event_id=stream_event_id,
+                    created_at=created_at or _now_iso(),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO focus_harness_run_events (
+                        event_id, run_id, event, data_json, sequence,
+                        stream_event_id, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        entry.event_id,
+                        entry.run_id,
+                        entry.event,
+                        Jsonb(entry.data),
+                        entry.sequence,
+                        entry.stream_event_id,
+                        entry.created_at,
+                    ),
+                )
+                tool_event = _tool_event_from_journal_event(entry)
+                if tool_event is not None:
+                    cur.execute(
+                        """
+                        INSERT INTO focus_harness_tool_events (
+                            event_id, run_id, tool_call_id, tool_name, status, sequence,
+                            args_json, result_json, error, duration_ms, metadata_json,
+                            created_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
-                            entry.event_id,
-                            entry.run_id,
-                            entry.event,
-                            Jsonb(entry.data),
-                            entry.sequence,
-                            entry.stream_event_id,
-                            entry.created_at,
+                            tool_event.event_id,
+                            tool_event.run_id,
+                            tool_event.tool_call_id,
+                            tool_event.tool_name,
+                            tool_event.status,
+                            tool_event.sequence,
+                            Jsonb(tool_event.args),
+                            Jsonb(_copy_json(tool_event.result)),
+                            tool_event.error,
+                            tool_event.duration_ms,
+                            Jsonb(tool_event.metadata),
+                            tool_event.created_at,
                         ),
                     )
-                    tool_event = _tool_event_from_journal_event(entry)
-                    if tool_event is not None:
-                        cur.execute(
-                            """
-                            INSERT INTO focus_harness_tool_events (
-                                event_id, run_id, tool_call_id, tool_name, status, sequence,
-                                args_json, result_json, error, duration_ms, metadata_json,
-                                created_at
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (
-                                tool_event.event_id,
-                                tool_event.run_id,
-                                tool_event.tool_call_id,
-                                tool_event.tool_name,
-                                tool_event.status,
-                                tool_event.sequence,
-                                Jsonb(tool_event.args),
-                                Jsonb(_copy_json(tool_event.result)),
-                                tool_event.error,
-                                tool_event.duration_ms,
-                                Jsonb(tool_event.metadata),
-                                tool_event.created_at,
-                            ),
-                        )
-        return entry
+                return entry
+
+        return await self._run_db(operation)
 
     async def append_stream_event(self, run_id: str, event: StreamEvent) -> JournalEvent:
         return await self.append_event(
@@ -262,49 +282,51 @@ class PostgresRunJournal:
         event: str | None = None,
         limit: int | None = None,
     ) -> list[JournalEvent]:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    if event is None:
-                        cur.execute(
-                            """
-                            SELECT * FROM focus_harness_run_events
-                            WHERE run_id = %s
-                            ORDER BY sequence, created_at
-                            """,
-                            (run_id,),
-                        )
-                    else:
-                        cur.execute(
-                            """
-                            SELECT * FROM focus_harness_run_events
-                            WHERE run_id = %s AND event = %s
-                            ORDER BY sequence, created_at
-                            """,
-                            (run_id, event),
-                        )
-                    rows = cur.fetchall()
+        def operation(conn: Any) -> list[dict[str, Any]]:
+            with conn.cursor() as cur:
+                if event is None:
+                    cur.execute(
+                        """
+                        SELECT * FROM focus_harness_run_events
+                        WHERE run_id = %s
+                        ORDER BY sequence, created_at
+                        """,
+                        (run_id,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT * FROM focus_harness_run_events
+                        WHERE run_id = %s AND event = %s
+                        ORDER BY sequence, created_at
+                        """,
+                        (run_id, event),
+                    )
+                return cur.fetchall()
+
+        rows = await self._run_db(operation)
         return _limit([_row_to_event(row) for row in rows], limit)
 
     async def count_events(self, run_id: str, *, event: str | None = None) -> int:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    if event is None:
-                        cur.execute(
-                            "SELECT COUNT(*) AS count FROM focus_harness_run_events WHERE run_id = %s",
-                            (run_id,),
-                        )
-                    else:
-                        cur.execute(
-                            """
-                            SELECT COUNT(*) AS count
-                            FROM focus_harness_run_events
-                            WHERE run_id = %s AND event = %s
-                            """,
-                            (run_id, event),
-                        )
-                    row = cur.fetchone()
+        def operation(conn: Any) -> dict[str, Any]:
+            with conn.cursor() as cur:
+                if event is None:
+                    cur.execute(
+                        "SELECT COUNT(*) AS count FROM focus_harness_run_events WHERE run_id = %s",
+                        (run_id,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT COUNT(*) AS count
+                        FROM focus_harness_run_events
+                        WHERE run_id = %s AND event = %s
+                        """,
+                        (run_id, event),
+                    )
+                return cur.fetchone()
+
+        row = await self._run_db(operation)
         return int(row["count"])
 
     async def list_tool_events(
@@ -314,28 +336,29 @@ class PostgresRunJournal:
         tool_name: str | None = None,
         limit: int | None = None,
     ) -> list[JournalToolEvent]:
-        async with self._lock:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    if tool_name is None:
-                        cur.execute(
-                            """
-                            SELECT * FROM focus_harness_tool_events
-                            WHERE run_id = %s
-                            ORDER BY sequence, created_at
-                            """,
-                            (run_id,),
-                        )
-                    else:
-                        cur.execute(
-                            """
-                            SELECT * FROM focus_harness_tool_events
-                            WHERE run_id = %s AND tool_name = %s
-                            ORDER BY sequence, created_at
-                            """,
-                            (run_id, tool_name),
-                        )
-                    rows = cur.fetchall()
+        def operation(conn: Any) -> list[dict[str, Any]]:
+            with conn.cursor() as cur:
+                if tool_name is None:
+                    cur.execute(
+                        """
+                        SELECT * FROM focus_harness_tool_events
+                        WHERE run_id = %s
+                        ORDER BY sequence, created_at
+                        """,
+                        (run_id,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT * FROM focus_harness_tool_events
+                        WHERE run_id = %s AND tool_name = %s
+                        ORDER BY sequence, created_at
+                        """,
+                        (run_id, tool_name),
+                    )
+                return cur.fetchall()
+
+        rows = await self._run_db(operation)
         return _limit([_row_to_tool_event(row) for row in rows], limit)
 
     async def count_tool_events(self, run_id: str, *, tool_name: str | None = None) -> int:

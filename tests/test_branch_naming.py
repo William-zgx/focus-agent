@@ -18,7 +18,11 @@ def test_initial_branch_name_defaults_to_new_branch_without_model_invoke():
     branch_name = service._resolve_initial_branch_name(
         preferred_name=None,
         parent_values={
-            "messages": [HumanMessage(content="Please investigate why tool calls keep retrying on the import flow.")],
+            "messages": [
+                HumanMessage(
+                    content="Please investigate why tool calls keep retrying on the import flow."
+                )
+            ],
             "rolling_summary": "",
         },
         name_source="Focus on the import retry bug",
@@ -213,7 +217,9 @@ def test_branch_name_model_failure_logs_and_falls_back(caplog):
     with caplog.at_level(logging.WARNING, logger="focus_agent.branches"):
         branch_name = service._generate_branch_name(
             thread_values={
-                "messages": [HumanMessage(content="Please investigate merge review failure handling.")],
+                "messages": [
+                    HumanMessage(content="Please investigate merge review failure handling.")
+                ],
                 "rolling_summary": "",
             },
             branch_role=BranchRole.DEEP_DIVE,

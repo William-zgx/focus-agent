@@ -237,9 +237,7 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
             ).fetchall()
         return [self._task_from_row(row) for row in rows]
 
-    def claim_task(
-        self, *, task_id: str, owner: str, ttl_seconds: float
-    ) -> AgentTeamTask | None:
+    def claim_task(self, *, task_id: str, owner: str, ttl_seconds: float) -> AgentTeamTask | None:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
@@ -283,9 +281,7 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
             conn.commit()
             return updated
 
-    def heartbeat_task_claim(
-        self, *, task_id: str, claim_token: str, ttl_seconds: float
-    ) -> bool:
+    def heartbeat_task_claim(self, *, task_id: str, claim_token: str, ttl_seconds: float) -> bool:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
@@ -297,9 +293,8 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                 raise KeyError(f"Unknown agent team task: {task_id}")
             task = self._task_from_row(row)
             now = _now()
-            if (
-                task.claim_token != claim_token
-                or (task.claimed_until and _parse_time(task.claimed_until) <= now)
+            if task.claim_token != claim_token or (
+                task.claimed_until and _parse_time(task.claimed_until) <= now
             ):
                 conn.rollback()
                 return False
@@ -338,9 +333,8 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                 raise KeyError(f"Unknown agent team task: {task_id}")
             task = self._task_from_row(row)
             now_dt = _now()
-            if (
-                task.claim_token != claim_token
-                or (task.claimed_until and _parse_time(task.claimed_until) <= now_dt)
+            if task.claim_token != claim_token or (
+                task.claimed_until and _parse_time(task.claimed_until) <= now_dt
             ):
                 conn.rollback()
                 return task

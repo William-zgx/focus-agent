@@ -148,7 +148,11 @@ def _tag_success(artifacts: Sequence[dict[str, Any]], tags: Sequence[str]) -> di
     matched: dict[str, float] = {}
     for artifact in artifacts:
         summary = artifact.get("summary") if isinstance(artifact.get("summary"), dict) else {}
-        per_tag = summary.get("per_tag_success") if isinstance(summary.get("per_tag_success"), dict) else {}
+        per_tag = (
+            summary.get("per_tag_success")
+            if isinstance(summary.get("per_tag_success"), dict)
+            else {}
+        )
         for tag in tags:
             if tag in per_tag:
                 matched[tag] = float(per_tag[tag])
@@ -168,11 +172,18 @@ def _cost_quality(artifacts: Sequence[dict[str, Any]]) -> dict[str, Any]:
         if artifact.get("status") != "missing" and isinstance(artifact.get("summary"), dict)
     ]
     if not present:
-        return {"status": "missing", "avg_cost_usd": 0.0, "avg_input_tokens": 0.0, "avg_output_tokens": 0.0}
+        return {
+            "status": "missing",
+            "avg_cost_usd": 0.0,
+            "avg_input_tokens": 0.0,
+            "avg_output_tokens": 0.0,
+        }
     total_cases = sum(int(summary.get("total") or 0) for summary in present) or len(present)
 
     def weighted(name: str) -> float:
-        numerator = sum(float(summary.get(name) or 0.0) * int(summary.get("total") or 1) for summary in present)
+        numerator = sum(
+            float(summary.get(name) or 0.0) * int(summary.get("total") or 1) for summary in present
+        )
         return round(numerator / total_cases, 5 if name == "avg_cost_usd" else 1)
 
     return {
@@ -312,9 +323,19 @@ def _min_threshold_signal(
     if value is None:
         return {**payload, "status": "warn", "severity": "warning", "reason": "metric missing"}
     if value < blocking_threshold:
-        return {**payload, "status": "block", "severity": "blocking", "reason": "below blocking minimum"}
+        return {
+            **payload,
+            "status": "block",
+            "severity": "blocking",
+            "reason": "below blocking minimum",
+        }
     if value < warning_threshold:
-        return {**payload, "status": "warn", "severity": "warning", "reason": "below warning minimum"}
+        return {
+            **payload,
+            "status": "warn",
+            "severity": "warning",
+            "reason": "below warning minimum",
+        }
     return {**payload, "status": "pass", "severity": "none", "reason": "within threshold"}
 
 
@@ -341,9 +362,19 @@ def _max_threshold_signal(
     if value is None:
         return {**payload, "status": "warn", "severity": "warning", "reason": "metric missing"}
     if value > blocking_threshold:
-        return {**payload, "status": "block", "severity": "blocking", "reason": "above blocking maximum"}
+        return {
+            **payload,
+            "status": "block",
+            "severity": "blocking",
+            "reason": "above blocking maximum",
+        }
     if value > warning_threshold:
-        return {**payload, "status": "warn", "severity": "warning", "reason": "above warning maximum"}
+        return {
+            **payload,
+            "status": "warn",
+            "severity": "warning",
+            "reason": "above warning maximum",
+        }
     return {**payload, "status": "pass", "severity": "none", "reason": "within threshold"}
 
 
@@ -375,9 +406,21 @@ def _base_signal(
 def _budget_signal(cost: dict[str, Any], *, thresholds: GovernanceThresholds) -> dict[str, Any]:
     budget_thresholds = {
         "avg_cost_usd": (thresholds.avg_cost_usd_warn, thresholds.avg_cost_usd_block, "usd"),
-        "avg_input_tokens": (thresholds.avg_input_tokens_warn, thresholds.avg_input_tokens_block, "tokens"),
-        "avg_output_tokens": (thresholds.avg_output_tokens_warn, thresholds.avg_output_tokens_block, "tokens"),
-        "avg_tool_calls": (thresholds.avg_tool_calls_warn, thresholds.avg_tool_calls_block, "calls"),
+        "avg_input_tokens": (
+            thresholds.avg_input_tokens_warn,
+            thresholds.avg_input_tokens_block,
+            "tokens",
+        ),
+        "avg_output_tokens": (
+            thresholds.avg_output_tokens_warn,
+            thresholds.avg_output_tokens_block,
+            "tokens",
+        ),
+        "avg_tool_calls": (
+            thresholds.avg_tool_calls_warn,
+            thresholds.avg_tool_calls_block,
+            "calls",
+        ),
     }
     checks: list[dict[str, Any]] = []
     has_blocking = False
@@ -401,7 +444,11 @@ def _budget_signal(cost: dict[str, Any], *, thresholds: GovernanceThresholds) ->
         "summary": "cost, token, and tool-call budget",
         "status": status,
         "severity": "blocking" if has_blocking else "warning" if has_warning else "none",
-        "reason": "budget violation" if has_blocking else "budget warning" if has_warning else "within threshold",
+        "reason": "budget violation"
+        if has_blocking
+        else "budget warning"
+        if has_warning
+        else "within threshold",
         "details": {"checks": checks},
     }
 
@@ -425,7 +472,9 @@ def build_governance_report(
     missing = [artifact["path"] for artifact in artifacts if artifact.get("status") == "missing"]
     failed = [artifact["label"] for artifact in artifacts if artifact.get("status") == "failed"]
     quality = {
-        "delegation": _tag_success(artifacts, ("agent_delegation", "agent_task_ledger", "agent_team")),
+        "delegation": _tag_success(
+            artifacts, ("agent_delegation", "agent_task_ledger", "agent_team")
+        ),
         "critic": _tag_success(artifacts, ("critic", "critic_gate", "reviewer")),
         "review": _tag_success(artifacts, ("review_queue", "merge_review", "memory_curator")),
         "cost": _cost_quality(artifacts),
@@ -495,7 +544,9 @@ def write_governance_report(path: str | Path, **kwargs: Any) -> Path:
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = build_governance_report(**kwargs)
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
@@ -543,7 +594,9 @@ def _thresholds_from_args(args: argparse.Namespace) -> GovernanceThresholds:
         else defaults.critic_precision_block,
         critic_precision_warn=max(
             defaults.critic_precision_warn,
-            critic_precision_block if critic_precision_block is not None else defaults.critic_precision_warn,
+            critic_precision_block
+            if critic_precision_block is not None
+            else defaults.critic_precision_warn,
         ),
         critic_recall_block=critic_recall_block
         if critic_recall_block is not None
@@ -591,7 +644,9 @@ def _thresholds_from_args(args: argparse.Namespace) -> GovernanceThresholds:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        eval_reports = [_split_eval_report(value) for value in args.eval_report] or DEFAULT_EVAL_REPORTS
+        eval_reports = [
+            _split_eval_report(value) for value in args.eval_report
+        ] or DEFAULT_EVAL_REPORTS
         target = write_governance_report(
             args.report_json,
             eval_reports=eval_reports,

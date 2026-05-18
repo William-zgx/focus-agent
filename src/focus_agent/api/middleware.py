@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from focus_agent.api.errors import _build_envelope
 from focus_agent.config import Settings
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.security.tokens import AuthError, decode_access_token
@@ -103,20 +104,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limit = self._resolve_limit(request.url.path)
         identity = self._identity(request)
         bucket_key = f"{identity}:{request.url.path}"
-        result = self._rate_limit_backend(request).check(key=bucket_key, limit=limit, window_seconds=60.0)
+        result = self._rate_limit_backend(request).check(
+            key=bucket_key, limit=limit, window_seconds=60.0
+        )
         if not result.allowed:
             retry_after = max(1, int(round(result.retry_after_seconds)))
+            details = {
+                "retry_after_seconds": retry_after,
+                "limit_per_minute": limit,
+            }
             return JSONResponse(
                 status_code=429,
-                content={
-                    "code": 429,
-                    "message": "Rate limit exceeded. Retry later.",
-                    "data": {
-                        "retry_after_seconds": retry_after,
-                        "limit_per_minute": limit,
-                    },
-                    "request_id": getattr(request.state, "request_id", None),
-                },
+                content=_build_envelope(
+                    code=429,
+                    message="Rate limit exceeded. Retry later.",
+                    request_id=getattr(request.state, "request_id", None),
+                    data=details,
+                    retryable=True,
+                ),
                 headers={"Retry-After": str(retry_after)},
             )
         response = await call_next(request)

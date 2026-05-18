@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence as CollectionsSequence
 from collections.abc import Sequence
+from collections.abc import Sequence as CollectionsSequence
 from datetime import UTC, datetime
 
 from ...memory.dedupe import memory_fingerprint, memory_semantic_key
@@ -125,7 +125,9 @@ def _legacy_memory_visibility(
         return explicit
 
     payload_type = _legacy_payload_text(payload.get("type"))
-    if payload_type == "promoted_branch_finding" or _legacy_payload_bool(payload.get("promoted_to_main")):
+    if payload_type == "promoted_branch_finding" or _legacy_payload_bool(
+        payload.get("promoted_to_main")
+    ):
         return MemoryVisibility.SHARED
     if kind == MemoryKind.IMPORTED_CONCLUSION:
         return MemoryVisibility.SHARED
@@ -220,7 +222,8 @@ def _focus_memory_record_from_store_item(
         source_branch_id=source_branch_id,
         root_thread_id=_legacy_payload_text(item.value.get("root_thread_id"))
         or _namespace_root_thread_id(item.namespace),
-        user_id=_legacy_payload_text(item.value.get("user_id")) or _namespace_user_id(item.namespace),
+        user_id=_legacy_payload_text(item.value.get("user_id"))
+        or _namespace_user_id(item.namespace),
         confidence=_legacy_payload_float(item.value.get("confidence")),
         importance=_legacy_payload_float(item.value.get("importance"), default=0.5) or 0.5,
         promoted_to_main=(

@@ -129,12 +129,17 @@ def _skill_selection_event_for_response(
         explicit_hints=_normalize_string_list(payload.skill_hints),
         activated_skill_ids=_normalize_string_list(response.skill_ids),
         matched_triggers=_normalize_string_list(response.matched_triggers),
-        semantic_candidates=[candidate.model_dump(mode="json") for candidate in response.semantic_candidates],
+        semantic_candidates=[
+            candidate.model_dump(mode="json") for candidate in response.semantic_candidates
+        ],
         confidence=response.confidence,
         rationale=response.rationale,
         semantic_enabled=response.semantic_enabled,
         semantic_threshold=response.semantic_threshold,
-        metadata={"stripped_message": response.stripped_message, "prompt_mode": response.prompt_mode},
+        metadata={
+            "stripped_message": response.stripped_message,
+            "prompt_mode": response.prompt_mode,
+        },
     )
 
 
@@ -188,7 +193,9 @@ def _agent_skill_selection_feedback_response(
     repository = _governance_repository(runtime)
     existing = repository.get_skill_selection_event(selection_id)
     if existing is None or existing.user_id not in {None, principal.user_id}:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found."
+        )
     updated = repository.update_skill_selection_feedback(
         selection_id=selection_id,
         feedback=payload.feedback,
@@ -196,7 +203,9 @@ def _agent_skill_selection_feedback_response(
         user_override=dict(payload.user_override),
     )
     if updated is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found."
+        )
     feedback_event = FeedbackEvent(
         user_id=principal.user_id,
         source_kind="skill_selection",
@@ -219,8 +228,7 @@ def _agent_skill_catalog_response(
 ) -> AgentSkillCatalogResponse:
     repository = _governance_repository(runtime)
     preferences = {
-        item.skill_id: item
-        for item in repository.list_skill_preferences(user_id=principal.user_id)
+        item.skill_id: item for item in repository.list_skill_preferences(user_id=principal.user_id)
     }
     items = []
     for skill in runtime.skill_registry.list_skills():

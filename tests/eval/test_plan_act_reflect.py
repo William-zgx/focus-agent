@@ -102,7 +102,7 @@ def test_parse_plan_json_ok():
 
 
 def test_parse_plan_json_tolerates_fences():
-    raw = "```json\n{\"steps\":[{\"id\":\"s1\",\"goal\":\"g\"}]}\n```"
+    raw = '```json\n{"steps":[{"id":"s1","goal":"g"}]}\n```'
     assert _parse_plan_json(raw, created_at_call=0, replan_count=0) is not None
 
 
@@ -183,7 +183,9 @@ def _plan_replan_then_done_script(messages, allow_tools):  # noqa: ARG001
         _replan_script_state["phase"] += 10
         # first reflect -> replan; second -> done
         if _replan_script_state["phase"] < 20:
-            return AIMessage(content='{"status": "replan", "reasoning": "missing act", "missing": ["act"]}')
+            return AIMessage(
+                content='{"status": "replan", "reasoning": "missing act", "missing": ["act"]}'
+            )
         return AIMessage(content='{"status": "done", "reasoning": "ok"}')
     # act: first pass answers vaguely, second adds both keywords
     if _replan_script_state["phase"] < 12:
@@ -224,7 +226,9 @@ def _replan_parse_fail_falls_back_script(messages, allow_tools):  # noqa: ARG001
         return AIMessage(content="not json")
     if _is_reflect_call(messages):
         _replan_fallback_state["reflect_calls"] += 1
-        return AIMessage(content='{"status": "replan", "reasoning": "missing act", "missing": ["act"]}')
+        return AIMessage(
+            content='{"status": "replan", "reasoning": "missing act", "missing": ["act"]}'
+        )
     _replan_fallback_state["act_calls"] += 1
     if _replan_fallback_state["act_calls"] == 1:
         return AIMessage(content="这是一种推理方法。")

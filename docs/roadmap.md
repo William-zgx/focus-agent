@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-05-14
+更新时间：2026-05-16
 
 这份文档只回答两个问题：
 
@@ -23,15 +23,16 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-05-13，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-05-16，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
 - `frontend-sdk` 已覆盖 conversation、branch tree、branch action、merge review、Agent Team、Admin、agent governance、observability 等核心 typed client 能力
 - merged branch 在前后端都被视为只读，合并后不能继续追加 turn 或继续 fork
 - 聊天里的分支意图已通过 Branch Action 结构化收口：模型只能生成可确认 proposal，用户确认后才执行 fork/open/return，成功返回 navigation 并刷新分支树，失败回写 action error 与 audit event
+- Branch Decision / Recommendation 已进入可验证基线：post-turn decision 可记录 split/conclude/merge-candidate 证据；pre-turn recommendation 可在 `suggest` 模式下生成用户确认的 child/sibling Branch Action，但不会静默 fork
 - 当前上下文窗口已经独立于累计 `token_usage`：发送栏展示 `context_usage`，支持草稿预览、手动压缩、发送前自动压缩和回合后后台压缩，默认预算为 128k
 - Agent Team Mission Runner 已从 legacy dispatch 升级为目标驱动的动态 Mission DAG：支持 standalone session、可选来源对话、模型优先规划、fallback contract defaults、task retry/cancel、执行证据汇总、Cockpit UI 和 `final_answer` synthesis
-- Agent Team Adoption / Governance Suite 已进入建设期：多 worktree 结果采纳、Notes/Tasks capture、Context/Memory evidence、Skill selection events 和 feedback regression 统一进入 schema v14 与 nightly 证据链
+- Agent Team Adoption / Governance Suite 已进入建设期：多 worktree 结果采纳、Notes/Tasks capture、Context/Memory evidence、Skill selection events、multi-agent coordination、Postgres-backed rate limit、branch decision events 和 feedback regression 统一进入 schema v17 与 nightly 证据链
 - Admin Console 已落地：`/app/admin/users` 管理用户、状态、角色、会话和密码，`/app/admin/audit-events` 浏览管理员审计事件；admin 权限来自持久化用户角色，不来自 token scope
 - 第一轮工程化加固已落地：CORS、限流、请求 ID、统一错误信封、前端 bundle 分割
 - 本机启动链已统一到 `make api` / `make dev` / `make serve-dev` / `make serve-prod`，在 `DATABASE_URI` 未显式设置时会自动管理 repo-local PostgreSQL
@@ -49,7 +50,7 @@ flowchart LR
 
 1. **核心语义收口**
    - merge review / conclusion policy 继续做一致性和审计补强
-   - Branch Action 已修复“文本声称切换但页面未进入新分支”的断层，后续重点是覆盖更多 open-existing / return-parent 语义和更友好的分支名展示
+   - Branch Action 已修复“文本声称切换但页面未进入新分支”的断层；pre-turn recommendation 已接入 v2 harness stream/non-stream，后续重点是覆盖更多 open-existing / return-parent 语义、更友好的分支名展示和更多真实浏览器回归
    - README、SDK 类型、前端文案、服务端 contract 持续对齐
 2. **存储与运维收口**
    - Postgres 主持久化已覆盖 conversation / branch / checkpoint / store 的主读写路径；trajectory 查询、导出、review console 已落地，迁移验证报告已可接入 release-health，下一步重点是把报告绑定到真实 CI/CD 和长期运维演练
@@ -77,7 +78,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 | Eval / Regression | 已有 `tests/eval/` 基线，支持 baseline 对比、trajectory replay/promotion、memory/context trend、feedback regression 与 contract drift 检查 | `tests/eval/` `scripts/check_contracts.py` `scripts/memory_context_eval.py` `scripts/feedback_regression.py` | 扩 golden cases、补失败 trajectory 回放样本、接入长期 trend storage |
 | Observability | trajectory 写入、request/trace correlation、查询/导出 CLI、单条 replay/promotion、批量 promote-preview/replay-compare、`/readyz`、`/metrics`、overview route、三栏 trajectory workbench、`timeline` / `zero_step` / `missing_detail` 证据态、executable alert report、release-health 发布阻断信号，以及浏览器 smoke 发布口径已落地；release health 已按 alerts/context/governance/otel/postgres/runtime/trajectory 模块拆分 | `src/focus_agent/observability/trajectory.py` `src/focus_agent/observability/tracing.py` `src/focus_agent/observability/release_health.py` `apps/web/src/pages/observability/trajectory-page.tsx` | OpenTelemetry 部署联通、告警落盘、长时浏览器回归 |
 | Agent Governance | role routing、Memory Curator、Tool Router、Delegation Runtime、Model Router、Self Repair、Review Queue、Task Ledger、Delegated Artifact Synthesis、observe-first autonomy 契约与 eval gate 已补 | [agent-role-routing.md](agent-role-routing.md) `tests/eval/datasets/agent_delegation.jsonl` `tests/eval/datasets/agent_task_ledger.jsonl` `/app/agent/governance` | 继续提升真实子任务执行质量、成本画像、critic gate 质量和人工 review 队列体验 |
-| Autonomy | 技能自选、分支建议、风险感知式工作流已采用 observe-first 边界 | `/app/agent/governance` [agent-role-routing.md](agent-role-routing.md) | 接入更多证据源和人工确认工作流，不默认自动执行高风险动作 |
+| Autonomy | 技能自选、分支决策/推荐、风险感知式工作流已采用 observe-first 或 user-confirmed 边界 | `/app/agent/governance` [agent-role-routing.md](agent-role-routing.md) [branch-decisions.md](branch-decisions.md) | 接入更多证据源和人工确认工作流，不默认自动执行高风险动作 |
 
 ## 3. 当前进展判断
 
@@ -86,6 +87,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - 前端主入口切换与 `/app` 托管
 - 基础分支能力与 merged-branch 只读约束
 - Branch Action：聊天分支意图的 proposal / confirm / execute / dismiss / failed / navigation / audit 闭环
+- Branch Decision / Recommendation：post-turn decision 证据、pre-turn child/sibling recommendation、pending Branch Action 卡片、confirm/dismiss/retry/cancel 保护和 Postgres idempotency
 - 第一轮安全与工程化加固
 - repo-local PostgreSQL 启动链
 - 本地 Docker / 生产模板分层
@@ -122,7 +124,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - Auth / Access Model：生产安全启动基线已强制检查 `AUTH_ENABLED`、JWT secret/key set、JWT issuer、token TTL、demo token 与 rate limit；JWT 已支持 `kid`、active key set 和 rotation overlap，配置 key set 时 current `kid` 必须匹配 active key，`tenant_id` / `scope` 仍不能绕过 ownership；[auth-access.md](auth-access.md) 已收口登录、注册、账号自助和 token/session 边界，Admin Console 已把持久化用户角色、最后 active admin 保护、reasoned admin actions 和 audit events 纳入默认治理面
 - 文档与 contract 对齐：README、SDK、Web UI 文案、部署说明、CI artifact/approval 示例
 - eval 数据集扩充与 nightly 回归报表覆盖面
-- branch / merge / memory 之间的语义一致性
+- branch / branch decision / merge / memory 之间的语义一致性
 
 ### 后续仍需真实环境落地
 
@@ -177,6 +179,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - [auth-access.md](auth-access.md)：描述登录、注册、账号自助、token/session、ownership 和生产鉴权边界
 - [agent-team-workbench.md](agent-team-workbench.md)：描述 Agent Team Mission Runner、动态 DAG、Cockpit UI、任务契约和验收口径
 - [admin-console.md](admin-console.md)：描述管理员用户、角色、会话、密码、审计事件和权限边界
+- [branch-decisions.md](branch-decisions.md)：描述 branch decision event、发送前推荐、Branch Action 确认卡、配置、API/SDK 和验证口径
 - [docker-deployment.md](docker-deployment.md)：描述本机启动、本地 Docker、生产模板和迁移方式
 - 本文：保留统一的路线图视角，只维护“现状 + 下一步”
 

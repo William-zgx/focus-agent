@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
-from langchain.messages import AIMessage, AIMessageChunk
+from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.types import Command
 
 import focus_agent.api.routers.harness_runs as harness_runs
@@ -110,7 +112,9 @@ def test_create_run_record_persists_user_id():
 def test_create_run_record_rejects_enqueue_with_422():
     class _RunManager:
         async def create_or_reject(self, *args, **kwargs):
-            raise harness_runs.UnsupportedStrategyError("Multitask strategy 'enqueue' is not supported yet.")
+            raise harness_runs.UnsupportedStrategyError(
+                "Multitask strategy 'enqueue' is not supported yet."
+            )
 
     async def scenario():
         payload = harness_runs.HarnessRunRequest(message="hello", multitask_strategy="enqueue")
@@ -323,7 +327,11 @@ def test_create_harness_run_branch_action_records_turn_trajectory(monkeypatch):
         def _capture_record_harness_turn_and_schedule(**kwargs):
             recorded.append(kwargs)
 
-        monkeypatch.setattr(harness_runs, "_record_harness_turn_and_schedule", _capture_record_harness_turn_and_schedule)
+        monkeypatch.setattr(
+            harness_runs,
+            "_record_harness_turn_and_schedule",
+            _capture_record_harness_turn_and_schedule,
+        )
 
         runtime = SimpleNamespace(
             settings=SimpleNamespace(model="model-1"),
@@ -345,8 +353,128 @@ def test_create_harness_run_branch_action_records_turn_trajectory(monkeypatch):
         assert recorded
         assert recorded[0]["status"] == "succeeded"
         assert recorded[0]["kind"] == "chat.turn"
+        assert recorded[0]["schedule_side_effects"] is False
 
     asyncio.run(scenario())
+
+
+def test_execute_harness_run_uses_pre_turn_branch_recommendation(monkeypatch):
+    class _Chat:
+        def __init__(self):
+            self.recommendation_kwargs = None
+
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            self.recommendation_kwargs = kwargs
+            return {
+                "kind": "recommended",
+                "message": "建议新开分支继续。",
+                "thread_state": {"thread_id": "thread-1", "branch_actions": []},
+                "branch_action": {"action_id": "action-1", "status": "pending"},
+                "branch_decision": {"decision_id": "decision-1", "status": "promoted"},
+            }
+
+        def _context_for_thread(self, **kwargs):
+            del kwargs
+            return (
+                SimpleNamespace(root_thread_id="root-1"),
+                {"branch": "main"},
+                {"messages": [AIMessage(content="建议新开分支继续。")]},
+            )
+
+    class _Harness:
+        def __init__(self):
+            self.called = False
+
+        def invoke(self, *args, **kwargs):
+            del args, kwargs
+            self.called = True
+            raise AssertionError("normal harness invoke should not run")
+
+    class _Manager:
+        def __init__(self):
+            self.statuses = []
+            self.record = SimpleNamespace(
+                run_id="run-1",
+                to_dict=lambda: {
+                    "run_id": "run-1",
+                    "thread_id": "thread-1",
+                    "status": "success",
+                },
+            )
+
+        def get(self, run_id: str):
+            del run_id
+            return self.record
+
+        async def set_status(self, run_id: str, status: RunStatus, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+    async def scenario():
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        manager = _Manager()
+        harness = _Harness()
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(model="model-1"),
+            harness=harness,
+            run_manager=manager,
+        )
+        chat = _Chat()
+
+        response = await harness_runs._execute_harness_run(
+            runtime=runtime,
+            chat=chat,
+            run_record=manager.record,
+            thread_id="thread-1",
+            user_id="user-1",
+            message="请新开一个子分支深入研究方案 B。",
+            payload={"messages": [HumanMessage(content="请新开一个子分支深入研究方案 B。")]},
+            request_id="request-1",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
+        )
+
+        assert response.thread_state == {"thread_id": "thread-1", "branch_actions": []}
+        assert chat.recommendation_kwargs == {
+            "thread_id": "thread-1",
+            "user_id": "user-1",
+            "message": "请新开一个子分支深入研究方案 B。",
+            "request_id": "request-1",
+        }
+        assert harness.called is False
+        assert manager.statuses[-1][1] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
+def test_record_harness_turn_and_schedule_can_skip_side_effect_hooks(monkeypatch):
+    calls = []
+
+    def _capture_chat_hook(chat, method, *args, **kwargs):
+        del chat, args, kwargs
+        calls.append(method)
+
+    monkeypatch.setattr(harness_runs, "_call_chat_hook", _capture_chat_hook)
+
+    harness_runs._record_harness_turn_and_schedule(
+        chat=object(),
+        thread_id="thread-1",
+        user_id="user-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="succeeded",
+        final_values={"messages": []},
+        initial_message_count=0,
+        initial_llm_calls=0,
+        started_at=object(),
+        branch_meta={"branch": "main"},
+        trace_correlation=None,
+        payload={"messages": [HumanMessage(content="hello")]},
+        answer="done",
+        schedule_side_effects=False,
+    )
+
+    assert calls == ["_record_turn_trajectory_best_effort"]
 
 
 def test_authorize_run_access_rejects_mismatched_user():
@@ -394,7 +522,9 @@ def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelli
         def __init__(self):
             self.subscription = None
 
-        async def subscribe(self, run_id: str, *, last_event_id: str | None, heartbeat_interval: float):
+        async def subscribe(
+            self, run_id: str, *, last_event_id: str | None, heartbeat_interval: float
+        ):
             self.subscription = {
                 "run_id": run_id,
                 "last_event_id": last_event_id,
@@ -519,7 +649,9 @@ def test_harness_observability_endpoints_read_authorized_journal():
             principal=principal,
         )
 
-        assert events["events"] == [{"event_id": "event-1", "run_id": "run-1", "event": "run.completed"}]
+        assert events["events"] == [
+            {"event_id": "event-1", "run_id": "run-1", "event": "run.completed"}
+        ]
         assert snapshot["run"]["run_id"] == "run-1"
         assert trajectory == {"id": "run-1", "kind": "harness_run"}
         assert chat.kwargs["thread_id"] == "thread-1"
@@ -589,7 +721,9 @@ _DEGRADED_DSML_FIXTURE = (
 )
 
 
-async def _collect_produced_events(monkeypatch, chunks, *, final_messages=None, error: Exception | None = None):
+async def _collect_produced_events(
+    monkeypatch, chunks, *, final_messages=None, error: Exception | None = None
+):
     async def fake_stream_chunks(**kwargs):
         del kwargs
         if error is not None:
@@ -622,7 +756,9 @@ async def _collect_produced_events(monkeypatch, chunks, *, final_messages=None, 
     monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
     monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
 
-    producer_final_messages = [AIMessage(content="done")] if final_messages is None else final_messages
+    producer_final_messages = (
+        [AIMessage(content="done")] if final_messages is None else final_messages
+    )
 
     await harness_runs._produce_run_stream(
         runtime=runtime,
@@ -639,7 +775,9 @@ async def _collect_produced_events(monkeypatch, chunks, *, final_messages=None, 
     return bridge.events, manager.statuses, bridge.ended
 
 
-def _ai_stream_chunk(content, *, node: str = "agent", stream_phase: str | None = None, tags: list[str] | None = None):
+def _ai_stream_chunk(
+    content, *, node: str = "agent", stream_phase: str | None = None, tags: list[str] | None = None
+):
     metadata = {"langgraph_node": node}
     if stream_phase is not None:
         metadata["stream_phase"] = stream_phase
@@ -677,7 +815,9 @@ def _tool_call_chunk(
     return {
         "type": "messages",
         "data": (
-            AIMessageChunk(content=[{"type": "tool_call_chunk", "id": call_id, "name": name, "args": args}]),
+            AIMessageChunk(
+                content=[{"type": "tool_call_chunk", "id": call_id, "name": name, "args": args}]
+            ),
             metadata,
         ),
         "ns": [],
@@ -773,7 +913,10 @@ def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
             return []
 
         def _response_payload(self, **kwargs):
-            return {"thread_id": kwargs["thread_id"], "messages": [{"type": "ai", "content": "done"}]}
+            return {
+                "thread_id": kwargs["thread_id"],
+                "messages": [{"type": "ai", "content": "done"}],
+            }
 
     async def scenario():
         bridge = _Bridge()
@@ -821,6 +964,82 @@ def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
         assert bridge.events[-1][1]["source_node"] == "harness"
         assert bridge.ended is True
         assert harness.called is True
+        assert manager.statuses[-1][0] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
+def test_produce_run_stream_uses_pre_turn_branch_recommendation(monkeypatch):
+    class _Harness:
+        graph = object()
+
+        def __init__(self):
+            self.called = False
+
+        async def stream_chunks(self, **kwargs):
+            del kwargs
+            self.called = True
+            raise AssertionError("normal harness stream should not run")
+            yield  # pragma: no cover
+
+    class _Chat(_ProducerChat):
+        def __init__(self):
+            super().__init__([AIMessage(content="建议新开分支继续。")])
+            self.recommendation_kwargs = None
+
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            self.recommendation_kwargs = kwargs
+            return {
+                "kind": "recommended",
+                "message": "建议新开分支继续。",
+                "thread_state": {"thread_id": "thread-1", "branch_actions": []},
+                "branch_action": {"action_id": "action-1", "status": "pending"},
+                "branch_decision": {"decision_id": "decision-1", "status": "promoted"},
+            }
+
+    async def scenario():
+        bridge = _CollectingBridge()
+        manager = _CollectingRunManager()
+        harness = _Harness()
+        runtime = SimpleNamespace(
+            harness=harness,
+            checkpointer=None,
+            settings=SimpleNamespace(sse_heartbeat_seconds=0),
+            run_manager=manager,
+            stream_bridge=bridge,
+        )
+        chat = _Chat()
+
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+
+        await harness_runs._produce_run_stream(
+            runtime=runtime,
+            chat=chat,
+            run_id="run-1",
+            thread_id="thread-1",
+            user_id="user-1",
+            payload={"messages": [HumanMessage(content="请新开一个子分支深入研究方案 B。")]},
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
+            request_id="request-1",
+        )
+
+        assert _event_names(bridge.events) == [
+            "run.metadata",
+            "run.status",
+            "message.completed",
+            "run.completed",
+            "run.closed",
+        ]
+        assert bridge.events[2][1]["content"] == "建议新开分支继续。"
+        assert bridge.events[3][1]["branch_action"] == {
+            "action_id": "action-1",
+            "status": "pending",
+        }
+        assert chat.recommendation_kwargs["message"] == "请新开一个子分支深入研究方案 B。"
+        assert harness.called is False
         assert manager.statuses[-1][0] is RunStatus.SUCCESS
 
     asyncio.run(scenario())
@@ -888,6 +1107,55 @@ def test_produce_branch_action_run_stream_emits_canonical_completion():
     asyncio.run(scenario())
 
 
+def test_produce_branch_action_run_stream_completes_after_task_cancel():
+    class _Chat:
+        def __init__(self):
+            self.started = threading.Event()
+
+        def _handle_branch_action_turn(self, **kwargs):
+            del kwargs
+            self.started.set()
+            time.sleep(0.03)
+            return {
+                "kind": "executed",
+                "message": "已切换到新分支。",
+                "thread_state": {"thread_id": "thread-1", "branch_actions": []},
+                "branch_action": {"action_id": "action-1", "status": "executed"},
+                "branch_record": {"branch_id": "branch-2"},
+                "navigation": {"root_thread_id": "root-1", "thread_id": "thread-2"},
+            }
+
+    async def scenario():
+        bridge = _CollectingBridge()
+        manager = _CollectingRunManager()
+        runtime = SimpleNamespace(run_manager=manager, stream_bridge=bridge)
+        chat = _Chat()
+
+        task = asyncio.create_task(
+            harness_runs._produce_branch_action_run_stream(
+                runtime=runtime,
+                chat=chat,
+                run_id="run-1",
+                thread_id="thread-1",
+                user_id="user-1",
+                message="直接切过去",
+                request_id="request-1",
+                context=SimpleNamespace(root_thread_id="root-1"),
+                branch_meta={"branch": "main"},
+                initial_values={"messages": []},
+            )
+        )
+        assert await asyncio.to_thread(chat.started.wait, 1.0)
+        task.cancel()
+        await task
+
+        event_names = [event for event, _data in bridge.events]
+        assert "run.completed" in event_names
+        assert manager.statuses[-1][0] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
 def test_produce_branch_action_run_stream_records_turn_trajectory(monkeypatch):
     class _Chat:
         def _handle_branch_action_turn(self, **kwargs):
@@ -915,7 +1183,11 @@ def test_produce_branch_action_run_stream_records_turn_trajectory(monkeypatch):
         def _capture_record_harness_turn_and_schedule(**kwargs):
             recorded.append(kwargs)
 
-        monkeypatch.setattr(harness_runs, "_record_harness_turn_and_schedule", _capture_record_harness_turn_and_schedule)
+        monkeypatch.setattr(
+            harness_runs,
+            "_record_harness_turn_and_schedule",
+            _capture_record_harness_turn_and_schedule,
+        )
 
         bridge = _CollectingBridge()
         manager = _CollectingRunManager()
@@ -939,6 +1211,7 @@ def test_produce_branch_action_run_stream_records_turn_trajectory(monkeypatch):
         assert recorded[0]["status"] == "succeeded"
         assert recorded[0]["kind"] == "chat.turn"
         assert recorded[0]["branch_meta"] == {"branch": "main"}
+        assert recorded[0]["schedule_side_effects"] is False
 
     asyncio.run(scenario())
 
@@ -1075,7 +1348,9 @@ def test_produce_run_stream_drops_split_visible_phase_english_process_narration(
 
 def test_produce_run_stream_streams_final_suffix_from_mixed_visible_process_text(monkeypatch):
     chunks = [
-        _visible_ai_chunk("Let me produce the final answer. I must not call more tools. Let's go.最终答案。"),
+        _visible_ai_chunk(
+            "Let me produce the final answer. I must not call more tools. Let's go.最终答案。"
+        ),
     ]
 
     async def scenario():
@@ -1083,7 +1358,9 @@ def test_produce_run_stream_streams_final_suffix_from_mixed_visible_process_text
             monkeypatch,
             chunks=chunks,
             final_messages=[
-                AIMessage(content="Let me produce the final answer. I must not call more tools. Let's go.最终答案。")
+                AIMessage(
+                    content="Let me produce the final answer. I must not call more tools. Let's go.最终答案。"
+                )
             ],
         )
         assert _message_deltas(events) == ["最终答案。"]
@@ -1169,7 +1446,11 @@ def test_produce_run_stream_visible_phase_allows_text_and_keeps_tool_events(monk
             "call00ljJOwoeUmsjmBzMNhkx8505\n"
             "</ | | DSML | | tool_calls",
         ),
-        ("=", '"read=', '"filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505'),
+        (
+            "=",
+            '"read=',
+            '"filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505',
+        ),
         (
             '="url"',
             'true">https://alicelabs.ai/en/insights/best-ai-agent-frameworks-2026',

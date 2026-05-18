@@ -69,12 +69,7 @@ def render_memory_block(bundle: RetrievedMemoryBundle) -> str:
             continue
         rendered_lines = "\n".join(f"- {line}" for line in lines)
         sections.append(f"## {title}\n{rendered_lines}")
-    return (
-        "<memory-context>\n"
-        f"{_MEMORY_CONTEXT_GUARD}\n"
-        f"{chr(10).join(sections)}\n"
-        "</memory-context>"
-    )
+    return f"<memory-context>\n{_MEMORY_CONTEXT_GUARD}\n{chr(10).join(sections)}\n</memory-context>"
 
 
 def sanitize_memory_text(text: str) -> str:
@@ -92,7 +87,9 @@ def sanitize_memory_text(text: str) -> str:
     return " ".join(sanitized.split()).strip()
 
 
-def _rendered_memory_line(record: MemoryRecord, *, score: float, recency_order: int) -> _RenderedMemoryLine | None:
+def _rendered_memory_line(
+    record: MemoryRecord, *, score: float, recency_order: int
+) -> _RenderedMemoryLine | None:
     summary = sanitize_memory_text(record.summary or record.content)
     if not summary:
         return None

@@ -114,7 +114,9 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
     def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM focus_branches WHERE child_thread_id = %s", (child_thread_id,))
+                cur.execute(
+                    "SELECT * FROM focus_branches WHERE child_thread_id = %s", (child_thread_id,)
+                )
                 row = cur.fetchone()
         if row is None:
             raise KeyError(f"Unknown child_thread_id: {child_thread_id}")

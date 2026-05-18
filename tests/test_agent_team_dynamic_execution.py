@@ -75,6 +75,8 @@ class ContextCaptureExecutor:
             artifacts=[artifact],
             execution_mode="inline",
         )
+
+
 class ComplexDeliverableExecutor:
     mode = "inline"
 
@@ -86,7 +88,9 @@ class ComplexDeliverableExecutor:
             },
             "implement checkout recovery": {
                 "raw_text": "Checkout recovery now retries stale payment holds and records an audit event.",
-                "parsed": {"final_answer": "Implemented checkout recovery with retry and audit coverage."},
+                "parsed": {
+                    "final_answer": "Implemented checkout recovery with retry and audit coverage."
+                },
             },
             "verify checkout recovery": {
                 "raw_text": "Review rubric: payment hold retry was checked against regression risks.",
@@ -114,8 +118,6 @@ class ComplexDeliverableExecutor:
             artifacts=[artifact],
             execution_mode="inline",
         )
-
-
 
 
 def test_dependent_task_receives_session_contract_and_dependency_outputs() -> None:
@@ -148,9 +150,15 @@ def test_dependent_task_receives_session_contract_and_dependency_outputs() -> No
     service.run_ready_tasks(session_id=session.session_id, user_id="user-1")
 
     context_refs = executor.seen["consume upstream evidence"]
-    session_context = next(item for item in context_refs if item.get("type") == "agent_team_session")
-    contract_context = next(item for item in context_refs if item.get("type") == "agent_team_task_contract")
-    dependency_context = next(item for item in context_refs if item.get("type") == "agent_team_dependency_outputs")
+    session_context = next(
+        item for item in context_refs if item.get("type") == "agent_team_session"
+    )
+    contract_context = next(
+        item for item in context_refs if item.get("type") == "agent_team_task_contract"
+    )
+    dependency_context = next(
+        item for item in context_refs if item.get("type") == "agent_team_dependency_outputs"
+    )
 
     assert session_context["mission_goal"] == "Build a DAG-aware mission result."
     assert str(session_context["root_thread_id"]).startswith("agent-team-standalone-")
@@ -159,7 +167,6 @@ def test_dependent_task_receives_session_contract_and_dependency_outputs() -> No
     assert contract_context["evidence_required"] == ["dependency evidence used"]
     assert dependency_context["dependency_task_ids"] == [producer.task_id]
     assert dependency_context["outputs"][0]["summary"] == "completed produce upstream evidence"
-
 
     service = AgentTeamService(branch_service=None, executor=ComplexDeliverableExecutor())
     session = service.create_session(

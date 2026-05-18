@@ -47,7 +47,9 @@ def build_git_tools(
         tool_name = "git_status"
         emit_tool_event(tool_name=tool_name, stage="start")
         try:
-            output = _run_git_command(workspace_root=workspace_root, args=["status", "--short", "--branch"])
+            output = _run_git_command(
+                workspace_root=workspace_root, args=["status", "--short", "--branch"]
+            )
             lines = output.splitlines()
             branch = lines[0][3:].strip() if lines and lines[0].startswith("## ") else None
             payload = {
@@ -80,7 +82,9 @@ def build_git_tools(
                 if context_lines is None
                 else int(context_lines)
             )
-            capped_context_lines = max(0, min(requested_context_lines, tool_catalog.git_diff.max_context_lines))
+            capped_context_lines = max(
+                0, min(requested_context_lines, tool_catalog.git_diff.max_context_lines)
+            )
             args = ["diff", "--no-color", f"--unified={capped_context_lines}"]
             if staged:
                 args.append("--cached")
@@ -98,7 +102,9 @@ def build_git_tools(
             emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), pathspec=pathspec, staged=staged)
+            emit_tool_event(
+                tool_name=tool_name, stage="error", error=str(exc), pathspec=pathspec, staged=staged
+            )
             raise
 
     @tool
@@ -124,7 +130,9 @@ def build_git_tools(
                     }
                 )
             result = json.dumps({"limit": capped_limit, "commits": commits}, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage="end", result_count=len(commits), output=result[:800])
+            emit_tool_event(
+                tool_name=tool_name, stage="end", result_count=len(commits), output=result[:800]
+            )
             return result
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), limit=limit)

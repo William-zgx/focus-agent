@@ -18,14 +18,8 @@ from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.state import AgentState, append_agent_state_record
 from ...core.types import Plan
-from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
 from ...skills import SkillRegistry
-from .policy import (
-    _is_tool_carryover_confirmation,
-    _turn_tool_exposure_from_intent_plan,
-    _tool_intent_plan_requires_temporal_anchor,
-    build_tool_intent_plan,
-)
+from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
 from ..graph_evidence import (
     evidence_bundle_to_citation_refs,
     normalize_evidence_bundle,
@@ -38,6 +32,7 @@ from ..graph_execution_contract import (
     verify_answer_against_evidence,
 )
 from ..graph_plan_nodes import _format_plan_block
+from ..graph_tool_result_fallback import _should_replace_unfound_workspace_answer
 from ..graph_turn_helpers import (
     _TOOL_EXHAUSTION_NOTE,
     _context_budget_from_state,
@@ -59,7 +54,12 @@ from ..graph_turn_helpers import (
     _workspace_lookup_should_start_with_search,
     _workspace_search_query,
 )
-from ..graph_tool_result_fallback import _should_replace_unfound_workspace_answer
+from .policy import (
+    _is_tool_carryover_confirmation,
+    _tool_intent_plan_requires_temporal_anchor,
+    _turn_tool_exposure_from_intent_plan,
+    build_tool_intent_plan,
+)
 
 
 def _with_stream_phase(model: Any, phase: str) -> Any:
@@ -73,7 +73,9 @@ def _with_stream_phase(model: Any, phase: str) -> Any:
     )
 
 
-def _model_for_stream_phase(model_for: Callable[[str, str], Any], phase: str) -> Callable[[str, str], Any]:
+def _model_for_stream_phase(
+    model_for: Callable[[str, str], Any], phase: str
+) -> Callable[[str, str], Any]:
     def wrapped(model_id: str, thinking_mode: str) -> Any:
         return _with_stream_phase(model_for(model_id, thinking_mode), phase)
 
@@ -85,7 +87,9 @@ def _model_with_tools_for_stream_phase(
     phase: str,
 ) -> Callable[[str, str, list[Any] | None], Any]:
     def wrapped(model_id: str, thinking_mode: str, available_tools: list[Any] | None) -> Any:
-        return _with_stream_phase(model_with_tools_for(model_id, thinking_mode, available_tools), phase)
+        return _with_stream_phase(
+            model_with_tools_for(model_id, thinking_mode, available_tools), phase
+        )
 
     return wrapped
 
@@ -216,10 +220,10 @@ def make_agent_loop_node(
                 settings=settings,
             )
             response = _invoke_with_tool_result_fallback(
-                    _with_stream_phase(
-                        model_for(selected_model, selected_thinking_mode),
-                        STREAM_VISIBILITY_VISIBLE,
-                    ),
+                _with_stream_phase(
+                    model_for(selected_model, selected_thinking_mode),
+                    STREAM_VISIBILITY_VISIBLE,
+                ),
                 forced_prompt,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -269,11 +273,14 @@ def make_agent_loop_node(
                     }
                 ],
             )
-        elif tool_policy == "live_web_research" and _live_web_research_should_start_with_search_compat(
-            tool_intent_text,
-            state_messages,
-            available_tools,
-            exposure=tool_exposure,
+        elif (
+            tool_policy == "live_web_research"
+            and _live_web_research_should_start_with_search_compat(
+                tool_intent_text,
+                state_messages,
+                available_tools,
+                exposure=tool_exposure,
+            )
         ):
             response = AIMessage(
                 content="",
@@ -303,11 +310,14 @@ def make_agent_loop_node(
                     }
                 ],
             )
-        elif tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search_compat(
-            tool_intent_text,
-            state_messages,
-            available_tools,
-            exposure=tool_exposure,
+        elif (
+            tool_policy == "workspace_lookup"
+            and _workspace_lookup_should_start_with_search_compat(
+                tool_intent_text,
+                state_messages,
+                available_tools,
+                exposure=tool_exposure,
+            )
         ):
             response = AIMessage(
                 content="",
@@ -322,10 +332,10 @@ def make_agent_loop_node(
             )
         elif not available_tools:
             response = _invoke_with_tool_result_fallback(
-                    _with_stream_phase(
-                        model_for(selected_model, selected_thinking_mode),
-                        STREAM_VISIBILITY_VISIBLE,
-                    ),
+                _with_stream_phase(
+                    model_for(selected_model, selected_thinking_mode),
+                    STREAM_VISIBILITY_VISIBLE,
+                ),
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -344,10 +354,10 @@ def make_agent_loop_node(
             )
         else:
             response = _invoke_with_tool_result_fallback(
-                    _with_stream_phase(
-                        model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
-                        STREAM_VISIBILITY_QUARANTINE,
-                    ),
+                _with_stream_phase(
+                    model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
+                    STREAM_VISIBILITY_QUARANTINE,
+                ),
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -368,16 +378,17 @@ def make_agent_loop_node(
             )
         response = _repair_and_dedupe_tool_calls(response)
         completed_turn_messages = _latest_turn_messages([*state_messages, response])
-        if (
-            not getattr(response, "tool_calls", None)
-            and _should_replace_unfound_workspace_answer(
-                _message_content_text(response),
-                completed_turn_messages,
-            )
+        if not getattr(response, "tool_calls", None) and _should_replace_unfound_workspace_answer(
+            _message_content_text(response),
+            completed_turn_messages,
         ):
-            response = AIMessage(content=_fallback_answer_from_tool_results(completed_turn_messages))
+            response = AIMessage(
+                content=_fallback_answer_from_tool_results(completed_turn_messages)
+            )
             completed_turn_messages = _latest_turn_messages([*state_messages, response])
-            tool_protocol_repair_reason = tool_protocol_repair_reason or "workspace_evidence_fallback"
+            tool_protocol_repair_reason = (
+                tool_protocol_repair_reason or "workspace_evidence_fallback"
+            )
         observed_at = _latest_tool_result_content(completed_turn_messages, "current_utc_time")
         evidence_bundle = normalize_evidence_bundle(
             completed_turn_messages,
@@ -394,7 +405,9 @@ def make_agent_loop_node(
             available_tool_names=known_names,
         )
         answer_verification = verify_answer_against_evidence(
-            answer=_message_content_text(response) if not getattr(response, "tool_calls", None) else "",
+            answer=_message_content_text(response)
+            if not getattr(response, "tool_calls", None)
+            else "",
             contract=execution_contract,
             evidence_ledger=evidence_ledger,
         )
@@ -402,7 +415,9 @@ def make_agent_loop_node(
             evidence_bundle_to_citation_refs(evidence_bundle),
             existing=list(state.get("citations", []) or []),
         )
-        web_tool_result_seen = _latest_turn_has_tool_result(state_messages, "web_search") or _latest_turn_has_tool_result(
+        web_tool_result_seen = _latest_turn_has_tool_result(
+            state_messages, "web_search"
+        ) or _latest_turn_has_tool_result(
             state_messages,
             "web_fetch",
         )
@@ -600,9 +615,7 @@ def _recommended_tool_allowed_for_policy(tool: Any, tool_policy: str) -> bool:
     runtime = ToolRuntimeMeta.from_tool(tool)
     if tool_policy == "workspace_lookup":
         return not (
-            runtime.requires_network
-            or runtime.requires_workspace_write
-            or runtime.side_effect
+            runtime.requires_network or runtime.requires_workspace_write or runtime.side_effect
         )
     if tool_policy == "live_web_research":
         return not runtime.requires_workspace_write
@@ -662,10 +675,10 @@ def _tool_router_fallback_role(tool_policy: str, exposure: Any | None) -> AgentR
         return AgentRole.PLANNER
     if set(getattr(exposure, "allowed_toolsets", ()) or ()) == {"skill"}:
         return AgentRole.SKILL_SCOUT
-    if (
-        tool_policy == "execution"
-        and set(getattr(exposure, "allowed_toolsets", ()) or ()) == {"web", "workspace"}
-    ):
+    if tool_policy == "execution" and set(getattr(exposure, "allowed_toolsets", ()) or ()) == {
+        "web",
+        "workspace",
+    }:
         return AgentRole.PLANNER
     return AgentRole.EXECUTOR
 
@@ -750,7 +763,9 @@ def _current_turn_index(state: AgentState) -> int:
 
 def _pending_tool_action_expired(raw: Mapping[str, Any], state: AgentState) -> bool:
     expires_after_turns = _coerce_int(raw.get("expires_after_turns"), default=2)
-    created_turn_index = _coerce_int(raw.get("created_turn_index"), default=_current_turn_index(state))
+    created_turn_index = _coerce_int(
+        raw.get("created_turn_index"), default=_current_turn_index(state)
+    )
     return (_current_turn_index(state) - created_turn_index) > expires_after_turns
 
 

@@ -51,7 +51,9 @@ def _tail_text(path: Path, *, max_lines: int = 40) -> str:
     return "\n".join(lines[-max_lines:])
 
 
-def _wait_for_health(url: str, *, timeout_seconds: float = DEFAULT_API_STARTUP_TIMEOUT_SECONDS) -> None:
+def _wait_for_health(
+    url: str, *, timeout_seconds: float = DEFAULT_API_STARTUP_TIMEOUT_SECONDS
+) -> None:
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
     while time.time() < deadline:
@@ -194,6 +196,7 @@ def _build_seed_record(
         "selected_model": "smoke:model",
         "metrics": dict(base_metrics),
     }
+
     def record_kwargs(**overrides):
         return {**base_kwargs, **overrides}
 
@@ -208,34 +211,34 @@ def _build_seed_record(
                     "cache_hits": 1,
                 },
                 trajectory=[
-                TrajectoryStep(
-                    tool="read_file",
-                    args={"path": "README.md"},
-                    observation="Smoke success read observation",
-                    duration_ms=44.0,
-                    cache_hit=True,
-                    runtime={
-                        "provider": "smoke",
-                        "model": "smoke:model",
-                        "request_id": request_id,
-                        "trace_id": trace_id,
-                        "span_id": root_span_id,
-                    },
-                ),
-                TrajectoryStep(
-                    tool="search_code",
-                    args={"query": "observability"},
-                    observation="Smoke success search observation",
-                    duration_ms=71.0,
-                    parallel_batch_size=2,
-                    runtime={
-                        "provider": "smoke",
-                        "model": "smoke:model",
-                        "request_id": request_id,
-                        "trace_id": trace_id,
-                        "span_id": root_span_id,
-                    },
-                ),
+                    TrajectoryStep(
+                        tool="read_file",
+                        args={"path": "README.md"},
+                        observation="Smoke success read observation",
+                        duration_ms=44.0,
+                        cache_hit=True,
+                        runtime={
+                            "provider": "smoke",
+                            "model": "smoke:model",
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                            "span_id": root_span_id,
+                        },
+                    ),
+                    TrajectoryStep(
+                        tool="search_code",
+                        args={"query": "observability"},
+                        observation="Smoke success search observation",
+                        duration_ms=71.0,
+                        parallel_batch_size=2,
+                        runtime={
+                            "provider": "smoke",
+                            "model": "smoke:model",
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                            "span_id": root_span_id,
+                        },
+                    ),
                 ],
             ),
         )
@@ -272,23 +275,23 @@ def _build_seed_record(
             metrics={**base_metrics, "fallback_uses": 1},
             error="Smoke seed error",
             trajectory=[
-            TrajectoryStep(
-                tool="web_search",
-                args={"query": "focus-agent observability smoke"},
-                observation="Smoke failed seed observation",
-                duration_ms=123.0,
-                error="Smoke seed error",
-                fallback_used=True,
-                fallback_group="web_search",
-                parallel_batch_size=2,
-                runtime={
-                    "provider": "smoke",
-                    "model": "smoke:model",
-                    "request_id": request_id,
-                    "trace_id": trace_id,
-                    "span_id": root_span_id,
-                },
-            )
+                TrajectoryStep(
+                    tool="web_search",
+                    args={"query": "focus-agent observability smoke"},
+                    observation="Smoke failed seed observation",
+                    duration_ms=123.0,
+                    error="Smoke seed error",
+                    fallback_used=True,
+                    fallback_group="web_search",
+                    parallel_batch_size=2,
+                    runtime={
+                        "provider": "smoke",
+                        "model": "smoke:model",
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "span_id": root_span_id,
+                    },
+                )
             ],
         ),
     )
@@ -310,8 +313,13 @@ def seed_observability_records(database_uri: str, *, scenario: str = "all") -> d
     return {
         "scenario": scenario,
         "request_id": request_id,
-        "turn_ids": {name: record.id for name, record in zip(_scenario_names(scenario), records, strict=True)},
-        "trace_ids": {name: record.trace_id for name, record in zip(_scenario_names(scenario), records, strict=True)},
+        "turn_ids": {
+            name: record.id for name, record in zip(_scenario_names(scenario), records, strict=True)
+        },
+        "trace_ids": {
+            name: record.trace_id
+            for name, record in zip(_scenario_names(scenario), records, strict=True)
+        },
         "primary_turn_id": records[0].id,
         "record_count": len(records),
     }
@@ -334,7 +342,9 @@ def _run_expression(client: CdpWebSocket, expression: str) -> dict[str, object]:
     payload = raw_result.get("value", "")
     if not isinstance(payload, str) or not payload.strip():
         diagnostics = collect_browser_diagnostics(client)
-        raise RuntimeError(f"Unexpected browser evaluation response: {response!r}; diagnostics={diagnostics!r}")
+        raise RuntimeError(
+            f"Unexpected browser evaluation response: {response!r}; diagnostics={diagnostics!r}"
+        )
     return json.loads(payload)
 
 
@@ -422,7 +432,9 @@ JSON.stringify({
                     "returnByValue": True,
                 },
             )
-            raw_result = response.get("result", {}) if isinstance(response.get("result"), dict) else {}
+            raw_result = (
+                response.get("result", {}) if isinstance(response.get("result"), dict) else {}
+            )
             payload = raw_result.get("value")
             if isinstance(payload, str) and payload.strip():
                 state = json.loads(payload)
@@ -494,7 +506,9 @@ def build_overview_expression(seed: dict[str, str]) -> str:
 """
 
 
-def build_trajectory_expression(seed: dict[str, object], *, evidence_state: str, promote: bool = False) -> str:
+def build_trajectory_expression(
+    seed: dict[str, object], *, evidence_state: str, promote: bool = False
+) -> str:
     payload = json.dumps(seed, ensure_ascii=False)
     expected_state = json.dumps(evidence_state)
     should_promote = "true" if promote else "false"
@@ -565,27 +579,40 @@ def build_trajectory_expression(seed: dict[str, object], *, evidence_state: str,
     .map((item) => item.textContent || '');
   const requestInput = document.querySelector('input[placeholder="req-…"], input[placeholder="req-..."]');
   const traceInput = document.querySelector('input[placeholder="trace-…"], input[placeholder="trace-..."]');
-  const railSections = document.querySelectorAll('.fa-trajectory-workbench-rail-section').length;
-  const actionPanel = document.querySelector('.fa-trajectory-workbench-action-panel');
-  const batchActionPanel = document.querySelector('.fa-trajectory-workbench-batch-action-panel');
-  const actionGrid = document.querySelector('.fa-observability-action-grid');
-  const actionToggles = document.querySelector('.fa-observability-action-toggles');
-  const commandBars = document.querySelectorAll('.fa-observability-command-bar').length;
-  const replayButton = Array.from(document.querySelectorAll('button')).find((button) =>
-    ['Run replay', '执行 Replay'].some((label) => (button.textContent || '').includes(label))
-  );
-  const promoteButton = Array.from(document.querySelectorAll('button')).find((button) =>
-    ['Generate eval sample', 'Preview eval sample', '生成评测样本'].some((label) => (button.textContent || '').includes(label))
-  );
   if (!requestInput || !traceInput) {{
     throw new Error('Request/trace filters were not rendered.');
   }}
-  if (railSections < 4) {{
-    throw new Error('Workbench right rail did not render.');
-  }}
-  if (!actionPanel || !batchActionPanel || !actionGrid || !actionToggles || commandBars < 2 || !replayButton || !promoteButton) {{
-    throw new Error('Replay/promote action controls did not render.');
-  }}
+  const railSections = await waitFor(
+    () => {{
+      const count = document.querySelectorAll('.fa-trajectory-workbench-rail-section').length;
+      return count >= 4 ? count : 0;
+    }},
+    40000,
+    'workbench right rail'
+  );
+  const actionControls = await waitFor(
+    () => {{
+      const actionPanel = document.querySelector('.fa-trajectory-workbench-action-panel');
+      const batchActionPanel = document.querySelector('.fa-trajectory-workbench-batch-action-panel');
+      const actionGrid = document.querySelector('.fa-observability-action-grid');
+      const actionToggles = document.querySelector('.fa-observability-action-toggles');
+      const commandBars = document.querySelectorAll('.fa-observability-command-bar').length;
+      const replayButton = Array.from(document.querySelectorAll('button')).find((button) =>
+        ['Run replay', '执行 Replay'].some((label) => (button.textContent || '').includes(label))
+      );
+      const promoteButton = Array.from(document.querySelectorAll('button')).find((button) =>
+        ['Generate eval sample', 'Preview eval sample', '生成评测样本'].some((label) => (button.textContent || '').includes(label))
+      );
+      if (!actionPanel || !batchActionPanel || !actionGrid || !actionToggles || commandBars < 2 || !replayButton || !promoteButton) {{
+        return null;
+      }}
+      return {{ commandBars, promoteButton }};
+    }},
+    40000,
+    'replay/promote action controls'
+  );
+  const commandBars = actionControls.commandBars;
+  const promoteButton = actionControls.promoteButton;
   let evidenceSelector = '.fa-observability-step-timeline';
   let evidenceLabel = 'timeline';
   if (expectedState === 'zero-step' || expectedState === 'missing-detail') {{
@@ -740,7 +767,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--app-base-url", default=DEFAULT_APP_BASE_URL, help="App base URL.")
     parser.add_argument("--health-url", default=DEFAULT_HEALTH_URL, help="Health endpoint.")
-    parser.add_argument("--database-uri", default=None, help="Database URI used to seed observability records.")
+    parser.add_argument(
+        "--database-uri", default=None, help="Database URI used to seed observability records."
+    )
     parser.add_argument("--chrome-path", default=None, help="Path to the Chrome executable.")
     parser.add_argument(
         "--scenario",

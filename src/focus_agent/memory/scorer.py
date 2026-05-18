@@ -13,7 +13,11 @@ def score_memory_hit(hit: MemorySearchHit, *, query: str, prompt_mode: PromptMod
         score += min(len(hit.matched_terms), 4) * 0.1
     if prompt_mode == PromptMode.BRANCH_REVIEW and hit.record.promoted_to_main:
         score += 0.15
-    if prompt_mode == PromptMode.SYNTHESIZE and hit.record.source_branch_id and not hit.record.promoted_to_main:
+    if (
+        prompt_mode == PromptMode.SYNTHESIZE
+        and hit.record.source_branch_id
+        and not hit.record.promoted_to_main
+    ):
         score -= 0.25
     if query and hit.record.summary and query.casefold() in hit.record.summary.casefold():
         score += 0.2

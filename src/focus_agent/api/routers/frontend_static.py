@@ -21,21 +21,22 @@ def register_frontend_routes(app: FastAPI, *, settings: Settings) -> None:
 
 def create_frontend_router(settings: Settings) -> APIRouter:
     router = APIRouter()
-    @router.get('/app', response_class=HTMLResponse)
+
+    @router.get("/app", response_class=HTMLResponse)
     def render_chat_app_page(request: Request):
         redirect = _frontend_dev_redirect(settings=settings, query=request.url.query)
         if redirect is not None:
             return redirect
         return _render_frontend_or_raise(settings=settings)
 
-    @router.get('/app/zh', response_class=HTMLResponse)
+    @router.get("/app/zh", response_class=HTMLResponse)
     def redirect_chinese_chat_app() -> RedirectResponse:
         redirect = _frontend_dev_redirect(settings=settings, query="lang=zh")
         if redirect is not None:
             return redirect
-        return RedirectResponse(url='/app?lang=zh', status_code=307)
+        return RedirectResponse(url="/app?lang=zh", status_code=307)
 
-    @router.get('/app/{path:path}', response_class=HTMLResponse)
+    @router.get("/app/{path:path}", response_class=HTMLResponse)
     def render_chat_app_subpath(path: str, request: Request):
         redirect = _frontend_dev_redirect(settings=settings, path=path, query=request.url.query)
         if redirect is not None:

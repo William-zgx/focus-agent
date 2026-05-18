@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.core.governance import (
+    BranchDecisionEvent,
     ContextMemoryEvidence,
     FeedbackEvent,
     SkillPreference,
@@ -39,9 +40,15 @@ class PostgresGovernanceRepository:
         payload["thread_id"] = row.get("thread_id")
         payload["turn_id"] = row.get("turn_id")
         payload["source_kind"] = row.get("source_kind") or "context_explain"
-        payload.setdefault("selected_memories", cls._decode_jsonish(row.get("selected_memories"), []))
-        payload.setdefault("excluded_memories", cls._decode_jsonish(row.get("excluded_memories"), []))
-        payload.setdefault("compaction_summary", cls._decode_jsonish(row.get("compaction_summary"), {}))
+        payload.setdefault(
+            "selected_memories", cls._decode_jsonish(row.get("selected_memories"), [])
+        )
+        payload.setdefault(
+            "excluded_memories", cls._decode_jsonish(row.get("excluded_memories"), [])
+        )
+        payload.setdefault(
+            "compaction_summary", cls._decode_jsonish(row.get("compaction_summary"), {})
+        )
         payload.setdefault("drift_report", cls._decode_jsonish(row.get("drift_report"), {}))
         payload.setdefault("artifact_refs", cls._decode_jsonish(row.get("artifact_refs"), []))
         payload.setdefault("token_counting", cls._decode_jsonish(row.get("token_counting"), {}))
@@ -76,6 +83,33 @@ class PostgresGovernanceRepository:
         payload["created_at"] = cls._iso_datetime(row.get("created_at"))
         payload["updated_at"] = cls._iso_datetime(row.get("updated_at"))
         return SkillPreference.model_validate(payload)
+
+    @classmethod
+    def _branch_decision_from_row(cls, row: dict[str, object]) -> BranchDecisionEvent:
+        payload = cls._decode_payload(row["data_json"])
+        payload["decision_id"] = row.get("decision_id")
+        payload["user_id"] = row.get("user_id")
+        payload["root_thread_id"] = row.get("root_thread_id")
+        payload["source_thread_id"] = row.get("source_thread_id")
+        payload["branch_id"] = row.get("branch_id")
+        payload["action"] = row.get("action")
+        payload["status"] = row.get("status")
+        payload["mode"] = row.get("mode")
+        payload["score"] = row.get("score") or 0.0
+        payload["threshold"] = row.get("threshold") or 0.0
+        payload["signals"] = cls._decode_jsonish(row.get("signals"), payload.get("signals", []))
+        payload["rationale"] = row.get("rationale") or ""
+        payload["request_id"] = row.get("request_id")
+        payload["trace_id"] = row.get("trace_id")
+        payload["idempotency_key"] = row.get("idempotency_key")
+        payload["promoted_action_id"] = row.get("promoted_action_id")
+        payload["dismiss_reason"] = row.get("dismiss_reason")
+        payload["error"] = row.get("error")
+        payload["metadata"] = cls._decode_jsonish(row.get("metadata"), payload.get("metadata", {}))
+        payload["created_at"] = cls._iso_datetime(row.get("created_at"))
+        payload["updated_at"] = cls._iso_datetime(row.get("updated_at"))
+        payload["executed_at"] = cls._iso_datetime(row.get("executed_at"))
+        return BranchDecisionEvent.model_validate(payload)
 
     @staticmethod
     def _decode_jsonish(value: object, default: object) -> object:
@@ -387,6 +421,165 @@ class PostgresGovernanceRepository:
                     },
                 )
         return event.event_id
+
+    def _branch_decision_id_for_idempotency(self, idempotency_key: str) -> str | None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT decision_id FROM focus_branch_decision_events
+                    WHERE idempotency_key = %s
+                    """,
+                    (idempotency_key,),
+                )
+                row = cur.fetchone()
+        return None if row is None else str(row["decision_id"])
+
+    def save_branch_decision_event(self, event: BranchDecisionEvent) -> str:
+        if event.idempotency_key:
+            existing_decision_id = self._branch_decision_id_for_idempotency(event.idempotency_key)
+            if existing_decision_id is not None:
+                if existing_decision_id != event.decision_id:
+                    return existing_decision_id
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO focus_branch_decision_events (
+                            decision_id, user_id, root_thread_id, source_thread_id,
+                            branch_id, action, status, mode, score, threshold, signals,
+                            rationale, request_id, trace_id, idempotency_key,
+                            promoted_action_id, dismiss_reason, error, metadata,
+                            data_json, created_at, updated_at, executed_at
+                        ) VALUES (
+                            %(decision_id)s, %(user_id)s, %(root_thread_id)s,
+                            %(source_thread_id)s, %(branch_id)s, %(action)s, %(status)s,
+                            %(mode)s, %(score)s, %(threshold)s, %(signals)s, %(rationale)s,
+                            %(request_id)s, %(trace_id)s, %(idempotency_key)s,
+                            %(promoted_action_id)s, %(dismiss_reason)s, %(error)s,
+                            %(metadata)s, %(data_json)s, %(created_at)s, %(updated_at)s,
+                            %(executed_at)s
+                        )
+                        ON CONFLICT (decision_id) DO UPDATE SET
+                            user_id = EXCLUDED.user_id,
+                            root_thread_id = EXCLUDED.root_thread_id,
+                            source_thread_id = EXCLUDED.source_thread_id,
+                            branch_id = EXCLUDED.branch_id,
+                            action = EXCLUDED.action,
+                            status = EXCLUDED.status,
+                            mode = EXCLUDED.mode,
+                            score = EXCLUDED.score,
+                            threshold = EXCLUDED.threshold,
+                            signals = EXCLUDED.signals,
+                            rationale = EXCLUDED.rationale,
+                            request_id = EXCLUDED.request_id,
+                            trace_id = EXCLUDED.trace_id,
+                            idempotency_key = EXCLUDED.idempotency_key,
+                            promoted_action_id = EXCLUDED.promoted_action_id,
+                            dismiss_reason = EXCLUDED.dismiss_reason,
+                            error = EXCLUDED.error,
+                            metadata = EXCLUDED.metadata,
+                            data_json = EXCLUDED.data_json,
+                            updated_at = EXCLUDED.updated_at,
+                            executed_at = EXCLUDED.executed_at
+                        """,
+                        self._branch_decision_params(event),
+                    )
+        except psycopg.errors.UniqueViolation:
+            if event.idempotency_key:
+                existing_decision_id = self._branch_decision_id_for_idempotency(
+                    event.idempotency_key
+                )
+                if existing_decision_id is not None:
+                    return existing_decision_id
+            raise
+        return event.decision_id
+
+    def get_branch_decision_event(self, decision_id: str) -> BranchDecisionEvent | None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM focus_branch_decision_events WHERE decision_id = %s",
+                    (decision_id,),
+                )
+                row = cur.fetchone()
+        return None if row is None else self._branch_decision_from_row(row)
+
+    def list_branch_decision_events(
+        self,
+        *,
+        user_id: str | None = None,
+        root_thread_id: str | None = None,
+        source_thread_id: str | None = None,
+        status: str | None = None,
+        action: str | None = None,
+        limit: int = 50,
+    ) -> list[BranchDecisionEvent]:
+        clauses: list[str] = []
+        params: dict[str, object] = {"limit": max(0, limit)}
+        if user_id is not None:
+            clauses.append("(user_id IS NULL OR user_id = %(user_id)s)")
+            params["user_id"] = user_id
+        if root_thread_id is not None:
+            clauses.append("root_thread_id = %(root_thread_id)s")
+            params["root_thread_id"] = root_thread_id
+        if source_thread_id is not None:
+            clauses.append("source_thread_id = %(source_thread_id)s")
+            params["source_thread_id"] = source_thread_id
+        if status is not None:
+            clauses.append("status = %(status)s")
+            params["status"] = status
+        if action is not None:
+            clauses.append("action = %(action)s")
+            params["action"] = action
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT * FROM focus_branch_decision_events
+                    {where}
+                    ORDER BY created_at DESC, decision_id DESC
+                    LIMIT %(limit)s
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
+        return [self._branch_decision_from_row(row) for row in rows]
+
+    def update_branch_decision_event(self, event: BranchDecisionEvent) -> BranchDecisionEvent:
+        decision_id = self.save_branch_decision_event(event)
+        stored = self.get_branch_decision_event(decision_id)
+        return stored or event
+
+    @staticmethod
+    def _branch_decision_params(event: BranchDecisionEvent) -> dict[str, object]:
+        return {
+            "decision_id": event.decision_id,
+            "user_id": event.user_id,
+            "root_thread_id": event.root_thread_id,
+            "source_thread_id": event.source_thread_id,
+            "branch_id": event.branch_id,
+            "action": event.action.value,
+            "status": event.status.value,
+            "mode": event.mode.value,
+            "score": event.score,
+            "threshold": event.threshold,
+            "signals": Jsonb([item.model_dump(mode="json") for item in event.signals]),
+            "rationale": event.rationale,
+            "request_id": event.request_id,
+            "trace_id": event.trace_id,
+            "idempotency_key": event.idempotency_key,
+            "promoted_action_id": event.promoted_action_id,
+            "dismiss_reason": event.dismiss_reason,
+            "error": event.error,
+            "metadata": Jsonb(event.metadata),
+            "data_json": Jsonb(event.model_dump(mode="json")),
+            "created_at": event.created_at,
+            "updated_at": event.updated_at,
+            "executed_at": event.executed_at,
+        }
 
 
 __all__ = ["PostgresGovernanceRepository"]

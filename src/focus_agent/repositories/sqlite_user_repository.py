@@ -87,8 +87,12 @@ class SQLiteUserRepository(UserRepository):
                 )
                 """
             )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_users_tenant_status ON users(tenant_id, status)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_users_status_created ON users(status, created_at DESC)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_tenant_status ON users(tenant_id, status)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_status_created ON users(status, created_at DESC)"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(LOWER(username)) WHERE username IS NOT NULL"
@@ -152,9 +156,13 @@ class SQLiteUserRepository(UserRepository):
 
     @staticmethod
     def _add_missing_session_columns(conn: sqlite3.Connection) -> None:
-        existing = {row["name"] for row in conn.execute("PRAGMA table_info(user_sessions)").fetchall()}
+        existing = {
+            row["name"] for row in conn.execute("PRAGMA table_info(user_sessions)").fetchall()
+        }
         if "refresh_token_hash" not in existing:
-            conn.execute("ALTER TABLE user_sessions ADD COLUMN refresh_token_hash TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                "ALTER TABLE user_sessions ADD COLUMN refresh_token_hash TEXT NOT NULL DEFAULT ''"
+            )
 
     def create_user(self, user: User) -> User:
         with self._connect() as conn:
@@ -221,7 +229,9 @@ class SQLiteUserRepository(UserRepository):
 
     def get_user_or_none(self, user_id: str) -> User | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT data_json FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            row = conn.execute(
+                "SELECT data_json FROM users WHERE user_id = ?", (user_id,)
+            ).fetchone()
         if row is None:
             return None
         return self._user_from_row(row)
@@ -246,7 +256,9 @@ class SQLiteUserRepository(UserRepository):
         filters = filters or UserListFilters()
         where, params = self._user_where(filters)
         with self._connect() as conn:
-            count_row = conn.execute(f"SELECT COUNT(*) AS count FROM users {where}", params).fetchone()
+            count_row = conn.execute(
+                f"SELECT COUNT(*) AS count FROM users {where}", params
+            ).fetchone()
             rows = conn.execute(
                 f"SELECT data_json FROM users {where} ORDER BY created_at DESC, user_id DESC LIMIT ? OFFSET ?",
                 (*params, limit, offset),
@@ -267,7 +279,9 @@ class SQLiteUserRepository(UserRepository):
 
     def count_active_admins(self) -> int:
         with self._connect() as conn:
-            rows = conn.execute("SELECT data_json FROM users WHERE status = ?", ("active",)).fetchall()
+            rows = conn.execute(
+                "SELECT data_json FROM users WHERE status = ?", ("active",)
+            ).fetchall()
         return sum(1 for row in rows if "admin" in set(self._user_from_row(row).roles))
 
     def create_session(self, session: UserSession) -> UserSession:
@@ -392,7 +406,9 @@ class SQLiteUserRepository(UserRepository):
                     event.action,
                     event.resource_type,
                     event.resource_id,
-                    event.decision.value if hasattr(event.decision, "value") else str(event.decision),
+                    event.decision.value
+                    if hasattr(event.decision, "value")
+                    else str(event.decision),
                     event.reason,
                     event.request_id,
                     event.created_at,

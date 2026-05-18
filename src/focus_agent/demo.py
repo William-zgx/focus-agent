@@ -16,7 +16,9 @@ def cmd_run(args) -> None:
     runtime = create_runtime()
     try:
         service = ChatService(runtime)
-        payload = service.send_message(thread_id=args.thread_id, user_id=args.user_id, message=args.message)
+        payload = service.send_message(
+            thread_id=args.thread_id, user_id=args.user_id, message=args.message
+        )
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     finally:
         runtime.close()
@@ -69,7 +71,9 @@ def cmd_apply_merge(args) -> None:
             selected_artifacts=args.selected_artifacts or [],
         )
         record = runtime.repo.get_by_child_thread_id(args.child_thread_id)
-        context = RequestContext(user_id=args.user_id, root_thread_id=args.root_thread_id or record.root_thread_id)
+        context = RequestContext(
+            user_id=args.user_id, root_thread_id=args.root_thread_id or record.root_thread_id
+        )
         imported = runtime.branch_service.apply_merge_decision(
             child_thread_id=args.child_thread_id,
             decision=decision,

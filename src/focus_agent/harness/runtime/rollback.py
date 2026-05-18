@@ -76,7 +76,9 @@ async def restore_graph_rollback_target(
     """Restore a thread to a previously captured checkpoint target."""
 
     if target is None:
-        return CheckpointRollbackResult(requested=True, applied=False, reason="missing_rollback_target")
+        return CheckpointRollbackResult(
+            requested=True, applied=False, reason="missing_rollback_target"
+        )
     return await asyncio.to_thread(_restore_graph_rollback_target_sync, graph, checkpointer, target)
 
 
@@ -98,14 +100,20 @@ def _restore_graph_rollback_target_sync(
 ) -> CheckpointRollbackResult:
     if target.checkpoint_id is None:
         if checkpointer is None:
-            return CheckpointRollbackResult(requested=True, applied=False, reason="missing_checkpointer")
+            return CheckpointRollbackResult(
+                requested=True, applied=False, reason="missing_checkpointer"
+            )
         if not has_repo_method(checkpointer, "delete_thread"):
-            return CheckpointRollbackResult(requested=True, applied=False, reason="delete_thread_unavailable")
+            return CheckpointRollbackResult(
+                requested=True, applied=False, reason="delete_thread_unavailable"
+            )
         checkpointer.delete_thread(target.thread_id)
         return CheckpointRollbackResult(requested=True, applied=True, reason="deleted_thread")
 
     if not has_repo_method(graph, "update_state"):
-        return CheckpointRollbackResult(requested=True, applied=False, reason="update_state_unavailable")
+        return CheckpointRollbackResult(
+            requested=True, applied=False, reason="update_state_unavailable"
+        )
     config = {
         "configurable": {
             "thread_id": target.thread_id,

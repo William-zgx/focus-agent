@@ -3,13 +3,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
-from urllib import error as urllib_error
 from urllib import parse as urllib_parse
-from urllib import request as urllib_request
 
 from langgraph.config import get_config
 
 from ...config import Settings
+from ...storage import LocalArtifactStore
 from .artifact import build_artifact_tools
 from .common import _apply_tool_metadata, build_utility_tools
 from .conversation import build_conversation_tools
@@ -53,9 +52,13 @@ def get_default_tools(
     memory_repository=None,
     memory_embedding_service=None,
     productivity_repository=None,
+    artifact_store=None,
 ):
     artifact_dir = Path(settings.artifact_dir).expanduser()
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+    if artifact_store is None:
+        if settings.artifact_store_type != "local":
+            raise ValueError(f"Unsupported artifact_store_type: {settings.artifact_store_type}")
+        artifact_store = LocalArtifactStore(artifact_dir)
     workspace_root = Path(settings.workspace_root).expanduser().resolve()
     resolved_env = settings.resolved_env or os.environ
     tool_catalog = settings.tool_catalog
@@ -102,8 +105,6 @@ def get_default_tools(
             tool_catalog=tool_catalog,
             resolved_env=resolved_env,
             emit_tool_event=_emit_tool_event,
-            urllib_request_module=urllib_request,
-            urllib_error_module=urllib_error,
             urllib_parse_module=urllib_parse,
         )
     )
@@ -113,6 +114,7 @@ def get_default_tools(
             workspace_root=workspace_root,
             settings=settings,
             tool_catalog=tool_catalog,
+            artifact_store=artifact_store,
             artifact_metadata_repository=artifact_metadata_repository,
             emit_tool_event=_emit_tool_event,
             get_current_thread_id=_get_current_thread_id,

@@ -96,11 +96,31 @@ def _production_smoke_report(path: Path) -> Path:
         {
             "checks": [
                 {"category": "api", "name": "api_readyz", "status": "passed", "passed": True},
-                {"category": "sdk", "name": "sdk_client_healthz", "status": "passed", "passed": True},
+                {
+                    "category": "sdk",
+                    "name": "sdk_client_healthz",
+                    "status": "passed",
+                    "passed": True,
+                },
                 {"category": "web", "name": "web_app", "status": "passed", "passed": True},
-                {"category": "graph", "name": "graph_min_chat_turn", "status": "passed", "passed": True},
-                {"category": "security", "name": "security_wrong_jwt_denied", "status": "passed", "passed": True},
-                {"category": "rate-limit", "name": "rate_limit_probe", "status": "passed", "passed": True},
+                {
+                    "category": "graph",
+                    "name": "graph_min_chat_turn",
+                    "status": "passed",
+                    "passed": True,
+                },
+                {
+                    "category": "security",
+                    "name": "security_wrong_jwt_denied",
+                    "status": "passed",
+                    "passed": True,
+                },
+                {
+                    "category": "rate-limit",
+                    "name": "rate_limit_probe",
+                    "status": "passed",
+                    "passed": True,
+                },
             ],
             "passed": True,
             "status": "passed",
@@ -220,12 +240,16 @@ def test_release_evidence_dry_run_writes_manifest_and_artifacts(tmp_path: Path) 
     assert Path(saved["summary"]["summary_json"]).exists()
 
 
-def test_release_evidence_manifest_records_github_actions_metadata(tmp_path: Path, monkeypatch) -> None:
+def test_release_evidence_manifest_records_github_actions_metadata(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.setenv("ENVIRONMENT_NAME", "production")
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "3")
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
-    monkeypatch.setenv("GITHUB_WORKFLOW_REF", "owner/repo/.github/workflows/release-gate.yml@refs/tags/v1")
+    monkeypatch.setenv(
+        "GITHUB_WORKFLOW_REF", "owner/repo/.github/workflows/release-gate.yml@refs/tags/v1"
+    )
     monkeypatch.setenv("RELEASE_GATE_ARTIFACT_NAME", "release-gate-reports-12345-3")
 
     manifest = release_evidence.run_release_evidence(
@@ -268,9 +292,18 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
     assert saved["release_health"]["passed"] is True
     assert saved["production_validation"]["passed"] is True
     assert _artifact_path(saved["artifacts"]["readyz"]) == pack_dir / "inputs" / "readyz.json"
-    assert _artifact_path(saved["artifacts"]["trajectory_stats"]) == pack_dir / "inputs" / "trajectory-stats.json"
-    assert _artifact_path(saved["artifacts"]["replay_comparisons"]) == pack_dir / "inputs" / "replay-comparisons.json"
-    assert _artifact_path(saved["artifacts"]["alert_report"]) == pack_dir / "inputs" / "alert-report.json"
+    assert (
+        _artifact_path(saved["artifacts"]["trajectory_stats"])
+        == pack_dir / "inputs" / "trajectory-stats.json"
+    )
+    assert (
+        _artifact_path(saved["artifacts"]["replay_comparisons"])
+        == pack_dir / "inputs" / "replay-comparisons.json"
+    )
+    assert (
+        _artifact_path(saved["artifacts"]["alert_report"])
+        == pack_dir / "inputs" / "alert-report.json"
+    )
     assert (
         _artifact_path(saved["artifacts"]["postgres_migration_report"])
         == pack_dir / "inputs" / "postgres-migration-report.json"
@@ -291,7 +324,10 @@ def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path:
         _artifact_path(saved["artifacts"]["governance_report"])
         == pack_dir / "inputs" / "governance-report.json"
     )
-    assert _artifact_path(saved["artifacts"]["eval_reports"][0]) == pack_dir / "inputs" / "eval-report-1.json"
+    assert (
+        _artifact_path(saved["artifacts"]["eval_reports"][0])
+        == pack_dir / "inputs" / "eval-report-1.json"
+    )
     assert (
         _artifact_path(saved["artifacts"]["baseline_eval_reports"][0])
         == pack_dir / "inputs" / "baseline-eval-report-1.json"

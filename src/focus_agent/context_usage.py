@@ -76,7 +76,10 @@ def build_context_usage(
         prompt_mode,
     )
     assembled_context = context_slice.render_prompt()
-    prompt_messages: list[AnyMessage] = [SystemMessage(content=assembled_context), *context_slice.recent_messages]
+    prompt_messages: list[AnyMessage] = [
+        SystemMessage(content=assembled_context),
+        *context_slice.recent_messages,
+    ]
     if draft_message and str(draft_message).strip():
         prompt_messages.append(HumanMessage(content=str(draft_message).strip()))
 
@@ -88,7 +91,9 @@ def build_context_usage(
     used_ratio = min(1.0, used_tokens / token_limit) if token_limit else 0.0
     prompt_chars = sum(len(_message_text_for_chars(message)) for message in guarded)
     prompt_budget_chars = max(1, token_limit * max(1, int(budget.chars_per_token)))
-    compaction = state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}
+    compaction = (
+        state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}
+    )
     drift_report = (
         compaction.get("context_compaction_drift_report")
         if isinstance(compaction.get("context_compaction_drift_report"), dict)
@@ -115,7 +120,9 @@ def build_context_usage(
     )
 
 
-def _context_budget_from_state(state: dict[str, Any], *, selected_model: str | None = None) -> ContextBudget:
+def _context_budget_from_state(
+    state: dict[str, Any], *, selected_model: str | None = None
+) -> ContextBudget:
     value = state.get("context_budget")
     if isinstance(value, ContextBudget):
         budget = value

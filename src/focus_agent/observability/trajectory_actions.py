@@ -86,7 +86,9 @@ def run_replay_for_turn(
     copy_answer_substring: bool = False,
     answer_substring_chars: int = 160,
 ) -> dict[str, Any]:
-    build_default_runtime, run_case, build_replay_comparison, convert_trajectory_records = _load_eval_helpers()
+    build_default_runtime, run_case, build_replay_comparison, convert_trajectory_records = (
+        _load_eval_helpers()
+    )
     converted = convert_trajectory_records(
         [record],
         case_id_prefix=case_id_prefix,

@@ -22,6 +22,18 @@ def load_observability_config(
             else defaults.otel_traces_exporters
         )
     )
+    otel_metrics_exporters = (
+        _split_csv(env.get("OTEL_METRICS_EXPORTER"))
+        if env.get("OTEL_METRICS_EXPORTER") is not None
+        else (
+            ("otlp",)
+            if (
+                env.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+                or env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+            )
+            else defaults.otel_metrics_exporters
+        )
+    )
     return {
         "langsmith_project": env.get("LANGSMITH_PROJECT", defaults.langsmith_project),
         "tracing_enabled": (
@@ -35,26 +47,35 @@ def load_observability_config(
             or defaults.tracing_service_name
         ),
         "otel_traces_exporters": otel_traces_exporters,
+        "otel_metrics_exporters": otel_metrics_exporters,
         "otel_exporter_otlp_endpoint": env.get("OTEL_EXPORTER_OTLP_ENDPOINT") or None,
         "otel_exporter_otlp_traces_endpoint": (
             env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or None
         ),
+        "otel_exporter_otlp_metrics_endpoint": (
+            env.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") or None
+        ),
         "otel_exporter_otlp_headers": (
-            env.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
+            env.get("OTEL_EXPORTER_OTLP_METRICS_HEADERS")
+            or env.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
             or env.get("OTEL_EXPORTER_OTLP_HEADERS")
             or None
         ),
         "otel_exporter_otlp_protocol": (
-            env.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
+            env.get("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")
+            or env.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
             or env.get("OTEL_EXPORTER_OTLP_PROTOCOL")
             or defaults.otel_exporter_otlp_protocol
         ),
         "otel_exporter_otlp_timeout_ms": int(
             env.get(
-                "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
+                "OTEL_EXPORTER_OTLP_METRICS_TIMEOUT",
                 env.get(
-                    "OTEL_EXPORTER_OTLP_TIMEOUT",
-                    str(defaults.otel_exporter_otlp_timeout_ms),
+                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
+                    env.get(
+                        "OTEL_EXPORTER_OTLP_TIMEOUT",
+                        str(defaults.otel_exporter_otlp_timeout_ms),
+                    ),
                 ),
             )
         ),

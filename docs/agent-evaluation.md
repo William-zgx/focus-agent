@@ -13,6 +13,7 @@ project-level policy for when and how to run it.
 |-------|---------|----------------|---------|
 | Smoke | `smoke` | Blocking release gate | Fast coverage for core behavior and tool-policy regressions. |
 | Golden multi-agent | `golden_multi_agent` | Blocking release gate | Stable contracts for delegation, governance, memory/context, and model routing. |
+| Harness stability | `harness_stability` | Blocking release gate | Regression coverage for v2 harness run lifecycle, streaming, replay, and terminal-state behavior. |
 | Trajectory failures | `trajectory_failures` | Non-blocking nightly | Production failure skeletons that should be hardened or promoted. |
 | Model matrix | `model_matrix` | Non-blocking nightly | Compare labeled model roles on the same task inputs. |
 | Stress | future suite | Manual or nightly | Retries, concurrency, long context, and flaky behavior. |
@@ -51,6 +52,7 @@ uv run pytest tests/eval/test_framework_self.py
 # Blocking release-gate suites.
 uv run python -m tests.eval --suite smoke --concurrency 1
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite harness_stability --concurrency 1
 
 # Governance-specific suites.
 uv run python -m tests.eval --suite agent_arch --concurrency 1

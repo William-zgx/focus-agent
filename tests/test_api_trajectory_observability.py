@@ -85,7 +85,14 @@ class _FakeTrajectoryRepo:
             "by_scene": [{"key": "long_dialog_research", "turn_count": 1}],
             "by_branch_role": [{"key": "execute", "turn_count": 1}],
             "by_model": [{"key": "openai:gpt-4.1-mini", "turn_count": 1, "avg_latency_ms": 1000.0}],
-            "by_day": [{"key": "2026-04-21", "turn_count": 1, "non_succeeded_count": 1, "avg_latency_ms": 1000.0}],
+            "by_day": [
+                {
+                    "key": "2026-04-21",
+                    "turn_count": 1,
+                    "non_succeeded_count": 1,
+                    "avg_latency_ms": 1000.0,
+                }
+            ],
             "by_tool": [{"key": "web_search", "turn_count": 1, "step_count": 1}],
         }
 
@@ -210,7 +217,9 @@ def _runtime_stub(
         tool_registry=object(),
         skill_registry=object(),
         memory_repository=object(),
-        trajectory_recorder=trajectory_recorder if trajectory_recorder is not None else _FakeTrajectoryRepo(),
+        trajectory_recorder=trajectory_recorder
+        if trajectory_recorder is not None
+        else _FakeTrajectoryRepo(),
         background_work=SimpleNamespace(
             snapshot=lambda: {
                 "queue_depth": 2,
@@ -247,7 +256,9 @@ def _build_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient
     return TestClient(app)
 
 
-def test_trajectory_api_list_detail_and_stats(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_trajectory_api_list_detail_and_stats(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     client = _build_client(monkeypatch, tmp_path)
 
     list_response = client.get(
@@ -448,7 +459,9 @@ def test_trajectory_batch_replay_compare_returns_summary(
     assert body["results"][1]["comparison"]["replay_error"] == "mismatch"
 
 
-def test_observability_overview_readyz_and_metrics(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_observability_overview_readyz_and_metrics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     client = _build_client(monkeypatch, tmp_path)
 
     overview_response = client.get(
@@ -475,7 +488,10 @@ def test_observability_overview_readyz_and_metrics(monkeypatch: pytest.MonkeyPat
     assert metrics_response.status_code == 200
     assert "text/plain; version=0.0.4" in metrics_response.headers["content-type"]
     assert "focus_agent_runtime_ready 1" in metrics_response.text
-    assert 'focus_agent_runtime_build_info{version="1.2.3",environment="staging",deployment="focus-agent-blue"} 1' in metrics_response.text
+    assert (
+        'focus_agent_runtime_build_info{version="1.2.3",environment="staging",deployment="focus-agent-blue"} 1'
+        in metrics_response.text
+    )
     assert "focus_agent_trajectory_turn_count 1" in metrics_response.text
     assert "focus_agent_background_queue_depth 2" in metrics_response.text
     assert "focus_agent_background_worker_active 1" in metrics_response.text
@@ -579,7 +595,9 @@ def test_readyz_returns_503_for_degraded_runtime(
     body = response.json()
     assert body["status"] == "degraded"
     assert body["ready"] is False
-    trajectory_check = next(item for item in body["checks"] if item["name"] == "trajectory_recorder")
+    trajectory_check = next(
+        item for item in body["checks"] if item["name"] == "trajectory_recorder"
+    )
     assert trajectory_check["ready"] is False
 
 

@@ -45,7 +45,9 @@ def test_eval_long_history_direct_writing_stays_tool_free(eval_runtime_factory):
         judge={"rule": True, "llm": {"enabled": False}},
     )
 
-    result = run_case(case, runtime=eval_runtime_factory(script=_long_history_direct_writing_script))
+    result = run_case(
+        case, runtime=eval_runtime_factory(script=_long_history_direct_writing_script)
+    )
 
     assert result.passed, [verdict.reasoning for verdict in result.verdicts]
     assert result.metrics["tool_calls"] == 0

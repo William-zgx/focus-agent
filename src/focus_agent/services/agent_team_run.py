@@ -4,15 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from focus_agent.delegation.delegation import AgentDelegationPlan, AgentTask, build_agent_delegation_plan
-from focus_agent.delegation.execution import (
-    DelegatedRunExecutor,
-    FakeDelegatedRunExecutor,
-    SubagentRegistry,
-    executor_for_mode,
-    normalize_delegation_execution_mode,
-    run_delegated_tasks,
-)
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
     AgentTeamSession,
@@ -22,6 +13,19 @@ from focus_agent.core.agent_team import (
     agent_role_for_team_task_role,
 )
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.delegation.delegation import (
+    AgentDelegationPlan,
+    AgentTask,
+    build_agent_delegation_plan,
+)
+from focus_agent.delegation.execution import (
+    DelegatedRunExecutor,
+    FakeDelegatedRunExecutor,
+    SubagentRegistry,
+    executor_for_mode,
+    normalize_delegation_execution_mode,
+    run_delegated_tasks,
+)
 from focus_agent.multi_agent.contracts import (
     AgentMessageType,
     DAGTaskNode,
@@ -529,12 +533,17 @@ class AgentTeamRunMixin:
         if session.status == AgentTeamSessionStatus.CANCELLED:
             return
         tasks = self.list_tasks(session_id=session_id, user_id=user_id)
-        if any(task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING} for task in tasks):
+        if any(
+            task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
+            for task in tasks
+        ):
             return
         if any(_is_runnable_task(task) for task in tasks):
             self.run_ready_tasks_once(session_id=session_id, user_id=user_id)
 
-    def cancel_session(self, *, session_id: str, user_id: str) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
+    def cancel_session(
+        self, *, session_id: str, user_id: str
+    ) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
         session = self.get_session(session_id, user_id=user_id)
         now = _now()
         with self._lock:
@@ -577,7 +586,9 @@ class AgentTeamRunMixin:
         done_ids = {item.task_id for item in tasks if item.status == AgentTeamTaskStatus.DONE}
         dependencies_satisfied = all(dependency in done_ids for dependency in task.dependencies)
         now = _now()
-        status = AgentTeamTaskStatus.QUEUED if dependencies_satisfied else AgentTeamTaskStatus.PENDING
+        status = (
+            AgentTeamTaskStatus.QUEUED if dependencies_satisfied else AgentTeamTaskStatus.PENDING
+        )
         with self._lock:
             reset = task.model_copy(
                 update={
@@ -629,9 +640,13 @@ class AgentTeamRunMixin:
                 update={
                     "status": status,
                     "cancel_requested_at": task.cancel_requested_at or now,
-                    "run_status": "cancelled" if status == AgentTeamTaskStatus.CANCELLED else task.run_status,
+                    "run_status": "cancelled"
+                    if status == AgentTeamTaskStatus.CANCELLED
+                    else task.run_status,
                     "execution_status": "cancel_requested",
-                    "finished_at": now if status == AgentTeamTaskStatus.CANCELLED else task.finished_at,
+                    "finished_at": now
+                    if status == AgentTeamTaskStatus.CANCELLED
+                    else task.finished_at,
                     "updated_at": now,
                 }
             )
@@ -644,7 +659,9 @@ class AgentTeamRunMixin:
     ) -> _TaskExecutionResult:
         task = self.get_task(task.task_id, user_id=user_id)
         if scheduler_wave is None:
-            scheduler_wave = _task_wave(task, self.list_tasks(session_id=task.session_id, user_id=user_id))
+            scheduler_wave = _task_wave(
+                task, self.list_tasks(session_id=task.session_id, user_id=user_id)
+            )
         if task.cancel_requested_at:
             return _TaskExecutionResult(
                 session_id=task.session_id,

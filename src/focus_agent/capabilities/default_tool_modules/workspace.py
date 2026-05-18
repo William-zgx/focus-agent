@@ -66,12 +66,16 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
 
 
 def _language_for_path(path: Path) -> str:
-    return _TEXT_FILE_SUFFIX_TO_LANGUAGE.get(path.suffix.lower(), path.suffix.lower() or "no_extension")
+    return _TEXT_FILE_SUFFIX_TO_LANGUAGE.get(
+        path.suffix.lower(), path.suffix.lower() or "no_extension"
+    )
 
 
 def _resolve_workspace_path(*, raw_path: str, workspace_root: Path) -> Path:
     candidate = Path(raw_path).expanduser()
-    resolved = candidate.resolve() if candidate.is_absolute() else (workspace_root / candidate).resolve()
+    resolved = (
+        candidate.resolve() if candidate.is_absolute() else (workspace_root / candidate).resolve()
+    )
     try:
         resolved.relative_to(workspace_root)
     except ValueError as exc:
@@ -133,7 +137,9 @@ def build_workspace_tools(
     def list_files(path: str = ".", pattern: str = "**/*", max_results: int | None = None) -> str:
         """List workspace files under a directory using a glob-like pattern."""
         tool_name = "list_files"
-        emit_tool_event(tool_name=tool_name, stage="start", path=path, pattern=pattern, max_results=max_results)
+        emit_tool_event(
+            tool_name=tool_name, stage="start", path=path, pattern=pattern, max_results=max_results
+        )
         try:
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
@@ -169,7 +175,9 @@ def build_workspace_tools(
                 "truncated": truncated,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage="end", result_count=len(matches), output=result[:800])
+            emit_tool_event(
+                tool_name=tool_name, stage="end", result_count=len(matches), output=result[:800]
+            )
             return result
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), path=path)
@@ -179,21 +187,31 @@ def build_workspace_tools(
     def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
         """Read a UTF-8 text file from the workspace with line numbers."""
         tool_name = "read_file"
-        emit_tool_event(tool_name=tool_name, stage="start", path=path, start_line=start_line, end_line=end_line)
+        emit_tool_event(
+            tool_name=tool_name, stage="start", path=path, start_line=start_line, end_line=end_line
+        )
         try:
             resolved = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if resolved.is_dir():
                 raise IsADirectoryError(path)
             if start_line < 1:
                 raise ValueError("start_line must be at least 1.")
-            requested_end_line = tool_catalog.read_file.default_end_line if end_line is None else int(end_line)
+            requested_end_line = (
+                tool_catalog.read_file.default_end_line if end_line is None else int(end_line)
+            )
             if requested_end_line < start_line:
                 raise ValueError("end_line must be greater than or equal to start_line.")
-            capped_end_line = min(requested_end_line, start_line + tool_catalog.read_file.max_lines - 1)
+            capped_end_line = min(
+                requested_end_line, start_line + tool_catalog.read_file.max_lines - 1
+            )
             content = _read_text_file(resolved)
             all_lines = content.splitlines()
             selected_lines = all_lines[start_line - 1 : capped_end_line]
-            rendered = _format_numbered_lines(selected_lines, start_line=start_line) if selected_lines else ""
+            rendered = (
+                _format_numbered_lines(selected_lines, start_line=start_line)
+                if selected_lines
+                else ""
+            )
             if len(rendered) > tool_catalog.read_file.max_chars:
                 rendered = rendered[: tool_catalog.read_file.max_chars]
             payload = {
@@ -241,7 +259,9 @@ def build_workspace_tools(
                 if max_results is None
                 else int(max_results)
             )
-            capped_results = max(1, min(requested_results, tool_catalog.search_code.max_results_cap))
+            capped_results = max(
+                1, min(requested_results, tool_catalog.search_code.max_results_cap)
+            )
             normalized_query = query.strip()
             if not normalized_query:
                 raise ValueError("query must not be empty.")
@@ -299,10 +319,14 @@ def build_workspace_tools(
                 "truncated": truncated,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage="end", result_count=len(matches), output=result[:800])
+            emit_tool_event(
+                tool_name=tool_name, stage="end", result_count=len(matches), output=result[:800]
+            )
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), query=query, path=path)
+            emit_tool_event(
+                tool_name=tool_name, stage="error", error=str(exc), query=query, path=path
+            )
             raise
 
     @tool
@@ -365,7 +389,9 @@ def build_workspace_tools(
                 "method": "workspace text scan",
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800], files_scanned=file_counter)
+            emit_tool_event(
+                tool_name=tool_name, stage="end", output=result[:800], files_scanned=file_counter
+            )
             return result
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), path=path)

@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from focus_agent.harness.observability import (
     InMemoryRunJournal,
@@ -146,7 +147,9 @@ def test_journaled_stream_bridge_replays_after_last_event_id_from_journal():
         )
 
         replayed = []
-        async for event in bridge.subscribe("run-1", last_event_id=first.id, heartbeat_interval=None):
+        async for event in bridge.subscribe(
+            "run-1", last_event_id=first.id, heartbeat_interval=None
+        ):
             if event is END_SENTINEL:
                 break
             replayed.append(event)
@@ -261,5 +264,25 @@ def test_sqlite_run_journal_persists_snapshot_and_trajectory(tmp_path):
         assert trajectory["status"] == "success"
         assert trajectory["trajectory"][0]["tool"] == "write_artifact"
         assert trajectory["trajectory"][0]["error"] == "denied"
+
+    asyncio.run(scenario())
+
+
+def test_sqlite_run_journal_db_work_does_not_block_event_loop(tmp_path):
+    async def scenario():
+        journal = SQLiteRunJournal(tmp_path / "harness-runs.sqlite3")
+        original_run_db_sync = journal._run_db_sync
+
+        def slow_run_db_sync(operation):
+            time.sleep(0.05)
+            return original_run_db_sync(operation)
+
+        journal._run_db_sync = slow_run_db_sync
+
+        put_task = asyncio.create_task(journal.put("run-1", thread_id="thread-1"))
+        ticker_task = asyncio.create_task(asyncio.sleep(0.01, result="tick"))
+
+        assert await asyncio.wait_for(ticker_task, timeout=0.03) == "tick"
+        await put_task
 
     asyncio.run(scenario())

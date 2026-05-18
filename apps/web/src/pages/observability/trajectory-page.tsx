@@ -22,6 +22,7 @@ import { useTrajectoryPageModel } from "@/pages/observability/use-trajectory-pag
 import { useTrajectoryPageSelectionEffects } from "@/pages/observability/use-trajectory-page-selection-effects";
 import { useTrajectoryWorkbenchState } from "@/pages/observability/use-trajectory-workbench-state";
 import { useTrajectoryUrlSync } from "@/pages/observability/use-trajectory-url-sync";
+import { Toast } from "@/shared/ui/primitives";
 
 export function TrajectoryPage() {
 	const { isChineseUi } = useShellUi();
@@ -208,12 +209,14 @@ export function TrajectoryPage() {
 			/>
 
 			{statsErrorMessage ? (
-				<div className="fa-inline-notice is-warning">{statsErrorMessage}</div>
+				<Toast className="fa-inline-notice is-warning" tone="warning">
+					{statsErrorMessage}
+				</Toast>
 			) : null}
 			{trajectoryRuntimeMessage ? (
-				<div className="fa-inline-notice is-warning">
+				<Toast className="fa-inline-notice is-warning" tone="warning">
 					{trajectoryRuntimeMessage}
-				</div>
+				</Toast>
 			) : null}
 
 			{isOverviewRoute ? (

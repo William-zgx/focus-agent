@@ -42,7 +42,9 @@ def load_runtime_config(
         "background_queue_max_size": int(
             env.get("BACKGROUND_QUEUE_MAX_SIZE", str(defaults.background_queue_max_size))
         ),
-        "background_job_backend": env.get("BACKGROUND_JOB_BACKEND", defaults.background_job_backend),
+        "background_job_backend": env.get(
+            "BACKGROUND_JOB_BACKEND", defaults.background_job_backend
+        ),
         "background_job_execution": env.get(
             "BACKGROUND_JOB_EXECUTION",
             defaults.background_job_execution,
@@ -85,12 +87,20 @@ def load_runtime_config(
         ),
         "postgres_pool_enabled": str(
             env.get("POSTGRES_POOL_ENABLED", str(defaults.postgres_pool_enabled))
-        ).strip().lower()
+        )
+        .strip()
+        .lower()
         not in {"0", "false", "no", "off"},
-        "postgres_pool_min_size": int(env.get("POSTGRES_POOL_MIN_SIZE", str(defaults.postgres_pool_min_size))),
-        "postgres_pool_max_size": int(env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.postgres_pool_max_size))),
+        "postgres_pool_min_size": int(
+            env.get("POSTGRES_POOL_MIN_SIZE", str(defaults.postgres_pool_min_size))
+        ),
+        "postgres_pool_max_size": int(
+            env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.postgres_pool_max_size))
+        ),
         "postgres_slow_query_threshold_ms": float(
-            env.get("POSTGRES_SLOW_QUERY_THRESHOLD_MS", str(defaults.postgres_slow_query_threshold_ms))
+            env.get(
+                "POSTGRES_SLOW_QUERY_THRESHOLD_MS", str(defaults.postgres_slow_query_threshold_ms)
+            )
         ),
         "skill_directories": (
             _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))

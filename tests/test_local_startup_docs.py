@@ -13,7 +13,10 @@ def test_local_startup_docs_describe_managed_postgres_contract():
     assert "make api" in quickstart_text
     assert "`make api`, `make dev`" in quickstart_text
     assert "If you explicitly export `DATABASE_URI`" in quickstart_text
-    assert "The raw binary does not start the managed local PostgreSQL helper for you." in quickstart_text
+    assert (
+        "The raw binary does not start the managed local PostgreSQL helper for you."
+        in quickstart_text
+    )
     assert "stops the managed database together with the service" in quickstart_text
 
     assert "自动管理一个 repo 内本地 PostgreSQL" in quickstart_zh_text
@@ -24,6 +27,9 @@ def test_local_startup_docs_describe_managed_postgres_contract():
     assert "裸跑二进制不会帮你启动这套托管本地 PostgreSQL" in quickstart_zh_text
     assert "会随着服务一起停止并清理" in quickstart_zh_text
 
-    assert "Leave DATABASE_URI unset when you use the local startup commands (`make api`," in local_env_text
+    assert (
+        "Leave DATABASE_URI unset when you use the local startup commands (`make api`,"
+        in local_env_text
+    )
     assert "requires PostgreSQL tools like `initdb`, `pg_ctl`," in local_env_text
     assert "explicit DATABASE_URI values are preserved" in local_env_text

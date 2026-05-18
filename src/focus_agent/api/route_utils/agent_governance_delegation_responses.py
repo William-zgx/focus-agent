@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from focus_agent.config import Settings
 from focus_agent.delegation.delegation import (
     apply_review_decision,
     build_agent_delegation_plan,
@@ -9,7 +10,6 @@ from focus_agent.delegation.delegation import (
     build_self_repair_preview,
 )
 from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
-from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import (
@@ -82,7 +82,9 @@ def _agent_delegation_runs_response(
 ) -> AgentDelegationRunListResponse:
     fields = _list_response_fields(runtime=runtime, key="agent_runs", limit=limit)
     if not fields["items"]:
-        fields = _list_response_fields(runtime=runtime, key="agent_delegation_plan.runs", limit=limit)
+        fields = _list_response_fields(
+            runtime=runtime, key="agent_delegation_plan.runs", limit=limit
+        )
     return AgentDelegationRunListResponse(**fields)
 
 
@@ -108,7 +110,9 @@ def _agent_model_router_decisions_response(
     limit: int,
 ) -> AgentModelRouterDecisionListResponse:
     return AgentModelRouterDecisionListResponse(
-        **_list_response_fields(runtime=runtime, key="model_route_decision", limit=limit, decisions=True)
+        **_list_response_fields(
+            runtime=runtime, key="model_route_decision", limit=limit, decisions=True
+        )
     )
 
 
@@ -148,7 +152,9 @@ def _agent_review_queue_decision_response(
     approved: bool,
 ) -> AgentReviewQueueDecisionResponse:
     summary = "Approved by operator." if approved else "Rejected by operator."
-    item = apply_review_decision({"item_id": item_id, "item_type": "manual", "summary": summary}, approved=approved)
+    item = apply_review_decision(
+        {"item_id": item_id, "item_type": "manual", "summary": summary}, approved=approved
+    )
     return AgentReviewQueueDecisionResponse(item=item.model_dump(mode="json"))
 
 

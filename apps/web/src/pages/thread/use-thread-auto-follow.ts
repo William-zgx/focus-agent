@@ -19,20 +19,7 @@ interface UseThreadAutoFollowOptions {
 }
 
 export function useThreadAutoFollow({
-	branchActionCount,
 	hasTranscriptContent,
-	isStreaming,
-	lastTranscriptMessageContent,
-	lastTranscriptMessageId,
-	streamFailedMessage,
-	streamProcessingStepSignal,
-	streamReasoningText,
-	streamToolCallCount,
-	streamToolEventCount,
-	toolApprovalInterruptCount,
-	streamVisibleText,
-	threadId,
-	transcriptMessageCount,
 }: UseThreadAutoFollowOptions) {
 	const stickToBottom = useStickToBottom({
 		initial: "instant",

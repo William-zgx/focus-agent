@@ -159,9 +159,13 @@ def prepare_dry_run_inputs(
     inputs_dir = pack_dir / "inputs"
     readyz = write_json(inputs_dir / "readyz.json", _sample_readyz())
     trajectory_stats = write_json(inputs_dir / "trajectory-stats.json", _sample_trajectory_stats())
-    replay_comparisons = write_json(inputs_dir / "replay-comparisons.json", _sample_replay_comparisons())
+    replay_comparisons = write_json(
+        inputs_dir / "replay-comparisons.json", _sample_replay_comparisons()
+    )
     eval_report = write_json(inputs_dir / "eval-sample.json", _sample_eval_report())
-    baseline_eval_report = write_json(inputs_dir / "baseline-eval-sample.json", _sample_eval_report())
+    baseline_eval_report = write_json(
+        inputs_dir / "baseline-eval-sample.json", _sample_eval_report()
+    )
     alert_report = write_json(inputs_dir / "alert-report.json", _sample_alert_report())
     postgres_migration_report = write_json(
         inputs_dir / "postgres-migration-report.json",
@@ -171,9 +175,15 @@ def prepare_dry_run_inputs(
         inputs_dir / "production-smoke-report.json",
         _sample_production_smoke_report(),
     )
-    postgres_ops_report = write_json(inputs_dir / "postgres-ops-report.json", _sample_postgres_ops_report())
-    otel_smoke_report = write_json(inputs_dir / "otel-smoke-report.json", _sample_otel_smoke_report())
-    governance_report = write_json(inputs_dir / "governance-report.json", _sample_governance_report())
+    postgres_ops_report = write_json(
+        inputs_dir / "postgres-ops-report.json", _sample_postgres_ops_report()
+    )
+    otel_smoke_report = write_json(
+        inputs_dir / "otel-smoke-report.json", _sample_otel_smoke_report()
+    )
+    governance_report = write_json(
+        inputs_dir / "governance-report.json", _sample_governance_report()
+    )
     return {
         "alert_report": evidence_input("alert_report", alert_report, None, False, "generated"),
         "production_smoke_report": evidence_input(
@@ -183,12 +193,22 @@ def prepare_dry_run_inputs(
             True,
             "generated",
         ),
-        "postgres_ops_report": evidence_input("postgres_ops_report", postgres_ops_report, None, True, "generated"),
-        "otel_smoke_report": evidence_input("otel_smoke_report", otel_smoke_report, None, True, "generated"),
-        "governance_report": evidence_input("governance_report", governance_report, None, True, "generated"),
+        "postgres_ops_report": evidence_input(
+            "postgres_ops_report", postgres_ops_report, None, True, "generated"
+        ),
+        "otel_smoke_report": evidence_input(
+            "otel_smoke_report", otel_smoke_report, None, True, "generated"
+        ),
+        "governance_report": evidence_input(
+            "governance_report", governance_report, None, True, "generated"
+        ),
         "readyz": evidence_input("readyz", readyz, None, True, "generated"),
-        "trajectory_stats": evidence_input("trajectory_stats", trajectory_stats, None, True, "generated"),
-        "replay_comparisons": evidence_input("replay_comparisons", replay_comparisons, None, True, "generated"),
+        "trajectory_stats": evidence_input(
+            "trajectory_stats", trajectory_stats, None, True, "generated"
+        ),
+        "replay_comparisons": evidence_input(
+            "replay_comparisons", replay_comparisons, None, True, "generated"
+        ),
         "eval_reports": [evidence_input("eval_report", eval_report, None, True, "generated")],
         "baseline_eval_reports": [
             evidence_input("baseline_eval_report", baseline_eval_report, None, True, "generated")

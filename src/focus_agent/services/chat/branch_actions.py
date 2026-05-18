@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage
 
+from ...core.repo_call import has_repo_method
 from ...observability.tracing import build_trace_correlation
 from ..branch_actions import (
     branch_action_audit_event,
@@ -22,10 +25,11 @@ from ..branch_actions import (
     proposal_message,
     replace_branch_action,
     requested_branch_action_kind,
-    target_parent_thread_id,
     serialize_branch_actions,
+    target_parent_thread_id,
 )
-from ...core.repo_call import has_repo_method
+
+logger = logging.getLogger("focus_agent.branches")
 
 
 def branch_action_intent(*, values: dict[str, Any], message: str) -> str | None:
@@ -37,6 +41,172 @@ def branch_action_intent(*, values: dict[str, Any], message: str) -> str | None:
     if is_branch_action_request(message):
         return "propose"
     return None
+
+
+def _message_text(message: Any) -> str:
+    content = (
+        message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
+    )
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content") or ""
+                if text:
+                    parts.append(str(text))
+            elif item is not None:
+                parts.append(str(item))
+        return " ".join(parts).strip()
+    return str(content or "").strip()
+
+
+def _is_human_message(message: Any) -> bool:
+    if isinstance(message, HumanMessage):
+        return True
+    if isinstance(message, dict):
+        return str(message.get("type") or message.get("role") or "").lower() in {"human", "user"}
+    return False
+
+
+def _branch_handoff_text_from_message(message: str | None) -> str | None:
+    text = str(message or "").strip()
+    if not text:
+        return None
+    patterns = [
+        r"^(?:请|帮我|麻烦你)?(?:新建|创建)(?:一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
+        r"^(?:请|帮我|麻烦你)?(?:开一个|另开)(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
+        r"^(?:请|帮我|麻烦你)?(?:切换|切到)(?:到|一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
+        r"^(?:create|open|switch(?:\s+to)?)(?:\s+a|\s+an)?(?:\s+new|\s+sibling|\s+child)?\s+branch(?:\s+for|\s+to|\s+and|,|:)?\s*(?P<task>.+)$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        task = re.sub(
+            r"^(?:然后|并且|并|来|去|用于|用来|继续|and|then|to|for)\s*",
+            "",
+            match.group("task").strip(" ：:，,。；;"),
+            flags=re.IGNORECASE,
+        ).strip()
+        if task in {"吧", "呀", "啦", "呢", "一下", "看看", "可以吗", "好吗"}:
+            continue
+        if not task:
+            continue
+        if (
+            is_branch_action_request(task)
+            or is_branch_action_confirmation(task)
+            or is_branch_action_dismissal(task)
+        ):
+            continue
+        return task
+    return None
+
+
+def _latest_branch_handoff_text(messages: list[Any]) -> str | None:
+    for message in reversed(messages):
+        if not _is_human_message(message):
+            continue
+        text = _message_text(message)
+        if not text:
+            continue
+        handoff_text = _branch_handoff_text_from_message(text)
+        if handoff_text:
+            return handoff_text
+        if (
+            is_branch_action_request(text)
+            or is_branch_action_confirmation(text)
+            or is_branch_action_dismissal(text)
+        ):
+            continue
+        return text
+    return None
+
+
+def _contains_human_message(messages: list[Any], text: str) -> bool:
+    normalized = " ".join(str(text or "").split())
+    for message in messages:
+        if not _is_human_message(message):
+            continue
+        if " ".join(_message_text(message).split()) == normalized:
+            return True
+    return False
+
+
+def _carry_handoff_text_to_branch(
+    *,
+    service: Any,
+    child_thread_id: str,
+    handoff_text: str | None,
+) -> None:
+    text = str(handoff_text or "").strip()
+    if not text or not has_repo_method(service.runtime.graph, "update_state"):
+        return
+    try:
+        child_values = service._safe_get_values(child_thread_id)
+        if _contains_human_message(list(child_values.get("messages") or []), text):
+            return
+        service.runtime.graph.update_state(
+            {"configurable": {"thread_id": child_thread_id}},
+            {"messages": [HumanMessage(content=text)]},
+            as_node="bootstrap_turn",
+        )
+    except Exception:
+        logger.warning(
+            "failed to carry branch handoff message",
+            extra={"child_thread_id": child_thread_id},
+            exc_info=True,
+        )
+
+
+def _carry_branch_action_handoff_if_needed(
+    *,
+    service: Any,
+    action: Any,
+    branch_record: Any | None,
+    source_values: dict[str, Any],
+    user_message: str | None,
+) -> None:
+    if branch_record is None:
+        return
+    if action.source_thread_id == action.target_parent_thread_id:
+        return
+    child_thread_id = str(getattr(branch_record, "child_thread_id", "") or "")
+    if not child_thread_id:
+        return
+    handoff_text = _branch_handoff_text_from_message(user_message) or _latest_branch_handoff_text(
+        list(source_values.get("messages") or [])
+    )
+    _carry_handoff_text_to_branch(
+        service=service,
+        child_thread_id=child_thread_id,
+        handoff_text=handoff_text,
+    )
+
+
+def _sync_executed_branch_action_to_child(
+    *,
+    service: Any,
+    branch_record: Any | None,
+    executed_action: Any,
+) -> None:
+    child_thread_id = str(getattr(branch_record, "child_thread_id", "") or "")
+    if not child_thread_id:
+        return
+    try:
+        child_values = service._safe_get_values(child_thread_id)
+        child_actions = normalize_branch_actions(child_values.get("branch_actions"))
+        if not any(action.action_id == executed_action.action_id for action in child_actions):
+            return
+        service._update_branch_action_state(
+            thread_id=child_thread_id,
+            actions=replace_branch_action(child_actions, executed_action),
+        )
+    except Exception:
+        logger.warning(
+            "failed to sync executed branch action to child thread",
+            extra={"child_thread_id": child_thread_id, "action_id": executed_action.action_id},
+            exc_info=True,
+        )
 
 
 def build_branch_action_proposal_result(
@@ -60,9 +230,7 @@ def build_branch_action_proposal_result(
     )
     previous_actions = normalize_branch_actions(values.get("branch_actions"))
     actions = [
-        mark_branch_action_dismissed(action)
-        if action.status.value == "pending"
-        else action
+        mark_branch_action_dismissed(action) if action.status.value == "pending" else action
         for action in previous_actions
     ]
     recent_messages = list(values.get("messages", []) or [])
@@ -91,7 +259,9 @@ def build_branch_action_proposal_result(
         audit_event=audit,
         messages=[HumanMessage(content=message), AIMessage(content=assistant_text)],
     )
-    thread_state = service.get_thread_state(thread_id=thread_id, user_id=user_id, request_id=request_id)
+    thread_state = service.get_thread_state(
+        thread_id=thread_id, user_id=user_id, request_id=request_id
+    )
     return {
         "kind": "proposed",
         "message": assistant_text,
@@ -129,6 +299,13 @@ def execute_branch_action_locked(
             action=action,
             user_id=user_id,
             branch_service=service.runtime.branch_service,
+        )
+        _carry_branch_action_handoff_if_needed(
+            service=service,
+            action=action,
+            branch_record=branch_record,
+            source_values=values,
+            user_message=user_message,
         )
     except Exception as exc:
         failed = mark_branch_action_failed(action, str(exc))
@@ -170,7 +347,14 @@ def execute_branch_action_locked(
         ),
         messages=messages,
     )
-    latest_context, latest_branch_meta, _ = service._context_for_thread(thread_id=thread_id, user_id=user_id)
+    _sync_executed_branch_action_to_child(
+        service=service,
+        branch_record=branch_record,
+        executed_action=executed,
+    )
+    latest_context, latest_branch_meta, _ = service._context_for_thread(
+        thread_id=thread_id, user_id=user_id
+    )
     del context
     thread_state = service._response_payload(
         thread_id=thread_id,
@@ -178,14 +362,18 @@ def execute_branch_action_locked(
         context=latest_context,
         branch_meta=latest_branch_meta,
         interrupts=service._safe_get_interrupts(thread_id),
-        trace_correlation=build_trace_correlation(settings=service.runtime.settings, request_id=request_id),
+        trace_correlation=build_trace_correlation(
+            settings=service.runtime.settings, request_id=request_id
+        ),
     )
     return {
         "kind": "executed",
         "message": assistant_text,
         "thread_state": thread_state,
         "branch_action": executed.model_dump(mode="json"),
-        "branch_record": branch_record.model_dump(mode="json") if branch_record is not None else None,
+        "branch_record": branch_record.model_dump(mode="json")
+        if branch_record is not None
+        else None,
         "navigation": navigation.model_dump(mode="json") if navigation is not None else None,
     }
 
@@ -248,7 +436,9 @@ def handle_branch_action_turn(
     if intent is None:
         return None
     with service._thread_turn_lease(thread_id=thread_id) as turn_lease:
-        context, branch_meta, values = service._context_for_thread(thread_id=thread_id, user_id=user_id)
+        context, branch_meta, values = service._context_for_thread(
+            thread_id=thread_id, user_id=user_id
+        )
         service._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
         intent = branch_action_intent(values=values, message=message)
         if intent is None:
@@ -306,7 +496,9 @@ class ChatBranchActionFacadeMixin:
     def _is_chinese_text(text: str) -> bool:
         return any("\u4e00" <= char <= "\u9fff" for char in str(text or ""))
 
-    def _branch_action_intent(self, *, values: dict[str, Any], branch_meta: Any | None, message: str) -> str | None:
+    def _branch_action_intent(
+        self, *, values: dict[str, Any], branch_meta: Any | None, message: str
+    ) -> str | None:
         del branch_meta
         return branch_action_intent(values=values, message=message)
 
@@ -318,10 +510,16 @@ class ChatBranchActionFacadeMixin:
         audit_event: dict[str, Any] | None = None,
         messages: list[Any] | None = None,
     ) -> None:
-        update: dict[str, Any] = {"branch_actions": serialize_branch_actions(normalize_branch_actions(actions))}
+        update: dict[str, Any] = {
+            "branch_actions": serialize_branch_actions(normalize_branch_actions(actions))
+        }
         if audit_event is not None:
             values = self._safe_get_values(thread_id)
-            audit = [item for item in list(values.get("branch_action_audit") or []) if isinstance(item, dict)]
+            audit = [
+                item
+                for item in list(values.get("branch_action_audit") or [])
+                if isinstance(item, dict)
+            ]
             update["branch_action_audit"] = [*audit, audit_event]
         if messages:
             update["messages"] = messages

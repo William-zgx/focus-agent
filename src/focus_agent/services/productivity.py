@@ -97,7 +97,9 @@ class ProductivityService:
                     "title": _require_title(title) if title is not None else None,
                     "body": str(body) if body is not None else None,
                     "tags": _normalize_tags(tags) if tags is not None else None,
-                    "status": normalized_status if (status is not None or is_archived is not None) else None,
+                    "status": normalized_status
+                    if (status is not None or is_archived is not None)
+                    else None,
                     "source_thread_id": _normalize_optional_id(source_thread_id)
                     if source_thread_id is not None
                     else None,
@@ -107,7 +109,9 @@ class ProductivityService:
                     "source_kind": _normalize_optional_id(source_kind)
                     if source_kind is not None
                     else None,
-                    "source_id": _normalize_optional_id(source_id) if source_id is not None else None,
+                    "source_id": _normalize_optional_id(source_id)
+                    if source_id is not None
+                    else None,
                     "source_url": _normalize_optional_id(source_url)
                     if source_url is not None
                     else None,
@@ -117,7 +121,9 @@ class ProductivityService:
                     "captured_from": _normalize_optional_id(captured_from)
                     if captured_from is not None
                     else None,
-                    "is_archived": next_is_archived if (status is not None or is_archived is not None) else None,
+                    "is_archived": next_is_archived
+                    if (status is not None or is_archived is not None)
+                    else None,
                     "metadata": dict(metadata or {}) if metadata is not None else None,
                     "archived_at": archived_at,
                     "updated_at": _format_time(),
@@ -221,7 +227,9 @@ class ProductivityService:
                     "source_kind": _normalize_optional_id(source_kind)
                     if source_kind is not None
                     else None,
-                    "source_id": _normalize_optional_id(source_id) if source_id is not None else None,
+                    "source_id": _normalize_optional_id(source_id)
+                    if source_id is not None
+                    else None,
                     "source_url": _normalize_optional_id(source_url)
                     if source_url is not None
                     else None,
@@ -236,8 +244,12 @@ class ProductivityService:
                     else None,
                     "tags": _normalize_tags(tags) if tags is not None else None,
                     "metadata": dict(metadata or {}) if metadata is not None else None,
-                    "completed_at": now if normalized_status == FocusTaskStatus.COMPLETED else task.completed_at,
-                    "archived_at": now if normalized_status == FocusTaskStatus.ARCHIVED else task.archived_at,
+                    "completed_at": now
+                    if normalized_status == FocusTaskStatus.COMPLETED
+                    else task.completed_at,
+                    "archived_at": now
+                    if normalized_status == FocusTaskStatus.ARCHIVED
+                    else task.archived_at,
                     "updated_at": now,
                 }.items()
                 if value is not None
@@ -296,7 +308,9 @@ class ProductivityService:
         payload_data = dict(payload or {})
         capture_source_kind = _require_title(source_kind)
         resolved_body = body if body is not None else _capture_text(payload_data)
-        resolved_title = title if title is not None else _capture_title(payload_data, "Captured note")
+        resolved_title = (
+            title if title is not None else _capture_title(payload_data, "Captured note")
+        )
         return self.create_note(
             user_id=user_id,
             title=resolved_title,
@@ -338,7 +352,9 @@ class ProductivityService:
         resolved_description = (
             description if description is not None else _capture_text(payload_data)
         )
-        resolved_title = title if title is not None else _capture_title(payload_data, "Captured task")
+        resolved_title = (
+            title if title is not None else _capture_title(payload_data, "Captured task")
+        )
         return self.create_task(
             user_id=user_id,
             title=resolved_title,

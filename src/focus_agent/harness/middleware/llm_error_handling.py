@@ -105,7 +105,9 @@ class LLMErrorHandlingMiddleware(BaseAgentMiddleware):
     def __post_init__(self) -> None:
         if self.retry is not None:
             self._apply_retry_config(self.retry)
-        if self.circuit_breaker is not None and not isinstance(self.circuit_breaker, CircuitBreaker):
+        if self.circuit_breaker is not None and not isinstance(
+            self.circuit_breaker, CircuitBreaker
+        ):
             self.circuit_breaker = self._circuit_breaker_from_config(self.circuit_breaker)
         if self.max_retries < 0:
             raise ValueError("max_retries must be >= 0.")

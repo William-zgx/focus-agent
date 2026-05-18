@@ -171,7 +171,9 @@ class InMemoryUserRepository(UserRepository):
         items = list(self._users.values())
         items = _filter_users(items, filters)
         items.sort(key=lambda user: (user.created_at, user.user_id), reverse=True)
-        return UserListResult(items=items[offset : offset + limit], count=len(items), limit=limit, offset=offset)
+        return UserListResult(
+            items=items[offset : offset + limit], count=len(items), limit=limit, offset=offset
+        )
 
     def ensure_user_from_principal(self, principal: Principal, *, defaults: User) -> User:
         existing = self.get_user_or_none(principal.user_id)

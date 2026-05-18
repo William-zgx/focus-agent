@@ -576,9 +576,11 @@ def _marker_matches(lowered_text: str, marker: str) -> bool:
     if not normalized_marker:
         return False
     if re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", normalized_marker):
-        pattern = r"(?<![a-z0-9_])" + r"\s+".join(
-            re.escape(part) for part in normalized_marker.split()
-        ) + r"(?![a-z0-9_])"
+        pattern = (
+            r"(?<![a-z0-9_])"
+            + r"\s+".join(re.escape(part) for part in normalized_marker.split())
+            + r"(?![a-z0-9_])"
+        )
         return re.search(pattern, lowered_text) is not None
     return normalized_marker in lowered_text
 
@@ -646,9 +648,7 @@ def build_tool_intent_plan(
             preferred_first_tool="web_search",
             preferred_first_args={"query": query},
             allowed_toolsets=["web"],
-            denied_toolsets=[
-                toolset for toolset in _ALL_FILTERABLE_TOOLSETS if toolset != "web"
-            ],
+            denied_toolsets=[toolset for toolset in _ALL_FILTERABLE_TOOLSETS if toolset != "web"],
             source="pending_tool_action",
             temporal_anchor_required="temporal_anchor_required" in reason_codes,
         )
@@ -657,7 +657,9 @@ def build_tool_intent_plan(
     source = "deterministic"
 
     no_tool = "explicit_no_tool" in exposure.reason_codes
-    skill_ids = {str(skill_id).strip().lower() for skill_id in active_skill_ids if str(skill_id).strip()}
+    skill_ids = {
+        str(skill_id).strip().lower() for skill_id in active_skill_ids if str(skill_id).strip()
+    }
     if not no_tool and "plan" in skill_ids:
         exposure = _exposure(
             "direct_answer",
@@ -681,7 +683,12 @@ def build_tool_intent_plan(
             preferred_first_tool=exposure.preferred_first_tool or "web_search",
         )
         source = "skill:research"
-    elif not no_tool and skill_ids and not skill_ids <= {"eco"} and exposure.policy == "direct_answer":
+    elif (
+        not no_tool
+        and skill_ids
+        and not skill_ids <= {"eco"}
+        and exposure.policy == "direct_answer"
+    ):
         exposure = _exposure(
             "workspace_lookup",
             confidence=max(exposure.confidence, 0.85),
@@ -805,11 +812,7 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         + len(explicit_workspace_hits) * 2
         + len(workspace_hits)
     )
-    live_web_score = (
-        len(web_lookup_hits) * 3
-        + len(fresh_external_hits) * 2
-        + len(live_hits)
-    )
+    live_web_score = len(web_lookup_hits) * 3 + len(fresh_external_hits) * 2 + len(live_hits)
     execution_score = len(execution_hits) * 3
     direct_score = len(creative_hits) * 2
 
@@ -856,7 +859,9 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         reason_codes.append("mixed_live_web_workspace")
         return _exposure(
             "execution",
-            confidence=_confidence(max(workspace_score, live_web_score), min(workspace_score, live_web_score)),
+            confidence=_confidence(
+                max(workspace_score, live_web_score), min(workspace_score, live_web_score)
+            ),
             reason_codes=tuple(reason_codes),
             preferred_first_tool=_preferred_first_tool(
                 normalized,
@@ -874,7 +879,9 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         reason_codes.append("policy_execution")
         return _exposure(
             "execution",
-            confidence=_confidence(execution_score, max(workspace_score, live_web_score, direct_score)),
+            confidence=_confidence(
+                execution_score, max(workspace_score, live_web_score, direct_score)
+            ),
             reason_codes=tuple(reason_codes),
         )
 
@@ -914,7 +921,9 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         reason_codes.append("policy_direct_answer")
         return _exposure(
             "direct_answer",
-            confidence=_confidence(direct_score, max(workspace_score, live_web_score, execution_score)),
+            confidence=_confidence(
+                direct_score, max(workspace_score, live_web_score, execution_score)
+            ),
             reason_codes=tuple(reason_codes),
         )
 
@@ -1026,9 +1035,7 @@ def _tools_for_policy(
             normalized, _FILE_BROWSE_INTENT_MARKERS
         ):
             focused = [
-                tool
-                for tool in candidates
-                if "code_search" in _tool_runtime(tool).intent_tags
+                tool for tool in candidates if "code_search" in _tool_runtime(tool).intent_tags
             ]
             if focused:
                 return focused

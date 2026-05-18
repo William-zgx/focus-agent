@@ -2,6 +2,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useBranchTree } from "@/features/branch-tree/use-branch-tree";
+import { useThreadBranchDecisions } from "@/features/branch-decisions/use-branch-decisions";
 import {
 	ArchivedBranchesSection,
 	ArchivedConversationsSection,
@@ -113,6 +114,11 @@ export function BranchTreePanel() {
 	} = useBranchDetailOverlayState({ root: data?.root });
 	const previewThreadId = detailThreadId || selectedThreadId;
 	const previewNode = detailNode ?? selectedNode;
+	const detailDecisionThreadId = detailThreadId || selectedThreadId || "";
+	const { data: detailDecisionData } = useThreadBranchDecisions(
+		detailDecisionThreadId,
+	);
+	const detailBranchDecision = detailDecisionData?.items?.[0] ?? null;
 
 	const {
 		branchZoom,
@@ -296,6 +302,7 @@ export function BranchTreePanel() {
 				detailConclusionPreparing={detailConclusionPreparing}
 				detailDepth={detailDepth}
 				detailHasPreparedConclusion={detailHasPreparedConclusion}
+				detailBranchDecision={detailBranchDecision}
 				detailNode={detailNode}
 				detailNodeStatusTone={detailNodeStatusTone}
 				detailOverlayRef={detailOverlayRef}

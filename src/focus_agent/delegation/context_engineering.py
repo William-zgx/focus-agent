@@ -80,7 +80,9 @@ def build_context_policy(settings: Settings | Any) -> dict[str, Any]:
         ),
         "role_views_enabled": bool(getattr(settings, "agent_context_role_views_enabled", False)),
         "tokenizer_mode": str(getattr(settings, "agent_context_tokenizer_mode", "chars_fallback")),
-        "artifact_min_chars": int(getattr(settings, "agent_context_artifact_min_chars", 12000) or 12000),
+        "artifact_min_chars": int(
+            getattr(settings, "agent_context_artifact_min_chars", 12000) or 12000
+        ),
         "default_off_legacy_safe": True,
     }
 
@@ -108,7 +110,9 @@ def build_context_engineering_decision(
         mode="observe" if enabled else "disabled",
         prompt_chars=prompt_chars,
         prompt_budget_chars=prompt_budget_chars,
-        estimated_prompt_tokens=max(1, prompt_chars // max(1, int(budget.chars_per_token))) if prompt_chars else 0,
+        estimated_prompt_tokens=max(1, prompt_chars // max(1, int(budget.chars_per_token)))
+        if prompt_chars
+        else 0,
         over_budget_chars=max(0, prompt_chars - prompt_budget_chars),
         tokenizer_mode=str(policy["tokenizer_mode"]),
         tokenizer_id=budget.tokenizer_id,
@@ -122,7 +126,9 @@ def build_context_engineering_decision(
         enabled=enabled and bool(compression_items),
         strategy="semantic_summary_plus_refs" if compression_items else "none",
         items=compression_items,
-        estimated_saved_chars=sum(max(0, item.original_chars - item.target_chars) for item in compression_items),
+        estimated_saved_chars=sum(
+            max(0, item.original_chars - item.target_chars) for item in compression_items
+        ),
     )
     artifact_refs = _context_artifact_refs(
         state=state,
@@ -133,7 +139,9 @@ def build_context_engineering_decision(
         and bool(policy["artifactize_long_observations"])
         and (bool(policy["artifactize_long_observations"]) if materialize is None else materialize),
     )
-    role_views = _role_context_views(enabled=enabled and bool(policy["role_views_enabled"]), role=role)
+    role_views = _role_context_views(
+        enabled=enabled and bool(policy["role_views_enabled"]), role=role
+    )
     compressed_prompt = None
     if enabled and budget_decision.over_budget_chars > 0:
         compressed_prompt = _compress_prompt_with_refs(
@@ -290,13 +298,35 @@ def _role_context_views(*, enabled: bool, role: str) -> list[RoleContextView]:
     if not enabled:
         return []
     profiles = {
-        "planner": (["task_brief", "constraints", "summary", "approved_findings"], ["raw_tool_observations"], 0.7),
-        "executor": (["task_brief", "constraints", "recent_messages", "tool_refs", "artifacts"], [], 1.0),
-        "critic": (["task_brief", "acceptance_criteria", "artifacts", "citations"], ["branch_local_memory"], 0.55),
-        "memory_curator": (["memory_scope", "branch_findings", "imported_findings"], ["raw_tool_observations"], 0.45),
-        "skill_scout": (["task_brief", "available_skills", "tool_capabilities"], ["durable_memory"], 0.35),
+        "planner": (
+            ["task_brief", "constraints", "summary", "approved_findings"],
+            ["raw_tool_observations"],
+            0.7,
+        ),
+        "executor": (
+            ["task_brief", "constraints", "recent_messages", "tool_refs", "artifacts"],
+            [],
+            1.0,
+        ),
+        "critic": (
+            ["task_brief", "acceptance_criteria", "artifacts", "citations"],
+            ["branch_local_memory"],
+            0.55,
+        ),
+        "memory_curator": (
+            ["memory_scope", "branch_findings", "imported_findings"],
+            ["raw_tool_observations"],
+            0.45,
+        ),
+        "skill_scout": (
+            ["task_brief", "available_skills", "tool_capabilities"],
+            ["durable_memory"],
+            0.35,
+        ),
     }
-    ordered_roles = list(dict.fromkeys([role, "planner", "executor", "critic", "memory_curator", "skill_scout"]))
+    ordered_roles = list(
+        dict.fromkeys([role, "planner", "executor", "critic", "memory_curator", "skill_scout"])
+    )
     views: list[RoleContextView] = []
     for role_name in ordered_roles:
         included, excluded, ratio = profiles.get(role_name, profiles["executor"])

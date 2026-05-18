@@ -117,9 +117,7 @@ def test_task_tool_factory_returns_envelope_payload_with_runtime_metadata():
 def test_agent_team_subagent_runner_bridges_to_existing_fake_delegated_executor():
     async def scenario():
         run_manager = SubagentExecutor(
-            AgentTeamSubagentRunner(
-                settings=Settings(agent_delegation_execution_mode="fake")
-            )
+            AgentTeamSubagentRunner(settings=Settings(agent_delegation_execution_mode="fake"))
         )
         envelope = await run_manager.execute(
             SubagentTaskRequest(

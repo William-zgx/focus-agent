@@ -14,19 +14,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from focus_agent.prompts import get_registry
+
 from ..schema import EvalCase, JudgeVerdict, TrajectoryStep
 
-_JUDGE_SYSTEM_PROMPT = """You are an evaluator for an AI agent. Given a user task,
-the agent's final answer, and its tool-call trace, decide whether the answer satisfies
-the rubric.
-
-Respond with a single JSON object and nothing else:
-{"verdict": "pass" | "fail", "confidence": 0.0-1.0, "reasoning": "<short>"}
-
-- pass requires the rubric to be fully satisfied.
-- confidence is your own certainty, not the agent's.
-- reasoning must stay under 40 words.
-"""
+_JUDGE_SYSTEM_PROMPT_ID = "eval.llm_judge.system"
+_JUDGE_SYSTEM_PROMPT_VERSION = "v1"
 
 
 class JudgeModel(Protocol):
@@ -74,14 +67,9 @@ class LLMJudge:
                 details={"skipped": True, "reason": "no_primary_model"},
             )
 
-        prompt = _build_prompt(
-            case=case, answer=answer, trajectory=trajectory, rubric=rubric
-        )
+        prompt = _build_prompt(case=case, answer=answer, trajectory=trajectory, rubric=rubric)
         primary_result = _invoke_judge(self.primary, prompt)
-        if (
-            self.escalator is not None
-            and primary_result["confidence"] < self.escalate_below
-        ):
+        if self.escalator is not None and primary_result["confidence"] < self.escalate_below:
             escalated = _invoke_judge(self.escalator, prompt)
             verdict = escalated
             verdict["escalated_from"] = primary_result
@@ -93,7 +81,9 @@ class LLMJudge:
             passed=verdict["verdict"] == "pass",
             reasoning=verdict.get("reasoning", ""),
             confidence=float(verdict.get("confidence", 0.5)),
-            details={k: v for k, v in verdict.items() if k not in {"verdict", "reasoning", "confidence"}},
+            details={
+                k: v for k, v in verdict.items() if k not in {"verdict", "reasoning", "confidence"}
+            },
         )
 
 
@@ -105,13 +95,20 @@ def _build_prompt(
     rubric: str,
 ) -> str:
     user_message = (case.input.get("user_message") or "").strip()
-    tool_trace = "\n".join(
-        f"- {s.tool}({json.dumps(s.args, ensure_ascii=False)[:200]}) -> {s.observation[:200]}"
-        for s in trajectory
-    ) or "(no tool calls)"
+    tool_trace = (
+        "\n".join(
+            f"- {s.tool}({json.dumps(s.args, ensure_ascii=False)[:200]}) -> {s.observation[:200]}"
+            for s in trajectory
+        )
+        or "(no tool calls)"
+    )
+    system_prompt = get_registry().render(
+        _JUDGE_SYSTEM_PROMPT_ID,
+        version=_JUDGE_SYSTEM_PROMPT_VERSION,
+    )
 
     return (
-        f"{_JUDGE_SYSTEM_PROMPT}\n\n"
+        f"{system_prompt}\n\n"
         f"### Rubric\n{rubric}\n\n"
         f"### User Task\n{user_message}\n\n"
         f"### Agent Answer\n{answer}\n\n"

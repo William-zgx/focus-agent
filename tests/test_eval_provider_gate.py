@@ -61,7 +61,11 @@ def test_provider_eval_gate_runs_command_when_key_present(tmp_path: Path) -> Non
     marker = tmp_path / "ran.txt"
 
     exit_code = eval_provider_gate.run_provider_eval_gate(
-        command=["python", "-c", f"from pathlib import Path; Path({str(marker)!r}).write_text('ok')"],
+        command=[
+            "python",
+            "-c",
+            f"from pathlib import Path; Path({str(marker)!r}).write_text('ok')",
+        ],
         key_envs=["OPENAI_API_KEY"],
         missing_policy="fail",
         gate_report_json=report_json,

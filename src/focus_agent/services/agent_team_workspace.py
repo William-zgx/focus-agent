@@ -68,7 +68,9 @@ class AgentTeamWorkspaceService:
             if branch_exists:
                 self._git("worktree", "add", str(workspace_path), workspace_branch)
             else:
-                self._git("worktree", "add", "-b", workspace_branch, str(workspace_path), base_commit)
+                self._git(
+                    "worktree", "add", "-b", workspace_branch, str(workspace_path), base_commit
+                )
 
         return AgentTeamWorkspace(
             workspace_id=workspace_id,
@@ -131,7 +133,9 @@ class AgentTeamWorkspaceService:
         return sorted(path for path in session_dir.iterdir() if path.is_dir())
 
     def _diff_summary(self, workspace_path: Path) -> str:
-        diff = self._git("-C", str(workspace_path), "diff", "--stat", "--no-ext-diff").stdout.strip()
+        diff = self._git(
+            "-C", str(workspace_path), "diff", "--stat", "--no-ext-diff"
+        ).stdout.strip()
         untracked = self._git(
             "-C",
             str(workspace_path),

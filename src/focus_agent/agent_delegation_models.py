@@ -1,2 +1,1 @@
-from focus_agent.delegation.delegation_models import *
-from focus_agent.delegation.delegation_models import __all__ as __all__
+from focus_agent.delegation.delegation_models import *  # noqa: F401,F403

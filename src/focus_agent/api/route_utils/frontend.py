@@ -35,8 +35,6 @@ def _frontend_dev_redirect(
     return RedirectResponse(url=target, status_code=307)
 
 
-
-
 __all__ = [
     "_frontend_dev_redirect",
     "_render_frontend_or_raise",

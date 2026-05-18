@@ -42,7 +42,7 @@ class _FakeCursor:
         self.responses = list(responses or [])
         self.executed: list[tuple[str, tuple[object, ...] | None]] = []
 
-    def __enter__(self) -> "_FakeCursor":
+    def __enter__(self) -> _FakeCursor:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -70,7 +70,7 @@ class _FakeConn:
     def __init__(self, cursor: _FakeCursor) -> None:
         self._cursor = cursor
 
-    def __enter__(self) -> "_FakeConn":
+    def __enter__(self) -> _FakeConn:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -235,13 +235,16 @@ def test_resource_lock_detects_simple_deadlock() -> None:
     )
     assert claim_a is not None
     assert claim_b is not None
-    assert manager.try_acquire(
-        resource_id="file:b",
-        agent_id="a",
-        session_id="s1",
-        mode=LockMode.EXCLUSIVE,
-        ttl_seconds=30,
-    ) is None
+    assert (
+        manager.try_acquire(
+            resource_id="file:b",
+            agent_id="a",
+            session_id="s1",
+            mode=LockMode.EXCLUSIVE,
+            ttl_seconds=30,
+        )
+        is None
+    )
     with pytest.raises(DeadlockDetected):
         manager.try_acquire(
             resource_id="file:a",
@@ -681,7 +684,10 @@ def test_failure_handler_strategy_matrix(
 ) -> None:
     handler = FailureHandler(retry_attempts=retry_attempts, reassign_attempts=reassign_attempts)
 
-    assert handler.decide(task_id="task-1", error_category=error_category, attempt=attempt).value == expected
+    assert (
+        handler.decide(task_id="task-1", error_category=error_category, attempt=attempt).value
+        == expected
+    )
 
 
 @pytest.mark.parametrize("task_id", ["", " ", "\t"])
@@ -1018,11 +1024,29 @@ def test_conflict_detector_reports_file_overlap_and_summary_warning() -> None:
             ["src/b.py"],
             {"conclusion_contradiction"},
         ),
-        ("The API should cache.", "The API should not cache.", [], [], {"conclusion_contradiction"}),
-        ("The API must validate.", "The API cannot validate.", [], [], {"conclusion_contradiction"}),
+        (
+            "The API should cache.",
+            "The API should not cache.",
+            [],
+            [],
+            {"conclusion_contradiction"},
+        ),
+        (
+            "The API must validate.",
+            "The API cannot validate.",
+            [],
+            [],
+            {"conclusion_contradiction"},
+        ),
         ("The API can stream.", "The API can stream.", [], [], set()),
         ("No shared conclusion.", "No shared conclusion.", [], [], set()),
-        ("Patch backend.", "Patch frontend.", ["src/shared.py"], ["src/shared.py"], {"changed_files_overlap"}),
+        (
+            "Patch backend.",
+            "Patch frontend.",
+            ["src/shared.py"],
+            ["src/shared.py"],
+            {"changed_files_overlap"},
+        ),
         (
             "The worker should retry.",
             "The worker should not retry.",
@@ -1032,7 +1056,13 @@ def test_conflict_detector_reports_file_overlap_and_summary_warning() -> None:
         ),
         ("The report is ready.", "The report is not ready.", [], [], {"conclusion_contradiction"}),
         ("Frontend uses tabs.", "Backend uses spaces.", [], [], set()),
-        ("The API will call cache.", "The API won't call cache.", [], [], {"conclusion_contradiction"}),
+        (
+            "The API will call cache.",
+            "The API won't call cache.",
+            [],
+            [],
+            {"conclusion_contradiction"},
+        ),
         ("The task is scoped.", "The task is scoped.", ["a"], ["b"], set()),
     ],
 )

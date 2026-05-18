@@ -30,6 +30,12 @@ export function BranchActionCard({
 		(isChineseUi ? "新分支" : "New branch");
 	const failureMessage =
 		normalizeText(errorMessage) || normalizeText(action.error);
+	const isAiSuggested =
+		action.source === "branch_decision" || Boolean(action.source_decision_id);
+	const confidence =
+		typeof action.confidence === "number"
+			? `${Math.round(action.confidence * 100)}%`
+			: "";
 	return (
 		<div className="fa-message-row is-assistant assistant">
 			<div className="fa-message-stack">
@@ -50,9 +56,17 @@ export function BranchActionCard({
 								{branchActionStatusText(action, isChineseUi)}
 							</div>
 						</div>
-						<span className="fa-branch-action-card-badge">
-							{action.branch_role}
-						</span>
+						<div className="fa-branch-action-card-badge-stack">
+							{isAiSuggested ? (
+								<span className="fa-branch-action-card-badge is-ai">
+									{isChineseUi ? "AI 建议" : "AI"}
+									{confidence ? ` · ${confidence}` : ""}
+								</span>
+							) : null}
+							<span className="fa-branch-action-card-badge">
+								{action.branch_role}
+							</span>
+						</div>
 					</div>
 					<div className="fa-branch-action-card-body">
 						<div>
@@ -67,6 +81,14 @@ export function BranchActionCard({
 							<div className="is-danger">
 								<span>{isChineseUi ? "错误" : "Error"}</span>
 								<strong>{failureMessage}</strong>
+							</div>
+						) : null}
+						{action.source_decision_id ? (
+							<div>
+								<span>{isChineseUi ? "依据" : "Evidence"}</span>
+								<a href={`#branch-decision-${action.source_decision_id}`}>
+									{isChineseUi ? "查看 AI 决策" : "View decision"}
+								</a>
 							</div>
 						) : null}
 					</div>

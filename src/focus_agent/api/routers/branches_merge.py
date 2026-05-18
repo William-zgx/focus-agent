@@ -26,7 +26,7 @@ from ..route_utils.token_usage import (
 router = APIRouter()
 
 
-@router.post('/v1/branches/fork')
+@router.post("/v1/branches/fork")
 def create_branch(
     payload: ForkBranchRequest,
     runtime: AppRuntime = Depends(get_app_runtime),
@@ -50,9 +50,10 @@ def create_branch(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return record.model_dump(mode='json')
+    return record.model_dump(mode="json")
 
-@router.post('/v1/branches/{child_thread_id}/archive')
+
+@router.post("/v1/branches/{child_thread_id}/archive")
 def archive_branch_route(
     child_thread_id: str,
     runtime: AppRuntime = Depends(get_app_runtime),
@@ -69,18 +70,19 @@ def archive_branch_route(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return record.model_dump(mode='json')
+    return record.model_dump(mode="json")
 
-@router.patch('/v1/branches/{child_thread_id}')
+
+@router.patch("/v1/branches/{child_thread_id}")
 def rename_branch_route(
     child_thread_id: str,
     payload: UpdateBranchNameRequest,
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ):
-    branch_name = str(payload.branch_name or '').strip()
+    branch_name = str(payload.branch_name or "").strip()
     if not branch_name:
-        raise HTTPException(status_code=400, detail='Branch name cannot be empty.')
+        raise HTTPException(status_code=400, detail="Branch name cannot be empty.")
     try:
         record = runtime.branch_service.rename_branch(
             child_thread_id=child_thread_id,
@@ -93,9 +95,10 @@ def rename_branch_route(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return record.model_dump(mode='json')
+    return record.model_dump(mode="json")
 
-@router.post('/v1/branches/{child_thread_id}/activate')
+
+@router.post("/v1/branches/{child_thread_id}/activate")
 def activate_branch_route(
     child_thread_id: str,
     runtime: AppRuntime = Depends(get_app_runtime),
@@ -112,9 +115,10 @@ def activate_branch_route(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return record.model_dump(mode='json')
+    return record.model_dump(mode="json")
 
-@router.post('/v1/branches/{child_thread_id}/proposal')
+
+@router.post("/v1/branches/{child_thread_id}/proposal")
 def prepare_branch_merge_proposal(
     child_thread_id: str,
     payload: PrepareMergeProposalRequest,
@@ -135,9 +139,10 @@ def prepare_branch_merge_proposal(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return proposal.model_dump(mode='json')
+    return proposal.model_dump(mode="json")
 
-@router.post('/v1/branches/{child_thread_id}/merge', response_model=ApplyMergeDecisionResponse)
+
+@router.post("/v1/branches/{child_thread_id}/merge", response_model=ApplyMergeDecisionResponse)
 def submit_merge_decision(
     child_thread_id: str,
     payload: ApplyMergeDecisionRequest,
@@ -148,7 +153,7 @@ def submit_merge_decision(
         record = runtime.repo.get_by_child_thread_id(child_thread_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    decision = MergeDecision.model_validate(payload.model_dump(exclude={'user_id'}))
+    decision = MergeDecision.model_validate(payload.model_dump(exclude={"user_id"}))
     try:
         imported = runtime.branch_service.apply_merge_decision(
             child_thread_id=child_thread_id,
@@ -174,21 +179,26 @@ def submit_merge_decision(
         )
     return ApplyMergeDecisionResponse(imported=imported, target_thread_id=target_thread_id)
 
-@router.get('/v1/branches/tree/{root_thread_id:path}', response_model=BranchTreeResponse)
+
+@router.get("/v1/branches/tree/{root_thread_id:path}", response_model=BranchTreeResponse)
 def get_branch_tree_view(
     root_thread_id: str,
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ) -> BranchTreeResponse:
     try:
-        root = runtime.branch_service.get_branch_tree(root_thread_id=root_thread_id, user_id=principal.user_id)
+        root = runtime.branch_service.get_branch_tree(
+            root_thread_id=root_thread_id, user_id=principal.user_id
+        )
         archived_branches = runtime.branch_service.list_archived_branches(
             root_thread_id=root_thread_id,
             user_id=principal.user_id,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    token_usage_by_thread = _token_usage_by_thread_for_root(runtime=runtime, root_thread_id=root_thread_id)
+    token_usage_by_thread = _token_usage_by_thread_for_root(
+        runtime=runtime, root_thread_id=root_thread_id
+    )
     root_thread_usage = _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)
     return BranchTreeResponse(
         root=_annotate_branch_tree_token_usage(

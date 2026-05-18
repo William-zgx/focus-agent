@@ -144,7 +144,32 @@ DATABASE_URI=postgresql://user:pass@host:5432/focus_agent
 
 Durable jobs use claim tokens and claim heartbeats; thread turns use per-thread leases. Post-turn branch title/metadata refresh is scheduled after the chat turn lease is released, so immediate background workers should not contend with the active turn lock.
 
-## 6. Frontend Development
+## 6. Branch Recommendations
+
+Branch decision automation is disabled by default. To collect recommendation
+evidence without changing chat behavior:
+
+```env
+AGENT_BRANCH_DECISION_ENABLED=true
+AGENT_BRANCH_DECISION_MODE=shadow
+AGENT_BRANCH_RECOMMENDATION_ENABLED=true
+AGENT_BRANCH_RECOMMENDATION_MODE=shadow
+```
+
+To let high-confidence pre-turn recommendations appear as user-confirmed Branch
+Action cards, use:
+
+```env
+AGENT_BRANCH_RECOMMENDATION_ENABLED=true
+AGENT_BRANCH_RECOMMENDATION_MODE=suggest
+AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE=0.72
+```
+
+`suggest` mode still does not fork silently; the user confirms or dismisses the
+card in the chat transcript. See [Branch Decisions](branch-decisions.md) for the
+full config, API, SDK, and validation contract.
+
+## 7. Frontend Development
 
 To develop the frontend against the local API:
 
@@ -163,13 +188,16 @@ In that mode:
 - frontend: `http://127.0.0.1:5173/app/`
 - API: `http://127.0.0.1:8000`
 
-## 7. One-Command Local Modes
+The Web app defaults `VITE_FOCUS_AGENT_API_BASE_URL` to `window.location.origin`.
+Set it only when the Vite page should call a different API origin.
+
+## 8. One-Command Local Modes
 
 - `make serve` / `make serve-dev`: frontend Vite dev server + backend API with reload
 - `make serve-prod`: build the static frontend bundle first, then start only the backend without reload
 - `make dev`: backend only with `API_RELOAD=1`
 
-## 8. Local Auth
+## 9. Local Auth
 
 The built-in app routes unauthenticated users to `/app/auth/login` and preserves the protected target in `return_to`. In local development, the fastest browser path is:
 
@@ -205,7 +233,7 @@ Admin Console local checks:
 - Admin status, role, session revoke, and password reset actions require a reason and write audit events.
 - Bearer token scopes alone do not grant admin access; the persisted user role must allow it.
 
-## 9. Browser Smoke Testing
+## 10. Browser Smoke Testing
 
 The default `make ui-smoke` target expects the app URL from `scripts/ui_smoke_test.py`, which is usually the Vite dev URL. When you want to test the backend-served static bundle or disable auth for local debugging, start the API explicitly and pass the app URL:
 
@@ -221,9 +249,10 @@ Use a real, tool-using prompt when changing streaming, transport validation, or 
 
 For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`; `http://127.0.0.1:5173/app` may be handled differently by the dev server. The smoke script launches Chrome with a temporary user data directory, which avoids stale localStorage, extensions, and personal-profile auth state. If a manual browser opens a blank login page while the smoke script passes, retry with a clean profile or clear site data for `127.0.0.1` before treating it as an app regression.
 
-## 10. Next Docs
+## 11. Next Docs
 
 - [Memory System v2](memory-system-v2.md)
+- [Branch Decisions](branch-decisions.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)

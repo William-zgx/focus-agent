@@ -17,6 +17,7 @@ export type FocusAgentEventName =
   | "run.failed"
   | "run.interrupt"
   | "run.closed"
+  | "server_shutdown"
   | "heartbeat"
   | "state.update"
   | "message.delta"
@@ -143,6 +144,14 @@ export interface RunClosedPayload extends FocusAgentBaseEventPayload {
   status: string;
 }
 
+export interface ServerShutdownPayload extends FocusAgentBaseEventPayload {
+  run_id?: string;
+  turn_id?: string;
+  sequence?: number;
+  source_node?: string;
+  message?: string;
+}
+
 export interface TaskPayload extends FocusAgentBaseEventPayload {
   event?: string;
   status?: string;
@@ -161,6 +170,7 @@ export interface FocusAgentEventPayloadMap {
   "run.failed": RunFailedPayload;
   "run.interrupt": RunInterruptPayload;
   "run.closed": RunClosedPayload;
+  "server_shutdown": ServerShutdownPayload;
   "heartbeat": RunMetadataPayload;
   "state.update": StreamChunkPayload;
   "message.delta": MessageDeltaPayload;
@@ -218,6 +228,7 @@ export type FocusAgentEvent<K extends FocusAgentEventName = FocusAgentEventName>
     ? {
         event: K;
         data: FocusAgentEventPayloadMap[K];
+        id?: string;
         raw?: string;
       }
     : never;

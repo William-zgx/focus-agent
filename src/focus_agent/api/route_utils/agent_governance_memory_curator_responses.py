@@ -17,7 +17,9 @@ from ..contracts import (
 from .agent_governance_trajectory_responses import _list_response_fields
 
 
-def _agent_memory_curator_policy_response(settings: Settings | Any) -> AgentMemoryCuratorPolicyResponse:
+def _agent_memory_curator_policy_response(
+    settings: Settings | Any,
+) -> AgentMemoryCuratorPolicyResponse:
     return AgentMemoryCuratorPolicyResponse(
         enabled=bool(getattr(settings, "agent_memory_curator_enabled", False)),
         auto_promote_on_merge=bool(getattr(settings, "agent_memory_auto_promote_on_merge", True)),
@@ -69,7 +71,9 @@ def _agent_memory_curator_decisions_response(
     limit: int,
 ) -> AgentMemoryCuratorDecisionListResponse:
     return AgentMemoryCuratorDecisionListResponse(
-        **_list_response_fields(runtime=runtime, key="memory_curator_decision", limit=limit, decisions=True)
+        **_list_response_fields(
+            runtime=runtime, key="memory_curator_decision", limit=limit, decisions=True
+        )
     )
 
 

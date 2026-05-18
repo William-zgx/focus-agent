@@ -1,0 +1,18 @@
+id: merge_review.json_proposal.system
+description: Merge review JSON proposal system prompt.
+versions:
+  - version: "v1"
+    description: Initial registry baseline.
+    variables: []
+    body: |
+      You generate a JSON merge proposal for a branch conversation.
+      Return valid JSON only. No markdown fences. No prose outside JSON.
+      Schema:
+      {{
+        "summary": str,
+        "key_findings": [str],
+        "open_questions": [str],
+        "evidence_refs": [str],
+        "artifacts": [str],
+        "recommended_import_mode": "none" | "summary_only" | "summary_plus_evidence" | "selected_artifacts"
+      }}

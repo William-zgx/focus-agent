@@ -53,7 +53,12 @@ def test_memory_namespace_helpers():
     assert conversation_main_namespace("root-1") == ("conversation", "root-1", "main")
     assert root_thread_episodic_namespace("root-1") == ("conversation", "root-1", "episodic")
     assert root_thread_semantic_namespace("root-1") == ("conversation", "root-1", "semantic")
-    assert branch_namespace("root-1", "branch-1") == ("conversation", "root-1", "branch", "branch-1")
+    assert branch_namespace("root-1", "branch-1") == (
+        "conversation",
+        "root-1",
+        "branch",
+        "branch-1",
+    )
     assert branch_local_memory_namespace("root-1", "branch-1") == (
         "conversation",
         "root-1",
@@ -70,7 +75,12 @@ def test_memory_namespace_helpers():
     )
     assert project_memory_namespace("project-1") == ("project", "project-1", "memory")
     assert skill_memory_namespace("research") == ("skill", "research", "memory")
-    assert conversation_namespace_for_context(context) == ("conversation", "root-1", "branch", "branch-1")
+    assert conversation_namespace_for_context(context) == (
+        "conversation",
+        "root-1",
+        "branch",
+        "branch-1",
+    )
     assert is_user_profile_payload_allowed({"type": "user_preference"}) is True
     assert is_user_profile_payload_allowed({"type": "promoted_branch_finding"}) is False
 

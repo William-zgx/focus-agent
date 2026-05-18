@@ -69,9 +69,7 @@ def test_error_envelope_shape_on_http_exception(
     assert "request_id" in body
 
 
-def test_validation_error_envelope_shape(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_validation_error_envelope_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _with_stub_frontend(monkeypatch, tmp_path)
     monkeypatch.setenv("AUTH_ENABLED", "false")
     app = create_app()
@@ -97,9 +95,7 @@ def test_cors_headers_applied_when_origin_configured(
         headers={"Origin": "http://localhost:5173"},
     )
     assert response.status_code == 200
-    assert (
-        response.headers.get("access-control-allow-origin") == "http://localhost:5173"
-    )
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
 def _auth_app(settings: Settings) -> FastAPI:
@@ -254,6 +250,10 @@ def test_rate_limit_middleware_returns_envelope(
     assert responses[-1].status_code == 429
     body = responses[-1].json()
     assert body["code"] == 429
+    assert body["stable_code"] == "rate_limited"
+    assert body["retryable"] is True
+    assert "trace_id" in body
+    assert body["details"]["retry_after_seconds"] >= 1
     assert body["data"]["retry_after_seconds"] >= 1
     assert responses[-1].headers.get("Retry-After")
 
@@ -286,7 +286,13 @@ def test_rate_limit_middleware_uses_runtime_coordination_backend() -> None:
     response = TestClient(app).get("/v2/threads/thread-1/runs")
 
     assert response.status_code == 429
-    assert backend.calls == [{"key": "ip:testclient:/v2/threads/thread-1/runs", "limit": 3, "window_seconds": 60.0}]
+    body = response.json()
+    assert body["stable_code"] == "rate_limited"
+    assert body["retryable"] is True
+    assert body["details"] == {"retry_after_seconds": 4, "limit_per_minute": 3}
+    assert backend.calls == [
+        {"key": "ip:testclient:/v2/threads/thread-1/runs", "limit": 3, "window_seconds": 60.0}
+    ]
 
 
 def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -336,7 +342,9 @@ def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert payload["ready"] is True
     tracing_check = next(item for item in payload["checks"] if item["name"] == "tracing_exporter")
     assert tracing_check["ready"] is True
-    trajectory_check = next(item for item in payload["checks"] if item["name"] == "trajectory_recorder")
+    trajectory_check = next(
+        item for item in payload["checks"] if item["name"] == "trajectory_recorder"
+    )
     assert trajectory_check["ready"] is True
     memory_check = next(item for item in payload["checks"] if item["name"] == "memory_repository")
     assert memory_check["ready"] is True

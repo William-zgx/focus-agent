@@ -53,7 +53,11 @@ def test_feedback_report_aggregates_governance_and_adoption_signals(tmp_path: Pa
         {
             "events": [
                 {"selection_id": "sel-low", "confidence": 0.4},
-                {"selection_id": "sel-override", "confidence": 0.9, "user_override": {"removed": ["debug"]}},
+                {
+                    "selection_id": "sel-override",
+                    "confidence": 0.9,
+                    "user_override": {"removed": ["debug"]},
+                },
             ]
         },
     )
@@ -101,7 +105,10 @@ def test_feedback_report_aggregates_governance_and_adoption_signals(tmp_path: Pa
     assert report["summary"]["context_high_drift_count"] == 1
     assert report["summary"]["notes_tasks_capture_count"] == 1
     assert report["summary"]["top_failing_trajectory_sample_count"] == 1
-    assert report["feedback_pipeline"]["trajectory_failures"]["top_failing_samples"][0]["case_id"] == "case-bad"
+    assert (
+        report["feedback_pipeline"]["trajectory_failures"]["top_failing_samples"][0]["case_id"]
+        == "case-bad"
+    )
 
 
 def test_feedback_cli_writes_non_blocking_report_for_missing_inputs(tmp_path: Path, capsys) -> None:

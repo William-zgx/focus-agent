@@ -93,7 +93,10 @@ class MemoryCurator:
         )
         conflicted_ids = {item.candidate_id for item in conflicts}
         skipped = [
-            {"candidate_id": candidate.candidate_id, "reason": candidate.skip_reason or "not_promotable"}
+            {
+                "candidate_id": candidate.candidate_id,
+                "reason": candidate.skip_reason or "not_promotable",
+            }
             for candidate in candidates
             if not candidate.promotable
         ]
@@ -165,12 +168,16 @@ class MemoryCurator:
                     existing_key = existing.semantic_key or memory_semantic_key(existing)
                     same_key_different_summary = (
                         existing_key == candidate.semantic_key
-                        and _normalize(existing.summary or existing.content) != _normalize(candidate.summary)
+                        and _normalize(existing.summary or existing.content)
+                        != _normalize(candidate.summary)
                     )
                     overlapping_branch_finding = (
                         existing.kind == MemoryKind.BRANCH_FINDING
-                        and has_textual_overlap(existing.summary or existing.content, candidate.summary)
-                        and _normalize(existing.summary or existing.content) != _normalize(candidate.summary)
+                        and has_textual_overlap(
+                            existing.summary or existing.content, candidate.summary
+                        )
+                        and _normalize(existing.summary or existing.content)
+                        != _normalize(candidate.summary)
                     )
                     if same_key_different_summary or overlapping_branch_finding:
                         conflicts.append(
@@ -191,14 +198,14 @@ class MemoryCurator:
         for candidate in candidates:
             for existing in self._search_existing(namespace, candidate.summary):
                 existing_key = existing.semantic_key or memory_semantic_key(existing)
-                same_key_different_summary = (
-                    existing_key == candidate.semantic_key
-                    and _normalize(existing.summary or existing.content) != _normalize(candidate.summary)
-                )
+                same_key_different_summary = existing_key == candidate.semantic_key and _normalize(
+                    existing.summary or existing.content
+                ) != _normalize(candidate.summary)
                 overlapping_branch_finding = (
                     existing.kind == MemoryKind.BRANCH_FINDING
                     and has_textual_overlap(existing.summary or existing.content, candidate.summary)
-                    and _normalize(existing.summary or existing.content) != _normalize(candidate.summary)
+                    and _normalize(existing.summary or existing.content)
+                    != _normalize(candidate.summary)
                 )
                 if same_key_different_summary or overlapping_branch_finding:
                     conflicts.append(
@@ -238,7 +245,8 @@ class MemoryCurator:
                             "tags": payload.get("tags", []),
                             "evidence_refs": payload.get("evidence_refs", []),
                             "source_thread_id": payload.get("source_thread_id"),
-                            "source_branch_id": payload.get("source_branch_id") or payload.get("branch_id"),
+                            "source_branch_id": payload.get("source_branch_id")
+                            or payload.get("branch_id"),
                             "root_thread_id": payload.get("root_thread_id"),
                             "user_id": payload.get("user_id"),
                             "confidence": payload.get("confidence"),
@@ -246,8 +254,16 @@ class MemoryCurator:
                             "promoted_to_main": payload.get("promoted_to_main", False),
                             "fingerprint": payload.get("fingerprint"),
                             "semantic_key": payload.get("semantic_key"),
-                            **({"created_at": payload["created_at"]} if payload.get("created_at") else {}),
-                            **({"updated_at": payload["updated_at"]} if payload.get("updated_at") else {}),
+                            **(
+                                {"created_at": payload["created_at"]}
+                                if payload.get("created_at")
+                                else {}
+                            ),
+                            **(
+                                {"updated_at": payload["updated_at"]}
+                                if payload.get("updated_at")
+                                else {}
+                            ),
                         }
                     )
                 )
@@ -267,7 +283,13 @@ class MemoryCurator:
             kind=MemoryKind.BRANCH_FINDING,
             scope=MemoryScope.BRANCH,
             visibility=MemoryVisibility.PROMOTABLE,
-            namespace=("conversation", branch_record.root_thread_id, "branch", branch_record.branch_id, "local_memory"),
+            namespace=(
+                "conversation",
+                branch_record.root_thread_id,
+                "branch",
+                branch_record.branch_id,
+                "local_memory",
+            ),
             content=finding.finding,
             summary=finding.finding,
             evidence_refs=finding.evidence_refs,

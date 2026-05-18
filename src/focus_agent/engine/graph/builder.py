@@ -18,7 +18,6 @@ from ...memory import (
 )
 from ...model_registry import create_chat_model
 from ...skills import SkillRegistry
-from .agent_loop import make_agent_loop_node
 from ..graph_governance_nodes import (
     make_delegation_governance_node,
     make_role_route_dry_run_node,
@@ -40,7 +39,6 @@ from ..graph_plan_nodes import (
     make_reflect_node,
     make_should_continue_after_reflect,
 )
-from .tool_execution import make_tool_executor_node
 from ..graph_turn_helpers import (
     TurnToolExposure,
     _canonicalize_tool_call_args,
@@ -60,6 +58,8 @@ from ..graph_turn_helpers import (
     build_tool_intent_plan,
 )
 from ..model_factory import GraphModelFactory
+from .agent_loop import make_agent_loop_node
+from .tool_execution import make_tool_executor_node
 
 
 def build_graph(

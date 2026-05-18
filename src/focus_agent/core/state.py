@@ -13,10 +13,10 @@ from pydantic import BaseModel
 from .state_governance_metrics import (
     GOVERNANCE_METRIC_KEYS,
     agent_delegation_metrics,
-    answer_verification_metrics,
     agent_failure_metrics,
     agent_review_metrics,
     agent_task_ledger_metrics,
+    answer_verification_metrics,
     context_artifact_ref_metrics,
     context_budget_metrics,
     critic_gate_metrics,
@@ -409,12 +409,14 @@ GOVERNANCE_RECORD_DESCRIPTORS: tuple[GovernanceRecordDescriptor, ...] = (
 GOVERNANCE_RECORD_DESCRIPTOR_REGISTRY: Mapping[str, GovernanceRecordDescriptor] = MappingProxyType(
     {descriptor.name: descriptor for descriptor in GOVERNANCE_RECORD_DESCRIPTORS}
 )
-GOVERNANCE_RECORD_DESCRIPTORS_BY_MIRROR_KEY: Mapping[str, GovernanceRecordDescriptor] = MappingProxyType(
-    {
-        str(descriptor.mirror_key): descriptor
-        for descriptor in GOVERNANCE_RECORD_DESCRIPTORS
-        if descriptor.mirror_key
-    }
+GOVERNANCE_RECORD_DESCRIPTORS_BY_MIRROR_KEY: Mapping[str, GovernanceRecordDescriptor] = (
+    MappingProxyType(
+        {
+            str(descriptor.mirror_key): descriptor
+            for descriptor in GOVERNANCE_RECORD_DESCRIPTORS
+            if descriptor.mirror_key
+        }
+    )
 )
 GOVERNANCE_RECORD_MIRROR_KEYS: Mapping[str, AgentStateKey] = MappingProxyType(
     {
@@ -719,9 +721,7 @@ def state_domain_fields(domain: AgentStateDomain) -> tuple[AgentStateKey, ...]:
 
 
 def state_domains_for_field(field: AgentStateKey) -> tuple[AgentStateDomain, ...]:
-    return tuple(
-        domain for domain, fields in STATE_DOMAIN_FIELDS.items() if field in fields
-    )
+    return tuple(domain for domain, fields in STATE_DOMAIN_FIELDS.items() if field in fields)
 
 
 def slice_agent_state(
@@ -746,9 +746,13 @@ def serialize_agent_state(state: Mapping[str, Any]) -> dict[str, Any]:
 _GOVERNANCE_MISSING = object()
 
 
-def governance_record_descriptor(name_or_mirror_key: AgentStateRecordName | str) -> GovernanceRecordDescriptor | None:
+def governance_record_descriptor(
+    name_or_mirror_key: AgentStateRecordName | str,
+) -> GovernanceRecordDescriptor | None:
     key = str(name_or_mirror_key)
-    return GOVERNANCE_RECORD_DESCRIPTOR_REGISTRY.get(key) or GOVERNANCE_RECORD_DESCRIPTORS_BY_MIRROR_KEY.get(key)
+    return GOVERNANCE_RECORD_DESCRIPTOR_REGISTRY.get(
+        key
+    ) or GOVERNANCE_RECORD_DESCRIPTORS_BY_MIRROR_KEY.get(key)
 
 
 def governance_metric_defaults() -> dict[str, int]:
@@ -844,7 +848,9 @@ def make_agent_state_record(
     created_at: datetime | str | None = None,
 ) -> AgentStateRecord:
     descriptor = governance_record_descriptor(name)
-    resolved_mirror_key = descriptor.mirror_key if descriptor and domain == descriptor.domain else None
+    resolved_mirror_key = (
+        descriptor.mirror_key if descriptor and domain == descriptor.domain else None
+    )
     record: AgentStateRecord = {
         "schema_version": GOVERNANCE_RECORD_SCHEMA_VERSION,
         "record_id": f"{source}:{domain}:{name}",
@@ -978,7 +984,9 @@ def _agent_state_record_mirror_key(record: Mapping[str, Any]) -> str:
 
 def _legacy_mirror_key_for(name_or_mirror_key: AgentStateRecordName | str) -> str:
     descriptor = governance_record_descriptor(name_or_mirror_key)
-    return str(descriptor.mirror_key if descriptor and descriptor.mirror_key else name_or_mirror_key)
+    return str(
+        descriptor.mirror_key if descriptor and descriptor.mirror_key else name_or_mirror_key
+    )
 
 
 def _record_created_at(value: datetime | str | None) -> str:

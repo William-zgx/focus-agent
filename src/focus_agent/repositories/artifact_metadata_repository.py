@@ -119,7 +119,9 @@ class ArtifactMetadataRepository:
             raise RuntimeError(f"Failed to upsert artifact metadata for {artifact_id}.")
         return self._row_to_record(row)
 
-    def list_by_thread(self, thread_id: str, *, limit: int | None = None) -> list[ArtifactMetadataRecord]:
+    def list_by_thread(
+        self, thread_id: str, *, limit: int | None = None
+    ) -> list[ArtifactMetadataRecord]:
         query = """
             SELECT
                 relative_path,

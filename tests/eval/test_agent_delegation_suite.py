@@ -23,12 +23,20 @@ def _latest_user_text(messages: list[Any]) -> str:
 def _agent_delegation_script(messages: list[Any], allow_tools: bool) -> AIMessage:  # noqa: ARG001
     user_text = _latest_user_text(messages)
     if "default off" in user_text or "legacy single-run" in user_text:
-        return AIMessage(content="Agent delegation is default off, so the legacy single-run path stays unchanged.")
+        return AIMessage(
+            content="Agent delegation is default off, so the legacy single-run path stays unchanged."
+        )
     if "orchestrator" in user_text:
-        return AIMessage(content="Complex work can flow through orchestrator, planner, executor, and critic.")
+        return AIMessage(
+            content="Complex work can flow through orchestrator, planner, executor, and critic."
+        )
     if "effective_model" in user_text:
-        return AIMessage(content="Model Router records effective_model and fallback decisions under enforce mode.")
-    return AIMessage(content="A failed delegated run can produce a self-repair preview and enter the review queue.")
+        return AIMessage(
+            content="Model Router records effective_model and fallback decisions under enforce mode."
+        )
+    return AIMessage(
+        content="A failed delegated run can produce a self-repair preview and enter the review queue."
+    )
 
 
 def test_agent_delegation_dataset_covers_runtime_router_and_repair():
@@ -40,7 +48,9 @@ def test_agent_delegation_dataset_covers_runtime_router_and_repair():
         "gt_agent_delegation_model_router_fallback",
         "gt_agent_delegation_self_repair_review_queue",
     } <= set(cases)
-    assert cases["gt_agent_delegation_self_repair_review_queue"].expected["must_not_call_tools"] == [
+    assert cases["gt_agent_delegation_self_repair_review_queue"].expected[
+        "must_not_call_tools"
+    ] == [
         "web_search",
         "web_fetch",
         "write_text_artifact",

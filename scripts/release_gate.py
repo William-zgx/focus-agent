@@ -201,7 +201,9 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
 )
 
 
-def _github_actions_metadata(env: Mapping[str, str], *, run_id: str, dry_run: bool) -> dict[str, Any]:
+def _github_actions_metadata(
+    env: Mapping[str, str], *, run_id: str, dry_run: bool
+) -> dict[str, Any]:
     return {
         "actor": env.get("GITHUB_ACTOR"),
         "artifact_name": env.get("RELEASE_GATE_ARTIFACT_NAME")
@@ -283,7 +285,10 @@ def validate_deployment_binding(
     if deployment_binding_json is not None:
         target = Path(deployment_binding_json)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        target.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     return payload
 
 
@@ -299,7 +304,11 @@ def run_deployment_binding_check(
         deployment_binding_json=deployment_binding_json,
         dry_run=dry_run,
     )
-    if fail_on_error and payload["meta"]["dry_run"] is False and payload["summary"]["status"] != "passed":
+    if (
+        fail_on_error
+        and payload["meta"]["dry_run"] is False
+        and payload["summary"]["status"] != "passed"
+    ):
         print(json.dumps(payload["summary"], ensure_ascii=False), file=sys.stderr)
         return 1
     return 0
@@ -308,16 +317,97 @@ def run_deployment_binding_check(
 def production_signal_commands() -> list[list[str]]:
     return [
         ["mkdir", "-p", "reports/release-gate"],
-        ["python", "scripts/release_gate.py", "deployment-binding", "--output", "${DEPLOYMENT_BINDING_JSON}"],
-        ["curl", "--fail", "--show-error", "--silent", "$READY_URL", "--output", "reports/release-gate/readyz.json"],
-        ["curl", "--fail", "--show-error", "--silent", "$TRAJECTORY_STATS_URL", "--output", "reports/release-gate/trajectory-stats.json"],
-        ["curl", "--fail", "--show-error", "--silent", "$REPLAY_COMPARISONS_URL", "--output", "reports/release-gate/replay-comparisons.json"],
-        ["curl", "--fail", "--show-error", "--silent", "$ALERT_REPORT_URL", "--output", "reports/release-gate/alert-report.json"],
-        ["curl", "--fail", "--show-error", "--silent", "$POSTGRES_MIGRATION_REPORT_URL", "--output", "reports/release-gate/postgres-migration.json"],
-        ["curl", "--fail", "--show-error", "--silent", "$BASELINE_EVAL_REPORT_URL", "--output", "reports/release-gate/baseline-eval-smoke.json"],
-        ["uv", "run", "python", "scripts/production_smoke.py", "--report-json", "reports/release-gate/production-smoke.json"],
-        ["uv", "run", "python", "scripts/postgres_ops.py", "--report-json", "reports/release-gate/postgres-ops.json"],
-        ["uv", "run", "python", "scripts/otel_smoke.py", "--report-json", "reports/release-gate/otel-smoke.json"],
+        [
+            "python",
+            "scripts/release_gate.py",
+            "deployment-binding",
+            "--output",
+            "${DEPLOYMENT_BINDING_JSON}",
+        ],
+        [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "$READY_URL",
+            "--output",
+            "reports/release-gate/readyz.json",
+        ],
+        [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "$TRAJECTORY_STATS_URL",
+            "--output",
+            "reports/release-gate/trajectory-stats.json",
+        ],
+        [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "$REPLAY_COMPARISONS_URL",
+            "--output",
+            "reports/release-gate/replay-comparisons.json",
+        ],
+        [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "$ALERT_REPORT_URL",
+            "--output",
+            "reports/release-gate/alert-report.json",
+        ],
+        [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "$POSTGRES_MIGRATION_REPORT_URL",
+            "--output",
+            "reports/release-gate/postgres-migration.json",
+        ],
+        [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "$BASELINE_EVAL_REPORT_URL",
+            "--output",
+            "reports/release-gate/baseline-eval-smoke.json",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/production_smoke.py",
+            "--report-json",
+            "reports/release-gate/production-smoke.json",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/postgres_ops.py",
+            "--report-json",
+            "reports/release-gate/postgres-ops.json",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/otel_smoke.py",
+            "--endpoint",
+            "$OTEL_ENDPOINT",
+            "--collector-health-url",
+            "$OTEL_COLLECTOR_HEALTH_URL",
+            "--trace-query-url",
+            "$OTEL_TRACE_QUERY_URL",
+            "--report-json",
+            "reports/release-gate/otel-smoke.json",
+        ],
         ["test", "-s", "$GOVERNANCE_REPORT_JSON"],
     ]
 
@@ -632,7 +722,9 @@ def _validate_labels(labels: Sequence[str], *, option_name: str) -> set[str]:
     unknown = sorted(selected - available)
     if unknown:
         known = ", ".join(sorted(available))
-        raise ValueError(f"Unknown {option_name} label(s): {', '.join(unknown)}. Known labels: {known}")
+        raise ValueError(
+            f"Unknown {option_name} label(s): {', '.join(unknown)}. Known labels: {known}"
+        )
     return selected
 
 
@@ -685,7 +777,9 @@ def run_release_gate(
             )
             continue
         if command.label in skip:
-            records.append(_empty_record(command, status="skipped", skip_reason="requested by --skip"))
+            records.append(
+                _empty_record(command, status="skipped", skip_reason="requested by --skip")
+            )
             continue
         if not keep_going and failed_label is not None:
             records.append(
@@ -735,17 +829,27 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.add_argument("deployment_binding_command", nargs="?", default="deployment-binding")
         parser.add_argument(
             "--output",
-            default=os.environ.get("DEPLOYMENT_BINDING_JSON", "reports/release-gate/deployment-binding.json"),
+            default=os.environ.get(
+                "DEPLOYMENT_BINDING_JSON", "reports/release-gate/deployment-binding.json"
+            ),
             help="Path for deployment binding JSON.",
         )
-        parser.add_argument("--dry-run", action="store_true", help="Validate as dry-run regardless of env.")
-        parser.add_argument("--no-fail", action="store_true", help="Do not return failure on invalid production binding.")
+        parser.add_argument(
+            "--dry-run", action="store_true", help="Validate as dry-run regardless of env."
+        )
+        parser.add_argument(
+            "--no-fail",
+            action="store_true",
+            help="Do not return failure on invalid production binding.",
+        )
         return parser.parse_args(argv)
 
     parser = argparse.ArgumentParser(
         description="Run the Focus Agent release gate and write a structured JSON report."
     )
-    parser.add_argument("--dry-run", action="store_true", help="Plan commands without executing them.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Plan commands without executing them."
+    )
     parser.add_argument(
         "--only",
         action="append",

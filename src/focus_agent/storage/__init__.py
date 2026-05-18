@@ -1,11 +1,13 @@
 """Persistence-facing helpers for conversation memory payloads."""
 
+from .artifact_store import ArtifactStore
 from .import_memory import (
     branch_memory_namespace,
     main_conversation_namespace,
     persist_imported_conclusion,
     user_profile_memory_namespace,
 )
+from .local_artifact_store import LocalArtifactStore
 from .namespaces import (
     branch_local_memory_namespace,
     branch_namespace,
@@ -21,6 +23,8 @@ from .namespaces import (
 )
 
 __all__ = [
+    "ArtifactStore",
+    "LocalArtifactStore",
     "branch_namespace",
     "branch_local_memory_namespace",
     "branch_memory_namespace",

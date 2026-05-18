@@ -6,20 +6,16 @@ from typing import Any
 from langchain.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
+from focus_agent.prompts import get_registry
+
 from .branching import MergeMode, MergeProposal
 
-JSON_SYSTEM_PROMPT = """You generate a JSON merge proposal for a branch conversation.
-Return valid JSON only. No markdown fences. No prose outside JSON.
-Schema:
-{
-  "summary": str,
-  "key_findings": [str],
-  "open_questions": [str],
-  "evidence_refs": [str],
-  "artifacts": [str],
-  "recommended_import_mode": "none" | "summary_only" | "summary_plus_evidence" | "selected_artifacts"
-}
-"""
+_MERGE_REVIEW_SYSTEM_PROMPT_ID = "merge_review.json_proposal.system"
+_MERGE_REVIEW_USER_PROMPT_ID = "merge_review.proposal.user"
+
+
+def _json_system_prompt() -> str:
+    return get_registry().render(_MERGE_REVIEW_SYSTEM_PROMPT_ID)
 
 
 def _extract_text_messages(state: dict[str, Any], limit: int = 10) -> list[str]:
@@ -145,34 +141,25 @@ def generate_merge_proposal(
     branch_role = (branch_meta or {}).get("branch_role", "explore_alternatives")
     output_language = _preferred_output_language(state)
 
-    prompt = f"""
-Branch name: {branch_name}
-Branch role: {branch_role}
-Output language: {output_language}
-
-Instructions:
-- Generate the conclusion mainly from this branch's own interaction history.
-- Summarize only what this branch newly discovered, verified, decided, or clarified.
-- Do not restate parent-thread context unless this branch materially changed or challenged it.
-- If inherited context is mentioned at all, keep it to a very short orienting phrase.
-
-Inherited upstream context (brief):
-{inherited_context}
-
-This branch's recent interaction history:
-{_local_interaction_summary(state)}
-
-Recorded findings:
-{findings}
-
-Recent transcript:
-{transcript or "(empty)"}
-""".strip()
+    prompt = (
+        get_registry()
+        .render(
+            _MERGE_REVIEW_USER_PROMPT_ID,
+            branch_name=branch_name,
+            branch_role=branch_role,
+            output_language=output_language,
+            inherited_context=inherited_context,
+            local_interaction_summary=_local_interaction_summary(state),
+            findings=findings,
+            transcript=transcript or "(empty)",
+        )
+        .strip()
+    )
 
     try:
         response = model.invoke(
             [
-                SystemMessage(content=JSON_SYSTEM_PROMPT),
+                SystemMessage(content=_json_system_prompt()),
                 HumanMessage(content=prompt),
             ]
         )

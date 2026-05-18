@@ -77,8 +77,7 @@ def embedding_payload_dict(payload: object) -> dict[str, object]:
         return dict(model_dump(mode="python"))
     if hasattr(payload, "__dataclass_fields__"):
         return {
-            field_name: getattr(payload, field_name)
-            for field_name in payload.__dataclass_fields__
+            field_name: getattr(payload, field_name) for field_name in payload.__dataclass_fields__
         }
     return {
         name: getattr(payload, name)

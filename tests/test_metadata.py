@@ -40,6 +40,7 @@ def test_trace_tags_include_root_and_thread():
     assert "root:root-1" in tags
     assert "thread:thread-1" in tags
 
+
 def test_trace_tags_include_branch_status():
     tags = build_trace_tags(
         root_thread_id="root-1",

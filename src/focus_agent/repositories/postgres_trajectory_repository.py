@@ -184,7 +184,10 @@ class PostgresTrajectoryRepository(
     def get_turn(self, turn_id: str) -> TurnTrajectoryRecord | None:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT t.* FROM focus_trajectory_turns t WHERE t.id = %(turn_id)s", {"turn_id": turn_id})
+                cur.execute(
+                    "SELECT t.* FROM focus_trajectory_turns t WHERE t.id = %(turn_id)s",
+                    {"turn_id": turn_id},
+                )
                 row = cur.fetchone()
         if row is None:
             return None
@@ -210,7 +213,9 @@ class PostgresTrajectoryRepository(
                 )
                 rows = cur.fetchall()
 
-        steps_by_turn_id: dict[str, list[dict[str, Any]]] = {turn_id: [] for turn_id in normalized_turn_ids}
+        steps_by_turn_id: dict[str, list[dict[str, Any]]] = {
+            turn_id: [] for turn_id in normalized_turn_ids
+        }
         for row in rows:
             steps_by_turn_id.setdefault(str(row["turn_id"]), []).append(self._row_to_step_dict(row))
         return steps_by_turn_id

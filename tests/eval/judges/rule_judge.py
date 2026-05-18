@@ -32,13 +32,17 @@ class RuleJudge:
         contains_any = expected.get("answer_contains_any")
         if contains_any:
             checks.append("answer_contains_any")
-            if not any(_contains_normalized(normalized_answer, str(needle)) for needle in contains_any):
+            if not any(
+                _contains_normalized(normalized_answer, str(needle)) for needle in contains_any
+            ):
                 failures.append(f"answer missing any of {contains_any!r}")
 
         contains_all = expected.get("answer_contains_all")
         if contains_all:
             checks.append("answer_contains_all")
-            missing = [n for n in contains_all if not _contains_normalized(normalized_answer, str(n))]
+            missing = [
+                n for n in contains_all if not _contains_normalized(normalized_answer, str(n))
+            ]
             if missing:
                 failures.append(f"answer missing required substrings {missing!r}")
 

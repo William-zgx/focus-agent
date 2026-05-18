@@ -97,9 +97,7 @@ def _extract_reasoning_content_from_message(message: AIMessage) -> str | None:
 
 def _convert_reasoning_message_to_dict(message: Any) -> dict[str, Any]:
     converted = (
-        _convert_from_v1_to_chat_completions(message)
-        if isinstance(message, AIMessage)
-        else message
+        _convert_from_v1_to_chat_completions(message) if isinstance(message, AIMessage) else message
     )
     if isinstance(converted, AIMessage):
         converted = AIMessage(
@@ -160,9 +158,7 @@ class ReasoningAwareChatOpenAI(ChatOpenAI):
         if self._use_responses_api(payload):
             return super()._get_request_payload(input_, stop=stop, **kwargs)
 
-        payload["messages"] = [
-            _convert_reasoning_message_to_dict(message) for message in messages
-        ]
+        payload["messages"] = [_convert_reasoning_message_to_dict(message) for message in messages]
         return payload
 
     def _create_chat_result(

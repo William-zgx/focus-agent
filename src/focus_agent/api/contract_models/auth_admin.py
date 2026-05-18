@@ -8,9 +8,9 @@ from focus_agent.core.users import AdminAuditEvent, User, UserSession, UserStatu
 
 
 class DemoTokenRequest(BaseModel):
-    user_id: str = 'researcher-1'
+    user_id: str = "researcher-1"
     tenant_id: str | None = None
-    scopes: list[str] = Field(default_factory=lambda: ['chat', 'branches'])
+    scopes: list[str] = Field(default_factory=lambda: ["chat", "branches"])
 
 
 class AuthRegisterRequest(BaseModel):
@@ -173,9 +173,36 @@ class BackgroundJobSummaryResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class BackgroundDeadLetterJobResponse(BaseModel):
+    job_key: str
+    kind: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    status: str = "dead_lettered"
+    attempt: int = 0
+    max_attempts: int = 1
+    dedupe_policy: str = "skip"
+    idempotency_key: str | None = None
+    last_error: str | None = None
+    dead_lettered_at: str | None = None
+    dead_lettered_age_seconds: int | None = None
+
+
+class BackgroundDeadLetterJobListResponse(BaseModel):
+    items: list[BackgroundDeadLetterJobResponse] = Field(default_factory=list)
+    count: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class BackgroundDeadLetterReplayResponse(BaseModel):
+    job_key: str
+    replayed: bool
+    status: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = 'bearer'
+    token_type: str = "bearer"
     expires_in_seconds: int
     issuer: str
 
@@ -216,6 +243,9 @@ __all__ = [
     "UpdateUserRolesRequest",
     "AuditEventResponse",
     "AuditEventListResponse",
+    "BackgroundDeadLetterJobListResponse",
+    "BackgroundDeadLetterJobResponse",
+    "BackgroundDeadLetterReplayResponse",
     "BackgroundJobSummaryResponse",
     "TokenResponse",
     "AuthTokenResponse",

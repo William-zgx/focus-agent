@@ -65,7 +65,9 @@ class ContextBudget(StateModel):
     token_budget_mode: Literal["chars_fallback", "tokenizer_first"] = "tokenizer_first"
     tokenizer_id: str | None = None
     tool_observation_token_limit: int = Field(default=3000, ge=1)
-    tool_observation_budget_mode: Literal["inherit", "chars_fallback", "tokenizer_first"] = "inherit"
+    tool_observation_budget_mode: Literal["inherit", "chars_fallback", "tokenizer_first"] = (
+        "inherit"
+    )
     tool_observation_tokenizer_id: str | None = None
     tool_reference_token_limit: int = Field(default=240, ge=1)
 

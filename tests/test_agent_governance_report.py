@@ -114,7 +114,9 @@ def test_governance_cli_accepts_label_path_reports(tmp_path: Path, capsys) -> No
     assert stdout["report_json"] == str(report_json)
     assert report["commands"][0]["label"] == "eval-delegation"
     assert report["summary"]["missing_reports"] == 0
-    assert agent_governance_report.DEFAULT_REPORT_JSON == Path("reports/agent-governance/latest.json")
+    assert agent_governance_report.DEFAULT_REPORT_JSON == Path(
+        "reports/agent-governance/latest.json"
+    )
 
 
 def test_governance_report_threshold_blocking_signals(tmp_path: Path) -> None:
@@ -173,7 +175,9 @@ def test_governance_report_cost_budget_warning_without_block(tmp_path: Path) -> 
     report = agent_governance_report.build_governance_report(
         eval_reports=[("delegation", delegation), ("governance", governance)]
     )
-    budget_signal = next(signal for signal in report["signals"] if signal["key"] == "cost_token_tool_budget")
+    budget_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "cost_token_tool_budget"
+    )
 
     assert report["summary"]["status"] == "passed"
     assert budget_signal["status"] == "warn"

@@ -164,11 +164,11 @@ export function ThreadPage() {
 
 	return (
 		<ThreadPageContent
-			activeSkillIds={data?.active_skill_ids ?? []}
 			assistantMessage={data?.assistant_message}
 			branchActionErrors={branchActionErrors}
 			branchActionInFlightId={branchActionInFlightId}
 			branchActions={branchActions}
+			branchDecisionSummary={data?.branch_decision_summary ?? null}
 			compactContextError={compactThreadContext.error?.message}
 			contextUsage={data?.context_usage ?? null}
 			editDraft={editDraft}
@@ -198,6 +198,8 @@ export function ThreadPage() {
 			stickToBottom={stickToBottom}
 			streamState={streamState}
 			threadError={error}
+			threadId={threadId}
+			rootThreadId={data?.root_thread_id ?? conversationId}
 			toolApprovalError={toolApprovalError}
 			toolApprovalErrorId={toolApprovalErrorId}
 			toolApprovalInFlightId={toolApprovalInFlightId}

@@ -14,7 +14,9 @@ def load_trajectory_config(
 ) -> dict[str, object]:
     trajectory_enabled = _coerce_bool(env.get("TRAJECTORY_ENABLED"))
     return {
-        "trajectory_enabled": bool(database_uri) if trajectory_enabled is None else trajectory_enabled,
+        "trajectory_enabled": bool(database_uri)
+        if trajectory_enabled is None
+        else trajectory_enabled,
         "trajectory_observation_max_chars": int(
             env.get(
                 "TRAJECTORY_OBSERVATION_MAX_CHARS",

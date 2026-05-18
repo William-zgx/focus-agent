@@ -1,4 +1,7 @@
-import type { BranchTreeNode } from "@focus-agent/web-sdk";
+import type {
+	BranchTreeNode,
+	FocusAgentBranchDecisionEvent,
+} from "@focus-agent/web-sdk";
 import type { CSSProperties, FormEvent, RefObject } from "react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -20,6 +23,7 @@ type BranchTreeNodeDetailOverlayProps = {
 	detailConclusionPreparing: boolean;
 	detailDepth: number;
 	detailHasPreparedConclusion: boolean;
+	detailBranchDecision?: FocusAgentBranchDecisionEvent | null;
 	detailNode: BranchTreeNode | null;
 	detailNodeStatusTone: string;
 	detailOverlayRef: RefObject<HTMLDivElement | null>;
@@ -74,6 +78,7 @@ export function BranchNodeDetailOverlay({
 	detailConclusionPreparing,
 	detailDepth,
 	detailHasPreparedConclusion,
+	detailBranchDecision,
 	detailNode,
 	detailNodeStatusTone,
 	detailOverlayRef,
@@ -206,6 +211,19 @@ export function BranchNodeDetailOverlay({
 				</div>
 
 				<div className="fa-branch-node-meta">{metaRows}</div>
+
+				{detailBranchDecision ? (
+					<div className="fa-branch-node-ai-decision">
+						<div className="fa-branch-node-ai-decision-head">
+							<span>{isChineseUi ? "AI 决策" : "AI decision"}</span>
+							<strong>
+								{detailBranchDecision.action} · {detailBranchDecision.status} ·{" "}
+								{Math.round(detailBranchDecision.score * 100)}%
+							</strong>
+						</div>
+						<p>{detailBranchDecision.rationale}</p>
+					</div>
+				) : null}
 
 				{renameBranchTarget?.thread_id === detailNode.thread_id ? (
 					<form

@@ -22,8 +22,12 @@ class MultiAgentMaintenanceWorker:
         self.coordination_backend = coordination_backend
         self.lock_cleanup_interval_seconds = _positive_interval(lock_cleanup_interval_seconds)
         self.message_cleanup_interval_seconds = _positive_interval(message_cleanup_interval_seconds)
-        self.approval_timeout_interval_seconds = _positive_interval(approval_timeout_interval_seconds)
-        self.deadlock_detection_interval_seconds = _positive_interval(deadlock_detection_interval_seconds)
+        self.approval_timeout_interval_seconds = _positive_interval(
+            approval_timeout_interval_seconds
+        )
+        self.deadlock_detection_interval_seconds = _positive_interval(
+            deadlock_detection_interval_seconds
+        )
         self._closed = threading.Event()
         self._lock = threading.Lock()
         self._last_run = {

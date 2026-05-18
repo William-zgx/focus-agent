@@ -107,7 +107,7 @@ export function MessageList({
 					key={action.action_id}
 					action={action}
 					isChineseUi={isChineseUi}
-					isReadOnly={isReadOnly}
+					isReadOnly={isReadOnly || isStreaming}
 					errorMessage={branchActionErrors[action.action_id]}
 					isBusy={branchActionInFlightId === action.action_id}
 					onExecute={onExecuteBranchAction}

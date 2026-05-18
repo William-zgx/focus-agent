@@ -16,6 +16,7 @@ def load_server_config(env: MutableMapping[str, str], defaults: Any) -> dict[str
             env.get("APP_ENVIRONMENT") or env.get("ENVIRONMENT") or defaults.app_environment
         ),
         "deployment_name": env.get("DEPLOYMENT_NAME") or defaults.deployment_name,
+        "secret_provider": env.get("FOCUS_AGENT_SECRET_PROVIDER", defaults.secret_provider),
         "web_app_dist_dir": env.get("WEB_APP_DIST_DIR") or None,
         "web_app_dev_server_url": env.get("WEB_APP_DEV_SERVER_URL") or None,
         "sse_heartbeat_seconds": float(

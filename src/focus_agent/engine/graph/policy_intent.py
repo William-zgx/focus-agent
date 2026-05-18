@@ -90,9 +90,11 @@ def _marker_matches(lowered_text: str, marker: str) -> bool:
     if not normalized_marker:
         return False
     if re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", normalized_marker):
-        pattern = r"(?<![a-z0-9_])" + r"\s+".join(
-            re.escape(part) for part in normalized_marker.split()
-        ) + r"(?![a-z0-9_])"
+        pattern = (
+            r"(?<![a-z0-9_])"
+            + r"\s+".join(re.escape(part) for part in normalized_marker.split())
+            + r"(?![a-z0-9_])"
+        )
         return re.search(pattern, lowered_text) is not None
     return normalized_marker in lowered_text
 

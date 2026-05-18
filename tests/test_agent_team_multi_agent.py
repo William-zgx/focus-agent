@@ -188,13 +188,16 @@ def test_agent_team_resource_lock_blocks_conflicting_execution() -> None:
         create_branch=False,
     )
     lock_backend = service.coordination_backend.resource_locks
-    assert lock_backend.try_acquire(
-        resource_id="file:src/shared.py",
-        agent_id="backend:other",
-        session_id=session.session_id,
-        mode=LockMode.EXCLUSIVE,
-        ttl_seconds=60,
-    ) is not None
+    assert (
+        lock_backend.try_acquire(
+            resource_id="file:src/shared.py",
+            agent_id="backend:other",
+            session_id=session.session_id,
+            mode=LockMode.EXCLUSIVE,
+            ttl_seconds=60,
+        )
+        is not None
+    )
 
     _, tasks = service.run_ready_tasks_once(session_id=session.session_id, user_id="user-1")
     updated = {item.task_id: item for item in tasks}[task.task_id]

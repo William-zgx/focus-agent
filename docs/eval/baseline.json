@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "created_by": "architecture-round2-w0",
+    "description": "Baseline-gated deterministic release eval for regression threshold comparisons.",
+    "suite": "harness_stability"
+  },
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "errors": 0,
+    "task_success": 1.0,
+    "avg_tool_calls": 0.333,
+    "avg_llm_calls": 1.333,
+    "avg_cache_hits": 0.0,
+    "avg_fallback_uses": 0.0,
+    "avg_parallel_tool_calls": 0.0,
+    "avg_delegation_role_hits": 0.0,
+    "avg_handoff_hits": 0.0,
+    "avg_critic_gate_hits": 0.0,
+    "avg_environment_assertions_failed": 0.0,
+    "delegation_role_hit_rate": 0.0,
+    "handoff_hit_rate": 0.0,
+    "critic_gate_hit_rate": 0.0,
+    "fallback_use_rate": 0.0,
+    "parallel_tool_call_rate": 0.0,
+    "environment_assertion_failure_rate": 0.0,
+    "avg_input_tokens": 0.0,
+    "avg_output_tokens": 0.0,
+    "p50_latency_ms": 61.2,
+    "p95_latency_ms": 264.7,
+    "avg_cost_usd": 0.0,
+    "forbidden_tool_violation_rate": 0.0,
+    "per_tag_success": {
+      "harness": 1.0,
+      "stability": 1.0,
+      "loop": 1.0,
+      "schema": 1.0,
+      "tool": 1.0,
+      "network": 1.0,
+      "subagent": 1.0,
+      "guardrail": 1.0,
+      "streaming": 1.0,
+      "checkpoint": 1.0
+    },
+    "per_capability_success": {},
+    "per_risk_level_success": {},
+    "failed_case_ids": [],
+    "flaky_case_ids": [],
+    "failure_clusters": [],
+    "model_matrix": {
+      "openai:deepseek-v4-pro": {
+        "model": "openai:deepseek-v4-pro",
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "task_success": 1.0,
+        "avg_latency_ms": 94.2641,
+        "avg_cost_usd": 0.0
+      }
+    }
+  }
+}

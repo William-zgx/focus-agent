@@ -28,18 +28,12 @@ def _read(path: Path) -> str:
 
 def _sdk_client_text() -> str:
     sources = [_read(SDK_ROOT / "src" / "client.ts")]
-    sources.extend(
-        _read(path)
-        for path in sorted((SDK_ROOT / "src" / "client").glob("*.ts"))
-    )
+    sources.extend(_read(path) for path in sorted((SDK_ROOT / "src" / "client").glob("*.ts")))
     return "\n".join(sources)
 
 
 def _sdk_types_text() -> str:
-    return "\n".join(
-        _read(path)
-        for path in sorted((SDK_ROOT / "src" / "types").glob("*.ts"))
-    )
+    return "\n".join(_read(path) for path in sorted((SDK_ROOT / "src" / "types").glob("*.ts")))
 
 
 def _interface_body(text: str, name: str) -> str:
@@ -127,7 +121,10 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
     task_create_fields = set(CreateAgentTeamTaskRequest.model_fields) - {"parent_thread_id"}
     task_update_fields = set(UpdateAgentTeamTaskRequest.model_fields)
     output_fields = set(RecordAgentTeamTaskOutputRequest.model_fields) - {"kind", "test_evidence"}
-    merge_decision_fields = set(ApplyAgentTeamMergeDecisionRequest.model_fields) - {"approved", "action"}
+    merge_decision_fields = set(ApplyAgentTeamMergeDecisionRequest.model_fields) - {
+        "approved",
+        "action",
+    }
 
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamCreateSessionRequest"),
@@ -185,11 +182,23 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
     )
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamMergeBundle"),
-        {"execution_evidence", "final_answer", "final_answer_status", "final_answer_warnings", "source_output_ids"},
+        {
+            "execution_evidence",
+            "final_answer",
+            "final_answer_status",
+            "final_answer_warnings",
+            "source_output_ids",
+        },
     )
     _assert_interface_has_fields(
         _interface_body(web_types, "AgentTeamMergeBundle"),
-        {"execution_evidence", "final_answer", "final_answer_status", "final_answer_warnings", "source_output_ids"},
+        {
+            "execution_evidence",
+            "final_answer",
+            "final_answer_status",
+            "final_answer_warnings",
+            "source_output_ids",
+        },
     )
 
     assert set(AgentTeamSessionListResponse.model_fields) == {"sessions", "items", "count"}
@@ -201,7 +210,9 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         "final_answer_warnings",
         "source_output_ids",
     }.issubset(AgentTeamMergeBundleContract.model_fields)
-    old_bundle = AgentTeamMergeBundleContract.model_validate({"session_id": "session-1", "summary": "legacy"})
+    old_bundle = AgentTeamMergeBundleContract.model_validate(
+        {"session_id": "session-1", "summary": "legacy"}
+    )
     assert old_bundle.final_answer is None
     assert old_bundle.final_answer_warnings == []
     assert old_bundle.source_output_ids == []
@@ -237,7 +248,9 @@ def test_agent_team_role_and_status_unions_match_sdk_and_web_contracts():
         "blocked",
         "done",
     ]:
-        assert f'"{literal}"' in _type_body(sdk_types, "FocusAgentAgentTeamSessionStatus") + _type_body(
+        assert f'"{literal}"' in _type_body(
+            sdk_types, "FocusAgentAgentTeamSessionStatus"
+        ) + _type_body(
             sdk_types,
             "FocusAgentAgentTeamTaskRole",
         ) + _type_body(sdk_types, "FocusAgentAgentTeamTaskStatus")

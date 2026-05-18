@@ -309,6 +309,7 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     thread_page_text = _join_text(
         web_root / "pages" / "thread" / "thread-page.tsx",
         web_root / "pages" / "thread" / "thread-page-content.tsx",
+        web_root / "pages" / "thread" / "use-thread-branch-actions.ts",
     )
     composer_text = _join_text(
         web_root / "features" / "thread-stream" / "message-composer.tsx",
@@ -351,6 +352,13 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "readOnly={isReadOnly}" in composer_text
     assert "disabled={isStreaming || isReadOnly || !message.trim()}" in composer_text
     assert "disabled={isReadOnly}" in message_list_text
+    assert "isReadOnly={isReadOnly || isStreaming}" in message_list_text
+    assert "retryThreadBusyConflict" in thread_page_text
+    assert "THREAD_BUSY_RETRY_ATTEMPTS" in thread_page_text
+    assert "ThreadBranchActionRetryCancelled" in thread_page_text
+    assert "branchActionRequestEpochRef" in thread_page_text
+    assert "isCurrentBranchActionRequest" in thread_page_text
+    assert "}, [threadId]);" in thread_page_text
     assert "Merged branches are read-only" in composer_text
     assert 'const isMergedBranch = branchMeta?.branch_status === "merged";' in header_actions_text
     assert "disabled={!threadId || isMergedBranch || isCreatingBranch}" in header_actions_text
@@ -371,6 +379,17 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "Merged branches cannot generate or merge conclusions." in app_shell_text
     assert 'const isMergedBranch = pendingStatus === "merged";' in merge_review_text
     assert "disabled={isSubmitting || isMergedBranch}" in merge_review_text
+
+
+def test_react_primitives_keep_modal_and_drawer_backdrops_out_of_tab_order():
+    root = Path(__file__).resolve().parents[1]
+    primitives_text = (
+        root / "apps" / "web" / "src" / "shared" / "ui" / "primitives" / "index.tsx"
+    ).read_text()
+
+    assert 'aria-label="Close modal"' in primitives_text
+    assert 'aria-label="Close drawer"' in primitives_text
+    assert primitives_text.count("tabIndex={-1}") >= 2
 
 
 def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():

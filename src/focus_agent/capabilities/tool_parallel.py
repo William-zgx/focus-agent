@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import atexit
-import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, wait
 from contextvars import copy_context
+
+from focus_agent.runtime.thread_pool import shared_thread_pool
 
 from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, cache_key
@@ -21,30 +21,6 @@ ExecuteSingle = Callable[
     [ToolExecutionInput, ContextBudget, ToolResultCacheStore | None, str | None, int | None],
     ToolExecutionResult,
 ]
-
-_parallel_executor_lock = threading.Lock()
-_parallel_executors: dict[int, ThreadPoolExecutor] = {}
-
-
-def _parallel_executor(max_workers: int) -> ThreadPoolExecutor:
-    workers = max(1, int(max_workers or 1))
-    with _parallel_executor_lock:
-        executor = _parallel_executors.get(workers)
-        if executor is None:
-            executor = ThreadPoolExecutor(
-                max_workers=workers,
-                thread_name_prefix="focus-agent-tool",
-            )
-            _parallel_executors[workers] = executor
-        return executor
-
-
-def _shutdown_parallel_executors() -> None:
-    for executor in list(_parallel_executors.values()):
-        executor.shutdown(wait=False, cancel_futures=True)
-
-
-atexit.register(_shutdown_parallel_executors)
 
 
 def classify_tool_parallel_execution(runtime: ToolRuntimeMeta) -> ToolParallelClassification:
@@ -107,11 +83,13 @@ def run_parallel_batch(
             representative_by_cache_key[item_cache_key] = item
 
     workers = max(1, min(len(unique_calls), max_parallel_workers))
-    pool = _parallel_executor(workers)
-    futures = []
-    for item in unique_calls:
+    pool = shared_thread_pool()
+    pending = {}
+    remaining = iter(unique_calls)
+
+    def _submit(item: ToolExecutionInput) -> None:
         ctx = copy_context()
-        futures.append(
+        pending[
             pool.submit(
                 ctx.run,
                 execute_single,
@@ -121,9 +99,27 @@ def run_parallel_batch(
                 cache_scope_keys.get(item.index),
                 len(tool_calls),
             )
-        )
-    results = [future.result() for future in futures]
-    results_by_index = {result.index: result for result in results}
+        ] = item
+
+    for _ in range(workers):
+        try:
+            _submit(next(remaining))
+        except StopIteration:
+            break
+
+    results_by_index: dict[int, ToolExecutionResult] = {}
+    while pending:
+        done, _ = wait(pending, return_when=FIRST_COMPLETED)
+        for future in done:
+            item = pending.pop(future)
+            results_by_index[item.index] = future.result()
+            try:
+                _submit(next(remaining))
+            except StopIteration:
+                pass
+    results = [
+        results_by_index[item.index] for item in unique_calls if item.index in results_by_index
+    ]
     for representative in unique_calls:
         source = results_by_index[representative.index]
         for duplicate in duplicate_calls_by_representative.get(representative.index, []):

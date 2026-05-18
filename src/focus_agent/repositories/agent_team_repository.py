@@ -48,9 +48,7 @@ class AgentTeamRepository(ABC):
     def list_tasks(self, *, session_id: str) -> list[AgentTeamTask]:
         raise NotImplementedError
 
-    def claim_task(
-        self, *, task_id: str, owner: str, ttl_seconds: float
-    ) -> AgentTeamTask | None:
+    def claim_task(self, *, task_id: str, owner: str, ttl_seconds: float) -> AgentTeamTask | None:
         task = self.get_task(task_id)
         if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
             return None
@@ -75,14 +73,11 @@ class AgentTeamRepository(ABC):
         self.save_task(updated)
         return updated
 
-    def heartbeat_task_claim(
-        self, *, task_id: str, claim_token: str, ttl_seconds: float
-    ) -> bool:
+    def heartbeat_task_claim(self, *, task_id: str, claim_token: str, ttl_seconds: float) -> bool:
         task = self.get_task(task_id)
         now = _now()
-        if (
-            task.claim_token != claim_token
-            or (task.claimed_until and _parse_time(task.claimed_until) <= now)
+        if task.claim_token != claim_token or (
+            task.claimed_until and _parse_time(task.claimed_until) <= now
         ):
             return False
         updated = task.model_copy(
@@ -107,9 +102,8 @@ class AgentTeamRepository(ABC):
     ) -> AgentTeamTask:
         task = self.get_task(task_id)
         now_dt = _now()
-        if (
-            task.claim_token != claim_token
-            or (task.claimed_until and _parse_time(task.claimed_until) <= now_dt)
+        if task.claim_token != claim_token or (
+            task.claimed_until and _parse_time(task.claimed_until) <= now_dt
         ):
             return task
         now = _format_time(now_dt)
@@ -236,15 +230,11 @@ class InMemoryAgentTeamRepository(AgentTeamRepository):
             tasks = [task for task in self._tasks.values() if task.session_id == session_id]
         return sorted(tasks, key=lambda item: (item.created_at, item.task_id))
 
-    def claim_task(
-        self, *, task_id: str, owner: str, ttl_seconds: float
-    ) -> AgentTeamTask | None:
+    def claim_task(self, *, task_id: str, owner: str, ttl_seconds: float) -> AgentTeamTask | None:
         with self._lock:
             return super().claim_task(task_id=task_id, owner=owner, ttl_seconds=ttl_seconds)
 
-    def heartbeat_task_claim(
-        self, *, task_id: str, claim_token: str, ttl_seconds: float
-    ) -> bool:
+    def heartbeat_task_claim(self, *, task_id: str, claim_token: str, ttl_seconds: float) -> bool:
         with self._lock:
             return super().heartbeat_task_claim(
                 task_id=task_id,
@@ -298,9 +288,7 @@ class InMemoryAgentTeamRepository(AgentTeamRepository):
     def list_merge_reviews(self, *, session_id: str) -> list[AgentTeamMergeReview]:
         with self._lock:
             reviews = [
-                review
-                for review in self._merge_reviews.values()
-                if review.session_id == session_id
+                review for review in self._merge_reviews.values() if review.session_id == session_id
             ]
         return sorted(reviews, key=lambda item: (item.created_at, item.review_id), reverse=True)
 

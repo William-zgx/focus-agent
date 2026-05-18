@@ -13,7 +13,9 @@ def test_persistent_in_memory_saver_restores_thread_state(tmp_path: Path):
     saver = PersistentInMemorySaver(checkpoint_path)
 
     builder = StateGraph(dict)
-    builder.add_node("write_answer", lambda state: {"answer": (state.get("question") or "").upper()})
+    builder.add_node(
+        "write_answer", lambda state: {"answer": (state.get("question") or "").upper()}
+    )
     builder.add_edge(START, "write_answer")
     builder.add_edge("write_answer", END)
     graph = builder.compile(checkpointer=saver)
@@ -32,7 +34,9 @@ def test_persistent_in_memory_store_restores_items(tmp_path: Path):
     store = PersistentInMemoryStore(store_path)
     namespace = ("conversation", "root-1", "main")
 
-    store.put(namespace, "memory-1", {"summary": "existing conclusion", "type": "imported_conclusion"})
+    store.put(
+        namespace, "memory-1", {"summary": "existing conclusion", "type": "imported_conclusion"}
+    )
 
     restored = PersistentInMemoryStore(store_path)
     item = restored.get(namespace, "memory-1")

@@ -1,0 +1,8 @@
+id: plan_act_reflect.plan.system
+description: Plan-act-reflect planning system prompt.
+versions:
+  - version: "v1"
+    description: Initial registry baseline.
+    variables: []
+    body: |
+      你是一个任务规划器。阅读用户请求，输出一个紧凑、可验证的执行计划。必须返回 JSON，字段为 {{"steps": [{{"id": "s1", "goal": "...", "expected_tools": ["tool_name"]}}], "success_criteria": "..."}}。要求：2-5 步；success_criteria 必须客观可判断（禁止写‘充分’‘合理’这类模糊词）；只规划不执行；不要返回其它字段。

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from ..config import Settings
 from .delegation_models import (
     AgentArtifact,
     AgentBudget,
@@ -14,7 +15,6 @@ from .delegation_models import (
 )
 from .execution_modes import normalize_delegation_execution_mode
 from .roles import AgentRole, RoleModelResolver, build_role_route_plan, normalize_agent_role
-from ..config import Settings
 
 
 def build_agent_delegation_plan(
@@ -55,7 +55,9 @@ def build_agent_delegation_plan(
             enforce=enforce,
             execution_mode=execution_mode,
             source="delegation_runtime",
-            route_reason=str(route_plan.get("route_reason") or "No valid delegation route decisions."),
+            route_reason=str(
+                route_plan.get("route_reason") or "No valid delegation route decisions."
+            ),
             max_parallel_runs=max(
                 1,
                 int(

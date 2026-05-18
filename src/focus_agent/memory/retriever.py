@@ -63,7 +63,9 @@ class MemoryRetriever:
         vector_hits: list[MemorySearchHit] = []
         vector_statuses: list[str] = []
         for namespace in namespaces:
-            hits.extend(self._search_namespace(namespace, effective_query, limit=self.default_limit))
+            hits.extend(
+                self._search_namespace(namespace, effective_query, limit=self.default_limit)
+            )
             if self._should_search_vectors():
                 namespace_vector_hits, namespace_vector_status = self._search_vector_namespace(
                     namespace,
@@ -124,7 +126,9 @@ class MemoryRetriever:
     def _candidate_namespaces(self, *, context: RequestContext) -> list[tuple[str, ...]]:
         return self.policy.allowed_namespaces_for_read(context=context)
 
-    def _search_namespace(self, namespace: tuple[str, ...], query: str, limit: int) -> list[MemorySearchHit]:
+    def _search_namespace(
+        self, namespace: tuple[str, ...], query: str, limit: int
+    ) -> list[MemorySearchHit]:
         if self.repository is not None:
             hits = self.repository.search(namespace=namespace, query=query, limit=limit)
             return _normalize_repository_hits(hits, namespace=namespace, query=query)
@@ -208,9 +212,13 @@ class MemoryRetriever:
             return [], "failed"
         return _normalize_repository_hits(hits, namespace=namespace, query=query), "completed"
 
-    def _rerank_hits(self, hits: list[MemorySearchHit], *, query: str, prompt_mode: PromptMode) -> list[MemorySearchHit]:
+    def _rerank_hits(
+        self, hits: list[MemorySearchHit], *, query: str, prompt_mode: PromptMode
+    ) -> list[MemorySearchHit]:
         reranked = [
-            hit.model_copy(update={"score": score_memory_hit(hit, query=query, prompt_mode=prompt_mode)})
+            hit.model_copy(
+                update={"score": score_memory_hit(hit, query=query, prompt_mode=prompt_mode)}
+            )
             for hit in hits
         ]
         return sorted(reranked, key=lambda item: item.score, reverse=True)
@@ -230,7 +238,9 @@ class MemoryRetriever:
                 deduped_by_key[resolution_key] = hit
         return sorted(deduped_by_key.values(), key=lambda item: item.score, reverse=True)
 
-    def _rrf_blend_hits(self, ranked_hit_lists: list[list[MemorySearchHit]]) -> list[MemorySearchHit]:
+    def _rrf_blend_hits(
+        self, ranked_hit_lists: list[list[MemorySearchHit]]
+    ) -> list[MemorySearchHit]:
         hits_by_id: dict[str, MemorySearchHit] = {}
         scores_by_id: dict[str, float] = {}
         for ranked_hits in ranked_hit_lists:
@@ -344,7 +354,9 @@ def _vector_shadow_plan(
     }
 
 
-def _vector_fallback_reason(*, vector_status: str, enabled: bool, retrieval_mode: str) -> str | None:
+def _vector_fallback_reason(
+    *, vector_status: str, enabled: bool, retrieval_mode: str
+) -> str | None:
     if vector_status == "completed":
         return None
     if not enabled:

@@ -182,6 +182,14 @@ def _run_case_inner(
             initial_state = case.input.get("initial_state") or {}
             if isinstance(initial_state, dict):
                 payload.update(initial_state)
+            if case.prompt_id:
+                payload.setdefault(
+                    "prompt_registry",
+                    {
+                        "prompt_id": case.prompt_id,
+                        "prompt_version": case.prompt_version or "latest",
+                    },
+                )
             before_state = dict(payload)
 
             result = graph.invoke(payload, context=context, version="v2")
@@ -405,7 +413,9 @@ def run_suite(
                     passed=False,
                     answer="",
                     verdicts=[
-                        JudgeVerdict(kind="harness", passed=False, reasoning=f"future failed: {exc!r}")
+                        JudgeVerdict(
+                            kind="harness", passed=False, reasoning=f"future failed: {exc!r}"
+                        )
                     ],
                     error=repr(exc),
                     tags=list(case.tags),
@@ -566,6 +576,7 @@ class _model_factory_patch:  # noqa: N801 — context-manager style, lowercase o
     def __init__(self, factory: Callable[..., Any] | None):
         self.factory = factory
         self._original: Any = None
+        self._builder_original: Any = None
         self._locked = False
 
     def __enter__(self):
@@ -574,16 +585,21 @@ class _model_factory_patch:  # noqa: N801 — context-manager style, lowercase o
         _BUILD_LOCK.acquire()
         self._locked = True
         from focus_agent.engine import graph_builder as _gb
+        from focus_agent.engine.graph import builder as _graph_builder
 
         self._original = _gb.create_chat_model
+        self._builder_original = _graph_builder.create_chat_model
         _gb.create_chat_model = self.factory
+        _graph_builder.create_chat_model = self.factory
         return self
 
     def __exit__(self, exc_type, exc, tb):
         if self._locked:
             from focus_agent.engine import graph_builder as _gb
+            from focus_agent.engine.graph import builder as _graph_builder
 
             _gb.create_chat_model = self._original
+            _graph_builder.create_chat_model = self._builder_original
             _BUILD_LOCK.release()
             self._locked = False
         return False
@@ -626,9 +642,7 @@ def _run_judges(
             runtime.rule_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
     if (case.judge.get("llm") or {}).get("enabled"):
-        verdicts.append(
-            runtime.llm_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
-        )
+        verdicts.append(runtime.llm_judge.evaluate(case=case, answer=answer, trajectory=trajectory))
     if _has_trajectory_expectations(case.expected):
         verdicts.append(
             runtime.trajectory_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
@@ -770,9 +784,7 @@ def _topology_initial_state(topology: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {"agent_topology": dict(topology)}
     roles = list(topology.get("roles") or [])
     if roles:
-        payload["agent_team_tasks"] = [
-            {"role": str(role), "status": "planned"} for role in roles
-        ]
+        payload["agent_team_tasks"] = [{"role": str(role), "status": "planned"} for role in roles]
     if topology.get("critic_required"):
         payload.setdefault("agent_governance_requirements", {})["critic_required"] = True
     if topology.get("handoff_required"):

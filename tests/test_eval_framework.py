@@ -32,7 +32,10 @@ class _FakeGraph:
                             }
                         ],
                     ),
-                    ToolMessage(content="Focus Agent is a compact Python starter project.", tool_call_id="tool-1"),
+                    ToolMessage(
+                        content="Focus Agent is a compact Python starter project.",
+                        tool_call_id="tool-1",
+                    ),
                     ToolMessage(
                         content="cached read",
                         tool_call_id="tool-unused",
@@ -53,7 +56,9 @@ class _FakeGraph:
 
 
 def test_run_case_extracts_trajectory_and_passes_rule_judge(monkeypatch):
-    monkeypatch.setattr("tests.eval.runner.harness._build_isolated_graph", lambda runtime: _FakeGraph())
+    monkeypatch.setattr(
+        "tests.eval.runner.harness._build_isolated_graph", lambda runtime: _FakeGraph()
+    )
     case = EvalCase(
         id="repo-readme",
         input={"user_message": "Read the project README and summarize it."},
@@ -107,7 +112,9 @@ def test_run_case_extracts_runtime_metadata_into_trajectory_and_metrics(monkeypa
                 "llm_calls": 1,
             }
 
-    monkeypatch.setattr("tests.eval.runner.harness._build_isolated_graph", lambda runtime: _RuntimeGraph())
+    monkeypatch.setattr(
+        "tests.eval.runner.harness._build_isolated_graph", lambda runtime: _RuntimeGraph()
+    )
     runtime = EvalRuntime(settings=Settings(), tool_registry=None)  # type: ignore[arg-type]
     case = EvalCase(
         id="runtime-metrics",
@@ -133,7 +140,13 @@ def test_aggregate_metrics_and_baseline_comparison_flag_regressions():
             passed=True,
             answer="ok",
             verdicts=[JudgeVerdict(kind="rule", passed=True)],
-            metrics={"tool_calls": 1, "llm_calls": 1, "cache_hits": 1, "latency_ms": 100, "cost_usd": 0.01},
+            metrics={
+                "tool_calls": 1,
+                "llm_calls": 1,
+                "cache_hits": 1,
+                "latency_ms": 100,
+                "cost_usd": 0.01,
+            },
             tags=["smoke"],
         )
     ]
@@ -149,7 +162,13 @@ def test_aggregate_metrics_and_baseline_comparison_flag_regressions():
                     details={"failures": ["called forbidden tools ['write_text_artifact']"]},
                 )
             ],
-            metrics={"tool_calls": 4, "llm_calls": 2, "fallback_uses": 1, "latency_ms": 180, "cost_usd": 0.03},
+            metrics={
+                "tool_calls": 4,
+                "llm_calls": 2,
+                "fallback_uses": 1,
+                "latency_ms": 180,
+                "cost_usd": 0.03,
+            },
             tags=["smoke"],
         )
     ]
@@ -188,9 +207,17 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
         answer="PING",
         verdicts=[JudgeVerdict(kind="rule", passed=True, reasoning="all good")],
         trajectory=[
-            TrajectoryStep(tool="read_file", args={"path": "README.md"}, observation="ok", cache_hit=True)
+            TrajectoryStep(
+                tool="read_file", args={"path": "README.md"}, observation="ok", cache_hit=True
+            )
         ],
-        metrics={"tool_calls": 1, "llm_calls": 1, "cache_hits": 1, "latency_ms": 12.3, "cost_usd": 0.0},
+        metrics={
+            "tool_calls": 1,
+            "llm_calls": 1,
+            "cache_hits": 1,
+            "latency_ms": 12.3,
+            "cost_usd": 0.0,
+        },
         tags=["smoke"],
     )
 
@@ -331,7 +358,13 @@ def test_eval_cli_replays_trajectory_exports_and_writes_dataset(monkeypatch, cap
         answer="new answer",
         verdicts=[JudgeVerdict(kind="rule", passed=True, reasoning="all good")],
         trajectory=[TrajectoryStep(tool="read_file", args={"path": "README.md"}, observation="ok")],
-        metrics={"tool_calls": 1, "llm_calls": 1, "cache_hits": 0, "latency_ms": 12.3, "cost_usd": 0.0},
+        metrics={
+            "tool_calls": 1,
+            "llm_calls": 1,
+            "cache_hits": 0,
+            "latency_ms": 12.3,
+            "cost_usd": 0.0,
+        },
     )
 
     monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda settings=None: object())
@@ -381,7 +414,9 @@ def test_eval_cli_promote_trajectory_exports_to_dataset(capsys):
                         "scene": "long_dialog_research",
                         "user_message": "Search docs",
                         "answer": "Focus Agent docs",
-                        "trajectory": [{"tool": "web_search", "args": {"query": "focus agent docs"}}],
+                        "trajectory": [
+                            {"tool": "web_search", "args": {"query": "focus agent docs"}}
+                        ],
                     }
                 ]
             }
@@ -414,10 +449,7 @@ def test_eval_cli_promote_trajectory_exports_to_dataset(capsys):
 
 
 def test_smoke_dataset_guards_tool_policy_regressions():
-    cases = {
-        case.id: case
-        for case in load_dataset(Path("tests/eval/datasets/smoke.jsonl"))
-    }
+    cases = {case.id: case for case in load_dataset(Path("tests/eval/datasets/smoke.jsonl"))}
 
     direct_writing = cases["gt_direct_writing_no_tools"]
     assert direct_writing.expected["max_tool_calls"] == 0
@@ -455,8 +487,7 @@ def test_smoke_dataset_guards_tool_policy_regressions():
 
 def test_harness_stability_dataset_covers_runtime_failure_modes():
     cases = {
-        case.id: case
-        for case in load_dataset(Path("tests/eval/datasets/harness_stability.jsonl"))
+        case.id: case for case in load_dataset(Path("tests/eval/datasets/harness_stability.jsonl"))
     }
 
     assert {

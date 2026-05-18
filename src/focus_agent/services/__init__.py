@@ -18,4 +18,5 @@ def __getattr__(name: str) -> Any:
         return ChatService
     raise AttributeError(name)
 
+
 __all__ = ["BranchService", "ChatService"]

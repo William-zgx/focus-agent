@@ -252,7 +252,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     f"""
                     SELECT data_json
                     FROM focus_memories
-                    WHERE {' AND '.join(clauses)}
+                    WHERE {" AND ".join(clauses)}
                     ORDER BY updated_at DESC
                     LIMIT 1
                     """,
@@ -321,7 +321,7 @@ class PostgresMemoryRepository(MemoryRepository):
                     f"""
                     SELECT data_json
                     FROM focus_memories
-                    WHERE {' AND '.join(clauses)}
+                    WHERE {" AND ".join(clauses)}
                     ORDER BY updated_at DESC, memory_id DESC
                     LIMIT %(limit)s OFFSET %(offset)s
                     """,
@@ -333,7 +333,9 @@ class PostgresMemoryRepository(MemoryRepository):
     def get_record(self, memory_id: str) -> MemoryRecord | None:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT data_json FROM focus_memories WHERE memory_id = %s", (memory_id,))
+                cur.execute(
+                    "SELECT data_json FROM focus_memories WHERE memory_id = %s", (memory_id,)
+                )
                 row = cur.fetchone()
         if row is None:
             return None
@@ -365,7 +367,9 @@ class PostgresMemoryRepository(MemoryRepository):
             namespace = tuple(str(part) for part in namespace_value)
             embedding_value = payload.get("embedding")
             embedding = embedding_value if isinstance(embedding_value, Sequence) else None
-            provider_id = coalesce_text(payload.get("provider_id"), payload.get("provider"), provider_id)
+            provider_id = coalesce_text(
+                payload.get("provider_id"), payload.get("provider"), provider_id
+            )
             model_id = coalesce_text(payload.get("model_id"), payload.get("model"), model_id)
             dimensions = coalesce_int(payload.get("dimensions"), dimensions)
             status = str(payload.get("status") or status)
@@ -551,7 +555,7 @@ class PostgresMemoryRepository(MemoryRepository):
                         (1.0 - (e.embedding <=> %(embedding)s::vector)) AS score
                     FROM focus_memory_embeddings e
                     JOIN focus_memories m ON m.memory_id = e.memory_id
-                    WHERE {' AND '.join(clauses)}
+                    WHERE {" AND ".join(clauses)}
                     ORDER BY score DESC, m.importance DESC, e.updated_at DESC, e.memory_id DESC
                     LIMIT %(limit)s
                     """,
@@ -802,7 +806,9 @@ class PostgresMemoryRepository(MemoryRepository):
     def delete_embedding(self, memory_id: str) -> bool:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM focus_memory_embeddings WHERE memory_id = %s", (memory_id,))
+                cur.execute(
+                    "DELETE FROM focus_memory_embeddings WHERE memory_id = %s", (memory_id,)
+                )
                 rowcount = cur.rowcount
         return rowcount > 0
 
@@ -1031,7 +1037,10 @@ class PostgresMemoryRepository(MemoryRepository):
             return
         candidate = MemoryCandidate.model_validate(decode_json(row["data_json"]))
         now = datetime.now(UTC)
-        updated = candidate.model_copy(update={"status": status, "reason": reason, "updated_at": now})
+        updated = candidate.model_copy(
+            update={"status": status, "reason": reason, "updated_at": now}
+        )
         self.upsert_candidate(updated)
+
 
 __all__ = ["PostgresMemoryRepository"]

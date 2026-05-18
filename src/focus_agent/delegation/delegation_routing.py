@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from .delegation_models import ModelRouteDecision
-from .roles import AgentRole, RoleModelResolver, normalize_agent_role
 from ..config import Settings
 from ..model_registry import canonical_model_id
+from ..runtime.model_router import ModelRouter, TaskKind
+from .delegation_models import ModelRouteDecision
+from .roles import AgentRole, normalize_agent_role
 
 
 def build_model_route_decision(
@@ -20,8 +21,8 @@ def build_model_route_decision(
     enabled = bool(getattr(settings, "agent_model_router_enabled", False))
     mode = str(getattr(settings, "agent_model_router_mode", "observe") or "observe").lower()
     mode = "enforce" if mode == "enforce" else "observe"
-    resolver = RoleModelResolver(settings)
-    recommended = resolver.resolve(role_value, fallback_model=current)
+    router_decision = ModelRouter.from_settings(settings).decide(kind=_role_task_kind(role_value))
+    recommended = canonical_model_id(router_decision.selected_model, settings=settings)
     reason = _model_route_reason(
         role_value, task_text=task_text, tool_risk=tool_risk, context_size=context_size
     )
@@ -34,8 +35,10 @@ def build_model_route_decision(
         recommended_model=recommended,
         effective_model=effective,
         route_reason=reason,
-        fallback_used=enabled and mode == "enforce" and effective != recommended,
-        candidates=_model_candidates(settings, role_value, current),
+        fallback_used=enabled and mode == "enforce" and router_decision.fallback_used,
+        candidates=_model_candidates(
+            settings, role_value, current, router_decision.fallback_models
+        ),
     )
 
 
@@ -55,12 +58,31 @@ def _model_route_reason(
     return "Role-specific model route selected from current settings."
 
 
-def _model_candidates(settings: Settings, role: AgentRole, current: str) -> list[str]:
-    resolver = RoleModelResolver(settings)
-    candidates = [resolver.resolve(role, fallback_model=current), current]
+def _role_task_kind(role: AgentRole) -> TaskKind:
+    if role == AgentRole.PLANNER:
+        return TaskKind.PLANNING
+    if role == AgentRole.CRITIC:
+        return TaskKind.CRITIC
+    if role == AgentRole.MEMORY_CURATOR:
+        return TaskKind.MEMORY_CURATION
+    if role == AgentRole.SKILL_SCOUT:
+        return TaskKind.SKILL_SCOUT
+    return TaskKind.EXECUTION
+
+
+def _model_candidates(
+    settings: Settings,
+    role: AgentRole,
+    current: str,
+    fallbacks: tuple[str, ...],
+) -> list[str]:
+    router_decision = ModelRouter.from_settings(settings).decide(kind=_role_task_kind(role))
+    candidates = [canonical_model_id(router_decision.selected_model, settings=settings), current]
     helper = getattr(settings, "helper_model", None)
     if helper:
         candidates.append(canonical_model_id(helper, settings=settings))
+    for fallback in fallbacks:
+        candidates.append(canonical_model_id(fallback, settings=settings))
     return list(dict.fromkeys(candidates))
 
 

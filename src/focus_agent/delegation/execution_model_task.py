@@ -9,13 +9,16 @@ from typing import Any, Literal
 
 from langchain.messages import HumanMessage, SystemMessage
 
+from focus_agent.prompts import get_registry
+
+from ..config import Settings
 from .delegation_models import AgentArtifact, AgentTask
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_types import SubagentConfig, SubagentRunResult
 from .roles import AgentRole
-from ..config import Settings
 
 _CWD_LOCK = RLock()
+_MODEL_TASK_SYSTEM_PROMPT_ID = "delegation.model_task.system"
 
 
 def execute_model_task(
@@ -196,14 +199,9 @@ def _prompt_messages(task: AgentTask, config: SubagentConfig) -> list[Any]:
     }
     return [
         SystemMessage(
-            content=(
-                f"You are the delegated {task.role.value} subagent for an Agent Team mission. "
-                "The HumanMessage JSON is your explicit task request: execute the `goal` field, use "
-                "`context_refs` for mission context and dependency outputs, satisfy `acceptance_criteria`, "
-                "and respect `constraints`. Do not say there is no user request when goal is non-empty. "
-                "When workspace_path is present, treat it as the isolated working directory for "
-                "this task. Return a concise result; JSON with summary, findings, risks, "
-                "acceptance_checklist, test_evidence, changed_files, and verdict is preferred."
+            content=get_registry().render(
+                _MODEL_TASK_SYSTEM_PROMPT_ID,
+                role=task.role.value,
             )
         ),
         HumanMessage(content=json.dumps(payload, ensure_ascii=False, default=str)),

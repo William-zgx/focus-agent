@@ -59,4 +59,6 @@ def test_sqlite_productivity_repository_round_trips_notes_and_tasks(tmp_path):
     assert completed.captured_from == "agent_team"
     assert completed.assignee_user_id == "user-1"
     assert repository.get_task(task_id=task.task_id, user_id="user-2") is None
-    assert repository.list_task_events(task_id=task.task_id, user_id="user-1")[-1].kind == "completed"
+    assert (
+        repository.list_task_events(task_id=task.task_id, user_id="user-1")[-1].kind == "completed"
+    )

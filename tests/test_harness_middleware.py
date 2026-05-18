@@ -155,7 +155,11 @@ def test_focus_agent_harness_stream_chunks_applies_middleware(monkeypatch):
     ):
         observed["graph"] = graph
         observed["payload"] = payload
-        yield {"type": "messages", "data": (AIMessage(content="ok"), {"langgraph_node": "agent"}), "ns": ()}
+        yield {
+            "type": "messages",
+            "data": (AIMessage(content="ok"), {"langgraph_node": "agent"}),
+            "ns": (),
+        }
 
     class MarkPayloadMiddleware(BaseAgentMiddleware):
         def wrap(self, handler):

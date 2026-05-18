@@ -4,9 +4,9 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from ..core.types import StateModel
 from .execution_modes import DelegationExecutionMode
 from .roles import AgentRole
-from ..core.types import StateModel
 
 AgentRunStatus = Literal["planned", "running", "completed", "failed", "skipped", "needs_review"]
 AgentDecisionKind = Literal["route", "delegate", "retry", "deny", "approve", "reject"]

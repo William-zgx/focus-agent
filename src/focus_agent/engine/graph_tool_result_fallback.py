@@ -144,7 +144,9 @@ def _tool_observation_summary(payload: Any, raw: str) -> str:
 def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
     snippets: list[str] = []
     snippets.extend(
-        evidence_bundle_source_snippets(normalize_evidence_bundle(_latest_turn_messages(prompt_messages)))
+        evidence_bundle_source_snippets(
+            normalize_evidence_bundle(_latest_turn_messages(prompt_messages))
+        )
     )
     pending_calls: dict[str, dict[str, Any]] = {}
     for message in _latest_turn_messages(prompt_messages):
@@ -211,7 +213,9 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
                     if path and line_number:
                         snippets.append(f"- {path}:{line_number} {_truncate_inline(line)}")
                         if context:
-                            snippets.append(f"- {path}:{line_number} context: {_truncate_inline(context, max_chars=360)}")
+                            snippets.append(
+                                f"- {path}:{line_number} context: {_truncate_inline(context, max_chars=360)}"
+                            )
                     elif path:
                         snippets.append(f"- {path} {_truncate_inline(line or result)}")
                     else:

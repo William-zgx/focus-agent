@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from focus_agent.delegation.execution import DelegatedRunExecutor
-from focus_agent.delegation.roles import AgentRole
 from focus_agent.core.agent_team import (
     AgentTeamArtifactKind,
     AgentTeamTask,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.delegation.execution import DelegatedRunExecutor
+from focus_agent.delegation.roles import AgentRole
 
 from .agent_team_helpers import _dedupe
 from .agent_team_workspace import AgentTeamWorkspaceStatus

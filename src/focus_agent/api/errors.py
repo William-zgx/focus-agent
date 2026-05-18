@@ -6,8 +6,23 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from focus_agent.observability.tracing import current_trace_runtime_payload
+
+from .error_codes import ErrorCode, error_code_for_status
 
 logger = logging.getLogger("focus_agent.api")
+
+
+class ErrorEnvelope(BaseModel):
+    code: int | ErrorCode
+    message: str
+    details: dict[str, Any] | None = None
+    trace_id: str | None = None
+    retryable: bool = False
+    request_id: str | None = None
+    stable_code: ErrorCode | None = Field(default=None)
 
 
 def _build_envelope(
@@ -16,11 +31,20 @@ def _build_envelope(
     message: str,
     request_id: str | None,
     data: Any = None,
+    retryable: bool | None = None,
 ) -> dict[str, Any]:
+    stable_code = error_code_for_status(int(code))
+    trace_id = current_trace_runtime_payload().get("trace_id")
     envelope: dict[str, Any] = {
         "code": code,
+        "stable_code": stable_code.value,
         "message": message,
         "data": data,
+        "details": data if isinstance(data, dict) else None,
+        "trace_id": trace_id,
+        "retryable": bool(
+            retryable if retryable is not None else code in {408, 409, 425, 429, 500, 502, 503, 504}
+        ),
     }
     if request_id:
         envelope["request_id"] = request_id
@@ -89,4 +113,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(Exception, _unhandled_exception_handler)
 
 
-__all__ = ["register_exception_handlers"]
+__all__ = ["ErrorEnvelope", "register_exception_handlers"]

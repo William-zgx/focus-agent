@@ -57,9 +57,13 @@ class PersistentInMemorySaver(InMemorySaver):
             return
         storage = defaultdict(lambda: defaultdict(dict))
         for thread_id, namespaces in payload.get("storage", {}).items():
-            storage[thread_id] = defaultdict(dict, {ns: dict(checkpoints) for ns, checkpoints in namespaces.items()})
+            storage[thread_id] = defaultdict(
+                dict, {ns: dict(checkpoints) for ns, checkpoints in namespaces.items()}
+            )
         self.storage = storage
-        self.writes = defaultdict(dict, {tuple(key): dict(value) for key, value in payload.get("writes", {}).items()})
+        self.writes = defaultdict(
+            dict, {tuple(key): dict(value) for key, value in payload.get("writes", {}).items()}
+        )
         self.blobs = dict(payload.get("blobs", {}))
 
     def _flush(self) -> None:
@@ -118,11 +122,16 @@ class PersistentInMemoryStore(InMemoryStore):
         payload = _pickle_load(self.path)
         if not payload:
             return
-        self._data = defaultdict(dict, {tuple(namespace): dict(items) for namespace, items in payload.get("data", {}).items()})
+        self._data = defaultdict(
+            dict,
+            {tuple(namespace): dict(items) for namespace, items in payload.get("data", {}).items()},
+        )
         self._vectors = defaultdict(
             lambda: defaultdict(dict),
             {
-                tuple(namespace): defaultdict(dict, {key: dict(paths) for key, paths in values.items()})
+                tuple(namespace): defaultdict(
+                    dict, {key: dict(paths) for key, paths in values.items()}
+                )
                 for namespace, values in payload.get("vectors", {}).items()
             },
         )

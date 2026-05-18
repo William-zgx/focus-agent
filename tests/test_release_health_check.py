@@ -250,7 +250,9 @@ def test_release_health_check_empty_eval_report_blocks_release(tmp_path: Path) -
         _production_health_args(tmp_path, report_path, eval_report=eval_report)
     )
     report = _read_report(report_path)
-    eval_signal = next(signal for signal in report["signals"] if signal["key"] == "eval_report_invalid")
+    eval_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "eval_report_invalid"
+    )
 
     assert exit_code == 1
     assert eval_signal["status"] == "fail"
@@ -368,7 +370,9 @@ def test_release_health_check_marks_explicit_self_check_fallback(tmp_path: Path)
     )
     report = _read_report(report_path)
     fallback_signals = [
-        signal for signal in report["signals"] if signal["key"] == "release_health_self_check_fallback"
+        signal
+        for signal in report["signals"]
+        if signal["key"] == "release_health_self_check_fallback"
     ]
 
     assert exit_code == 0
@@ -403,7 +407,9 @@ def test_release_health_check_production_replay_comparison_blocks_release(tmp_pa
         _production_health_args(tmp_path, report_path, replay_comparisons=replay)
     )
     report = _read_report(report_path)
-    replay_signal = next(signal for signal in report["signals"] if signal["key"] == "eval_replay_regression")
+    replay_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "eval_replay_regression"
+    )
 
     assert exit_code == 1
     assert replay_signal["status"] == "fail"
@@ -513,7 +519,9 @@ def test_release_health_check_alert_report_blocks_release(tmp_path: Path) -> Non
         _production_health_args(tmp_path, report_path, alert_report=alert_report)
     )
     report = _read_report(report_path)
-    alert_signal = next(signal for signal in report["signals"] if signal["key"] == "alert_rules_report")
+    alert_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "alert_rules_report"
+    )
 
     assert exit_code == 1
     assert alert_signal["status"] == "fail"
@@ -523,7 +531,11 @@ def test_release_health_check_alert_report_blocks_release(tmp_path: Path) -> Non
 def test_release_health_check_postgres_migration_report_blocks_release(tmp_path: Path) -> None:
     postgres_report = _write_json(
         tmp_path / "postgres-migration-failed.json",
-        {"command": "uv run python -m focus_agent.migrate_local_state", "errors": ["schema drift"], "status": "failed"},
+        {
+            "command": "uv run python -m focus_agent.migrate_local_state",
+            "errors": ["schema drift"],
+            "status": "failed",
+        },
     )
     report_path = tmp_path / "release-health.json"
 
@@ -547,9 +559,7 @@ def test_release_health_check_postgres_migration_report_blocks_release(tmp_path:
 def test_release_health_check_reads_production_ops_and_otel_reports(tmp_path: Path) -> None:
     report_path = tmp_path / "release-health.json"
 
-    exit_code = release_health_check.main(
-        _production_health_args(tmp_path, report_path)
-    )
+    exit_code = release_health_check.main(_production_health_args(tmp_path, report_path))
     report = _read_report(report_path)
     statuses = {signal["key"]: signal["status"] for signal in report["signals"]}
 
@@ -579,6 +589,33 @@ def test_release_health_check_production_rejects_dry_run_ops_report(tmp_path: Pa
         for signal in report["signals"]
         if signal["key"] == "release_health_required_input_missing"
         and signal["labels"]["input"] == "postgres_ops_report"
+    )
+
+    assert exit_code == 1
+    assert dry_run_signal["status"] == "fail"
+    assert "cannot be dry-run" in dry_run_signal["detail"]
+
+
+def test_release_health_check_production_rejects_dry_run_otel_report(tmp_path: Path) -> None:
+    dry_run_otel = _write_json(
+        tmp_path / "otel-smoke-dry-run.json",
+        {
+            "checks": [{"name": "span_export", "status": "dry-run", "passed": True}],
+            "passed": True,
+            "status": "dry-run",
+        },
+    )
+    report_path = tmp_path / "release-health.json"
+
+    exit_code = release_health_check.main(
+        _production_health_args(tmp_path, report_path, otel_smoke_report=dry_run_otel)
+    )
+    report = _read_report(report_path)
+    dry_run_signal = next(
+        signal
+        for signal in report["signals"]
+        if signal["key"] == "release_health_required_input_missing"
+        and signal["labels"]["input"] == "otel_smoke_report"
     )
 
     assert exit_code == 1
@@ -642,7 +679,9 @@ def test_release_health_check_failed_otel_smoke_report_blocks_release(tmp_path: 
         _production_health_args(tmp_path, report_path, otel_smoke_report=otel_report)
     )
     report = _read_report(report_path)
-    otel_signal = next(signal for signal in report["signals"] if signal["key"] == "otel_smoke_report")
+    otel_signal = next(
+        signal for signal in report["signals"] if signal["key"] == "otel_smoke_report"
+    )
 
     assert exit_code == 1
     assert otel_signal["status"] == "fail"
@@ -658,9 +697,7 @@ def test_release_health_check_governance_blocking_signal_blocks_release(tmp_path
                 "blocking_signals": ["delegation_success"],
                 "warning_signals": ["cost_token_tool_budget"],
             },
-            "thresholds": {
-                "delegation_success": {"warning_min": 0.98, "blocking_min": 0.95}
-            },
+            "thresholds": {"delegation_success": {"warning_min": 0.98, "blocking_min": 0.95}},
             "signals": [
                 {
                     "key": "delegation_success",

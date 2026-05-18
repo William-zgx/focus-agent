@@ -33,6 +33,7 @@ class ToolProviderFactoryContext:
     store: Any = None
     checkpointer: Any = None
     artifact_metadata_repository: Any = None
+    artifact_store: Any = None
     memory_repository: Any = None
     memory_embedding_service: Any = None
     productivity_repository: Any = None
@@ -104,12 +105,18 @@ class ToolRuntimeMeta:
     sensitive_args: tuple[str, ...] = ()
     redaction_policy: str = "mask"
     provider_id: str | None = None
+    max_concurrent_calls: int = 4
+    max_memory_mb: int | None = None
+    allow_network: bool = True
+    allow_filesystem: bool = True
 
     @classmethod
     def from_tool(cls, tool_obj: Any) -> ToolRuntimeMeta:
         metadata = getattr(tool_obj, "metadata", None)
         name = str(getattr(tool_obj, "name", "")).strip()
-        return cls.from_metadata(name=name, metadata=metadata if isinstance(metadata, dict) else None)
+        return cls.from_metadata(
+            name=name, metadata=metadata if isinstance(metadata, dict) else None
+        )
 
     @classmethod
     def from_manifest(cls, manifest: ToolManifest) -> ToolRuntimeMeta:
@@ -134,9 +141,7 @@ class ToolRuntimeMeta:
                 else None
             ),
             fallback_group=(
-                str(normalized["fallback_group"])
-                if normalized.get("fallback_group")
-                else None
+                str(normalized["fallback_group"]) if normalized.get("fallback_group") else None
             ),
             fallback_handler=normalized.get("fallback_handler"),
             max_observation_chars=(
@@ -157,26 +162,18 @@ class ToolRuntimeMeta:
             ),
             requires_approval=bool(normalized.get("requires_approval", False)),
             side_effect_kind=(
-                str(normalized["side_effect_kind"])
-                if normalized.get("side_effect_kind")
-                else None
+                str(normalized["side_effect_kind"]) if normalized.get("side_effect_kind") else None
             ),
             requires_network=bool(normalized.get("requires_network", False)),
             requires_workspace_write=bool(normalized.get("requires_workspace_write", False)),
             intent_policies=tuple(
-                str(policy)
-                for policy in (normalized.get("intent_policies") or ())
-                if str(policy)
+                str(policy) for policy in (normalized.get("intent_policies") or ()) if str(policy)
             ),
             intent_tags=tuple(
-                str(tag)
-                for tag in (normalized.get("intent_tags") or ())
-                if str(tag)
+                str(tag) for tag in (normalized.get("intent_tags") or ()) if str(tag)
             ),
             usage_examples=tuple(
-                str(example)
-                for example in (normalized.get("usage_examples") or ())
-                if str(example)
+                str(example) for example in (normalized.get("usage_examples") or ()) if str(example)
             ),
             negative_examples=tuple(
                 str(example)
@@ -189,16 +186,18 @@ class ToolRuntimeMeta:
                 else None
             ),
             sensitive_args=tuple(
-                str(arg)
-                for arg in (normalized.get("sensitive_args") or ())
-                if str(arg)
+                str(arg) for arg in (normalized.get("sensitive_args") or ()) if str(arg)
             ),
             redaction_policy=str(normalized.get("redaction_policy") or "mask"),
-            provider_id=(
-                str(normalized["provider_id"])
-                if normalized.get("provider_id")
+            provider_id=(str(normalized["provider_id"]) if normalized.get("provider_id") else None),
+            max_concurrent_calls=max(1, int(normalized.get("max_concurrent_calls") or 4)),
+            max_memory_mb=(
+                int(normalized["max_memory_mb"])
+                if normalized.get("max_memory_mb") is not None
                 else None
             ),
+            allow_network=bool(normalized.get("allow_network", True)),
+            allow_filesystem=bool(normalized.get("allow_filesystem", True)),
         )
 
 
@@ -246,6 +245,7 @@ def build_tool_registry(
     store=None,
     checkpointer=None,
     artifact_metadata_repository=None,
+    artifact_store=None,
     memory_repository=None,
     memory_embedding_service=None,
     productivity_repository=None,
@@ -258,6 +258,7 @@ def build_tool_registry(
         store=store,
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
+        artifact_store=artifact_store,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
         productivity_repository=productivity_repository,
@@ -279,9 +280,7 @@ def build_tool_registry(
         )
     )
     ordered_manifests = tuple(
-        all_manifests[tool_name]
-        for tool_name in ordered_names
-        if tool_name in all_manifests
+        all_manifests[tool_name] for tool_name in ordered_names if tool_name in all_manifests
     )
     return ToolRegistry(
         tools=tuple(manifest.tool for manifest in ordered_manifests),
@@ -296,6 +295,7 @@ def _build_controlled_tool_provider_registry(
     store: Any,
     checkpointer: Any,
     artifact_metadata_repository: Any,
+    artifact_store: Any,
     memory_repository: Any,
     memory_embedding_service: Any,
     productivity_repository: Any,
@@ -308,6 +308,7 @@ def _build_controlled_tool_provider_registry(
         store=store,
         checkpointer=checkpointer,
         artifact_metadata_repository=artifact_metadata_repository,
+        artifact_store=artifact_store,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
         productivity_repository=productivity_repository,
@@ -321,8 +322,7 @@ def _build_controlled_tool_provider_registry(
         for provider in explicit_provider_list
     )
     known_provider_ids.update(
-        _normalize_provider_id(provider_id)
-        for provider_id in explicit_factory_mapping
+        _normalize_provider_id(provider_id) for provider_id in explicit_factory_mapping
     )
 
     for provider_config in settings.tool_catalog.providers:
@@ -572,18 +572,17 @@ def _build_builtin_tool_provider(context: ToolProviderFactoryContext) -> ToolPro
 
 
 def _call_default_tools(context: ToolProviderFactoryContext) -> list[Any]:
-    kwargs: dict[str, Any] = {
+    candidate_kwargs: dict[str, Any] = {
         "store": context.store,
         "checkpointer": context.checkpointer,
         "artifact_metadata_repository": context.artifact_metadata_repository,
+        "artifact_store": context.artifact_store,
+        "memory_repository": context.memory_repository,
+        "memory_embedding_service": context.memory_embedding_service,
+        "productivity_repository": context.productivity_repository,
     }
     signature = inspect.signature(get_default_tools)
-    if "memory_repository" in signature.parameters:
-        kwargs["memory_repository"] = context.memory_repository
-    if "memory_embedding_service" in signature.parameters:
-        kwargs["memory_embedding_service"] = context.memory_embedding_service
-    if "productivity_repository" in signature.parameters:
-        kwargs["productivity_repository"] = context.productivity_repository
+    kwargs = {key: value for key, value in candidate_kwargs.items() if key in signature.parameters}
     return get_default_tools(context.settings, **kwargs)
 
 

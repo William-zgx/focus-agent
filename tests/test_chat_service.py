@@ -9,8 +9,10 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from focus_agent.api.routers.harness_runs import _produce_run_stream
+from focus_agent.branch_decision import BranchDecisionService
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
+from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.services.branch_actions import is_branch_action_request
 from focus_agent.services.chat import ChatService, ChatServicePorts, ConcurrentTurnError
@@ -19,6 +21,7 @@ from focus_agent.services.coordination import (
     InMemoryBackgroundJobDeduperBackend,
     InMemoryRateLimitBackend,
     InMemoryThreadTurnLockBackend,
+    create_in_memory_coordination_backend,
 )
 from focus_agent.services.thread_turn_lease import ThreadTurnLeaseManager
 from focus_agent.skills.registry import SkillRegistry
@@ -132,6 +135,51 @@ class BranchActionGraph:
                 self.values[key] = value
 
 
+class BranchRecommendationGraph(BranchActionGraph):
+    def __init__(self, values: dict[str, object] | None = None):
+        super().__init__(values)
+        self.invoke_calls = 0
+        self.last_payload = None
+
+    def invoke(self, payload, *, config, context, version):
+        del config, context, version
+        self.invoke_calls += 1
+        self.last_payload = payload
+        self.values["messages"] = list(self.values.get("messages", [])) + [
+            *list(payload.get("messages", [])),
+            AIMessage(content="normal answer"),
+        ]
+        self.values["selected_model"] = payload.get("selected_model", "")
+        self.values["selected_thinking_mode"] = payload.get("selected_thinking_mode", "")
+        return {}
+
+
+class MultiThreadBranchActionGraph:
+    def __init__(self, values_by_thread: dict[str, dict[str, object]] | None = None):
+        self.values_by_thread = values_by_thread or {}
+        self.updates: list[tuple[str, dict[str, object], str | None]] = []
+
+    @staticmethod
+    def _thread_id(config) -> str:
+        return str((config or {}).get("configurable", {}).get("thread_id") or "")
+
+    def get_state(self, config):
+        return SimpleNamespace(
+            values=self.values_by_thread.setdefault(self._thread_id(config), {}),
+            interrupts=[],
+        )
+
+    def update_state(self, config, values, as_node=None):
+        thread_id = self._thread_id(config)
+        self.updates.append((thread_id, values, as_node))
+        state = self.values_by_thread.setdefault(thread_id, {})
+        if "messages" in values:
+            state["messages"] = list(state.get("messages", [])) + list(values["messages"])
+        for key, value in values.items():
+            if key != "messages":
+                state[key] = value
+
+
 class BranchActionBranchService:
     def __init__(self):
         self.fork_calls: list[dict[str, object]] = []
@@ -230,6 +278,15 @@ def _chat_for_repo(
     )
 
 
+def _branch_recommendation_service(settings: Settings, graph: object) -> BranchDecisionService:
+    return BranchDecisionService(
+        settings=settings,
+        graph=graph,
+        governance_repository=InMemoryGovernanceRepository(),
+        coordination_backend=create_in_memory_coordination_backend(),
+    )
+
+
 def test_chat_service_accepts_narrow_ports(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -276,6 +333,230 @@ def test_send_message_creates_pending_branch_action_without_forking(tmp_path: Pa
     assert graph.updates[-1][1] == "bootstrap_turn"
 
 
+def test_send_message_defaults_generic_new_branch_to_child_branch(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph(
+        {
+            "messages": [
+                HumanMessage(content="我们正在讨论包车东线时间段分配。"),
+            ]
+        }
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=BranchActionBranchService(),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="child-1",
+        user_id="owner-1",
+        message="新建分支，探索一下今天包车东线的时间段分配。",
+    )
+
+    assert payload["branch_actions"][0]["kind"] == "fork_child_branch"
+    assert payload["branch_actions"][0]["target_parent_thread_id"] == "child-1"
+
+
+def test_send_message_pre_turn_recommendation_creates_child_card_without_invoke(
+    tmp_path: Path,
+):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="suggest",
+    )
+    graph = BranchRecommendationGraph(
+        {"messages": [HumanMessage(content="我们在规划包车东线时间段分配。")]}
+    )
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="深入细化一下下午东线每个时间段的安排。",
+    )
+
+    assert graph.invoke_calls == 0
+    assert payload["branch_actions"][0]["kind"] == "fork_child_branch"
+    assert payload["branch_actions"][0]["target_parent_thread_id"] == "root-1"
+    assert payload["branch_actions"][0]["source"] == "branch_decision"
+    assert payload["branch_decision_summary"]["latest_decision"]["status"] == "promoted"
+    assert (
+        payload["branch_decision_summary"]["latest_decision"]["recommendation_target"]
+        == "fork_child_branch"
+    )
+    assert "确认项" in payload["assistant_message"]
+
+
+def test_send_message_pre_turn_recommendation_uses_thread_turn_lock(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="suggest",
+    )
+    graph = BranchRecommendationGraph(
+        {"messages": [HumanMessage(content="我们在规划包车东线时间段分配。")]}
+    )
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    chat._acquire_thread_turn(thread_id="root-1")
+    try:
+        with pytest.raises(ConcurrentTurnError, match="still processing the previous turn"):
+            chat.send_message(
+                thread_id="root-1",
+                user_id="owner-1",
+                message="深入细化一下下午东线每个时间段的安排。",
+            )
+    finally:
+        chat._release_thread_turn(thread_id="root-1")
+
+    assert graph.invoke_calls == 0
+    assert "branch_actions" not in graph.values
+
+
+def test_send_message_pre_turn_recommendation_creates_sibling_card_from_child(
+    tmp_path: Path,
+):
+    repo = _repo_with_child_branch(tmp_path)
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="suggest",
+    )
+    graph = BranchRecommendationGraph(
+        {
+            "messages": [HumanMessage(content="当前分支在研究方案 A。")],
+            "branch_meta": {
+                "branch_id": "branch-1",
+                "root_thread_id": "root-1",
+                "parent_thread_id": "root-1",
+                "return_thread_id": "root-1",
+                "branch_name": "方案 A",
+                "branch_role": "deep_dive",
+                "branch_depth": 1,
+                "branch_status": "active",
+            },
+        }
+    )
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="child-1",
+        user_id="owner-1",
+        message="换个方向并行探索东线备用方案。",
+    )
+
+    assert graph.invoke_calls == 0
+    assert payload["branch_actions"][0]["kind"] == "fork_sibling_branch"
+    assert payload["branch_actions"][0]["target_parent_thread_id"] == "root-1"
+    assert (
+        payload["branch_decision_summary"]["latest_decision"]["recommendation_target"]
+        == "fork_sibling_branch"
+    )
+
+
+def test_pre_turn_recommendation_execution_carries_question_to_sibling_branch(
+    tmp_path: Path,
+):
+    repo = _repo_with_child_branch(tmp_path)
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="suggest",
+    )
+    graph = MultiThreadBranchActionGraph(
+        {
+            "root-1": {
+                "messages": [HumanMessage(content="根线程里的基础上下文。")],
+            },
+            "child-1": {
+                "messages": [HumanMessage(content="当前分支在研究方案 A。")],
+                "branch_meta": {
+                    "branch_id": "branch-1",
+                    "root_thread_id": "root-1",
+                    "parent_thread_id": "root-1",
+                    "return_thread_id": "root-1",
+                    "branch_name": "方案 A",
+                    "branch_role": "deep_dive",
+                    "branch_depth": 1,
+                    "branch_status": "active",
+                },
+            },
+        }
+    )
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    message = "换个方向并行探索东线备用方案。"
+    chat.send_message(thread_id="child-1", user_id="owner-1", message=message)
+    action_id = graph.values_by_thread["child-1"]["branch_actions"][0]["action_id"]
+
+    chat.execute_branch_action(thread_id="child-1", action_id=action_id, user_id="owner-1")
+
+    assert branch_service.fork_calls[-1]["parent_thread_id"] == "root-1"
+    child_messages = graph.values_by_thread["child-new"]["messages"]
+    assert any(
+        isinstance(item, HumanMessage) and item.content == message for item in child_messages
+    )
+
+
+def test_send_message_pre_turn_continue_recommendation_invokes_normally(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="suggest",
+    )
+    graph = BranchRecommendationGraph(
+        {"messages": [HumanMessage(content="我们正在讨论主线问题。")]}
+    )
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="不用分支，继续回答这个问题。",
+    )
+
+    assert graph.invoke_calls == 1
+    assert payload["branch_actions"] == []
+    assert payload["assistant_message"] == "normal answer"
+
+
 def test_branch_action_execution_keeps_auto_name_pending_for_first_turn_refresh(tmp_path: Path):
     repo = _repo_with_child_branch(tmp_path)
     graph = BranchActionGraph(
@@ -299,6 +580,97 @@ def test_branch_action_execution_keeps_auto_name_pending_for_first_turn_refresh(
 
     assert branch_service.fork_calls[-1]["branch_name"] is None
     assert "华英农业" in branch_service.fork_calls[-1]["name_source"]
+
+
+def test_branch_action_execution_carries_source_question_to_sibling_branch(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = MultiThreadBranchActionGraph(
+        {
+            "root-1": {
+                "messages": [HumanMessage(content="根线程里的基础上下文。")],
+            },
+            "child-1": {
+                "messages": [
+                    HumanMessage(content="你觉得华英农业下周会是什么样的走势呀？"),
+                    AIMessage(content="这需要切换分支后再分析。"),
+                ],
+            },
+        }
+    )
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+    action_id = graph.values_by_thread["child-1"]["branch_actions"][0]["action_id"]
+
+    chat.execute_branch_action(thread_id="child-1", action_id=action_id, user_id="owner-1")
+
+    assert branch_service.fork_calls[-1]["parent_thread_id"] == "root-1"
+    child_messages = graph.values_by_thread["child-new"]["messages"]
+    assert any(
+        isinstance(message, HumanMessage)
+        and message.content == "你觉得华英农业下周会是什么样的走势呀？"
+        for message in child_messages
+    )
+
+
+def test_branch_action_execution_marks_copied_child_action_executed(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = MultiThreadBranchActionGraph(
+        {
+            "root-1": {
+                "messages": [HumanMessage(content="根线程里的基础上下文。")],
+            },
+            "child-1": {
+                "messages": [HumanMessage(content="当前分支在研究方案 A。")],
+                "branch_meta": {
+                    "branch_id": "branch-1",
+                    "root_thread_id": "root-1",
+                    "parent_thread_id": "root-1",
+                    "return_thread_id": "root-1",
+                    "branch_name": "方案 A",
+                    "branch_role": "deep_dive",
+                    "branch_depth": 1,
+                    "branch_status": "active",
+                },
+            },
+        }
+    )
+
+    class CopyingBranchActionBranchService(BranchActionBranchService):
+        def fork_branch(self, **kwargs):
+            record = super().fork_branch(**kwargs)
+            source_values = graph.values_by_thread["child-1"]
+            graph.values_by_thread[record.child_thread_id] = {
+                "messages": list(source_values.get("messages", [])),
+                "branch_actions": [
+                    dict(item) for item in list(source_values.get("branch_actions", []))
+                ],
+            }
+            return record
+
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=CopyingBranchActionBranchService(),
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(thread_id="child-1", user_id="owner-1", message="帮我切换一个同级分支吧。")
+    action_id = graph.values_by_thread["child-1"]["branch_actions"][0]["action_id"]
+    chat.execute_branch_action(thread_id="child-1", action_id=action_id, user_id="owner-1")
+
+    child_actions = graph.values_by_thread["child-new"]["branch_actions"]
+    assert child_actions[0]["action_id"] == action_id
+    assert child_actions[0]["status"] == "executed"
+    assert child_actions[0]["navigation"]["thread_id"] == "child-new"
 
 
 def test_branch_action_intent_requires_branch_context():

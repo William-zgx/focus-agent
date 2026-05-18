@@ -111,7 +111,10 @@ def test_trajectory_judge_enforces_max_tool_calls():
             "expected": {"max_tool_calls": 1},
         }
     )
-    steps = [TrajectoryStep(tool="a", args={}, observation=""), TrajectoryStep(tool="b", args={}, observation="")]
+    steps = [
+        TrajectoryStep(tool="a", args={}, observation=""),
+        TrajectoryStep(tool="b", args={}, observation=""),
+    ]
     verdict = TrajectoryJudge().evaluate(case=case, answer="", trajectory=steps)
     assert not verdict.passed
 
@@ -416,8 +419,7 @@ def test_harness_stability_suite_runs_offline_with_fake_runtime():
 
     assert len(results) == len(cases)
     assert all(result.passed for result in results), [
-        (result.case_id, [verdict.reasoning for verdict in result.verdicts])
-        for result in results
+        (result.case_id, [verdict.reasoning for verdict in result.verdicts]) for result in results
     ]
 
 

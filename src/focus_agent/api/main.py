@@ -21,6 +21,7 @@ from .routers import (
     agent_governance,
     agent_team,
     auth_models,
+    branch_decisions,
     branches_merge,
     conversation_chat_context,
     harness_runs,
@@ -35,9 +36,9 @@ from .routers.frontend_static import register_frontend_routes
 def create_app() -> FastAPI:
     settings = Settings.from_env()
     app = FastAPI(
-        title='focus-agent',
+        title="focus-agent",
         version=settings.app_version,
-        description='Long-dialogue research agent API with branchable conversations.',
+        description="Long-dialogue research agent API with branchable conversations.",
         lifespan=app_lifespan,
     )
 
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(memory.router)
     app.include_router(productivity.router)
     app.include_router(observability.router)
+    app.include_router(branch_decisions.router)
     app.include_router(conversation_chat_context.router)
     app.include_router(branches_merge.router)
     return app

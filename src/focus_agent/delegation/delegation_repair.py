@@ -4,13 +4,13 @@ from collections.abc import Iterable
 from typing import Any
 from uuid import uuid4
 
+from ..config import Settings
 from .delegation_models import (
     AgentFailureRecord,
     AgentReviewItem,
     AgentSelfRepairPreview,
 )
 from .roles import AgentRole, normalize_agent_role
-from ..config import Settings
 
 
 def build_failure_records(

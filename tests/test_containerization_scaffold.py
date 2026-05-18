@@ -16,33 +16,44 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
         assert path.exists(), f"missing {path}"
 
     dockerfile_text = (root / "Dockerfile").read_text(encoding="utf-8")
-    assert 'ARG NODE_IMAGE=' in dockerfile_text
-    assert 'ARG PYTHON_IMAGE=' in dockerfile_text
-    assert 'ARG NPM_REGISTRY=' in dockerfile_text
-    assert 'ARG PIP_INDEX_URL=' in dockerfile_text
+    assert "ARG NODE_IMAGE=" in dockerfile_text
+    assert "ARG PYTHON_IMAGE=" in dockerfile_text
+    assert "ARG NPM_REGISTRY=" in dockerfile_text
+    assert "ARG PIP_INDEX_URL=" in dockerfile_text
     assert "FROM ${NODE_IMAGE} AS frontend-builder" in dockerfile_text
     assert "FROM ${PYTHON_IMAGE} AS runtime" in dockerfile_text
     assert "pnpm web:build" in dockerfile_text
-    assert 'pip install --no-cache-dir -c /tmp/docker-constraints.txt ".[openai,anthropic]"' in dockerfile_text
+    assert (
+        'pip install --no-cache-dir -c /tmp/docker-constraints.txt ".[openai,anthropic]"'
+        in dockerfile_text
+    )
     assert 'ENTRYPOINT ["/entrypoint.sh"]' in dockerfile_text
     assert 'CMD ["focus-agent-api"]' in dockerfile_text
     assert "FOCUS_AGENT_LOCAL_ENV_FILE=/data/local.env" in dockerfile_text
 
     entrypoint_text = (root / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     assert "copy_if_missing" in entrypoint_text
-    assert 'FOCUS_AGENT_LOCAL_ENV_FILE="${FOCUS_AGENT_LOCAL_ENV_FILE:-$DATA_DIR/local.env}"' in entrypoint_text
+    assert (
+        'FOCUS_AGENT_LOCAL_ENV_FILE="${FOCUS_AGENT_LOCAL_ENV_FILE:-$DATA_DIR/local.env}"'
+        in entrypoint_text
+    )
     assert 'BRANCH_DB_PATH="${BRANCH_DB_PATH:-$DATA_DIR/branches.sqlite3}"' in entrypoint_text
-    assert 'LOCAL_CHECKPOINT_PATH="${LOCAL_CHECKPOINT_PATH:-$DATA_DIR/langgraph-checkpoints.pkl}"' in entrypoint_text
+    assert (
+        'LOCAL_CHECKPOINT_PATH="${LOCAL_CHECKPOINT_PATH:-$DATA_DIR/langgraph-checkpoints.pkl}"'
+        in entrypoint_text
+    )
     assert 'exec "$@"' in entrypoint_text
 
     compose_text = (root / "compose.yaml").read_text(encoding="utf-8")
     assert "postgres:" in compose_text
     assert "depends_on:" in compose_text
-    assert '${FOCUS_AGENT_DATA_MOUNT:-focus_agent_data}:/data' in compose_text
-    assert '${FOCUS_AGENT_PGDATA_MOUNT:-focus_agent_pgdata}:/var/lib/postgresql/data' in compose_text
-    assert 'AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-true}' in compose_text
+    assert "${FOCUS_AGENT_DATA_MOUNT:-focus_agent_data}:/data" in compose_text
+    assert (
+        "${FOCUS_AGENT_PGDATA_MOUNT:-focus_agent_pgdata}:/var/lib/postgresql/data" in compose_text
+    )
+    assert "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-true}" in compose_text
     assert "ANTHROPIC_API_KEY:" in compose_text
-    assert 'MODEL: ${FOCUS_AGENT_MODEL:-}' in compose_text
+    assert "MODEL: ${FOCUS_AGENT_MODEL:-}" in compose_text
     assert "OPENAI_API_KEY:" in compose_text
     assert "OPENAI_BASE_URL:" in compose_text
     assert "MOONSHOT_API_KEY:" in compose_text
@@ -61,7 +72,10 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     compose_prod_text = (root / "compose.prod.yaml").read_text(encoding="utf-8")
     assert "FOCUS_AGENT_IMAGE" in compose_prod_text
     assert "FOCUS_AGENT_DATABASE_URI" in compose_prod_text
-    assert "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}" in compose_prod_text
+    assert (
+        "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}"
+        in compose_prod_text
+    )
     assert "ANTHROPIC_API_KEY:" in compose_prod_text
     assert "OPENAI_API_KEY:" in compose_prod_text
     assert "MIMO_API_KEY:" in compose_prod_text

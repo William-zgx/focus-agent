@@ -310,7 +310,9 @@ def test_postgres_trajectory_repository_executes_setup_and_insert(monkeypatch):
     assert any("CREATE TABLE IF NOT EXISTS focus_trajectory_steps" in sql for sql in statements)
     assert any("ALTER TABLE focus_trajectory_turns" in sql for sql in statements)
     assert any("INSERT INTO focus_trajectory_turns" in sql for sql in statements)
-    insert_params = next(params for sql, params in executed if "INSERT INTO focus_trajectory_turns" in sql)
+    insert_params = next(
+        params for sql, params in executed if "INSERT INTO focus_trajectory_turns" in sql
+    )
     assert insert_params["request_id"] == "req-setup"
     assert insert_params["trace_id"]
 
@@ -466,13 +468,34 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
                 "created_at": utc_now(),
             }
         ],
-        [{"turn_count": 1, "succeeded_count": 0, "non_succeeded_count": 1, "total_tool_calls": 1, "total_llm_calls": 1, "total_cache_hits": 1, "total_fallback_uses": 1, "avg_latency_ms": 250.0, "max_latency_ms": 250.0}],
+        [
+            {
+                "turn_count": 1,
+                "succeeded_count": 0,
+                "non_succeeded_count": 1,
+                "total_tool_calls": 1,
+                "total_llm_calls": 1,
+                "total_cache_hits": 1,
+                "total_fallback_uses": 1,
+                "avg_latency_ms": 250.0,
+                "max_latency_ms": 250.0,
+            }
+        ],
         [{"key": "failed", "turn_count": 1, "avg_latency_ms": 250.0}],
         [{"key": "long_dialog_research", "turn_count": 1, "avg_latency_ms": 250.0}],
         [{"key": "unassigned", "turn_count": 1}],
         [{"key": "openai:gpt-4.1-mini", "turn_count": 1, "avg_latency_ms": 250.0}],
         [{"key": "2026-04-22", "turn_count": 1, "non_succeeded_count": 1, "avg_latency_ms": 250.0}],
-        [{"key": "web_search", "step_count": 1, "turn_count": 1, "cache_hit_steps": 1, "fallback_steps": 1, "avg_duration_ms": 12.5}],
+        [
+            {
+                "key": "web_search",
+                "step_count": 1,
+                "turn_count": 1,
+                "cache_hit_steps": 1,
+                "fallback_steps": 1,
+                "avg_duration_ms": 12.5,
+            }
+        ],
     ]
 
     class FakeCursor:

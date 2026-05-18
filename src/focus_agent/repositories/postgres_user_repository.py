@@ -287,7 +287,9 @@ class PostgresUserRepository(UserRepository):
     def get_session(self, session_id: str) -> UserSession:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT data_json FROM focus_user_sessions WHERE session_id = %s", (session_id,))
+                cur.execute(
+                    "SELECT data_json FROM focus_user_sessions WHERE session_id = %s", (session_id,)
+                )
                 row = cur.fetchone()
         if row is None:
             raise KeyError(f"Unknown user session: {session_id}")

@@ -30,6 +30,15 @@ import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
 import { normalizeAuthReturnTo } from "@/pages/auth/return-to";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
+import { EmptyState, Surface, Toast } from "@/shared/ui/primitives";
+
+function RouteStateCard({ children }: { children: ReactNode }) {
+	return (
+		<Surface className="fa-route-state-card" tone="panel">
+			{children}
+		</Surface>
+	);
+}
 
 function RootLayout() {
 	const navigate = useNavigate();
@@ -58,11 +67,11 @@ function RootLayout() {
 	if (!isAuthRoute && !ready) {
 		return (
 			<div className="fa-route-state">
-				<div className="fa-route-state-card">
+				<RouteStateCard>
 					{isChineseBrowser
 						? "正在准备 Focus Agent 会话..."
 						: "Preparing Focus Agent session..."}
-				</div>
+				</RouteStateCard>
 			</div>
 		);
 	}
@@ -70,11 +79,11 @@ function RootLayout() {
 	if (!isAuthRoute && !principal) {
 		return (
 			<div className="fa-route-state">
-				<div className="fa-route-state-card">
+				<RouteStateCard>
 					{isChineseBrowser
 						? "正在跳转到登录页..."
 						: "Redirecting to sign in..."}
-				</div>
+				</RouteStateCard>
 			</div>
 		);
 	}
@@ -95,14 +104,15 @@ function NotFoundPage() {
 
 	return (
 		<div className="fa-route-state">
-			<div className="fa-route-state-card">
-				<p className="fa-route-state-title">
-					{isChineseUi ? "页面不存在" : "Page not found"}
-				</p>
-				<Link className="fa-route-state-link" to="/">
-					{isChineseUi ? "返回首页" : "Go back home"}
-				</Link>
-			</div>
+			<EmptyState
+				action={
+					<Link className="fa-route-state-link" to="/">
+						{isChineseUi ? "返回首页" : "Go back home"}
+					</Link>
+				}
+				className="fa-route-state-card"
+				title={isChineseUi ? "页面不存在" : "Page not found"}
+			/>
 		</div>
 	);
 }
@@ -132,21 +142,24 @@ function HomePage() {
 			<section className="fa-chat-transcript">
 				<div className="fa-chat-history">
 					<div className="fa-chat-history-content">
-						<div className="fa-chat-empty">
-							{isChineseUi
-								? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
-								: "Start chatting here. Branches appear on the left whenever the agent forks work."}
-						</div>
+						<EmptyState
+							className="fa-chat-empty"
+							title={
+								isChineseUi
+									? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
+									: "Start chatting here. Branches appear on the left whenever the agent forks work."
+							}
+						/>
 					</div>
 				</div>
 			</section>
 
 			<section className="fa-composer-slot">
-				<div className="fa-inline-notice">
+				<Toast className="fa-inline-notice" tone="info">
 					{isChineseUi
 						? "在这里发送第一条消息。需要探索另一条路径时，再新建分支。"
 						: "Send the first message here. Create a branch only when you want to explore a separate path."}
-				</div>
+				</Toast>
 			</section>
 		</div>
 	);
@@ -183,7 +196,7 @@ function AuthGate({ children }: { children: ReactNode }) {
 	if (!isAuthRoute && (!ready || !principal)) {
 		return (
 			<div className="fa-route-state">
-				<div className="fa-route-state-card">Redirecting to sign in...</div>
+				<RouteStateCard>Redirecting to sign in...</RouteStateCard>
 			</div>
 		);
 	}
@@ -215,7 +228,7 @@ function AuthIndexRedirect() {
 
 	return (
 		<div className="fa-route-state">
-			<div className="fa-route-state-card">正在进入登录页...</div>
+			<RouteStateCard>正在进入登录页...</RouteStateCard>
 		</div>
 	);
 }
@@ -424,11 +437,11 @@ export function AppRouter() {
 	if (!isAuthPath && !ready) {
 		return (
 			<div className="fa-route-state">
-				<div className="fa-route-state-card">
+				<RouteStateCard>
 					{isChineseBrowser
 						? "正在准备 Focus Agent 会话..."
 						: "Preparing Focus Agent session..."}
-				</div>
+				</RouteStateCard>
 			</div>
 		);
 	}

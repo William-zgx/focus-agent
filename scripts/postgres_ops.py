@@ -34,7 +34,9 @@ DEFAULT_OPERATIONS: tuple[str, ...] = (
 PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok", "dry-run", "skipped"}
 FAIL_STATUSES = {"fail", "failed", "error"}
 MAX_EVIDENCE_CHARS = 4000
-_POSTGRES_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "src/focus_agent/repositories/postgres_schema.py"
+_POSTGRES_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1] / "src/focus_agent/repositories/postgres_schema.py"
+)
 _FALLBACK_SCHEMA_VERSION = 11
 _FALLBACK_SCHEMA_MIGRATION_LOCK_ID = 7612044473148256129
 
@@ -61,7 +63,9 @@ def _expected_migration_versions() -> list[int]:
     source = _postgres_schema_source()
     versions = [
         int(match.group(1))
-        for match in re.finditer(r"^\s*\((\d+),\s*_run_migration_v\d+\)", source, flags=re.MULTILINE)
+        for match in re.finditer(
+            r"^\s*\((\d+),\s*_run_migration_v\d+\)", source, flags=re.MULTILINE
+        )
     ]
     if versions:
         return versions
@@ -69,7 +73,9 @@ def _expected_migration_versions() -> list[int]:
 
 
 def _schema_migration_lock_id() -> int:
-    match = re.search(r"^_SCHEMA_MIGRATION_LOCK_ID\s*=\s*(\d+)", _postgres_schema_source(), flags=re.MULTILINE)
+    match = re.search(
+        r"^_SCHEMA_MIGRATION_LOCK_ID\s*=\s*(\d+)", _postgres_schema_source(), flags=re.MULTILINE
+    )
     if match:
         return int(match.group(1))
     return _FALLBACK_SCHEMA_MIGRATION_LOCK_ID
@@ -121,7 +127,9 @@ def _truncate(value: str) -> str:
     return value[:MAX_EVIDENCE_CHARS] + "...<truncated>"
 
 
-def _run_query(database_uri: str, query: str, params: Sequence[Any] | None = None) -> tuple[Any, ...] | None:
+def _run_query(
+    database_uri: str, query: str, params: Sequence[Any] | None = None
+) -> tuple[Any, ...] | None:
     if psycopg is None:
         raise RuntimeError("psycopg is unavailable")
     with psycopg.connect(database_uri) as conn:
@@ -133,7 +141,9 @@ def _run_query(database_uri: str, query: str, params: Sequence[Any] | None = Non
             return tuple(row)
 
 
-def _run_query_rows(database_uri: str, query: str, params: Sequence[Any] | None = None) -> list[tuple[Any, ...]]:
+def _run_query_rows(
+    database_uri: str, query: str, params: Sequence[Any] | None = None
+) -> list[tuple[Any, ...]]:
     if psycopg is None:
         raise RuntimeError("psycopg is unavailable")
     with psycopg.connect(database_uri) as conn:
@@ -184,7 +194,9 @@ def _query_operation(
     )
 
 
-def _table_readiness_operation(name: str, *, database_uri: str, table_name: str, detail_name: str) -> dict[str, Any]:
+def _table_readiness_operation(
+    name: str, *, database_uri: str, table_name: str, detail_name: str
+) -> dict[str, Any]:
     return _query_operation(
         name,
         database_uri=database_uri,
@@ -198,7 +210,9 @@ def _migration_state_operations(*, database_uri: str) -> list[dict[str, Any]]:
     expected_schema_version = _expected_schema_version()
     expected_versions = _expected_migration_versions()
     try:
-        rows = _run_query_rows(database_uri, "SELECT version FROM focus_schema_migrations ORDER BY version")
+        rows = _run_query_rows(
+            database_uri, "SELECT version FROM focus_schema_migrations ORDER BY version"
+        )
     except Exception as exc:  # noqa: BLE001
         failed = _operation(
             "migration_state",
@@ -320,7 +334,11 @@ def _pgvector_readiness_operation(*, database_uri: str) -> dict[str, Any]:
         detail=(
             "pgvector is installed"
             if installed
-            else ("pgvector is available to install" if available else "pgvector extension is unavailable")
+            else (
+                "pgvector is available to install"
+                if available
+                else "pgvector extension is unavailable"
+            )
         ),
         installed=installed,
         available=available,
@@ -370,7 +388,9 @@ def _run_command_operation(
         name,
         status="passed" if passed else "failed",
         passed=passed,
-        detail="command completed successfully" if passed else f"command exited with {completed.returncode}",
+        detail="command completed successfully"
+        if passed
+        else f"command exited with {completed.returncode}",
         evidence=evidence,
     )
     return operation, evidence
@@ -414,7 +434,9 @@ def _restore_verification_operation(
             "restore_verification",
             status="passed" if passed else "failed",
             passed=passed,
-            detail="restore verification evidence passed" if passed else "restore verification evidence failed",
+            detail="restore verification evidence passed"
+            if passed
+            else "restore verification evidence failed",
             evidence_path=str(path),
             evidence=payload,
         )
@@ -495,7 +517,12 @@ def _live_database_operations(
             detail_name="focus_trajectory_turns",
         )
     )
-    if backup_command or restore_command or restore_verification_evidence or restore_verification_query:
+    if (
+        backup_command
+        or restore_command
+        or restore_verification_evidence
+        or restore_verification_query
+    ):
         operations.append(
             _operation(
                 "backup_restore_runbook",
@@ -570,15 +597,21 @@ def _report_sections(operations: Sequence[Mapping[str, Any]], *, dry_run: bool) 
             },
             "applied_migrations": migration_state.get("applied_versions", []),
             "current_schema_version": schema_version.get("max_applied_version"),
-            "expected_migrations": migration_state.get("expected_versions", _expected_migration_versions()),
+            "expected_migrations": migration_state.get(
+                "expected_versions", _expected_migration_versions()
+            ),
             "expected_schema_version": schema_version.get(
                 "expected_schema_version",
                 _expected_schema_version(),
             ),
             "future_migrations": migration_state.get("future_versions", []),
             "missing_migrations": migration_state.get("missing_versions", []),
-            "passed": bool(schema_version.get("passed", dry_run) and migration_state.get("passed", dry_run)),
-            "status": "dry-run" if dry_run else ("passed" if schema_version.get("passed") else "failed"),
+            "passed": bool(
+                schema_version.get("passed", dry_run) and migration_state.get("passed", dry_run)
+            ),
+            "status": "dry-run"
+            if dry_run
+            else ("passed" if schema_version.get("passed") else "failed"),
         },
         "pgvector": {
             "available": pgvector.get("available"),
@@ -589,7 +622,9 @@ def _report_sections(operations: Sequence[Mapping[str, Any]], *, dry_run: bool) 
             "status": pgvector.get("status", "dry-run" if dry_run else "missing"),
         },
         "pool": {
-            "configured": bool(os.environ.get("POSTGRES_POOL_MIN_SIZE") or os.environ.get("POSTGRES_POOL_MAX_SIZE")),
+            "configured": bool(
+                os.environ.get("POSTGRES_POOL_MIN_SIZE") or os.environ.get("POSTGRES_POOL_MAX_SIZE")
+            ),
             "max_size": os.environ.get("POSTGRES_POOL_MAX_SIZE"),
             "min_size": os.environ.get("POSTGRES_POOL_MIN_SIZE"),
             "snapshot_error": None,
@@ -693,10 +728,14 @@ def build_report(
                 )
             )
         if retention_cleanup_query:
-            operations.append(_retention_cleanup_operation(retention_cleanup_query=retention_cleanup_query))
+            operations.append(
+                _retention_cleanup_operation(retention_cleanup_query=retention_cleanup_query)
+            )
 
     failed = [operation["name"] for operation in operations if not _operation_passed(operation)]
-    errors = [str(operation["detail"]) for operation in operations if not _operation_passed(operation)]
+    errors = [
+        str(operation["detail"]) for operation in operations if not _operation_passed(operation)
+    ]
     status = "dry-run" if dry_run else ("passed" if not failed else "failed")
     command = (
         "uv run python scripts/postgres_ops.py --dry-run"
@@ -727,7 +766,9 @@ def build_report(
         "v2": {
             "backup_command_configured": bool(backup_command),
             "restore_command_configured": bool(restore_command),
-            "restore_verification_configured": bool(restore_verification_evidence or restore_verification_query),
+            "restore_verification_configured": bool(
+                restore_verification_evidence or restore_verification_query
+            ),
             "retention_cleanup_dry_run_configured": bool(retention_cleanup_query),
         },
         "v3": {
@@ -741,15 +782,21 @@ def build_report(
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Plan checks without connecting to Postgres.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Plan checks without connecting to Postgres."
+    )
     parser.add_argument("--database-uri", help="Postgres URI for live operation checks.")
-    parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured report path.")
+    parser.add_argument(
+        "--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured report path."
+    )
     parser.add_argument(
         "--backup-command",
         help="Explicit backup command to run, parsed with shlex and executed without a shell.",

@@ -10,16 +10,19 @@ flowchart TD
     Scope --> SDK["Frontend SDK"]
     Scope --> Admin["Admin / Auth"]
     Scope --> Agent["Agent governance"]
+    Scope --> Branch["Branch decisions"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
     Admin --> AdminChecks["admin API tests + web scaffold"]
     Agent --> Eval["agent eval suites + governance tests"]
+    Branch --> BranchChecks["branch decision + chat/harness tests"]
     CI --> Done["Ready for review"]
     WebChecks --> Done
     SDKChecks --> Done
     AdminChecks --> Done
     Eval --> Done
+    BranchChecks --> Done
 ```
 
 ## Command Matrix
@@ -40,6 +43,7 @@ make frontend-check
 make frontend-build
 make sdk-check
 make sdk-build
+make sdk-openapi-types-check
 make format
 make format-check
 make ci-test
@@ -88,6 +92,7 @@ make format-check
 
 ```bash
 make contract-check
+make sdk-openapi-types-check
 uv run pytest tests/test_contract_checks.py
 ```
 
@@ -97,13 +102,19 @@ imports under `apps/web/src`. If a route or SDK/E2E contract drift is
 intentional, update snapshots with `uv run python scripts/check_contracts.py
 --update` and include the snapshot diff in review.
 
+`make sdk-openapi-types-check` regenerates `docs/api/openapi.json` and
+`frontend-sdk/src/types/__generated__.ts`, then fails if either file drifts.
+Run it whenever FastAPI routes, Pydantic response models, or generated SDK
+types change.
+
 3. If the frontend SDK implementation changed, especially `src/client.ts`, `src/client/`, `src/types.ts`, `src/types/`, `src/transport.ts`, `src/parser.ts`, `src/reducers.ts`, `src/toolProtocol.ts`, `src/guards.ts`, or transport validation files:
 
 ```bash
 make sdk-check
 make sdk-build
 make sdk-validate-transport
-cd frontend-sdk && npm run validate:transport
+make sdk-openapi-types-check
+pnpm --dir frontend-sdk validate:transport
 ```
 
 4. If the Web App changed:
@@ -210,7 +221,25 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security
 
 These checks cover in-memory/Postgres thread leases, durable job claim tokens and claim heartbeat, heartbeat-lost behavior, and the rule that first-turn branch title/metadata refresh is scheduled after the active chat turn lease is released.
 
-14. If Auth / Access Model, token lifecycle, or ownership semantics changed:
+If API rate limiting changed, include `tests/test_coordination.py`; Postgres-backed runtimes should use `PostgresRateLimitBackend` and the `focus_rate_limit_buckets` schema while local/fallback runtimes continue using the in-memory backend.
+
+14. If branch decisions, pre-turn recommendations, or Branch Action confirmation changed:
+
+```bash
+uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
+uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
+make contract-check
+make sdk-openapi-types-check
+make web-check
+```
+
+For browser validation, enable `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` and
+`AGENT_BRANCH_RECOMMENDATION_MODE=suggest`, then use a prompt that asks for a
+child or sibling branch. Confirm that the recommendation card appears, the
+normal graph turn is skipped for that recommendation, and confirm/dismiss keeps
+thread and branch-tree caches current.
+
+15. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
 ```bash
 uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
@@ -241,7 +270,7 @@ When the Web login surface, account shell, admin route protection, or token stor
 - In `/app/admin/audit-events`, filter by resource or decision and open an event detail drawer.
 - Switch back by signing out and logging in with a different method. The app has no separate account switcher; switching is logout followed by another login.
 
-15. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
+16. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
 
 ```bash
 uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
@@ -251,11 +280,23 @@ make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
 make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
 The full release gate includes live-model eval smoke suites and expects a configured provider/model. In offline test environments, run the focused release-gate tests plus generated offline reports and document skipped live evals as a verification gap rather than treating the skip as equivalent to a live pass.
 
-16. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+17. If schema migration, Docker entrypoint, artifact storage, OpenAPI export, or generated SDK types changed:
+
+```bash
+uv run alembic -c alembic.ini heads
+uv run python scripts/export-openapi.py
+make sdk-openapi-types-check
+uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
+```
+
+`alembic upgrade head` requires `DATABASE_URI`; the Docker entrypoint runs it automatically when `DATABASE_URI` is present. The Alembic baseline currently delegates to the app schema migrations and should keep `focus_schema_migrations` aligned with `postgres_schema.py`.
+
+18. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
@@ -265,12 +306,13 @@ uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
 The project-level eval policy is documented in `docs/agent-evaluation.md`.
-`smoke` and `golden_multi_agent` are release-blocking suites; `model_matrix`
-and `trajectory_failures` are nightly, non-blocking signal suites. When changing
-model routing or multi-agent behavior, also run:
+`smoke`, `golden_multi_agent`, and `harness_stability` are release-blocking
+suites; `model_matrix` and `trajectory_failures` are nightly, non-blocking
+signal suites. When changing model routing or multi-agent behavior, also run:
 
 ```bash
 uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
@@ -307,4 +349,5 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [Admin Console](admin-console.md)
 - [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)
+- [Branch Decisions](branch-decisions.md)
 - [Roadmap](roadmap.md)

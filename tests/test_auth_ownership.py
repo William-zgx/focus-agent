@@ -71,7 +71,9 @@ class _OwnershipChatService:
         self._assert_owner(user_id)
         return _thread_payload(thread_id)
 
-    def preview_thread_context(self, *, thread_id: str, user_id: str, draft_message: str | None = None):
+    def preview_thread_context(
+        self, *, thread_id: str, user_id: str, draft_message: str | None = None
+    ):
         del thread_id, draft_message
         self._assert_owner(user_id)
         return {"context_usage": _context_usage()}
@@ -81,7 +83,9 @@ class _OwnershipChatService:
         self._assert_owner(user_id)
         return _thread_payload(thread_id)
 
-    def execute_branch_action(self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None):
+    def execute_branch_action(
+        self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None
+    ):
         del action_id, request_id
         self._assert_owner(user_id)
         return {
@@ -91,7 +95,9 @@ class _OwnershipChatService:
             "navigation": None,
         }
 
-    def dismiss_branch_action(self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None):
+    def dismiss_branch_action(
+        self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None
+    ):
         del action_id, request_id
         self._assert_owner(user_id)
         return _thread_payload(thread_id)
@@ -142,9 +148,17 @@ class _OwnershipBranchService:
     def prepare_merge_proposal(self, *, child_thread_id: str, user_id: str):
         del child_thread_id
         self._assert_owner(user_id)
-        return {"summary": "ready", "key_findings": [], "open_questions": [], "evidence_refs": [], "artifacts": []}
+        return {
+            "summary": "ready",
+            "key_findings": [],
+            "open_questions": [],
+            "evidence_refs": [],
+            "artifacts": [],
+        }
 
-    def apply_merge_decision(self, *, child_thread_id: str, decision, context, proposal_overrides=None):
+    def apply_merge_decision(
+        self, *, child_thread_id: str, decision, context, proposal_overrides=None
+    ):
         del child_thread_id, decision, proposal_overrides
         self._assert_owner(context.user_id)
         return ImportedConclusion(

@@ -147,7 +147,9 @@ def test_graph_delegation_inline_mode_merges_completed_runs_and_artifacts(monkey
     assert delegation["run_results"]
     assert any(run["status"] == "completed" for run in delegation["runs"])
     assert not any(run["status"] == "skipped" for run in delegation["runs"])
-    assert not any("not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"])
+    assert not any(
+        "not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"]
+    )
     assert any("inline graph delegated result" in artifact["summary"] for artifact in artifacts)
 
 
@@ -173,7 +175,9 @@ def test_graph_delegation_background_mode_merges_completed_runs_and_artifacts(mo
     assert delegation["run_results"]
     assert any(run["status"] == "completed" for run in delegation["runs"])
     assert not any(run["status"] == "skipped" for run in delegation["runs"])
-    assert not any("not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"])
+    assert not any(
+        "not implemented" in str(run.get("error", "")).lower() for run in delegation["runs"]
+    )
     assert any("background graph delegated result" in artifact["summary"] for artifact in artifacts)
 
 
@@ -395,8 +399,8 @@ def test_messages_for_model_uses_recent_messages_when_no_tool_exchange_is_active
     messages = _messages_for_model(state)
 
     assert [message.content for message in messages] == [
-      "今天北京天气怎么样",
-      "今天北京晴。",
+        "今天北京天气怎么样",
+        "今天北京晴。",
     ]
 
 
@@ -422,13 +426,22 @@ def test_messages_for_model_keeps_only_latest_unanswered_human_turn():
 def test_count_tool_call_rounds_since_latest_human_ignores_older_turns():
     messages = [
         HumanMessage(content="旧问题"),
-        AIMessage(content="", tool_calls=[{"id": "call-old", "name": "web_search", "args": {"query": "old"}}]),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call-old", "name": "web_search", "args": {"query": "old"}}],
+        ),
         ToolMessage(content='{"query":"old"}', tool_call_id="call-old"),
         AIMessage(content="旧回答"),
         HumanMessage(content="新问题"),
-        AIMessage(content="", tool_calls=[{"id": "call-1", "name": "web_search", "args": {"query": "one"}}]),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call-1", "name": "web_search", "args": {"query": "one"}}],
+        ),
         ToolMessage(content='{"query":"one"}', tool_call_id="call-1"),
-        AIMessage(content="", tool_calls=[{"id": "call-2", "name": "web_search", "args": {"query": "two"}}]),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call-2", "name": "web_search", "args": {"query": "two"}}],
+        ),
         ToolMessage(content='{"query":"two"}', tool_call_id="call-2"),
     ]
 
@@ -466,7 +479,9 @@ def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
                 )
             tool_free_count = sum(1 for item in self.owner.invocations if not item["allow_tools"])
             if tool_free_count == 1:
-                return AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
+                return AIMessage(
+                    content='<｜DSML｜function_calls><｜DSML｜invoke name="web_search"></｜DSML｜invoke>'
+                )
             return AIMessage(content="根据已有搜索结果，北京今天晴，白天大约25℃。")
 
     class FakeModel:
@@ -556,7 +571,9 @@ def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
                 )
             tool_free_count = sum(1 for item in self.owner.invocations if not item["allow_tools"])
             if tool_free_count < 3:
-                return AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
+                return AIMessage(
+                    content='<｜DSML｜function_calls><｜DSML｜invoke name="web_search"></｜DSML｜invoke>'
+                )
             return AIMessage(content="根据已有搜索结果，上海更暖和，北京更晴朗。")
 
     class FakeModel:
@@ -602,7 +619,8 @@ def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
     assert len(tool_free_calls) == 3
     assert any(
-        isinstance(message, SystemMessage) and "still contained internal tool-call markup" in message.content
+        isinstance(message, SystemMessage)
+        and "still contained internal tool-call markup" in message.content
         for message in tool_free_calls[2]["messages"]
     )
 
@@ -627,9 +645,13 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
                 }
             )
             if self.allow_tools:
-                tool_enabled_calls = sum(1 for item in self.owner.invocations if item["allow_tools"])
+                tool_enabled_calls = sum(
+                    1 for item in self.owner.invocations if item["allow_tools"]
+                )
                 if tool_enabled_calls == 1:
-                    return AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"list_files\"></｜DSML｜invoke>")
+                    return AIMessage(
+                        content='<｜DSML｜function_calls><｜DSML｜invoke name="list_files"></｜DSML｜invoke>'
+                    )
                 return AIMessage(content="不需要调用工具，OK。")
             return AIMessage(content="降级修复回答。")
 
@@ -693,15 +715,17 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
 
 def test_detects_textual_tool_call_artifacts():
     assert _looks_like_textual_tool_call_artifact(
-        AIMessage(content="<｜DSML｜function_calls><｜DSML｜invoke name=\"web_search\"></｜DSML｜invoke>")
+        AIMessage(
+            content='<｜DSML｜function_calls><｜DSML｜invoke name="web_search"></｜DSML｜invoke>'
+        )
     )
     assert _looks_like_textual_tool_call_artifact(
         AIMessage(
             content=(
                 "让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。\n\n"
                 "< | | DSML | | tool_calls>\n"
-                "< | | DSML | | invoke nameweb_search\">\n"
-                "< | | DSML | | parameter name=\"query\" string=\"true\">AI breakthroughs</ | | DSML | | parameter>"
+                '< | | DSML | | invoke nameweb_search">\n'
+                '< | | DSML | | parameter name="query" string="true">AI breakthroughs</ | | DSML | | parameter>'
             )
         )
     )
@@ -745,7 +769,9 @@ def test_detects_textual_tool_call_artifacts():
         )
     )
     assert _looks_like_textual_tool_call_artifact(
-        AIMessage(content='src/focus_agent/capabilities/tool_manifest.py="offset" string20025.claude')
+        AIMessage(
+            content='src/focus_agent/capabilities/tool_manifest.py="offset" string20025.claude'
+        )
     )
     assert _looks_like_textual_tool_call_artifact(
         AIMessage(
@@ -753,16 +779,33 @@ def test_detects_textual_tool_call_artifacts():
         )
     )
     assert not _looks_like_textual_tool_call_artifact(AIMessage(content="[背景] 北京今天晴。"))
-    assert not _looks_like_textual_tool_call_artifact(AIMessage(content="北京今天晴，最高气温25℃。"))
-    assert not _looks_like_textual_tool_call_artifact(AIMessage(content="我尝试过几种投资方法，最终更偏向长期持有。"))
-    assert not _looks_like_textual_tool_call_artifact(AIMessage(content="我来帮你分析这份报告：结论是现金流改善。"))
+    assert not _looks_like_textual_tool_call_artifact(
+        AIMessage(content="北京今天晴，最高气温25℃。")
+    )
+    assert not _looks_like_textual_tool_call_artifact(
+        AIMessage(content="我尝试过几种投资方法，最终更偏向长期持有。")
+    )
+    assert not _looks_like_textual_tool_call_artifact(
+        AIMessage(content="我来帮你分析这份报告：结论是现金流改善。")
+    )
 
 
 def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
-    assert _classify_turn_tool_policy("帮我写一篇300字左右描述小猫可爱的作文。直接发给我。") == "direct_answer"
-    assert _classify_turn_tool_policy("帮我写一段说明通用 Agent 工具调用优化的价值，直接回复。") == "direct_answer"
-    assert _classify_turn_tool_policy("不要联网。简单解释 LangGraph 的 checkpointer 是什么。") == "direct_answer"
-    assert _classify_turn_tool_policy("找到仓库里使用 assemble_context 的位置。") == "workspace_lookup"
+    assert (
+        _classify_turn_tool_policy("帮我写一篇300字左右描述小猫可爱的作文。直接发给我。")
+        == "direct_answer"
+    )
+    assert (
+        _classify_turn_tool_policy("帮我写一段说明通用 Agent 工具调用优化的价值，直接回复。")
+        == "direct_answer"
+    )
+    assert (
+        _classify_turn_tool_policy("不要联网。简单解释 LangGraph 的 checkpointer 是什么。")
+        == "direct_answer"
+    )
+    assert (
+        _classify_turn_tool_policy("找到仓库里使用 assemble_context 的位置。") == "workspace_lookup"
+    )
     assert _classify_turn_tool_policy("北京和上海哪个今天天气好？") == "live_web_research"
     assert (
         _classify_turn_tool_policy(
@@ -775,7 +818,9 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
         == "live_web_research"
     )
     assert (
-        _classify_turn_tool_policy("请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")
+        _classify_turn_tool_policy(
+            "请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。"
+        )
         == "live_web_research"
     )
     assert (
@@ -784,12 +829,24 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
         )
         == "live_web_research"
     )
-    assert _classify_turn_tool_policy("帮我下载 Memory in the Age of AI Agents 这篇论文") == "live_web_research"
-    assert _classify_turn_tool_policy("Find the PDF for Memory in the Age of AI Agents") == "live_web_research"
-    assert _classify_turn_tool_policy("帮我看一下最近哪些AI项目比较火？都是做什么的?") == "live_web_research"
+    assert (
+        _classify_turn_tool_policy("帮我下载 Memory in the Age of AI Agents 这篇论文")
+        == "live_web_research"
+    )
+    assert (
+        _classify_turn_tool_policy("Find the PDF for Memory in the Age of AI Agents")
+        == "live_web_research"
+    )
+    assert (
+        _classify_turn_tool_policy("帮我看一下最近哪些AI项目比较火？都是做什么的?")
+        == "live_web_research"
+    )
     assert _classify_turn_tool_policy("当前项目里 web_search 工具在哪里？") == "workspace_lookup"
     assert _classify_turn_tool_policy("当前项目里下载 README 文件") == "workspace_lookup"
-    assert _classify_turn_tool_policy("download the README file from the current repo") == "workspace_lookup"
+    assert (
+        _classify_turn_tool_policy("download the README file from the current repo")
+        == "workspace_lookup"
+    )
     assert _classify_turn_tool_policy("当前项目里 DOI parser 在哪里？") == "workspace_lookup"
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
 
@@ -929,7 +986,11 @@ def test_live_web_research_starts_stock_queries_with_web_search():
     )
     assert _live_web_research_should_start_with_search(
         "我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？",
-        [HumanMessage(content="我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？")],
+        [
+            HumanMessage(
+                content="我想仔细了解一下电力板块。你能选几只电力板块的龙头股给我分析一下吗？"
+            )
+        ],
         [web_search, current_utc_time],
     )
     assert _live_web_research_should_start_with_search(
@@ -939,7 +1000,11 @@ def test_live_web_research_starts_stock_queries_with_web_search():
     )
     assert _live_web_research_should_start_with_search(
         "请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。",
-        [HumanMessage(content="请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。")],
+        [
+            HumanMessage(
+                content="请重新实际检索：比亚迪近一年最大单日涨幅和最大单日跌幅分别是多少？请引用来源并说明口径。"
+            )
+        ],
         [web_search, current_utc_time],
     )
     assert _live_web_research_should_start_with_search(
@@ -1405,7 +1470,9 @@ def test_graph_routes_skill_discovery_requests_to_skills_search(monkeypatch):
 
     result = graph.invoke(
         {
-            "messages": [HumanMessage(content="帮我查一下项目里有没有 release readiness 相关 skill")],
+            "messages": [
+                HumanMessage(content="帮我查一下项目里有没有 release readiness 相关 skill")
+            ],
             "selected_model": "openai:fake",
         },
         context=RequestContext(user_id="user-1", root_thread_id="route-skill-search"),
@@ -1619,7 +1686,9 @@ def test_graph_exposes_mixed_readonly_web_and_workspace_tools_without_write_tool
 
     graph.invoke(
         {
-            "messages": [HumanMessage(content="对比仓库里的 web_search 实现和最新 Tavily API 文档")],
+            "messages": [
+                HumanMessage(content="对比仓库里的 web_search 实现和最新 Tavily API 文档")
+            ],
             "selected_model": "openai:fake",
         },
         context=RequestContext(user_id="user-1", root_thread_id="route-mixed-readonly"),
@@ -1810,7 +1879,9 @@ def test_tools_for_policy_filters_web_and_write_tools():
     ]
     assert [
         item.name
-        for item in _tools_for_policy("workspace_lookup", tools, "找到仓库里 web_search 工具的定义位置")
+        for item in _tools_for_policy(
+            "workspace_lookup", tools, "找到仓库里 web_search 工具的定义位置"
+        )
     ] == ["search_code", "read_file"]
     assert [item.name for item in _tools_for_policy("live_web_research", tools)] == ["web_search"]
     assert [item.name for item in _tools_for_policy("execution", tools)] == [
@@ -1829,7 +1900,9 @@ def test_tools_for_policy_filters_web_and_write_tools():
     assert route_plan.allowed_tools == [
         item.name for item in _tools_for_policy("execution", tools, role="executor")
     ]
-    approval_decision = next(item for item in route_plan.decisions if item.name == "approval_lookup")
+    approval_decision = next(
+        item for item in route_plan.decisions if item.name == "approval_lookup"
+    )
     assert approval_decision.allowed is True
     assert approval_decision.reason == "approval_required"
 
@@ -2097,7 +2170,9 @@ def test_empty_tool_free_repair_synthesizes_plain_answer_before_raw_fallback():
         def invoke(self, prompt_messages):
             assert not any(isinstance(message, ToolMessage) for message in prompt_messages)
             assert "工具结果" in prompt_messages[-1].content
-            return AIMessage(content="根据工具结果，assemble_context 位于 context_policy.py 第 42 行。")
+            return AIMessage(
+                content="根据工具结果，assemble_context 位于 context_policy.py 第 42 行。"
+            )
 
     prompt_messages = [
         SystemMessage(content="system"),
@@ -2154,7 +2229,7 @@ def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
                     '"content":"上周区间振幅约 6%。"}]}'
                 ),
                 tool_call_id="call-1",
-            )
+            ),
         ]
     )
 
@@ -2266,7 +2341,9 @@ def test_graph_repairs_kimi_bracket_tool_marker_after_tool_results(monkeypatch):
             return self
 
         def invoke(self, prompt_messages):
-            self.owner.invocations.append({"allow_tools": self.allow_tools, "messages": list(prompt_messages)})
+            self.owner.invocations.append(
+                {"allow_tools": self.allow_tools, "messages": list(prompt_messages)}
+            )
             if not any(isinstance(message, ToolMessage) for message in prompt_messages):
                 return AIMessage(
                     content="",
@@ -2281,10 +2358,13 @@ def test_graph_repairs_kimi_bracket_tool_marker_after_tool_results(monkeypatch):
             tool_enabled_calls = [
                 item
                 for item in self.owner.invocations
-                if item["allow_tools"] and any(isinstance(message, ToolMessage) for message in item["messages"])
+                if item["allow_tools"]
+                and any(isinstance(message, ToolMessage) for message in item["messages"])
             ]
             if self.allow_tools and len(tool_enabled_calls) == 1:
-                return AIMessage(content="[web_fetch] 尝试获取沪指（000001）本周逐日行情数据，请稍等。")
+                return AIMessage(
+                    content="[web_fetch] 尝试获取沪指（000001）本周逐日行情数据，请稍等。"
+                )
             return AIMessage(content="沪指本周先震荡后回稳，已根据搜索结果整理。")
 
     class FakeModel:
@@ -2336,10 +2416,13 @@ def test_graph_repairs_internal_search_narration_after_tool_results(monkeypatch)
             return self
 
         def invoke(self, prompt_messages):
-            self.owner.invocations.append({"allow_tools": self.allow_tools, "messages": list(prompt_messages)})
+            self.owner.invocations.append(
+                {"allow_tools": self.allow_tools, "messages": list(prompt_messages)}
+            )
             has_tool_result = any(isinstance(message, ToolMessage) for message in prompt_messages)
             has_repair_note = any(
-                isinstance(message, SystemMessage) and "internal process narration" in message.content
+                isinstance(message, SystemMessage)
+                and "internal process narration" in message.content
                 for message in prompt_messages
             )
             if has_tool_result and not has_repair_note:
@@ -2377,7 +2460,9 @@ def test_graph_repairs_internal_search_narration_after_tool_results(monkeypatch)
 
     result = graph.invoke(
         {
-            "messages": [HumanMessage(content="帮我查一下A股华钰矿业近一周的股价波动，并且对其进行分析。")],
+            "messages": [
+                HumanMessage(content="帮我查一下A股华钰矿业近一周的股价波动，并且对其进行分析。")
+            ],
             "selected_model": "moonshot:kimi-k2.6",
         },
         context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
@@ -2469,7 +2554,9 @@ def test_graph_memory_search_binds_missing_context_args_and_avoids_default_proje
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     payload = json.loads(tool_messages[-1].content)
 
     assert tool_messages[-1].status == "success"
@@ -2512,7 +2599,9 @@ def test_graph_memory_tool_rejects_mismatched_user_and_root_without_executing(mo
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     errors = [json.loads(message.content) for message in tool_messages]
 
     assert [message.status for message in tool_messages] == ["error", "error"]
@@ -2547,7 +2636,9 @@ def test_graph_memory_tool_rejects_explicit_other_user_namespace(monkeypatch):
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     payload = json.loads(tool_messages[-1].content)
 
     assert tool_messages[-1].status == "error"
@@ -2580,7 +2671,9 @@ def test_graph_memory_tool_rejects_skill_scope_without_executing(monkeypatch):
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     payload = json.loads(tool_messages[-1].content)
 
     assert tool_messages[-1].status == "error"
@@ -2620,12 +2713,12 @@ def test_graph_memory_tool_allows_current_branch_namespace(monkeypatch):
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
 
     assert tool_messages[-1].status == "success"
-    assert store.search_calls == [
-        ("conversation", "root-1", "branch", "branch-1", "local_memory")
-    ]
+    assert store.search_calls == [("conversation", "root-1", "branch", "branch-1", "local_memory")]
 
 
 def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypatch):
@@ -2726,7 +2819,9 @@ def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     denied_payload = json.loads(tool_messages[1].content)
     assert lookup_calls == 1
     assert tool_messages[0].status == "success"
@@ -2734,7 +2829,9 @@ def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):
     assert denied_payload["runtime"]["max_calls_per_turn_exceeded"] is True
 
 
-def test_graph_tool_executor_backstop_denies_unexposed_web_search_for_direct_and_workspace_turns(monkeypatch):
+def test_graph_tool_executor_backstop_denies_unexposed_web_search_for_direct_and_workspace_turns(
+    monkeypatch,
+):
     prompts = [
         "不要联网。最近哪些 AI 工具比较火？",
         "列出当前项目的文件结构概况。",
@@ -2865,9 +2962,7 @@ def test_graph_tool_executor_backstop_denies_live_web_write_hallucination(monkey
         """Write an artifact."""
         nonlocal write_calls
         write_calls += 1
-        raise AssertionError(
-            f"write_text_artifact should not execute for {title}:{content}"
-        )
+        raise AssertionError(f"write_text_artifact should not execute for {title}:{content}")
 
     graph = build_graph(
         settings=Settings(
@@ -3023,7 +3118,10 @@ def test_graph_forces_search_code_for_workspace_definition_lookup(monkeypatch):
     assert search_messages[0].tool_calls[0]["name"] == "search_code"
     assert search_messages[0].tool_calls[0]["args"]["query"] == "AgentState selected_model"
     assert tool_messages
-    assert messages[-1].content == "AgentState.selected_model is defined in src/focus_agent/core/state.py."
+    assert (
+        messages[-1].content
+        == "AgentState.selected_model is defined in src/focus_agent/core/state.py."
+    )
 
 
 def test_graph_tool_executor_parallelizes_read_only_tools(monkeypatch):
@@ -3156,7 +3254,9 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
         version="v2",
     )
 
-    tool_messages = [message for message in resumed.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in resumed.value["messages"] if isinstance(message, ToolMessage)
+    ]
     approval_records = [
         record
         for record in resumed.value["governance_records"]
@@ -3228,7 +3328,9 @@ def test_graph_tool_executor_async_approval_records_pending_without_interrupt(mo
         for record in result.value["governance_records"]
         if record["name"] == "tool_approval_request"
     ]
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     assert call_count == 0
     assert result.interrupts == ()
     assert approval_records[-1]["payload"]["approval_status"] == "pending"
@@ -3304,7 +3406,9 @@ def test_graph_tool_executor_async_approval_does_not_block_other_tools(monkeypat
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     assert calls == ["safe:focus"]
     assert [message.tool_call_id for message in tool_messages] == [
         "approval-async",
@@ -3376,7 +3480,9 @@ def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatc
         version="v2",
     )
 
-    tool_messages = [message for message in resumed.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in resumed.value["messages"] if isinstance(message, ToolMessage)
+    ]
     approval_records = [
         record
         for record in resumed.value["governance_records"]

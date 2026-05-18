@@ -13,7 +13,9 @@ def evaluate_alert_report(alert_report: Mapping[str, Any]) -> ReleaseHealthSigna
     """Validate an executable alert-rules report collected by the deployment job."""
     rules = alert_report.get("rules")
     alerts = alert_report.get("alerts")
-    summary = alert_report.get("summary") if isinstance(alert_report.get("summary"), Mapping) else {}
+    summary = (
+        alert_report.get("summary") if isinstance(alert_report.get("summary"), Mapping) else {}
+    )
     rules_checked = int(number(summary.get("rules_checked")))
     if isinstance(rules, list):
         rules_checked = max(rules_checked, len(rules))
@@ -25,7 +27,9 @@ def evaluate_alert_report(alert_report: Mapping[str, Any]) -> ReleaseHealthSigna
         state = str(alert.get("state") or alert.get("status") or "").lower()
         active = alert.get("active")
         if state in {"firing", "alerting", "critical", "page"} or active is True:
-            firing_alerts.append(str(alert.get("name") or alert.get("alert") or f"alert-{index + 1}"))
+            firing_alerts.append(
+                str(alert.get("name") or alert.get("alert") or f"alert-{index + 1}")
+            )
 
     status = str(alert_report.get("status") or "").lower()
     explicit_passed = alert_report.get("passed")

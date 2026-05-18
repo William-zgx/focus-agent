@@ -1186,6 +1186,41 @@
 	word-break: break-word;
 }
 
+.fa-branch-node-ai-decision {
+	display: grid;
+	gap: 6px;
+	border: 1px solid color-mix(in srgb, var(--fa-info) 35%, var(--fa-border));
+	border-radius: 8px;
+	background: var(--fa-info-surface);
+	padding: 10px;
+}
+
+.fa-branch-node-ai-decision-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 12px;
+}
+
+.fa-branch-node-ai-decision-head span {
+	color: var(--fa-info-text);
+	font-weight: 700;
+}
+
+.fa-branch-node-ai-decision-head strong {
+	color: var(--fa-text);
+	font-weight: 700;
+}
+
+.fa-branch-node-ai-decision p {
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.45;
+}
+
 .fa-branch-node-actions {
 	display: flex;
 	justify-content: flex-end;

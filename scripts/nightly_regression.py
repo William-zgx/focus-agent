@@ -130,7 +130,9 @@ def _history_metadata(
         records = [_history_record(previous_report_json, source="previous")]
     else:
         records = [_history_record(path, source="explicit_history") for path in explicit_history]
-        records.extend(_history_record(path, source="history_dir") for path in _history_paths(history_dir))
+        records.extend(
+            _history_record(path, source="history_dir") for path in _history_paths(history_dir)
+        )
 
     available = [record for record in records if record.get("status") == "available"]
     baseline = None
@@ -147,7 +149,9 @@ def _history_metadata(
         "baseline_status": "available" if baseline is not None else "missing",
         "explicit_history_json": [str(path) for path in explicit_history],
         "history_dir": str(history_dir_path) if history_dir_path is not None else None,
-        "previous_report_json": str(_resolve(previous_report_json)) if previous_report_json is not None else None,
+        "previous_report_json": str(_resolve(previous_report_json))
+        if previous_report_json is not None
+        else None,
         "source_count": len(records),
         "sources": [
             {
@@ -207,7 +211,9 @@ def _summary_delta(
 
 
 def _history_filename(generated_at: str) -> str:
-    safe = "".join(character if character.isalnum() else "-" for character in generated_at).strip("-")
+    safe = "".join(character if character.isalnum() else "-" for character in generated_at).strip(
+        "-"
+    )
     return f"{safe or 'nightly'}.json"
 
 
@@ -240,7 +246,9 @@ def _write_history_entry(
         },
         "summary": payload["summary"],
     }
-    target.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
@@ -283,7 +291,11 @@ def _trend_summary(path: str | Path) -> dict[str, Any]:
     if payload is None:
         return {"kind": "memory_trend", "path": str(target), "status": "missing"}
     alerts = list(payload.get("pollution_alerts") or [])
-    promotion = payload.get("promotion_history") if isinstance(payload.get("promotion_history"), dict) else {}
+    promotion = (
+        payload.get("promotion_history")
+        if isinstance(payload.get("promotion_history"), dict)
+        else {}
+    )
     drift_report = _trend_drift_report(payload)
     return {
         "kind": "memory_trend",
@@ -302,7 +314,8 @@ def _trend_drift_report(payload: dict[str, Any]) -> dict[str, Any]:
     reports = [
         stage.get("context_compaction_drift_report")
         for stage in stages.values()
-        if isinstance(stage, dict) and isinstance(stage.get("context_compaction_drift_report"), dict)
+        if isinstance(stage, dict)
+        and isinstance(stage.get("context_compaction_drift_report"), dict)
     ]
     if not reports:
         for item in list(payload.get("trend") or []):
@@ -403,7 +416,11 @@ def _feedback_report_summary(path: str | Path) -> dict[str, Any]:
             },
         }
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    pipeline = payload.get("feedback_pipeline") if isinstance(payload.get("feedback_pipeline"), dict) else {}
+    pipeline = (
+        payload.get("feedback_pipeline")
+        if isinstance(payload.get("feedback_pipeline"), dict)
+        else {}
+    )
     return {
         "kind": "feedback_regression",
         "path": str(target),
@@ -431,7 +448,9 @@ def _candidate_artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any
     cases = _load_jsonl_cases(target)
     review_status_counts: dict[str, int] = {}
     for case in cases:
-        review = case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
+        review = (
+            case.get("promotion_review") if isinstance(case.get("promotion_review"), dict) else {}
+        )
         status = str(review.get("status") or "")
         if status:
             review_status_counts[status] = review_status_counts.get(status, 0) + 1
@@ -472,12 +491,18 @@ def _candidate_pipeline_summary(
     for artifact in reviewed_artifacts:
         for status, count in (artifact.get("review_status_counts") or {}).items():
             review_counts[str(status)] = review_counts.get(str(status), 0) + int(count)
-        sla = artifact.get("promotion_sla_summary") if isinstance(artifact.get("promotion_sla_summary"), dict) else {}
+        sla = (
+            artifact.get("promotion_sla_summary")
+            if isinstance(artifact.get("promotion_sla_summary"), dict)
+            else {}
+        )
         sla_overdue += int(sla.get("overdue") or 0)
         pending_sla_overdue += int(sla.get("pending_overdue") or 0)
 
     queue = memory_review.get("queue") if isinstance(memory_review.get("queue"), dict) else {}
-    review_payload = memory_review.get("review") if isinstance(memory_review.get("review"), dict) else {}
+    review_payload = (
+        memory_review.get("review") if isinstance(memory_review.get("review"), dict) else {}
+    )
     review_sla = (
         review_payload.get("promotion_sla_summary")
         if isinstance(review_payload.get("promotion_sla_summary"), dict)
@@ -505,7 +530,9 @@ def _candidate_pipeline_summary(
         pending_sla_overdue = int(review_sla.get("pending_overdue") or 0)
 
     return {
-        "status": "ready" if candidate_total or reviewed_total or promoted_count else "not_configured",
+        "status": "ready"
+        if candidate_total or reviewed_total or promoted_count
+        else "not_configured",
         "candidate_total": candidate_total,
         "reviewed_total": reviewed_total,
         "pending": int(review_counts.get("pending") or queue.get("pending") or 0),
@@ -525,9 +552,7 @@ def _candidate_pipeline_summary(
 
 def _replay_pipeline_summary(replay: Sequence[dict[str, Any]]) -> dict[str, Any]:
     failed_case_ids = [
-        str(case_id)
-        for artifact in replay
-        for case_id in (artifact.get("failed_case_ids") or [])
+        str(case_id) for artifact in replay for case_id in (artifact.get("failed_case_ids") or [])
     ]
     return {
         "status": "ready" if replay else "not_configured",
@@ -612,9 +637,7 @@ def build_nightly_report(
         else list(replay_json)
     )
     alert_inputs = (
-        _existing_default_artifacts(DEFAULT_ALERT_JSON)
-        if alert_json is None
-        else list(alert_json)
+        _existing_default_artifacts(DEFAULT_ALERT_JSON) if alert_json is None else list(alert_json)
     )
     candidate_inputs = (
         _existing_default_artifacts(DEFAULT_CANDIDATE_JSONL)
@@ -642,9 +665,7 @@ def build_nightly_report(
     alerts = [_alert_summary(path) for path in alert_inputs]
     feedback_report = _feedback_report_summary(feedback_report_json)
     feedback_summary = (
-        feedback_report.get("summary")
-        if isinstance(feedback_report.get("summary"), dict)
-        else {}
+        feedback_report.get("summary") if isinstance(feedback_report.get("summary"), dict) else {}
     )
     feedback_pipeline = (
         feedback_report.get("feedback_pipeline")
@@ -678,9 +699,7 @@ def build_nightly_report(
         if isinstance(memory_trend.get("context_compaction_drift_report"), dict)
         else {}
     )
-    context_compaction_overall_drift = float(
-        compaction_drift_report.get("overall_drift") or 0.0
-    )
+    context_compaction_overall_drift = float(compaction_drift_report.get("overall_drift") or 0.0)
     missing_artifacts = [
         item["path"]
         for item in [memory_eval, memory_trend, *replay, *alerts]
@@ -791,7 +810,9 @@ def build_nightly_report(
                 )
             ),
             "artifact": str(_resolve(feedback_report_json)),
-            "status": "available" if feedback_report.get("status") != "not_configured" else "not_configured",
+            "status": "available"
+            if feedback_report.get("status") != "not_configured"
+            else "not_configured",
         },
     ]
     summary = {
@@ -817,11 +838,17 @@ def build_nightly_report(
         "replay_pipeline": replay_pipeline,
         "feedback_pipeline": feedback_pipeline,
         "feedback_negative": int(feedback_summary.get("negative_feedback_count") or 0),
-        "feedback_merge_review_conflicts": int(feedback_summary.get("merge_review_conflict_count") or 0),
-        "feedback_skill_low_confidence": int(feedback_summary.get("skill_low_confidence_count") or 0),
+        "feedback_merge_review_conflicts": int(
+            feedback_summary.get("merge_review_conflict_count") or 0
+        ),
+        "feedback_skill_low_confidence": int(
+            feedback_summary.get("skill_low_confidence_count") or 0
+        ),
         "feedback_skill_overrides": int(feedback_summary.get("skill_override_count") or 0),
         "feedback_context_high_drift": int(feedback_summary.get("context_high_drift_count") or 0),
-        "feedback_notes_tasks_captures": int(feedback_summary.get("notes_tasks_capture_count") or 0),
+        "feedback_notes_tasks_captures": int(
+            feedback_summary.get("notes_tasks_capture_count") or 0
+        ),
         "feedback_top_failing_trajectories": int(
             feedback_summary.get("top_failing_trajectory_sample_count") or 0
         ),
@@ -915,7 +942,9 @@ def _build_regressions(
             )
     for artifact in alerts:
         for item in artifact.get("alerts") or []:
-            regressions.append({"kind": "alert_report_signal", "detail": item, "path": artifact.get("path")})
+            regressions.append(
+                {"kind": "alert_report_signal", "detail": item, "path": artifact.get("path")}
+            )
     return regressions
 
 
@@ -947,7 +976,9 @@ def write_nightly_report(
             "status": "written",
         }
     payload["history"]["append"] = history_append
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 

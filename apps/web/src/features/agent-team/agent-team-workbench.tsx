@@ -2,7 +2,9 @@ import { useEffect, useId, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
+import { useThreadBranchDecisions } from "@/features/branch-decisions/use-branch-decisions";
 import { tooltipProps } from "@/shared/ui/tooltip";
+import { Badge, EmptyState, Surface } from "@/shared/ui/primitives";
 
 import { AgentTeamCockpit } from "./agent-team-cockpit";
 import { AgentTeamAdoptionWorkbench } from "./agent-team-workbench-adoption";
@@ -35,6 +37,9 @@ export function AgentTeamWorkbench({
 	const inspectorId = useId();
 	const { isChineseUi } = useShellUi();
 	const sessionQuery = useAgentTeamSession(sessionId);
+	const autonomyEvidence = useThreadBranchDecisions(
+		rootThreadIdFromSessionData(sessionQuery.data),
+	);
 	const planSession = usePlanAgentTeamSession(sessionId);
 	const runSession = useRunAgentTeamSession(sessionId);
 	const cancelSession = useCancelAgentTeamSession(sessionId);
@@ -75,11 +80,11 @@ export function AgentTeamWorkbench({
 	if (sessionQuery.isLoading) {
 		return (
 			<div className="fa-route-state">
-				<div className="fa-route-state-card">
+				<Surface className="fa-route-state-card" tone="panel">
 					<p className="fa-route-state-title">
 						{isChineseUi ? "正在加载 Agent Team..." : "Loading Agent Team..."}
 					</p>
-				</div>
+				</Surface>
 			</div>
 		);
 	}
@@ -87,27 +92,29 @@ export function AgentTeamWorkbench({
 	if (sessionQuery.error || !view) {
 		return (
 			<div className="fa-route-state">
-				<div className="fa-route-state-card">
-					<p className="fa-route-state-title">
-						{isChineseUi
+				<EmptyState
+					action={
+						<Link className="fa-route-state-link" to="/agent-team">
+							{isChineseUi ? "创建新的 Session" : "Create a new session"}
+						</Link>
+					}
+					className="fa-route-state-card"
+					description={errorMessage(
+						sessionQuery.error,
+						isChineseUi ? "返回的数据为空。" : "The response was empty.",
+					)}
+					title={
+						isChineseUi
 							? "无法加载 Agent Team Session"
-							: "Unable to load Agent Team session"}
-					</p>
-					<p>
-						{errorMessage(
-							sessionQuery.error,
-							isChineseUi ? "返回的数据为空。" : "The response was empty.",
-						)}
-					</p>
-					<Link className="fa-route-state-link" to="/agent-team">
-						{isChineseUi ? "创建新的 Session" : "Create a new session"}
-					</Link>
-				</div>
+							: "Unable to load Agent Team session"
+					}
+				/>
 			</div>
 		);
 	}
 
 	const session = view.session;
+	const latestAutonomyDecision = autonomyEvidence.data?.items?.[0] ?? null;
 	const refineOptions = isChineseUi
 		? [
 				{ label: "调整为更细拆解", request: { granularity: "detailed" } },
@@ -290,6 +297,19 @@ export function AgentTeamWorkbench({
 						</span>
 					) : null}
 				</div>
+			) : null}
+
+			{latestAutonomyDecision ? (
+				<section className="fa-agent-team-autonomy-evidence">
+					<Badge tone="info">
+						{isChineseUi ? "AI 决策依据" : "Autonomy evidence"}
+					</Badge>
+					<span>
+						{latestAutonomyDecision.action} · {latestAutonomyDecision.status} ·{" "}
+						{Math.round(latestAutonomyDecision.score * 100)}%
+					</span>
+					<strong>{latestAutonomyDecision.rationale}</strong>
+				</section>
 			) : null}
 
 			<AgentTeamCockpit
@@ -582,4 +602,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringFromUnknown(value: unknown) {
 	return typeof value === "string" ? value.trim() : "";
+}
+
+function rootThreadIdFromSessionData(value: unknown) {
+	if (!isRecord(value)) return "";
+	const session = isRecord(value.session) ? value.session : value;
+	return stringFromUnknown(session.root_thread_id);
 }

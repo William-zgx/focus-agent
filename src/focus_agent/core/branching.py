@@ -109,7 +109,7 @@ class BranchRecord(BaseModel):
     parent_thread_id: str
     child_thread_id: str
     return_thread_id: str
-    owner_user_id: str = 'unknown'
+    owner_user_id: str = "unknown"
     branch_name: str
     branch_role: BranchRole
     branch_depth: int
@@ -159,6 +159,10 @@ class BranchActionProposal(BaseModel):
     failed_at: str | None = None
     error: str | None = None
     navigation: BranchActionNavigation | None = None
+    source: str | None = None
+    source_decision_id: str | None = None
+    confidence: float | None = None
+    rationale: str | None = None
 
 
 BranchTreeNode.model_rebuild()

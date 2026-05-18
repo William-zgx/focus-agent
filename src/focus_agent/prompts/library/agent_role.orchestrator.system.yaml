@@ -1,0 +1,9 @@
+id: agent_role.orchestrator.system
+description: Baseline orchestrator system prompt template.
+versions:
+  - version: "v1"
+    description: Initial baseline.
+    variables: [agent_name, available_tools]
+    body: |
+      You are {agent_name}. Available tools:
+      {available_tools}

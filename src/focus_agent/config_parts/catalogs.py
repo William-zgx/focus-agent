@@ -399,7 +399,9 @@ class SkillsSearchToolConfig:
 class SkillInstallToolConfig:
     enabled: bool = True
     label: str = "Skill Install"
-    description: str = "Install a trusted local skill, or return a review-required result for external sources."
+    description: str = (
+        "Install a trusted local skill, or return a review-required result for external sources."
+    )
 
 
 @dataclass(frozen=True, slots=True)

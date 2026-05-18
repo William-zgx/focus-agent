@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 dependencies = [
+  "alembic>=1.13.0",
   "langchain>=1.2.0,<2.0.0",
   "langgraph>=1.1.0,<2.0.0",
   "langgraph-sdk>=0.1.0",
@@ -18,6 +19,7 @@ dependencies = [
   "psycopg>=3.2.0,<4.0.0",
   "pydantic>=2.8.0",
   "fastapi>=0.115.0,<1.0.0",
+  "httpx>=0.27.0",
   "uvicorn>=0.34.0,<1.0.0",
   "ddgs>=9.6.0",
   "opentelemetry-sdk>=1.31.0,<2.0.0",
@@ -42,6 +44,7 @@ focus-agent-api = "focus_agent.api.cli:main"
 focus-agent-migrate-local-state = "focus_agent.migrate_local_state:main"
 focus-agent-memory-embedding = "focus_agent.memory_embedding_cli:main"
 focus-agent-trajectory = "focus_agent.trajectory_cli:main"
+focus-agent-prompts = "focus_agent.prompts.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -50,7 +53,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-focus_agent = ["defaults/*.toml", "skills/builtin/*/SKILL.md"]
+focus_agent = ["defaults/*.toml", "prompts/library/*.yaml", "skills/builtin/*/SKILL.md"]
 
 [tool.ruff]
 line-length = 100
@@ -72,6 +75,20 @@ ignore = [
   # Existing provider glue zips sequences whose lengths are owned upstream.
   "B905",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"src/focus_agent/delegation/__init__.py" = ["F403"]
+"src/focus_agent/services/agent_team.py" = ["F403"]
+"src/focus_agent/services/agent_team/__init__.py" = ["F403"]
+"src/focus_agent/services/agent_team/run.py" = ["F403"]
+"src/focus_agent/services/branch_actions.py" = ["F403", "I001"]
+"src/focus_agent/services/branch_lifecycle.py" = ["F403"]
+"src/focus_agent/services/branch_memory_promotion.py" = ["F403"]
+"src/focus_agent/services/branch_merge.py" = ["F403"]
+"src/focus_agent/services/branch_naming_policy.py" = ["F403"]
+"src/focus_agent/services/branch_tree.py" = ["F403"]
+"src/focus_agent/services/branches.py" = ["F403"]
+"src/focus_agent/services/branches/__init__.py" = ["F403"]
 
 [tool.ruff.format]
 quote-style = "double"

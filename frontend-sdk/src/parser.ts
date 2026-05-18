@@ -3,6 +3,7 @@ import type { FocusAgentEvent, FocusAgentEventName, FocusAgentEventPayload } fro
 export interface ParsedSSEFrame {
   event: string;
   data: string;
+  id?: string;
   raw: string;
 }
 
@@ -27,6 +28,7 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
     }
     const lines = rawChunk.split(/\r?\n/);
     let event = "message";
+    let id: string | undefined;
     const dataLines: string[] = [];
     let hasEventLine = false;
     let hasDataLine = false;
@@ -34,6 +36,8 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
       if (line.startsWith("event:")) {
         event = line.slice(6).trim();
         hasEventLine = true;
+      } else if (line.startsWith("id:")) {
+        id = line.slice(3).trim();
       } else if (line.startsWith("data:")) {
         dataLines.push(line.slice(5).trimStart());
         hasDataLine = true;
@@ -42,7 +46,7 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
     if (!hasEventLine && !hasDataLine) {
       continue;
     }
-    frames.push({ event, data: dataLines.join("\n"), raw: rawChunk });
+    frames.push({ event, data: dataLines.join("\n"), id, raw: rawChunk });
   }
 
   return { frames, remainder };
@@ -58,6 +62,7 @@ export function decodeEvent(frame: ParsedSSEFrame): FocusAgentEvent {
   return {
     event: frame.event as FocusAgentEventName,
     data: payload,
+    id: frame.id,
     raw: frame.raw,
   } as FocusAgentEvent;
 }

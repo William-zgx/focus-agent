@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from focus_agent import config as config_module
 from focus_agent.config import (
     ModelCatalogValidationError,
     Settings,
@@ -10,6 +11,7 @@ from focus_agent.config import (
     load_model_catalog_toml,
     load_tool_catalog_document,
 )
+from focus_agent.model_registry import resolve_model_config
 
 
 def test_load_local_env_file_reads_key_value_lines(tmp_path, monkeypatch):
@@ -364,6 +366,80 @@ def test_settings_from_env_reads_local_env_file_override(tmp_path, monkeypatch):
 
     assert settings.resolved_env["OPENAI_API_KEY"] == "override-secret"
     assert settings.temperature == 0.6
+
+
+def test_settings_from_env_resolves_secret_provider_values_for_auth_and_catalogs(
+    tmp_path,
+    monkeypatch,
+):
+    class FakeSecretProvider:
+        values = {
+            "AUTH_JWT_SECRET": "provider-auth-secret-that-is-long-enough",
+            "DATABASE_URI": "postgresql://provider/db",
+            "CUSTOM_MODEL_KEY": "model-secret",
+            "SEARCH_KEY": "search-secret",
+            "EMBED_KEY": "embedding-secret",
+        }
+
+        def get(self, key: str) -> str:
+            value = self.values.get(key)
+            if not value:
+                raise KeyError(key)
+            return value
+
+        def reload(self) -> None:
+            return None
+
+    model_doc = tmp_path / "models.toml"
+    model_doc.write_text(
+        "\n".join(
+            [
+                'default_model = "custom:fast"',
+                "[[providers]]",
+                'id = "custom"',
+                'label = "Custom"',
+                'api_key_env = "CUSTOM_MODEL_KEY"',
+                "[[models]]",
+                'id = "custom:fast"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tools_doc = tmp_path / "tools.toml"
+    tools_doc.write_text(
+        "\n".join(
+            [
+                "[web_search]",
+                'api_key_env = "SEARCH_KEY"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for key in FakeSecretProvider.values:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("FOCUS_AGENT_SECRET_PROVIDER", "fake")
+    monkeypatch.setenv("FOCUS_AGENT_MODEL_CATALOG_DOC", str(model_doc))
+    monkeypatch.setenv("FOCUS_AGENT_TOOL_CATALOG_DOC", str(tools_doc))
+    monkeypatch.setenv("AGENT_MEMORY_EMBEDDING_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AGENT_MEMORY_EMBEDDING_API_KEY_ENV", "EMBED_KEY")
+    monkeypatch.setattr(
+        config_module.secret_runtime,
+        "build_secret_provider",
+        lambda kind=None: FakeSecretProvider(),
+    )
+
+    settings = Settings.from_env()
+
+    assert settings.secret_provider == "fake"
+    assert settings.auth_jwt_secret == "provider-auth-secret-that-is-long-enough"
+    assert settings.database_uri == "postgresql://provider/db"
+    assert settings.resolved_env["CUSTOM_MODEL_KEY"] == "model-secret"
+    assert settings.resolved_env["SEARCH_KEY"] == "search-secret"
+    assert settings.resolved_env["EMBED_KEY"] == "embedding-secret"
+    assert (
+        resolve_model_config("custom:fast", settings=settings).client_kwargs["api_key"]
+        == "model-secret"
+    )
 
 
 def test_settings_default_artifact_dir_stays_under_focus_agent(tmp_path, monkeypatch):

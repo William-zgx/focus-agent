@@ -43,12 +43,18 @@ def _agent_arch_script(messages: list[Any], allow_tools: bool) -> AIMessage:
                     }
                 ],
             )
-        return AIMessage(content="AgentState.selected_model is defined in src/focus_agent/core/state.py.")
+        return AIMessage(
+            content="AgentState.selected_model is defined in src/focus_agent/core/state.py."
+        )
     if "MEMORY_PREVIEW_DO_NOT_PERSIST" in user_text:
         return AIMessage(content="Owner 结论需要以当前问题为准，不读取未写入的 memory preview。")
     if "helper_model" in user_text:
-        return AIMessage(content="If a role-specific model is unset, role routing should use helper_model and fallback to the main model.")
-    return AIMessage(content="ReAct alternates reasoning and acting; role routing stays default off.")
+        return AIMessage(
+            content="If a role-specific model is unset, role routing should use helper_model and fallback to the main model."
+        )
+    return AIMessage(
+        content="ReAct alternates reasoning and acting; role routing stays default off."
+    )
 
 
 @langchain_tool
@@ -71,14 +77,26 @@ def test_agent_arch_dataset_covers_role_routing_gate_cases():
         "gt_agent_role_memory_preview_no_pollution",
         "gt_agent_role_helper_model_fallback_no_external_api",
     } <= set(cases)
-    assert cases["gt_agent_role_routing_default_off_direct"].input["initial_state"]["role_route_plan"]["enabled"] is False
-    assert "web_search" in cases["gt_agent_role_workspace_lookup_no_web"].expected["must_not_call_tools"]
-    assert "MEMORY_PREVIEW_DO_NOT_PERSIST" in cases[
-        "gt_agent_role_memory_preview_no_pollution"
-    ].expected["answer_must_not_contain"]
-    assert "helper_model" in cases[
-        "gt_agent_role_helper_model_fallback_no_external_api"
-    ].expected["answer_contains_all"]
+    assert (
+        cases["gt_agent_role_routing_default_off_direct"].input["initial_state"]["role_route_plan"][
+            "enabled"
+        ]
+        is False
+    )
+    assert (
+        "web_search"
+        in cases["gt_agent_role_workspace_lookup_no_web"].expected["must_not_call_tools"]
+    )
+    assert (
+        "MEMORY_PREVIEW_DO_NOT_PERSIST"
+        in cases["gt_agent_role_memory_preview_no_pollution"].expected["answer_must_not_contain"]
+    )
+    assert (
+        "helper_model"
+        in cases["gt_agent_role_helper_model_fallback_no_external_api"].expected[
+            "answer_contains_all"
+        ]
+    )
 
 
 @pytest.mark.parametrize("case", load_dataset(DATASET_PATH), ids=lambda case: case.id)

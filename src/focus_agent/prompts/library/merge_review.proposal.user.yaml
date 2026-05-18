@@ -1,0 +1,35 @@
+id: merge_review.proposal.user
+description: Merge review user prompt template.
+versions:
+  - version: "v1"
+    description: Initial registry baseline.
+    variables:
+      - branch_name
+      - branch_role
+      - output_language
+      - inherited_context
+      - local_interaction_summary
+      - findings
+      - transcript
+    body: |
+      Branch name: {branch_name}
+      Branch role: {branch_role}
+      Output language: {output_language}
+
+      Instructions:
+      - Generate the conclusion mainly from this branch's own interaction history.
+      - Summarize only what this branch newly discovered, verified, decided, or clarified.
+      - Do not restate parent-thread context unless this branch materially changed or challenged it.
+      - If inherited context is mentioned at all, keep it to a very short orienting phrase.
+
+      Inherited upstream context (brief):
+      {inherited_context}
+
+      This branch's recent interaction history:
+      {local_interaction_summary}
+
+      Recorded findings:
+      {findings}
+
+      Recent transcript:
+      {transcript}

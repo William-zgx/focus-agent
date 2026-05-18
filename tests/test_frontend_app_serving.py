@@ -24,7 +24,9 @@ def test_render_frontend_entry_html_raises_when_build_is_missing(tmp_path: Path)
 def test_render_frontend_entry_html_reads_built_index_when_present(tmp_path: Path):
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir(parents=True)
-    (dist_dir / "index.html").write_text("<!doctype html><html><body>react-app</body></html>", encoding="utf-8")
+    (dist_dir / "index.html").write_text(
+        "<!doctype html><html><body>react-app</body></html>", encoding="utf-8"
+    )
 
     settings = Settings.from_env()
     settings.web_app_dist_dir = str(dist_dir)

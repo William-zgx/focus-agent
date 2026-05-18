@@ -312,12 +312,12 @@ def _render_model_matrix_rows(model_matrix: Any) -> str:
             "<tr>"
             f"<td><code>{escape(str(model_label))}</code></td>"
             f"<td>{escape(str(row.get('model') or '-'))}</td>"
-            f"<td class=\"nowrap\">{case_count}</td>"
-            f"<td class=\"nowrap\">{escape(str(row.get('passed', 0)))}"
+            f'<td class="nowrap">{case_count}</td>'
+            f'<td class="nowrap">{escape(str(row.get("passed", 0)))}'
             f" / {escape(str(row.get('total', 0)))}</td>"
-            f"<td class=\"nowrap\">{escape(str(row.get('task_success', 0.0)))}</td>"
-            f"<td class=\"nowrap\">{escape(str(row.get('avg_latency_ms', 0.0)))}</td>"
-            f"<td class=\"nowrap\">{escape(str(row.get('avg_cost_usd', 0.0)))}</td>"
+            f'<td class="nowrap">{escape(str(row.get("task_success", 0.0)))}</td>'
+            f'<td class="nowrap">{escape(str(row.get("avg_latency_ms", 0.0)))}</td>'
+            f'<td class="nowrap">{escape(str(row.get("avg_cost_usd", 0.0)))}</td>'
             "</tr>"
         )
     return "\n".join(rows) or '<tr><td colspan="7">No model matrix available.</td></tr>'
@@ -341,7 +341,7 @@ def _render_failure_cluster_rows(failure_clusters: Any) -> str:
         rows.append(
             "<tr>"
             f"<td>{escape(str(cluster.get('cluster') or cluster.get('reason') or '-'))}</td>"
-            f"<td class=\"nowrap\">{escape(str(cluster.get('count', 0)))}</td>"
+            f'<td class="nowrap">{escape(str(cluster.get("count", 0)))}</td>'
             f"<td><code>{escape(case_text or '-')}</code></td>"
             "</tr>"
         )
@@ -350,10 +350,9 @@ def _render_failure_cluster_rows(failure_clusters: Any) -> str:
 
 def _render_flaky_case_rows(flaky_case_ids: Any) -> str:
     if not isinstance(flaky_case_ids, list) or not flaky_case_ids:
-        return '<tr><td>No flaky cases detected.</td></tr>'
+        return "<tr><td>No flaky cases detected.</td></tr>"
     return "\n".join(
-        f"<tr><td><code>{escape(str(case_id))}</code></td></tr>"
-        for case_id in flaky_case_ids
+        f"<tr><td><code>{escape(str(case_id))}</code></td></tr>" for case_id in flaky_case_ids
     )
 
 
@@ -390,7 +389,7 @@ def _render_result_row(result: EvalResult) -> str:
     return (
         "<tr>"
         f"<td><code>{escape(result.case_id)}</code></td>"
-        f"<td class=\"{status_class}\">{status}</td>"
+        f'<td class="{status_class}">{status}</td>'
         f"<td>{escape(tags)}</td>"
         f"<td>{escape(tools)}</td>"
         f"<td>{escape(str(round(float(latency), 1)))}</td>"

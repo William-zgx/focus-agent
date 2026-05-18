@@ -7,6 +7,8 @@ from typing import Any, Literal
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
 
+from focus_agent.prompts import get_registry
+
 from ..config import Settings
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
@@ -30,6 +32,8 @@ _PLAN_TRIGGER_KEYWORDS = (
     "analyze",
     "step by step",
 )
+_PLAN_SYSTEM_PROMPT_ID = "plan_act_reflect.plan.system"
+_REFLECT_SYSTEM_PROMPT_ID = "plan_act_reflect.reflect.system"
 
 
 def _should_plan(
@@ -197,15 +201,7 @@ def make_plan_node(
         if isinstance(existing_plan, Plan):
             replan_count = existing_plan.replan_count + 1
 
-        system = SystemMessage(
-            content=(
-                "你是一个任务规划器。阅读用户请求，输出一个紧凑、可验证的执行计划。"
-                '必须返回 JSON，字段为 {"steps": [{"id": "s1", "goal": "...", '
-                '"expected_tools": ["tool_name"]}], "success_criteria": "..."}。'
-                "要求：2-5 步；success_criteria 必须客观可判断（禁止写‘充分’‘合理’这类模糊词）；"
-                "只规划不执行；不要返回其它字段。"
-            )
-        )
+        system = SystemMessage(content=get_registry().render(_PLAN_SYSTEM_PROMPT_ID))
         user_lines = [f"任务简述：{task_brief}", f"可用工具：{', '.join(tool_names) or '(无)'}"]
         if prior_reflection is not None:
             missing = ", ".join(prior_reflection.missing) or prior_reflection.reasoning
@@ -277,14 +273,7 @@ def make_reflect_node(
             list(state.get("messages", []) or [])
         )
 
-        system = SystemMessage(
-            content=(
-                "你是一个严格的计划审计员。判断最终答复是否满足 success_criteria。"
-                '必须返回 JSON: {"status": "done"|"replan", "reasoning": "...", '
-                '"missing": ["..."]}。'
-                "只在确实存在未覆盖的子目标时选 replan，否则选 done。"
-            )
-        )
+        system = SystemMessage(content=get_registry().render(_REFLECT_SYSTEM_PROMPT_ID))
         plan_summary = _format_plan_block(plan, state.get("current_step_id", ""))
         user = HumanMessage(
             content=(

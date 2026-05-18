@@ -43,7 +43,9 @@ def _planning_metadata_payload(
         "generated_at": planning.get("generated_at") or session.get("plan_generated_at"),
         "plan_hash": planning.get("plan_hash") or session.get("plan_hash"),
         "error": planning.get("error") or session.get("planning_error"),
-        "task_count": planning.get("task_count") if planning.get("task_count") is not None else len(tasks),
+        "task_count": planning.get("task_count")
+        if planning.get("task_count") is not None
+        else len(tasks),
     }
     for task in tasks:
         if metadata["source"] is None:

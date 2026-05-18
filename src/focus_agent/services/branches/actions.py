@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from langchain.messages import HumanMessage
+from langchain.messages import HumanMessage, SystemMessage
 
 from ...core.branching import (
     BranchActionKind,
@@ -39,7 +40,19 @@ _DISMISS_MARKERS = {
     "cancel",
     "no",
 }
-_REQUEST_ACTION_MARKERS = ("切换", "切到", "新建", "创建", "开一个", "另开", "打开", "返回", "switch", "create", "open")
+_REQUEST_ACTION_MARKERS = (
+    "切换",
+    "切到",
+    "新建",
+    "创建",
+    "开一个",
+    "另开",
+    "打开",
+    "返回",
+    "switch",
+    "create",
+    "open",
+)
 _REQUEST_BRANCH_MARKERS = ("分支", "branch", "同级", "平级", "子分支", "下级", "父分支", "parent")
 _SIBLING_MARKERS = ("同级", "平级", "sibling")
 _CHILD_MARKERS = ("子分支", "下级", "child")
@@ -74,12 +87,16 @@ def is_branch_action_confirmation(message: str) -> bool:
     normalized = _compact(message)
     if not normalized:
         return False
-    return normalized in _CONFIRM_MARKERS or any(marker in normalized for marker in ("直接切", "确认切", "goahead"))
+    return normalized in _CONFIRM_MARKERS or any(
+        marker in normalized for marker in ("直接切", "确认切", "goahead")
+    )
 
 
 def is_branch_action_dismissal(message: str) -> bool:
     normalized = _compact(message)
-    return bool(normalized) and (normalized in _DISMISS_MARKERS or any(marker in normalized for marker in _DISMISS_MARKERS))
+    return bool(normalized) and (
+        normalized in _DISMISS_MARKERS or any(marker in normalized for marker in _DISMISS_MARKERS)
+    )
 
 
 def is_branch_action_request(message: str) -> bool:
@@ -99,8 +116,6 @@ def requested_branch_action_kind(message: str, branch_meta: BranchMeta | None) -
         return BranchActionKind.FORK_CHILD_BRANCH
     if branch_meta is not None and any(marker in normalized for marker in _SIBLING_MARKERS):
         return BranchActionKind.FORK_SIBLING_BRANCH
-    if branch_meta is not None and branch_meta.parent_thread_id:
-        return BranchActionKind.FORK_SIBLING_BRANCH
     return BranchActionKind.FORK_CHILD_BRANCH
 
 
@@ -114,7 +129,11 @@ def target_parent_thread_id(
         if branch_meta is not None and branch_meta.parent_thread_id:
             return kind, branch_meta.parent_thread_id
         return BranchActionKind.FORK_CHILD_BRANCH, source_thread_id
-    if kind == BranchActionKind.RETURN_PARENT_BRANCH and branch_meta is not None and branch_meta.parent_thread_id:
+    if (
+        kind == BranchActionKind.RETURN_PARENT_BRANCH
+        and branch_meta is not None
+        and branch_meta.parent_thread_id
+    ):
         return kind, branch_meta.parent_thread_id
     return kind, source_thread_id
 
@@ -225,14 +244,20 @@ def branch_action_audit_event(
 def proposal_message(action: BranchActionProposal, *, is_chinese: bool) -> str:
     if is_chinese:
         target = "同级新分支" if action.kind == BranchActionKind.FORK_SIBLING_BRANCH else "子分支"
-        name = f"「{action.suggested_branch_name}」" if action.suggested_branch_name else "一个新分支"
+        name = (
+            f"「{action.suggested_branch_name}」" if action.suggested_branch_name else "一个新分支"
+        )
         return f"我已准备好分支切换确认项：创建{target} {name}。请点击确认，或回复“直接切过去”。"
-    target = "sibling branch" if action.kind == BranchActionKind.FORK_SIBLING_BRANCH else "child branch"
+    target = (
+        "sibling branch" if action.kind == BranchActionKind.FORK_SIBLING_BRANCH else "child branch"
+    )
     name = f" “{action.suggested_branch_name}”" if action.suggested_branch_name else ""
     return f"I prepared a branch switch confirmation: create a new {target}{name}. Confirm it in the card, or reply “go ahead”."
 
 
-def execution_message(action: BranchActionProposal, *, branch_name: str | None, is_chinese: bool) -> str:
+def execution_message(
+    action: BranchActionProposal, *, branch_name: str | None, is_chinese: bool
+) -> str:
     name = branch_name or action.suggested_branch_name or action.target_parent_thread_id
     if is_chinese:
         return f"已创建并切换到新分支：{name}。"
@@ -285,12 +310,6 @@ def _clean_name(value: str) -> str | None:
         return None
     return cleaned[:80]
 
-import logging
-import re
-
-from langchain.messages import HumanMessage, SystemMessage
-
-from ...core.branching import BranchRole
 
 logger = logging.getLogger("focus_agent.branches")
 
@@ -515,7 +534,9 @@ class BranchNamingPolicyMixin:
             return cls._sanitize_branch_name(label, branch_role=branch_role)
         return cls._fallback_role_name(branch_role=branch_role, language=language)
 
-    def _collect_branch_name_seed(self, *, thread_values: dict, name_source: str | None = None) -> str:
+    def _collect_branch_name_seed(
+        self, *, thread_values: dict, name_source: str | None = None
+    ) -> str:
         thread_values = self._thread_values_after_branch_fork(thread_values)
         parts: list[str] = []
         if name_source and name_source.strip():
@@ -547,14 +568,29 @@ class BranchNamingPolicyMixin:
         messages = thread_values.get("messages") or []
         recent_messages: list[str] = []
         for message in reversed(messages):
-            message_type = getattr(message, "type", None) or message.__class__.__name__.replace("Message", "").lower()
+            message_type = (
+                getattr(message, "type", None)
+                or message.__class__.__name__.replace("Message", "").lower()
+            )
             content = self._message_content_to_text(getattr(message, "content", ""))
             if not content:
                 continue
             if language == "zh":
-                speaker = "用户" if message_type == "human" else "助手" if message_type == "ai" else "系统"
+                speaker = (
+                    "用户"
+                    if message_type == "human"
+                    else "助手"
+                    if message_type == "ai"
+                    else "系统"
+                )
             else:
-                speaker = "User" if message_type == "human" else "Assistant" if message_type == "ai" else message_type.title()
+                speaker = (
+                    "User"
+                    if message_type == "human"
+                    else "Assistant"
+                    if message_type == "ai"
+                    else message_type.title()
+                )
             recent_messages.append(f"{speaker}: {content}")
             if len(recent_messages) == 4:
                 break
@@ -597,11 +633,17 @@ class BranchNamingPolicyMixin:
         seed_text = self._collect_branch_name_seed(thread_values=thread_values)
         language = self._detect_naming_language(seed_text)
         sections: list[str] = []
-        prompt_mode = getattr(thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode"))
+        prompt_mode = getattr(
+            thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode")
+        )
         if prompt_mode:
             label = "当前模式" if language == "zh" else "Prompt mode"
             sections.append(f"{label}: {prompt_mode}")
-        active_skill_ids = [str(item).strip() for item in thread_values.get("active_skill_ids", []) if str(item).strip()]
+        active_skill_ids = [
+            str(item).strip()
+            for item in thread_values.get("active_skill_ids", [])
+            if str(item).strip()
+        ]
         if active_skill_ids:
             label = "激活技能" if language == "zh" else "Active skills"
             sections.append(f"{label}: {', '.join(active_skill_ids[:6])}")
@@ -615,14 +657,20 @@ class BranchNamingPolicyMixin:
 
     def _fallback_branch_role(self, *, thread_values: dict, current_role: BranchRole) -> BranchRole:
         thread_values = self._thread_values_after_branch_fork(thread_values)
-        prompt_mode = getattr(thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode"))
+        prompt_mode = getattr(
+            thread_values.get("prompt_mode"), "value", thread_values.get("prompt_mode")
+        )
         normalized_prompt_mode = str(prompt_mode or "").strip().lower()
         if normalized_prompt_mode == "execute":
             return BranchRole.EXECUTE
         if normalized_prompt_mode == "synthesize":
             return BranchRole.WRITEUP
 
-        active_skill_ids = {str(item).strip().lower() for item in thread_values.get("active_skill_ids", []) if str(item).strip()}
+        active_skill_ids = {
+            str(item).strip().lower()
+            for item in thread_values.get("active_skill_ids", [])
+            if str(item).strip()
+        }
         if active_skill_ids & self._EXECUTE_SKILL_IDS:
             return BranchRole.EXECUTE
 
@@ -685,9 +733,15 @@ class BranchNamingPolicyMixin:
         name_source: str | None = None,
         language: str | None = None,
     ) -> str:
-        seed_text = self._collect_branch_name_seed(thread_values=thread_values, name_source=name_source)
+        seed_text = self._collect_branch_name_seed(
+            thread_values=thread_values, name_source=name_source
+        )
         language_code = str(language or "").strip().lower()
-        language = language_code if language_code in {"en", "zh"} else self._detect_naming_language(seed_text)
+        language = (
+            language_code
+            if language_code in {"en", "zh"}
+            else self._detect_naming_language(seed_text)
+        )
         context = self._collect_branch_name_context(
             thread_values=thread_values,
             name_source=name_source,
@@ -708,8 +762,7 @@ class BranchNamingPolicyMixin:
                         ),
                         HumanMessage(
                             content=(
-                                f"Branch role: {branch_role.value.replace('_', ' ')}\n\n"
-                                f"{context}"
+                                f"Branch role: {branch_role.value.replace('_', ' ')}\n\n{context}"
                             )
                         ),
                     ]

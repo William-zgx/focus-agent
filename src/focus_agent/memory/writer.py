@@ -140,7 +140,9 @@ class MemoryWriter:
             elif action == "merged":
                 outcome["merged"].append(key)
             else:
-                outcome["skipped"].append({"summary": record.summary or record.content[:80], "reason": action})
+                outcome["skipped"].append(
+                    {"summary": record.summary or record.content[:80], "reason": action}
+                )
         return outcome
 
     def write_turn_summary(self, *, context: RequestContext, summary: str) -> str | None:
@@ -215,7 +217,9 @@ class MemoryWriter:
                 skipped.append({"summary": record.summary or record.content[:80], "reason": reason})
         return accepted, skipped
 
-    def write_imported_conclusion(self, *, context: RequestContext, imported: ImportedConclusion) -> str:
+    def write_imported_conclusion(
+        self, *, context: RequestContext, imported: ImportedConclusion
+    ) -> str:
         keys = self.write_records(
             [
                 MemoryWriteRequest(
@@ -276,7 +280,9 @@ class MemoryWriter:
             return "written", key
 
         key, current = existing
-        if self._is_possible_conflict(current, record) and not self._should_replace(current, record):
+        if self._is_possible_conflict(current, record) and not self._should_replace(
+            current, record
+        ):
             return "possible_conflict", key
 
         merged = merge_duplicate_records(current, record)
@@ -340,10 +346,10 @@ class MemoryWriter:
                 existing_fp == incoming_fp
                 or existing_semantic_key == incoming_semantic_key
                 or (
-                current.kind == record.kind
-                and current.scope == record.scope
-                and normalized_existing
-                and normalized_existing == normalized_incoming
+                    current.kind == record.kind
+                    and current.scope == record.scope
+                    and normalized_existing
+                    and normalized_existing == normalized_incoming
                 )
             ):
                 return key or current.memory_id, current

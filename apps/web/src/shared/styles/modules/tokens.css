@@ -87,6 +87,59 @@
 		rgba(44, 44, 58, 0.98),
 		rgba(25, 25, 34, 0.98)
 	);
+	--fa-space-1: 4px;
+	--fa-space-2: 8px;
+	--fa-space-3: 12px;
+	--fa-space-4: 16px;
+	--fa-space-5: 24px;
+	--fa-space-6: 32px;
+	--fa-space-7: 48px;
+	--fa-space-8: 64px;
+	--fa-fs-xs: 11px;
+	--fa-fs-sm: 13px;
+	--fa-fs-md: 15px;
+	--fa-fs-lg: 18px;
+	--fa-fs-xl: 20px;
+	--fa-fs-2xl: 24px;
+	--fa-fs-3xl: 30px;
+	--fa-lh-tight: 1.15;
+	--fa-lh-normal: 1.45;
+	--fa-lh-relaxed: 1.7;
+	--fa-radius-sm: 6px;
+	--fa-radius-md: 8px;
+	--fa-radius-lg: 12px;
+	--fa-radius-pill: 999px;
+	--fa-border-width-hairline: 1px;
+	--fa-border-width-regular: 1px;
+	--fa-border-width-strong: 2px;
+	--fa-shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.18);
+	--fa-shadow-md: 0 18px 42px rgba(0, 0, 0, 0.24);
+	--fa-shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.34);
+	--fa-shadow-glow: 0 0 30px var(--fa-accent-primary-glow);
+	--fa-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--fa-ease-emphasis: cubic-bezier(0.2, 0, 0, 1.2);
+	--fa-dur-fast: 120ms;
+	--fa-dur-normal: 180ms;
+	--fa-dur-slow: 240ms;
+	--fa-z-base: 0;
+	--fa-z-elevated: 10;
+	--fa-z-dropdown: 100;
+	--fa-z-modal: 1000;
+	--fa-z-toast: 1100;
+	--fa-focus-ring: color-mix(in srgb, var(--fa-accent) 74%, white 10%);
+	--fa-accent-surface: color-mix(in srgb, var(--fa-accent) 16%, transparent);
+	--fa-success-surface: color-mix(in srgb, var(--fa-success) 16%, transparent);
+	--fa-warning-surface: color-mix(in srgb, var(--fa-warning) 16%, transparent);
+	--fa-danger-surface: color-mix(in srgb, var(--fa-danger) 16%, transparent);
+	--fa-danger-surface-strong: color-mix(
+		in srgb,
+		var(--fa-danger) 24%,
+		transparent
+	);
+	--fa-info: var(--fa-accent-cyan);
+	--fa-info-text: color-mix(in srgb, var(--fa-accent-cyan) 72%, white 12%);
+	--fa-info-surface: color-mix(in srgb, var(--fa-accent-cyan) 16%, transparent);
+	--fa-backdrop: rgba(3, 7, 18, 0.58);
 }
 
 :root[data-theme="light"] {
@@ -164,6 +217,13 @@
 		rgba(248, 249, 255, 0.98),
 		rgba(232, 236, 248, 0.98)
 	);
+	--fa-shadow-sm: 0 6px 16px rgba(55, 68, 106, 0.08);
+	--fa-shadow-md: 0 14px 30px rgba(55, 68, 106, 0.12);
+	--fa-shadow-lg: 0 24px 54px rgba(55, 68, 106, 0.18);
+	--fa-shadow-glow: 0 0 26px var(--fa-accent-primary-glow);
+	--fa-focus-ring: color-mix(in srgb, var(--fa-accent) 64%, var(--fa-text) 8%);
+	--fa-info-text: #0369a1;
+	--fa-backdrop: rgba(15, 23, 42, 0.34);
 }
 
 :root[data-accent="white"] {

@@ -37,30 +37,6 @@
 	gap: 10px;
 }
 
-.fa-composer-skill-chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 5px;
-	max-width: 420px;
-}
-
-.fa-composer-skill-chips span {
-	display: inline-flex;
-	align-items: center;
-	max-width: 180px;
-	min-height: 24px;
-	padding: 3px 7px;
-	border: 1px solid var(--fa-border-subtle);
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--fa-panel-3) 72%, transparent 28%);
-	color: var(--fa-text-muted);
-	font-size: 0.72rem;
-	font-weight: 700;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
 .fa-composer-model-shell {
 	min-width: 250px;
 	max-width: 360px;

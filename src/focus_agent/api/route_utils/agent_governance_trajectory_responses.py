@@ -143,7 +143,9 @@ def _agent_governance_metrics_from_turns(rows: Sequence[dict[str, Any]]) -> dict
     metrics = governance_metric_defaults()
     for row in rows:
         plan_meta = dict(row.get("plan_meta") or {})
-        for key, value in governance_metrics_from_record_payloads(plan_meta, include_zero=True).items():
+        for key, value in governance_metrics_from_record_payloads(
+            plan_meta, include_zero=True
+        ).items():
             metrics[key] = metrics.get(key, 0) + value
     return metrics
 

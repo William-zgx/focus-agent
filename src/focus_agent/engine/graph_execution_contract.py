@@ -191,7 +191,9 @@ def _detect_simple_event_contradiction(
         )
     )
     if has_visit_event and has_leader:
-        return "Answer denies a leader visit, but the evidence contains leader-visit event language."
+        return (
+            "Answer denies a leader visit, but the evidence contains leader-visit event language."
+        )
     return ""
 
 

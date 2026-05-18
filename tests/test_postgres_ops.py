@@ -63,7 +63,11 @@ def test_postgres_ops_v3_live_schema_doctor_checks(monkeypatch) -> None:
         raise AssertionError(f"unexpected query: {query}")
 
     monkeypatch.setattr(postgres_ops, "_run_query", fake_run_query)
-    monkeypatch.setattr(postgres_ops, "_run_query_rows", lambda database_uri, query, params=None: [(v,) for v in expected_versions])
+    monkeypatch.setattr(
+        postgres_ops,
+        "_run_query_rows",
+        lambda database_uri, query, params=None: [(v,) for v in expected_versions],
+    )
 
     report = postgres_ops.build_report(database_uri="postgresql://example/focus")
 
@@ -92,11 +96,16 @@ def test_postgres_ops_v3_flags_missing_and_future_migrations(monkeypatch) -> Non
     monkeypatch.setattr(
         postgres_ops,
         "_run_query_rows",
-        lambda database_uri, query, params=None: [(1,), (postgres_ops._expected_schema_version() + 1,)],
+        lambda database_uri, query, params=None: [
+            (1,),
+            (postgres_ops._expected_schema_version() + 1,),
+        ],
     )
 
     report = postgres_ops.build_report(database_uri="postgresql://example/focus")
-    migration_state = next(operation for operation in report["operations"] if operation["name"] == "migration_state")
+    migration_state = next(
+        operation for operation in report["operations"] if operation["name"] == "migration_state"
+    )
 
     assert report["passed"] is False
     assert migration_state["status"] == "failed"
@@ -144,7 +153,9 @@ def test_postgres_ops_backup_command_failure_records_evidence() -> None:
         timeout_seconds=5,
     )
 
-    backup = next(operation for operation in report["operations"] if operation["name"] == "backup_command")
+    backup = next(
+        operation for operation in report["operations"] if operation["name"] == "backup_command"
+    )
 
     assert report["status"] == "failed"
     assert backup["status"] == "failed"
@@ -165,8 +176,14 @@ def test_postgres_ops_restore_verification_evidence_failure(tmp_path: Path) -> N
         restore_verification_evidence=evidence_path,
         timeout_seconds=5,
     )
-    restore = next(operation for operation in report["operations"] if operation["name"] == "restore_command")
-    verification = next(operation for operation in report["operations"] if operation["name"] == "restore_verification")
+    restore = next(
+        operation for operation in report["operations"] if operation["name"] == "restore_command"
+    )
+    verification = next(
+        operation
+        for operation in report["operations"]
+        if operation["name"] == "restore_verification"
+    )
 
     assert restore["status"] == "passed"
     assert verification["status"] == "failed"

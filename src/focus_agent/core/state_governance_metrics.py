@@ -165,7 +165,11 @@ def agent_review_metrics(payload: Any) -> Mapping[str, int]:
         return {}
     return {
         "agent_review_pending": len(
-            [item for item in payload if isinstance(item, Mapping) and item.get("status") == "pending"]
+            [
+                item
+                for item in payload
+                if isinstance(item, Mapping) and item.get("status") == "pending"
+            ]
         )
     }
 

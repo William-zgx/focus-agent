@@ -19,10 +19,10 @@ from .execution import *
 from .execution import __all__ as _execution_all
 from .execution_executors import *
 from .execution_executors import __all__ as _execution_executors_all
-from .execution_modes import *
-from .execution_modes import __all__ as _execution_modes_all
 from .execution_model_task import *
 from .execution_model_task import __all__ as _execution_model_task_all
+from .execution_modes import *
+from .execution_modes import __all__ as _execution_modes_all
 from .execution_registry import *
 from .execution_registry import __all__ as _execution_registry_all
 from .execution_types import *

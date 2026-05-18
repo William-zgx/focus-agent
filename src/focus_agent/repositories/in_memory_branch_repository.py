@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import MutableSequence
 from datetime import UTC, datetime
 from threading import RLock
-from typing import MutableSequence
 
 from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
 from ..core.types import ConversationRecord
@@ -82,20 +82,32 @@ class InMemoryBranchRepository(BranchRepository):
 
     def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
         with self._lock:
-            matches = [record for record in self._branches.values() if record.child_thread_id == child_thread_id]
+            matches = [
+                record
+                for record in self._branches.values()
+                if record.child_thread_id == child_thread_id
+            ]
         if not matches:
             raise KeyError(f"Unknown child_thread_id: {child_thread_id}")
         return self._row_to_record(matches[0])
 
     def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:
         with self._lock:
-            matches = [record for record in self._branches.values() if record.root_thread_id == root_thread_id]
+            matches = [
+                record
+                for record in self._branches.values()
+                if record.root_thread_id == root_thread_id
+            ]
         matches.sort(key=lambda item: (item.branch_depth, item.branch_name, item.child_thread_id))
         return [self._row_to_record(item) for item in matches]
 
     def list_by_parent_thread_id(self, parent_thread_id: str) -> list[BranchRecord]:
         with self._lock:
-            matches = [record for record in self._branches.values() if record.parent_thread_id == parent_thread_id]
+            matches = [
+                record
+                for record in self._branches.values()
+                if record.parent_thread_id == parent_thread_id
+            ]
         matches.sort(key=lambda item: (item.branch_name, item.child_thread_id))
         return [self._row_to_record(item) for item in matches]
 
@@ -104,14 +116,18 @@ class InMemoryBranchRepository(BranchRepository):
             record = self._branches.get(branch_id)
             if record is None:
                 raise KeyError(f"Unknown branch_id: {branch_id}")
-            self._branches[branch_id] = record.model_copy(update={"merge_proposal": proposal.model_dump()})
+            self._branches[branch_id] = record.model_copy(
+                update={"merge_proposal": proposal.model_dump()}
+            )
 
     def save_merge_decision(self, branch_id: str, decision: MergeDecision) -> None:
         with self._lock:
             record = self._branches.get(branch_id)
             if record is None:
                 raise KeyError(f"Unknown branch_id: {branch_id}")
-            self._branches[branch_id] = record.model_copy(update={"merge_decision": decision.model_dump()})
+            self._branches[branch_id] = record.model_copy(
+                update={"merge_decision": decision.model_dump()}
+            )
 
     def update_status(self, branch_id: str, status: BranchStatus) -> None:
         with self._lock:

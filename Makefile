@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check architecture-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -145,6 +145,16 @@ ci-test: .venv/bin/python
 
 contract-check: .venv/bin/python
 	$(PYTHON) scripts/check_contracts.py
+
+openapi-export: .venv/bin/python
+	$(PYTHON) scripts/export-openapi.py
+
+sdk-generate-types: node_modules .venv/bin/python
+	./scripts/generate-sdk-types.sh
+
+sdk-openapi-types-check: node_modules .venv/bin/python
+	./scripts/generate-sdk-types.sh
+	git diff --exit-code docs/api/openapi.json $(SDK_DIR)/src/types/__generated__.ts
 
 architecture-report: .venv/bin/python
 	$(PYTHON) scripts/architecture_report.py $(ARCHITECTURE_REPORT_ARGS)

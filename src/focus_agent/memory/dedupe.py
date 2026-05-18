@@ -52,7 +52,9 @@ def user_preference_topic(text: str) -> str | None:
         return "response_language"
     if "emoji" in lowered or "表情" in text:
         return "emoji_style"
-    if any(token in lowered for token in ("简洁", "详细", "concise", "brief", "verbose", "detailed")):
+    if any(
+        token in lowered for token in ("简洁", "详细", "concise", "brief", "verbose", "detailed")
+    ):
         return "verbosity"
     if "请叫我" in text or "call me" in lowered:
         return "addressing"

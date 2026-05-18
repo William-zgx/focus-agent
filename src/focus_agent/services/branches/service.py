@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import logging
+import sys
+import uuid
+from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from copy import deepcopy
 
 from langgraph_sdk import get_sync_client
 
-from .actions import BranchNamingPolicyMixin
-from .merge import BranchMergeCoordinator, BranchMemoryPromotionMixin
-
 from ...config import Settings
 from ...core.branching import (
+    BranchMeta,
     BranchRecord,
     BranchRole,
     BranchStatus,
@@ -27,12 +29,22 @@ from ...core.merge_review import (
 from ...core.request_context import RequestContext
 from ...core.types import ConversationRecord
 from ...memory import MemoryWriter
-from ...model_registry import create_chat_model
+from ...model_registry import create_chat_model as _default_create_chat_model
 from ...repositories.branch_repository import BranchRepository
 from ..coordination import CoordinationBackend, create_in_memory_coordination_backend
 from ..thread_turn_lease import ThreadTurnLeaseManager
+from .actions import BranchNamingPolicyMixin
+from .merge import BranchMemoryPromotionMixin, BranchMergeCoordinator
 
 logger = logging.getLogger("focus_agent.branches")
+
+
+def create_chat_model(*args, **kwargs):
+    package = sys.modules.get("focus_agent.services.branches")
+    patched = getattr(package, "create_chat_model", None) if package is not None else None
+    if patched is not None and patched is not create_chat_model:
+        return patched(*args, **kwargs)
+    return _default_create_chat_model(*args, **kwargs)
 
 
 class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
@@ -54,7 +66,9 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         self.memory_writer = memory_writer
         self._coordination_backend: CoordinationBackend | None = None
         self._last_memory_curator_decision: dict[str, object] | None = None
-        self.thread_client = get_sync_client(url=settings.langgraph_api_url) if settings.langgraph_api_url else None
+        self.thread_client = (
+            get_sync_client(url=settings.langgraph_api_url) if settings.langgraph_api_url else None
+        )
         self.proposal_model = create_chat_model(
             settings.helper_model or settings.model,
             temperature=0,
@@ -99,7 +113,9 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
     def _thread_turn_lock_heartbeat_seconds(self) -> float:
         ttl_seconds = self._thread_turn_lock_ttl_seconds()
         settings = getattr(self, "settings", None)
-        configured_seconds = float(getattr(settings, "runtime_thread_lock_heartbeat_seconds", 30.0) or 30.0)
+        configured_seconds = float(
+            getattr(settings, "runtime_thread_lock_heartbeat_seconds", 30.0) or 30.0
+        )
         return max(min(ttl_seconds / 3.0, configured_seconds), 0.001)
 
     def _thread_turn_lease(self, *, thread_id: str) -> ThreadTurnLeaseManager:
@@ -116,8 +132,12 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             yield
 
     @contextmanager
-    def _thread_write_leases(self, *, thread_ids: list[str] | tuple[str, ...] | set[str]) -> Iterator[None]:
-        ordered_thread_ids = sorted({str(thread_id) for thread_id in thread_ids if str(thread_id).strip()})
+    def _thread_write_leases(
+        self, *, thread_ids: list[str] | tuple[str, ...] | set[str]
+    ) -> Iterator[None]:
+        ordered_thread_ids = sorted(
+            {str(thread_id) for thread_id in thread_ids if str(thread_id).strip()}
+        )
         with ExitStack() as stack:
             for thread_id in ordered_thread_ids:
                 stack.enter_context(self._thread_turn_lease(thread_id=thread_id))
@@ -141,22 +161,22 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         if overrides is None:
             return proposal
 
-        proposal_payload = proposal.model_dump(mode='json')
-        override_payload = overrides.model_dump(exclude_none=True, mode='json')
-        if 'summary' in override_payload:
-            override_payload['summary'] = str(override_payload['summary']).strip()
-        for key in ('key_findings', 'open_questions', 'evidence_refs', 'artifacts'):
+        proposal_payload = proposal.model_dump(mode="json")
+        override_payload = overrides.model_dump(exclude_none=True, mode="json")
+        if "summary" in override_payload:
+            override_payload["summary"] = str(override_payload["summary"]).strip()
+        for key in ("key_findings", "open_questions", "evidence_refs", "artifacts"):
             if key in override_payload:
                 override_payload[key] = self._clean_list_override(override_payload[key])
 
         merged = MergeProposal.model_validate({**proposal_payload, **override_payload})
         if not merged.summary.strip():
-            raise ValueError('Merge proposal summary cannot be empty.')
+            raise ValueError("Merge proposal summary cannot be empty.")
         return merged
 
     def _derive_root_thread_id(self, parent_thread_id: str, parent_state: dict) -> str:
-        meta = parent_state.get('branch_meta') or {}
-        root_thread_id = meta.get('root_thread_id')
+        meta = parent_state.get("branch_meta") or {}
+        root_thread_id = meta.get("root_thread_id")
         if root_thread_id:
             return str(root_thread_id)
         try:
@@ -166,24 +186,26 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         return record.root_thread_id
 
     def _derive_parent_branch_depth(self, parent_thread_id: str, parent_state: dict) -> int:
-        meta = parent_state.get('branch_meta') or {}
-        if meta.get('branch_depth') is not None:
-            return int(meta.get('branch_depth') or 0)
+        meta = parent_state.get("branch_meta") or {}
+        if meta.get("branch_depth") is not None:
+            return int(meta.get("branch_depth") or 0)
         try:
             record = self.repo.get_by_child_thread_id(parent_thread_id)
         except KeyError:
             return 0
         return record.branch_depth
 
-    def _derive_parent_branch_status(self, parent_thread_id: str, parent_state: dict) -> BranchStatus | None:
+    def _derive_parent_branch_status(
+        self, parent_thread_id: str, parent_state: dict
+    ) -> BranchStatus | None:
         try:
             record = self.repo.get_by_child_thread_id(parent_thread_id)
         except KeyError:
             record = None
         if record is not None:
             return record.branch_status
-        meta = parent_state.get('branch_meta') or {}
-        raw_status = meta.get('branch_status')
+        meta = parent_state.get("branch_meta") or {}
+        raw_status = meta.get("branch_status")
         if raw_status is not None:
             try:
                 return BranchStatus(str(raw_status))
@@ -221,28 +243,32 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             raise ValueError("Merged branches are read-only.")
 
     @staticmethod
-    def _branch_meta_payload_from_record(record: BranchRecord, existing_meta: dict | None = None) -> dict[str, object]:
+    def _branch_meta_payload_from_record(
+        record: BranchRecord, existing_meta: dict | None = None
+    ) -> dict[str, object]:
         payload = dict(existing_meta or {})
-        payload.pop('conclusion_policy', None)
+        payload.pop("conclusion_policy", None)
         payload.update(
             {
-                'branch_id': record.branch_id,
-                'root_thread_id': record.root_thread_id,
-                'parent_thread_id': record.parent_thread_id,
-                'return_thread_id': record.return_thread_id,
-                'branch_name': record.branch_name,
-                'branch_role': record.branch_role.value,
-                'branch_depth': record.branch_depth,
-                'branch_status': record.branch_status.value,
-                'is_archived': record.is_archived,
-                'archived_at': record.archived_at,
-                'fork_checkpoint_id': record.fork_checkpoint_id,
-                'fork_strategy': record.fork_strategy,
+                "branch_id": record.branch_id,
+                "root_thread_id": record.root_thread_id,
+                "parent_thread_id": record.parent_thread_id,
+                "return_thread_id": record.return_thread_id,
+                "branch_name": record.branch_name,
+                "branch_role": record.branch_role.value,
+                "branch_depth": record.branch_depth,
+                "branch_status": record.branch_status.value,
+                "is_archived": record.is_archived,
+                "archived_at": record.archived_at,
+                "fork_checkpoint_id": record.fork_checkpoint_id,
+                "fork_strategy": record.fork_strategy,
             }
         )
         return payload
 
-    def _build_tree_node(self, record: BranchRecord, by_parent: dict[str, list[BranchRecord]]) -> BranchTreeNode:
+    def _build_tree_node(
+        self, record: BranchRecord, by_parent: dict[str, list[BranchRecord]]
+    ) -> BranchTreeNode:
         return BranchTreeNode(
             thread_id=record.child_thread_id,
             root_thread_id=record.root_thread_id,
@@ -255,7 +281,10 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             archived_at=record.archived_at,
             branch_depth=record.branch_depth,
             fork_strategy=record.fork_strategy,
-            children=[self._build_tree_node(child, by_parent) for child in by_parent.get(record.child_thread_id, [])],
+            children=[
+                self._build_tree_node(child, by_parent)
+                for child in by_parent.get(record.child_thread_id, [])
+            ],
         )
 
     def _ensure_root_thread_access(self, *, root_thread_id: str, user_id: str) -> None:
@@ -422,7 +451,7 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=context.user_id)
         branch_record = self.repo.get_by_child_thread_id(child_thread_id)
         thread_ids = [child_thread_id]
-        if decision.approved and decision.mode.value != 'none':
+        if decision.approved and decision.mode.value != "none":
             target_thread_id = (
                 branch_record.root_thread_id
                 if decision.target == MergeTarget.ROOT_THREAD
@@ -438,12 +467,18 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             )
 
     def get_branch_tree(self, *, root_thread_id: str, user_id: str) -> BranchTreeNode:
-        return self._tree_coordinator().get_branch_tree(root_thread_id=root_thread_id, user_id=user_id)
+        return self._tree_coordinator().get_branch_tree(
+            root_thread_id=root_thread_id, user_id=user_id
+        )
 
     def list_archived_branches(self, *, root_thread_id: str, user_id: str) -> list[BranchTreeNode]:
-        return self._tree_coordinator().list_archived_branches(root_thread_id=root_thread_id, user_id=user_id)
+        return self._tree_coordinator().list_archived_branches(
+            root_thread_id=root_thread_id, user_id=user_id
+        )
 
-    def _set_branch_archive_state(self, *, child_thread_id: str, user_id: str, is_archived: bool) -> BranchRecord:
+    def _set_branch_archive_state(
+        self, *, child_thread_id: str, user_id: str, is_archived: bool
+    ) -> BranchRecord:
         with self._thread_write_lease(thread_id=child_thread_id):
             return self._tree_coordinator().set_branch_archive_state(
                 child_thread_id=child_thread_id,
@@ -452,15 +487,14 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             )
 
     def archive_branch(self, *, child_thread_id: str, user_id: str) -> BranchRecord:
-        return self._set_branch_archive_state(child_thread_id=child_thread_id, user_id=user_id, is_archived=True)
+        return self._set_branch_archive_state(
+            child_thread_id=child_thread_id, user_id=user_id, is_archived=True
+        )
 
     def activate_branch(self, *, child_thread_id: str, user_id: str) -> BranchRecord:
-        return self._set_branch_archive_state(child_thread_id=child_thread_id, user_id=user_id, is_archived=False)
-
-from collections import defaultdict
-from copy import deepcopy
-
-from ...core.branching import BranchRecord, BranchRole, BranchStatus, BranchTreeNode
+        return self._set_branch_archive_state(
+            child_thread_id=child_thread_id, user_id=user_id, is_archived=False
+        )
 
 
 class BranchTreeCoordinator:
@@ -477,7 +511,7 @@ class BranchTreeCoordinator:
             conversation = svc.repo.get_conversation(root_thread_id)
             root_branch_name = conversation.title
         except Exception:
-            root_branch_name = 'main'
+            root_branch_name = "main"
         by_parent: dict[str, list[BranchRecord]] = defaultdict(list)
         for record in records:
             if record.is_archived:
@@ -492,7 +526,10 @@ class BranchTreeCoordinator:
             branch_status=BranchStatus.ACTIVE,
             is_archived=False,
             branch_depth=0,
-            children=[svc._build_tree_node(child, by_parent) for child in by_parent.get(root_thread_id, [])],
+            children=[
+                svc._build_tree_node(child, by_parent)
+                for child in by_parent.get(root_thread_id, [])
+            ],
         )
 
     def list_archived_branches(self, *, root_thread_id: str, user_id: str) -> list[BranchTreeNode]:
@@ -500,7 +537,9 @@ class BranchTreeCoordinator:
         svc._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
         records = svc.repo.list_by_root_thread_id(root_thread_id)
         archived_records = [record for record in records if record.is_archived]
-        archived_records.sort(key=lambda record: (record.branch_depth, record.branch_name, record.child_thread_id))
+        archived_records.sort(
+            key=lambda record: (record.branch_depth, record.branch_name, record.child_thread_id)
+        )
         return [
             BranchTreeNode(
                 thread_id=record.child_thread_id,
@@ -518,7 +557,9 @@ class BranchTreeCoordinator:
             for record in archived_records
         ]
 
-    def set_branch_archive_state(self, *, child_thread_id: str, user_id: str, is_archived: bool) -> BranchRecord:
+    def set_branch_archive_state(
+        self, *, child_thread_id: str, user_id: str, is_archived: bool
+    ) -> BranchRecord:
         svc = self.service
         svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
         branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
@@ -526,28 +567,19 @@ class BranchTreeCoordinator:
         updated_record = svc.repo.get(branch_record.branch_id)
 
         if svc.graph is not None:
-            child_config = {'configurable': {'thread_id': child_thread_id}}
+            child_config = {"configurable": {"thread_id": child_thread_id}}
             snapshot = svc.graph.get_state(child_config)
             values = deepcopy(snapshot.values)
             branch_meta = svc._branch_meta_payload_from_record(
                 updated_record,
-                existing_meta=dict(values.get('branch_meta') or {}),
+                existing_meta=dict(values.get("branch_meta") or {}),
             )
             svc.graph.update_state(
                 child_config,
-                {'branch_meta': branch_meta},
-                as_node='bootstrap_turn',
+                {"branch_meta": branch_meta},
+                as_node="bootstrap_turn",
             )
         return updated_record
-
-import logging
-import uuid
-from copy import deepcopy
-
-from ...core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
-from ...core.types import ConversationRecord
-
-logger = logging.getLogger("focus_agent.branches")
 
 
 class BranchLifecycleCoordinator:
@@ -869,4 +901,5 @@ class BranchLifecycleCoordinator:
             is_archived=is_archived,
         )
 
-__all__ = ["BranchService"]
+
+__all__ = ["BranchService", "create_chat_model"]

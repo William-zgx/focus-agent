@@ -123,9 +123,21 @@ def _missing_required_evidence(
                 + task.risk_notes
                 + task.changed_files
                 + [output.summary for output in outputs_by_task.get(task.task_id, [])]
-                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.test_evidence]
-                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.changed_files]
-                + [item for output in outputs_by_task.get(task.task_id, []) for item in output.risk_notes]
+                + [
+                    item
+                    for output in outputs_by_task.get(task.task_id, [])
+                    for item in output.test_evidence
+                ]
+                + [
+                    item
+                    for output in outputs_by_task.get(task.task_id, [])
+                    for item in output.changed_files
+                ]
+                + [
+                    item
+                    for output in outputs_by_task.get(task.task_id, [])
+                    for item in output.risk_notes
+                ]
                 + [
                     value
                     for output in outputs_by_task.get(task.task_id, [])
@@ -144,6 +156,7 @@ def _missing_required_evidence(
                 f"Missing required evidence for {task.role.value} task '{label}': {', '.join(missing_items)}."
             )
     return _dedupe(missing)
+
 
 def _merge_test_evidence(
     *, tasks: list[AgentTeamTask], outputs: list[AgentTeamTaskOutput]
@@ -211,9 +224,7 @@ def _build_final_answer(
     if not outputs:
         return {
             "status": AgentTeamFinalAnswerStatus.BLOCKED,
-            "answer": (
-                f"Agent Team 尚未产生可汇总的任务回传，无法回答：{session.goal}"
-            ),
+            "answer": (f"Agent Team 尚未产生可汇总的任务回传，无法回答：{session.goal}"),
             "warnings": ["No task outputs are available for final answer synthesis."],
             "source_output_ids": source_output_ids,
         }
@@ -243,15 +254,12 @@ def _build_final_answer(
             "source_output_ids": source_output_ids,
         }
 
-    body_items = _final_answer_content_items(
-        _deliverable_outputs(tasks=tasks, outputs=outputs)
-    )
+    body_items = _final_answer_content_items(_deliverable_outputs(tasks=tasks, outputs=outputs))
     if not body_items:
         return {
             "status": AgentTeamFinalAnswerStatus.BLOCKED,
             "answer": (
-                "Agent Team 已完成任务，但回传内容为空，无法形成最终答案。"
-                f"\n\n目标：{session.goal}"
+                f"Agent Team 已完成任务，但回传内容为空，无法形成最终答案。\n\n目标：{session.goal}"
             ),
             "warnings": ["Task outputs did not include summary, raw_text, or parsed content."],
             "source_output_ids": source_output_ids,
@@ -383,7 +391,12 @@ def _explicit_evidence_items(values: list[str]) -> list[str]:
 
 def _is_explicit_evidence(value: str) -> bool:
     text = value.strip().lower()
-    return bool(text) and not text.startswith("delegated ") and not text.startswith("completed ") and text != "completed"
+    return (
+        bool(text)
+        and not text.startswith("delegated ")
+        and not text.startswith("completed ")
+        and text != "completed"
+    )
 
 
 def _planning_risk_notes(

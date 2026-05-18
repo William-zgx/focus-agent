@@ -12,13 +12,13 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue, PostgresApprovalQueue
 from focus_agent.multi_agent.contracts import (
     ApprovalQueuePort,
     FailureHandlerPort,
     MessageBusPort,
     ResourceLockPort,
 )
-from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue, PostgresApprovalQueue
 from focus_agent.multi_agent.failure_handler import FailureHandler
 from focus_agent.multi_agent.message_bus import InMemoryAgentMessageBus, PostgresAgentMessageBus
 from focus_agent.multi_agent.resource_lock import (
@@ -32,27 +32,21 @@ BACKGROUND_JOB_DEDUPE_POLICIES = frozenset({"skip", "replace"})
 
 
 class ThreadTurnLockBackend(Protocol):
-    def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
-        ...
+    def acquire_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool: ...
 
-    def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool:
-        ...
+    def heartbeat_thread_turn(self, *, thread_id: str, owner: str, ttl_seconds: float) -> bool: ...
 
-    def release_thread_turn(self, *, thread_id: str, owner: str) -> None:
-        ...
+    def release_thread_turn(self, *, thread_id: str, owner: str) -> None: ...
 
 
 class BackgroundJobDeduperBackend(Protocol):
-    def try_claim_job_key(self, key: str) -> bool:
-        ...
+    def try_claim_job_key(self, key: str) -> bool: ...
 
-    def release_job_key(self, key: str) -> None:
-        ...
+    def release_job_key(self, key: str) -> None: ...
 
 
 class RateLimitBackend(Protocol):
-    def check(self, *, key: str, limit: int, window_seconds: float = 60.0) -> RateLimitResult:
-        ...
+    def check(self, *, key: str, limit: int, window_seconds: float = 60.0) -> RateLimitResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +57,7 @@ class BackgroundJobSpec:
     run_at: datetime | None = None
     max_attempts: int = 1
     dedupe_policy: str = "skip"
+    idempotency_key: str | None = None
 
     def __post_init__(self) -> None:
         kind = str(self.kind or "").strip()
@@ -80,6 +75,11 @@ class BackgroundJobSpec:
         object.__setattr__(self, "run_at", _normalize_background_run_at(self.run_at))
         object.__setattr__(self, "max_attempts", max(1, int(self.max_attempts or 1)))
         object.__setattr__(self, "dedupe_policy", dedupe_policy)
+        object.__setattr__(
+            self,
+            "idempotency_key",
+            str(self.idempotency_key or key).strip() or None,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +201,9 @@ class InMemoryBackgroundJobDeduperBackend:
         self._jobs: dict[str, _MemoryBackgroundJob] = {}
         self.owner = f"memory-background:{uuid4().hex}"
         self.retry_base_delay_seconds = max(float(retry_base_delay_seconds or 0.0), 0.0)
-        self.retry_max_delay_seconds = max(float(retry_max_delay_seconds or 0.0), self.retry_base_delay_seconds)
+        self.retry_max_delay_seconds = max(
+            float(retry_max_delay_seconds or 0.0), self.retry_base_delay_seconds
+        )
 
     def try_claim_job_key(self, key: str) -> bool:
         return self.claim_job_key(key) is not None
@@ -326,7 +328,12 @@ class InMemoryBackgroundJobDeduperBackend:
         now = time.monotonic()
         with self._lock:
             job = self._jobs.get(key)
-            if job is not None and job.claim == claim and job.status == "running" and job.claimed_until > now:
+            if (
+                job is not None
+                and job.claim == claim
+                and job.status == "running"
+                and job.claimed_until > now
+            ):
                 job.status = "succeeded"
                 job.claim = None
                 job.claimed_until = 0.0
@@ -378,31 +385,87 @@ class InMemoryBackgroundJobDeduperBackend:
                 status_counts[status_key] = status_counts.get(status_key, 0) + 1
                 status_counts["job_attempt_total"] += job.attempt
                 if job.status == "pending":
-                    oldest_pending_at = job.created_at if oldest_pending_at is None else min(oldest_pending_at, job.created_at)
+                    oldest_pending_at = (
+                        job.created_at
+                        if oldest_pending_at is None
+                        else min(oldest_pending_at, job.created_at)
+                    )
                 elif job.status == "retrying":
                     timestamp = job.last_failed_at or job.updated_at
                     oldest_retry_at = (
-                        timestamp
-                        if oldest_retry_at is None
-                        else min(oldest_retry_at, timestamp)
+                        timestamp if oldest_retry_at is None else min(oldest_retry_at, timestamp)
                     )
                 elif job.status == "dead_lettered":
                     timestamp = job.dead_lettered_at or job.updated_at
                     oldest_dead_lettered_at = (
-                        timestamp if oldest_dead_lettered_at is None else min(oldest_dead_lettered_at, timestamp)
+                        timestamp
+                        if oldest_dead_lettered_at is None
+                        else min(oldest_dead_lettered_at, timestamp)
                     )
             if oldest_pending_at is not None:
                 status_counts["job_oldest_pending_seconds"] = int(max(0.0, now - oldest_pending_at))
             if oldest_retry_at is not None:
                 status_counts["job_oldest_retry_seconds"] = int(max(0.0, now - oldest_retry_at))
             if oldest_dead_lettered_at is not None:
-                status_counts["job_oldest_dead_lettered_seconds"] = int(max(0.0, now - oldest_dead_lettered_at))
+                status_counts["job_oldest_dead_lettered_seconds"] = int(
+                    max(0.0, now - oldest_dead_lettered_at)
+                )
             pending_total = len(self._keys) + status_counts["job_pending_total"]
             return {
                 **status_counts,
                 "job_backend_durable": 0,
                 "job_pending_total": pending_total,
             }
+
+    def list_dead_letter_jobs(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        limit = max(0, min(int(limit), 200))
+        offset = max(0, int(offset))
+        with self._lock:
+            now = time.monotonic()
+            jobs = [job for job in self._jobs.values() if job.status == "dead_lettered"]
+            jobs.sort(key=lambda job: job.dead_lettered_at or job.updated_at, reverse=True)
+            return {
+                "items": [
+                    {
+                        "job_key": job.spec.key,
+                        "kind": job.spec.kind,
+                        "payload": dict(job.spec.payload),
+                        "status": job.status,
+                        "attempt": job.attempt,
+                        "max_attempts": job.spec.max_attempts,
+                        "dedupe_policy": job.spec.dedupe_policy,
+                        "idempotency_key": job.spec.idempotency_key,
+                        "last_error": job.last_error,
+                        "dead_lettered_age_seconds": int(
+                            max(0.0, now - (job.dead_lettered_at or job.updated_at))
+                        ),
+                    }
+                    for job in jobs[offset : offset + limit]
+                ],
+                "count": len(jobs),
+                "limit": limit,
+                "offset": offset,
+            }
+
+    def replay_dead_letter_job(self, key: str) -> bool:
+        job_key = str(key or "").strip()
+        if not job_key:
+            return False
+        with self._lock:
+            job = self._jobs.get(job_key)
+            if job is None or job.status != "dead_lettered":
+                return False
+            now = time.monotonic()
+            job.status = "pending"
+            job.attempt = 0
+            job.claim = None
+            job.claimed_until = 0.0
+            job.last_error = None
+            job.last_failed_at = 0.0
+            job.dead_lettered_at = 0.0
+            job.updated_at = now
+            job.spec = replace(job.spec, run_at=datetime.now(UTC))
+            return True
 
     def _retry_delay_seconds(self, attempt: int) -> float:
         if self.retry_base_delay_seconds <= 0:
@@ -459,6 +522,66 @@ class InMemoryRateLimitBackend:
                 remaining=max(0, limit - len(events)),
                 retry_after_seconds=0.0,
             )
+
+
+class PostgresRateLimitBackend:
+    """Postgres-backed fixed-window rate limit buckets shared across workers."""
+
+    def __init__(self, database_uri: str) -> None:
+        self.database_uri = database_uri
+
+    def _connect(self):
+        return psycopg.connect(self.database_uri, row_factory=dict_row)
+
+    def check(self, *, key: str, limit: int, window_seconds: float = 60.0) -> RateLimitResult:
+        if limit <= 0:
+            return RateLimitResult(allowed=True, remaining=0, retry_after_seconds=0.0)
+        window = max(float(window_seconds or 0.0), 0.001)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    WITH upsert AS (
+                        INSERT INTO focus_rate_limit_buckets (
+                            bucket_key,
+                            token_count,
+                            window_start,
+                            updated_at
+                        )
+                        VALUES (%s, 1, now(), now())
+                        ON CONFLICT (bucket_key) DO UPDATE SET
+                            token_count = CASE
+                                WHEN focus_rate_limit_buckets.window_start <= now() - (%s * interval '1 second')
+                                    THEN 1
+                                WHEN focus_rate_limit_buckets.token_count < %s
+                                    THEN focus_rate_limit_buckets.token_count + 1
+                                ELSE focus_rate_limit_buckets.token_count
+                            END,
+                            window_start = CASE
+                                WHEN focus_rate_limit_buckets.window_start <= now() - (%s * interval '1 second')
+                                    THEN now()
+                                ELSE focus_rate_limit_buckets.window_start
+                            END,
+                            updated_at = now()
+                        RETURNING
+                            token_count,
+                            EXTRACT(EPOCH FROM (
+                                window_start + (%s * interval '1 second') - now()
+                            )) AS retry_after_seconds
+                    )
+                    SELECT token_count, retry_after_seconds FROM upsert
+                    """,
+                    (key, window, limit, window, window),
+                )
+                row = cur.fetchone() or {}
+        token_count = int(row.get("token_count") or 0)
+        allowed = token_count <= limit
+        retry_after = 0.0 if allowed else max(0.0, float(row.get("retry_after_seconds") or 0.0))
+        return RateLimitResult(
+            allowed=allowed,
+            remaining=max(0, limit - token_count) if allowed else 0,
+            retry_after_seconds=retry_after,
+        )
 
 
 class PostgresThreadTurnLockBackend:
@@ -556,7 +679,9 @@ class PostgresBackgroundJobDeduperBackend:
         self.database_uri = database_uri
         self.claim_ttl_seconds = max(float(claim_ttl_seconds or 0.0), 1.0)
         self.retry_base_delay_seconds = max(float(retry_base_delay_seconds or 0.0), 0.0)
-        self.retry_max_delay_seconds = max(float(retry_max_delay_seconds or 0.0), self.retry_base_delay_seconds)
+        self.retry_max_delay_seconds = max(
+            float(retry_max_delay_seconds or 0.0), self.retry_base_delay_seconds
+        )
         self.owner = owner or f"background:{uuid4().hex}"
         self._legacy_claims: dict[str, BackgroundJobClaim] = {}
         self._legacy_claims_lock = threading.Lock()
@@ -597,11 +722,12 @@ class PostgresBackgroundJobDeduperBackend:
                         last_heartbeat_at,
                         last_failed_at,
                         dead_lettered_at,
+                        idempotency_key,
                         created_at,
                         updated_at,
                         metadata
                     )
-                    VALUES (%s, %s, '{}'::jsonb, now(), 1, 'skip', 'pending', 1, %s, %s, %s, NULL, now(), NULL, NULL, now(), now(), '{}'::jsonb)
+                    VALUES (%s, %s, '{}'::jsonb, now(), 1, 'skip', 'pending', 1, %s, %s, %s, NULL, now(), NULL, NULL, %s, now(), now(), '{}'::jsonb)
                     ON CONFLICT (job_key) DO UPDATE SET
                         status = 'pending',
                         attempt = focus_background_jobs.attempt + 1,
@@ -623,6 +749,7 @@ class PostgresBackgroundJobDeduperBackend:
                         self.owner,
                         self._claimed_until(),
                         claim_token,
+                        job_key,
                     ),
                 )
                 row = cur.fetchone()
@@ -658,11 +785,12 @@ class PostgresBackgroundJobDeduperBackend:
                         last_heartbeat_at,
                         last_failed_at,
                         dead_lettered_at,
+                        idempotency_key,
                         created_at,
                         updated_at,
                         metadata
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, 'pending', 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, now(), now(), '{}'::jsonb)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'pending', 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, %s, now(), now(), '{}'::jsonb)
                     ON CONFLICT (job_key) DO UPDATE SET
                         kind = EXCLUDED.kind,
                         payload = EXCLUDED.payload,
@@ -678,6 +806,7 @@ class PostgresBackgroundJobDeduperBackend:
                         last_heartbeat_at = NULL,
                         last_failed_at = NULL,
                         dead_lettered_at = NULL,
+                        idempotency_key = COALESCE(EXCLUDED.idempotency_key, focus_background_jobs.idempotency_key),
                         updated_at = now()
                     WHERE focus_background_jobs.status IN ('succeeded', 'failed', 'released', 'dead_lettered')
                        OR (
@@ -693,6 +822,7 @@ class PostgresBackgroundJobDeduperBackend:
                         spec.run_at,
                         spec.max_attempts,
                         spec.dedupe_policy,
+                        spec.idempotency_key,
                     ),
                 )
                 return cur.fetchone() is not None
@@ -778,6 +908,7 @@ class PostgresBackgroundJobDeduperBackend:
                         jobs.run_at,
                         jobs.max_attempts,
                         jobs.dedupe_policy,
+                        jobs.idempotency_key,
                         jobs.attempt,
                         jobs.claim_token
                     """,
@@ -793,6 +924,7 @@ class PostgresBackgroundJobDeduperBackend:
             run_at=row.get("run_at"),
             max_attempts=int(row.get("max_attempts") or 1),
             dedupe_policy=str(row.get("dedupe_policy") or "skip"),
+            idempotency_key=str(row.get("idempotency_key") or row.get("job_key") or ""),
         )
         claim = BackgroundJobClaim(
             claim_token=str(row.get("claim_token") or claim_token),
@@ -991,12 +1123,91 @@ class PostgresBackgroundJobDeduperBackend:
                     """
                 )
                 row = cur.fetchone() or {}
-                metrics["job_oldest_pending_seconds"] = int(float(row.get("oldest_pending_seconds") or 0))
-                metrics["job_oldest_retry_seconds"] = int(float(row.get("oldest_retry_seconds") or 0))
+                metrics["job_oldest_pending_seconds"] = int(
+                    float(row.get("oldest_pending_seconds") or 0)
+                )
+                metrics["job_oldest_retry_seconds"] = int(
+                    float(row.get("oldest_retry_seconds") or 0)
+                )
                 metrics["job_oldest_dead_lettered_seconds"] = int(
                     float(row.get("oldest_dead_lettered_seconds") or 0)
                 )
         return metrics
+
+    def list_dead_letter_jobs(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        limit = max(0, min(int(limit), 200))
+        offset = max(0, int(offset))
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS count FROM focus_background_jobs WHERE status = 'dead_lettered'"
+                )
+                count_row = cur.fetchone() or {}
+                cur.execute(
+                    """
+                    SELECT
+                        job_key,
+                        kind,
+                        payload,
+                        status,
+                        attempt,
+                        max_attempts,
+                        dedupe_policy,
+                        idempotency_key,
+                        last_error,
+                        dead_lettered_at
+                    FROM focus_background_jobs
+                    WHERE status = 'dead_lettered'
+                    ORDER BY dead_lettered_at DESC NULLS LAST, updated_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (limit, offset),
+                )
+                rows = cur.fetchall()
+        return {
+            "items": [
+                {
+                    "job_key": str(row.get("job_key") or ""),
+                    "kind": str(row.get("kind") or ""),
+                    "payload": _background_payload_from_row(row.get("payload")),
+                    "status": str(row.get("status") or "dead_lettered"),
+                    "attempt": int(row.get("attempt") or 0),
+                    "max_attempts": int(row.get("max_attempts") or 1),
+                    "dedupe_policy": str(row.get("dedupe_policy") or "skip"),
+                    "idempotency_key": row.get("idempotency_key"),
+                    "last_error": row.get("last_error"),
+                    "dead_lettered_at": _datetime_json(row.get("dead_lettered_at")),
+                }
+                for row in rows
+            ],
+            "count": int(count_row.get("count") or 0),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def replay_dead_letter_job(self, key: str) -> bool:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE focus_background_jobs
+                    SET status = 'pending',
+                        attempt = 0,
+                        run_at = now(),
+                        claimed_by = NULL,
+                        claimed_until = NULL,
+                        claim_token = NULL,
+                        last_error = NULL,
+                        last_failed_at = NULL,
+                        dead_lettered_at = NULL,
+                        updated_at = now()
+                    WHERE job_key = %s
+                      AND status = 'dead_lettered'
+                    RETURNING job_key
+                    """,
+                    (str(key),),
+                )
+                return cur.fetchone() is not None
 
     def _update_job(self, sql: str, params: tuple[Any, ...]) -> None:
         with self._connect() as conn:
@@ -1050,7 +1261,7 @@ def create_coordination_backend(
     return CoordinationBackend(
         thread_turns=PostgresThreadTurnLockBackend(database_uri),
         job_deduper=job_backend,
-        rate_limiter=in_memory.rate_limiter,
+        rate_limiter=PostgresRateLimitBackend(database_uri),
         resource_locks=PostgresResourceLockManager(database_uri)
         if multi_agent_enabled
         else in_memory.resource_locks,
@@ -1075,6 +1286,14 @@ def background_job_key(*, kind: str, thread_id: str) -> str:
     return f"chat:{kind}:{thread_id}"
 
 
+def _datetime_json(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if value is None:
+        return None
+    return str(value)
+
+
 __all__ = [
     "BACKGROUND_JOB_DEDUPE_POLICIES",
     "BackgroundJobDeduperBackend",
@@ -1090,6 +1309,7 @@ __all__ = [
     "PostgresAgentMessageBus",
     "PostgresApprovalQueue",
     "PostgresBackgroundJobDeduperBackend",
+    "PostgresRateLimitBackend",
     "PostgresResourceLockManager",
     "PostgresThreadTurnLockBackend",
     "RateLimitBackend",

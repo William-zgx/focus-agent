@@ -152,7 +152,11 @@ def build_capability_registry(tool_registry: ToolRegistry) -> list[CapabilityDes
         if not name:
             continue
         runtime = tool_registry.runtime_by_name.get(name) or ToolRuntimeMeta()
-        descriptors.append(capability_from_tool(name=name, description=str(getattr(tool, "description", "") or ""), runtime=runtime))
+        descriptors.append(
+            capability_from_tool(
+                name=name, description=str(getattr(tool, "description", "") or ""), runtime=runtime
+            )
+        )
     return sorted(descriptors, key=lambda item: item.name)
 
 
@@ -177,7 +181,9 @@ def build_toolset_registry(tool_registry: ToolRegistry) -> list[ToolsetDescripto
                 name=name,
                 description=_TOOLSET_DESCRIPTIONS.get(
                     name,
-                    "Provider-defined tool group." if not name.startswith("ungrouped:") else "Tool without a declared toolset.",
+                    "Provider-defined tool group."
+                    if not name.startswith("ungrouped:")
+                    else "Tool without a declared toolset.",
                 ),
                 tools=tools,
                 count=len(tools),
@@ -200,7 +206,9 @@ def build_toolset_registry(tool_registry: ToolRegistry) -> list[ToolsetDescripto
     return sorted(descriptors, key=lambda item: (item.name.startswith("ungrouped:"), item.name))
 
 
-def capability_from_tool(*, name: str, description: str, runtime: ToolRuntimeMeta) -> CapabilityDescriptor:
+def capability_from_tool(
+    *, name: str, description: str, runtime: ToolRuntimeMeta
+) -> CapabilityDescriptor:
     return CapabilityDescriptor(
         name=name,
         description=description,
@@ -243,9 +251,7 @@ def build_tool_route_plan(
     normalized_role = normalize_agent_role(role)
     available = _normalized_tool_names(available_tool_names)
     exposed = (
-        set(_normalized_tool_names(exposed_tool_names))
-        if exposed_tool_names is not None
-        else None
+        set(_normalized_tool_names(exposed_tool_names)) if exposed_tool_names is not None else None
     )
     capabilities = {item.name: item for item in build_capability_registry(tool_registry)}
     policy_engine = CapabilityPolicyEngine()
@@ -304,7 +310,9 @@ def _sorted_unique(values: Iterable[str | None]) -> list[str]:
     return sorted({str(value).strip() for value in values if str(value or "").strip()})
 
 
-def infer_tool_router_role(role_route_plan: dict[str, Any] | None, *, fallback: AgentRole = AgentRole.EXECUTOR) -> AgentRole:
+def infer_tool_router_role(
+    role_route_plan: dict[str, Any] | None, *, fallback: AgentRole = AgentRole.EXECUTOR
+) -> AgentRole:
     if isinstance(role_route_plan, dict):
         for raw in role_route_plan.get("decisions") or []:
             if not isinstance(raw, dict):

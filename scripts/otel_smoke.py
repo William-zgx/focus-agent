@@ -30,7 +30,9 @@ def _check_passed(check: Mapping[str, Any]) -> bool:
     return bool(check.get("passed", status in PASS_STATUSES))
 
 
-def _check(name: str, *, status: str, detail: str, passed: bool | None = None, **extra: Any) -> dict[str, Any]:
+def _check(
+    name: str, *, status: str, detail: str, passed: bool | None = None, **extra: Any
+) -> dict[str, Any]:
     payload = {
         "name": name,
         "status": status,
@@ -248,7 +250,9 @@ def _trace_query_check(
         parsed_body: Any = json.loads(body)
     except json.JSONDecodeError:
         parsed_body = body
-    found = _payload_contains(parsed_body, trace_id) or _payload_contains(parsed_body, SYNTHETIC_SPAN_NAME)
+    found = _payload_contains(parsed_body, trace_id) or _payload_contains(
+        parsed_body, SYNTHETIC_SPAN_NAME
+    )
     passed = response["status_code"] == 200 and found
     return _check(
         "trace_query",
@@ -293,7 +297,14 @@ def build_report(
                 detail=f"planned trace query check={trace_query_url or '<deployment query URL>'}",
             ),
         ]
-        spans = [{"name": SYNTHETIC_SPAN_NAME, "status": "dry-run", "trace_id": trace_id, "span_id": span_id}]
+        spans = [
+            {
+                "name": SYNTHETIC_SPAN_NAME,
+                "status": "dry-run",
+                "trace_id": trace_id,
+                "span_id": span_id,
+            }
+        ]
         roundtrip = {
             "trace_id": trace_id,
             "span_id": span_id,
@@ -376,22 +387,36 @@ def build_report(
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Plan OTel checks without exporting a span.")
-    parser.add_argument("--endpoint", help="OTLP endpoint. Defaults to OTEL_EXPORTER_OTLP_ENDPOINT.")
-    parser.add_argument("--service-name", default=DEFAULT_SERVICE_NAME, help="OTel service.name value.")
-    parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured report path.")
-    parser.add_argument("--collector-health-url", help="Collector health endpoint URL, for example :13133/healthz.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Plan OTel checks without exporting a span."
+    )
+    parser.add_argument(
+        "--endpoint", help="OTLP endpoint. Defaults to OTEL_EXPORTER_OTLP_ENDPOINT."
+    )
+    parser.add_argument(
+        "--service-name", default=DEFAULT_SERVICE_NAME, help="OTel service.name value."
+    )
+    parser.add_argument(
+        "--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured report path."
+    )
+    parser.add_argument(
+        "--collector-health-url", help="Collector health endpoint URL, for example :13133/healthz."
+    )
     parser.add_argument(
         "--trace-query-url",
         help="Trace backend query URL. Use {trace_id} as a placeholder, or the smoke appends trace_id=.",
     )
-    parser.add_argument("--timeout-seconds", type=float, default=10.0, help="Per-HTTP-call timeout.")
+    parser.add_argument(
+        "--timeout-seconds", type=float, default=10.0, help="Per-HTTP-call timeout."
+    )
     return parser.parse_args(argv)
 
 

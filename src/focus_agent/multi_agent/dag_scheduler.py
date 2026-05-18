@@ -77,7 +77,9 @@ class DAGScheduler:
         return blocked
 
 
-def _resource_conflicts(resource_claims: tuple[str, ...], claimed_resources: dict[str, str]) -> bool:
+def _resource_conflicts(
+    resource_claims: tuple[str, ...], claimed_resources: dict[str, str]
+) -> bool:
     return any(resource_id in claimed_resources for resource_id in resource_claims)
 
 

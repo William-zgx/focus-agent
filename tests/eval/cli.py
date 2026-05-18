@@ -75,6 +75,12 @@ def _run_suite_command(argv: Sequence[str]) -> int:
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--baseline", help="Path to a prior JSON report for regression comparison")
     parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.95,
+        help="Minimum current success rate as a fraction of baseline success rate.",
+    )
+    parser.add_argument(
         "--fail-if-regression",
         action="store_true",
         help="Exit with code 2 when the baseline comparison flags regressions.",
@@ -102,6 +108,7 @@ def _run_suite_command(argv: Sequence[str]) -> int:
         risk_level=args.risk_level,
         emit_failures_dataset=args.emit_failures_dataset,
         baseline=args.baseline,
+        threshold=args.threshold,
         fail_if_regression=args.fail_if_regression,
         report_json=args.report_json,
         report_jsonl=args.report_jsonl,
@@ -124,6 +131,7 @@ def _execute_eval_cases(
     risk_level: str | None = None,
     emit_failures_dataset: str | None = None,
     baseline: str | None = None,
+    threshold: float = 0.95,
     fail_if_regression: bool = False,
     report_json: str | None = None,
     report_jsonl: str | None = None,
@@ -150,6 +158,20 @@ def _execute_eval_cases(
     summary = aggregate_metrics(results)
     baseline_summary = load_metric_summary(baseline) if baseline else None
     comparison = compare_baselines(baseline=baseline_summary, current=summary)
+    threshold_regressions = _threshold_regressions(
+        baseline_summary=baseline_summary,
+        current_summary=summary.to_dict(),
+        threshold=threshold,
+    )
+    if threshold_regressions:
+        comparison = {
+            **comparison,
+            "regressions": [
+                *list(comparison.get("regressions") or []),
+                *threshold_regressions,
+            ],
+            "threshold": threshold,
+        }
 
     print(
         json.dumps(
@@ -211,7 +233,9 @@ def _execute_eval_cases(
 
 def _run_replay_command(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="python -m tests.eval replay")
-    parser.add_argument("--from", dest="source_path", required=True, help="JSON or JSONL result file")
+    parser.add_argument(
+        "--from", dest="source_path", required=True, help="JSON or JSONL result file"
+    )
     parser.add_argument("--case-id", help="Only replay one case id")
     parser.add_argument("--failed-only", action="store_true", help="Only show failed cases")
     parser.add_argument(
@@ -220,8 +244,14 @@ def _run_replay_command(argv: Sequence[str]) -> int:
         help="Treat --from as trajectory export JSON/JSONL instead of eval result records.",
     )
     parser.add_argument("--write-dataset", help="Write converted EvalCase JSONL to this path")
-    parser.add_argument("--run", action="store_true", help="Execute converted trajectory cases through the eval runner")
-    parser.add_argument("--case-id-prefix", default="traj", help="Prefix for generated EvalCase ids")
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="Execute converted trajectory cases through the eval runner",
+    )
+    parser.add_argument(
+        "--case-id-prefix", default="traj", help="Prefix for generated EvalCase ids"
+    )
     parser.add_argument(
         "--copy-tool-trajectory",
         action="store_true",
@@ -268,7 +298,9 @@ def _run_replay_command(argv: Sequence[str]) -> int:
         tools = ", ".join(step.get("tool", "") for step in record.get("trajectory", [])) or "-"
         verdicts = record.get("verdicts") or []
         notes = "; ".join(
-            f"{item.get('kind')}: {item.get('reasoning', '')}" for item in verdicts if item.get("reasoning")
+            f"{item.get('kind')}: {item.get('reasoning', '')}"
+            for item in verdicts
+            if item.get("reasoning")
         ) or (record.get("error") or "")
         print(f"case_id={record.get('case_id')} passed={record.get('passed')} tools={tools}")
         print(f"answer={record.get('answer', '')[:300]}")
@@ -317,6 +349,7 @@ def _run_trajectory_replay(args: argparse.Namespace) -> int:
         risk_level=None,
         emit_failures_dataset=None,
         baseline=args.baseline,
+        threshold=0.95,
         fail_if_regression=args.fail_if_regression,
         report_json=args.report_json,
         report_jsonl=args.report_jsonl,
@@ -338,11 +371,19 @@ def _run_trajectory_replay(args: argparse.Namespace) -> int:
 
 def _run_promote_command(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="python -m tests.eval promote")
-    parser.add_argument("--from", dest="source_path", required=True, help="Trajectory export JSON or JSONL file")
+    parser.add_argument(
+        "--from", dest="source_path", required=True, help="Trajectory export JSON or JSONL file"
+    )
     parser.add_argument("--out", required=True, help="Destination EvalCase JSONL path")
-    parser.add_argument("--case-id", help="Only promote one generated case id or source trajectory id")
-    parser.add_argument("--failed-only", action="store_true", help="Only promote failed trajectory turns")
-    parser.add_argument("--case-id-prefix", default="traj", help="Prefix for generated EvalCase ids")
+    parser.add_argument(
+        "--case-id", help="Only promote one generated case id or source trajectory id"
+    )
+    parser.add_argument(
+        "--failed-only", action="store_true", help="Only promote failed trajectory turns"
+    )
+    parser.add_argument(
+        "--case-id-prefix", default="traj", help="Prefix for generated EvalCase ids"
+    )
     parser.add_argument(
         "--copy-tool-trajectory",
         action="store_true",
@@ -542,7 +583,9 @@ def _load_model_matrix(path: str) -> list[dict[str, str]]:
     else:
         raw_items = payload
     if not isinstance(raw_items, list):
-        raise ValueError(f"model matrix must contain a list under models/model_matrix/matrix: {source}")
+        raise ValueError(
+            f"model matrix must contain a list under models/model_matrix/matrix: {source}"
+        )
     variants: list[dict[str, str]] = []
     for index, item in enumerate(raw_items, start=1):
         if not isinstance(item, dict):
@@ -587,6 +630,43 @@ def _write_failed_cases_dataset(
             )
         )
     return write_eval_cases_jsonl(path, failed_cases)
+
+
+def _threshold_regressions(
+    *,
+    baseline_summary: dict[str, object] | None,
+    current_summary: dict[str, object],
+    threshold: float,
+) -> list[dict[str, object]]:
+    if not baseline_summary:
+        return []
+    baseline_data = (
+        baseline_summary.to_dict() if hasattr(baseline_summary, "to_dict") else baseline_summary
+    )
+    baseline_rate = float(
+        baseline_data.get("success_rate")
+        or baseline_data.get("pass_rate")
+        or baseline_data.get("task_success")
+        or 0.0
+    )
+    current_rate = float(
+        current_summary.get("success_rate")
+        or current_summary.get("pass_rate")
+        or current_summary.get("task_success")
+        or 0.0
+    )
+    floor = baseline_rate * max(0.0, float(threshold))
+    if current_rate >= floor:
+        return []
+    return [
+        {
+            "metric": "success_rate",
+            "baseline": baseline_rate,
+            "current": current_rate,
+            "threshold": floor,
+            "reason": "current success rate is below baseline threshold",
+        }
+    ]
 
 
 if __name__ == "__main__":

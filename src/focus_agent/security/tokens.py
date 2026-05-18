@@ -28,7 +28,7 @@ def _b64url_encode(raw: bytes) -> str:
 
 
 def _b64url_decode(raw: str) -> bytes:
-    padding = '=' * (-len(raw) % 4)
+    padding = "=" * (-len(raw) % 4)
     return base64.urlsafe_b64decode(raw + padding)
 
 
@@ -75,11 +75,7 @@ def _dedupe_secrets(secrets: list[str]) -> tuple[str, ...]:
 
 def _verification_secrets(settings: Settings, kid: str | None) -> tuple[str, ...]:
     if kid:
-        secrets = [
-            key.secret
-            for key in settings.auth_jwt_keys
-            if key.active and key.kid == kid
-        ]
+        secrets = [key.secret for key in settings.auth_jwt_keys if key.active and key.kid == kid]
         if settings.auth_jwt_key_id == kid and _include_single_secret(settings):
             secrets.append(settings.auth_jwt_secret)
         deduped = _dedupe_secrets(secrets)
@@ -126,17 +122,17 @@ def create_access_token(
 
 def decode_access_token(token: str, *, settings: Settings) -> Principal:
     try:
-        header_b64, payload_b64, signature_b64 = token.split('.', 2)
+        header_b64, payload_b64, signature_b64 = token.split(".", 2)
     except ValueError as exc:
-        raise AuthError('Malformed bearer token.') from exc
+        raise AuthError("Malformed bearer token.") from exc
 
     try:
         header = json.loads(_b64url_decode(header_b64))
     except Exception as exc:  # noqa: BLE001
-        raise AuthError('Bearer token header is invalid JSON.') from exc
+        raise AuthError("Bearer token header is invalid JSON.") from exc
 
-    if header.get('alg') != 'HS256':
-        raise AuthError('Only HS256 bearer tokens are supported by this skeleton.')
+    if header.get("alg") != "HS256":
+        raise AuthError("Only HS256 bearer tokens are supported by this skeleton.")
 
     kid = header.get("kid")
     if kid is not None:
@@ -146,29 +142,29 @@ def decode_access_token(token: str, *, settings: Settings) -> Principal:
         hmac.compare_digest(signature_b64, _sign(header_b64, payload_b64, secret))
         for secret in secrets
     ):
-        raise AuthError('Bearer token signature is invalid.')
+        raise AuthError("Bearer token signature is invalid.")
 
     try:
         payload = json.loads(_b64url_decode(payload_b64))
     except Exception as exc:  # noqa: BLE001
-        raise AuthError('Bearer token payload is invalid JSON.') from exc
+        raise AuthError("Bearer token payload is invalid JSON.") from exc
 
-    if payload.get('iss') != settings.auth_jwt_issuer:
-        raise AuthError('Bearer token issuer mismatch.')
-    if settings.auth_jwt_audience and payload.get('aud') != settings.auth_jwt_audience:
-        raise AuthError('Bearer token audience mismatch.')
-    if not payload.get('sub'):
-        raise AuthError('Bearer token is missing subject.')
+    if payload.get("iss") != settings.auth_jwt_issuer:
+        raise AuthError("Bearer token issuer mismatch.")
+    if settings.auth_jwt_audience and payload.get("aud") != settings.auth_jwt_audience:
+        raise AuthError("Bearer token audience mismatch.")
+    if not payload.get("sub"):
+        raise AuthError("Bearer token is missing subject.")
 
     now = int(time.time())
-    if int(payload.get('exp', 0)) <= now:
-        raise AuthError('Bearer token has expired.')
+    if int(payload.get("exp", 0)) <= now:
+        raise AuthError("Bearer token has expired.")
 
-    scope_text = str(payload.get('scope') or '').strip()
-    scopes = tuple(item for item in scope_text.split(' ') if item)
+    scope_text = str(payload.get("scope") or "").strip()
+    scopes = tuple(item for item in scope_text.split(" ") if item)
     return Principal(
-        user_id=str(payload['sub']),
-        tenant_id=payload.get('tenant_id'),
+        user_id=str(payload["sub"]),
+        tenant_id=payload.get("tenant_id"),
         scopes=scopes,
         claims=payload,
     )

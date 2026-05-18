@@ -197,9 +197,7 @@ def make_tool_executor_node(
                         tool_call_id=tool_call_id,
                         tool_name=tool_name,
                         args=dict(approval_payload.get("redacted_args") or {}),
-                        error=(
-                            "Tool execution is pending asynchronous approval and was not run."
-                        ),
+                        error=("Tool execution is pending asynchronous approval and was not run."),
                         runtime_info={
                             "tool_approval_pending": True,
                             "requires_approval": True,
@@ -234,7 +232,9 @@ def make_tool_executor_node(
                     },
                 )
                 if not approved:
-                    error = approval_error or f"Tool execution denied by approval response: {tool_name}"
+                    error = (
+                        approval_error or f"Tool execution denied by approval response: {tool_name}"
+                    )
                     messages_by_index[index] = build_tool_error_message(
                         tool_call_id=tool_call_id,
                         tool_name=tool_name,

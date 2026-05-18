@@ -1,6 +1,6 @@
 # Docker 部署方案
 
-更新时间：2026-05-05
+更新时间：2026-05-16
 
 这份文档定义当前仓库推荐的 Docker 部署方式。目标是把 **本机开发启动链**、**本地容器联调**、以及 **生产部署** 明确分层，避免把开发便利逻辑和正式部署逻辑混在一起。
 
@@ -56,10 +56,10 @@ flowchart TD
 
 ## 文件职责
 
-- [Dockerfile](../Dockerfile)：多阶段构建镜像，前端静态资源打包进运行镜像
+- [Dockerfile](../Dockerfile)：多阶段构建镜像，前端静态资源和 Alembic migration 文件打包进运行镜像
 - [compose.yaml](../compose.yaml)：本地 Docker 联调，包含应用与 Postgres
 - [compose.prod.yaml](../compose.prod.yaml)：生产/预发参考模板，应用连接外部 PostgreSQL
-- [docker/entrypoint.sh](../docker/entrypoint.sh)：准备 `/data` 下的默认配置文件并导出运行时路径；首次启动会从 `docs/local.env.example`、`docs/models.example.toml` 和 `docs/tools.example.toml` 拷贝初始 `/data/local.env`、`/data/models.toml`、`/data/tools.toml`
+- [docker/entrypoint.sh](../docker/entrypoint.sh)：准备 `/data` 下的默认配置文件并导出运行时路径；首次启动会从 `docs/local.env.example`、`docs/models.example.toml` 和 `docs/tools.example.toml` 拷贝初始 `/data/local.env`、`/data/models.toml`、`/data/tools.toml`；当 `DATABASE_URI` 存在时先执行 `alembic upgrade head`
 
 ## 本地 Docker 联调
 
@@ -136,6 +136,7 @@ docker compose logs -f focus-agent postgres
 
 - 未显式设置 `FOCUS_AGENT_DATABASE_URI` 时，Compose 默认连接本文件内的 `postgres` service
 - 如果显式设置 `FOCUS_AGENT_DATABASE_URI`，应用会优先使用该值
+- `compose.yaml` 要求 `FOCUS_AGENT_AUTH_JWT_SECRET` 必填。即使本地 Docker 默认保留 demo token，也建议使用至少 32 字符的临时 secret，例如 `local-focus-agent-jwt-secret-32chars`
 - provider 密钥和 Base URL 默认来自 `/data/local.env`，新增 OpenAI-compatible provider 通常只需要在 `/data/models.toml` 和 `/data/local.env` 增加对应配置；如果想临时覆盖内置常用 provider，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`MIMO_API_KEY`、`MIMO_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
 - 本地 embedding auto 模式优先 Ollama `embeddinggemma`。如果 Ollama 跑在宿主机上，容器内通常需要把 `/data/local.env` 里的 `OLLAMA_BASE_URL` 指到宿主机可达地址，例如 Docker Desktop 的 `http://host.docker.internal:11434/v1`；embedding provider 会规范化成 native Ollama base URL 并调用 `/api/tags`、`/api/embed`
 - Memory embedding、pgvector、runtime lease 和 durable jobs 读取的是应用内 `AGENT_MEMORY_*`、`RUNTIME_THREAD_LOCK_*`、`BACKGROUND_JOB_*` 变量。默认容器入口会从 `/data/local.env` 读取这些变量；如果要通过 Compose host env 控制它们，需要在 `compose.yaml` 的 `environment` 中显式增加映射
@@ -159,7 +160,7 @@ docker compose logs -f focus-agent postgres
 export FOCUS_AGENT_IMAGE=registry.example.com/focus-agent:2026-04-22
 export FOCUS_AGENT_DATABASE_URI=postgresql://focus_agent:secret@postgres.internal:5432/focus_agent
 export FOCUS_AGENT_AUTH_ENABLED=true
-export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret-at-least-32-chars
 export FOCUS_AGENT_AUTH_JWT_ISSUER=https://issuer.example.com
 export FOCUS_AGENT_AUTH_JWT_AUDIENCE=focus-agent-web
 export FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS=900
@@ -200,7 +201,7 @@ BACKGROUND_JOB_BACKEND=postgres
 
 - `APP_ENVIRONMENT=production` 或其他非 development/local/test 值会启用应用启动期安全校验
 - `FOCUS_AGENT_AUTH_ENABLED=true`
-- `FOCUS_AGENT_AUTH_JWT_SECRET` 必须显式设置，且不能使用开发默认值
+- `FOCUS_AGENT_AUTH_JWT_SECRET` 或 active JWT key set 必须显式设置，不能使用开发默认值，且每个 active secret 至少 32 字符
 - `FOCUS_AGENT_AUTH_JWT_ISSUER` 与外部签发方 `iss` 保持一致
 - 建议设置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`，将 token 限定给 Focus Agent Web/API 使用
 - 建议显式设置 `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS`，并配合外部登录层刷新策略
@@ -208,7 +209,7 @@ BACKGROUND_JOB_BACKEND=postgres
 - `FOCUS_AGENT_RATE_LIMIT_ENABLED=true`
 - `API_RELOAD=0`
 - `DATABASE_URI` 必须指向外部 PostgreSQL
-- 外部 PostgreSQL 必须完成应用需要的 schema migration；如果启用默认 Memory Embedding，必须已安装 `vector` extension，并保持 `focus_memory_embeddings.embedding` 维度与当前 embedding provider/model 一致
+- 外部 PostgreSQL 必须允许应用在启动时执行 `alembic upgrade head`，或由发布流程提前执行同一迁移命令；如果启用默认 Memory Embedding，必须已安装 `vector` extension，并保持 `focus_memory_embeddings.embedding` 维度与当前 embedding provider/model 一致
 - provider secrets 不写入镜像
 - 应用容器只保留 `/data` 作为本地文件目录（artifact 正文、默认配置拷贝等）
 - 建议显式设置 `APP_VERSION`、`APP_ENVIRONMENT`、`DEPLOYMENT_NAME`，便于 `/readyz`、`/metrics` 和 trajectory 记录定位发布批次
@@ -226,10 +227,18 @@ BACKGROUND_JOB_BACKEND=postgres
 - `focus_agent_team_outputs`
 - LangGraph checkpoint/store
 - trajectory 观测表
+- branch decision / recommendation events：`focus_branch_decision_events`
 - Memory v2 业务表：`focus_memories`、`focus_memory_audit_events`、`focus_memory_tombstones`、`focus_memory_candidates`
 - Memory embedding shadow：`focus_memory_embeddings`，只保存可重建向量索引，不是 canonical memory truth
+- coordination / background job 表和 rate-limit buckets：`focus_runtime_locks`、`focus_background_jobs`、`focus_rate_limit_buckets`
 
-artifact 正文文件继续保留在文件系统，不直接入库。
+应用 schema 当前由 Alembic `001_baseline` 入口桥接到仓库内的逐版本 app migrations，当前版本为 v17。v17 增加 `focus_branch_decision_events` 和 branch recommendation 幂等索引。容器 entrypoint 在 `DATABASE_URI` 存在时运行 `alembic upgrade head`；手动验证可运行：
+
+```bash
+DATABASE_URI=postgresql://user:pass@host:5432/focus_agent uv run alembic -c alembic.ini upgrade head
+```
+
+artifact 正文文件通过默认 `LocalArtifactStore` 继续保留在文件系统，不直接入库；Postgres 只保存 artifact metadata。
 
 本地状态迁移到 PostgreSQL 时，脚本只负责把结构化状态和 artifact metadata 带入 primary persistence；artifact 正文仍通过扫描和 relative path 关联到文件系统：
 

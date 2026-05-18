@@ -11,6 +11,8 @@ _BOOL_METADATA_FIELDS = frozenset(
         "cacheable",
         "requires_network",
         "requires_workspace_write",
+        "allow_network",
+        "allow_filesystem",
         "requires_approval",
     }
 )
@@ -36,7 +38,9 @@ _STRING_METADATA_FIELDS = frozenset(
         "redaction_policy",
     }
 )
-_INT_METADATA_FIELDS = frozenset({"max_calls_per_turn", "max_observation_chars"})
+_INT_METADATA_FIELDS = frozenset(
+    {"max_calls_per_turn", "max_observation_chars", "max_concurrent_calls", "max_memory_mb"}
+)
 _FLOAT_METADATA_FIELDS = frozenset({"timeout_seconds"})
 
 

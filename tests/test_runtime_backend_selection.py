@@ -102,7 +102,9 @@ def _install_postgres_modules(monkeypatch):
     artifact_module.ArtifactMetadataRepository = artifact_repo_cls
     memory_module = types.ModuleType("focus_agent.repositories.postgres_memory_repository")
     memory_module.PostgresMemoryRepository = memory_repo_cls
-    productivity_module = types.ModuleType("focus_agent.repositories.postgres_productivity_repository")
+    productivity_module = types.ModuleType(
+        "focus_agent.repositories.postgres_productivity_repository"
+    )
     productivity_module.PostgresProductivityRepository = productivity_repo_cls
     trajectory_module = types.ModuleType("focus_agent.repositories.postgres_trajectory_repository")
     trajectory_module.PostgresTrajectoryRepository = trajectory_repo_cls
@@ -113,17 +115,29 @@ def _install_postgres_modules(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres", checkpoint_module)
     monkeypatch.setitem(sys.modules, "langgraph.store.postgres", store_module)
-    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_branch_repository", branch_module)
-    monkeypatch.setitem(sys.modules, "focus_agent.repositories.artifact_metadata_repository", artifact_module)
-    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_memory_repository", memory_module)
+    monkeypatch.setitem(
+        sys.modules, "focus_agent.repositories.postgres_branch_repository", branch_module
+    )
+    monkeypatch.setitem(
+        sys.modules, "focus_agent.repositories.artifact_metadata_repository", artifact_module
+    )
+    monkeypatch.setitem(
+        sys.modules, "focus_agent.repositories.postgres_memory_repository", memory_module
+    )
     monkeypatch.setitem(
         sys.modules,
         "focus_agent.repositories.postgres_productivity_repository",
         productivity_module,
     )
-    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module)
-    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module)
-    monkeypatch.setitem(sys.modules, "focus_agent.repositories.postgres_user_repository", user_module)
+    monkeypatch.setitem(
+        sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module
+    )
+    monkeypatch.setitem(
+        sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module
+    )
+    monkeypatch.setitem(
+        sys.modules, "focus_agent.repositories.postgres_user_repository", user_module
+    )
     monkeypatch.setattr(runtime_mod, "PostgresRunJournal", run_journal_cls)
 
     return {
@@ -166,7 +180,9 @@ def _patch_runtime_collaborators(monkeypatch, *, build_tool_registry):
     return {"local_run_journal": local_run_journal_cls}
 
 
-def _make_settings(tmp_path: Path, *, database_uri: str | None, trajectory_enabled: bool | None) -> Settings:
+def _make_settings(
+    tmp_path: Path, *, database_uri: str | None, trajectory_enabled: bool | None
+) -> Settings:
     return Settings(
         database_uri=database_uri,
         branch_db_path=str(tmp_path / "branches.sqlite3"),
@@ -177,7 +193,9 @@ def _make_settings(tmp_path: Path, *, database_uri: str | None, trajectory_enabl
     )
 
 
-def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monkeypatch, tmp_path, caplog):
+def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(
+    monkeypatch, tmp_path, caplog
+):
     captured: dict[str, object] = {}
 
     def fake_build_tool_registry(
@@ -230,7 +248,9 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         assert runtime.agent_team_service.repository is agent_team_repo
         assert runtime.user_service.repository is user_repo
         assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
-        assert isinstance(runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend)
+        assert isinstance(
+            runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend
+        )
         assert saver.setup_calls == 1
         assert store.setup_calls == 1
         assert repo.setup_calls == 1
@@ -249,7 +269,9 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(monk
         runtime.close()
 
 
-def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkeypatch, tmp_path, caplog):
+def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(
+    monkeypatch, tmp_path, caplog
+):
     captured: dict[str, object] = {}
 
     def fake_build_tool_registry(*, settings, skill_registry, store=None, checkpointer=None):
@@ -289,7 +311,9 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
-    monkeypatch.setattr(runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository)
+    monkeypatch.setattr(
+        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
+    )
     monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
     caplog.set_level(logging.INFO, logger="focus_agent.runtime")
 
@@ -310,7 +334,9 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(monkey
         assert runtime.memory_repository is None
         assert runtime.postgres_connection_provider is None
         assert isinstance(runtime.coordination_backend.thread_turns, InMemoryThreadTurnLockBackend)
-        assert isinstance(runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend)
+        assert isinstance(
+            runtime.coordination_backend.job_deduper, InMemoryBackgroundJobDeduperBackend
+        )
         assert captured["store"] is runtime.store
         assert captured["checkpointer"] is runtime.checkpointer
         assert "local-fallback" in caplog.text
@@ -477,7 +503,9 @@ def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch,
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
-    monkeypatch.setattr(runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository)
+    monkeypatch.setattr(
+        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
+    )
     monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
@@ -520,7 +548,9 @@ def test_create_runtime_uses_postgres_background_jobs_only_when_opted_in(monkeyp
     runtime = runtime_mod.create_runtime(settings)
     try:
         assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
-        assert isinstance(runtime.coordination_backend.job_deduper, PostgresBackgroundJobDeduperBackend)
+        assert isinstance(
+            runtime.coordination_backend.job_deduper, PostgresBackgroundJobDeduperBackend
+        )
         assert runtime.coordination_backend.job_deduper.claim_ttl_seconds == 12.0
     finally:
         runtime.close()
@@ -575,7 +605,9 @@ def test_postgres_connection_provider_records_slow_query_metrics(caplog):
     assert "slow Postgres query observed" in caplog.text
 
 
-def test_create_runtime_rejects_durable_background_execution_without_postgres(monkeypatch, tmp_path):
+def test_create_runtime_rejects_durable_background_execution_without_postgres(
+    monkeypatch, tmp_path
+):
     settings = _make_settings(
         tmp_path,
         database_uri=None,
@@ -621,7 +653,9 @@ def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
-    monkeypatch.setattr(runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository)
+    monkeypatch.setattr(
+        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
+    )
     monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     branch_db_path = tmp_path / "runtime" / "db" / "branches.sqlite3"

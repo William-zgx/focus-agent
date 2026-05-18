@@ -25,7 +25,9 @@ class MemoryExtractor:
     def __init__(self, *, mode: str = "heuristic"):
         self.mode = str(mode or "heuristic").strip().lower()
 
-    def extract_from_turn(self, *, context: RequestContext, state: dict[str, Any]) -> MemoryExtractionResult:
+    def extract_from_turn(
+        self, *, context: RequestContext, state: dict[str, Any]
+    ) -> MemoryExtractionResult:
         if self.mode == "off":
             return MemoryExtractionResult(records=[], summary="memory extraction disabled")
         records: list[MemoryWriteRequest] = []
@@ -35,7 +37,9 @@ class MemoryExtractor:
         episodic = self._extract_episodic_summary(context=context, state=state)
         if episodic is not None:
             records.append(episodic)
-        return MemoryExtractionResult(records=records, summary=f"{len(records)} memory writes prepared")
+        return MemoryExtractionResult(
+            records=records, summary=f"{len(records)} memory writes prepared"
+        )
 
     def _extract_user_preferences(
         self,
@@ -50,7 +54,9 @@ class MemoryExtractor:
             records.append(inferred)
         return records
 
-    def _extract_project_facts(self, *, context: RequestContext, state: dict[str, Any]) -> list[MemoryWriteRequest]:
+    def _extract_project_facts(
+        self, *, context: RequestContext, state: dict[str, Any]
+    ) -> list[MemoryWriteRequest]:
         active_goal = str(state.get("active_goal") or "").strip()
         if not context.project_id or not active_goal or not _looks_like_project_fact(active_goal):
             return []
@@ -84,7 +90,9 @@ class MemoryExtractor:
                     kind=MemoryKind.BRANCH_FINDING,
                     scope=MemoryScope.BRANCH,
                     visibility=MemoryVisibility.PROMOTABLE,
-                    namespace=branch_local_memory_namespace(context.root_thread_id, context.branch_id),
+                    namespace=branch_local_memory_namespace(
+                        context.root_thread_id, context.branch_id
+                    ),
                     content=item.finding,
                     summary=item.finding,
                     evidence_refs=item.evidence_refs,

@@ -84,7 +84,9 @@ def _items_from_payload(payload: Any) -> list[dict[str, Any]]:
     return [dict(payload)]
 
 
-def _artifact_records(path: str | Path, *, kind: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _artifact_records(
+    path: str | Path, *, kind: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     target = _resolve(path)
     payload = _read_jsonl(target) if target.suffix == ".jsonl" else _read_json(target)
     if payload is None:
@@ -122,7 +124,9 @@ def _is_negative_feedback(record: Mapping[str, Any]) -> bool:
             ("feedback", "rating", "sentiment", "outcome", "status"),
         )
     ).lower()
-    if any(marker in text for marker in ("negative", "thumbs_down", "downvote", "bad", "incorrect")):
+    if any(
+        marker in text for marker in ("negative", "thumbs_down", "downvote", "bad", "incorrect")
+    ):
         return True
     rating = record.get("rating") or record.get("score")
     try:
@@ -211,7 +215,9 @@ def _skill_summary(
         "override_count": override,
         "override_rate": round(override / len(records), 4) if records else None,
         "min_confidence": min(confidence_values) if confidence_values else None,
-        "avg_confidence": round(sum(confidence_values) / len(confidence_values), 4) if confidence_values else None,
+        "avg_confidence": round(sum(confidence_values) / len(confidence_values), 4)
+        if confidence_values
+        else None,
     }
 
 
@@ -245,7 +251,10 @@ def _is_high_drift(record: Mapping[str, Any], *, high_drift_threshold: float) ->
     if drift_risk in {"high", "critical"}:
         return True
     try:
-        return float(report.get("overall_drift") or record.get("overall_drift") or 0.0) >= high_drift_threshold
+        return (
+            float(report.get("overall_drift") or record.get("overall_drift") or 0.0)
+            >= high_drift_threshold
+        )
     except (TypeError, ValueError):
         return False
 
@@ -266,7 +275,9 @@ def _context_summary(
     high_drift_threshold: float,
 ) -> dict[str, Any]:
     high_drift = [
-        record for record in records if _is_high_drift(record, high_drift_threshold=high_drift_threshold)
+        record
+        for record in records
+        if _is_high_drift(record, high_drift_threshold=high_drift_threshold)
     ]
     return {
         "record_count": len(records),
@@ -283,12 +294,7 @@ def _is_productivity_capture(record: Mapping[str, Any]) -> bool:
             ("target_kind", "entity_type"),
         )
     ).lower()
-    return (
-        "productivity" in text
-        or "capture" in text
-        or "note" in text
-        or "task" in text
-    )
+    return "productivity" in text or "capture" in text or "note" in text or "task" in text
 
 
 def _productivity_summary(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -350,9 +356,13 @@ def _trajectory_summary(paths: Sequence[str | Path], *, limit: int) -> dict[str,
         target = _resolve(path)
         payload = _read_json(target)
         if payload is None:
-            artifacts.append({"kind": "trajectory_report", "path": str(target), "status": "missing", "failed": 0})
+            artifacts.append(
+                {"kind": "trajectory_report", "path": str(target), "status": "missing", "failed": 0}
+            )
             continue
-        current_failures = _trajectory_failures_from_payload(payload, path=target, limit=max(limit - len(failures), 0))
+        current_failures = _trajectory_failures_from_payload(
+            payload, path=target, limit=max(limit - len(failures), 0)
+        )
         failures.extend(current_failures)
         artifacts.append(
             {
@@ -400,18 +410,30 @@ def build_feedback_report(
     high_drift_threshold: float = DEFAULT_CONTEXT_HIGH_DRIFT_THRESHOLD,
     top_failure_limit: int = DEFAULT_TOP_FAILURE_LIMIT,
 ) -> dict[str, Any]:
-    feedback_paths = list(feedback_events_json) or _default_existing([DEFAULT_FEEDBACK_EVENTS_JSONL])
+    feedback_paths = list(feedback_events_json) or _default_existing(
+        [DEFAULT_FEEDBACK_EVENTS_JSONL]
+    )
     merge_paths = list(merge_review_json) or _default_existing([DEFAULT_MERGE_REVIEWS_JSON])
     skill_paths = list(skill_selection_json) or _default_existing([DEFAULT_SKILL_SELECTIONS_JSON])
-    context_paths = list(context_evidence_json) or _default_existing([DEFAULT_CONTEXT_EVIDENCE_JSON])
-    productivity_paths = list(productivity_capture_json) or _default_existing([DEFAULT_PRODUCTIVITY_CAPTURES_JSON])
-    trajectory_paths = list(trajectory_report_json) or _default_existing(list(DEFAULT_TRAJECTORY_REPORTS))
+    context_paths = list(context_evidence_json) or _default_existing(
+        [DEFAULT_CONTEXT_EVIDENCE_JSON]
+    )
+    productivity_paths = list(productivity_capture_json) or _default_existing(
+        [DEFAULT_PRODUCTIVITY_CAPTURES_JSON]
+    )
+    trajectory_paths = list(trajectory_report_json) or _default_existing(
+        list(DEFAULT_TRAJECTORY_REPORTS)
+    )
 
     feedback_artifacts, feedback_records = _collect_records(feedback_paths, kind="feedback_event")
     merge_artifacts, merge_records = _collect_records(merge_paths, kind="merge_review")
     skill_artifacts, skill_records = _collect_records(skill_paths, kind="skill_selection")
-    context_artifacts, context_records = _collect_records(context_paths, kind="context_memory_evidence")
-    productivity_artifacts, productivity_records = _collect_records(productivity_paths, kind="productivity_capture")
+    context_artifacts, context_records = _collect_records(
+        context_paths, kind="context_memory_evidence"
+    )
+    productivity_artifacts, productivity_records = _collect_records(
+        productivity_paths, kind="productivity_capture"
+    )
 
     merge_records.extend(record for record in feedback_records if _is_merge_review(record))
     skill_records.extend(
@@ -425,11 +447,15 @@ def build_feedback_report(
         if "context" in _first_text(record, ("source_kind", "kind", "event_type", "type")).lower()
         or "memory" in _first_text(record, ("source_kind", "kind", "event_type", "type")).lower()
     )
-    productivity_records.extend(record for record in feedback_records if _is_productivity_capture(record))
+    productivity_records.extend(
+        record for record in feedback_records if _is_productivity_capture(record)
+    )
 
     negative_feedback = [record for record in feedback_records if _is_negative_feedback(record)]
     merge_review = _merge_review_summary(merge_records)
-    skill_selection = _skill_summary(skill_records, low_confidence_threshold=low_confidence_threshold)
+    skill_selection = _skill_summary(
+        skill_records, low_confidence_threshold=low_confidence_threshold
+    )
     context_memory = _context_summary(context_records, high_drift_threshold=high_drift_threshold)
     productivity_capture = _productivity_summary(productivity_records)
     trajectory_failures = _trajectory_summary(trajectory_paths, limit=top_failure_limit)
@@ -462,7 +488,12 @@ def build_feedback_report(
         "negative_feedback": {
             "count": len(negative_feedback),
             "sample_ids": [
-                str(record.get("event_id") or record.get("id") or record.get("source_id") or "unknown")
+                str(
+                    record.get("event_id")
+                    or record.get("id")
+                    or record.get("source_id")
+                    or "unknown"
+                )
                 for record in negative_feedback[:top_failure_limit]
             ],
         },
@@ -500,7 +531,9 @@ def write_feedback_report(path: str | Path, **kwargs: Any) -> Path:
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = build_feedback_report(**kwargs)
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
@@ -513,8 +546,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--context-evidence-json", action="append", default=[])
     parser.add_argument("--productivity-capture-json", action="append", default=[])
     parser.add_argument("--trajectory-report-json", action="append", default=[])
-    parser.add_argument("--low-confidence-threshold", type=float, default=DEFAULT_SKILL_LOW_CONFIDENCE_THRESHOLD)
-    parser.add_argument("--high-drift-threshold", type=float, default=DEFAULT_CONTEXT_HIGH_DRIFT_THRESHOLD)
+    parser.add_argument(
+        "--low-confidence-threshold", type=float, default=DEFAULT_SKILL_LOW_CONFIDENCE_THRESHOLD
+    )
+    parser.add_argument(
+        "--high-drift-threshold", type=float, default=DEFAULT_CONTEXT_HIGH_DRIFT_THRESHOLD
+    )
     parser.add_argument("--top-failure-limit", type=int, default=DEFAULT_TOP_FAILURE_LIMIT)
     return parser.parse_args(argv)
 

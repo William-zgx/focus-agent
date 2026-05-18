@@ -1,0 +1,209 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from focus_agent.core.branching import BranchMeta
+from focus_agent.core.governance import (
+    BranchDecisionAction,
+    BranchDecisionSignal,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class BranchDecisionScore:
+    action: BranchDecisionAction
+    score: float
+    threshold: float
+    rationale: str
+
+
+def score_branch_decisions(
+    *,
+    signals: list[BranchDecisionSignal],
+    branch_meta: BranchMeta | None,
+    split_threshold: float,
+    conclude_threshold: float,
+    merge_candidate_threshold: float,
+) -> list[BranchDecisionScore]:
+    by_name = {signal.name: signal for signal in signals}
+    hint = str(_signal_value(by_name, "explicit_hint", "none"))
+    turn_depth = float(_signal_value(by_name, "turn_depth", 0) or 0)
+    recent_shape = _signal_value(by_name, "recent_message_shape", {})
+    shape = recent_shape if isinstance(recent_shape, dict) else {}
+    pending_action = bool(_signal_value(by_name, "pending_branch_action", False))
+    merge_proposal_presence = bool(_signal_value(by_name, "merge_proposal_presence", False))
+    on_branch = branch_meta is not None
+
+    split_score = 0.18
+    if hint == BranchDecisionAction.SPLIT.value:
+        split_score += 0.38
+    if bool(shape.get("has_alternative")):
+        split_score += 0.18
+    if bool(shape.get("has_question")) and turn_depth >= 2:
+        split_score += 0.10
+    if turn_depth >= 4:
+        split_score += 0.10
+    if pending_action:
+        split_score -= 0.35
+
+    conclude_score = 0.08
+    if hint == BranchDecisionAction.CONCLUDE.value:
+        conclude_score += 0.40
+    if bool(shape.get("has_final_answer")):
+        conclude_score += 0.20
+    if on_branch and turn_depth >= 3:
+        conclude_score += 0.12
+    if bool(shape.get("has_tool_activity")):
+        conclude_score += 0.08
+
+    merge_score = 0.05
+    if hint == BranchDecisionAction.MERGE_CANDIDATE.value:
+        merge_score += 0.35
+    if merge_proposal_presence:
+        merge_score += 0.35
+    if on_branch and bool(shape.get("has_final_answer")):
+        merge_score += 0.15
+    if pending_action:
+        merge_score -= 0.20
+
+    return [
+        BranchDecisionScore(
+            action=BranchDecisionAction.SPLIT,
+            score=_clamp(split_score),
+            threshold=split_threshold,
+            rationale=_rationale(
+                "split",
+                hint=hint,
+                on_branch=on_branch,
+                turn_depth=turn_depth,
+                shape=shape,
+            ),
+        ),
+        BranchDecisionScore(
+            action=BranchDecisionAction.CONCLUDE,
+            score=_clamp(conclude_score),
+            threshold=conclude_threshold,
+            rationale=_rationale(
+                "conclude",
+                hint=hint,
+                on_branch=on_branch,
+                turn_depth=turn_depth,
+                shape=shape,
+            ),
+        ),
+        BranchDecisionScore(
+            action=BranchDecisionAction.MERGE_CANDIDATE,
+            score=_clamp(merge_score),
+            threshold=merge_candidate_threshold,
+            rationale=_rationale(
+                "merge_candidate",
+                hint=hint,
+                on_branch=on_branch,
+                turn_depth=turn_depth,
+                shape=shape,
+            ),
+        ),
+    ]
+
+
+def score_branch_recommendation(
+    *,
+    signals: list[BranchDecisionSignal],
+    min_confidence: float,
+) -> BranchDecisionScore:
+    by_name = {signal.name: signal for signal in signals}
+    target = str(
+        _signal_value(
+            by_name,
+            "recommendation_explicit_target",
+            BranchDecisionAction.CONTINUE_CURRENT.value,
+        )
+    )
+    shape_value = _signal_value(by_name, "pre_turn_message_shape", {})
+    shape = shape_value if isinstance(shape_value, dict) else {}
+    pending_action = bool(_signal_value(by_name, "pending_branch_action", False))
+
+    action = _recommendation_action(target)
+    score = 0.72 if action == BranchDecisionAction.CONTINUE_CURRENT else 0.82
+    if bool(shape.get("has_alternative")):
+        score += 0.04
+    if bool(shape.get("has_new_direction")):
+        score += 0.06
+    if action == BranchDecisionAction.FORK_SIBLING_BRANCH and bool(shape.get("has_branch_context")):
+        score += 0.04
+    if pending_action and action != BranchDecisionAction.CONTINUE_CURRENT:
+        score -= 0.35
+
+    return BranchDecisionScore(
+        action=action,
+        score=_clamp(score),
+        threshold=min_confidence,
+        rationale=_recommendation_rationale(action=action, shape=shape),
+    )
+
+
+def select_best_score(scores: list[BranchDecisionScore]) -> BranchDecisionScore:
+    if not scores:
+        raise ValueError("at least one branch decision score is required")
+    return max(scores, key=lambda score: (score.score, score.action.value))
+
+
+def _signal_value(signals: dict[str, BranchDecisionSignal], name: str, default: Any) -> Any:
+    signal = signals.get(name)
+    return default if signal is None else signal.value
+
+
+def _clamp(value: float) -> float:
+    return round(max(0.0, min(float(value), 1.0)), 4)
+
+
+def _recommendation_action(value: str) -> BranchDecisionAction:
+    for action in {
+        BranchDecisionAction.CONTINUE_CURRENT,
+        BranchDecisionAction.FORK_CHILD_BRANCH,
+        BranchDecisionAction.FORK_SIBLING_BRANCH,
+    }:
+        if value == action.value:
+            return action
+    return BranchDecisionAction.CONTINUE_CURRENT
+
+
+def _rationale(
+    action: str,
+    *,
+    hint: str,
+    on_branch: bool,
+    turn_depth: float,
+    shape: dict[str, Any],
+) -> str:
+    shape_flags = [
+        key.removeprefix("has_")
+        for key, enabled in shape.items()
+        if key.startswith("has_") and bool(enabled)
+    ]
+    flags = ", ".join(shape_flags) if shape_flags else "no strong recent-shape flags"
+    branch_text = "branch context" if on_branch else "root context"
+    return f"{action} score from hint={hint}, {branch_text}, turn_depth={int(turn_depth)}, {flags}."
+
+
+def _recommendation_rationale(
+    *,
+    action: BranchDecisionAction,
+    shape: dict[str, Any],
+) -> str:
+    shape_flags = [
+        key.removeprefix("has_")
+        for key, enabled in shape.items()
+        if key.startswith("has_") and bool(enabled)
+    ]
+    flags = ", ".join(shape_flags) if shape_flags else "no strong pre-turn flags"
+    return f"{action.value} recommendation from incoming message, {flags}."
+
+
+__all__ = [
+    "BranchDecisionScore",
+    "score_branch_decisions",
+    "score_branch_recommendation",
+    "select_best_score",
+]

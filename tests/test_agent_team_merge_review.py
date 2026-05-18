@@ -200,11 +200,14 @@ def test_agent_team_merge_review_previews_and_applies_worktree_patch(tmp_path: P
 
     assert applied.status == AgentTeamMergeReviewStatus.APPLIED
     assert (repo_root / "app.txt").read_text(encoding="utf-8") == "base\nworker change\n"
-    assert [event.event_type for event in service.list_merge_review_events(
-        session_id=session.session_id,
-        review_id=review.review_id,
-        user_id="user-1",
-    )] == ["created", "previewed", "applied"]
+    assert [
+        event.event_type
+        for event in service.list_merge_review_events(
+            session_id=session.session_id,
+            review_id=review.review_id,
+            user_id="user-1",
+        )
+    ] == ["created", "previewed", "applied"]
 
 
 def test_agent_team_merge_review_apply_records_conflict(tmp_path: Path) -> None:
@@ -301,7 +304,9 @@ def test_agent_team_merge_review_reject_and_api_flow() -> None:
     )
     assert task.status_code == 200
     task_id = task.json()["task"]["task_id"]
-    assert client.patch(f"/v1/agent-team/tasks/{task_id}", json={"status": "done"}).status_code == 200
+    assert (
+        client.patch(f"/v1/agent-team/tasks/{task_id}", json={"status": "done"}).status_code == 200
+    )
 
     review_response = client.post(
         f"/v1/agent-team/sessions/{session_id}/merge-review",

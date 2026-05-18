@@ -143,7 +143,28 @@ DATABASE_URI=postgresql://user:pass@host:5432/focus_agent
 
 Durable jobs 使用 claim token 和 claim heartbeat；chat/branch 写操作使用 per-thread lease。首轮 branch title/metadata refresh 会在 chat turn lease release 后再调度，避免 immediate background worker 和当前 turn lock 竞争。
 
-## 6. 前端开发模式
+## 6. 分支推荐
+
+Branch decision 自动化默认关闭。若只想收集推荐证据、不改变聊天行为，可配置：
+
+```env
+AGENT_BRANCH_DECISION_ENABLED=true
+AGENT_BRANCH_DECISION_MODE=shadow
+AGENT_BRANCH_RECOMMENDATION_ENABLED=true
+AGENT_BRANCH_RECOMMENDATION_MODE=shadow
+```
+
+若希望高置信度的发送前推荐展示为需要用户确认的 Branch Action 卡片，可配置：
+
+```env
+AGENT_BRANCH_RECOMMENDATION_ENABLED=true
+AGENT_BRANCH_RECOMMENDATION_MODE=suggest
+AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE=0.72
+```
+
+`suggest` 模式仍不会静默 fork；用户需要在聊天卡片里确认或取消。完整配置、API、SDK 和验证口径见 [分支决策与推荐](branch-decisions.md)。
+
+## 7. 前端开发模式
 
 如果你要本地联调前端：
 
@@ -162,13 +183,15 @@ WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app
 - 前端：`http://127.0.0.1:5173/app/`
 - API：`http://127.0.0.1:8000`
 
-## 7. 一键本地模式
+Web App 默认把 `VITE_FOCUS_AGENT_API_BASE_URL` 解析为 `window.location.origin`。只有当 Vite 页面需要调用另一个 API origin 时才显式设置。
+
+## 8. 一键本地模式
 
 - `make serve` / `make serve-dev`：启动前端 Vite dev server 和带热重载的后端 API
 - `make serve-prod`：先构建静态前端，再以非 reload 模式启动后端
 - `make dev`：只启动后端，并启用 `API_RELOAD=1`
 
-## 8. 本地鉴权
+## 9. 本地鉴权
 
 内置 `/app` 会把未登录用户引导到 `/app/auth/login`，并通过 `return_to` 保留原本要访问的受保护页面。本地开发最快的浏览器路径是：
 
@@ -204,7 +227,7 @@ Admin Console 本地检查入口：
 - 状态、角色、会话撤销和密码重置动作都需要填写 reason，并写入审计事件。
 - Bearer token scope 不能单独授予 admin 权限；必须有持久化用户角色支持。
 
-## 9. 浏览器 Smoke 测试
+## 10. 浏览器 Smoke 测试
 
 `make ui-smoke` 默认使用 `scripts/ui_smoke_test.py` 中配置的 app URL，通常对应 Vite dev server。当你想验证后端托管的静态 bundle，或本地调试时临时关闭鉴权，可以显式启动 API 并传入页面地址：
 
@@ -220,9 +243,10 @@ uv run python scripts/ui_smoke_test.py \
 
 如果使用 Vite dev server，请保留 `http://127.0.0.1:5173/app/` 末尾的斜杠；`http://127.0.0.1:5173/app` 在 dev server 下可能有不同处理。Smoke 脚本会用临时 Chrome profile，避免本地 localStorage、扩展和个人 profile 中的登录态影响结果。如果手动浏览器打开空白登录页而 smoke 通过，请先清理 `127.0.0.1` 站点数据或使用干净 profile，再判断是否是 UI 回归。
 
-## 10. 下一步文档
+## 11. 下一步文档
 
 - [Memory System v2](memory-system-v2.md)
+- [分支决策与推荐](branch-decisions.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)

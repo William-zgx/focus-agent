@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import itertools
 from typing import Any
-from uuid import uuid5, NAMESPACE_URL
+from uuid import NAMESPACE_URL, uuid5
 
 from .contracts import ConflictReport
 
@@ -35,7 +35,9 @@ class MergeConflictDetector:
                         suggested_resolution="Review overlapping patches before building the merge bundle.",
                     )
                 )
-            if _summaries_conflict(str(output_a.get("summary") or ""), str(output_b.get("summary") or "")):
+            if _summaries_conflict(
+                str(output_a.get("summary") or ""), str(output_b.get("summary") or "")
+            ):
                 reports.append(
                     _report(
                         task_a=task_a,
@@ -65,7 +67,9 @@ def _summaries_conflict(left: str, right: str) -> bool:
     left_positive = any(marker in left_norm for marker in _POSITIVE_MARKERS)
     right_positive = any(marker in right_norm for marker in _POSITIVE_MARKERS)
     shared_terms = set(_keywords(left_norm)) & set(_keywords(right_norm))
-    return bool(shared_terms and left_negative != right_negative and (left_positive or right_positive))
+    return bool(
+        shared_terms and left_negative != right_negative and (left_positive or right_positive)
+    )
 
 
 def _keywords(text: str) -> list[str]:

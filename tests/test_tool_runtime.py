@@ -67,31 +67,40 @@ def test_tool_runtime_builds_and_parses_tool_approval_contract():
     assert payload["policy_version"] == "tool_approval.v2"
     assert payload["interrupt_id"].startswith("tool-approval:call-approval:")
     assert isinstance(payload["created_at"], str)
-    assert is_tool_approval_approved(
-        {
-            "kind": "tool_approval",
-            "interrupt_id": payload["interrupt_id"],
-            "tool_call_id": "call-approval",
-            "approved": True,
-        },
-        interrupt_id=payload["interrupt_id"],
-        tool_call_id="call-approval",
-    ) is True
-    assert is_tool_approval_approved(
-        {"kind": "tool_approval", "approved": True},
-        interrupt_id=payload["interrupt_id"],
-        tool_call_id="call-approval",
-    ) is False
-    assert is_tool_approval_approved(
-        {
-            "kind": "tool_approval",
-            "interrupt_id": payload["interrupt_id"],
-            "tool_call_id": "other-call",
-            "approved": True,
-        },
-        interrupt_id=payload["interrupt_id"],
-        tool_call_id="call-approval",
-    ) is False
+    assert (
+        is_tool_approval_approved(
+            {
+                "kind": "tool_approval",
+                "interrupt_id": payload["interrupt_id"],
+                "tool_call_id": "call-approval",
+                "approved": True,
+            },
+            interrupt_id=payload["interrupt_id"],
+            tool_call_id="call-approval",
+        )
+        is True
+    )
+    assert (
+        is_tool_approval_approved(
+            {"kind": "tool_approval", "approved": True},
+            interrupt_id=payload["interrupt_id"],
+            tool_call_id="call-approval",
+        )
+        is False
+    )
+    assert (
+        is_tool_approval_approved(
+            {
+                "kind": "tool_approval",
+                "interrupt_id": payload["interrupt_id"],
+                "tool_call_id": "other-call",
+                "approved": True,
+            },
+            interrupt_id=payload["interrupt_id"],
+            tool_call_id="call-approval",
+        )
+        is False
+    )
     assert is_tool_approval_approved({"kind": "merge_review", "approved": True}) is False
 
 

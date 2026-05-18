@@ -54,7 +54,9 @@ def test_task_ledger_converts_delegation_plan_to_task_dag():
     assert {task.role.value for task in ledger.tasks} >= {"executor"}
     assert len(artifacts) >= len(ledger.tasks)
     assert any(artifact.status == "accepted" for artifact in artifacts)
-    assert any("Fake delegated executor run completed" in artifact.summary for artifact in artifacts)
+    assert any(
+        "Fake delegated executor run completed" in artifact.summary for artifact in artifacts
+    )
 
 
 def test_task_ledger_keeps_observe_runs_draft_until_executor_completion():

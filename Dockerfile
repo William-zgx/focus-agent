@@ -57,6 +57,8 @@ RUN addgroup --system focusagent \
 
 COPY pyproject.toml README.md README.zh-CN.md LICENSE ./
 COPY src ./src
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
 
 RUN printf 'ddgs==9.14.0\nlxml==6.1.0\n' > /tmp/docker-constraints.txt \
     && pip install --no-cache-dir -c /tmp/docker-constraints.txt ".[openai,anthropic]" \

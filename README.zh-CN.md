@@ -19,6 +19,7 @@ Focus Agent 是一个 Web-first 的 Agent 应用骨架，当前已经发展成�
 ## 核心能力
 
 - 支持分支式会话与受控 merge 回主线
+- 支持 AI 辅助的分支决策与发送前分支推荐，并通过用户确认的 Branch Action 卡片执行
 - 提供流式聊天 API 和内置 React Web 界面 `/app`
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
 - 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
@@ -77,7 +78,7 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 - 完整部署说明：[docs/docker-deployment.md](docs/docker-deployment.md)
 
 ```bash
-export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret
+export FOCUS_AGENT_AUTH_JWT_SECRET=replace-with-a-strong-secret-at-least-32-chars
 export OPENAI_API_KEY=replace-me
 docker compose up --build
 ```
@@ -93,6 +94,7 @@ docker compose up --build
 - [Auth / Access](docs/auth-access.md)
 - [Agent Team Workbench](docs/agent-team-workbench.md)
 - [管理员控制台](docs/admin-console.md)
+- [分支决策与推荐](docs/branch-decisions.md)
 - [流式事件契约](docs/streaming-contract.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)

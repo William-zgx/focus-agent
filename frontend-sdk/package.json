@@ -19,9 +19,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "generate-types": "../scripts/generate-sdk-types.sh",
     "validate:transport": "tsc -p tsconfig.validation.json && node dist-validation/transport.validation.js"
   },
   "devDependencies": {
+    "openapi-typescript": "^7.0.0",
     "typescript": "^5.8.0"
   }
 }

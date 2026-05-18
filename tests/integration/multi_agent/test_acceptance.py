@@ -315,7 +315,9 @@ def test_async_approval_pending_does_not_block_other_tool_calls(monkeypatch) -> 
         version="v2",
     )
 
-    tool_messages = [message for message in result.value["messages"] if isinstance(message, ToolMessage)]
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
     assert calls == ["safe:focus"]
     assert approval_queue.list_pending()[-1].tool_name == "approval_lookup"
     assert [message.tool_call_id for message in tool_messages] == [
@@ -496,9 +498,7 @@ def test_session_view_includes_pending_tool_approvals_for_session() -> None:
 
     view = service.get_session_view(session_id=session.session_id, user_id="user-1")
 
-    assert [item["request_id"] for item in view["pending_tool_approvals"]] == [
-        "approval-visible"
-    ]
+    assert [item["request_id"] for item in view["pending_tool_approvals"]] == ["approval-visible"]
 
 
 def test_session_view_excludes_pending_tool_approvals_from_other_sessions() -> None:

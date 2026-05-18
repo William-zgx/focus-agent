@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Sequence
 from typing import Any
 
 from ...core.repo_call import has_repo_method
@@ -17,7 +17,6 @@ from .loader import (
     AppStateSnapshot,
     LocalCheckpointRecord,
     LocalStoreItemRecord,
-    select_latest_stable_checkpoints,
     _redact_database_uri,
     create_memory_embedding_service,
     create_memory_repository,
@@ -29,6 +28,7 @@ from .loader import (
     parse_args,
     resolve_source_layout,
     scan_artifacts,
+    select_latest_stable_checkpoints,
     setup_trajectory_schema,
 )
 from .transformer import _summarize_skip_reasons, build_focus_memory_records
@@ -58,7 +58,8 @@ def _migrate_artifacts(
             thread_id=None,
             artifact_id=relative_path,
             path=artifact_dir / relative_path,
-            title=Path(relative_path).stem.replace("-", " ").strip().title() or Path(relative_path).name,
+            title=Path(relative_path).stem.replace("-", " ").strip().title()
+            or Path(relative_path).name,
         )
         migrated_count += 1
     return {
@@ -170,9 +171,15 @@ def _migrate_app_state(
         "thread_access_rows": len(snapshot.thread_access_rows),
         "conversation_rows": len(snapshot.conversation_rows),
         "branch_rows": len(snapshot.branch_rows),
-        "thread_access_migrated": len(snapshot.thread_access_rows) if thread_access_migrated is None else thread_access_migrated,
-        "conversation_migrated": len(snapshot.conversation_rows) if conversation_migrated is None else conversation_migrated,
-        "branch_migrated": len(snapshot.branch_rows) if branch_migrated is None else branch_migrated,
+        "thread_access_migrated": len(snapshot.thread_access_rows)
+        if thread_access_migrated is None
+        else thread_access_migrated,
+        "conversation_migrated": len(snapshot.conversation_rows)
+        if conversation_migrated is None
+        else conversation_migrated,
+        "branch_migrated": len(snapshot.branch_rows)
+        if branch_migrated is None
+        else branch_migrated,
         "missing_tables": list(snapshot.missing_tables),
     }
 

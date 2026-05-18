@@ -82,7 +82,11 @@ def execute_single_untraced(
                     error=validation_exc,
                 ) from validation_exc
         item_cache_key = cache_key(item=item, cache_scope_key=cache_scope_key)
-        if item_cache_key and cache_store is not None and cache_store.get(item_cache_key) is not None:
+        if (
+            item_cache_key
+            and cache_store is not None
+            and cache_store.get(item_cache_key) is not None
+        ):
             observation = cache_store.get(item_cache_key) or ""
             trimmed_observation, trim_runtime, prompt_observation = trim_success(
                 observation,
@@ -107,7 +111,9 @@ def execute_single_untraced(
                     runtime_info={
                         "cache_hit": True,
                         "fallback_used": False,
-                        "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                        "parallel_batch_size": parallel_batch_size
+                        if (parallel_batch_size or 0) > 1
+                        else None,
                         **trim_runtime,
                     },
                 ),
@@ -126,7 +132,9 @@ def execute_single_untraced(
                 tool_name=item.tool_name,
                 args=item.args,
                 error=exc,
-                runtime_info=runtime_info_for_error(exc=exc, parallel_batch_size=parallel_batch_size),
+                runtime_info=runtime_info_for_error(
+                    exc=exc, parallel_batch_size=parallel_batch_size
+                ),
             ),
         )
 
@@ -153,7 +161,9 @@ def execute_single_untraced(
                 runtime_info={
                     "cache_hit": False,
                     "fallback_used": False,
-                    "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                    "parallel_batch_size": parallel_batch_size
+                    if (parallel_batch_size or 0) > 1
+                    else None,
                     **side_effect_runtime_info(item),
                     **trim_runtime,
                 },
@@ -193,7 +203,9 @@ def execute_single_untraced(
                             "cache_hit": False,
                             "fallback_used": True,
                             "fallback_group": item.runtime.fallback_group,
-                            "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
+                            "parallel_batch_size": parallel_batch_size
+                            if (parallel_batch_size or 0) > 1
+                            else None,
                             **trim_runtime,
                         },
                     ),
@@ -219,7 +231,9 @@ def execute_single_untraced(
                 tool_name=item.tool_name,
                 args=item.args,
                 error=exc,
-                runtime_info=runtime_info_for_error(exc=exc, parallel_batch_size=parallel_batch_size),
+                runtime_info=runtime_info_for_error(
+                    exc=exc, parallel_batch_size=parallel_batch_size
+                ),
             ),
         )
 
@@ -255,7 +269,8 @@ def trim_success(
             budget=context_budget,
             max_chars=max(
                 160,
-                int(context_budget.tool_reference_token_limit) * max(1, int(context_budget.chars_per_token)),
+                int(context_budget.tool_reference_token_limit)
+                * max(1, int(context_budget.chars_per_token)),
             ),
             artifactize_for_prompt=True,
             force_artifactize=True,

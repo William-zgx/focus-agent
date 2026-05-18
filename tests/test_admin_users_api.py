@@ -12,6 +12,7 @@ from focus_agent.repositories.user_repository import InMemoryUserRepository
 from focus_agent.security.passwords import verify_password
 from focus_agent.security.tokens import create_access_token
 from focus_agent.services.auth import AuthService
+from focus_agent.services.coordination import BackgroundJobSpec, InMemoryBackgroundJobDeduperBackend
 from focus_agent.services.users import UserService
 
 
@@ -50,11 +51,16 @@ def _build_client(
         user_repository=repo,
         user_service=service,
         auth_service=AuthService(repo, settings=settings),
+        background_work=None,
+        durable_background_worker=None,
+        coordination_backend=SimpleNamespace(job_deduper=None),
     )
     return TestClient(app), settings, service, repo
 
 
-def _headers(settings: Settings, user_id: str, *, scopes: list[str] | None = None) -> dict[str, str]:
+def _headers(
+    settings: Settings, user_id: str, *, scopes: list[str] | None = None
+) -> dict[str, str]:
     token = create_access_token(
         settings=settings,
         user_id=user_id,
@@ -163,13 +169,65 @@ def test_admin_background_jobs_summary_requires_admin_and_reports_warnings(
     assert "oldest_pending_seconds=1200" in body["warnings"]
 
 
+def test_admin_background_dead_letter_jobs_can_be_listed_and_replayed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client, settings, service, _ = _build_client(monkeypatch, tmp_path)
+    service.create_user(user_id="admin-1", roles=["admin"])
+    backend = InMemoryBackgroundJobDeduperBackend(retry_base_delay_seconds=0.0)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-dead",
+        payload={"thread_id": "thread-dead", "user_id": "user-1"},
+        max_attempts=1,
+    )
+    assert backend.enqueue_job(spec)
+    claimed = backend.claim_next_job(
+        allowed_kinds=("conversation_title",),
+        claim_ttl_seconds=1.0,
+    )
+    assert claimed is not None
+    _, claim = claimed
+    backend.mark_job_claim_failed(spec.key, claim, "boom")
+    client.app.state.runtime.coordination_backend = SimpleNamespace(job_deduper=backend)
+    admin_headers = _headers(settings, "admin-1")
+
+    listed = client.get("/v1/admin/background-jobs/dead-letter", headers=admin_headers)
+
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["count"] == 1
+    assert body["items"][0]["job_key"] == spec.key
+    assert body["items"][0]["kind"] == "conversation_title"
+    assert body["items"][0]["last_error"] == "boom"
+
+    replayed = client.post(
+        f"/v1/admin/background-jobs/dead-letter/{spec.key}/replay",
+        headers=admin_headers,
+    )
+
+    assert replayed.status_code == 200
+    assert replayed.json() == {"job_key": spec.key, "replayed": True, "status": "pending"}
+    assert backend.snapshot()["job_pending_total"] == 1
+    assert backend.snapshot()["job_dead_lettered_total"] == 0
+
+    missing = client.post(
+        "/v1/admin/background-jobs/dead-letter/missing/replay",
+        headers=admin_headers,
+    )
+    assert missing.status_code == 404
+
+
 def test_admin_can_reset_password_and_revoke_user_sessions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client, settings, service, repo = _build_client(monkeypatch, tmp_path)
     service.create_user(user_id="admin-1", roles=["admin"])
     admin_headers = _headers(settings, "admin-1")
-    registered = client.post("/v1/auth/register", json={"username": "target", "password": "secret123"})
+    registered = client.post(
+        "/v1/auth/register", json={"username": "target", "password": "secret123"}
+    )
     user_id = registered.json()["user"]["user_id"]
 
     sessions = client.get(f"/v1/admin/users/{user_id}/sessions", headers=admin_headers)

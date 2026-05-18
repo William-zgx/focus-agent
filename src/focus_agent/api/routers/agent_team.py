@@ -9,8 +9,8 @@ from ..contract_models.agent_team import (
     AgentTeamMergeReviewCaptureResponse,
     AgentTeamMergeReviewListResponse,
     AgentTeamMergeReviewResponse,
-    AgentTeamToolApprovalContract,
     AgentTeamToolApprovalActionRequest,
+    AgentTeamToolApprovalContract,
     AgentTeamToolApprovalDecisionResponse,
     AgentTeamToolApprovalListResponse,
     ApplyAgentTeamMergeReviewRequest,
@@ -52,7 +52,8 @@ from ..route_utils.agent_team_responses import (
 
 router = APIRouter()
 
-@router.post('/v1/agent-team/sessions', response_model=AgentTeamSessionResponse)
+
+@router.post("/v1/agent-team/sessions", response_model=AgentTeamSessionResponse)
 def create_agent_team_session(
     payload: CreateAgentTeamSessionRequest,
     principal: Principal = Depends(get_current_principal),
@@ -70,7 +71,8 @@ def create_agent_team_session(
         raise _agent_team_error(exc) from exc
     return AgentTeamSessionResponse(session=session)
 
-@router.get('/v1/agent-team/sessions', response_model=AgentTeamSessionListResponse)
+
+@router.get("/v1/agent-team/sessions", response_model=AgentTeamSessionListResponse)
 def list_agent_team_sessions(
     root_thread_id: str | None = None,
     status: str | None = None,
@@ -92,7 +94,8 @@ def list_agent_team_sessions(
         raise _agent_team_error(exc) from exc
     return AgentTeamSessionListResponse(sessions=sessions, items=sessions, count=len(sessions))
 
-@router.get('/v1/agent-team/sessions/{session_id}', response_model=AgentTeamSessionResponse)
+
+@router.get("/v1/agent-team/sessions/{session_id}", response_model=AgentTeamSessionResponse)
 def get_agent_team_session(
     session_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -105,7 +108,10 @@ def get_agent_team_session(
         raise _agent_team_error(exc) from exc
     return AgentTeamSessionResponse(session=session)
 
-@router.post('/v1/agent-team/sessions/{session_id}/dispatch', response_model=AgentTeamDispatchResponse)
+
+@router.post(
+    "/v1/agent-team/sessions/{session_id}/dispatch", response_model=AgentTeamDispatchResponse
+)
 def dispatch_agent_team_session(
     session_id: str,
     payload: DispatchAgentTeamSessionRequest | None = None,
@@ -118,14 +124,17 @@ def dispatch_agent_team_session(
         session, tasks = service.dispatch_default_tasks(
             session_id=session_id,
             user_id=principal.user_id,
-            create_branches=request.auto_fork_branch if request.auto_fork_branch is not None else request.create_branches,
+            create_branches=request.auto_fork_branch
+            if request.auto_fork_branch is not None
+            else request.create_branches,
             parent_thread_id=request.parent_thread_id,
         )
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
     return AgentTeamDispatchResponse(session=session, tasks=tasks, items=tasks, count=len(tasks))
 
-@router.post('/v1/agent-team/sessions/{session_id}/plan', response_model=AgentTeamDispatchResponse)
+
+@router.post("/v1/agent-team/sessions/{session_id}/plan", response_model=AgentTeamDispatchResponse)
 def plan_agent_team_session(
     session_id: str,
     payload: AgentTeamPlanSessionRequest | None = None,
@@ -134,7 +143,11 @@ def plan_agent_team_session(
 ) -> AgentTeamDispatchResponse:
     service = _agent_team_service_or_503(runtime)
     request = payload or AgentTeamPlanSessionRequest()
-    create_branches = request.auto_fork_branch if request.auto_fork_branch is not None else request.create_branches
+    create_branches = (
+        request.auto_fork_branch
+        if request.auto_fork_branch is not None
+        else request.create_branches
+    )
     try:
         session, tasks = _call_plan_session(
             service,
@@ -163,7 +176,10 @@ def plan_agent_team_session(
         planning=planning,
     )
 
-@router.post('/v1/agent-team/sessions/{session_id}/run', response_model=AgentTeamSessionViewResponse)
+
+@router.post(
+    "/v1/agent-team/sessions/{session_id}/run", response_model=AgentTeamSessionViewResponse
+)
 def run_agent_team_session(
     session_id: str,
     payload: RunAgentTeamSessionRequest | None = None,
@@ -179,9 +195,14 @@ def run_agent_team_session(
         )
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
-    return _view_response(service.get_session_view(session_id=session_id, user_id=principal.user_id))
+    return _view_response(
+        service.get_session_view(session_id=session_id, user_id=principal.user_id)
+    )
 
-@router.get('/v1/agent-team/sessions/{session_id}/view', response_model=AgentTeamSessionViewResponse)
+
+@router.get(
+    "/v1/agent-team/sessions/{session_id}/view", response_model=AgentTeamSessionViewResponse
+)
 def get_agent_team_session_view(
     session_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -189,13 +210,15 @@ def get_agent_team_session_view(
 ) -> AgentTeamSessionViewResponse:
     service = _agent_team_service_or_503(runtime)
     try:
-        return _view_response(service.get_session_view(session_id=session_id, user_id=principal.user_id))
+        return _view_response(
+            service.get_session_view(session_id=session_id, user_id=principal.user_id)
+        )
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
 
 
 @router.get(
-    '/v1/agent-team/sessions/{session_id}/tool-approvals',
+    "/v1/agent-team/sessions/{session_id}/tool-approvals",
     response_model=AgentTeamToolApprovalListResponse,
 )
 def list_agent_team_tool_approvals(
@@ -217,7 +240,7 @@ def list_agent_team_tool_approvals(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/decision',
+    "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/decision",
     response_model=AgentTeamToolApprovalDecisionResponse,
 )
 def decide_agent_team_tool_approval(
@@ -246,14 +269,12 @@ def decide_agent_team_tool_approval(
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
     return AgentTeamToolApprovalDecisionResponse(
-        approval=AgentTeamToolApprovalContract.model_validate(
-            _tool_approval_payload(decided)
-        )
+        approval=AgentTeamToolApprovalContract.model_validate(_tool_approval_payload(decided))
     )
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve',
+    "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve",
     response_model=AgentTeamToolApprovalDecisionResponse,
 )
 def approve_agent_team_tool_approval(
@@ -276,7 +297,7 @@ def approve_agent_team_tool_approval(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject',
+    "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject",
     response_model=AgentTeamToolApprovalDecisionResponse,
 )
 def reject_agent_team_tool_approval(
@@ -297,7 +318,8 @@ def reject_agent_team_tool_approval(
         runtime=runtime,
     )
 
-@router.post('/v1/agent-team/sessions/{session_id}/tasks', response_model=AgentTeamTaskResponse)
+
+@router.post("/v1/agent-team/sessions/{session_id}/tasks", response_model=AgentTeamTaskResponse)
 def create_agent_team_task(
     session_id: str,
     payload: CreateAgentTeamTaskRequest,
@@ -326,7 +348,9 @@ def create_agent_team_task(
             context_refs=payload.context_refs,
             active_skill_ids=payload.active_skill_ids,
             skill_resolution_events=payload.skill_resolution_events,
-            create_branch=payload.auto_fork_branch if payload.auto_fork_branch is not None else payload.create_branch,
+            create_branch=payload.auto_fork_branch
+            if payload.auto_fork_branch is not None
+            else payload.create_branch,
             branch_name=payload.branch_name,
             parent_thread_id=payload.parent_thread_id,
         )
@@ -334,7 +358,8 @@ def create_agent_team_task(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
-@router.get('/v1/agent-team/sessions/{session_id}/tasks', response_model=AgentTeamTaskListResponse)
+
+@router.get("/v1/agent-team/sessions/{session_id}/tasks", response_model=AgentTeamTaskListResponse)
 def list_agent_team_tasks(
     session_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -347,7 +372,8 @@ def list_agent_team_tasks(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskListResponse(tasks=tasks, items=tasks, count=len(tasks))
 
-@router.get('/v1/agent-team/tasks/{task_id}', response_model=AgentTeamTaskResponse)
+
+@router.get("/v1/agent-team/tasks/{task_id}", response_model=AgentTeamTaskResponse)
 def get_agent_team_task(
     task_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -360,7 +386,8 @@ def get_agent_team_task(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
-@router.patch('/v1/agent-team/tasks/{task_id}', response_model=AgentTeamTaskResponse)
+
+@router.patch("/v1/agent-team/tasks/{task_id}", response_model=AgentTeamTaskResponse)
 def update_agent_team_task_status(
     task_id: str,
     payload: UpdateAgentTeamTaskRequest,
@@ -376,7 +403,7 @@ def update_agent_team_task_status(
 
 
 @router.post(
-    '/v1/agent-team/tasks/{task_id}/status',
+    "/v1/agent-team/tasks/{task_id}/status",
     response_model=AgentTeamTaskResponse,
     include_in_schema=False,
 )
@@ -442,7 +469,8 @@ def _update_agent_team_task_status(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
-@router.post('/v1/agent-team/tasks/{task_id}/run', response_model=AgentTeamTaskResponse)
+
+@router.post("/v1/agent-team/tasks/{task_id}/run", response_model=AgentTeamTaskResponse)
 def run_agent_team_task(
     task_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -455,7 +483,8 @@ def run_agent_team_task(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
-@router.post('/v1/agent-team/tasks/{task_id}/retry', response_model=AgentTeamTaskResponse)
+
+@router.post("/v1/agent-team/tasks/{task_id}/retry", response_model=AgentTeamTaskResponse)
 def retry_agent_team_task(
     task_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -468,7 +497,8 @@ def retry_agent_team_task(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
-@router.post('/v1/agent-team/tasks/{task_id}/cancel', response_model=AgentTeamTaskResponse)
+
+@router.post("/v1/agent-team/tasks/{task_id}/cancel", response_model=AgentTeamTaskResponse)
 def cancel_agent_team_task(
     task_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -481,7 +511,10 @@ def cancel_agent_team_task(
         raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
-@router.post('/v1/agent-team/sessions/{session_id}/cancel', response_model=AgentTeamSessionViewResponse)
+
+@router.post(
+    "/v1/agent-team/sessions/{session_id}/cancel", response_model=AgentTeamSessionViewResponse
+)
 def cancel_agent_team_session(
     session_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -492,9 +525,12 @@ def cancel_agent_team_session(
         service.cancel_session(session_id=session_id, user_id=principal.user_id)
     except Exception as exc:  # noqa: BLE001
         raise _agent_team_error(exc) from exc
-    return _view_response(service.get_session_view(session_id=session_id, user_id=principal.user_id))
+    return _view_response(
+        service.get_session_view(session_id=session_id, user_id=principal.user_id)
+    )
 
-@router.post('/v1/agent-team/tasks/{task_id}/outputs', response_model=AgentTeamTaskOutputResponse)
+
+@router.post("/v1/agent-team/tasks/{task_id}/outputs", response_model=AgentTeamTaskOutputResponse)
 def record_agent_team_task_output(
     task_id: str,
     payload: RecordAgentTeamTaskOutputRequest,
@@ -510,7 +546,10 @@ def record_agent_team_task_output(
             artifact_id=payload.artifact_id,
             summary=payload.summary or payload.content or "",
             changed_files=payload.changed_files,
-            test_evidence=[*payload.test_evidence, *([payload.verification_summary] if payload.verification_summary else [])],
+            test_evidence=[
+                *payload.test_evidence,
+                *([payload.verification_summary] if payload.verification_summary else []),
+            ],
             workspace_id=payload.workspace_id,
             workspace_branch=payload.workspace_branch,
             workspace_path=payload.workspace_path,
@@ -525,7 +564,10 @@ def record_agent_team_task_output(
     task = service.get_task(task_id, user_id=principal.user_id)
     return AgentTeamTaskOutputResponse(output=output, task=task)
 
-@router.post('/v1/agent-team/sessions/{session_id}/merge-bundle', response_model=AgentTeamMergeBundleResponse)
+
+@router.post(
+    "/v1/agent-team/sessions/{session_id}/merge-bundle", response_model=AgentTeamMergeBundleResponse
+)
 def prepare_agent_team_merge_bundle(
     session_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -539,7 +581,7 @@ def prepare_agent_team_merge_bundle(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge-proposal',
+    "/v1/agent-team/sessions/{session_id}/merge-proposal",
     response_model=AgentTeamMergeBundleResponse,
     include_in_schema=False,
 )
@@ -573,7 +615,11 @@ def _prepare_agent_team_merge_bundle(
         raise _agent_team_error(exc) from exc
     return AgentTeamMergeBundleResponse(bundle=bundle)
 
-@router.post('/v1/agent-team/sessions/{session_id}/merge-decision', response_model=AgentTeamMergeDecisionResponse)
+
+@router.post(
+    "/v1/agent-team/sessions/{session_id}/merge-decision",
+    response_model=AgentTeamMergeDecisionResponse,
+)
 def apply_agent_team_merge_decision(
     session_id: str,
     payload: ApplyAgentTeamMergeDecisionRequest,
@@ -589,7 +635,7 @@ def apply_agent_team_merge_decision(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge',
+    "/v1/agent-team/sessions/{session_id}/merge",
     response_model=AgentTeamMergeDecisionResponse,
     include_in_schema=False,
 )
@@ -647,7 +693,7 @@ def _apply_agent_team_merge_decision(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge-review',
+    "/v1/agent-team/sessions/{session_id}/merge-review",
     response_model=AgentTeamMergeReviewResponse,
 )
 def create_agent_team_merge_review(
@@ -678,7 +724,7 @@ def create_agent_team_merge_review(
 
 
 @router.get(
-    '/v1/agent-team/sessions/{session_id}/merge-review',
+    "/v1/agent-team/sessions/{session_id}/merge-review",
     response_model=AgentTeamMergeReviewListResponse,
 )
 def list_agent_team_merge_reviews(
@@ -700,7 +746,7 @@ def list_agent_team_merge_reviews(
 
 
 @router.patch(
-    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}',
+    "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}",
     response_model=AgentTeamMergeReviewResponse,
 )
 def update_agent_team_merge_review(
@@ -733,7 +779,7 @@ def update_agent_team_merge_review(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/preview',
+    "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/preview",
     response_model=AgentTeamMergeReviewResponse,
 )
 def preview_agent_team_merge_review(
@@ -760,7 +806,7 @@ def preview_agent_team_merge_review(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/apply',
+    "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/apply",
     response_model=AgentTeamMergeReviewResponse,
 )
 def apply_agent_team_merge_review(
@@ -790,7 +836,7 @@ def apply_agent_team_merge_review(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/reject',
+    "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/reject",
     response_model=AgentTeamMergeReviewResponse,
 )
 def reject_agent_team_merge_review(
@@ -820,7 +866,7 @@ def reject_agent_team_merge_review(
 
 
 @router.post(
-    '/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/capture',
+    "/v1/agent-team/sessions/{session_id}/merge-review/{review_id}/capture",
     response_model=AgentTeamMergeReviewCaptureResponse,
 )
 def capture_agent_team_merge_review(
@@ -864,9 +910,7 @@ def _pending_tool_approvals_for_session(
     for request in approval_queue.list_pending():
         if str(getattr(request, "session_id", "")) in session_ids:
             approvals.append(
-                AgentTeamToolApprovalContract.model_validate(
-                    _tool_approval_payload(request)
-                )
+                AgentTeamToolApprovalContract.model_validate(_tool_approval_payload(request))
             )
     return approvals
 

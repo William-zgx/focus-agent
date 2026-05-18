@@ -92,7 +92,9 @@ def _output(
 
 
 @pytest.fixture(params=["memory", "sqlite", "postgres"])
-def agent_team_repo_factory(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[RepositoryFactory]:
+def agent_team_repo_factory(
+    request: pytest.FixtureRequest, tmp_path: Path
+) -> Iterator[RepositoryFactory]:
     backend = str(request.param)
     if backend == "memory":
         repo = InMemoryAgentTeamRepository()

@@ -416,9 +416,7 @@ def _duplicate_tool_calls(trajectory: list[TrajectoryStep]) -> tuple[int, list[d
         examples.setdefault(signature, {"tool": step.tool, "args": args})
 
     duplicate_details = [
-        {**examples[signature], "count": count}
-        for signature, count in counts.items()
-        if count > 1
+        {**examples[signature], "count": count} for signature, count in counts.items() if count > 1
     ]
     duplicate_total = sum(int(item["count"]) - 1 for item in duplicate_details)
     return duplicate_total, duplicate_details

@@ -30,7 +30,9 @@ def test_extracts_stable_user_profile_but_not_current_task_statement():
     )
     task_result = extractor.extract_from_turn(
         context=_context(),
-        state={"messages": [HumanMessage(content="我在做 memory extractor/write policy 的边界收紧。")]},
+        state={
+            "messages": [HumanMessage(content="我在做 memory extractor/write policy 的边界收紧。")]
+        },
     )
 
     assert _kinds(profile_result) == [MemoryKind.USER_PROFILE]
@@ -157,7 +159,9 @@ def test_branch_findings_only_come_from_branch_local_findings():
         state={
             "messages": [AIMessage(content="发现 owner 字段首次加载会丢失。")],
             "branch_local_findings": [
-                FindingItem(finding="owner 字段首次加载会丢失", evidence_refs=["note-1"], confidence=0.9)
+                FindingItem(
+                    finding="owner 字段首次加载会丢失", evidence_refs=["note-1"], confidence=0.9
+                )
             ],
         },
     )

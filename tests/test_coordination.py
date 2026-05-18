@@ -13,6 +13,7 @@ from focus_agent.services.coordination import (
     PostgresAgentMessageBus,
     PostgresApprovalQueue,
     PostgresBackgroundJobDeduperBackend,
+    PostgresRateLimitBackend,
     PostgresResourceLockManager,
     PostgresThreadTurnLockBackend,
     create_coordination_backend,
@@ -31,9 +32,13 @@ def test_in_memory_thread_turn_lock_respects_owner_and_ttl() -> None:
     backend.release_thread_turn(thread_id="thread-1", owner="owner-a")
     assert backend.acquire_thread_turn(thread_id="thread-1", owner="owner-b", ttl_seconds=1.0)
 
-    assert backend.acquire_thread_turn(thread_id="thread-expiring", owner="owner-a", ttl_seconds=0.001)
+    assert backend.acquire_thread_turn(
+        thread_id="thread-expiring", owner="owner-a", ttl_seconds=0.001
+    )
     time.sleep(0.01)
-    assert backend.acquire_thread_turn(thread_id="thread-expiring", owner="owner-b", ttl_seconds=1.0)
+    assert backend.acquire_thread_turn(
+        thread_id="thread-expiring", owner="owner-b", ttl_seconds=1.0
+    )
 
 
 def test_coordination_backend_includes_in_memory_multi_agent_ports() -> None:
@@ -54,8 +59,94 @@ def test_coordination_backend_uses_postgres_multi_agent_ports_when_enabled() -> 
     assert isinstance(backend.thread_turns, PostgresThreadTurnLockBackend)
     assert isinstance(backend.resource_locks, PostgresResourceLockManager)
     assert isinstance(backend.message_bus, PostgresAgentMessageBus)
+    assert isinstance(backend.rate_limiter, PostgresRateLimitBackend)
     assert isinstance(backend.approval_queue, PostgresApprovalQueue)
     assert backend.message_bus.default_ttl_seconds == 123
+
+
+def test_postgres_rate_limit_backend_uses_shared_bucket_table(monkeypatch) -> None:
+    executed: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+
+        def fetchone(self):
+            return {"token_count": 2, "retry_after_seconds": 12.5}
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.services.coordination.psycopg.connect",
+        lambda uri, row_factory=None: FakeConnection(),
+    )
+
+    backend = PostgresRateLimitBackend("postgresql://example")
+    result = backend.check(key="principal:user-1", limit=2, window_seconds=60.0)
+
+    statement = " ".join(executed[0][0].split())
+    assert "INSERT INTO focus_rate_limit_buckets" in statement
+    assert "ON CONFLICT (bucket_key) DO UPDATE" in statement
+    assert "token_count = CASE" in statement
+    assert "focus_rate_limit_buckets.token_count < %s" in statement
+    assert executed[0][1] == ("principal:user-1", 60.0, 2, 60.0, 60.0)
+    assert result.allowed is True
+    assert result.remaining == 0
+
+
+def test_postgres_rate_limit_backend_rejects_when_bucket_is_full(monkeypatch) -> None:
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+            self.params = params
+
+        def fetchone(self):
+            return {"token_count": 3, "retry_after_seconds": 7.25}
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(
+        "focus_agent.services.coordination.psycopg.connect",
+        lambda uri, row_factory=None: FakeConnection(),
+    )
+
+    result = PostgresRateLimitBackend("postgresql://example").check(
+        key="principal:user-1",
+        limit=2,
+        window_seconds=60.0,
+    )
+
+    assert result.allowed is False
+    assert result.remaining == 0
+    assert result.retry_after_seconds == 7.25
 
 
 def test_in_memory_background_job_heartbeats_and_rejects_stale_claims() -> None:
@@ -73,7 +164,9 @@ def test_in_memory_background_job_heartbeats_and_rejects_stale_claims() -> None:
     _, claim = claimed
     backend.mark_job_claim_running(spec.key, claim)
 
-    stale_claim = BackgroundJobClaim(claim_token="stale-token", owner=claim.owner, attempt=claim.attempt)
+    stale_claim = BackgroundJobClaim(
+        claim_token="stale-token", owner=claim.owner, attempt=claim.attempt
+    )
     assert not backend.heartbeat_job_claim(spec.key, stale_claim, ttl_seconds=1.0)
     backend.mark_job_claim_succeeded(spec.key, stale_claim)
     assert backend.snapshot()["job_running_total"] == 1
@@ -101,10 +194,14 @@ def test_in_memory_background_job_does_not_duplicate_live_pending_claim() -> Non
     )
 
     assert backend.enqueue_job(spec)
-    first_claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    first_claimed = backend.claim_next_job(
+        allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0
+    )
 
     assert first_claimed is not None
-    assert backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0) is None
+    assert (
+        backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0) is None
+    )
 
 
 def test_in_memory_background_job_retries_with_backoff_then_dead_letters() -> None:
@@ -117,7 +214,9 @@ def test_in_memory_background_job_retries_with_backoff_then_dead_letters() -> No
     )
 
     assert backend.enqueue_job(spec)
-    first_claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    first_claimed = backend.claim_next_job(
+        allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0
+    )
     assert first_claimed is not None
     _, first_claim = first_claimed
     backend.mark_job_claim_failed(spec.key, first_claim, "transient")
@@ -127,7 +226,9 @@ def test_in_memory_background_job_retries_with_backoff_then_dead_letters() -> No
     assert snapshot["job_dead_lettered_total"] == 0
     assert snapshot["job_oldest_retry_seconds"] >= 0
 
-    second_claimed = backend.claim_next_job(allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0)
+    second_claimed = backend.claim_next_job(
+        allowed_kinds=("conversation_title",), claim_ttl_seconds=1.0
+    )
     assert second_claimed is not None
     _, second_claim = second_claimed
     assert second_claim.attempt == 2
@@ -137,6 +238,37 @@ def test_in_memory_background_job_retries_with_backoff_then_dead_letters() -> No
     assert snapshot["job_retrying_total"] == 0
     assert snapshot["job_dead_lettered_total"] == 1
     assert snapshot["job_oldest_dead_lettered_seconds"] >= 0
+
+
+def test_in_memory_background_dead_letter_jobs_can_be_listed_and_replayed() -> None:
+    backend = InMemoryBackgroundJobDeduperBackend(retry_base_delay_seconds=0.0)
+    spec = BackgroundJobSpec(
+        kind="conversation_title",
+        key="chat:conversation_title:thread-dead-letter",
+        payload={"root_thread_id": "thread-dead-letter", "user_id": "user-1"},
+        max_attempts=1,
+    )
+
+    assert backend.enqueue_job(spec)
+    claimed = backend.claim_next_job(
+        allowed_kinds=("conversation_title",),
+        claim_ttl_seconds=1.0,
+    )
+    assert claimed is not None
+    _, claim = claimed
+    backend.mark_job_claim_failed(spec.key, claim, "permanent")
+
+    dead_letters = backend.list_dead_letter_jobs()
+
+    assert dead_letters["count"] == 1
+    assert dead_letters["items"][0]["job_key"] == spec.key
+    assert dead_letters["items"][0]["payload"]["root_thread_id"] == "thread-dead-letter"
+    assert dead_letters["items"][0]["last_error"] == "permanent"
+    assert backend.replay_dead_letter_job(spec.key) is True
+    assert backend.replay_dead_letter_job(spec.key) is False
+    snapshot = backend.snapshot()
+    assert snapshot["job_pending_total"] == 1
+    assert snapshot["job_dead_lettered_total"] == 0
 
 
 def test_postgres_thread_turn_lock_uses_owner_ttl_heartbeat_and_release(monkeypatch) -> None:
@@ -265,7 +397,12 @@ def test_postgres_background_job_backend_claim_retry_release_and_metrics(monkeyp
     assert executed[0][1][2] == "worker-1"
     assert isinstance(executed[0][1][4], str)
     assert executed[2][1][1:] == ("chat:context_compaction:thread-1", "worker-1", "claim-token-1")
-    assert executed[3][1][2:] == ("busy", "chat:context_compaction:thread-1", "worker-1", "claim-token-1")
+    assert executed[3][1][2:] == (
+        "busy",
+        "chat:context_compaction:thread-1",
+        "worker-1",
+        "claim-token-1",
+    )
     assert snapshot["job_backend_durable"] == 1
     assert snapshot["job_pending_total"] == 1
     assert snapshot["job_failed_total"] == 1
@@ -477,7 +614,10 @@ def test_postgres_background_job_claim_next_does_not_duplicate_live_claim(monkey
         def fetchone(self):
             if "RETURNING jobs.job_key" not in self._sql:
                 return None
-            excludes_live_pending = "claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now()" in self._sql
+            excludes_live_pending = (
+                "claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now()"
+                in self._sql
+            )
             marks_running = "SET status = 'running'" in self._sql
             status = str(storage["status"])
             is_live = bool(storage["claimed_until_live"])
@@ -532,7 +672,9 @@ def test_postgres_background_job_claim_next_does_not_duplicate_live_claim(monkey
     assert first_claimed is not None
     assert second_claimed is None
     statements = [" ".join(sql.split()) for sql, _ in executed]
-    claim_statements = [statement for statement in statements if "RETURNING jobs.job_key" in statement]
+    claim_statements = [
+        statement for statement in statements if "RETURNING jobs.job_key" in statement
+    ]
     assert claim_statements
     assert all(
         "SET status = 'running'" in statement

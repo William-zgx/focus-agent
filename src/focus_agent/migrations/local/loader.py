@@ -73,28 +73,21 @@ class AppStateSinkDiscovery:
 
 
 class AppStateSink(Protocol):
-    def setup(self) -> None:
-        ...
+    def setup(self) -> None: ...
 
-    def upsert_thread_access_rows(self, rows: Sequence[dict[str, Any]]) -> int | None:
-        ...
+    def upsert_thread_access_rows(self, rows: Sequence[dict[str, Any]]) -> int | None: ...
 
-    def upsert_conversation_rows(self, rows: Sequence[dict[str, Any]]) -> int | None:
-        ...
+    def upsert_conversation_rows(self, rows: Sequence[dict[str, Any]]) -> int | None: ...
 
-    def upsert_branch_rows(self, rows: Sequence[dict[str, Any]]) -> int | None:
-        ...
+    def upsert_branch_rows(self, rows: Sequence[dict[str, Any]]) -> int | None: ...
 
 
 class FocusMemorySink(Protocol):
-    def setup(self) -> None:
-        ...
+    def setup(self) -> None: ...
 
-    def upsert_record(self, record) -> str:
-        ...
+    def upsert_record(self, record) -> str: ...
 
-    def list_records(self, query: MemoryListQuery) -> list:
-        ...
+    def list_records(self, query: MemoryListQuery) -> list: ...
 
 
 @contextmanager
@@ -196,8 +189,7 @@ def _migration_memory_embedding_settings() -> object:
             or "auto"
         ),
         agent_memory_embedding_provider=(
-            os.environ.get("AGENT_MEMORY_EMBEDDING_PROVIDER")
-            or "openai_compatible"
+            os.environ.get("AGENT_MEMORY_EMBEDDING_PROVIDER") or "openai_compatible"
         ),
         agent_memory_embedding_model=(
             os.environ.get("AGENT_MEMORY_EMBEDDING_MODEL") or "embeddinggemma"
@@ -279,7 +271,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def resolve_source_layout(source_dir: str | Path) -> SourceLayout:
     requested_dir = Path(source_dir).expanduser().resolve()
     resolved_dir = requested_dir
-    if not (resolved_dir / "branches.sqlite3").exists() and (resolved_dir / ".focus_agent").is_dir():
+    if (
+        not (resolved_dir / "branches.sqlite3").exists()
+        and (resolved_dir / ".focus_agent").is_dir()
+    ):
         resolved_dir = (resolved_dir / ".focus_agent").resolve()
 
     return SourceLayout(
@@ -418,8 +413,12 @@ def load_local_store_items(store_path: Path) -> list[LocalStoreItemRecord]:
                     namespace=tuple(namespace),
                     key=str(key),
                     value=_store_item_value_to_dict(value),
-                    created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
-                    updated_at=updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+                    created_at=created_at.isoformat()
+                    if hasattr(created_at, "isoformat")
+                    else created_at,
+                    updated_at=updated_at.isoformat()
+                    if hasattr(updated_at, "isoformat")
+                    else updated_at,
                 )
             )
     records.sort(key=lambda item: (".".join(item.namespace), item.key))
@@ -446,7 +445,9 @@ def load_local_checkpoints(checkpoint_path: Path) -> list[LocalCheckpointRecord]
     records: list[LocalCheckpointRecord] = []
     for checkpoint_tuple in saver.list(None):
         configurable = checkpoint_tuple.config["configurable"]
-        parent_config = checkpoint_tuple.parent_config["configurable"] if checkpoint_tuple.parent_config else {}
+        parent_config = (
+            checkpoint_tuple.parent_config["configurable"] if checkpoint_tuple.parent_config else {}
+        )
         records.append(
             LocalCheckpointRecord(
                 thread_id=str(configurable["thread_id"]),

@@ -149,7 +149,7 @@ class PostgresProductivityRepository(ProductivityRepository):
             params["tags"] = tag_filter
         sql = f"""
             SELECT data_json FROM focus_notes
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY updated_at DESC, note_id DESC
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -282,7 +282,7 @@ class PostgresProductivityRepository(ProductivityRepository):
             params["archived"] = FocusTaskStatus.ARCHIVED.value
         sql = f"""
             SELECT data_json FROM focus_tasks
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY updated_at DESC, task_id DESC
             LIMIT %(limit)s OFFSET %(offset)s
         """

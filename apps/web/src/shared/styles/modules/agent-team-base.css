@@ -151,6 +151,26 @@
 	white-space: nowrap;
 }
 
+.fa-agent-team-autonomy-evidence {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-info) 34%, var(--fa-border-subtle));
+	border-radius: 12px;
+	background: var(--fa-info-surface);
+	color: var(--fa-text-muted);
+	font-size: 0.8rem;
+}
+
+.fa-agent-team-autonomy-evidence strong {
+	min-width: 0;
+	color: var(--fa-text);
+	font-weight: 600;
+}
+
 .fa-agent-team-refine-strip {
 	display: flex;
 	flex-wrap: wrap;

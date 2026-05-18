@@ -162,9 +162,15 @@ def test_thread_owner_contract(repository: BranchRepository):
 
 
 def test_conversation_crud_contract(repository: BranchRepository):
-    repository.ensure_thread_owner(thread_id="user-1-main", root_thread_id="user-1-main", owner_user_id="user-1")
-    repository.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="user-1")
-    repository.ensure_thread_owner(thread_id="root-2", root_thread_id="root-2", owner_user_id="user-2")
+    repository.ensure_thread_owner(
+        thread_id="user-1-main", root_thread_id="user-1-main", owner_user_id="user-1"
+    )
+    repository.ensure_thread_owner(
+        thread_id="root-1", root_thread_id="root-1", owner_user_id="user-1"
+    )
+    repository.ensure_thread_owner(
+        thread_id="root-2", root_thread_id="root-2", owner_user_id="user-2"
+    )
 
     created = repository.create_conversation(
         _conversation(

@@ -48,8 +48,12 @@ _CURRENT_SPAN: ContextVar[TraceSpanContext | None] = ContextVar(
     default=None,
 )
 _TRACING_ENABLED: ContextVar[bool] = ContextVar("focus_agent_tracing_enabled", default=False)
-_TRACING_SERVICE_NAME: ContextVar[str] = ContextVar("focus_agent_tracing_service_name", default="focus-agent")
-_OTEL_TRACER_PROVIDER: ContextVar[Any | None] = ContextVar("focus_agent_otel_tracer_provider", default=None)
+_TRACING_SERVICE_NAME: ContextVar[str] = ContextVar(
+    "focus_agent_tracing_service_name", default="focus-agent"
+)
+_OTEL_TRACER_PROVIDER: ContextVar[Any | None] = ContextVar(
+    "focus_agent_otel_tracer_provider", default=None
+)
 
 
 def build_trace_correlation(
@@ -94,7 +98,11 @@ class TraceSpanScope(AbstractContextManager["TraceSpanScope"]):
         self.correlation = correlation or _CURRENT_CORRELATION.get()
         self.enabled = bool(enabled and self.correlation is not None)
         self.service_name = _normalize_optional_string(service_name) or "focus-agent"
-        self.otel_tracer_provider = otel_tracer_provider if otel_tracer_provider is not None else _OTEL_TRACER_PROVIDER.get()
+        self.otel_tracer_provider = (
+            otel_tracer_provider
+            if otel_tracer_provider is not None
+            else _OTEL_TRACER_PROVIDER.get()
+        )
         self.span: TraceSpanContext | None = None
         self._attributes = dict(attributes or {})
         self._span_id = span_id
@@ -171,7 +179,9 @@ class TraceSpanScope(AbstractContextManager["TraceSpanScope"]):
         return self.span.runtime_payload() if self.span is not None else {}
 
     @staticmethod
-    def correlation_attributes(correlation: TraceCorrelation, *, service_name: str = "focus-agent") -> dict[str, Any]:
+    def correlation_attributes(
+        correlation: TraceCorrelation, *, service_name: str = "focus-agent"
+    ) -> dict[str, Any]:
         attributes: dict[str, Any] = {
             "service.name": _normalize_optional_string(service_name) or "focus-agent",
             "focus_agent.trace_id": correlation.trace_id,
@@ -285,7 +295,9 @@ def build_trace_metadata(
     return metadata
 
 
-def build_trace_tags(*, root_thread_id: str, thread_id: str, branch_meta: BranchMeta | None = None) -> list[str]:
+def build_trace_tags(
+    *, root_thread_id: str, thread_id: str, branch_meta: BranchMeta | None = None
+) -> list[str]:
     tags = [
         "focus-agent",
         "long-dialogue",
@@ -333,7 +345,9 @@ def build_invoke_config(
             trace_correlation=trace_correlation,
             scene=scene,
         ),
-        "tags": build_trace_tags(root_thread_id=root_thread_id, thread_id=thread_id, branch_meta=branch_meta),
+        "tags": build_trace_tags(
+            root_thread_id=root_thread_id, thread_id=thread_id, branch_meta=branch_meta
+        ),
     }
 
 

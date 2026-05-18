@@ -14,16 +14,34 @@ from urllib import request as urllib_request
 
 DEFAULT_REPORT_JSON = Path("reports/release-gate/production-smoke.json")
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
-DEFAULT_CHECKS: tuple[tuple[str, str, str, str, str, tuple[int, ...], dict[str, Any] | None], ...] = (
+DEFAULT_CHECKS: tuple[
+    tuple[str, str, str, str, str, tuple[int, ...], dict[str, Any] | None], ...
+] = (
     ("api_healthz", "api", "api", "GET", "/healthz", (200,), None),
     ("api_readyz", "api", "api", "GET", "/readyz", (200,), None),
     ("api_models", "api", "api", "GET", "/v1/models", (200, 401, 403), None),
-    ("api_trajectory_stats", "api", "api", "GET", "/v1/observability/trajectory/stats", (200, 401, 403), None),
+    (
+        "api_trajectory_stats",
+        "api",
+        "api",
+        "GET",
+        "/v1/observability/trajectory/stats",
+        (200, 401, 403),
+        None,
+    ),
     ("sdk_client_healthz", "sdk", "api", "GET", "/healthz", (200,), None),
     ("web_app", "web", "web", "GET", "/app", (200,), None),
     ("web_observability", "web", "web", "GET", "/app/observability/overview", (200,), None),
     ("web_agent_governance", "web", "web", "GET", "/app/agent/governance", (200,), None),
-    ("graph_min_conversation", "graph", "api", "POST", "/v1/conversations", (200, 201), {"title": "Production smoke"}),
+    (
+        "graph_min_conversation",
+        "graph",
+        "api",
+        "POST",
+        "/v1/conversations",
+        (200, 201),
+        {"title": "Production smoke"},
+    ),
     (
         "graph_min_chat_turn",
         "graph",
@@ -225,7 +243,10 @@ def _http_stream_events(
     auth_token: str | None,
     timeout_seconds: float,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    headers = {"Accept": "text/event-stream", **_headers_for_check("stream_events", auth_token=auth_token)}
+    headers = {
+        "Accept": "text/event-stream",
+        **_headers_for_check("stream_events", auth_token=auth_token),
+    }
     request = urllib_request.Request(url, headers=headers, method="GET")
     with urllib_request.urlopen(request, timeout=timeout_seconds) as response:
         raw = _read_sse_sample(response)
@@ -251,7 +272,11 @@ def _read_sse_sample(response: Any) -> str:
         lines.append(line)
         if line in {"\n", "\r\n"}:
             events = _parse_sse_events("".join(lines))
-            if any(event.get("event") in {REQUIRED_STREAM_TERMINAL_EVENT, *FAILED_STREAM_TERMINAL_EVENTS} for event in events):
+            if any(
+                event.get("event")
+                in {REQUIRED_STREAM_TERMINAL_EVENT, *FAILED_STREAM_TERMINAL_EVENTS}
+                for event in events
+            ):
                 break
         if sum(len(line) for line in lines) >= 256 * 1024:
             break
@@ -341,7 +366,9 @@ def _validate_stream_events(
 
     events_seen = [event["event"] for event in normalized_events]
     unique_events = sorted(set(events_seen))
-    unknown_events = sorted({event_name for event_name in events_seen if event_name not in KNOWN_STREAM_EVENT_NAMES})
+    unknown_events = sorted(
+        {event_name for event_name in events_seen if event_name not in KNOWN_STREAM_EVENT_NAMES}
+    )
     if unknown_events:
         errors.append(f"unknown stream events: {', '.join(unknown_events)}")
     if not normalized_events:
@@ -363,7 +390,9 @@ def _validate_stream_events(
         "events_seen": unique_events,
         "errors": errors,
         "events": normalized_events[:25],
-        "detail": "stream event contract validated" if passed else "stream event contract validation failed",
+        "detail": "stream event contract validated"
+        if passed
+        else "stream event contract validation failed",
     }
 
 
@@ -405,7 +434,9 @@ def _build_stream_events_report(
                 "errors": [str(exc)],
                 "detail": "failed to load stream event report",
             }
-        return _validate_stream_events(_events_from_json_payload(payload), source={"type": "file", "path": str(path)})
+        return _validate_stream_events(
+            _events_from_json_payload(payload), source={"type": "file", "path": str(path)}
+        )
     if stream_events_url:
         try:
             events, source = _http_stream_events(
@@ -437,7 +468,9 @@ def _build_stream_events_report(
     }
 
 
-def _build_graph_turn_report(*, checks: Sequence[Mapping[str, Any]], dry_run: bool) -> dict[str, Any]:
+def _build_graph_turn_report(
+    *, checks: Sequence[Mapping[str, Any]], dry_run: bool
+) -> dict[str, Any]:
     graph_checks = [check for check in checks if check.get("name") in GRAPH_TURN_CHECKS]
     if dry_run:
         return {
@@ -447,7 +480,11 @@ def _build_graph_turn_report(*, checks: Sequence[Mapping[str, Any]], dry_run: bo
             "required_checks": list(GRAPH_TURN_CHECKS),
             "detail": "planned graph conversation and turn probes",
         }
-    missing = [name for name in GRAPH_TURN_CHECKS if not any(check.get("name") == name for check in graph_checks)]
+    missing = [
+        name
+        for name in GRAPH_TURN_CHECKS
+        if not any(check.get("name") == name for check in graph_checks)
+    ]
     failed = [str(check.get("name")) for check in graph_checks if not _check_passed(check)]
     errors = [f"missing graph check: {name}" for name in missing]
     passed = not failed and not errors
@@ -507,7 +544,11 @@ def _build_threshold_report(
             "errors": ["missing rate_limit_probe check"],
         }
     else:
-        headers = rate_check.get("response_headers") if isinstance(rate_check.get("response_headers"), dict) else {}
+        headers = (
+            rate_check.get("response_headers")
+            if isinstance(rate_check.get("response_headers"), dict)
+            else {}
+        )
         limit = _optional_int(_header_value(headers, "X-RateLimit-Limit"))
         remaining = _optional_int(_header_value(headers, "X-RateLimit-Remaining"))
         retry_after = _header_value(headers, "Retry-After")
@@ -538,7 +579,9 @@ def _build_threshold_report(
             },
             "min_limit": rate_limit_min_limit,
             "errors": errors,
-            "detail": "rate-limit headers satisfied thresholds" if rate_limit_passed else "rate-limit threshold check failed",
+            "detail": "rate-limit headers satisfied thresholds"
+            if rate_limit_passed
+            else "rate-limit threshold check failed",
         }
 
     return {
@@ -566,10 +609,16 @@ def build_report(
         probe_base_url = resolved_web_base_url if base_kind == "web" else base_url
         url = _join_url(probe_base_url, path)
         probe_body = body
-        if created_thread_id and name in {"graph_min_chat_turn", "rate_limit_probe"} and body is not None:
+        if (
+            created_thread_id
+            and name in {"graph_min_chat_turn", "rate_limit_probe"}
+            and body is not None
+        ):
             probe_body = {**body, "thread_id": created_thread_id}
         check = (
-            _dry_run_check(name, url, category=category, method=method, expected_statuses=expected_statuses)
+            _dry_run_check(
+                name, url, category=category, method=method, expected_statuses=expected_statuses
+            )
             if dry_run
             else _http_check(
                 name,
@@ -645,18 +694,24 @@ def build_report(
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
     target = _resolve_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Plan probes without calling the service.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Plan probes without calling the service."
+    )
     parser.add_argument("--auth-token", help="Bearer token used for authenticated positive probes.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Production API base URL.")
     parser.add_argument("--web-base-url", help="Production web base URL. Defaults to --base-url.")
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="Per-probe timeout.")
-    parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured report path.")
+    parser.add_argument(
+        "--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured report path."
+    )
     parser.add_argument(
         "--stream-events-json",
         help="JSON stream event report to validate in live mode.",

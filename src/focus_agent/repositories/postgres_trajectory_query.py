@@ -24,7 +24,9 @@ class PostgresTrajectoryQueryMixin:
             merged_filters = dict(filters or {})
             if isinstance(query, dict):
                 merged_filters.update(query)
-            normalized = TrajectoryTurnQuery(**PostgresTrajectoryQueryMixin._query_kwargs_from_filters(merged_filters))
+            normalized = TrajectoryTurnQuery(
+                **PostgresTrajectoryQueryMixin._query_kwargs_from_filters(merged_filters)
+            )
         if limit is not None:
             normalized.limit = limit
         if offset is not None:
@@ -63,17 +65,35 @@ class PostgresTrajectoryQueryMixin:
         step_params: dict[str, Any] = {}
 
         self._add_scalar_filter(turn_conditions, params, "turn_ids", "t.id", query.turn_ids)
-        self._add_scalar_filter(turn_conditions, params, "request_id", "t.request_id", query.request_id)
+        self._add_scalar_filter(
+            turn_conditions, params, "request_id", "t.request_id", query.request_id
+        )
         self._add_scalar_filter(turn_conditions, params, "trace_id", "t.trace_id", query.trace_id)
-        self._add_scalar_filter(turn_conditions, params, "thread_id", "t.thread_id", query.thread_id)
-        self._add_scalar_filter(turn_conditions, params, "root_thread_id", "t.root_thread_id", query.root_thread_id)
-        self._add_scalar_filter(turn_conditions, params, "parent_thread_id", "t.parent_thread_id", query.parent_thread_id)
-        self._add_scalar_filter(turn_conditions, params, "branch_id", "t.branch_id", query.branch_id)
-        self._add_scalar_filter(turn_conditions, params, "branch_role", "t.branch_role", query.branch_role)
+        self._add_scalar_filter(
+            turn_conditions, params, "thread_id", "t.thread_id", query.thread_id
+        )
+        self._add_scalar_filter(
+            turn_conditions, params, "root_thread_id", "t.root_thread_id", query.root_thread_id
+        )
+        self._add_scalar_filter(
+            turn_conditions,
+            params,
+            "parent_thread_id",
+            "t.parent_thread_id",
+            query.parent_thread_id,
+        )
+        self._add_scalar_filter(
+            turn_conditions, params, "branch_id", "t.branch_id", query.branch_id
+        )
+        self._add_scalar_filter(
+            turn_conditions, params, "branch_role", "t.branch_role", query.branch_role
+        )
         self._add_scalar_filter(turn_conditions, params, "status", "t.status", query.status)
         self._add_scalar_filter(turn_conditions, params, "scene", "t.scene", query.scene)
         self._add_scalar_filter(turn_conditions, params, "kind", "t.kind", query.kind)
-        self._add_scalar_filter(turn_conditions, params, "selected_model", "t.selected_model", query.selected_model)
+        self._add_scalar_filter(
+            turn_conditions, params, "selected_model", "t.selected_model", query.selected_model
+        )
 
         if query.since is not None:
             params["since"] = query.since
@@ -83,16 +103,24 @@ class PostgresTrajectoryQueryMixin:
             turn_conditions.append("t.created_at <= %(until)s")
         if query.min_latency_ms is not None:
             params["min_latency_ms"] = float(query.min_latency_ms)
-            turn_conditions.append("COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0) >= %(min_latency_ms)s")
+            turn_conditions.append(
+                "COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0) >= %(min_latency_ms)s"
+            )
         if query.max_latency_ms is not None:
             params["max_latency_ms"] = float(query.max_latency_ms)
-            turn_conditions.append("COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0) <= %(max_latency_ms)s")
+            turn_conditions.append(
+                "COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0) <= %(max_latency_ms)s"
+            )
         if query.min_tool_calls is not None:
             params["min_tool_calls"] = int(query.min_tool_calls)
-            turn_conditions.append("COALESCE((t.metrics ->> 'tool_calls')::INT, 0) >= %(min_tool_calls)s")
+            turn_conditions.append(
+                "COALESCE((t.metrics ->> 'tool_calls')::INT, 0) >= %(min_tool_calls)s"
+            )
         if query.max_tool_calls is not None:
             params["max_tool_calls"] = int(query.max_tool_calls)
-            turn_conditions.append("COALESCE((t.metrics ->> 'tool_calls')::INT, 0) <= %(max_tool_calls)s")
+            turn_conditions.append(
+                "COALESCE((t.metrics ->> 'tool_calls')::INT, 0) <= %(max_tool_calls)s"
+            )
 
         self._add_scalar_filter(step_conditions, step_params, "step_tool", "s.tool", query.tool)
         if query.fallback_used is not None:

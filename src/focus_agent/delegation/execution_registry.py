@@ -4,12 +4,12 @@ from typing import Any
 
 from pydantic import Field
 
+from ..config import Settings
+from ..core.types import StateModel
 from .delegation_models import AgentTask
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_types import DelegatedRunExecutor, SubagentConfig
 from .roles import AgentRole, RoleModelResolver
-from ..config import Settings
-from ..core.types import StateModel
 
 
 class SubagentRegistry(StateModel):

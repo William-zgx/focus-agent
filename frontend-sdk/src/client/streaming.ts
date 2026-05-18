@@ -52,6 +52,9 @@ async function streamResume(
     `/v2/threads/${encodeURIComponent(request.thread_id)}/runs/resume/stream`,
     harnessRequest,
     options,
+    {
+      resumePathForRunId: (runId) => `/v2/runs/${encodeURIComponent(runId)}/stream`,
+    },
   );
 }
 
@@ -65,6 +68,9 @@ async function streamHarnessRun(
     `/v2/threads/${encodeURIComponent(threadId)}/runs/stream`,
     request,
     options,
+    {
+      resumePathForRunId: (runId) => `/v2/runs/${encodeURIComponent(runId)}/stream`,
+    },
   );
 }
 

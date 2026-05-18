@@ -289,7 +289,9 @@ class AuthService:
     def _require_strong_password(password: str) -> None:
         if len(password) < 8:
             raise WeakPasswordError("Password must be at least 8 characters.")
-        if not any(char.isalpha() for char in password) or not any(char.isdigit() for char in password):
+        if not any(char.isalpha() for char in password) or not any(
+            char.isdigit() for char in password
+        ):
             raise WeakPasswordError("Password must include letters and numbers.")
 
     def _revoke_other_sessions(self, *, user_id: str, current_session_id: str | None) -> None:

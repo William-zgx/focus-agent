@@ -105,5 +105,7 @@ def evaluate_release_health(
         signals.append(evaluate_governance_quality_report(governance_quality_report))
 
     return ReleaseHealthReport(signals=tuple(signals))
+
+
 def _eval_regression_signal(regressions: list[str]) -> ReleaseHealthSignal:
     return eval_regression_signal(regressions)

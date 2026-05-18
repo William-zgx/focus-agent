@@ -437,9 +437,7 @@ def test_skill_registry_searches_sources_and_installs_local_skill_bundle(tmp_pat
             sources=("vendor",),
         )
     )
-    installed = json.loads(
-        render_skill_install_json(registry, skill_id="docs", source_id="vendor")
-    )
+    installed = json.loads(render_skill_install_json(registry, skill_id="docs", source_id="vendor"))
 
     assert sources["sources"][1]["source_id"] == "vendor"
     assert searched["results"][0]["skill_id"] == "docs"
@@ -466,9 +464,7 @@ def test_tool_registry_exposes_skill_discovery_tools(tmp_path):
     searched = json.loads(
         tool_registry.by_name["skills_search"].invoke({"query": "planning", "limit": 3})
     )
-    installed = json.loads(
-        tool_registry.by_name["skill_install"].invoke({"skill_id": "plan"})
-    )
+    installed = json.loads(tool_registry.by_name["skill_install"].invoke({"skill_id": "plan"}))
     refreshed = json.loads(tool_registry.by_name["skills_refresh_index"].invoke({}))
 
     assert sources["success"] is True
@@ -596,14 +592,8 @@ def test_skill_tools_use_configured_label_and_description(tmp_path):
     assert tool_registry.by_name["skills_list"].metadata["display_name"] == "Skill Catalog"
     assert tool_registry.by_name["skill_view"].description == "Open one skill definition."
     assert tool_registry.by_name["skill_view"].metadata["display_name"] == "Skill Inspector"
-    assert (
-        tool_registry.by_name["skill_sources"].description
-        == "Open skill source definitions."
-    )
-    assert (
-        tool_registry.by_name["skill_sources"].metadata["display_name"]
-        == "Skill Source Catalog"
-    )
+    assert tool_registry.by_name["skill_sources"].description == "Open skill source definitions."
+    assert tool_registry.by_name["skill_sources"].metadata["display_name"] == "Skill Source Catalog"
 
 
 def test_tool_registry_uses_tool_catalog_section_order(tmp_path):
@@ -743,7 +733,9 @@ def test_tool_registry_skips_disabled_builtin_provider(tmp_path, monkeypatch):
         get_default_tools_called = True
         return []
 
-    monkeypatch.setattr("focus_agent.capabilities.tool_registry.get_default_tools", fake_get_default_tools)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_registry.get_default_tools", fake_get_default_tools
+    )
 
     tool_registry = build_tool_registry(
         settings=Settings(

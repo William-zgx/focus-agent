@@ -169,7 +169,9 @@ def looks_like_textual_tool_call_artifact(
         return True
 
     tool_names = _normalized_tool_names(known_tool_names)
-    if any(match.group(1).lower() in tool_names for match in _BRACKET_TOOL_MARKER_RE.finditer(lowered)):
+    if any(
+        match.group(1).lower() in tool_names for match in _BRACKET_TOOL_MARKER_RE.finditer(lowered)
+    ):
         return True
 
     return bool(
@@ -198,9 +200,9 @@ def safe_visible_text_transition(
 
     candidate_pending = f"{pending_text}{delta}"
     candidate_visible = f"{current_text}{candidate_pending}"
-    if looks_like_textual_tool_call_artifact(candidate_pending) or looks_like_textual_tool_call_artifact(
-        candidate_visible
-    ):
+    if looks_like_textual_tool_call_artifact(
+        candidate_pending
+    ) or looks_like_textual_tool_call_artifact(candidate_visible):
         current_looks_internal = looks_like_textual_tool_call_artifact(
             current_text
         ) or looks_like_potential_textual_tool_call_prefix(current_text)
@@ -209,5 +211,7 @@ def safe_visible_text_transition(
     if looks_like_potential_textual_tool_call_prefix(candidate_pending):
         return current_text, candidate_pending
 
-    safe_delta = "" if looks_like_textual_tool_call_artifact(candidate_pending) else candidate_pending
+    safe_delta = (
+        "" if looks_like_textual_tool_call_artifact(candidate_pending) else candidate_pending
+    )
     return current_text + safe_delta, ""

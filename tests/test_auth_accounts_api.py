@@ -91,7 +91,9 @@ def test_login_errors_use_stable_codes(monkeypatch: pytest.MonkeyPatch, tmp_path
     created = client.post("/v1/auth/register", json={"username": "taken", "password": "secret123"})
     assert created.status_code == 201
 
-    duplicate = client.post("/v1/auth/register", json={"username": "TAKEN", "password": "secret123"})
+    duplicate = client.post(
+        "/v1/auth/register", json={"username": "TAKEN", "password": "secret123"}
+    )
     assert duplicate.status_code == 409
     assert duplicate.json()["data"]["code"] == "username_taken"
 
@@ -104,7 +106,9 @@ def test_refresh_logout_and_revoked_session_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client, repo = _build_client(monkeypatch, tmp_path)
-    registered = client.post("/v1/auth/register", json={"username": "sessioned", "password": "secret123"})
+    registered = client.post(
+        "/v1/auth/register", json={"username": "sessioned", "password": "secret123"}
+    )
     refresh_token = registered.json()["refresh_token"]
 
     refreshed = client.post("/v1/auth/refresh", json={})
@@ -124,7 +128,9 @@ def test_change_password_keeps_current_session_and_revokes_other_sessions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client, repo = _build_client(monkeypatch, tmp_path)
-    registered = client.post("/v1/auth/register", json={"username": "changer", "password": "secret123"})
+    registered = client.post(
+        "/v1/auth/register", json={"username": "changer", "password": "secret123"}
+    )
     current_refresh_token = registered.json()["refresh_token"]
     other = client.post("/v1/auth/login", json={"username": "changer", "password": "secret123"})
     other_refresh_token = other.json()["refresh_token"]
@@ -155,7 +161,9 @@ def test_auth_sessions_api_lists_and_revokes_current_user_session(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client, repo = _build_client(monkeypatch, tmp_path)
-    registered = client.post("/v1/auth/register", json={"username": "sessions", "password": "secret123"})
+    registered = client.post(
+        "/v1/auth/register", json={"username": "sessions", "password": "secret123"}
+    )
     refresh_token = registered.json()["refresh_token"]
     session_id = _refresh_token_hash(refresh_token)
 

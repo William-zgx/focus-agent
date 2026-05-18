@@ -11,19 +11,19 @@ class DAGValidationError(MultiAgentError):
     """Raised when task dependencies cannot form a valid DAG."""
 
 
-class ResourceLockTimeout(MultiAgentError):
+class ResourceLockTimeout(MultiAgentError):  # noqa: N818 - public compatibility name
     """Raised when a resource lock cannot be acquired in time."""
 
 
-class DeadlockDetected(MultiAgentError):
+class DeadlockDetected(MultiAgentError):  # noqa: N818 - public compatibility name
     """Raised when resource wait relationships form a cycle."""
 
 
-class ApprovalTimeout(MultiAgentError):
+class ApprovalTimeout(MultiAgentError):  # noqa: N818 - public compatibility name
     """Raised when an approval request reaches its timeout."""
 
 
-class MergeConflictBlocking(MultiAgentError):
+class MergeConflictBlocking(MultiAgentError):  # noqa: N818 - public compatibility name
     """Raised when merge conflict detection finds a blocking conflict."""
 
 

@@ -11,12 +11,15 @@
     "web:dev": "pnpm --filter @focus-agent/web-app dev",
     "web:build": "pnpm --filter @focus-agent/web-app build",
     "web:check": "pnpm --filter @focus-agent/web-app check",
+    "web:style:check": "pnpm --filter @focus-agent/web-app style:check",
+    "web:a11y:baseline": "pnpm --filter @focus-agent/web-app a11y:baseline",
+    "web:visual:baseline": "pnpm --filter @focus-agent/web-app visual:baseline",
     "web:lint:full": "pnpm --filter @focus-agent/web-app lint:full",
     "web:format": "pnpm --filter @focus-agent/web-app format",
     "web:format:check": "pnpm --filter @focus-agent/web-app format:check",
     "web:format:check:full": "pnpm --filter @focus-agent/web-app format:check:full",
     "test:thread-stream-frontend-regressions": "node --test tests/test_thread_stream_frontend_regressions.mjs",
-    "check": "pnpm lint-strict && pnpm contract:check && pnpm sdk:check && pnpm sdk:validate:transport && pnpm web:lint:full && pnpm web:format:check:full && pnpm web:check && pnpm test:thread-stream-frontend-regressions",
+    "check": "pnpm lint-strict && pnpm contract:check && pnpm sdk:check && pnpm sdk:validate:transport && pnpm web:style:check && pnpm web:lint:full && pnpm web:format:check:full && pnpm web:check && pnpm test:thread-stream-frontend-regressions",
     "build": "pnpm sdk:build && pnpm web:build",
     "ci": "pnpm check && pnpm build"
   }

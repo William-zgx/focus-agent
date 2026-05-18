@@ -15,6 +15,7 @@ _INSECURE_AUTH_JWT_SECRETS = {
     "change-me-in-shared-env",
 }
 _DEVELOPMENT_ENVIRONMENT_NAMES = {"dev", "development", "local", "test", "testing", "ci"}
+_MINIMUM_AUTH_JWT_SECRET_LENGTH = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,9 +131,7 @@ def _auth_jwt_keys_from_env(env: MutableMapping[str, str]) -> tuple[AuthJwtKey, 
     return _dedupe_auth_jwt_keys(keys)
 
 
-def _configured_single_auth_secret(
-    settings: Any, env: MutableMapping[str, str]
-) -> str | None:
+def _configured_single_auth_secret(settings: Any, env: MutableMapping[str, str]) -> str | None:
     if _normalize_optional_string(env.get("AUTH_JWT_SECRET")) is None:
         return None
     return _normalize_optional_string(settings.auth_jwt_secret)
@@ -162,20 +161,82 @@ def _non_development_environment_sources(env: MutableMapping[str, str]) -> tuple
     return tuple(sources)
 
 
+def _non_development_environment_sources_for_settings(settings: Any) -> tuple[str, ...]:
+    env = getattr(settings, "resolved_env", None)
+    if env:
+        sources = _non_development_environment_sources(env)
+        if sources:
+            return sources
+
+    value = _normalize_optional_string(getattr(settings, "app_environment", None))
+    if value is None or value.lower() in _DEVELOPMENT_ENVIRONMENT_NAMES:
+        return ()
+    return (f"APP_ENVIRONMENT={value}",)
+
+
+def _single_auth_secret_is_configured(settings: Any) -> bool:
+    secret = _normalize_optional_string(getattr(settings, "auth_jwt_secret", None))
+    if secret is None:
+        return False
+
+    keys = tuple(getattr(settings, "auth_jwt_keys", ()) or ())
+    resolved_env = getattr(settings, "resolved_env", {}) or {}
+    explicitly_configured = "AUTH_JWT_SECRET" in resolved_env
+    if not keys:
+        return explicitly_configured or secret != DEFAULT_AUTH_JWT_SECRET or not resolved_env
+    return explicitly_configured or secret != DEFAULT_AUTH_JWT_SECRET
+
+
+def _configured_auth_jwt_secrets(settings: Any) -> tuple[tuple[str, str], ...]:
+    secrets: list[tuple[str, str]] = []
+    for key in getattr(settings, "auth_jwt_keys", ()) or ():
+        if key.active:
+            secrets.append((f"AUTH_JWT_KEYS[{key.kid}]", key.secret))
+    if _single_auth_secret_is_configured(settings):
+        secrets.append(("AUTH_JWT_SECRET", settings.auth_jwt_secret))
+    return tuple(secrets)
+
+
+def _jwt_secret_security_failures(settings: Any) -> list[str]:
+    secrets = _configured_auth_jwt_secrets(settings)
+    if not secrets:
+        return ["AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key"]
+
+    failures: list[str] = []
+    for label, secret in secrets:
+        normalized_secret = _normalize_optional_string(secret)
+        if normalized_secret is None:
+            failures.append(f"{label} must not be empty")
+            continue
+        if normalized_secret in _INSECURE_AUTH_JWT_SECRETS:
+            failures.append(f"{label} must not use a development or demo default")
+        if len(normalized_secret) < _MINIMUM_AUTH_JWT_SECRET_LENGTH:
+            failures.append(
+                f"{label} must be at least {_MINIMUM_AUTH_JWT_SECRET_LENGTH} characters"
+            )
+    return failures
+
+
+def validate_jwt_secret_for_environment(settings: Any) -> None:
+    environment_sources = _non_development_environment_sources_for_settings(settings)
+    if not environment_sources:
+        return
+
+    failures = _jwt_secret_security_failures(settings)
+    if failures:
+        raise ValueError(
+            "Unsafe JWT secret configuration for non-development environment "
+            f"({', '.join(environment_sources)}): {'; '.join(failures)}"
+        )
+
+
 def _validate_non_development_security(settings: Any, env: MutableMapping[str, str]) -> None:
     environment_sources = _non_development_environment_sources(env)
     if not environment_sources:
         return
 
     failures: list[str] = []
-    jwt_secret = _normalize_optional_string(env.get("AUTH_JWT_SECRET"))
-    current_secret = _current_auth_jwt_secret(settings, env)
-    if jwt_secret in _INSECURE_AUTH_JWT_SECRETS:
-        failures.append("AUTH_JWT_SECRET must not use a development or demo default")
-    elif current_secret is None:
-        failures.append("AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key")
-    elif current_secret in _INSECURE_AUTH_JWT_SECRETS:
-        failures.append("AUTH_JWT_KEYS must not use a development or demo default")
+    failures.extend(_jwt_secret_security_failures(settings))
     if (
         settings.auth_jwt_key_id
         and settings.auth_jwt_keys

@@ -354,10 +354,11 @@ def _governance_for(role: AgentRole, available_tool_names: tuple[str, ...]) -> R
     return RoleToolGovernance(
         allowed_tools=allowed,
         denied_tools=denied,
-        allow_network=any(name in allowed for name in ("web_search", "web_fetch", "current_utc_time")),
+        allow_network=any(
+            name in allowed for name in ("web_search", "web_fetch", "current_utc_time")
+        ),
         allow_workspace_write=any(
-            name in allowed
-            for name in ("write_text_artifact", "artifact_update", "skill_install")
+            name in allowed for name in ("write_text_artifact", "artifact_update", "skill_install")
         ),
     )
 

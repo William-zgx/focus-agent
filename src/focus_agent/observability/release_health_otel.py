@@ -20,7 +20,11 @@ def evaluate_otel_smoke_report(otel_smoke_report: Mapping[str, Any]) -> ReleaseH
     failures = failed_report_rows(rows)
     status = str(otel_smoke_report.get("status") or "").lower()
     explicit_passed = otel_smoke_report.get("passed")
-    summary = otel_smoke_report.get("summary") if isinstance(otel_smoke_report.get("summary"), Mapping) else {}
+    summary = (
+        otel_smoke_report.get("summary")
+        if isinstance(otel_smoke_report.get("summary"), Mapping)
+        else {}
+    )
     spans = int(number(summary.get("spans")))
     if spans <= 0 and isinstance(otel_smoke_report.get("spans"), list):
         spans = len(otel_smoke_report["spans"])

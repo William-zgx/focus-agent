@@ -1552,6 +1552,19 @@
 	white-space: nowrap;
 }
 
+.fa-branch-action-card-badge-stack {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.fa-branch-action-card-badge.is-ai {
+	border-color: color-mix(in srgb, var(--fa-info) 48%, var(--fa-border));
+	background: var(--fa-info-surface);
+	color: var(--fa-info-text);
+}
+
 .fa-branch-action-card-body {
 	display: grid;
 	gap: 8px;
@@ -1567,6 +1580,15 @@
 	overflow-wrap: anywhere;
 }
 
+.fa-branch-action-card-body a {
+	color: var(--fa-accent-text-strong);
+	text-decoration: none;
+}
+
+.fa-branch-action-card-body a:hover {
+	text-decoration: underline;
+}
+
 .fa-branch-action-card-body .is-danger strong {
 	color: var(--fa-danger);
 }
@@ -1575,6 +1597,120 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
+}
+
+.fa-branch-decision-summary {
+	margin: 0 0 14px;
+}
+
+.fa-branch-decision-summary-main {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 14px;
+	padding: 12px 14px;
+}
+
+.fa-branch-decision-summary-copy {
+	display: grid;
+	min-width: 0;
+	gap: 5px;
+}
+
+.fa-branch-decision-summary-kicker {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-branch-decision-summary-title {
+	color: var(--fa-text);
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.fa-branch-decision-summary-text {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.fa-branch-decision-summary-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.fa-branch-decision-drawer {
+	border-top: 1px solid var(--fa-border-subtle);
+	padding: 12px 14px 14px;
+}
+
+.fa-branch-decision-drawer-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.fa-branch-decision-drawer-grid div,
+.fa-branch-decision-signal {
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 8px;
+	background: var(--fa-panel-1);
+	padding: 9px 10px;
+}
+
+.fa-branch-decision-drawer-grid span,
+.fa-branch-decision-signal span {
+	display: block;
+	color: var(--fa-text-muted);
+	font-size: 11px;
+}
+
+.fa-branch-decision-signals {
+	display: grid;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.fa-branch-decision-signal div {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.fa-branch-decision-signal p {
+	margin: 4px 0 0;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.45;
+}
+
+.fa-branch-decision-error {
+	border-top: 1px solid var(--fa-border-subtle);
+	color: var(--fa-danger);
+	font-size: 12px;
+	padding: 0 14px 12px;
+}
+
+@media (max-width: 720px) {
+	.fa-branch-decision-summary-main {
+		flex-direction: column;
+	}
+
+	.fa-branch-decision-summary-actions {
+		justify-content: flex-start;
+	}
+
+	.fa-branch-decision-drawer-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 .fa-tool-approval-card {

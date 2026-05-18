@@ -4,7 +4,18 @@ import json
 
 import pytest
 
-from focus_agent.config import DEFAULT_AUTH_JWT_SECRET, Settings, ensure_runtime_directories
+from focus_agent.config import (
+    DEFAULT_AUTH_JWT_SECRET,
+    Settings,
+    ensure_runtime_directories,
+)
+from focus_agent.config_parts.auth import validate_jwt_secret_for_environment
+
+_SECURE_JWT_SECRET = "secure-production-jwt-secret-32-plus"
+_SECURE_STAGING_JWT_SECRET = "secure-staging-jwt-secret-32-plus"
+_SECURE_PREPROD_JWT_SECRET = "secure-preprod-jwt-secret-32-plus"
+_SECURE_CURRENT_JWT_SECRET = "secure-current-jwt-secret-32-plus"
+_SECURE_PREVIOUS_JWT_SECRET = "secure-previous-jwt-secret-32-plus"
 
 _CONFIG_ENV_KEYS = (
     "APP_ENVIRONMENT",
@@ -41,6 +52,7 @@ _CONFIG_ENV_KEYS = (
     "ARTIFACT_DIR",
 )
 
+
 def _isolate_settings_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     for key in _CONFIG_ENV_KEYS:
@@ -50,10 +62,12 @@ def _isolate_settings_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv("FOCUS_AGENT_TOOL_CATALOG_DOC", str(tmp_path / "missing-tools.toml"))
 
 
-def _set_secure_non_development_env(monkeypatch: pytest.MonkeyPatch, *, environment: str = "production") -> None:
+def _set_secure_non_development_env(
+    monkeypatch: pytest.MonkeyPatch, *, environment: str = "production"
+) -> None:
     monkeypatch.setenv("APP_ENVIRONMENT", environment)
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
@@ -151,6 +165,7 @@ def test_ensure_runtime_directories_creates_runtime_paths(tmp_path):
     assert branch_db_path.parent.is_dir()
     assert artifact_dir.is_dir()
 
+
 def test_settings_from_env_fails_in_production_when_jwt_secret_missing(monkeypatch, tmp_path):
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "production")
@@ -175,10 +190,35 @@ def test_settings_from_env_fails_in_prod_when_jwt_secret_is_development_default(
         Settings.from_env()
 
 
+def test_settings_from_env_fails_in_production_when_jwt_secret_is_too_short(monkeypatch, tmp_path):
+    _isolate_settings_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "short-production-secret")
+    monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
+
+    with pytest.raises(ValueError, match="AUTH_JWT_SECRET must be at least 32 characters"):
+        Settings.from_env()
+
+
+def test_validate_jwt_secret_for_environment_fails_fast_for_short_secret() -> None:
+    settings = Settings(app_environment="production", auth_jwt_secret="too-short")
+
+    with pytest.raises(ValueError, match="AUTH_JWT_SECRET must be at least 32 characters"):
+        validate_jwt_secret_for_environment(settings)
+
+
+def test_validate_jwt_secret_for_environment_allows_long_secret() -> None:
+    settings = Settings(app_environment="production", auth_jwt_secret=_SECURE_JWT_SECRET)
+
+    validate_jwt_secret_for_environment(settings)
+
+
 def test_settings_from_env_fails_in_staging_when_demo_tokens_enabled(monkeypatch, tmp_path):
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "staging")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "staging-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_STAGING_JWT_SECRET)
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "yes")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
@@ -191,7 +231,7 @@ def test_settings_from_env_fails_in_production_when_auth_disabled(monkeypatch, t
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_ENABLED", "false")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
@@ -203,7 +243,7 @@ def test_settings_from_env_fails_in_production_when_auth_disabled(monkeypatch, t
 def test_settings_from_env_fails_in_preprod_when_rate_limit_disabled(monkeypatch, tmp_path):
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ENVIRONMENT", "preprod")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "preprod-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_PREPROD_JWT_SECRET)
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
 
@@ -215,7 +255,11 @@ def test_settings_from_env_fails_in_preprod_when_rate_limit_disabled(monkeypatch
     ("env_key", "env_value", "message"),
     [
         ("AUTH_JWT_ISSUER", "", "AUTH_JWT_ISSUER must be set"),
-        ("AUTH_ACCESS_TOKEN_TTL_SECONDS", "0", "AUTH_ACCESS_TOKEN_TTL_SECONDS must be greater than 0"),
+        (
+            "AUTH_ACCESS_TOKEN_TTL_SECONDS",
+            "0",
+            "AUTH_ACCESS_TOKEN_TTL_SECONDS must be greater than 0",
+        ),
     ],
 )
 def test_settings_from_env_fails_in_production_when_token_lifecycle_is_invalid(
@@ -224,7 +268,7 @@ def test_settings_from_env_fails_in_production_when_token_lifecycle_is_invalid(
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
@@ -236,13 +280,11 @@ def test_settings_from_env_fails_in_production_when_token_lifecycle_is_invalid(
         Settings.from_env()
 
 
-def test_settings_from_env_fails_when_either_environment_is_non_development(
-    monkeypatch, tmp_path
-):
+def test_settings_from_env_fails_when_either_environment_is_non_development(monkeypatch, tmp_path):
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "local")
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
 
     with pytest.raises(ValueError, match="ENVIRONMENT=production"):
@@ -253,7 +295,7 @@ def test_settings_from_env_allows_staging_with_secure_settings(monkeypatch, tmp_
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "staging")
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "staging-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_STAGING_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_AUDIENCE", "focus-agent-web")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "on")
@@ -263,7 +305,7 @@ def test_settings_from_env_allows_staging_with_secure_settings(monkeypatch, tmp_
 
     assert settings.app_environment == "staging"
     assert settings.auth_enabled is True
-    assert settings.auth_jwt_secret == "staging-secret"
+    assert settings.auth_jwt_secret == _SECURE_STAGING_JWT_SECRET
     assert settings.auth_jwt_audience == "focus-agent-web"
     assert settings.auth_demo_tokens_enabled is False
     assert settings.rate_limit_enabled is True
@@ -303,7 +345,7 @@ def test_settings_from_env_allows_production_with_jwt_key_set_without_single_sec
     monkeypatch.setenv("AUTH_JWT_KEY_ID", "current")
     monkeypatch.setenv(
         "AUTH_JWT_KEYS",
-        "current=production-secret,previous=previous-secret",
+        f"current={_SECURE_CURRENT_JWT_SECRET},previous={_SECURE_PREVIOUS_JWT_SECRET}",
     )
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
@@ -314,7 +356,7 @@ def test_settings_from_env_allows_production_with_jwt_key_set_without_single_sec
 
     assert settings.auth_jwt_secret == DEFAULT_AUTH_JWT_SECRET
     assert settings.auth_jwt_key_id == "current"
-    assert settings.auth_jwt_keys[0].secret == "production-secret"
+    assert settings.auth_jwt_keys[0].secret == _SECURE_CURRENT_JWT_SECRET
 
 
 def test_settings_from_env_fails_in_production_when_current_jwt_kid_is_missing(
@@ -324,7 +366,7 @@ def test_settings_from_env_fails_in_production_when_current_jwt_kid_is_missing(
     monkeypatch.setenv("APP_ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("AUTH_JWT_KEY_ID", "current")
-    monkeypatch.setenv("AUTH_JWT_KEYS", "previous=previous-secret")
+    monkeypatch.setenv("AUTH_JWT_KEYS", f"previous={_SECURE_PREVIOUS_JWT_SECRET}")
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
@@ -340,9 +382,9 @@ def test_settings_from_env_fails_when_jwt_key_id_misses_key_set_even_with_single
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "fallback-production-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_KEY_ID", "current")
-    monkeypatch.setenv("AUTH_JWT_KEYS", "previous=previous-secret")
+    monkeypatch.setenv("AUTH_JWT_KEYS", f"previous={_SECURE_PREVIOUS_JWT_SECRET}")
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
@@ -416,13 +458,11 @@ def test_settings_from_env_fails_in_production_when_demo_secret_is_configured(
         Settings.from_env()
 
 
-def test_settings_from_env_preserves_external_jwt_issuer_audience_and_ttl(
-    monkeypatch, tmp_path
-):
+def test_settings_from_env_preserves_external_jwt_issuer_audience_and_ttl(monkeypatch, tmp_path):
     _isolate_settings_env(monkeypatch, tmp_path)
     monkeypatch.setenv("APP_ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "production-secret")
+    monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_JWT_AUDIENCE", "focus-agent-web")
     monkeypatch.setenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900")

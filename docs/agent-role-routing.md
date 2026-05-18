@@ -1,8 +1,8 @@
 # Agent Governance
 
-Updated: 2026-04-24
+Updated: 2026-05-16
 
-This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
+This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
 ## 1. Purpose
 
@@ -83,6 +83,8 @@ This observe-first design lets the project collect trajectory evidence before gi
 | Delegation enforcement | off | `AGENT_DELEGATION_ENFORCE` | enforced run records |
 | Model Router | off | `AGENT_MODEL_ROUTER_ENABLED` | `model_route_decision` |
 | Model Router mode | observe | `AGENT_MODEL_ROUTER_MODE` | observe or enforce |
+| Branch Decisions | off | `AGENT_BRANCH_DECISION_ENABLED` | `BranchDecisionEvent` |
+| Branch Recommendations | off | `AGENT_BRANCH_RECOMMENDATION_ENABLED` | pre-turn recommendation + optional Branch Action |
 | Self Repair | off | `AGENT_SELF_REPAIR_ENABLED` | `agent_failure_records` |
 | Review Queue | off | `AGENT_REVIEW_QUEUE_ENABLED` | `agent_review_queue` |
 | Context Engineering v2 | off | `AGENT_CONTEXT_ENGINEERING_V2_ENABLED` | context decisions and refs |
@@ -123,6 +125,7 @@ These rules are regression-sensitive:
 - Tool Router enforcement means denied tools are not bound to the model.
 - Model Router observe mode records `model_route_decision`; enforce mode may replace the effective role model.
 - Self Repair and Review Queue record failure candidates and pending human-review items without writing eval datasets automatically.
+- Branch recommendations can create a pending Branch Action in `suggest` mode, but the user must confirm before fork/open/return side effects happen.
 - Context Engineering records budget, compression, refs, and role views in `plan_meta`; it only materializes long observations when artifactization is enabled.
 - Task Ledger converts delegated tasks into traceable task nodes, delegated artifacts, critic verdicts, and optional final synthesis.
 - Critic enforce mode blocks rejected artifacts from synthesis and allows only one local retry task.
@@ -224,16 +227,48 @@ The current skill/tool autonomy surface is discover-first and install-gated:
 
 `skill_install` is intentionally not an orchestrator tool. The orchestrator may discover available sources and search results, then route install-capable work to `skill_scout` under normal workspace-write governance.
 
+### Branch Decision And Recommendation
+
+Branch decisions are a separate governance surface from role routing. They live
+in `src/focus_agent/branch_decision/` and persist `BranchDecisionEvent` records
+through the governance repository.
+
+There are two timing paths:
+
+- Post-turn decision evaluation uses `evaluate_thread_turn()` and can record
+  `split`, `conclude`, or `merge_candidate`.
+- Pre-turn recommendation uses `evaluate_pre_turn_recommendation()` and can
+  return `continue_current`, `fork_child_branch`, or `fork_sibling_branch`.
+
+```mermaid
+flowchart LR
+    Turn["Completed turn"] --> Post["post-turn decision"]
+    Post --> Split["split"]
+    Post --> Conclude["conclude"]
+    Post --> Merge["merge_candidate"]
+    Message["Incoming message"] --> Pre["pre-turn recommendation"]
+    Pre --> Continue["continue_current"]
+    Pre --> Fork["fork child/sibling"]
+    Fork --> Card["pending Branch Action card"]
+```
+
+The pre-turn surface is intentionally conservative. `shadow` records evidence;
+`suggest` may promote a high-confidence fork recommendation into a pending
+Branch Action; it still does not execute the fork. The user confirms or
+dismisses the Branch Action in the chat UI. See
+[branch-decisions.md](branch-decisions.md) for config flags, API/SDK details,
+and validation commands.
+
 ### Observe-First Autonomy Outputs
 
 The autonomy surface is intentionally report-first before it is action-first. When governance is enabled without enforcement, it may emit:
 
 - skill selection: `skill_scout` role decisions use `skill_sources`, `skills_search`, `skills_refresh_index`, and guarded `skill_install` to recommend prompt-first skills and safe toolsets.
-- branch suggestion: delegated role decisions include `run_isolation_key` values such as `role:planner`, `role:executor`, and `role:skill_scout`; these are branch/run hints, not background spawns.
+- branch suggestion: delegated role decisions include `run_isolation_key` values such as `role:planner`, `role:executor`, and `role:skill_scout`; branch decision events may separately suggest a child or sibling branch and surface it as a user-confirmed Branch Action.
 - risk-aware workflow policy: denied high-risk workspace tools are represented as `tool_denied` failure records and `agent_review_queue` items.
 - model routing report: high-risk tool usage can produce a Model Router observe-mode rationale while keeping `effective_model` equal to the selected model.
 
-Observe mode must not execute high-risk actions by itself. It records skill, branch, model, and review evidence for the governance console so a human or later enforcement flag can make the execution decision explicitly.
+Observe mode must not execute high-risk actions by itself. It records skill, branch, model, and review evidence for the governance console so a human or later enforcement flag can make the execution decision explicitly. For branch recommendations, even `suggest` mode still routes side effects through an explicit Branch Action confirmation.
 
 ## 10. Ownership Audit Dashboard
 

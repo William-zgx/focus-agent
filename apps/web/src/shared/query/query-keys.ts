@@ -4,6 +4,9 @@ export const queryKeys = {
 	models: ["models"] as const,
 	conversations: ["conversations"] as const,
 	thread: (threadId: string) => ["thread", threadId] as const,
+	branchDecisionConfig: ["branch-decision-config"] as const,
+	threadBranchDecisions: (threadId: string) =>
+		["thread-branch-decisions", threadId] as const,
 	branchTree: (rootThreadId: string) => ["branch-tree", rootThreadId] as const,
 	trajectoryList: (filtersKey: string) =>
 		["trajectory-list", filtersKey] as const,

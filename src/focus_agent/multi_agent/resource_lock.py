@@ -54,7 +54,9 @@ class InMemoryResourceLockManager:
                     claim.agent_id for claim in conflicts
                 )
                 if _has_cycle(self._waits_for):
-                    raise DeadlockDetected(f"Deadlock detected while {agent_id} waits for {resource_id}")
+                    raise DeadlockDetected(
+                        f"Deadlock detected while {agent_id} waits for {resource_id}"
+                    )
                 return None
             claim = ResourceClaim(
                 claim_id=uuid4().hex,
@@ -109,7 +111,9 @@ class InMemoryResourceLockManager:
     def _prune_wait_graph(self) -> None:
         active_agents = {claim.agent_id for claim in self._claims.values()}
         for agent_id in list(self._waits_for):
-            waits_for = {blocked for blocked in self._waits_for[agent_id] if blocked in active_agents}
+            waits_for = {
+                blocked for blocked in self._waits_for[agent_id] if blocked in active_agents
+            }
             if waits_for and agent_id in active_agents:
                 self._waits_for[agent_id] = waits_for
             else:
@@ -273,9 +277,7 @@ class PostgresResourceLockManager:
 def _claim_from_row(row: dict[str, object]) -> ResourceClaim:
     expires_at = row["expires_at"]
     timestamp = (
-        expires_at.timestamp()
-        if isinstance(expires_at, datetime)
-        else float(expires_at or 0.0)
+        expires_at.timestamp() if isinstance(expires_at, datetime) else float(expires_at or 0.0)
     )
     return ResourceClaim(
         claim_id=str(row["claim_id"]),

@@ -2,7 +2,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_TEAM_ROOT = ROOT / "apps" / "web" / "src" / "features" / "agent-team"
-AGENT_TEAM_STYLES = ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
+AGENT_TEAM_STYLES = (
+    ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
+)
 
 
 def _read(path: Path) -> str:
@@ -65,7 +67,9 @@ def test_workbench_exposes_dynamic_planning_controls_and_metadata():
     styles_text = _read_agent_team_styles()
 
     for text in ["生成方案", "重新拆解", "运行 Mission", "生成最终结果"]:
-        assert text in workbench_text or text in _read(AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts")
+        assert text in workbench_text or text in _read(
+            AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts"
+        )
 
     assert "fa-agent-team-guided-layout" in workbench_text
     assert "fa-agent-team-cockpit-mission-header" in workbench_text
@@ -124,7 +128,16 @@ def test_task_surface_prefers_dynamic_plan_fields_over_roles():
     assert "roleHint" not in task_text
     assert "DEFAULT_TASK_ROLES" not in task_text
 
-    for field in ["planning_source", "planner_model_id", "plan_generated_at", "planning_error", "title", "planning_rationale", "task_type", "plan_source"]:
+    for field in [
+        "planning_source",
+        "planner_model_id",
+        "plan_generated_at",
+        "planning_error",
+        "title",
+        "planning_rationale",
+        "task_type",
+        "plan_source",
+    ]:
         assert field in types_text
     assert "payload?: Record<string, unknown> | null" in types_text
 

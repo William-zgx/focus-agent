@@ -9,6 +9,8 @@ on:
       - "src/focus_agent/core/**"
       - "tests/eval/**"
       - "tests/test_eval_framework.py"
+      - "scripts/run-evals.sh"
+      - "docs/eval/**"
       - ".github/workflows/eval.yml"
   push:
     branches:
@@ -21,6 +23,8 @@ on:
       - "src/focus_agent/core/**"
       - "tests/eval/**"
       - "tests/test_eval_framework.py"
+      - "scripts/run-evals.sh"
+      - "docs/eval/**"
       - ".github/workflows/eval.yml"
 
 jobs:
@@ -53,6 +57,11 @@ jobs:
             \) | sort
           )
           uv run pytest tests/test_eval_framework.py tests/eval/test_plan_act_reflect.py "${discovered_tests[@]}"
+
+      - name: Run baseline-gated release eval
+        run: |
+          mkdir -p reports/eval
+          PYTHON="uv run python" bash scripts/run-evals.sh
 
       - name: Run provider-backed smoke eval
         env:

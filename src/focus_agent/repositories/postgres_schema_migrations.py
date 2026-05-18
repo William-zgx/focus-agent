@@ -399,11 +399,21 @@ def _run_migration_v6(execute: Callable[..., object]) -> None:
 
 
 def _run_migration_v7(execute: Callable[..., object]) -> None:
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'legacy'")
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb")
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS run_at TIMESTAMPTZ NOT NULL DEFAULT now()")
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS max_attempts INT NOT NULL DEFAULT 1")
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS dedupe_policy TEXT NOT NULL DEFAULT 'skip'")
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'legacy'"
+    )
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb"
+    )
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS run_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+    )
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS max_attempts INT NOT NULL DEFAULT 1"
+    )
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS dedupe_policy TEXT NOT NULL DEFAULT 'skip'"
+    )
     execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS claim_token TEXT")
     execute(
         """
@@ -799,9 +809,32 @@ def _run_migration_v11(execute: Callable[..., object]) -> None:
 
 
 def _run_migration_v12(execute: Callable[..., object]) -> None:
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ")
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ"
+    )
     execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS last_failed_at TIMESTAMPTZ")
-    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS dead_lettered_at TIMESTAMPTZ")
+    execute(
+        "ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS dead_lettered_at TIMESTAMPTZ"
+    )
+    execute("ALTER TABLE focus_background_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT")
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_focus_background_jobs_idempotency
+        ON focus_background_jobs(idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        """
+    )
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_background_jobs_dead_letter (
+            job_key TEXT PRIMARY KEY,
+            original_payload JSONB NOT NULL,
+            last_error TEXT,
+            attempts INT NOT NULL,
+            moved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
     execute(
         """
         CREATE INDEX IF NOT EXISTS idx_focus_background_jobs_retry_due
@@ -910,7 +943,9 @@ def _run_migration_v14(execute: Callable[..., object]) -> None:
         execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_kind TEXT")
         execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_id TEXT")
         execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_url TEXT")
-        execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS pinned_context JSONB NOT NULL DEFAULT '{{}}'::jsonb")
+        execute(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS pinned_context JSONB NOT NULL DEFAULT '{{}}'::jsonb"
+        )
         execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS captured_from TEXT")
     execute(
         """
@@ -1137,6 +1172,82 @@ def _run_migration_v15(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v16(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_rate_limit_buckets (
+            bucket_key TEXT PRIMARY KEY,
+            token_count INT NOT NULL DEFAULT 0,
+            window_start TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_rate_limit_buckets_updated_at
+        ON focus_rate_limit_buckets (updated_at)
+        """
+    )
+
+
+def _run_migration_v17(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS focus_branch_decision_events (
+            decision_id TEXT PRIMARY KEY,
+            user_id TEXT,
+            root_thread_id TEXT NOT NULL,
+            source_thread_id TEXT NOT NULL,
+            branch_id TEXT,
+            action TEXT NOT NULL,
+            status TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            score DOUBLE PRECISION NOT NULL DEFAULT 0,
+            threshold DOUBLE PRECISION NOT NULL DEFAULT 0,
+            signals JSONB NOT NULL DEFAULT '[]'::jsonb,
+            rationale TEXT NOT NULL DEFAULT '',
+            request_id TEXT,
+            trace_id TEXT,
+            idempotency_key TEXT,
+            promoted_action_id TEXT,
+            dismiss_reason TEXT,
+            error TEXT,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            data_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            executed_at TIMESTAMPTZ
+        )
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_branch_decision_events_user_thread
+        ON focus_branch_decision_events(user_id, root_thread_id, source_thread_id, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_branch_decision_events_thread_status
+        ON focus_branch_decision_events(source_thread_id, status, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_branch_decision_events_action
+        ON focus_branch_decision_events(action, created_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_branch_decision_events_idempotency
+        ON focus_branch_decision_events(idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        """
+    )
+
+
 def _normalize_pgvector_extension_mode(value: object) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in {"auto", "auto_create", "create", "create_if_missing"}:
@@ -1162,4 +1273,6 @@ _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (13, _run_migration_v13),
     (14, _run_migration_v14),
     (15, _run_migration_v15),
+    (16, _run_migration_v16),
+    (17, _run_migration_v17),
 )

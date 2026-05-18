@@ -17,6 +17,7 @@ def __getattr__(name: str) -> Any:
         }[name]
     raise AttributeError(name)
 
+
 __all__ = [
     "SubagentTaskToolInput",
     "ToolResultContent",

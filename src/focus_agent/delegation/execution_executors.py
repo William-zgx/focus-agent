@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from typing import Any
 
+from ..config import Settings
+from ..runtime.thread_pool import shared_thread_pool
 from .delegation_models import AgentArtifact, AgentTask
 from .execution_model_task import (
     artifact_kind,
@@ -14,7 +16,6 @@ from .execution_model_task import (
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_registry import SubagentRegistry
 from .execution_types import DelegatedRunExecutor, SubagentConfig, SubagentRunResult
-from ..config import Settings
 
 
 class FakeDelegatedRunExecutor:
@@ -94,15 +95,25 @@ class BackgroundDelegatedRunExecutor(InlineDelegatedRunExecutor):
     ) -> list[SubagentRunResult]:
         if not items:
             return []
-        workers = max(1, min(self.max_workers, max(1, int(max_parallel_runs or 1)), len(items)))
+        workers = max(1, min(max(1, int(max_parallel_runs or 1)), len(items)))
         ordered: list[SubagentRunResult | None] = [None] * len(items)
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="delegated-agent") as pool:
-            futures = {
-                pool.submit(self.execute, task, config): index
-                for index, (task, config) in enumerate(items)
-            }
-            for future in as_completed(futures):
-                index = futures[future]
+        pool = shared_thread_pool()
+        pending = iter(enumerate(items))
+        futures = {}
+
+        def _submit_next() -> None:
+            index, (task, config) = next(pending)
+            futures[pool.submit(self.execute, task, config)] = index
+
+        for _ in range(workers):
+            try:
+                _submit_next()
+            except StopIteration:
+                break
+
+        while futures:
+            for future in as_completed(list(futures)):
+                index = futures.pop(future)
                 task, config = items[index]
                 try:
                     ordered[index] = future.result()
@@ -110,6 +121,11 @@ class BackgroundDelegatedRunExecutor(InlineDelegatedRunExecutor):
                     ordered[index] = failed_result(
                         task, config, self.mode, str(exc), started_at=utc_now()
                     )
+                try:
+                    _submit_next()
+                except StopIteration:
+                    pass
+                break
         return [item for item in ordered if item is not None]
 
 

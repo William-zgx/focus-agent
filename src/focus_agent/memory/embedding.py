@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import os
-import urllib.error
 from dataclasses import dataclass
 from typing import Any, Protocol
-from urllib.request import Request, urlopen
+
+import httpx
+
+from focus_agent.runtime.http_client import shared_sync_http_client
 
 from ..core.repo_call import has_repo_method
 from .embedding_policy import should_embed_memory
@@ -89,11 +90,13 @@ class OllamaEmbeddingProvider:
         dimensions: int = DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS,
         base_url: str | None = None,
         timeout_seconds: float = 30.0,
+        http_client: httpx.Client | None = None,
     ):
         self.model_id = (model or model_id or DEFAULT_OLLAMA_EMBEDDING_MODEL).strip()
         self.dimensions = _validate_dimensions(dimensions)
         self.base_url = _ollama_native_base_url(base_url or DEFAULT_OLLAMA_BASE_URL)
         self.timeout_seconds = float(timeout_seconds)
+        self._http_client = http_client
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -102,16 +105,15 @@ class OllamaEmbeddingProvider:
             "model": self.model_id,
             "input": texts,
         }
-        request = Request(
-            f"{self.base_url}/api/embed",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                decoded = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            response = _embedding_http_client(self._http_client).post(
+                f"{self.base_url}/api/embed",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=self.timeout_seconds,
+            )
+            decoded = _decode_json_response(response)
+        except (httpx.HTTPError, TimeoutError, ValueError) as exc:
             raise MemoryEmbeddingError(
                 "Ollama embedding request failed. "
                 f"Ensure Ollama is running and install the model with: "
@@ -146,12 +148,14 @@ class OpenAICompatibleEmbeddingProvider:
         model_id: str | None = None,
         base_url: str | None = None,
         timeout_seconds: float = 30.0,
+        http_client: httpx.Client | None = None,
     ):
         self.model_id = (model or model_id or DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL).strip()
         self.dimensions = _validate_dimensions(dimensions)
         self.api_key = api_key.strip()
         self.base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
         self.timeout_seconds = float(timeout_seconds)
+        self._http_client = http_client
         if not self.api_key:
             raise EmbeddingProviderConfigError(
                 "OpenAI-compatible embedding provider requires an API key."
@@ -165,19 +169,18 @@ class OpenAICompatibleEmbeddingProvider:
             "input": texts,
             "dimensions": self.dimensions,
         }
-        request = Request(
-            f"{self.base_url}/embeddings",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                decoded = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            response = _embedding_http_client(self._http_client).post(
+                f"{self.base_url}/embeddings",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=self.timeout_seconds,
+            )
+            decoded = _decode_json_response(response)
+        except (httpx.HTTPError, TimeoutError, ValueError) as exc:
             raise MemoryEmbeddingError("embedding provider request failed") from exc
 
         items = decoded.get("data") if isinstance(decoded, dict) else None
@@ -216,7 +219,9 @@ class MemoryEmbeddingService:
         self.embedding_repository = self.repository
         provider_object = embedder or (provider if not isinstance(provider, str) else None)
         if provider_object is None:
-            raise EmbeddingProviderConfigError("MemoryEmbeddingService requires an embedding provider.")
+            raise EmbeddingProviderConfigError(
+                "MemoryEmbeddingService requires an embedding provider."
+            )
         self.provider = provider_object
         self.batch_size = max(1, int(batch_size))
         self.backend = provider if isinstance(provider, str) else self.provider.provider_id
@@ -327,7 +332,9 @@ class MemoryEmbeddingService:
             return {"attempted": 0, "embedded": 0, "skipped": 0, "failed": 0}
         from ..repositories.memory_repository import MemoryListQuery
 
-        records = self.repository.list_records(MemoryListQuery(status=MemoryStatus.ACTIVE.value, limit=limit))
+        records = self.repository.list_records(
+            MemoryListQuery(status=MemoryStatus.ACTIVE.value, limit=limit)
+        )
         return self.embed_records(records)
 
 
@@ -336,10 +343,17 @@ def create_memory_embedding_provider(settings: Any) -> EmbeddingProvider | None:
     if backend in {"", "disabled", "none", "off"}:
         return None
     provider_id = backend
-    model_id = str(getattr(settings, "agent_memory_embedding_model", DEFAULT_OLLAMA_EMBEDDING_MODEL)).strip()
-    dimensions = int(getattr(settings, "agent_memory_embedding_dimensions", None) or DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS)
+    model_id = str(
+        getattr(settings, "agent_memory_embedding_model", DEFAULT_OLLAMA_EMBEDDING_MODEL)
+    ).strip()
+    dimensions = int(
+        getattr(settings, "agent_memory_embedding_dimensions", None)
+        or DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS
+    )
     if provider_id == "deterministic_test":
-        return DeterministicTestEmbeddingProvider(model_id=model_id or "deterministic-test", dimensions=dimensions)
+        return DeterministicTestEmbeddingProvider(
+            model_id=model_id or "deterministic-test", dimensions=dimensions
+        )
     if provider_id == "ollama":
         return _create_ollama_embedding_provider(settings)
     if provider_id == "openai_compatible":
@@ -436,7 +450,9 @@ def _create_openai_compatible_embedding_provider(
     model_id: str,
     dimensions: int,
 ) -> OpenAICompatibleEmbeddingProvider:
-    api_key_env = str(getattr(settings, "agent_memory_embedding_api_key_env", "OPENAI_API_KEY") or "").strip()
+    api_key_env = str(
+        getattr(settings, "agent_memory_embedding_api_key_env", "OPENAI_API_KEY") or ""
+    ).strip()
     api_key = str(getattr(settings, "agent_memory_embedding_api_key", "") or "").strip()
     inherited_client_kwargs = _default_model_client_kwargs(settings)
     if not api_key and api_key_env:
@@ -561,11 +577,13 @@ def _ollama_native_base_url(base_url: str) -> str:
 
 
 def _ollama_model_available(provider: OllamaEmbeddingProvider) -> bool:
-    request = Request(f"{provider.base_url}/api/tags", method="GET")
     try:
-        with urlopen(request, timeout=provider.timeout_seconds) as response:
-            decoded = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        response = _embedding_http_client(provider._http_client).get(
+            f"{provider.base_url}/api/tags",
+            timeout=provider.timeout_seconds,
+        )
+        decoded = _decode_json_response(response)
+    except (httpx.HTTPError, TimeoutError, ValueError):
         return False
 
     models = decoded.get("models") if isinstance(decoded, dict) else None
@@ -580,6 +598,15 @@ def _ollama_model_available(provider: OllamaEmbeddingProvider) -> bool:
         if name == expected or name == f"{expected}:latest" or name.split(":", 1)[0] == expected:
             return True
     return False
+
+
+def _embedding_http_client(http_client: httpx.Client | None) -> httpx.Client:
+    return http_client or shared_sync_http_client()
+
+
+def _decode_json_response(response: httpx.Response) -> object:
+    response.raise_for_status()
+    return response.json()
 
 
 def _extract_ollama_embeddings(decoded: object, *, expected_count: int) -> list[object]:

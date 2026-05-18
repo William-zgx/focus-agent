@@ -152,7 +152,9 @@ def _python_imports(path: Path) -> list[tuple[int, str]]:
 
 def _text_imports(path: Path) -> list[tuple[int, str]]:
     imports: list[tuple[int, str]] = []
-    for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for line_no, line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         stripped = line.strip()
         if " from " not in stripped and not stripped.startswith("import "):
             continue
@@ -244,16 +246,22 @@ def build_architecture_report(
     }
 
 
-def write_architecture_report(path: str | Path, report: dict[str, Any], *, root: Path = REPO_ROOT) -> Path:
+def write_architecture_report(
+    path: str | Path, report: dict[str, Any], *, root: Path = REPO_ROOT
+) -> Path:
     target = _resolve(path, root=root)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured JSON report path.")
+    parser.add_argument(
+        "--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured JSON report path."
+    )
     parser.add_argument("--root", default=str(REPO_ROOT), help="Repository root to scan.")
     parser.add_argument(
         "--path",

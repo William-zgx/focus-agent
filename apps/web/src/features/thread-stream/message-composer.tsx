@@ -6,6 +6,7 @@ import { type FormEvent, type KeyboardEvent, useEffect, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useModels } from "@/features/models/use-models";
+import { Button, IconButton } from "@/shared/ui/primitives";
 import { tooltipProps } from "@/shared/ui/tooltip";
 import { ContextUsageMeter } from "./message-composer-components";
 import { useMessageComposerDraft } from "./message-composer-draft";
@@ -30,7 +31,6 @@ export {
 } from "./message-composer-helpers";
 
 interface MessageComposerProps {
-	activeSkillIds?: string[];
 	isReadOnly?: boolean;
 	isStreaming: boolean;
 	onSendMessage: (
@@ -54,7 +54,6 @@ interface MessageComposerProps {
 }
 
 export function MessageComposer({
-	activeSkillIds = [],
 	isReadOnly = false,
 	isStreaming,
 	onSendMessage,
@@ -84,10 +83,6 @@ export function MessageComposer({
 		});
 
 	const allModels = data?.models ?? [];
-	const activeSkillChips = activeSkillIds
-		.map((skillId) => skillId.trim())
-		.filter(Boolean)
-		.slice(0, 6);
 	const activeModel =
 		allModels.find((item: FocusAgentModelOption) => item.id === modelId) ??
 		allModels[0];
@@ -185,13 +180,15 @@ export function MessageComposer({
 								: "Sending again will continue this thread with a revised prompt."}
 						</div>
 					</div>
-					<button
+					<Button
 						className="fa-composer-edit-cancel"
 						onClick={onClearEditDraft}
 						type="button"
+						variant="ghost"
+						size="sm"
 					>
 						{isChineseUi ? "取消" : "Cancel"}
-					</button>
+					</Button>
 				</div>
 			) : null}
 
@@ -237,15 +234,6 @@ export function MessageComposer({
 
 				<div className="fa-composer-footer-row">
 					<div className="fa-composer-model-row">
-						{activeSkillChips.length ? (
-							<div className="fa-composer-skill-chips">
-								{activeSkillChips.map((skillId) => (
-									<span key={skillId}>
-										{isChineseUi ? "技能" : "Skill"}: {skillId}
-									</span>
-								))}
-							</div>
-						) : null}
 						<div className="fa-composer-model-controls">
 							<MessageComposerModelSelector
 								activeModel={activeModel}
@@ -274,8 +262,9 @@ export function MessageComposer({
 							onCompact={onCompactContext}
 						/>
 						<div className="fa-composer-inline-actions">
-							<button
+							<IconButton
 								className="fa-composer-icon-button is-clear"
+								label={isChineseUi ? "清空输入" : "Clear input"}
 								{...tooltipProps(isChineseUi ? "清空输入" : "Clear input")}
 								disabled={isStreaming || !message}
 								onClick={() => setMessage("")}
@@ -299,11 +288,12 @@ export function MessageComposer({
 								<span className="sr-only">
 									{isChineseUi ? "清空输入" : "Clear input"}
 								</span>
-							</button>
+							</IconButton>
 
 							{isStreaming ? (
-								<button
+								<IconButton
 									className="fa-composer-icon-button is-stop"
+									label={isChineseUi ? "停止生成" : "Stop generation"}
 									{...tooltipProps(
 										isChineseUi ? "停止生成" : "Stop generation",
 									)}
@@ -325,10 +315,17 @@ export function MessageComposer({
 									<span className="sr-only">
 										{isChineseUi ? "停止生成" : "Stop generation"}
 									</span>
-								</button>
+								</IconButton>
 							) : (
-								<button
+								<IconButton
 									className="fa-composer-icon-button is-send"
+									label={
+										isReadOnly
+											? readOnlyReason
+											: isChineseUi
+												? "发送消息"
+												: "Send message"
+									}
 									{...tooltipProps(
 										isReadOnly
 											? readOnlyReason
@@ -356,7 +353,7 @@ export function MessageComposer({
 									<span className="sr-only">
 										{isChineseUi ? "发送消息" : "Send message"}
 									</span>
-								</button>
+								</IconButton>
 							)}
 						</div>
 					</div>

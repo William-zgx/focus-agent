@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import atexit
 import threading
 from concurrent.futures import CancelledError as FutureCancelledError
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextvars import copy_context
 from typing import Any
 
+from focus_agent.runtime.thread_pool import thread_pool_max_workers
+
 from .tool_execution_types import ToolExecutionInput
 from .tool_registry import ToolRuntimeMeta
+from .tool_sandbox import ToolExecutionDenied, ToolExecutionTimeout, run_in_sandbox_sync
 
 
 class ToolInvocationTimeoutError(TimeoutError):
@@ -26,31 +26,9 @@ class ToolParameterValidationError(ValueError):
         super().__init__(f"Tool '{tool_name}' parameter validation failed: {error}")
 
 
-_TOOL_INVOCATION_EXECUTOR_MAX_WORKERS = 8
 _tool_invocation_executor_lock = threading.Lock()
-_tool_invocation_executor_instance: ThreadPoolExecutor | None = None
 _tool_invocation_timeout_active = 0
 _tool_invocation_timeout_total = 0
-
-
-def _tool_invocation_executor() -> ThreadPoolExecutor:
-    global _tool_invocation_executor_instance
-    with _tool_invocation_executor_lock:
-        if _tool_invocation_executor_instance is None:
-            _tool_invocation_executor_instance = ThreadPoolExecutor(
-                max_workers=_TOOL_INVOCATION_EXECUTOR_MAX_WORKERS,
-                thread_name_prefix="focus-agent-tool-timeout",
-            )
-        return _tool_invocation_executor_instance
-
-
-def _shutdown_tool_invocation_executor() -> None:
-    executor = _tool_invocation_executor_instance
-    if executor is not None:
-        executor.shutdown(wait=False, cancel_futures=True)
-
-
-atexit.register(_shutdown_tool_invocation_executor)
 
 
 def _mark_timed_out_future_active() -> None:
@@ -78,7 +56,7 @@ def tool_invocation_runtime_snapshot() -> dict[str, int]:
         return {
             "timeout_active": _tool_invocation_timeout_active,
             "timeout_total": _tool_invocation_timeout_total,
-            "max_workers": _TOOL_INVOCATION_EXECUTOR_MAX_WORKERS,
+            "max_workers": thread_pool_max_workers(),
         }
 
 
@@ -102,13 +80,16 @@ def invoke_tool_with_timeout(*, item: ToolExecutionInput, timeout_seconds: float
                 f"Tool '{item.tool_name}' aborted with {type(exc).__name__}: {exc}"
             ) from exc
 
-    future = _tool_invocation_executor().submit(_runner)
     try:
-        return future.result(timeout=timeout_seconds)
-    except FutureTimeoutError as exc:
-        if not future.cancel():
+        return run_in_sandbox_sync(
+            _runner,
+            tool_name=item.tool_name,
+            timeout_seconds=timeout_seconds,
+            max_concurrent_calls=item.runtime.max_concurrent_calls,
+        )
+    except ToolExecutionTimeout as exc:
+        if exc.active:
             _mark_timed_out_future_active()
-            future.add_done_callback(_mark_timed_out_future_done)
         else:
             _mark_timed_out_future_cancelled()
         raise ToolInvocationTimeoutError(
@@ -126,14 +107,25 @@ def effective_timeout_seconds(runtime: ToolRuntimeMeta) -> float | None:
 
 
 def should_bypass_fallback(error: Exception) -> bool:
-    return isinstance(error, (ToolInvocationTimeoutError, FutureCancelledError, ToolParameterValidationError))
+    return isinstance(
+        error,
+        (
+            ToolInvocationTimeoutError,
+            ToolExecutionTimeout,
+            ToolExecutionDenied,
+            FutureCancelledError,
+            ToolParameterValidationError,
+        ),
+    )
 
 
 def error_stage_for_exception(error: Exception) -> str:
     if isinstance(error, ToolParameterValidationError):
         return "validation_error"
-    if isinstance(error, ToolInvocationTimeoutError):
+    if isinstance(error, (ToolInvocationTimeoutError, ToolExecutionTimeout)):
         return "timeout"
+    if isinstance(error, ToolExecutionDenied):
+        return "denied"
     if isinstance(error, FutureCancelledError):
         return "cancelled"
     return "error"
@@ -157,9 +149,9 @@ def runtime_info_for_error(
         "fallback_used": False,
         "parallel_batch_size": parallel_batch_size if (parallel_batch_size or 0) > 1 else None,
     }
-    if isinstance(exc, ToolInvocationTimeoutError):
+    if isinstance(exc, (ToolInvocationTimeoutError, ToolExecutionTimeout)):
         runtime_info["timed_out"] = True
-        runtime_info["timeout_seconds"] = exc.timeout_seconds
+        runtime_info["timeout_seconds"] = getattr(exc, "timeout_seconds", None)
     if isinstance(exc, FutureCancelledError):
         runtime_info["cancelled"] = True
     if isinstance(exc, ToolParameterValidationError):

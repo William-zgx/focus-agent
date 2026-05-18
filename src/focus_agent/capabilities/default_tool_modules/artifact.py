@@ -4,13 +4,14 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from langchain.tools import tool
 
-from .common import _coerce_relative_posix, _read_text_file, _require_non_empty_text_arg
+from ...storage import LocalArtifactStore
+from .common import _coerce_relative_posix, _require_non_empty_text_arg
 
 
 def _slugify(value: str) -> str:
@@ -19,21 +20,6 @@ def _slugify(value: str) -> str:
     normalized = re.sub(r"[^\w\s-]+", "", normalized, flags=re.UNICODE)
     normalized = re.sub(r"[-\s]+", "-", normalized, flags=re.UNICODE)
     return normalized.strip("-") or "artifact"
-
-
-def _resolve_artifact_path(*, artifact_dir: Path, artifact_id: str) -> Path:
-    if not artifact_id.strip():
-        raise ValueError("artifact_id must not be empty.")
-    candidate = Path(artifact_id).expanduser()
-    if candidate.is_absolute():
-        resolved = candidate.resolve()
-    else:
-        resolved = (artifact_dir / candidate).resolve()
-    try:
-        resolved.relative_to(artifact_dir.resolve())
-    except ValueError as exc:
-        raise ValueError(f"Artifact path must stay within artifact directory: {artifact_dir}") from exc
-    return resolved
 
 
 def _artifact_title_from_id(artifact_id: str) -> str:
@@ -47,6 +33,7 @@ def build_artifact_tools(
     workspace_root: Path,
     settings: Any,
     tool_catalog: Any,
+    artifact_store: Any,
     artifact_metadata_repository: Any,
     emit_tool_event: Callable[..., None],
     get_current_thread_id: Callable[[], str | None],
@@ -56,6 +43,17 @@ def build_artifact_tools(
         _require_non_empty_text_arg(args, "body")
 
     artifact_metadata_repo = artifact_metadata_repository
+    store = artifact_store or LocalArtifactStore(artifact_dir)
+
+    def _artifact_path_for(artifact_id: str) -> Path:
+        if hasattr(store, "path_for"):
+            return store.path_for(artifact_id)
+        return Path(store.url(artifact_id)).expanduser().resolve()
+
+    def _artifact_id_for_path(path: Path) -> str:
+        if hasattr(store, "artifact_id_for_path"):
+            return store.artifact_id_for_path(path)
+        return path.relative_to(artifact_dir.resolve()).as_posix()
 
     def _get_artifact_metadata_repo():
         nonlocal artifact_metadata_repo
@@ -69,7 +67,9 @@ def build_artifact_tools(
         artifact_metadata_repo.setup()
         return artifact_metadata_repo
 
-    def _upsert_artifact_metadata(*, thread_id: str | None, artifact_id: str, path: Path, title: str) -> None:
+    def _upsert_artifact_metadata(
+        *, thread_id: str | None, artifact_id: str, path: Path, title: str
+    ) -> None:
         if not thread_id:
             return
         repo = _get_artifact_metadata_repo()
@@ -99,21 +99,19 @@ def build_artifact_tools(
     def _list_artifacts_from_filesystem(*, limit: int) -> tuple[list[dict[str, Any]], bool]:
         artifacts: list[dict[str, Any]] = []
         truncated = False
-        for candidate in sorted(artifact_dir.rglob("*")):
-            if not candidate.is_file():
-                continue
-            try:
-                relative = candidate.relative_to(artifact_dir).as_posix()
-            except ValueError:
-                continue
-            stat = candidate.stat()
+        artifact_iter = (
+            store.iter_artifacts()
+            if hasattr(store, "iter_artifacts")
+            else LocalArtifactStore(artifact_dir).iter_artifacts()
+        )
+        for item in artifact_iter:
             artifacts.append(
                 {
-                    "artifact_id": relative,
-                    "path": str(candidate),
-                    "title": _artifact_title_from_id(relative),
-                    "size_bytes": stat.st_size,
-                    "updated_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+                    "artifact_id": item.artifact_id,
+                    "path": str(item.path),
+                    "title": _artifact_title_from_id(item.artifact_id),
+                    "size_bytes": item.size_bytes,
+                    "updated_at": item.updated_at.isoformat(),
                 }
             )
             if len(artifacts) >= limit:
@@ -124,20 +122,20 @@ def build_artifact_tools(
     @tool
     def write_text_artifact(title: str, body: str) -> str:
         """Write a text artifact to disk and return its location."""
-        tool_name = 'write_text_artifact'
-        emit_tool_event(tool_name=tool_name, stage='start', title=title)
+        tool_name = "write_text_artifact"
+        emit_tool_event(tool_name=tool_name, stage="start", title=title)
         try:
             filename = f"{_slugify(title)}.md"
-            path = artifact_dir / filename
             thread_id = get_current_thread_id()
+            path = _artifact_path_for(filename)
             display_path = _coerce_relative_posix(path, workspace_root)
             emit_tool_event(
                 tool_name=tool_name,
-                stage='delta',
-                message='Writing artifact to disk',
+                stage="delta",
+                message="Writing artifact to disk",
                 path=display_path,
             )
-            path.write_text(f"# {title}\n\n{body}\n", encoding='utf-8')
+            store.save(filename, f"# {title}\n\n{body}\n".encode())
             _upsert_artifact_metadata(
                 thread_id=thread_id,
                 artifact_id=filename,
@@ -145,24 +143,26 @@ def build_artifact_tools(
                 title=_artifact_title_from_id(filename),
             )
             result = f"artifact_saved:{display_path}"
-            emit_tool_event(tool_name=tool_name, stage='end', output=result)
+            emit_tool_event(tool_name=tool_name, stage="end", output=result)
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), title=title)
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), title=title)
             raise
 
     @tool
     def artifact_list(max_results: int | None = None) -> str:
         """List text artifacts saved in the configured artifact directory."""
-        tool_name = 'artifact_list'
-        emit_tool_event(tool_name=tool_name, stage='start', max_results=max_results)
+        tool_name = "artifact_list"
+        emit_tool_event(tool_name=tool_name, stage="start", max_results=max_results)
         try:
             requested_results = (
                 tool_catalog.artifact_list.default_max_results
                 if max_results is None
                 else int(max_results)
             )
-            capped_results = max(1, min(requested_results, tool_catalog.artifact_list.max_results_cap))
+            capped_results = max(
+                1, min(requested_results, tool_catalog.artifact_list.max_results_cap)
+            )
             repo = _get_artifact_metadata_repo()
             thread_id = get_current_thread_id()
             if repo is not None and thread_id:
@@ -176,8 +176,8 @@ def build_artifact_tools(
                 except Exception as exc:  # noqa: BLE001
                     emit_tool_event(
                         tool_name=tool_name,
-                        stage='delta',
-                        message='Artifact metadata lookup failed; falling back to filesystem.',
+                        stage="delta",
+                        message="Artifact metadata lookup failed; falling back to filesystem.",
                         error=str(exc),
                     )
                     artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
@@ -191,19 +191,22 @@ def build_artifact_tools(
                 },
                 ensure_ascii=False,
             )
-            emit_tool_event(tool_name=tool_name, stage='end', result_count=len(artifacts), output=result[:800])
+            emit_tool_event(
+                tool_name=tool_name, stage="end", result_count=len(artifacts), output=result[:800]
+            )
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc))
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
             raise
 
     @tool
     def artifact_read(artifact_id: str) -> str:
         """Read a saved text artifact by filename or artifact id."""
-        tool_name = 'artifact_read'
-        emit_tool_event(tool_name=tool_name, stage='start', artifact_id=artifact_id)
+        tool_name = "artifact_read"
+        emit_tool_event(tool_name=tool_name, stage="start", artifact_id=artifact_id)
         try:
-            path = _resolve_artifact_path(artifact_dir=artifact_dir, artifact_id=artifact_id)
+            read_artifact_id = artifact_id
+            path = _artifact_path_for(read_artifact_id)
             repo = _get_artifact_metadata_repo()
             if repo is not None:
                 try:
@@ -211,8 +214,8 @@ def build_artifact_tools(
                 except Exception as exc:  # noqa: BLE001
                     emit_tool_event(
                         tool_name=tool_name,
-                        stage='delta',
-                        message='Artifact metadata lookup failed; reading from filesystem path.',
+                        stage="delta",
+                        message="Artifact metadata lookup failed; reading from filesystem path.",
                         error=str(exc),
                     )
                 else:
@@ -225,38 +228,41 @@ def build_artifact_tools(
                         except ValueError:
                             pass
                         else:
+                            read_artifact_id = _artifact_id_for_path(metadata_path)
                             path = metadata_path
-            if not path.exists():
+            if not store.exists(read_artifact_id):
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
                 raise IsADirectoryError(artifact_id)
-            content = _read_text_file(path)
+            content = store.load(read_artifact_id).decode("utf-8")
             truncated = len(content) > tool_catalog.artifact_read.max_chars
             payload = {
-                "artifact_id": path.relative_to(artifact_dir.resolve()).as_posix(),
+                "artifact_id": _artifact_id_for_path(path),
                 "path": str(path),
                 "content": content[: tool_catalog.artifact_read.max_chars],
                 "truncated": truncated,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), artifact_id=artifact_id)
+            emit_tool_event(
+                tool_name=tool_name, stage="error", error=str(exc), artifact_id=artifact_id
+            )
             raise
 
     @tool
     def artifact_update(artifact_id: str, body: str, mode: str = "replace") -> str:
         """Replace, append to, or prepend content in an existing text artifact."""
-        tool_name = 'artifact_update'
-        emit_tool_event(tool_name=tool_name, stage='start', artifact_id=artifact_id, mode=mode)
+        tool_name = "artifact_update"
+        emit_tool_event(tool_name=tool_name, stage="start", artifact_id=artifact_id, mode=mode)
         try:
-            path = _resolve_artifact_path(artifact_dir=artifact_dir, artifact_id=artifact_id)
-            if not path.exists():
+            path = _artifact_path_for(artifact_id)
+            if not store.exists(artifact_id):
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
                 raise IsADirectoryError(artifact_id)
-            existing = _read_text_file(path)
+            existing = store.load(artifact_id).decode("utf-8")
             normalized_mode = mode.strip().lower()
             if normalized_mode == "replace":
                 updated = body
@@ -268,8 +274,9 @@ def build_artifact_tools(
                 updated = f"{body}{separator}{existing}"
             else:
                 raise ValueError("mode must be one of: replace, append, prepend.")
-            path.write_text(updated, encoding="utf-8")
-            relative_artifact_id = path.relative_to(artifact_dir.resolve()).as_posix()
+            relative_artifact_id = _artifact_id_for_path(path)
+            store.save(relative_artifact_id, updated.encode("utf-8"))
+            path = _artifact_path_for(relative_artifact_id)
             _upsert_artifact_metadata(
                 thread_id=get_current_thread_id(),
                 artifact_id=relative_artifact_id,
@@ -283,10 +290,12 @@ def build_artifact_tools(
                 "size_bytes": path.stat().st_size,
             }
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(tool_name=tool_name, stage='end', output=result[:800])
+            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
-            emit_tool_event(tool_name=tool_name, stage='error', error=str(exc), artifact_id=artifact_id)
+            emit_tool_event(
+                tool_name=tool_name, stage="error", error=str(exc), artifact_id=artifact_id
+            )
             raise
 
     return (

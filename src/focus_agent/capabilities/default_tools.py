@@ -18,6 +18,7 @@ def get_default_tools(
     memory_repository=None,
     memory_embedding_service=None,
     productivity_repository=None,
+    artifact_store=None,
 ):
     _factory._get_current_thread_id = _get_current_thread_id
     return _factory.get_default_tools(
@@ -28,6 +29,7 @@ def get_default_tools(
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
         productivity_repository=productivity_repository,
+        artifact_store=artifact_store,
     )
 
 

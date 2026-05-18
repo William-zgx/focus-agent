@@ -34,7 +34,6 @@ export function branchZoomLabel(value: number) {
 export { BRANCH_ZOOM_MAX, BRANCH_ZOOM_MIN };
 
 export function useBranchTreeViewport({
-	graphDependency,
 	nodeIndex,
 	onDetailPositionUpdate,
 	selectedThreadId,

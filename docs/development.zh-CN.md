@@ -10,16 +10,19 @@ flowchart TD
     Scope --> SDK["Frontend SDK"]
     Scope --> Admin["Admin / Auth"]
     Scope --> Agent["Agent Governance"]
+    Scope --> Branch["Branch decisions"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
     Admin --> AdminChecks["admin API tests + web scaffold"]
     Agent --> Eval["agent eval suites + governance tests"]
+    Branch --> BranchChecks["branch decision + chat/harness tests"]
     CI --> Done["进入 review"]
     WebChecks --> Done
     SDKChecks --> Done
     AdminChecks --> Done
     Eval --> Done
+    BranchChecks --> Done
 ```
 
 ## 命令矩阵
@@ -40,6 +43,7 @@ make frontend-check
 make frontend-build
 make sdk-check
 make sdk-build
+make sdk-openapi-types-check
 make format
 make format-check
 make ci-test
@@ -88,10 +92,13 @@ make format-check
 
 ```bash
 make contract-check
+make sdk-openapi-types-check
 uv run pytest tests/test_contract_checks.py
 ```
 
 `make contract-check` 会比较 FastAPI route snapshot、frontend SDK public surface、SDK package barrel exports，以及 Web App 在 `apps/web/src` 下对 `@focus-agent/web-sdk` 的 imports。如果 route 或 SDK/E2E contract 漂移是预期行为，请用 `uv run python scripts/check_contracts.py --update` 更新 snapshot，并在 review 中包含 snapshot diff。
+
+`make sdk-openapi-types-check` 会重新生成 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts`，并在任一文件发生 drift 时失败。只要 FastAPI 路由、Pydantic response model 或 generated SDK 类型变化，都应运行这个检查。
 
 3. 如果改动影响 frontend SDK 实现，尤其是 `src/client.ts`、`src/client/`、`src/types.ts`、`src/types/`、`src/transport.ts`、`src/parser.ts`、`src/reducers.ts`、`src/toolProtocol.ts`、`src/guards.ts` 或 transport validation 文件：
 
@@ -99,7 +106,8 @@ uv run pytest tests/test_contract_checks.py
 make sdk-check
 make sdk-build
 make sdk-validate-transport
-cd frontend-sdk && npm run validate:transport
+make sdk-openapi-types-check
+pnpm --dir frontend-sdk validate:transport
 ```
 
 4. 如果改动影响 Web App：
@@ -161,6 +169,8 @@ pnpm --dir apps/web smoke:observability
 
 `scripts/observability_ui_smoke.py` 在 health probe 失败时会尝试通过 `./scripts/run-api.sh` 自动启动本地 API；如果要强制使用已运行的 API，请加 `--no-start-api`。它仍然需要 Chrome，以及 `DATABASE_URI` 或托管本地 Postgres 的 runtime file。`pnpm --dir apps/web smoke:observability` 是源码级路由和 wiring 检查，会补充真实浏览器 smoke，但不能替代它。
 
+如果 API 把 `/app` 重定向到 Vite server，请传入 `--app-base-url http://127.0.0.1:5173/app`，让 browser smoke 等待实际渲染的同源页面。页面已经可见渲染 trajectory evidence、所有捕获到的 fetch 都是 200，但 smoke 因 copy 或 panel 文案变化失败时，应随 UI 变更同步更新 smoke 断言；不要掩盖 endpoint failure、console error 或空 evidence state。
+
 9. 如果改动影响 trajectory observability contract：
 
 ```bash
@@ -202,7 +212,22 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security
 
 这些检查覆盖 in-memory/Postgres thread lease、durable job claim token 与 claim heartbeat、heartbeat lost 行为，以及首轮 branch title/metadata refresh 在 active chat turn lease release 后再调度的边界。
 
-14. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
+如果改动触及 API rate limit，也要包含 `tests/test_coordination.py`。Postgres-backed runtime 应使用 `PostgresRateLimitBackend` 和 `focus_rate_limit_buckets` schema；local/fallback runtime 继续使用 in-memory backend。
+
+14. 如果改动影响 branch decision、发送前推荐或 Branch Action 确认链路：
+
+```bash
+uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
+uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
+make contract-check
+make sdk-openapi-types-check
+make web-check
+```
+
+真实浏览器验证时，开启 `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` 和
+`AGENT_BRANCH_RECOMMENDATION_MODE=suggest`，并使用明确要求创建子分支或同级分支的 prompt。需要确认推荐卡片出现、该推荐没有继续进入普通 graph turn、确认/取消后 thread 与 branch tree cache 都刷新正确。
+
+15. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
 
 ```bash
 uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
@@ -232,7 +257,7 @@ make sdk-check
 - 在 `/app/admin/audit-events` 按 resource 或 decision 过滤，并打开事件详情抽屉。
 - 需要切回其他账号时先退出再重新登录。当前没有独立切换器，账号切换就是 logout 后选择另一种登录方式。
 
-15. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
+16. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
 
 ```bash
 uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
@@ -242,11 +267,23 @@ make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
 make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
 完整 release gate 包含依赖真实 provider/model 的 live-model eval smoke。离线测试环境可以跑 focused release-gate 测试和生成的离线 report，但要把跳过的 live eval 记录成验证缺口，不能等同于真实模型链路通过。
 
-16. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+17. 如果改动影响 schema migration、Docker entrypoint、artifact storage、OpenAPI export 或 generated SDK types：
+
+```bash
+uv run alembic -c alembic.ini heads
+uv run python scripts/export-openapi.py
+make sdk-openapi-types-check
+uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
+```
+
+`alembic upgrade head` 需要 `DATABASE_URI`；Docker entrypoint 会在 `DATABASE_URI` 存在时自动执行。当前 Alembic baseline 会委托 app schema migrations，并应保持 `focus_schema_migrations` 与 `postgres_schema.py` 对齐。
+
+18. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
 
 ```bash
 uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
@@ -256,11 +293,12 @@ uv run python -m tests.eval --suite agent_delegation --concurrency 1
 uv run python -m tests.eval --suite agent_context --concurrency 1
 uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
-项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke` 和
-`golden_multi_agent` 是 release-blocking suite；`model_matrix` 和
-`trajectory_failures` 是 nightly 非阻断信号。改动模型路由或多 Agent 行为时，也建议跑：
+项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke`、
+`golden_multi_agent` 和 `harness_stability` 是 release-blocking suite；
+`model_matrix` 和 `trajectory_failures` 是 nightly 非阻断信号。改动模型路由或多 Agent 行为时，也建议跑：
 
 ```bash
 uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
@@ -297,4 +335,5 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - [管理员控制台](admin-console.md)
 - [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)
+- [分支决策与推荐](branch-decisions.md)
 - [路线图](roadmap.md)

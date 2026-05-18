@@ -24,6 +24,7 @@ This SDK packages those concerns into a small, typed client layer.
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
+- Branch decision config/list/promote/dismiss helpers for AI-assisted branch recommendations
 - Trajectory observability helpers for overview/list/detail/stats/replay/promote plus batch promote-preview and replay-compare flows
 - Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
 - Strongly typed event names and payloads
@@ -40,6 +41,7 @@ This SDK packages those concerns into a small, typed client layer.
 - `src/errors.ts` - structured request error type
 - `src/types.ts` - public type barrel
 - `src/types/` - domain request, response, event, branch, and stream state types
+- `src/types/__generated__.ts` - OpenAPI-generated schema types produced from `docs/api/openapi.json`; this is a drift guard and not the primary public barrel today
 - `src/toolProtocol.ts` - shared filtering for textual tool-call and internal process artifacts
 - `src/parser.ts` - low-level SSE frame parsing and event decoding
 - `src/reducers.ts` - stream state helpers for UI state accumulation
@@ -56,10 +58,18 @@ This package currently lives inside the main repository and is built locally:
 pnpm install --registry=https://registry.npmjs.org
 make sdk-check
 make sdk-build
-cd frontend-sdk && npm run validate:transport
+make sdk-openapi-types-check
+pnpm --dir frontend-sdk validate:transport
 ```
 
-When working only inside `frontend-sdk/`, `npm install`, `npm run check`, and `npm run build` are still valid package-local commands. Repository changes should prefer the root `make sdk-*` targets so the same checks run as CI and release gates.
+When working only inside `frontend-sdk/`, `pnpm --dir frontend-sdk check` and `pnpm --dir frontend-sdk build` are still valid package-local commands. Repository changes should prefer the root `make sdk-*` targets so the same checks run as CI and release gates.
+
+When API routes or backend Pydantic contract models change, regenerate and check the OpenAPI-derived types:
+
+```bash
+make sdk-generate-types
+make sdk-openapi-types-check
+```
 
 Requirements:
 
@@ -122,6 +132,7 @@ console.log(finalState.visibleText);
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app, including optional `context_usage`
 - `previewThreadContext()` and `compactThreadContext()` - estimate the current thread context window with an optional draft message, or trigger non-destructive compaction for the active branch
+- `getBranchDecisionConfig()`, `listThreadBranchDecisions()`, `promoteBranchDecision()`, and `dismissBranchDecision()` - inspect and manage persisted branch decision/recommendation events
 - `executeBranchAction()` and `dismissBranchAction()` - accept or dismiss proposed branch actions
 - `getBranchTree()` - fetch the branch tree rooted at a conversation
 - `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
@@ -158,6 +169,13 @@ Common event families:
 - `state.update`
 - `run.*`
 
+When a pre-turn branch recommendation creates a pending Branch Action, a stream
+may complete without visible deltas: `message.completed` can use
+`source="branch_recommendation"`, and `run.completed` can carry
+`branch_action` and an extra `branch_decision` payload field. Treat that as a
+terminal turn and render the returned Branch Action through the same state path
+as `getThreadState()`.
+
 Recommended usage:
 
 - Normal chat UI: render `message.delta` and `message.completed`
@@ -165,6 +183,8 @@ Recommended usage:
 - Tooling consoles: consume `tool.call.delta`, `tool.requested`, `tool.result`, `tool.error`, and `task.update`
 - State panels: watch `state.update` during streamed turns
 - Completion handling: watch `run.completed`, `run.failed`, and `run.closed`
+- Shutdown handling: watch `server_shutdown` and reconnect or resume according
+  to the caller's policy
 
 Canonical event names:
 
@@ -175,6 +195,7 @@ run.completed
 run.failed
 run.interrupt
 run.closed
+server_shutdown
 heartbeat
 state.update
 message.delta
@@ -204,11 +225,20 @@ The derived stream state tracks:
 - `reasoningText`
 - `toolCalls`
 - `toolEvents`
+- `processingSteps`
+- `activePhase`
+- `interrupts`
+- `branchActions`
 - `latestTurnState`
 - `isClosed`
 - `failed`
 
-`processingSteps` is the canonical derived input for processing cards. `toolCalls`, `toolEvents`, and `reasoningText` are retained as raw/debug/backcompat state. New UI code should not rebuild processing cards from raw tool events when `processingSteps` is available.
+`processingSteps` is the canonical derived input for processing cards. `branchActions`
+is the stream-derived branch action list; the current Web app merges it with
+`ThreadStateResponse.branch_actions` before rendering transcript cards.
+`toolCalls`, `toolEvents`, and `reasoningText` are retained as raw/debug/backcompat
+state. New UI code should not rebuild processing cards from raw tool events when
+`processingSteps` is available.
 
 Visible text is filtered through `safeVisibleTextTransition()` so DSML, XML-ish function-call text, bracketed tool markers, and internal process narration do not flash in normal chat UI. This frontend filtering is defensive; the backend remains responsible for not publishing dirty `message.delta` events.
 
@@ -266,11 +296,10 @@ for await (const event of stream) {
 Common local commands:
 
 ```bash
-cd frontend-sdk
-npm install
-npm run check
-npm run build
-npm run validate:transport
+pnpm --dir frontend-sdk install
+pnpm --dir frontend-sdk check
+pnpm --dir frontend-sdk build
+pnpm --dir frontend-sdk validate:transport
 ```
 
 From the repository root:
@@ -281,9 +310,10 @@ make sdk-check
 make sdk-build
 make sdk-validate-transport
 make contract-check
+make sdk-openapi-types-check
 ```
 
-`npm run validate:transport` uses `tsconfig.validation.json` and `src/transport.validation.ts` to exercise the transport surface outside the production build project.
+`pnpm --dir frontend-sdk validate:transport` uses `tsconfig.validation.json` and `src/transport.validation.ts` to exercise the transport surface outside the production build project.
 
 ## Notes
 
@@ -291,3 +321,4 @@ make contract-check
 - Branch, conversation, merge proposal, imported-conclusion, Agent Team, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
 - `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.
+- `make sdk-openapi-types-check` tracks `docs/api/openapi.json` and `src/types/__generated__.ts`; intentional backend schema drift should include the regenerated OpenAPI and generated-type diff in review.

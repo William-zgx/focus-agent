@@ -53,7 +53,9 @@ def write_json_report(
 def write_jsonl(path: str | Path, records: list[object]) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    body = "".join(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n" for record in records)
+    body = "".join(
+        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n" for record in records
+    )
     target.write_text(body, encoding="utf-8")
     return target
 

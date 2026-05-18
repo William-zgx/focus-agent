@@ -7,6 +7,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..branch_decision import BranchDecisionService
 from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings, ensure_runtime_directories
 from ..core.repo_call import has_repo_method
@@ -22,9 +23,12 @@ from ..multi_agent.maintenance import MultiAgentMaintenanceWorker
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
 from ..repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
 from ..repositories.branch_repository import BranchRepository
-from ..repositories.productivity_repository import InMemoryProductivityRepository, ProductivityRepository
 from ..repositories.in_memory_branch_repository import InMemoryBranchRepository
-from ..repositories.user_repository import UserRepository, InMemoryUserRepository
+from ..repositories.productivity_repository import (
+    InMemoryProductivityRepository,
+    ProductivityRepository,
+)
+from ..repositories.user_repository import InMemoryUserRepository, UserRepository
 from ..services.agent_team import AgentTeamService
 from ..services.background_work import (
     BackgroundJobHandlerRegistry,
@@ -101,6 +105,7 @@ class RuntimeRegistries:
 class RuntimeServices:
     branch_service: BranchService
     agent_team_service: AgentTeamService
+    branch_decision_service: BranchDecisionService
     user_service: UserService
     productivity_service: ProductivityService
 
@@ -117,6 +122,7 @@ class AppRuntime:
     user_repository: UserRepository
     branch_service: BranchService
     agent_team_service: AgentTeamService
+    branch_decision_service: BranchDecisionService
     user_service: UserService
     productivity_service: ProductivityService
     checkpointer: object
@@ -150,12 +156,20 @@ class AppRuntime:
     def conversation_store_namespace(self, context: RequestContext) -> tuple[str, ...]:
         return conversation_namespace_for_context(context)
 
-    def start_durable_background_worker(self, chat_service: object) -> DurableBackgroundWorker | None:
-        if str(getattr(self.settings, "background_job_execution", "best_effort")).strip().lower() != "durable":
+    def start_durable_background_worker(
+        self, chat_service: object
+    ) -> DurableBackgroundWorker | None:
+        if (
+            str(getattr(self.settings, "background_job_execution", "best_effort")).strip().lower()
+            != "durable"
+        ):
             return None
         if self.durable_background_worker is not None:
             return self.durable_background_worker
-        if not self.settings.database_uri or str(self.settings.background_job_backend).lower() != "postgres":
+        if (
+            not self.settings.database_uri
+            or str(self.settings.background_job_backend).lower() != "postgres"
+        ):
             raise RuntimeError(
                 "BACKGROUND_JOB_EXECUTION=durable requires DATABASE_URI and "
                 "BACKGROUND_JOB_BACKEND=postgres."
@@ -166,6 +180,7 @@ class AppRuntime:
             chat_service=chat_service,
             branch_service=self.branch_service,
             agent_team_service=self.agent_team_service,
+            branch_decision_service=self.branch_decision_service,
         )
         worker = DurableBackgroundWorker(
             name="runtime",
@@ -181,9 +196,10 @@ class AppRuntime:
 
 def create_runtime(settings: Settings | None = None) -> AppRuntime:
     settings = settings or Settings.from_env()
-    if (
-        str(getattr(settings, "background_job_execution", "best_effort")).strip().lower() == "durable"
-        and (not settings.database_uri or str(settings.background_job_backend).lower() != "postgres")
+    if str(
+        getattr(settings, "background_job_execution", "best_effort")
+    ).strip().lower() == "durable" and (
+        not settings.database_uri or str(settings.background_job_backend).lower() != "postgres"
     ):
         raise ValueError(
             "BACKGROUND_JOB_EXECUTION=durable requires DATABASE_URI and BACKGROUND_JOB_BACKEND=postgres."
@@ -242,6 +258,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         coordination_backend=coordination_backend,
     )
     graph = harness.graph
+    governance_repository = _create_governance_repository(settings)
     services = _create_runtime_services(
         settings=settings,
         graph=graph,
@@ -251,6 +268,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_writer=memory.memory_writer,
         memory_repository=persistence.memory_repository,
         productivity_repository=persistence.productivity_repository,
+        governance_repository=governance_repository,
         coordination_backend=coordination_backend,
         background_work=background_work,
     )
@@ -266,6 +284,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         user_repository=persistence.user_repository,
         branch_service=services.branch_service,
         agent_team_service=services.agent_team_service,
+        branch_decision_service=services.branch_decision_service,
         user_service=services.user_service,
         productivity_service=services.productivity_service,
         checkpointer=persistence.checkpointer,
@@ -277,7 +296,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_extractor=memory.memory_extractor,
         memory_repository=memory.memory_repository,
         productivity_repository=persistence.productivity_repository,
-        governance_repository=_create_governance_repository(settings),
+        governance_repository=governance_repository,
         memory_embedding_service=memory.memory_embedding_service,
         memory_embedding_provider=memory.memory_embedding_provider,
         memory_embedding_backend_error=memory.memory_embedding_backend_error,
@@ -327,12 +346,10 @@ def _create_runtime_persistence(
             trajectory_recorder,
             artifact_metadata_repository,
             run_journal,
-        ) = (
-            _create_postgres_primary_persistence(
-                settings=settings,
-                exit_stack=exit_stack,
-                memory_embedding_setup=memory_embedding_setup,
-            )
+        ) = _create_postgres_primary_persistence(
+            settings=settings,
+            exit_stack=exit_stack,
+            memory_embedding_setup=memory_embedding_setup,
         )
     else:
         logger.info("Runtime persistence backend selected: local-fallback")
@@ -346,9 +363,7 @@ def _create_runtime_persistence(
             trajectory_recorder,
             artifact_metadata_repository,
             run_journal,
-        ) = (
-            _create_local_fallback_persistence(settings)
-        )
+        ) = _create_local_fallback_persistence(settings)
 
     return RuntimePersistence(
         checkpointer=checkpointer,
@@ -371,7 +386,9 @@ def _create_postgres_connection_provider(settings: Settings) -> PostgresConnecti
         pool_enabled=bool(getattr(settings, "postgres_pool_enabled", True)),
         min_size=int(getattr(settings, "postgres_pool_min_size", 1) or 1),
         max_size=int(getattr(settings, "postgres_pool_max_size", 4) or 4),
-        slow_query_threshold_ms=float(getattr(settings, "postgres_slow_query_threshold_ms", 500.0) or 500.0),
+        slow_query_threshold_ms=float(
+            getattr(settings, "postgres_slow_query_threshold_ms", 500.0) or 500.0
+        ),
     )
 
 
@@ -401,7 +418,9 @@ def _create_memory_components(
     memory_embedding_provider = (
         memory_embedding_service.provider if memory_embedding_service is not None else None
     )
-    vector_search_mode = str(getattr(settings, "agent_memory_vector_search_mode", "shadow")).strip().lower()
+    vector_search_mode = (
+        str(getattr(settings, "agent_memory_vector_search_mode", "shadow")).strip().lower()
+    )
     memory_retriever = MemoryRetriever(
         store=store,
         repository=memory_repository,
@@ -536,6 +555,7 @@ def _create_runtime_services(
     memory_writer: MemoryWriter,
     memory_repository: object | None,
     productivity_repository: ProductivityRepository,
+    governance_repository: object,
     coordination_backend: CoordinationBackend,
     background_work: BoundedBackgroundQueue,
 ) -> RuntimeServices:
@@ -558,10 +578,18 @@ def _create_runtime_services(
         user_repository,
         auth_enabled=settings.auth_enabled,
     )
+    branch_decision_service = BranchDecisionService(
+        settings=settings,
+        graph=graph,
+        governance_repository=governance_repository,
+        branch_service=branch_service,
+        coordination_backend=coordination_backend,
+    )
     productivity_service = ProductivityService(productivity_repository)
     return RuntimeServices(
         branch_service=branch_service,
         agent_team_service=agent_team_service,
+        branch_decision_service=branch_decision_service,
         user_service=user_service,
         productivity_service=productivity_service,
     )
@@ -590,7 +618,17 @@ def _create_postgres_primary_persistence(
     settings: Settings,
     exit_stack: ExitStack,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, ProductivityRepository, object | None, object, object]:
+) -> tuple[
+    object,
+    object,
+    BranchRepository,
+    UserRepository,
+    object | None,
+    ProductivityRepository,
+    object | None,
+    object,
+    object,
+]:
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
 
@@ -655,7 +693,17 @@ def _create_postgres_primary_persistence(
 
 def _create_local_fallback_persistence(
     settings: Settings,
-) -> tuple[object, object, BranchRepository, UserRepository, object | None, ProductivityRepository, object | None, object | None, object]:
+) -> tuple[
+    object,
+    object,
+    BranchRepository,
+    UserRepository,
+    object | None,
+    ProductivityRepository,
+    object | None,
+    object | None,
+    object,
+]:
     persistence_dir = Path(settings.branch_db_path).expanduser().parent
     checkpoint_path = (
         Path(settings.local_checkpoint_path).expanduser()
@@ -674,7 +722,18 @@ def _create_local_fallback_persistence(
     productivity_repository = InMemoryProductivityRepository()
     run_journal = _sqlite_run_journal_cls()(persistence_dir / "harness_runs.sqlite3")
     _setup_component_if_available(run_journal)
-    return checkpointer, store, repo, user_repository, None, productivity_repository, None, None, run_journal
+    return (
+        checkpointer,
+        store,
+        repo,
+        user_repository,
+        None,
+        productivity_repository,
+        None,
+        None,
+        run_journal,
+    )
+
 
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
     if settings.database_uri:
@@ -722,8 +781,14 @@ def _memory_embedding_schema_dimensions(settings: Settings, *, provider: object 
         return configured
     model_id = str(getattr(settings, "agent_memory_embedding_model", "") or "").strip().lower()
     backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
-    provider_id = str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
-    if model_id in {"embeddinggemma", "embedding-gemma"} or backend == "ollama" or provider_id == "ollama":
+    provider_id = (
+        str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
+    )
+    if (
+        model_id in {"embeddinggemma", "embedding-gemma"}
+        or backend == "ollama"
+        or provider_id == "ollama"
+    ):
         return 768
     return 1536
 
@@ -758,7 +823,9 @@ def _memory_embedding_configured(settings: Settings) -> bool:
         return True
     if bool(getattr(settings, "agent_memory_embedding_enabled", False)):
         return True
-    return str(getattr(settings, "agent_memory_vector_search_mode", "off")).strip().lower() == "hybrid"
+    return (
+        str(getattr(settings, "agent_memory_vector_search_mode", "off")).strip().lower() == "hybrid"
+    )
 
 
 def _build_tool_registry_compat(

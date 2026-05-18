@@ -51,7 +51,7 @@ from ..route_utils.trajectory import (
 router = APIRouter()
 
 
-@router.get('/v1/observability/overview', response_model=ObservabilityOverviewResponse)
+@router.get("/v1/observability/overview", response_model=ObservabilityOverviewResponse)
 def get_observability_overview(
     trajectory_params: ObservabilityTrajectoryParams = Depends(observability_trajectory_params),
     principal: Principal = Depends(get_current_principal),
@@ -81,9 +81,12 @@ def get_observability_overview(
         stats=stats,
     )
 
-@router.get('/v1/observability/trajectory', response_model=TrajectoryTurnListResponse)
+
+@router.get("/v1/observability/trajectory", response_model=TrajectoryTurnListResponse)
 def list_trajectory_turns(
-    trajectory_params: ObservabilityTrajectoryParams = Depends(observability_trajectory_list_params),
+    trajectory_params: ObservabilityTrajectoryParams = Depends(
+        observability_trajectory_list_params
+    ),
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryTurnListResponse:
@@ -100,7 +103,10 @@ def list_trajectory_turns(
         offset=trajectory_params.offset,
     )
 
-@router.get('/v1/observability/trajectory/stats', response_model=TrajectoryTurnStatsEnvelopeResponse)
+
+@router.get(
+    "/v1/observability/trajectory/stats", response_model=TrajectoryTurnStatsEnvelopeResponse
+)
 def get_trajectory_turn_stats(
     trajectory_params: ObservabilityTrajectoryParams = Depends(observability_trajectory_params),
     principal: Principal = Depends(get_current_principal),
@@ -115,8 +121,9 @@ def get_trajectory_turn_stats(
         stats=_build_trajectory_stats_response(repo.get_turn_stats(query)),
     )
 
+
 @router.post(
-    '/v1/observability/trajectory/batch/promote-preview',
+    "/v1/observability/trajectory/batch/promote-preview",
     response_model=TrajectoryBatchPromotionPreviewResponse,
 )
 def promote_trajectory_turn_batch_preview(
@@ -137,8 +144,9 @@ def promote_trajectory_turn_batch_preview(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+
 @router.post(
-    '/v1/observability/trajectory/batch/replay-compare',
+    "/v1/observability/trajectory/batch/replay-compare",
     response_model=TrajectoryBatchReplayCompareResponse,
 )
 def replay_trajectory_turn_batch_compare(
@@ -160,7 +168,10 @@ def replay_trajectory_turn_batch_compare(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-@router.get('/v1/observability/trajectory/{turn_id}', response_model=TrajectoryTurnDetailEnvelopeResponse)
+
+@router.get(
+    "/v1/observability/trajectory/{turn_id}", response_model=TrajectoryTurnDetailEnvelopeResponse
+)
 def get_trajectory_turn_detail(
     turn_id: str,
     principal: Principal = Depends(get_current_principal),
@@ -170,7 +181,7 @@ def get_trajectory_turn_detail(
     repo = _get_trajectory_repository(runtime)
     record = repo.get_turn(turn_id)
     if record is None:
-        raise HTTPException(status_code=404, detail=f'Trajectory turn not found: {turn_id}')
+        raise HTTPException(status_code=404, detail=f"Trajectory turn not found: {turn_id}")
 
     created_at = None
     summary_rows = repo.list_turns(TrajectoryTurnQuery(turn_ids=[turn_id], limit=1))
@@ -186,7 +197,10 @@ def get_trajectory_turn_detail(
         )
     )
 
-@router.post('/v1/observability/trajectory/{turn_id}/replay', response_model=TrajectoryReplayResponse)
+
+@router.post(
+    "/v1/observability/trajectory/{turn_id}/replay", response_model=TrajectoryReplayResponse
+)
 def replay_trajectory_turn(
     turn_id: str,
     payload: TrajectoryReplayRequest,
@@ -197,7 +211,7 @@ def replay_trajectory_turn(
     repo = _get_trajectory_repository(runtime)
     record = load_exported_turn(repo, turn_id=turn_id)
     if record is None:
-        raise HTTPException(status_code=404, detail=f'Trajectory turn not found: {turn_id}')
+        raise HTTPException(status_code=404, detail=f"Trajectory turn not found: {turn_id}")
     try:
         return build_trajectory_replay_response(
             record,
@@ -208,7 +222,10 @@ def replay_trajectory_turn(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-@router.post('/v1/observability/trajectory/{turn_id}/promote', response_model=TrajectoryPromotionResponse)
+
+@router.post(
+    "/v1/observability/trajectory/{turn_id}/promote", response_model=TrajectoryPromotionResponse
+)
 def promote_trajectory_turn(
     turn_id: str,
     payload: TrajectoryPromotionRequest,
@@ -219,7 +236,7 @@ def promote_trajectory_turn(
     repo = _get_trajectory_repository(runtime)
     record = load_exported_turn(repo, turn_id=turn_id)
     if record is None:
-        raise HTTPException(status_code=404, detail=f'Trajectory turn not found: {turn_id}')
+        raise HTTPException(status_code=404, detail=f"Trajectory turn not found: {turn_id}")
     try:
         return build_trajectory_promotion_response(
             record,

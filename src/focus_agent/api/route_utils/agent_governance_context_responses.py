@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from focus_agent.config import Settings
 from focus_agent.delegation.context_engineering import (
     build_context_engineering_decision,
     build_context_policy,
@@ -15,7 +16,6 @@ from focus_agent.delegation.task_ledger import (
     evaluate_critic_gate,
     synthesize_delegated_artifacts,
 )
-from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import (
@@ -70,7 +70,9 @@ def _agent_context_decisions_response(
     limit: int,
 ) -> AgentContextDecisionListResponse:
     return AgentContextDecisionListResponse(
-        **_list_response_fields(runtime=runtime, key="context_budget_decision", limit=limit, decisions=True)
+        **_list_response_fields(
+            runtime=runtime, key="context_budget_decision", limit=limit, decisions=True
+        )
     )
 
 
@@ -191,7 +193,9 @@ def _agent_critic_verdicts_response(
     limit: int,
 ) -> AgentCriticVerdictListResponse:
     return AgentCriticVerdictListResponse(
-        **_list_response_fields(runtime=runtime, key="critic_gate_result", limit=limit, decisions=True)
+        **_list_response_fields(
+            runtime=runtime, key="critic_gate_result", limit=limit, decisions=True
+        )
     )
 
 

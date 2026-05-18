@@ -3,10 +3,9 @@ import subprocess
 import sys
 import types
 from datetime import UTC, datetime
-from io import BytesIO
 from pathlib import Path
-from urllib.error import HTTPError
 
+import httpx
 import pytest
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -30,43 +29,45 @@ from focus_agent.memory import MemoryAuditEvent, MemoryRecord, MemorySearchHit, 
 from focus_agent.repositories.productivity_repository import InMemoryProductivityRepository
 
 
-class _FakeHeaders(dict):
-    def get_content_charset(self):
-        content_type = self.get("content-type", "")
-        marker = "charset="
-        if marker not in content_type:
-            return None
-        return content_type.split(marker, 1)[1].split(";", 1)[0].strip()
+class _FakeWebHttpClient:
+    def __init__(self, *, post=None, get=None):
+        self._post = post
+        self._get = get
+
+    def post(self, url, *, json=None, headers=None, timeout=None):
+        if self._post is None:
+            raise AssertionError(f"unexpected POST {url}")
+        return self._post(url, json=json, headers=headers or {}, timeout=timeout)
+
+    def get(self, url, *, headers=None, timeout=None):
+        if self._get is None:
+            raise AssertionError(f"unexpected GET {url}")
+        return self._get(url, headers=headers or {}, timeout=timeout)
 
 
-class _FakeHttpResponse:
-    def __init__(self, body: str, *, url: str = "https://example.com/", content_type: str = "application/json"):
-        self._body = body.encode("utf-8")
-        self._url = url
-        self.headers = _FakeHeaders({"content-type": content_type})
-
-    def read(self, size: int = -1) -> bytes:
-        if size is None or size < 0:
-            return self._body
-        return self._body[:size]
-
-    def geturl(self) -> str:
-        return self._url
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-def _fake_tavily_http_error(status_code: int, body: str = '{"error":"tavily failed"}') -> HTTPError:
-    return HTTPError(
-        "https://api.tavily.com/search",
+def _http_json_response(
+    method: str, url: str, payload: object, *, status_code: int = 200
+) -> httpx.Response:
+    return httpx.Response(
         status_code,
-        "Tavily failed",
-        {},
-        BytesIO(body.encode("utf-8")),
+        json=payload,
+        request=httpx.Request(method, url),
+    )
+
+
+def _http_text_response(
+    method: str,
+    url: str,
+    body: str,
+    *,
+    content_type: str = "text/plain; charset=utf-8",
+    status_code: int = 200,
+) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        text=body,
+        headers={"content-type": content_type},
+        request=httpx.Request(method, url),
     )
 
 
@@ -141,9 +142,7 @@ class _FakeArtifactMetadataRepository:
 
     def list_by_thread(self, thread_id: str, *, limit: int | None = None):
         records = [
-            record
-            for record in self.records_by_id.values()
-            if record.thread_id == thread_id
+            record for record in self.records_by_id.values() if record.thread_id == thread_id
         ]
         records.sort(key=lambda record: (-record.updated_at.timestamp(), record.artifact_id))
         if limit is not None:
@@ -155,7 +154,9 @@ class _FakeArtifactMetadataRepository:
 
 
 class _MemoryToolStore:
-    def __init__(self, search_results_by_namespace: dict[tuple[str, ...], list[object]] | None = None):
+    def __init__(
+        self, search_results_by_namespace: dict[tuple[str, ...], list[object]] | None = None
+    ):
         self.data: dict[tuple[str, ...], dict[str, dict[str, object]]] = {}
         self.search_results_by_namespace = {
             tuple(namespace): list(results)
@@ -218,7 +219,9 @@ class _MemoryToolRepository:
         self.records[record.memory_id] = record
         return record.memory_id
 
-    def search(self, *, namespace: tuple[str, ...], query: str, limit: int) -> list[MemorySearchHit]:
+    def search(
+        self, *, namespace: tuple[str, ...], query: str, limit: int
+    ) -> list[MemorySearchHit]:
         query_text = query.casefold()
         hits = [
             MemorySearchHit(record=record, score=0.6, namespace=record.namespace)
@@ -241,9 +244,7 @@ class _MemoryToolRepository:
         record = self.records.get(memory_id)
         if record is None or (namespace is not None and record.namespace != namespace):
             return None
-        self.records[memory_id] = record.model_copy(
-            update={"status": MemoryStatus.FORGOTTEN}
-        )
+        self.records[memory_id] = record.model_copy(update={"status": MemoryStatus.FORGOTTEN})
         return f"tombstone-{memory_id}"
 
     def append_audit_event(self, event: MemoryAuditEvent) -> str:
@@ -331,38 +332,54 @@ def _assert_web_search_error_mentions(payload: dict[str, object], *fragments: st
     errors = payload["errors"]
     assert isinstance(errors, list)
     haystacks = [json.dumps(error, sort_keys=True).lower() for error in errors]
-    assert any(all(fragment.lower() in haystack for fragment in fragments) for haystack in haystacks)
+    assert any(
+        all(fragment.lower() in haystack for fragment in fragments) for haystack in haystacks
+    )
 
 
 def _init_git_repo(path: Path) -> None:
     subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Focus Agent"], cwd=path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "focus-agent@example.com"], cwd=path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Focus Agent"], cwd=path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "focus-agent@example.com"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
 
 
 def test_web_search_prefers_tavily_when_available(monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "test-key")
     _prepare_fake_ddgs(monkeypatch)
 
-    def fake_urlopen(request, timeout=0):
-        assert request.full_url == "https://api.tavily.com/search"
+    def fake_post(url, *, json=None, headers=None, timeout=0):
+        del headers
+        assert url == "https://api.tavily.com/search"
         assert timeout == 30
-        body = json.loads(request.data.decode("utf-8"))
-        assert body["query"] == "latest model release"
-        assert body["max_results"] == 3
-        return _FakeHttpResponse(
-            json.dumps(
-                {
-                    "answer": "A concise answer",
-                    "results": [
-                        {"title": "Official docs", "url": "https://example.com/docs", "content": "doc"},
-                        {"title": "Release notes", "url": "https://example.com/release", "content": "notes"},
-                    ],
-                }
-            )
+        assert json["query"] == "latest model release"
+        assert json["max_results"] == 3
+        return _http_json_response(
+            "POST",
+            url,
+            {
+                "answer": "A concise answer",
+                "results": [
+                    {"title": "Official docs", "url": "https://example.com/docs", "content": "doc"},
+                    {
+                        "title": "Release notes",
+                        "url": "https://example.com/release",
+                        "content": "notes",
+                    },
+                ],
+            },
         )
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=fake_post),
+    )
 
     tools = _tool_map(Settings())
     payload = _invoke_web_search_direct_and_runtime(
@@ -385,24 +402,75 @@ def test_web_search_prefers_tavily_when_available(monkeypatch):
     assert _FakeDDGS.call_count == 0
 
 
+def test_web_search_default_path_uses_shared_http_client(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    _prepare_fake_ddgs(monkeypatch)
+
+    def fake_post(url, *, json=None, headers=None, timeout=None):
+        assert url == "https://api.tavily.com/search"
+        assert headers["Authorization"] == "Bearer test-key"
+        assert timeout == 30
+        assert json == {
+            "query": "shared transport",
+            "max_results": 2,
+            "include_answer": True,
+        }
+        return _http_json_response(
+            "POST",
+            url,
+            {
+                "answer": "Shared transport answer",
+                "results": [
+                    {
+                        "title": "Shared",
+                        "url": "https://example.com/shared",
+                        "content": "transport",
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=fake_post),
+    )
+
+    tools = _tool_map(Settings())
+    payload = json.loads(
+        tools["web_search"].invoke({"query": "shared transport", "max_results": 2})
+    )
+
+    assert payload["provider"] == "tavily"
+    assert payload["answer"] == "Shared transport answer"
+    assert payload["results"][0]["url"] == "https://example.com/shared"
+
+
 def test_web_search_uses_configured_api_key_env_from_settings(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
 
-    def fake_urlopen(request, timeout=0):
-        assert request.headers["Authorization"] == "Bearer alt-key"
-        return _FakeHttpResponse(
-            json.dumps(
-                {
-                    "answer": "Configured env",
-                    "results": [
-                        {"title": "Configured", "url": "https://example.com/configured", "content": "ok"},
-                    ],
-                }
-            )
+    def fake_post(url, *, json=None, headers=None, timeout=0):
+        del json, timeout
+        assert headers["Authorization"] == "Bearer alt-key"
+        return _http_json_response(
+            "POST",
+            url,
+            {
+                "answer": "Configured env",
+                "results": [
+                    {
+                        "title": "Configured",
+                        "url": "https://example.com/configured",
+                        "content": "ok",
+                    },
+                ],
+            },
         )
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=fake_post),
+    )
 
     tools = _tool_map(
         Settings(
@@ -496,16 +564,20 @@ def test_web_search_retries_retryable_tavily_failures_then_falls_back(
     )
     tavily_attempts = 0
 
-    def failing_urlopen(_request, timeout=0):
+    def failing_post(url, *, json=None, headers=None, timeout=0):
+        del json, headers, timeout
         nonlocal tavily_attempts
         tavily_attempts += 1
         if failure_kind == "http_500":
-            raise _fake_tavily_http_error(500)
+            return _http_json_response("POST", url, {"error": "tavily failed"}, status_code=500)
         if failure_kind == "http_429":
-            raise _fake_tavily_http_error(429)
-        raise OSError("temporary tavily outage")
+            return _http_json_response("POST", url, {"error": "tavily failed"}, status_code=429)
+        raise httpx.ConnectError("temporary tavily outage", request=httpx.Request("POST", url))
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", failing_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=failing_post),
+    )
     tools = _tool_map(Settings())
 
     payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
@@ -531,10 +603,14 @@ def test_web_search_falls_back_to_duckduckgo_when_tavily_returns_empty_results(m
         ],
     )
 
-    def empty_urlopen(_request, timeout=0):
-        return _FakeHttpResponse(json.dumps({"answer": "No useful hits", "results": []}))
+    def empty_post(url, *, json=None, headers=None, timeout=0):
+        del json, headers, timeout
+        return _http_json_response("POST", url, {"answer": "No useful hits", "results": []})
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", empty_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=empty_post),
+    )
     tools = _tool_map(Settings())
 
     payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
@@ -557,17 +633,25 @@ def test_web_search_does_not_retry_tavily_auth_failures_before_fallback(monkeypa
     _prepare_fake_ddgs(
         monkeypatch,
         results=[
-            {"title": "Auth fallback", "href": "https://example.com/auth-fallback", "body": "backup"},
+            {
+                "title": "Auth fallback",
+                "href": "https://example.com/auth-fallback",
+                "body": "backup",
+            },
         ],
     )
     tavily_attempts = 0
 
-    def auth_urlopen(_request, timeout=0):
+    def auth_post(url, *, json=None, headers=None, timeout=0):
+        del json, headers, timeout
         nonlocal tavily_attempts
         tavily_attempts += 1
-        raise _fake_tavily_http_error(status_code)
+        return _http_json_response("POST", url, {"error": "tavily failed"}, status_code=status_code)
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", auth_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=auth_post),
+    )
     tools = _tool_map(Settings())
 
     payload = _invoke_web_search_direct_and_runtime(tools["web_search"], {"query": "hello"})
@@ -637,14 +721,22 @@ def test_web_search_respects_duckduckgo_only_configuration(monkeypatch):
     _prepare_fake_ddgs(
         monkeypatch,
         results=[
-            {"title": "DDG only", "href": "https://example.com/ddg-only", "body": "fallback content"},
+            {
+                "title": "DDG only",
+                "href": "https://example.com/ddg-only",
+                "body": "fallback content",
+            },
         ],
     )
 
-    def unexpected_urlopen(_request, timeout=0):
+    def unexpected_post(url, *, json=None, headers=None, timeout=0):
+        del url, json, headers, timeout
         raise AssertionError("Tavily should not be called when provider=duckduckgo")
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", unexpected_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=unexpected_post),
+    )
 
     tools = _tool_map(
         Settings(web_search=WebSearchConfig(provider="duckduckgo", fallback_provider="tavily"))
@@ -735,7 +827,9 @@ def test_artifact_tools_list_read_and_update_saved_artifacts(tmp_path):
             }
         )
     )
-    updated_read_payload = json.loads(tools["artifact_read"].invoke({"artifact_id": "launch-plan.md"}))
+    updated_read_payload = json.loads(
+        tools["artifact_read"].invoke({"artifact_id": "launch-plan.md"})
+    )
 
     assert list_payload["artifacts"][0]["artifact_id"] == "launch-plan.md"
     assert "First draft" in read_payload["content"]
@@ -746,13 +840,17 @@ def test_artifact_tools_list_read_and_update_saved_artifacts(tmp_path):
         tools["artifact_read"].invoke({"artifact_id": "../outside.md"})
 
 
-def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listing(tmp_path, monkeypatch):
+def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listing(
+    tmp_path, monkeypatch
+):
     project = tmp_path / "project"
     project.mkdir()
     artifact_dir = project / ".focus_agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
     metadata_repo = _FakeArtifactMetadataRepository()
-    monkeypatch.setattr("focus_agent.capabilities.default_tools._get_current_thread_id", lambda: "thread-1")
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tools._get_current_thread_id", lambda: "thread-1"
+    )
     tools = _tool_map(
         Settings(
             database_uri="postgresql://example.test/focus_agent",
@@ -792,20 +890,27 @@ def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listi
 
 
 def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):
-    def fake_urlopen(request, timeout=0):
-        assert request.full_url == "https://example.com/article"
+    def fake_get(url, *, headers=None, timeout=0):
+        del headers
+        assert url == "https://example.com/article"
         assert timeout == 30
-        return _FakeHttpResponse(
+        return _http_text_response(
+            "GET",
+            url,
             "<html><head><title>Example Title</title><script>ignore()</script></head>"
             "<body><h1>Hello</h1><p>Useful article text.</p></body></html>",
-            url="https://example.com/article",
             content_type="text/html; charset=utf-8",
         )
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(get=fake_get),
+    )
 
     tools = _tool_map(Settings())
-    payload = json.loads(tools["web_fetch"].invoke({"url": "https://example.com/article", "max_chars": 200}))
+    payload = json.loads(
+        tools["web_fetch"].invoke({"url": "https://example.com/article", "max_chars": 200})
+    )
 
     assert payload["title"] == "Example Title"
     assert "Useful article text." in payload["content"]
@@ -816,10 +921,14 @@ def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):
 
 
 def test_web_fetch_respects_configured_domain_policy(monkeypatch):
-    def unexpected_urlopen(_request, timeout=0):
+    def unexpected_get(url, *, headers=None, timeout=0):
+        del url, headers, timeout
         raise AssertionError("Blocked web_fetch should not issue a network request.")
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", unexpected_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(get=unexpected_get),
+    )
     tools = _tool_map(
         Settings(
             tool_catalog=ToolCatalogConfig(
@@ -838,11 +947,15 @@ def test_web_fetch_respects_configured_domain_policy(monkeypatch):
 
 
 def test_web_fetch_domain_policy_allows_matching_allowlist(monkeypatch):
-    def fake_urlopen(request, timeout=0):
-        assert request.full_url == "https://guide.docs.example/article"
-        return _FakeHttpResponse("Allowed article", url="https://guide.docs.example/article")
+    def fake_get(url, *, headers=None, timeout=0):
+        del headers, timeout
+        assert url == "https://guide.docs.example/article"
+        return _http_text_response("GET", url, "Allowed article")
 
-    monkeypatch.setattr("focus_agent.capabilities.default_tools.urllib_request.urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(get=fake_get),
+    )
     tools = _tool_map(
         Settings(
             tool_catalog=ToolCatalogConfig(
@@ -1227,9 +1340,7 @@ def test_read_file_and_search_code_stay_within_workspace(tmp_path):
     tools = _tool_map(Settings(workspace_root=str(project)))
 
     read_payload = json.loads(
-        tools["read_file"].invoke(
-            {"path": "src/app.py", "start_line": 1, "end_line": 5}
-        )
+        tools["read_file"].invoke({"path": "src/app.py", "start_line": 1, "end_line": 5})
     )
     search_payload = json.loads(
         tools["search_code"].invoke(

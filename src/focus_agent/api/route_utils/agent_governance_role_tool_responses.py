@@ -4,13 +4,13 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
 from focus_agent.capabilities.tool_router import (
     build_capability_registry,
     build_tool_route_plan,
     build_toolset_registry,
 )
 from focus_agent.config import Settings
+from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 

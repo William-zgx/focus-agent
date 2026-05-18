@@ -98,10 +98,10 @@ class MemoryPolicy:
             return quality_reason
 
         if record.scope == record.scope.USER:
-            allowed = (
-                record.kind.value in {"user_preference", "user_profile"}
-                and record.namespace == user_profile_namespace(context.user_id)
-            )
+            allowed = record.kind.value in {
+                "user_preference",
+                "user_profile",
+            } and record.namespace == user_profile_namespace(context.user_id)
             return None if allowed else "policy"
 
         if record.scope == record.scope.PROJECT:
@@ -118,13 +118,18 @@ class MemoryPolicy:
                 root_thread_episodic_namespace(context.root_thread_id),
                 conversation_main_namespace(context.root_thread_id),
             }
-            return None if record.kind.value in allowed and record.namespace in root_namespaces else "policy"
+            return (
+                None
+                if record.kind.value in allowed and record.namespace in root_namespaces
+                else "policy"
+            )
 
         if record.scope == record.scope.BRANCH:
             allowed = bool(
                 context.branch_id
                 and record.kind.value == "branch_finding"
-                and record.namespace == branch_local_memory_namespace(context.root_thread_id, context.branch_id)
+                and record.namespace
+                == branch_local_memory_namespace(context.root_thread_id, context.branch_id)
             )
             return None if allowed else "policy"
 
@@ -138,7 +143,9 @@ class MemoryPolicy:
             user_profile_namespace(context.user_id),
         ]
         if context.branch_id:
-            namespaces.insert(1, branch_local_memory_namespace(context.root_thread_id, context.branch_id))
+            namespaces.insert(
+                1, branch_local_memory_namespace(context.root_thread_id, context.branch_id)
+            )
         if context.project_id:
             namespaces.append(project_memory_namespace(context.project_id))
         for skill_id in context.skill_hints:
@@ -219,7 +226,9 @@ class MemoryPolicy:
 
 def _turn_is_stable(state: dict) -> bool:
     reflection = state.get("reflection")
-    status = getattr(reflection, "status", None) or (reflection.get("status") if isinstance(reflection, dict) else None)
+    status = getattr(reflection, "status", None) or (
+        reflection.get("status") if isinstance(reflection, dict) else None
+    )
     if status == "replan":
         return False
     messages = list(state.get("messages", []) or [])

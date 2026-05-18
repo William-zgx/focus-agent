@@ -20,11 +20,9 @@ class TrajectoryReadRepository(Protocol):
         filters: dict[str, Any],
         limit: int,
         offset: int,
-    ) -> Iterable[Any]:
-        ...
+    ) -> Iterable[Any]: ...
 
-    def get_turn(self, turn_id: str) -> Any:
-        ...
+    def get_turn(self, turn_id: str) -> Any: ...
 
     def export_turns(
         self,
@@ -32,11 +30,9 @@ class TrajectoryReadRepository(Protocol):
         filters: dict[str, Any],
         limit: int | None,
         offset: int,
-    ) -> Iterable[Any]:
-        ...
+    ) -> Iterable[Any]: ...
 
-    def stats(self, *, filters: dict[str, Any]) -> Any:
-        ...
+    def stats(self, *, filters: dict[str, Any]) -> Any: ...
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -187,7 +183,9 @@ def _resolve_database_uri(args: argparse.Namespace, parser: argparse.ArgumentPar
 def _run_list(repo: TrajectoryReadRepository, args: argparse.Namespace) -> int:
     filters = _build_filters(args)
     method = _require_repo_method(repo, "list_turns")
-    items = [_json_ready(item) for item in method(filters=filters, limit=args.limit, offset=args.offset)]
+    items = [
+        _json_ready(item) for item in method(filters=filters, limit=args.limit, offset=args.offset)
+    ]
     _print_json(
         {
             "items": items,

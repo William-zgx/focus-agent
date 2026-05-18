@@ -25,6 +25,8 @@ class EvalCase:
     acceptance: dict[str, Any] = field(default_factory=dict)
     scene: str = "long_dialog_research"
     skill_hints: list[str] = field(default_factory=list)
+    prompt_id: str | None = None
+    prompt_version: str | None = None
     setup: list[dict[str, str]] = field(default_factory=list)
     judge: dict[str, Any] = field(default_factory=lambda: {"rule": True, "llm": {"enabled": False}})
     origin: dict[str, Any] | None = None
@@ -41,9 +43,7 @@ class EvalCase:
             agent_topology=dict(raw.get("agent_topology") or {}),
             environment=dict(raw.get("environment") or {}),
             model_matrix=[
-                dict(item)
-                for item in list(raw.get("model_matrix") or [])
-                if isinstance(item, dict)
+                dict(item) for item in list(raw.get("model_matrix") or []) if isinstance(item, dict)
             ],
             model_policy=dict(raw.get("model_policy") or {}),
             retries=max(0, int(raw.get("retries") or 0)),
@@ -51,6 +51,8 @@ class EvalCase:
             acceptance=dict(raw.get("acceptance") or {}),
             scene=str(raw.get("scene") or "long_dialog_research"),
             skill_hints=list(raw.get("skill_hints") or []),
+            prompt_id=_prompt_id(raw),
+            prompt_version=_prompt_version(raw),
             setup=list(raw.get("setup") or []),
             judge=dict(raw.get("judge") or {"rule": True, "llm": {"enabled": False}}),
             origin=raw.get("origin"),
@@ -64,6 +66,8 @@ class EvalCase:
             "tags": list(self.tags),
             "scene": self.scene,
             "skill_hints": list(self.skill_hints),
+            "prompt_id": self.prompt_id,
+            "prompt_version": self.prompt_version,
             "setup": list(self.setup),
             "judge": self.judge,
             "origin": self.origin,
@@ -132,3 +136,21 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _prompt_id(raw: dict[str, Any]) -> str | None:
+    prompt_id = _optional_str(raw.get("prompt_id"))
+    if prompt_id and "@" in prompt_id and not raw.get("prompt_version"):
+        prompt_id, _, _ = prompt_id.rpartition("@")
+    return prompt_id
+
+
+def _prompt_version(raw: dict[str, Any]) -> str | None:
+    prompt_version = _optional_str(raw.get("prompt_version"))
+    if prompt_version:
+        return prompt_version
+    prompt_id = _optional_str(raw.get("prompt_id"))
+    if prompt_id and "@" in prompt_id:
+        _, _, prompt_version = prompt_id.rpartition("@")
+        return prompt_version or None
+    return None

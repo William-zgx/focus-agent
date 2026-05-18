@@ -139,7 +139,9 @@ def looks_like_stream_visible_text_artifact(text: Any) -> bool:
     value = str(text or "").strip()
     if not value:
         return False
-    return looks_like_textual_tool_call_artifact(value) or sanitize_stream_visible_text(value) != value
+    return (
+        looks_like_textual_tool_call_artifact(value) or sanitize_stream_visible_text(value) != value
+    )
 
 
 def looks_like_potential_stream_visible_text_artifact_prefix(text: Any) -> bool:
@@ -434,7 +436,9 @@ def map_custom_payload_to_event(payload: Any) -> tuple[str, dict[str, Any]]:
             normalized = dict(payload)
             normalized.update(
                 _tool_identity_payload(
-                    tool_call_id=payload.get("tool_call_id") or payload.get("id") or payload.get("call_id"),
+                    tool_call_id=payload.get("tool_call_id")
+                    or payload.get("id")
+                    or payload.get("call_id"),
                     name=payload.get("tool_name") or payload.get("name"),
                 )
             )

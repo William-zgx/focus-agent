@@ -75,8 +75,7 @@ def _tool_observation_within_budget(
     if not enforce_token_budget:
         return True
     return (
-        _tool_observation_budget_units(text, budget=budget)
-        <= budget.tool_observation_token_limit
+        _tool_observation_budget_units(text, budget=budget) <= budget.tool_observation_token_limit
     )
 
 

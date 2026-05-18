@@ -353,7 +353,9 @@ def review_candidate_cases(
                 redactions = _empty_redaction_summary()
             pii_redaction_summary = _merge_redaction_summaries(pii_redaction_summary, redactions)
             candidate = _with_privacy_summary(candidate, redactions)
-            expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
+            expected = (
+                candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
+            )
             if not _has_expected_assertions(expected):
                 skipped_no_assertions += 1
                 continue
@@ -538,10 +540,7 @@ def build_summary(results: Sequence[ProbeResult]) -> dict[str, Any]:
         "context_compaction_semantic_quality",
         "context_compaction_semantic_drift",
     )
-    averages = {
-        name: _average_metric(results, name)
-        for name in metric_names
-    }
+    averages = {name: _average_metric(results, name) for name in metric_names}
     per_tag_success: dict[str, float] = {}
     tag_buckets: dict[str, list[bool]] = {}
     for result in results:
@@ -628,7 +627,9 @@ def write_trend_report(
         promoted_jsonl=promoted_jsonl,
         golden_jsonl=golden_jsonl,
     )
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
@@ -656,11 +657,15 @@ def write_report(path: str | Path, *, dataset: Path, results: Sequence[ProbeResu
         "comparison": {"regressions": []},
         "results": [result.to_dict() for result in results],
     }
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return target
 
 
-def run(dataset: str | Path = DEFAULT_DATASET, *, report_json: str | Path = DEFAULT_REPORT_JSON) -> dict[str, Any]:
+def run(
+    dataset: str | Path = DEFAULT_DATASET, *, report_json: str | Path = DEFAULT_REPORT_JSON
+) -> dict[str, Any]:
     dataset_path = Path(dataset)
     cases = load_dataset(dataset_path)
     results = [evaluate_case(case) for case in cases]
@@ -675,8 +680,12 @@ def run(dataset: str | Path = DEFAULT_DATASET, *, report_json: str | Path = DEFA
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", default=str(DEFAULT_DATASET), help="Memory/context quality JSONL dataset.")
-    parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured JSON report path.")
+    parser.add_argument(
+        "--dataset", default=str(DEFAULT_DATASET), help="Memory/context quality JSONL dataset."
+    )
+    parser.add_argument(
+        "--report-json", default=str(DEFAULT_REPORT_JSON), help="Structured JSON report path."
+    )
     parser.add_argument(
         "--convert-failures-json",
         help="Trajectory export or replay report JSON to convert into memory/context cases.",
@@ -807,7 +816,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         if args.candidate_source_json and args.candidate_review_jsonl:
-            raise ValueError("--candidate-source-json and --candidate-review-jsonl cannot be combined")
+            raise ValueError(
+                "--candidate-source-json and --candidate-review-jsonl cannot be combined"
+            )
         if (
             args.trend_report_json
             or args.trend_candidate_jsonl
@@ -882,7 +893,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 target = write_cases_jsonl(args.converted_dataset_out, cases)
                 print(json.dumps({"converted": len(cases), "dataset": str(target)}, indent=2))
             else:
-                print(json.dumps({"converted": len(cases), "cases": cases}, ensure_ascii=False, indent=2))
+                print(
+                    json.dumps(
+                        {"converted": len(cases), "cases": cases}, ensure_ascii=False, indent=2
+                    )
+                )
             return 0
         result = run(dataset=args.dataset, report_json=args.report_json)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -993,7 +1008,10 @@ def _candidate_record_to_case(
         eval_case.get("id"),
         source_index,
     )
-    case_payload = {"input": {"rendered_context": context, "answer": answer}, "expected": converted_expected}
+    case_payload = {
+        "input": {"rendered_context": context, "answer": answer},
+        "expected": converted_expected,
+    }
     content_hash = _stable_hash(case_payload)[:12]
     source_slug = f"{_slug(source_type) or 'source'}-{source_index}-{_stable_hash(source_id)[:8]}"
     baseline_slug = _slug(baseline_label) or "candidate"
@@ -1244,7 +1262,9 @@ def _failure_record_to_case(
     if not _has_expected_assertions(converted_expected):
         return None
 
-    source_id = str(record.get("case_id") or record.get("id") or record.get("trajectory_id") or index)
+    source_id = str(
+        record.get("case_id") or record.get("id") or record.get("trajectory_id") or index
+    )
     return {
         "id": f"{_slug(case_id_prefix)}_{_slug(source_id) or index}",
         "tags": ["memory_context", "converted_failure", "trajectory_replay"],
@@ -1269,15 +1289,23 @@ def _convert_expected(record: dict[str, Any], expected: dict[str, Any]) -> dict[
             or record.get("missing_required_facts")
         ),
         "forbidden_facts": _strings(
-            expected.get("forbidden_facts") or record.get("forbidden_facts") or record.get("leaked_facts")
+            expected.get("forbidden_facts")
+            or record.get("forbidden_facts")
+            or record.get("leaked_facts")
         ),
         "required_context_markers": _strings(expected.get("required_context_markers")),
         "forbidden_context_markers": _strings(expected.get("forbidden_context_markers")),
         "artifact_refs": _strings(
-            expected.get("artifact_refs") or record.get("artifact_refs") or record.get("missing_artifact_refs")
+            expected.get("artifact_refs")
+            or record.get("artifact_refs")
+            or record.get("missing_artifact_refs")
         ),
-        "conflict_markers": _strings(expected.get("conflict_markers") or record.get("conflict_markers")),
-        "answer_contains_all": _strings(expected.get("answer_contains_all") or record.get("answer_contains_all")),
+        "conflict_markers": _strings(
+            expected.get("conflict_markers") or record.get("conflict_markers")
+        ),
+        "answer_contains_all": _strings(
+            expected.get("answer_contains_all") or record.get("answer_contains_all")
+        ),
     }
 
 
