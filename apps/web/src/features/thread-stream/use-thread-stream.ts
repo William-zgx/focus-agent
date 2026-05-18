@@ -3,6 +3,8 @@ import {
 	createInitialStreamState,
 	reduceStreamEvent,
 	type FocusAgentBranchActionNavigation,
+	type FocusAgentBranchActionProposal,
+	type FocusAgentEvent,
 	type FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
@@ -41,6 +43,9 @@ interface UseThreadStreamOptions {
 }
 
 const STREAM_STATE_BATCH_MS = 40;
+type StreamFactory = () => Promise<
+	AsyncGenerator<FocusAgentEvent, void, unknown>
+>;
 
 function isBranchActionNavigation(
 	value: unknown,
@@ -53,6 +58,12 @@ function isBranchActionNavigation(
 		navigation.root_thread_id.length > 0 &&
 		navigation.thread_id.length > 0
 	);
+}
+
+function branchActionHandoffMessage(
+	action: FocusAgentBranchActionProposal | null | undefined,
+): string {
+	return String(action?.handoff_message ?? "").trim();
 }
 
 export {
@@ -85,16 +96,14 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 
 	async function runStreamRequest({
 		requestThreadId,
-		requestRootThreadId,
 		requestId,
 		controller,
 		streamFactory,
 	}: {
 		requestThreadId: string;
-		requestRootThreadId: string;
 		requestId: string;
 		controller: AbortController;
-		streamFactory: () => ReturnType<typeof client.streamTurn>;
+		streamFactory: StreamFactory;
 	}): Promise<SendMessageResult> {
 		setThreadEntries((current) =>
 			patchThreadEntry(current, requestThreadId, {
@@ -191,19 +200,28 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 					event.event === "run.completed" &&
 					isBranchActionNavigation(event.data.navigation)
 				) {
+					const navigation = event.data.navigation;
+					const handoffMessage = branchActionHandoffMessage(
+						event.data.branch_action as FocusAgentBranchActionProposal | null,
+					);
 					invalidateBranchActionNavigationSurfaces(
 						queryClient,
-						event.data.navigation.root_thread_id,
 						requestThreadId,
-						event.data.navigation.thread_id,
+						navigation.thread_id,
 					);
 					void navigate({
 						to: "/c/$conversationId/t/$threadId",
 						params: {
-							conversationId: event.data.navigation.root_thread_id,
-							threadId: event.data.navigation.thread_id,
+							conversationId: navigation.root_thread_id,
+							threadId: navigation.thread_id,
 						},
 					});
+					if (handoffMessage && navigation.thread_id !== requestThreadId) {
+						void runCarriedMessageInThread(
+							navigation.thread_id,
+							handoffMessage,
+						);
+					}
 				}
 
 				if (
@@ -266,11 +284,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 					}),
 				);
 			}
-			void invalidateThreadStreamSurfaces(
-				queryClient,
-				requestRootThreadId,
-				requestThreadId,
-			);
+			void invalidateThreadStreamSurfaces(queryClient, requestThreadId);
 		}
 
 		return { ok: sendSucceeded };
@@ -280,8 +294,14 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		message: string,
 		overrides?: SendMessageOverrides,
 	): Promise<SendMessageResult> {
-		const requestThreadId = options.threadId;
-		const requestRootThreadId = options.rootThreadId;
+		return sendMessageToThread(options.threadId, message, overrides);
+	}
+
+	async function sendMessageToThread(
+		requestThreadId: string,
+		message: string,
+		overrides?: SendMessageOverrides,
+	): Promise<SendMessageResult> {
 		const { requestId, controller } =
 			requestRegistry.beginStreamRequest(requestThreadId);
 		setThreadEntries((current) =>
@@ -304,11 +324,41 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 
 		return runStreamRequest({
 			requestThreadId,
-			requestRootThreadId,
 			requestId,
 			controller,
 			streamFactory: () =>
 				client.streamTurn(requestPayload, { signal: controller.signal }),
+		});
+	}
+
+	async function runCarriedMessageInThread(
+		requestThreadId: string,
+		message: string,
+		overrides?: SendMessageOverrides,
+	): Promise<SendMessageResult> {
+		const cleanMessage = message.trim();
+		if (!cleanMessage) return { ok: false };
+		const { requestId, controller } =
+			requestRegistry.beginStreamRequest(requestThreadId);
+		return runStreamRequest({
+			requestThreadId,
+			requestId,
+			controller,
+			streamFactory: () =>
+				client.streamHarnessRun(
+					requestThreadId,
+					{
+						message: cleanMessage,
+						input: { messages: [] },
+						metadata: { branch_handoff_auto_run: true },
+						model: overrides?.model || options.selectedModel || undefined,
+						thinking_mode: resolveThinkingModeForRequest(
+							overrides,
+							options.selectedThinkingMode,
+						),
+					},
+					{ signal: controller.signal },
+				),
 		});
 	}
 
@@ -317,13 +367,11 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		approved: boolean,
 	): Promise<SendMessageResult> {
 		const requestThreadId = options.threadId;
-		const requestRootThreadId = options.rootThreadId;
 		const { requestId, controller } =
 			requestRegistry.beginStreamRequest(requestThreadId);
 
 		return runStreamRequest({
 			requestThreadId,
-			requestRootThreadId,
 			requestId,
 			controller,
 			streamFactory: () =>
@@ -340,8 +388,21 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 	function stopStreaming() {
 		const runId = activeRunIdsRef.current.get(options.threadId);
 		requestRegistry.stopStreamRequest(options.threadId);
+		activeRunIdsRef.current.delete(options.threadId);
+		const cleanup = resolveStreamRequestCleanup(false, true);
+		setThreadEntries((current) =>
+			patchThreadEntry(current, options.threadId, {
+				isStreaming: false,
+				pendingUserMessage: cleanup.clearPendingUserMessage
+					? null
+					: (current[options.threadId]?.pendingUserMessage ?? null),
+				streamState: cleanup.clearStreamState
+					? null
+					: (current[options.threadId]?.streamState ?? null),
+			}),
+		);
+		void invalidateThreadStreamSurfaces(queryClient, options.threadId);
 		if (runId) {
-			activeRunIdsRef.current.delete(options.threadId);
 			void client
 				.cancelHarnessRun(runId, { action: "interrupt" })
 				.catch(() => undefined);
@@ -356,6 +417,8 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		pendingUserMessage: currentEntry.pendingUserMessage,
 		isStreaming: currentEntry.isStreaming,
 		sendMessage,
+		sendMessageToThread,
+		runCarriedMessageInThread,
 		resumeToolApproval,
 		stopStreaming,
 	};

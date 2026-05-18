@@ -447,6 +447,95 @@ def test_execute_harness_run_uses_pre_turn_branch_recommendation(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_execute_harness_run_continues_when_pre_turn_recommendation_is_not_visible(monkeypatch):
+    class _Chat:
+        def __init__(self):
+            self.recommendation_kwargs = None
+
+        def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
+            self.recommendation_kwargs = kwargs
+            return None
+
+        def _context_for_thread(self, **kwargs):
+            del kwargs
+            return (
+                SimpleNamespace(root_thread_id="root-1"),
+                {"branch": "main"},
+                {"messages": [AIMessage(content="normal answer")]},
+            )
+
+        def _response_payload(self, **kwargs):
+            del kwargs
+            return {"thread_id": "thread-1", "assistant_message": "normal answer"}
+
+        def _safe_get_interrupts(self, thread_id: str):
+            del thread_id
+            return []
+
+    class _Harness:
+        def __init__(self):
+            self.called = False
+
+        def invoke(self, *args, **kwargs):
+            del args, kwargs
+            self.called = True
+
+    class _Manager:
+        def __init__(self):
+            self.statuses = []
+            self.record = SimpleNamespace(
+                run_id="run-1",
+                to_dict=lambda: {
+                    "run_id": "run-1",
+                    "thread_id": "thread-1",
+                    "status": "success",
+                },
+            )
+
+        def get(self, run_id: str):
+            del run_id
+            return self.record
+
+        async def set_status(self, run_id: str, status: RunStatus, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+    async def scenario():
+        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        manager = _Manager()
+        harness = _Harness()
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(model="model-1"),
+            harness=harness,
+            run_manager=manager,
+        )
+        chat = _Chat()
+
+        response = await harness_runs._execute_harness_run(
+            runtime=runtime,
+            chat=chat,
+            run_record=manager.record,
+            thread_id="thread-1",
+            user_id="user-1",
+            message="换个主题，先看另一个问题。",
+            payload={"messages": [HumanMessage(content="换个主题，先看另一个问题。")]},
+            request_id="request-shadow",
+            context=SimpleNamespace(root_thread_id="root-1"),
+            branch_meta={"branch": "main"},
+            initial_values={"messages": []},
+        )
+
+        assert response.thread_state == {
+            "thread_id": "thread-1",
+            "assistant_message": "normal answer",
+        }
+        assert chat.recommendation_kwargs["message"] == "换个主题，先看另一个问题。"
+        assert harness.called is True
+        assert manager.statuses[-1][1] is RunStatus.SUCCESS
+
+    asyncio.run(scenario())
+
+
 def test_record_harness_turn_and_schedule_can_skip_side_effect_hooks(monkeypatch):
     calls = []
 

@@ -1,3 +1,9 @@
+from .classifier import (
+    SemanticTopicRelationClassifier,
+    SemanticTopicRelationResult,
+    classify_semantic_topic_relation,
+    classify_topic_relation,
+)
 from .models import (
     BranchDecisionAction,
     BranchDecisionConfig,
@@ -18,4 +24,8 @@ __all__ = [
     "BranchDecisionSignal",
     "BranchDecisionStatus",
     "BranchDecisionSummary",
+    "SemanticTopicRelationClassifier",
+    "SemanticTopicRelationResult",
+    "classify_semantic_topic_relation",
+    "classify_topic_relation",
 ]

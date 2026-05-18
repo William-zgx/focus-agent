@@ -50,6 +50,7 @@ make ci-test
 make ci
 make ui-smoke
 make ui-smoke-observability
+make ui-smoke-productivity
 make test-graph-builder
 make test-chat-service
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
@@ -128,16 +129,17 @@ make web-build
 
 The Web lint/format scripts are intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-check` and `make web-build` remain the full app type/build gates.
 
-5. If stream visibility, tool protocol filtering, frontend stream reducers, or processing cards changed:
+5. If stream visibility, tool protocol filtering, frontend stream reducers, processing cards, or the live-web execution contract changed:
 
 ```bash
-.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check
 ```
 
 See [streaming-contract.md](streaming-contract.md) for the public SSE event contract and the internal `quarantine` / `visible` phase boundary. Browser checks should include a tool-using prompt and confirm that no DSML/XML/function-call text appears in the assistant bubble while tool cards still render.
+For live-web changes, use a relative-time prompt such as "today", "tomorrow", or "本周" and confirm `current_utc_time` anchors the search before `web_search`; stale evidence should trigger at most one repair search and then either a supported answer or an explicit uncertainty answer.
 
 6. If Agent Team planning, execution, final-answer synthesis, or Mission Runner UI changed:
 
@@ -211,6 +213,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ```
 
 The doctor command is read-only. It expects a Postgres `DATABASE_URI`, checks provider selection, pgvector extension/table/dimensions/index state, and prints the Ollama install hint when `embeddinggemma` is missing. For fresh local shells, source `.focus_agent/postgres/runtime.env` first if the API was started through the managed Postgres helper.
+When prompt filtering changes, include cases for unrelated personal preferences, handle/passcode memories, sticky language/tone preferences, and `MemoryRetrievalPlan.selected_memory_ids`.
 
 13. If runtime coordination, durable background jobs, thread turn leases, or branch refresh scheduling changed:
 
@@ -227,7 +230,9 @@ If API rate limiting changed, include `tests/test_coordination.py`; Postgres-bac
 
 ```bash
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
+uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
 uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
+node --test tests/test_thread_stream_frontend_regressions.mjs
 make contract-check
 make sdk-openapi-types-check
 make web-check
@@ -238,6 +243,8 @@ For browser validation, enable `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` and
 child or sibling branch. Confirm that the recommendation card appears, the
 normal graph turn is skipped for that recommendation, and confirm/dismiss keeps
 thread and branch-tree caches current.
+Also verify `GET /v1/threads/{thread_id}/resolution` for root, child, and unknown
+threads, and confirm branch tree routes work when opened from a child thread id.
 
 15. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
@@ -337,6 +344,27 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_api_trajectory_observability.py \
   tests/test_chat_service.py
 ```
+
+19. If Productivity workbench changed (notes/tasks/capture/workbench tools):
+
+```bash
+uv run pytest tests/test_productivity_api.py tests/test_productivity_repository.py tests/test_default_tools.py -k productivity
+make ui-smoke-productivity
+```
+
+For source-level checks on the Productivity UI wiring, also run:
+
+```bash
+pnpm --dir apps/web smoke:productivity
+```
+
+If this fails, check:
+
+- `apps/web/src/app/router.tsx` route registration for `/productivity/notes` and `/productivity/tasks`
+- `apps/web/src/app/shell/app-shell-config.ts` productivity path handling (`isProductivityPath`)
+- `apps/web/src/app/shell/app-shell-global-navigation.tsx` nav item presence
+- `frontend-sdk/src/client/productivity.ts` + `frontend-sdk/src/types/productivity.ts`
+- `src/focus_agent/api/routers/productivity.py` and `src/focus_agent/services/productivity.py` for 404 ownership and capture semantics
 
 `make ci-test` runs pytest with `FOCUS_AGENT_LOCAL_ENV_FILE` pointed at a missing file, which mirrors GitHub Actions more closely and prevents repo-local `.focus_agent/local.env` secrets from masking setup gaps. If a privacy/redaction assertion checks for short numeric fragments, prefer full secret/phone substrings so timestamps cannot cause false failures.
 

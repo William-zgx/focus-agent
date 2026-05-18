@@ -53,12 +53,13 @@
     "getAgentTeamSessionView": "async getAgentTeamSessionView( sessionId: string, ): Promise<FocusAgentAgentTeamSessionView>",
     "getAgentTeamTaskStatus": "async getAgentTeamTaskStatus(taskId: string): Promise<FocusAgentAgentTeamTask>",
     "getBranchDecisionConfig": "async getBranchDecisionConfig( ): Promise<FocusAgentBranchDecisionConfig>",
-    "getBranchTree": "async getBranchTree(rootThreadId: string): Promise<BranchTreeResponse>",
+    "getBranchTree": "async getBranchTree(threadId: string): Promise<BranchTreeResponse>",
     "getMemoryRecord": "async getMemoryRecord(memoryId: string): Promise<FocusAgentMemoryRecord | null>",
     "getMemoryUsage": "async getMemoryUsage( memoryId: string, ): Promise<FocusAgentMemoryUsageResponse>",
     "getNote": "async getNote(noteId: string): Promise<FocusAgentNoteResponse>",
     "getObservabilityOverview": "async getObservabilityOverview( request: FocusAgentObservabilityOverviewRequest = {}, ): Promise<FocusAgentObservabilityOverviewResponse>",
     "getPrincipal": "async getPrincipal(): Promise<FocusAgentPrincipalResponse>",
+    "getThreadResolution": "async getThreadResolution(threadId: string): Promise<ThreadResolution>",
     "getThreadState": "async getThreadState(threadId: string): Promise<ThreadStateResponse>",
     "getTrajectoryStats": "async getTrajectoryStats( request: FocusAgentTrajectoryStatsRequest = {}, ): Promise<FocusAgentTrajectoryStatsResponse>",
     "getTrajectoryTurn": "async getTrajectoryTurn(turnId: string): Promise<FocusAgentTrajectoryDetailResponse>",
@@ -208,6 +209,7 @@
     "getNote",
     "getObservabilityOverview",
     "getPrincipal",
+    "getThreadResolution",
     "getThreadState",
     "getTrajectoryStats",
     "getTrajectoryTurn",
@@ -391,10 +393,11 @@
     "FocusAgentBaseEventPayload": "export interface FocusAgentBaseEventPayload { thread_id?: string; namespace?: string[]; channel?: FocusAgentStreamChannel; metadata?: FocusAgentStreamMetadata; [key: string]: unknown; }",
     "FocusAgentBranchActionExecuteResponse": "export interface FocusAgentBranchActionExecuteResponse { thread_state: ThreadStateResponse; branch_action: FocusAgentBranchActionProposal; branch_record?: FocusAgentBranchRecord | null; navigation?: FocusAgentBranchActionNavigation | null; }",
     "FocusAgentBranchActionNavigation": "export interface FocusAgentBranchActionNavigation { root_thread_id: string; thread_id: string; }",
-    "FocusAgentBranchActionProposal": "export interface FocusAgentBranchActionProposal { action_id: string; kind: BranchActionKind; status: BranchActionStatus; root_thread_id: string; source_thread_id: string; target_parent_thread_id: string; suggested_branch_name?: string | null; branch_role: BranchRole; reason: string; created_at: string; executed_at?: string | null; dismissed_at?: string | null; failed_at?: string | null; error?: string | null; navigation?: FocusAgentBranchActionNavigation | null; source?: string | null; source_decision_id?: string | null; confidence?: number | null; rationale?: string | null; }",
-    "FocusAgentBranchDecisionConfig": "export interface FocusAgentBranchDecisionConfig { enabled: boolean; mode: BranchDecisionMode; min_confidence: number; split_threshold: number; conclude_threshold: number; merge_candidate_threshold: number; rate_limit_per_hour: number; recommendation_enabled: boolean; recommendation_mode: BranchDecisionMode; recommendation_min_confidence: number; }",
+    "FocusAgentBranchActionProposal": "export interface FocusAgentBranchActionProposal { action_id: string; kind: BranchActionKind; status: BranchActionStatus; root_thread_id: string; source_thread_id: string; target_parent_thread_id: string; suggested_branch_name?: string | null; branch_role: BranchRole; reason: string; created_at: string; executed_at?: string | null; dismissed_at?: string | null; failed_at?: string | null; error?: string | null; navigation?: FocusAgentBranchActionNavigation | null; source?: string | null; source_decision_id?: string | null; source_decision_status?: BranchDecisionStatus | null; source_decision_mode?: BranchDecisionMode | null; confidence?: number | null; rationale?: string | null; recommendation_user_visible?: boolean | null; diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null; }",
+    "FocusAgentBranchDecisionConfig": "export interface FocusAgentBranchDecisionConfig { enabled: boolean; mode: BranchDecisionMode; min_confidence: number; split_threshold: number; conclude_threshold: number; merge_candidate_threshold: number; rate_limit_per_hour: number; recommendation_enabled: boolean; recommendation_mode: BranchDecisionMode; recommendation_min_confidence: number; recommendation_user_visible: boolean; recommendation_diagnostics: FocusAgentBranchDecisionDiagnostic; diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null; }",
+    "FocusAgentBranchDecisionDiagnostic": "export interface FocusAgentBranchDecisionDiagnostic { code?: string | null; message?: string | null; reason?: string | null; status?: BranchDecisionStatus | string | null; details?: Record<string, unknown> | null; [key: string]: unknown; }",
     "FocusAgentBranchDecisionDismissRequest": "export interface FocusAgentBranchDecisionDismissRequest { reason?: string | null; }",
-    "FocusAgentBranchDecisionEvent": "export interface FocusAgentBranchDecisionEvent { decision_id: string; user_id?: string | null; root_thread_id: string; source_thread_id: string; branch_id?: string | null; recommendation_target?: BranchDecisionRecommendationTarget | null; target_parent_thread_id?: string | null; suggested_branch_name?: string | null; confidence?: number | null; action: BranchDecisionAction; status: BranchDecisionStatus; mode: BranchDecisionMode; score: number; threshold: number; signals: FocusAgentBranchDecisionSignal[]; rationale: string; idempotency_key?: string | null; request_id?: string | null; trace_id?: string | null; promoted_action_id?: string | null; dismiss_reason?: string | null; error?: string | null; metadata: Record<string, unknown>; created_at: string; updated_at: string; executed_at?: string | null; }",
+    "FocusAgentBranchDecisionEvent": "export interface FocusAgentBranchDecisionEvent { decision_id: string; user_id?: string | null; root_thread_id: string; source_thread_id: string; branch_id?: string | null; recommendation_target?: BranchDecisionRecommendationTarget | null; target_parent_thread_id?: string | null; suggested_branch_name?: string | null; confidence?: number | null; action: BranchDecisionAction; status: BranchDecisionStatus; mode: BranchDecisionMode; score: number; threshold: number; signals: FocusAgentBranchDecisionSignal[]; rationale: string; idempotency_key?: string | null; request_id?: string | null; trace_id?: string | null; promoted_action_id?: string | null; dismiss_reason?: string | null; error?: string | null; recommendation_user_visible?: boolean | null; diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null; metadata: Record<string, unknown>; created_at: string; updated_at: string; executed_at?: string | null; }",
     "FocusAgentBranchDecisionListResponse": "export interface FocusAgentBranchDecisionListResponse { items: FocusAgentBranchDecisionEvent[]; count: number; }",
     "FocusAgentBranchDecisionSignal": "export interface FocusAgentBranchDecisionSignal { name: string; value?: unknown; score: number; weight: number; evidence_refs: string[]; rationale: string; }",
     "FocusAgentBranchDecisionSummary": "export interface FocusAgentBranchDecisionSummary { latest_decision?: FocusAgentBranchDecisionEvent | null; actionable: boolean; pending_action_id?: string | null; dismissed_count: number; }",
@@ -523,6 +526,7 @@
     "FocusAgentTaskResponse": "export interface FocusAgentTaskResponse { task: FocusAgentTask; }",
     "FocusAgentTaskStatus": "export type FocusAgentTaskStatus = \"todo\" | \"in_progress\" | \"completed\" | \"archived\";",
     "FocusAgentTaskStreamStep": "export interface FocusAgentTaskStreamStep extends FocusAgentStreamStepBase { kind: \"task\"; }",
+    "FocusAgentThreadResolution": "export type FocusAgentThreadResolution = ThreadResolution;",
     "FocusAgentTokenResponse": "export interface FocusAgentTokenResponse { access_token: string; token_type: \"bearer\"; expires_in_seconds: number; issuer: string; }",
     "FocusAgentTokenUsageSummary": "export interface FocusAgentTokenUsageSummary { input_tokens: number; output_tokens: number; total_tokens: number; }",
     "FocusAgentToolApprovalDecision": "export interface FocusAgentToolApprovalDecision { kind: \"tool_approval\"; interrupt_id: string; tool_call_id: string; approved: boolean; reason?: string | null; }",
@@ -597,6 +601,7 @@
     "ThreadContextCompactTrigger": "export type ThreadContextCompactTrigger = | \"manual\" | \"auto_pre_send\" | \"auto_post_turn\";",
     "ThreadContextPreviewRequest": "export interface ThreadContextPreviewRequest { draft_message?: string | null; }",
     "ThreadContextPreviewResponse": "export interface ThreadContextPreviewResponse { context_usage: ContextUsageResponse; }",
+    "ThreadResolution": "export interface ThreadResolution { input_thread_id: string; root_thread_id: string; source_thread_id: string; branch_id?: string | null; is_root: boolean; branch_status: BranchStatus; diagnostic: string; }",
     "ThreadStateResponse": "export interface ThreadStateResponse { thread_id: string; root_thread_id: string; assistant_message?: string | null; rolling_summary: string; selected_model: string; selected_thinking_mode: string; branch_meta?: BranchMeta | null; merge_proposal?: FocusAgentMergeProposal | null; merge_decision?: Record<string, unknown> | null; merge_queue: FocusAgentImportedConclusion[]; active_skill_ids: string[]; messages: Array<Record<string, unknown>>; interrupts: unknown[]; branch_actions: FocusAgentBranchActionProposal[]; branch_decision_summary?: FocusAgentBranchDecisionSummary | null; trace: Record<string, unknown>; context_usage?: ContextUsageResponse | null; }",
     "ToolCallDeltaPayload": "export interface ToolCallDeltaPayload extends FocusAgentBaseEventPayload { id?: string; name?: string; args_delta?: string; raw?: Record<string, unknown>; channel?: \"reasoning_tool_call\"; }",
     "ToolLifecyclePayload": "export interface ToolLifecyclePayload extends FocusAgentBaseEventPayload { event?: string; stage?: string; tool_name?: string; tool_call_id?: string; message?: string; output?: unknown; }",
@@ -702,6 +707,7 @@
     "FocusAgentBranchActionNavigation",
     "FocusAgentBranchActionProposal",
     "FocusAgentBranchDecisionConfig",
+    "FocusAgentBranchDecisionDiagnostic",
     "FocusAgentBranchDecisionDismissRequest",
     "FocusAgentBranchDecisionEvent",
     "FocusAgentBranchDecisionListResponse",
@@ -832,6 +838,7 @@
     "FocusAgentTaskResponse",
     "FocusAgentTaskStatus",
     "FocusAgentTaskStreamStep",
+    "FocusAgentThreadResolution",
     "FocusAgentTokenResponse",
     "FocusAgentTokenUsageSummary",
     "FocusAgentToolApprovalDecision",
@@ -906,6 +913,7 @@
     "ThreadContextCompactTrigger",
     "ThreadContextPreviewRequest",
     "ThreadContextPreviewResponse",
+    "ThreadResolution",
     "ThreadStateResponse",
     "ToolCallDeltaPayload",
     "ToolLifecyclePayload",
@@ -1056,6 +1064,9 @@
     "apps/web/src/features/branch-tree/use-branch-tree-actions.ts": [
       "BranchTreeNode"
     ],
+    "apps/web/src/features/branch-tree/use-branch-tree.ts": [
+      "FocusAgentRequestError"
+    ],
     "apps/web/src/features/conversations/conversation-toolbar-helpers.ts": [
       "FocusAgentConversationSummary"
     ],
@@ -1202,6 +1213,20 @@
     ],
     "apps/web/src/pages/admin/admin-audit-events-page.tsx": [
       "FocusAgentAuditEvent"
+    ],
+    "apps/web/src/pages/admin/admin-config-page.tsx": [
+      "FocusAgentAdminConfig",
+      "FocusAgentAdminConfigProvider",
+      "FocusAgentAdminConfigValue",
+      "FocusAgentAdminModelConfigEntry",
+      "FocusAgentAdminToolConfigEntry",
+      "FocusAgentAdminToolProviderConfig",
+      "FocusAgentUpdateAdminModelConfigEntry",
+      "FocusAgentUpdateAdminModelConfigRequest",
+      "FocusAgentUpdateAdminModelProviderConfig",
+      "FocusAgentUpdateAdminToolConfigEntry",
+      "FocusAgentUpdateAdminToolConfigRequest",
+      "FocusAgentUpdateAdminToolProviderConfig"
     ],
     "apps/web/src/pages/admin/admin-user-detail-panels.tsx": [
       "FocusAgentAuditEvent",

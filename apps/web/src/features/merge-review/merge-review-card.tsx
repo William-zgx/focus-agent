@@ -124,11 +124,12 @@ export function MergeReviewCard({
 				createMergeReviewPayload(draft),
 			);
 			setLastImported(response.imported ?? null);
+			const targetThreadId = response.target_thread_id || threadId;
 			await navigate({
 				to: "/c/$conversationId/t/$threadId",
 				params: {
 					conversationId: rootThreadId,
-					threadId,
+					threadId: targetThreadId,
 				},
 			});
 		} catch (error) {

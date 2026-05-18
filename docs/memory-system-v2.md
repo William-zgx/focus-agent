@@ -1,6 +1,6 @@
 # Focus Agent Memory System v2
 
-更新时间：2026-05-13
+更新时间：2026-05-18
 
 本文是 Memory 系统的 canonical 设计文档。它描述当前仓库中的真实实现，而不是未来设想；旧版 v1 背景已合并到本文的 legacy fallback / migration 章节，不再作为独立文档维护。本文件重点整理 PostgreSQL canonical memory、数据模型、运行时链路、pgvector embedding、审计治理、legacy fallback 和后续风险。
 
@@ -557,6 +557,11 @@ flowchart TD
 Prompt 过滤：
 
 - 默认只保留 `status=active` 且 `deleted_at is None`。
+- `user_preference` / `user_profile` 还会做 query relevance 过滤：
+  - 与 query 或 matched terms 有重叠的记忆保留；
+  - 称呼、口令、token、secret、API key 等敏感/身份偏好只在 query 明确询问名字、称呼、口令或密钥时保留；
+  - 语言、语气、简洁/详细、Markdown/列表/表格等稳定回答格式偏好视为 sticky preference，可跨 query 保留；
+  - 其他没有 query overlap 的个人偏好会被挡在 prompt 外，避免旅行、测试口令等无关记忆污染当前任务。
 - `SYNTHESIZE` 隐藏未 promoted branch-local finding。
 - `PromptMode` 决定 user/project/approved/branch/episodic/other 的 section priority 和 section budget。
 - `MemoryRetrievalPlan.selected_memory_ids` 记录 policy/filter/budget 后真正进入 prompt 的 memory ids。

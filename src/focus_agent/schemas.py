@@ -14,6 +14,7 @@ from .core.branching import (
     MergeDecision,
     MergeMode,
     MergeProposal,
+    ThreadResolution,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "MergeDecision",
     "MergeMode",
     "MergeProposal",
+    "ThreadResolution",
 ]

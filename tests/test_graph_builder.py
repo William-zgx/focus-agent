@@ -968,6 +968,22 @@ def test_tool_intent_plan_marks_temporal_anchor_requirement_for_live_web():
     assert plan.temporal_anchor_required is True
 
 
+def test_tool_intent_plan_marks_chinese_relative_temporal_anchors():
+    prompts = [
+        "帮我查一下今天北京天气",
+        "明天上海天气怎么样？",
+        "本周沪指走势如何？",
+        "近一周 AI 新闻有哪些？",
+    ]
+
+    for prompt in prompts:
+        plan = build_tool_intent_plan(prompt)
+        assert plan.policy == "live_web_research"
+        assert plan.preferred_first_tool == "web_search"
+        assert "temporal_anchor_required" in plan.reason_codes
+        assert plan.temporal_anchor_required is True
+
+
 def test_live_web_research_starts_stock_queries_with_web_search():
     @tool
     def web_search(query: str) -> str:
@@ -1133,7 +1149,10 @@ def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
     def web_search(query: str) -> str:
         """Search the live web."""
         calls.append(f"web_search:{query}")
-        return '{"answer":"sunny"}'
+        return (
+            '{"answer":"sunny","results":[{"title":"Beijing weather",'
+            '"url":"https://weather.example/beijing","content":"今天北京天气晴朗。"}]}'
+        )
 
     class FakeRunnable:
         def with_config(self, _config):
@@ -1175,14 +1194,92 @@ def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
         for call in (getattr(message, "tool_calls", None) or [])
     ]
     assert [call["name"] for call in tool_calls[:2]] == ["current_utc_time", "web_search"]
-    assert tool_calls[1]["args"] == {"query": "帮我查一下今天北京天气"}
+    anchored_query = tool_calls[1]["args"]["query"]
+    assert "原始查询：帮我查一下今天北京天气" in anchored_query
+    assert "当前UTC时间：2026-05-14T00:00:00Z" in anchored_query
+    assert "绝对日期(今天/UTC)：2026-05-14" in anchored_query
+    assert "地点/范围：北京" in anchored_query
     assert calls == [
         "current_utc_time",
-        "web_search:帮我查一下今天北京天气",
+        f"web_search:{anchored_query}",
     ]
     assert result.value["tool_intent_plan"]["temporal_anchor_required"] is True
+    assert result.value["tool_intent_plan"]["preferred_first_args"]["query"] == anchored_query
     assert result.value["plan_meta"]["tool_intent_plan"]["temporal_anchor_required"] is True
-    assert result.value["plan_meta"]["execution_contract"]["status"] == "missing_required_tools"
+    assert result.value["plan_meta"]["execution_contract"]["status"] == "satisfied"
+
+
+def test_graph_repairs_once_then_fails_credibly_for_stale_live_web_evidence(monkeypatch):
+    web_calls = []
+
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        return "2026-05-14T00:00:00Z"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return json.dumps(
+            {
+                "query": query,
+                "results": [
+                    {
+                        "title": "Old Beijing weather forecast",
+                        "url": "https://weather.example/beijing-old",
+                        "content": "An old Beijing weather page.",
+                        "published_at": "2026-05-01",
+                    }
+                ],
+            }
+        )
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="今天北京天气晴朗。")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我查一下今天北京天气")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-stale-live-web"),
+        version="v2",
+    )
+
+    final_answers = [
+        message.content
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None)
+    ]
+    assert len(web_calls) == 2
+    assert "刷新过期证据" in web_calls[1]
+    assert final_answers[-1].startswith("我不能可靠确认这个实时问题的答案。")
+    assert result.value["answer_verification"]["status"] == "unsupported"
+    assert result.value["answer_verification"]["repair_action"] == "refresh_stale_evidence"
+    assert result.value["answer_verification"]["repair_action_taken"] == "answer_with_uncertainty"
+    assert result.value["plan_meta"]["live_web_answer_repair_count"] == 1
 
 
 def test_graph_recovers_pending_web_search_from_confirmation(monkeypatch):
@@ -2236,6 +2333,47 @@ def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
     assert "工具 web_search(query=比亚迪 A股 上周 股价 波动)" in answer
     assert "比亚迪A股上周先涨后跌" in answer
     assert "BYD share price" in answer
+
+
+def test_fallback_answer_from_tool_results_excludes_unrelated_same_turn_web_search():
+    answer = _fallback_answer_from_tool_results(
+        [
+            HumanMessage(content="今天北京天气怎么样？"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "weather-search",
+                        "name": "web_search",
+                        "args": {"query": "今天北京天气"},
+                    },
+                    {
+                        "id": "sports-search",
+                        "name": "web_search",
+                        "args": {"query": "NBA finals schedule"},
+                    },
+                ],
+            ),
+            ToolMessage(
+                content=(
+                    '{"query":"今天北京天气","results":[{"title":"Beijing weather",'
+                    '"url":"https://weather.example/beijing","content":"北京今天晴。"}]}'
+                ),
+                tool_call_id="weather-search",
+            ),
+            ToolMessage(
+                content=(
+                    '{"query":"NBA finals schedule","results":[{"title":"NBA finals",'
+                    '"url":"https://sports.example/nba","content":"Basketball schedule."}]}'
+                ),
+                tool_call_id="sports-search",
+            ),
+        ]
+    )
+
+    assert "Beijing weather" in answer
+    assert "NBA finals" not in answer
+    assert "Basketball schedule" not in answer
 
 
 def test_fallback_answer_from_tool_results_uses_latest_turn_and_compacted_refs():

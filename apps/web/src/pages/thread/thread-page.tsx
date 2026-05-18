@@ -46,6 +46,7 @@ export function ThreadPage() {
 		pendingUserMessage,
 		isStreaming,
 		resumeToolApproval,
+		runCarriedMessageInThread,
 		sendMessage,
 		stopStreaming,
 	} = useThreadStream({
@@ -76,7 +77,11 @@ export function ThreadPage() {
 		branchActionInFlightId,
 		dismissBranchAction,
 		executeBranchAction,
-	} = useThreadBranchActions(threadId);
+	} = useThreadBranchActions(threadId, {
+		onRunHandoff: ({ threadId: targetThreadId, message }) => {
+			return runCarriedMessageInThread(targetThreadId, message);
+		},
+	});
 	const { followAndScrollToBottom, stickToBottom } = useThreadAutoFollow({
 		branchActionCount: branchActions.length,
 		hasTranscriptContent,

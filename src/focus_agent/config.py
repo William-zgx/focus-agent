@@ -212,6 +212,8 @@ class Settings:
     agent_branch_recommendation_enabled: bool = False
     agent_branch_recommendation_mode: str = "shadow"
     agent_branch_recommendation_min_confidence: float = 0.72
+    agent_branch_recommendation_semantic_enabled: bool = False
+    agent_branch_recommendation_semantic_model: str | None = None
     agent_memory_backend: str = "postgres"
     agent_memory_read_source: str = "postgres"
     agent_memory_extractor_mode: str = "heuristic"

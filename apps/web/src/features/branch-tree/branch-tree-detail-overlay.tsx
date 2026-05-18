@@ -69,6 +69,32 @@ function tokenLabel(isChineseUi: boolean) {
 	return isChineseUi ? "分支累计" : "Branch total";
 }
 
+function decisionConclusionText(
+	decision: FocusAgentBranchDecisionEvent,
+	isChineseUi: boolean,
+) {
+	if (decision.action === "split") {
+		return isChineseUi ? "建议创建新分支" : "Suggest creating a new branch";
+	}
+	if (decision.action === "fork_child_branch") {
+		return isChineseUi ? "建议创建子分支" : "Suggest creating a child branch";
+	}
+	if (decision.action === "fork_sibling_branch") {
+		return isChineseUi
+			? "建议创建同级分支"
+			: "Suggest creating a sibling branch";
+	}
+	if (decision.action === "merge_candidate") {
+		return isChineseUi ? "建议回收分支结论" : "Suggest merging branch findings";
+	}
+	if (decision.action === "continue_current") {
+		return isChineseUi ? "建议继续当前线程" : "Suggest continuing this thread";
+	}
+	return isChineseUi
+		? "建议收束当前结论"
+		: "Suggest concluding this thread";
+}
+
 export function BranchNodeDetailOverlay({
 	detailAnchorRef,
 	detailCanReviewConclusion,
@@ -114,6 +140,9 @@ export function BranchNodeDetailOverlay({
 		: isChineseUi
 			? "主线"
 			: "Main";
+	const decisionSummary = detailBranchDecision
+		? decisionConclusionText(detailBranchDecision, isChineseUi)
+		: "";
 	const metaRows = [
 		[threadLabel(isChineseUi), detailNode.thread_id],
 		[parentLabel(isChineseUi), rowForParent],
@@ -213,15 +242,10 @@ export function BranchNodeDetailOverlay({
 				<div className="fa-branch-node-meta">{metaRows}</div>
 
 				{detailBranchDecision ? (
-					<div className="fa-branch-node-ai-decision">
-						<div className="fa-branch-node-ai-decision-head">
-							<span>{isChineseUi ? "AI 决策" : "AI decision"}</span>
-							<strong>
-								{detailBranchDecision.action} · {detailBranchDecision.status} ·{" "}
-								{Math.round(detailBranchDecision.score * 100)}%
-							</strong>
-						</div>
-						<p>{detailBranchDecision.rationale}</p>
+					<div className="fa-branch-node-ai-decision is-compact">
+						<p className="fa-branch-node-ai-decision-line">
+							{decisionSummary}
+						</p>
 					</div>
 				) : null}
 

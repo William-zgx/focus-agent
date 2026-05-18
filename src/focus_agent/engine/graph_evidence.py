@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -100,20 +101,32 @@ def normalize_evidence_bundle(
     messages: Iterable[Any],
     *,
     observed_at: str | None = None,
+    user_query: str | None = None,
 ) -> list[dict[str, Any]]:
     """Normalize web_search/web_fetch ToolMessage payloads into evidence dicts."""
 
     message_list = list(messages)
     call_names = _tool_call_names(message_list)
+    relevant_call_ids = relevant_web_tool_call_ids(message_list, user_query=user_query)
     items: list[EvidenceItem] = []
     for message in message_list:
         if not isinstance(message, ToolMessage):
+            continue
+        tool_call_id = _clean_text(getattr(message, "tool_call_id", ""))
+        if relevant_call_ids is not None and tool_call_id not in relevant_call_ids:
             continue
         tool_name = _tool_name_for_message(message, call_names=call_names)
         if tool_name not in _WEB_EVIDENCE_TOOLS:
             continue
         payload = _json_payload(message)
         if not isinstance(payload, dict):
+            item = _raw_payload_item(
+                tool_name=tool_name,
+                message=message,
+                observed_at=observed_at,
+            )
+            if item is not None:
+                items.append(item)
             continue
         if _tool_message_status(message, payload) == "error":
             continue
@@ -130,23 +143,34 @@ def normalize_evidence_ledger(
     messages: Iterable[Any],
     *,
     observed_at: str | None = None,
+    user_query: str | None = None,
 ) -> list[dict[str, Any]]:
     """Normalize web evidence and attach stable per-turn ledger metadata."""
 
     message_list = list(messages)
     call_names = _tool_call_names(message_list)
+    relevant_call_ids = relevant_web_tool_call_ids(message_list, user_query=user_query)
     ledger: list[dict[str, Any]] = []
     for message in message_list:
         if not isinstance(message, ToolMessage):
             continue
         tool_call_id = str(message.tool_call_id or "").strip()
+        if relevant_call_ids is not None and tool_call_id not in relevant_call_ids:
+            continue
         tool_name = _tool_name_for_message(message, call_names=call_names)
         if tool_name not in _WEB_EVIDENCE_TOOLS:
             continue
         payload = _json_payload(message)
-        if not isinstance(payload, dict) or _tool_message_status(message, payload) == "error":
+        if not isinstance(payload, dict):
+            item = _raw_payload_item(
+                tool_name=tool_name,
+                message=message,
+                observed_at=observed_at,
+            )
+            items = [item] if item is not None else []
+        elif _tool_message_status(message, payload) == "error":
             continue
-        if tool_name == "web_search":
+        elif tool_name == "web_search":
             items = _search_payload_items(payload, observed_at=observed_at)
         else:
             item = _fetch_payload_item(payload, observed_at=observed_at)
@@ -174,6 +198,44 @@ def normalize_evidence_ledger(
         item["id"] = f"ev-{len(deduped) + 1}"
         deduped.append(item)
     return deduped
+
+
+def relevant_web_tool_call_ids(
+    messages: Iterable[Any],
+    *,
+    user_query: str | None = None,
+) -> set[str] | None:
+    query_terms = _query_relevance_terms(user_query or "")
+    if not query_terms:
+        return None
+    message_list = list(messages)
+    call_names = _tool_call_names(message_list)
+    call_text_by_id = _tool_call_text_by_id(message_list)
+    web_messages: list[tuple[str, str]] = []
+    for message in message_list:
+        if not isinstance(message, ToolMessage):
+            continue
+        tool_call_id = _clean_text(getattr(message, "tool_call_id", ""))
+        tool_name = _tool_name_for_message(message, call_names=call_names)
+        if tool_call_id and tool_name in _WEB_EVIDENCE_TOOLS:
+            payload = _json_payload(message)
+            haystack = " ".join(
+                part
+                for part in (
+                    call_text_by_id.get(tool_call_id, ""),
+                    _payload_relevance_text(payload),
+                    _clean_text(getattr(message, "content", ""), max_chars=1000),
+                )
+                if part
+            )
+            web_messages.append((tool_call_id, haystack))
+    if len(web_messages) <= 1:
+        return {tool_call_id for tool_call_id, _haystack in web_messages}
+    relevant: set[str] = set()
+    for tool_call_id, haystack in web_messages:
+        if _matches_query_terms(haystack, query_terms):
+            relevant.add(tool_call_id)
+    return relevant
 
 
 def evidence_bundle_to_citation_refs(
@@ -240,7 +302,9 @@ def _search_payload_items(
 ) -> list[EvidenceItem]:
     results = payload.get("results")
     if not isinstance(results, list):
-        return []
+        return _search_summary_items(payload, observed_at=observed_at)
+    if not results:
+        return _search_summary_items(payload, observed_at=observed_at)
     items: list[EvidenceItem] = []
     for result in results:
         if not isinstance(result, dict):
@@ -267,6 +331,48 @@ def _search_payload_items(
             )
         )
     return items
+
+
+def _search_summary_items(
+    payload: dict[str, Any], *, observed_at: str | None
+) -> list[EvidenceItem]:
+    snippet = _clean_text(
+        payload.get("answer") or payload.get("summary") or payload.get("reference")
+    )
+    if not snippet:
+        return []
+    title = _clean_text(payload.get("query")) or "web_search result"
+    source_name = _source_name(payload, url=_clean_text(payload.get("url") or ""))
+    return [
+        EvidenceItem(
+            source_name=source_name or "web_search",
+            url=_clean_text(payload.get("url")),
+            title=title,
+            snippet=snippet,
+            trust_tier=TRUST_TIER_LOW,
+            published_at=_published_at(payload),
+            observed_at=observed_at,
+        )
+    ]
+
+
+def _raw_payload_item(
+    *,
+    tool_name: str,
+    message: ToolMessage,
+    observed_at: str | None,
+) -> EvidenceItem | None:
+    raw = _clean_text(getattr(message, "content", ""), max_chars=1000)
+    if not raw:
+        return None
+    return EvidenceItem(
+        source_name=tool_name or "web",
+        url="",
+        title=f"{tool_name or 'web'} result",
+        snippet=raw,
+        trust_tier=TRUST_TIER_LOW,
+        observed_at=observed_at,
+    )
 
 
 def _fetch_payload_item(payload: dict[str, Any], *, observed_at: str | None) -> EvidenceItem | None:
@@ -346,6 +452,27 @@ def _tool_call_names(messages: Iterable[Any]) -> dict[str, str]:
     return call_names
 
 
+def _tool_call_text_by_id(messages: Iterable[Any]) -> dict[str, str]:
+    call_text: dict[str, str] = {}
+    for message in messages:
+        if not isinstance(message, AIMessage):
+            continue
+        for call in getattr(message, "tool_calls", None) or []:
+            if not isinstance(call, dict):
+                continue
+            call_id = _clean_text(call.get("id"))
+            if not call_id:
+                continue
+            args = call.get("args")
+            parts = [_clean_text(call.get("name"))]
+            if isinstance(args, dict):
+                parts.extend(_clean_text(value) for value in args.values() if value)
+            elif args:
+                parts.append(_clean_text(args))
+            call_text[call_id] = " ".join(part for part in parts if part)
+    return call_text
+
+
 def _tool_name_for_message(message: ToolMessage, *, call_names: dict[str, str]) -> str:
     artifact = getattr(message, "artifact", None)
     if isinstance(artifact, dict):
@@ -370,6 +497,106 @@ def _tool_name_for_message(message: ToolMessage, *, call_names: dict[str, str]) 
         if "content" in payload and (payload.get("url") or payload.get("final_url")):
             return "web_fetch"
     return ""
+
+
+def _payload_relevance_text(payload: Any) -> str:
+    if isinstance(payload, dict):
+        parts: list[str] = []
+        for key in ("query", "answer", "summary", "reference", "url", "final_url", "title"):
+            value = payload.get(key)
+            if value:
+                parts.append(_clean_text(value, max_chars=1000))
+        results = payload.get("results")
+        if isinstance(results, list):
+            for result in results:
+                if not isinstance(result, dict):
+                    continue
+                for key in ("title", "url", "ref", "content", "snippet", "source_name", "source"):
+                    value = result.get(key)
+                    if value:
+                        parts.append(_clean_text(value, max_chars=1000))
+        return " ".join(parts)
+    if isinstance(payload, list):
+        return " ".join(_payload_relevance_text(item) for item in payload)
+    return _clean_text(payload, max_chars=1000)
+
+
+_QUERY_STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "about",
+    "please",
+    "search",
+    "latest",
+    "recent",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "this",
+    "week",
+    "current",
+    "now",
+}
+
+_CJK_QUERY_STOP_PHRASES = (
+    "帮我",
+    "请",
+    "查一下",
+    "查下",
+    "搜一下",
+    "搜索",
+    "看一下",
+    "看看",
+    "一下",
+    "今天",
+    "明天",
+    "昨天",
+    "本周",
+    "这周",
+    "近一周",
+    "最近一周",
+    "过去一周",
+    "最近",
+    "近期",
+    "当前",
+    "现在",
+    "哪个",
+    "哪些",
+    "什么",
+    "如何",
+    "多少",
+    "有没有",
+    "有",
+    "的",
+)
+
+
+def _query_relevance_terms(query: str) -> set[str]:
+    text = _clean_text(query, max_chars=1200).lower()
+    terms = {
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9_+-]{1,}", text)
+        if token not in _QUERY_STOPWORDS and len(token) >= 2
+    }
+    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", query):
+        cleaned = chunk
+        for phrase in _CJK_QUERY_STOP_PHRASES:
+            cleaned = cleaned.replace(phrase, "")
+        cleaned = cleaned.strip()
+        if len(cleaned) >= 2:
+            terms.add(cleaned.lower())
+            if len(cleaned) <= 12:
+                terms.update(cleaned[index : index + 2].lower() for index in range(len(cleaned) - 1))
+    return terms
+
+
+def _matches_query_terms(text: str, query_terms: set[str]) -> bool:
+    haystack = _clean_text(text, max_chars=5000).lower()
+    if not haystack:
+        return False
+    return any(term and term in haystack for term in query_terms)
 
 
 def _tool_message_status(message: ToolMessage, payload: dict[str, Any]) -> str:
@@ -441,4 +668,5 @@ __all__ = [
     "evidence_bundle_to_citation_refs",
     "normalize_evidence_bundle",
     "normalize_evidence_ledger",
+    "relevant_web_tool_call_ids",
 ]

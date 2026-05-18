@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-05-16
+更新时间：2026-05-18
 
 这份文档只回答两个问题：
 
@@ -23,13 +23,15 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-05-16，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-05-18，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
-- `frontend-sdk` 已覆盖 conversation、branch tree、branch action、merge review、Agent Team、Admin、agent governance、observability 等核心 typed client 能力
+- `frontend-sdk` 已覆盖 conversation、thread resolution、branch tree、branch action、merge review、Agent Team、Admin、productivity、agent governance、observability 等核心 typed client 能力
 - merged branch 在前后端都被视为只读，合并后不能继续追加 turn 或继续 fork
 - 聊天里的分支意图已通过 Branch Action 结构化收口：模型只能生成可确认 proposal，用户确认后才执行 fork/open/return，成功返回 navigation 并刷新分支树，失败回写 action error 与 audit event
 - Branch Decision / Recommendation 已进入可验证基线：post-turn decision 可记录 split/conclude/merge-candidate 证据；pre-turn recommendation 可在 `suggest` 模式下生成用户确认的 child/sibling Branch Action，但不会静默 fork
+- Thread resolution 已成为 branch/tree/cache 边界：root/child thread id 都可解析到 canonical root，child-only branch 操作会对 root id 返回明确诊断，分支树可从 child route 打开
+- 生产力工作台已落地：owner-scoped notes/tasks/capture API、SDK、默认工具、Web 路由和 source-level smoke 均已接入
 - 当前上下文窗口已经独立于累计 `token_usage`：发送栏展示 `context_usage`，支持草稿预览、手动压缩、发送前自动压缩和回合后后台压缩，默认预算为 128k
 - Agent Team Mission Runner 已从 legacy dispatch 升级为目标驱动的动态 Mission DAG：支持 standalone session、可选来源对话、模型优先规划、fallback contract defaults、task retry/cancel、执行证据汇总、Cockpit UI 和 `final_answer` synthesis
 - Agent Team Adoption / Governance Suite 已进入建设期：多 worktree 结果采纳、Notes/Tasks capture、Context/Memory evidence、Skill selection events、multi-agent coordination、Postgres-backed rate limit、branch decision events 和 feedback regression 统一进入 schema v17 与 nightly 证据链
@@ -37,7 +39,7 @@ flowchart LR
 - 第一轮工程化加固已落地：CORS、限流、请求 ID、统一错误信封、前端 bundle 分割
 - 本机启动链已统一到 `make api` / `make dev` / `make serve-dev` / `make serve-prod`，在 `DATABASE_URI` 未显式设置时会自动管理 repo-local PostgreSQL
 - Docker 部署已分层：`compose.yaml` 用于本地 Docker 联调（`focus-agent + postgres`），`compose.prod.yaml` 用于生产/预发模板（外部 PostgreSQL）
-- Agent 主路径已具备评测框架、Plan-Act-Reflect、记忆读写闭环、上下文预算与 Context Engineering v2、工具运行时并行/缓存/降级/参数校验/取消超时/side-effect 串行策略、role/memory/tool/delegation/task-ledger 治理、Postgres trajectory 写入、request/trace correlation、release evidence / release-health 门禁，以及按职责拆分的 Web observability overview / trajectory workbench
+- Agent 主路径已具备评测框架、Plan-Act-Reflect、记忆读写闭环、上下文预算与 Context Engineering v2、live-web 时间锚定/证据校验/一次修复边界、工具运行时并行/缓存/降级/参数校验/取消超时/side-effect 串行策略、role/memory/tool/delegation/task-ledger 治理、Postgres trajectory 写入、request/trace correlation、release evidence / release-health 门禁，以及按职责拆分的 Web observability overview / trajectory workbench
 - 模型 provider 路径已收口到 TOML catalog：包内默认数据在 `src/focus_agent/defaults/models.toml`，本地/容器部署通过 `.focus_agent/models.toml` 或 `/data/models.toml` 覆盖，`/v1/models` 向 Web/SDK 暴露 provider label、logo metadata 和 thinking capability；MiMo V2.5 Pro 已作为内置 OpenAI-compatible provider/model 支持
 
 这意味着接下来不再把“前端接管”“基础 Docker 路径”“记忆闭环接图”“Plan-Act-Reflect 起步版”当成主任务，而是围绕这些基线继续收口质量、运维和产品语义。

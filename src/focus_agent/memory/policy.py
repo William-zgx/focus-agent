@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
@@ -169,6 +170,7 @@ class MemoryPolicy:
             for hit in list(bundle.hits)
             if str(getattr(hit.record.status, "value", hit.record.status)) == "active"
             and hit.record.deleted_at is None
+            and _memory_relevant_for_query(hit, query=bundle.query)
         ]
         if prompt_mode == PromptMode.SYNTHESIZE:
             hits = [
@@ -451,6 +453,119 @@ def _looks_like_factual_claim(text: str) -> bool:
             "were",
         )
     )
+
+
+def _memory_relevant_for_query(hit: Any, *, query: str) -> bool:
+    record = hit.record
+    if record.kind.value not in {"user_preference", "user_profile"}:
+        return True
+
+    if _has_query_overlap(hit, query=query):
+        return True
+
+    text = f"{record.summary} {record.content}".casefold()
+    if _contains_sensitive_or_handle_preference(text):
+        return _query_mentions_sensitive_or_handle(query)
+
+    return _is_sticky_response_preference(text)
+
+
+def _has_query_overlap(hit: Any, *, query: str) -> bool:
+    query_terms = set(_memory_query_terms(query))
+    matched_terms = {str(term).casefold() for term in getattr(hit, "matched_terms", []) or []}
+    if matched_terms.intersection(query_terms):
+        return True
+    haystack = f"{hit.record.summary} {hit.record.content}".casefold()
+    return any(term in haystack for term in query_terms)
+
+
+def _contains_sensitive_or_handle_preference(text: str) -> bool:
+    return any(
+        marker in text
+        for marker in (
+            "叫我",
+            "称呼我",
+            "怎么称呼",
+            "call me",
+            "refer to me",
+            "测试口令",
+            "口令",
+            "密码",
+            "密钥",
+            "secret",
+            "token",
+            "api key",
+            "api_key",
+        )
+    )
+
+
+def _query_mentions_sensitive_or_handle(query: str) -> bool:
+    normalized = str(query or "").casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "叫我",
+            "叫你",
+            "称呼",
+            "名字",
+            "name",
+            "call me",
+            "口令",
+            "密码",
+            "密钥",
+            "secret",
+            "token",
+            "api key",
+            "api_key",
+        )
+    )
+
+
+def _is_sticky_response_preference(text: str) -> bool:
+    return any(
+        marker in text
+        for marker in (
+            "用中文",
+            "用英文",
+            "中文回答",
+            "英文回答",
+            "language",
+            "回答语言",
+            "语气",
+            "tone",
+            "简洁",
+            "详细",
+            "concise",
+            "brief",
+            "detailed",
+            "markdown",
+            "表格",
+            "列表",
+            "bullet",
+            "format",
+            "格式",
+        )
+    )
+
+
+def _memory_query_terms(query: str) -> list[str]:
+    lowered = str(query or "").casefold()
+    terms: list[str] = []
+    for token in re.findall(r"[a-z0-9]{2,}", lowered):
+        if token not in terms:
+            terms.append(token)
+    for sequence in re.findall(r"[\u4e00-\u9fff]+", str(query or "")):
+        compact = "".join(sequence.split())
+        if len(compact) <= 2:
+            if compact and compact not in terms:
+                terms.append(compact)
+            continue
+        for index in range(len(compact) - 1):
+            token = compact[index : index + 2]
+            if token not in terms:
+                terms.append(token)
+    return terms
 
 
 def _section_name(record: MemoryRecord, *, prompt_mode: PromptMode) -> str:

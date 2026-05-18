@@ -7,7 +7,9 @@ export const queryKeys = {
 	branchDecisionConfig: ["branch-decision-config"] as const,
 	threadBranchDecisions: (threadId: string) =>
 		["thread-branch-decisions", threadId] as const,
-	branchTree: (rootThreadId: string) => ["branch-tree", rootThreadId] as const,
+	branchTrees: ["branch-tree"] as const,
+	branchTree: (threadId: string) =>
+		["branch-tree", "thread", threadId] as const,
 	trajectoryList: (filtersKey: string) =>
 		["trajectory-list", filtersKey] as const,
 	trajectoryDetail: (turnId: string) => ["trajectory-detail", turnId] as const,

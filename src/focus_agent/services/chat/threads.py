@@ -8,7 +8,7 @@ from typing import Any
 from langchain.messages import SystemMessage
 from pydantic import BaseModel, ValidationError
 
-from ...core.branching import BranchMeta, BranchStatus
+from ...core.branching import BranchMeta, BranchStatus, ThreadResolution
 from ...core.repo_call import (
     REPO_METHOD_ERROR,
     REPO_METHOD_MISSING,
@@ -26,7 +26,13 @@ from ...transport.stream_events import (
     extract_visible_text_delta,
     sanitize_stream_visible_text,
 )
-from .branch_actions import normalize_branch_actions, serialize_branch_actions
+from .branch_actions import (
+    is_branch_action_confirmation,
+    is_branch_action_dismissal,
+    is_branch_action_request,
+    normalize_branch_actions,
+    serialize_branch_actions,
+)
 
 
 def _message_type_name(message: Any) -> str:
@@ -197,6 +203,80 @@ def thread_state_messages(messages: list[Any], *, limit: int) -> list[dict[str, 
     return payloads
 
 
+def _branch_fork_message_count(values: dict[str, Any]) -> int | None:
+    branch_meta = values.get("branch_meta")
+    if not isinstance(branch_meta, dict):
+        return None
+    try:
+        fork_message_count = int(branch_meta.get("branch_fork_message_count"))
+    except (TypeError, ValueError):
+        return None
+    if fork_message_count <= 0:
+        return None
+    return fork_message_count
+
+
+_COPIED_BRANCH_CONTROL_AI_PREFIXES = (
+    "已创建并切换到新分支：",
+    "已创建并切换到新分支:",
+    "Created and switched to the new branch:",
+    "我已准备好分支切换确认项：",
+    "I prepared a branch switch confirmation:",
+    "已取消这次分支切换请求。",
+    "Canceled this branch switch request.",
+)
+
+
+def _message_content(message: Any) -> Any:
+    if isinstance(message, dict):
+        return message.get("content", "")
+    return getattr(message, "content", "")
+
+
+def _is_copied_branch_control_ai_message(message: Any) -> bool:
+    if not is_ai_message_type(_message_type_name(message)):
+        return False
+    text = " ".join(confirmed_visible_ai_text(_message_content(message)).split())
+    return any(text.startswith(prefix) for prefix in _COPIED_BRANCH_CONTROL_AI_PREFIXES)
+
+
+def _is_copied_branch_control_human_message(message: Any) -> bool:
+    if not is_human_message_type(_message_type_name(message)):
+        return False
+    text = message_content_to_text(_message_content(message))
+    return (
+        is_branch_action_request(text)
+        or is_branch_action_confirmation(text)
+        or is_branch_action_dismissal(text)
+    )
+
+
+def _branch_thread_messages(messages: list[Any], *, values: dict[str, Any]) -> list[Any]:
+    fork_message_count = _branch_fork_message_count(values)
+    if fork_message_count is None:
+        return messages
+    copied_count = fork_message_count if fork_message_count <= len(messages) else 0
+    visible_messages: list[Any] = []
+    for index, message in enumerate(messages):
+        if _is_copied_branch_control_ai_message(message):
+            continue
+        if index < copied_count and _is_copied_branch_control_human_message(message):
+            continue
+        visible_messages.append(message)
+    return visible_messages
+
+
+def _thread_state_branch_actions(
+    values: dict[str, Any],
+    *,
+    thread_id: str,
+) -> list[dict[str, Any]]:
+    actions = normalize_branch_actions(values.get("branch_actions"))
+    if _branch_fork_message_count(values) is not None:
+        actions = [action for action in actions if action.source_thread_id == thread_id]
+    return serialize_branch_actions(actions)
+
+
 def latest_final_ai_text(
     messages: list[Any], *, message_content_to_text: Callable[[Any], str]
 ) -> str | None:
@@ -243,9 +323,8 @@ def response_payload(
     trace_correlation: Any = None,
 ) -> dict[str, Any]:
     messages = values.get("messages", [])
-    branch_actions = serialize_branch_actions(
-        normalize_branch_actions(values.get("branch_actions"))
-    )
+    thread_messages = _branch_thread_messages(list(messages), values=values)
+    branch_actions = _thread_state_branch_actions(values, thread_id=thread_id)
     selected_model = str(values.get("selected_model") or settings.model)
     selected_thinking_mode = effective_thinking_mode(
         model_id=selected_model,
@@ -253,7 +332,7 @@ def response_payload(
         settings=settings,
     )
     assistant_message = latest_final_ai_text(
-        list(messages), message_content_to_text=message_content_to_text
+        thread_messages, message_content_to_text=message_content_to_text
     )
     return {
         "thread_id": thread_id,
@@ -267,7 +346,7 @@ def response_payload(
         "merge_decision": values.get("merge_decision"),
         "merge_queue": values.get("merge_queue", []),
         "active_skill_ids": values.get("active_skill_ids", []),
-        "messages": thread_state_messages(list(messages), limit=message_limit),
+        "messages": thread_state_messages(thread_messages, limit=message_limit),
         "interrupts": [getattr(item, "value", item) for item in interrupts],
         "branch_actions": branch_actions,
         "trace": build_invoke_config(
@@ -421,6 +500,19 @@ class ChatThreadAccessMixin:
             return repo_meta
         return repo_meta or branch_meta
 
+    def _thread_resolution(self, *, thread_id: str, user_id: str) -> ThreadResolution:
+        resolver = getattr(self.runtime.repo, "resolve_thread_ref", None)
+        if callable(resolver):
+            resolved = resolver(thread_id=thread_id, owner_user_id=user_id)
+            if isinstance(resolved, ThreadResolution):
+                return resolved
+        return ThreadResolution(
+            input_thread_id=thread_id,
+            root_thread_id=thread_id,
+            source_thread_id=thread_id,
+            diagnostic="resolver_unavailable_assumed_root",
+        )
+
     def _context_for_thread(
         self,
         *,
@@ -429,8 +521,15 @@ class ChatThreadAccessMixin:
         explicit_skill_hints: tuple[str, ...] | None = None,
     ) -> tuple[RequestContext, BranchMeta | None, dict[str, Any]]:
         values = self._safe_get_values(thread_id)
+        resolution = self._thread_resolution(thread_id=thread_id, user_id=user_id)
         branch_meta = self._branch_meta(thread_id=thread_id, values=values)
-        root_thread_id = branch_meta.root_thread_id if branch_meta else thread_id
+        if (
+            resolution.is_root
+            and resolution.branch_id is None
+            and resolution.diagnostic != "resolver_unavailable_assumed_root"
+        ):
+            branch_meta = None
+        root_thread_id = branch_meta.root_thread_id if branch_meta else resolution.root_thread_id
         stored_skill_hints = tuple(str(item) for item in values.get("active_skill_ids", []) or ())
         context = RequestContext(
             user_id=user_id,

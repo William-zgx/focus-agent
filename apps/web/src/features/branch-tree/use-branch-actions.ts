@@ -20,7 +20,7 @@ export function useBranchActions(scope: BranchScope) {
 	async function invalidate(threadId = scope.threadId) {
 		const tasks = [
 			queryClient.invalidateQueries({
-				queryKey: queryKeys.branchTree(scope.rootThreadId),
+				queryKey: queryKeys.branchTrees,
 			}),
 			queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
 		];

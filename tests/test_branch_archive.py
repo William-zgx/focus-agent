@@ -180,6 +180,52 @@ def test_get_branch_tree_registers_unseen_root_thread_for_first_owner():
     assert service.repo.thread_owners["root-1"] == "user-1"
 
 
+def test_get_branch_tree_accepts_child_thread_id_and_resolves_root():
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo(
+        [
+            _record(
+                branch_id="b-active",
+                parent_thread_id="root-1",
+                child_thread_id="child-active",
+                branch_name="active branch",
+                branch_depth=1,
+            ),
+            _record(
+                branch_id="b-grandchild",
+                parent_thread_id="child-active",
+                child_thread_id="grandchild",
+                branch_name="grandchild",
+                branch_depth=2,
+            ),
+        ]
+    )
+
+    tree = service.get_branch_tree(root_thread_id="child-active", user_id="user-1")
+
+    assert tree.thread_id == "root-1"
+    assert [child.thread_id for child in tree.children] == ["child-active"]
+    assert [child.thread_id for child in tree.children[0].children] == ["grandchild"]
+
+
+def test_child_only_branch_operations_reject_root_thread_with_diagnostic():
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo(
+        [
+            _record(
+                branch_id="b-active",
+                parent_thread_id="root-1",
+                child_thread_id="child-active",
+                branch_name="active branch",
+                branch_depth=1,
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="requires a child_thread_id"):
+        service.archive_branch(child_thread_id="root-1", user_id="user-1")
+
+
 def test_archive_and_activate_branch_update_repo_and_graph_metadata():
     service = object.__new__(BranchService)
     service.repo = FakeRepo(

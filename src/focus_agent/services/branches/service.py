@@ -22,6 +22,7 @@ from ...core.branching import (
     MergeProposal,
     MergeProposalOverrides,
     MergeTarget,
+    ThreadResolution,
 )
 from ...core.merge_review import (
     generate_merge_proposal,  # noqa: F401 - compatibility monkeypatch hook
@@ -179,11 +180,7 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         root_thread_id = meta.get("root_thread_id")
         if root_thread_id:
             return str(root_thread_id)
-        try:
-            record = self.repo.get_by_child_thread_id(parent_thread_id)
-        except KeyError:
-            return parent_thread_id
-        return record.root_thread_id
+        return self._resolve_thread_ref(thread_id=parent_thread_id).root_thread_id
 
     def _derive_parent_branch_depth(self, parent_thread_id: str, parent_state: dict) -> int:
         meta = parent_state.get("branch_meta") or {}
@@ -288,6 +285,9 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         )
 
     def _ensure_root_thread_access(self, *, root_thread_id: str, user_id: str) -> None:
+        resolution = self._resolve_thread_ref(thread_id=root_thread_id, user_id=user_id)
+        if not resolution.is_root:
+            root_thread_id = resolution.root_thread_id
         owner = self.repo.get_thread_owner(thread_id=root_thread_id)
         if owner is None:
             self.repo.ensure_thread_owner(
@@ -299,12 +299,72 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         self.repo.assert_thread_owner(thread_id=root_thread_id, owner_user_id=user_id)
 
     def _ensure_parent_thread_access(self, *, parent_thread_id: str, user_id: str) -> None:
-        try:
-            self.repo.get_by_child_thread_id(parent_thread_id)
-        except KeyError:
-            self._ensure_root_thread_access(root_thread_id=parent_thread_id, user_id=user_id)
+        resolution = self._resolve_thread_ref(thread_id=parent_thread_id, user_id=user_id)
+        if resolution.is_root:
+            self._ensure_root_thread_access(
+                root_thread_id=resolution.root_thread_id, user_id=user_id
+            )
             return
         self.repo.assert_thread_owner(thread_id=parent_thread_id, owner_user_id=user_id)
+
+    def _resolve_thread_ref(
+        self, *, thread_id: str, user_id: str | None = None
+    ) -> ThreadResolution:
+        resolver = getattr(self.repo, "resolve_thread_ref", None)
+        if callable(resolver):
+            return resolver(thread_id=thread_id, owner_user_id=user_id)
+        try:
+            record = self.repo.get_by_child_thread_id(thread_id)
+        except KeyError:
+            return ThreadResolution(
+                input_thread_id=thread_id,
+                root_thread_id=thread_id,
+                source_thread_id=thread_id,
+                diagnostic="resolver_unavailable_assumed_root",
+            )
+        return ThreadResolution(
+            input_thread_id=thread_id,
+            root_thread_id=record.root_thread_id,
+            source_thread_id=record.child_thread_id,
+            branch_id=record.branch_id,
+            is_root=False,
+            branch_status=record.branch_status,
+            diagnostic="resolver_unavailable_child_lookup",
+        )
+
+    def _is_registered_root_thread(self, root_thread_id: str) -> bool:
+        get_owner = getattr(self.repo, "get_thread_owner", None)
+        if callable(get_owner) and get_owner(thread_id=root_thread_id) is not None:
+            return True
+        get_conversation = getattr(self.repo, "get_conversation", None)
+        if not callable(get_conversation):
+            return False
+        try:
+            get_conversation(root_thread_id)
+        except Exception:
+            return False
+        return True
+
+    def _require_child_branch_record(
+        self,
+        *,
+        child_thread_id: str,
+        user_id: str | None = None,
+        operation: str = "Branch operation",
+    ) -> BranchRecord:
+        try:
+            record = self.repo.get_by_child_thread_id(child_thread_id)
+        except KeyError as exc:
+            resolution = self._resolve_thread_ref(thread_id=child_thread_id, user_id=user_id)
+            if resolution.is_root and self._is_registered_root_thread(resolution.root_thread_id):
+                raise ValueError(
+                    f"{operation} requires a child_thread_id, but {child_thread_id} "
+                    f"resolves to root thread {resolution.root_thread_id}."
+                ) from exc
+            raise
+        if user_id is not None:
+            self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
+        return record
 
     def fork_branch(
         self,
@@ -448,8 +508,11 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         context: RequestContext,
         proposal_overrides: MergeProposalOverrides | None = None,
     ) -> ImportedConclusion | None:
-        self.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=context.user_id)
-        branch_record = self.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = self._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=context.user_id,
+            operation="Applying a merge decision",
+        )
         thread_ids = [child_thread_id]
         if decision.approved and decision.mode.value != "none":
             target_thread_id = (
@@ -505,6 +568,8 @@ class BranchTreeCoordinator:
 
     def get_branch_tree(self, *, root_thread_id: str, user_id: str) -> BranchTreeNode:
         svc = self.service
+        resolution = svc._resolve_thread_ref(thread_id=root_thread_id, user_id=user_id)
+        root_thread_id = resolution.root_thread_id
         svc._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
         records = svc.repo.list_by_root_thread_id(root_thread_id)
         try:
@@ -534,6 +599,8 @@ class BranchTreeCoordinator:
 
     def list_archived_branches(self, *, root_thread_id: str, user_id: str) -> list[BranchTreeNode]:
         svc = self.service
+        resolution = svc._resolve_thread_ref(thread_id=root_thread_id, user_id=user_id)
+        root_thread_id = resolution.root_thread_id
         svc._ensure_root_thread_access(root_thread_id=root_thread_id, user_id=user_id)
         records = svc.repo.list_by_root_thread_id(root_thread_id)
         archived_records = [record for record in records if record.is_archived]
@@ -561,8 +628,11 @@ class BranchTreeCoordinator:
         self, *, child_thread_id: str, user_id: str, is_archived: bool
     ) -> BranchRecord:
         svc = self.service
-        svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = svc._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            operation="Archiving or activating a branch",
+        )
         svc.repo.update_archive_state(branch_record.branch_id, is_archived=is_archived)
         updated_record = svc.repo.get(branch_record.branch_id)
 
@@ -701,8 +771,11 @@ class BranchLifecycleCoordinator:
         force: bool = False,
     ) -> BranchRecord | None:
         svc = self.service
-        svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = svc._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            operation="Refreshing branch role",
+        )
         child_config = {"configurable": {"thread_id": child_thread_id}}
         child_snapshot = svc.graph.get_state(child_config)
         child_values = deepcopy(child_snapshot.values)
@@ -735,8 +808,11 @@ class BranchLifecycleCoordinator:
         force: bool = False,
     ) -> BranchRecord | None:
         svc = self.service
-        svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = svc._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            operation="Refreshing branch name",
+        )
         if not force and not branch_record.branch_name.strip():
             force = True
         if svc.proposal_model is None and not force:
@@ -776,7 +852,11 @@ class BranchLifecycleCoordinator:
     ) -> BranchRecord | None:
         svc = self.service
         try:
-            svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
+            svc._require_child_branch_record(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+                operation="Refreshing branch metadata",
+            )
             child_config = {"configurable": {"thread_id": child_thread_id}}
             child_snapshot = svc.graph.get_state(child_config)
             child_values = deepcopy(child_snapshot.values)
@@ -786,7 +866,11 @@ class BranchLifecycleCoordinator:
             if not pending_name and not pending_role:
                 return None
 
-            updated_record = svc.repo.get_by_child_thread_id(child_thread_id)
+            updated_record = svc._require_child_branch_record(
+                child_thread_id=child_thread_id,
+                user_id=user_id,
+                operation="Refreshing branch metadata",
+            )
             if pending_role:
                 refreshed_role_record = self.refresh_branch_role(
                     child_thread_id=child_thread_id,
@@ -834,8 +918,11 @@ class BranchLifecycleCoordinator:
         branch_name: str,
     ) -> BranchRecord:
         svc = self.service
-        svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = svc._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            operation="Renaming a branch",
+        )
         next_name = svc._sanitize_branch_name(branch_name, branch_role=branch_record.branch_role)
         svc.repo.update_branch_name(branch_record.branch_id, next_name)
         child_config = {"configurable": {"thread_id": child_thread_id}}

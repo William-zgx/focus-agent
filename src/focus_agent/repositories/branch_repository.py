@@ -3,7 +3,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import MutableSequence
 
-from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
+from ..core.branching import (
+    BranchRecord,
+    BranchRole,
+    BranchStatus,
+    MergeDecision,
+    MergeProposal,
+    ThreadResolution,
+)
 from ..core.types import ConversationRecord
 from ..security.ownership import (
     OwnershipAuditEvent,
@@ -30,6 +37,25 @@ class BranchRepository(ABC):
     @abstractmethod
     def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
         raise NotImplementedError
+
+    def resolve_thread_ref(
+        self, thread_id: str, *, owner_user_id: str | None = None
+    ) -> ThreadResolution:
+        try:
+            record = self.get_by_child_thread_id(thread_id)
+        except KeyError:
+            owner = self.get_thread_owner(thread_id=thread_id)
+            if owner_user_id is not None and owner is not None and owner != owner_user_id:
+                raise PermissionError(
+                    f"User {owner_user_id} cannot access thread {thread_id}."
+                ) from None
+            return ThreadResolution.root(thread_id)
+
+        if owner_user_id is not None:
+            owner = self.get_thread_owner(thread_id=thread_id) or record.owner_user_id
+            if owner not in {owner_user_id, "unknown"}:
+                raise PermissionError(f"User {owner_user_id} cannot access thread {thread_id}.")
+        return ThreadResolution.from_branch_record(record, input_thread_id=thread_id)
 
     @abstractmethod
     def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:

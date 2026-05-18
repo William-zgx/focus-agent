@@ -1,13 +1,15 @@
 # Agent Capability Map
 
-Baseline for architecture round 2 W0.
+Updated: 2026-05-18
+
+Current architecture capability map.
 
 | Capability | Tool coverage | Prompt coverage | Eval coverage | Notes |
 | --- | --- | --- | --- | --- |
 | planning | partial | registry introduced | smoke/agent_team datasets | Agent team planner and delegation planner exist, but prompt migration is incremental. |
 | execution | partial | registry introduced | smoke/tool trajectory checks | Tool registry has metadata and sandbox timeout hooks. |
 | critic | partial | registry introduced | governance/review checks | Merge review now has a versioned prompt baseline. |
-| memory | partial | not yet fully migrated | memory and memory_context datasets | Embedding path still needs full HTTP client migration. |
+| memory | production baseline | registry introduced | memory, memory_context, and embedding-path tests | PostgreSQL canonical memory is the source of truth; pgvector embeddings are a rebuildable semantic index used by hybrid retrieval when configured. |
 | skill_scout | partial | registry introduced | skill hints in eval schema | Skill registry is present; eval prompt pinning is now represented in cases. |
 
 Frozen contracts:

@@ -177,6 +177,101 @@ def test_memory_retriever_prefers_latest_user_preference_in_same_topic():
     assert bundle.hits[0].record.content == "请用英文回答。"
 
 
+def test_memory_retriever_drops_unrelated_handle_and_passcode_preferences():
+    profile_namespace = ("user", "user-1", "profile")
+    store = MultiHitStore(
+        {
+            profile_namespace: [
+                SimpleNamespace(
+                    key="handle-pref",
+                    namespace=profile_namespace,
+                    score=0.91,
+                    value={
+                        "kind": "user_preference",
+                        "scope": "user",
+                        "visibility": "shared",
+                        "content": "以后请叫我 amber-harness-0509。",
+                        "summary": "以后请叫我 amber-harness-0509。",
+                        "user_id": "user-1",
+                    },
+                ),
+                SimpleNamespace(
+                    key="passcode-pref",
+                    namespace=profile_namespace,
+                    score=0.89,
+                    value={
+                        "kind": "user_preference",
+                        "scope": "user",
+                        "visibility": "shared",
+                        "content": "浏览器回归测试口令是 amber-harness-0509。",
+                        "summary": "浏览器回归测试口令是 amber-harness-0509。",
+                        "user_id": "user-1",
+                    },
+                ),
+                SimpleNamespace(
+                    key="language-pref",
+                    namespace=profile_namespace,
+                    score=0.7,
+                    value={
+                        "kind": "user_preference",
+                        "scope": "user",
+                        "visibility": "shared",
+                        "content": "请用中文回答。",
+                        "summary": "请用中文回答。",
+                        "user_id": "user-1",
+                    },
+                ),
+            ]
+        }
+    )
+    retriever = MemoryRetriever(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="2026年10月济州岛交通规划",
+        prompt_mode=PromptMode.EXPLORE,
+    )
+
+    assert [hit.record.content for hit in bundle.hits] == ["请用中文回答。"]
+
+
+def test_memory_retriever_keeps_handle_preference_when_user_asks_about_name():
+    profile_namespace = ("user", "user-1", "profile")
+    store = MultiHitStore(
+        {
+            profile_namespace: [
+                SimpleNamespace(
+                    key="handle-pref",
+                    namespace=profile_namespace,
+                    score=0.91,
+                    value={
+                        "kind": "user_preference",
+                        "scope": "user",
+                        "visibility": "shared",
+                        "content": "以后请叫我 amber-harness-0509。",
+                        "summary": "以后请叫我 amber-harness-0509。",
+                        "user_id": "user-1",
+                    },
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="我让你以后怎么称呼我？",
+        prompt_mode=PromptMode.EXPLORE,
+    )
+
+    assert len(bundle.hits) == 1
+    assert bundle.hits[0].record.content == "以后请叫我 amber-harness-0509。"
+
+
 def test_memory_retriever_filters_synthesize_to_durable_memories_first():
     branch_namespace = ("conversation", "root-1", "branch", "branch-1", "local_memory")
     main_namespace = ("conversation", "root-1", "main")

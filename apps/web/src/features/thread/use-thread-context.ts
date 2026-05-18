@@ -37,7 +37,7 @@ export function useCompactThreadContext(threadId: string) {
 				queryKey: queryKeys.thread(threadId),
 			});
 			void queryClient.invalidateQueries({
-				queryKey: queryKeys.branchTree(threadState.root_thread_id),
+				queryKey: queryKeys.branchTrees,
 			});
 		},
 	});

@@ -1,6 +1,6 @@
 # Branch Decisions And Recommendations
 
-更新时间：2026-05-16
+更新时间：2026-05-18
 
 This document is the canonical guide for Focus Agent branch decision records,
 pre-turn branch recommendations, and user-confirmed Branch Actions. Branch
@@ -60,6 +60,15 @@ Pre-turn recommendations are deterministic classifier/scorer decisions from
 `src/focus_agent/branch_decision/scorers.py`. They use the incoming message,
 recent state, branch metadata, confidence threshold, and idempotency key. They
 do not call the main chat model.
+
+The pre-turn signal set distinguishes explicit branch wording from topic drift:
+
+- `recommendation_explicit_source` records whether the incoming text had a
+  branch/continue hint.
+- `recommendation_topic_drift` records new-topic wording such as "换个主题",
+  "another question", or "unrelated topic".
+- Topic drift can route a root thread to `fork_child_branch`; when the current
+  thread is already a child branch, it routes to `fork_sibling_branch`.
 
 Post-turn decisions inspect the completed thread state and branch metadata.
 They are useful for trajectory review, governance dashboards, and future
@@ -134,6 +143,13 @@ pre-turn recommendations.
 | `AGENT_BRANCH_RECOMMENDATION_MODE` | `shadow` | `shadow` or `suggest` for pre-turn recommendations |
 | `AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE` | `0.72` | Minimum confidence for a pre-turn recommendation |
 
+The config response also returns derived fields:
+
+- `recommendation_user_visible` is true only when recommendations are enabled
+  and `AGENT_BRANCH_RECOMMENDATION_MODE=suggest`.
+- `recommendation_diagnostics` explains whether the current mode records
+  audit-only events or can surface pending Branch Action cards.
+
 Recommended rollout:
 
 1. Start with both surfaces disabled.
@@ -152,14 +168,23 @@ API endpoints:
 ```text
 GET  /v1/branch-decisions/config
 GET  /v1/threads/{thread_id}/branch-decisions
+GET  /v1/threads/{thread_id}/resolution
+GET  /v1/branches/tree/{thread_id}
 POST /v1/threads/{thread_id}/branch-decisions/{decision_id}/promote
 POST /v1/threads/{thread_id}/branch-decisions/{decision_id}/dismiss
 POST /v1/threads/{thread_id}/branch-actions/{action_id}/execute
 POST /v1/threads/{thread_id}/branch-actions/{action_id}/dismiss
+PATCH /v1/branches/{child_thread_id}
+POST /v1/branches/{child_thread_id}/archive
+POST /v1/branches/{child_thread_id}/activate
+POST /v1/branches/{child_thread_id}/proposal
+POST /v1/branches/{child_thread_id}/merge
 ```
 
 The Web SDK exposes:
 
+- `getThreadResolution()`
+- `getBranchTree()`
 - `getBranchDecisionConfig()`
 - `listThreadBranchDecisions()`
 - `promoteBranchDecision()`
@@ -172,6 +197,50 @@ The Web SDK exposes:
 `branch_action` and an extra `branch_decision` payload field when a pre-turn
 recommendation short-circuits a run.
 
+### 5.1 Thread Resolution Boundary
+
+Repositories expose `resolve_thread_ref()` and the API exposes
+`GET /v1/threads/{thread_id}/resolution` so callers can pass either a root
+thread id or a child thread id and still find the canonical root.
+
+```mermaid
+flowchart LR
+    Input["thread_id from route/UI"] --> Resolver["repo.resolve_thread_ref"]
+    Resolver --> Root{"root or child?"}
+    Root -- "root / unknown" --> RootResult["root_thread_id = input or thread_access root"]
+    Root -- "child branch" --> ChildResult["root_thread_id + branch_id + branch_status"]
+    ChildResult --> Tree["branch tree / trajectory / recommendation scope"]
+    RootResult --> Tree
+```
+
+Resolution semantics:
+
+- Known root thread: `is_root=true`, `branch_id=null`, `branch_status=active`.
+- Known child thread: `is_root=false`, `source_thread_id=child_thread_id`, and
+  `branch_id/branch_status` come from the branch record.
+- Unknown thread: treated as an unregistered root for compatibility.
+- Owner mismatch raises 403.
+- Branch-tree reads resolve the supplied thread id to the root before listing
+  active and archived branches.
+- Child-only mutation routes (`archive`, `activate`, `rename`, `proposal`,
+  `merge`) reject a root thread id with a 400 diagnostic instead of returning a
+  misleading 404.
+
+### 5.2 Diagnostic And Audit Fields
+
+Branch decisions and Branch Action proposals may carry diagnostic fields for
+UI/audit explanation:
+
+- `metadata.reason` stores gate reasons such as `shadow_mode`,
+  `below_threshold`, `pending_branch_action`, `rate_limited`,
+  `closed_branch`, `child_depth_exceeded`, or `eligible`.
+- `metadata.diagnostic.gate_reason` records recommendation gating detail.
+- `recommendation_user_visible=false` means the event is audit-only; no action
+  card should be actionable even when a decision exists.
+- Branch Action proposals copy source decision status/mode/confidence/rationale
+  and diagnostic metadata so transcript cards can explain why a recommendation
+  was blocked, skipped, shadowed, or visible.
+
 ## 6. Web UX
 
 The chat transcript renders pending Branch Actions as confirmation cards. A card
@@ -182,6 +251,19 @@ and controls to confirm or dismiss. Confirming a fork action refreshes:
 - branch tree,
 - source thread state,
 - target thread state when navigation is returned.
+
+When an event is shadow-only or otherwise diagnostic, the branch decision panel,
+branch tree detail overlay, and Branch Action card can show the diagnostic text
+without enabling a user action. The Web app invalidates the whole branch-tree
+query family after branch actions, compaction, conversation archive/activate,
+or stream completion because a caller may have started from either a root or a
+child thread id.
+
+Child thread payloads hide copied branch-control messages from the fork moment.
+`branch_fork_message_count` is used to remove copied Branch Action request,
+confirmation, and proposal messages from the child transcript while keeping the
+actual branch conversation visible. If the stored fork count is stale or larger
+than the message list, no messages are dropped.
 
 If the backend returns a thread-busy conflict because the previous turn is still
 settling, the Web hook retries for a bounded window. The retry loop is tied to
@@ -195,7 +277,9 @@ When branch decisions, recommendations, or Branch Action UX change, run:
 
 ```bash
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
+uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
 uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
+node --test tests/test_thread_stream_frontend_regressions.mjs
 make contract-check
 make sdk-openapi-types-check
 make web-check
@@ -207,6 +291,8 @@ and confirm:
 - a recommendation card appears without invoking the normal graph turn,
 - confirming creates or opens the expected branch,
 - dismissing clears the pending action,
+- `GET /v1/threads/{child_thread_id}/resolution` returns the root and branch id,
+- branch-tree rendering works when opened from a child route,
 - route changes during retry do not navigate back to the old thread.
 
 For streaming changes, also run the stream checks from

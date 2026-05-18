@@ -122,6 +122,50 @@ class BranchRecord(BaseModel):
     merge_decision: dict[str, Any] | None = None
 
 
+class ThreadResolution(BaseModel):
+    input_thread_id: str
+    root_thread_id: str
+    source_thread_id: str
+    branch_id: str | None = None
+    is_root: bool = True
+    branch_status: BranchStatus = BranchStatus.ACTIVE
+    diagnostic: str = ""
+
+    @classmethod
+    def from_branch_record(
+        cls, record: BranchRecord, *, input_thread_id: str | None = None
+    ) -> ThreadResolution:
+        return cls(
+            input_thread_id=input_thread_id or record.child_thread_id,
+            root_thread_id=record.root_thread_id,
+            source_thread_id=record.child_thread_id,
+            branch_id=record.branch_id,
+            is_root=False,
+            branch_status=record.branch_status,
+            diagnostic="resolved_from_branch_child",
+        )
+
+    @classmethod
+    def root(
+        cls,
+        thread_id: str,
+        *,
+        input_thread_id: str | None = None,
+        root_thread_id: str | None = None,
+        diagnostic: str = "",
+    ) -> ThreadResolution:
+        resolved_root = root_thread_id or thread_id
+        return cls(
+            input_thread_id=input_thread_id or thread_id,
+            root_thread_id=resolved_root,
+            source_thread_id=thread_id,
+            branch_id=None,
+            is_root=thread_id == resolved_root,
+            branch_status=BranchStatus.ACTIVE,
+            diagnostic=diagnostic,
+        )
+
+
 class BranchTreeNode(BaseModel):
     thread_id: str
     root_thread_id: str
@@ -163,6 +207,7 @@ class BranchActionProposal(BaseModel):
     source_decision_id: str | None = None
     confidence: float | None = None
     rationale: str | None = None
+    handoff_message: str | None = None
 
 
 BranchTreeNode.model_rebuild()

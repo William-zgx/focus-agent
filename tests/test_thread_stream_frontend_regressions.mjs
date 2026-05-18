@@ -1290,6 +1290,14 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
     path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream.ts"),
     "utf8",
   );
+  const streamRegistrySource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/use-stream-request-registry.ts"),
+    "utf8",
+  );
+  const streamCacheSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream-cache.ts"),
+    "utf8",
+  );
 
   assert.equal(messageListSource.includes("toolApprovalInterrupts.map"), true);
   assert.equal(approvalCardSource.includes("onDecide?.(interrupt, true)"), true);
@@ -1306,6 +1314,34 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(
     compactSource(streamHookSource).includes(
       'client .cancelHarnessRun(runId, { action: "interrupt" })',
+    ),
+    true,
+  );
+  assert.equal(
+    compactSource(streamRegistrySource).includes(
+      "abortControllersRef.current.delete(threadId); activeRequestIdsRef.current.delete(threadId);",
+    ),
+    true,
+  );
+  assert.equal(streamHookSource.includes("resolveStreamRequestCleanup(false, true)"), true);
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      "requestRegistry.stopStreamRequest(options.threadId); activeRunIdsRef.current.delete(options.threadId);",
+    ),
+    true,
+  );
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      "isStreaming: false, pendingUserMessage: cleanup.clearPendingUserMessage",
+    ),
+    true,
+  );
+  assert.equal(streamCacheSource.includes("isCompleteThreadState"), true);
+  assert.equal(streamCacheSource.includes("Array.isArray(record.messages)"), true);
+  assert.equal(streamCacheSource.includes("Array.isArray(record.branch_actions)"), true);
+  assert.equal(
+    compactSource(streamCacheSource).includes(
+      "void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) }); return;",
     ),
     true,
   );
@@ -1691,4 +1727,101 @@ test("markdown paragraph line keys avoid array index fallback for repeated tool 
   assert.notEqual(fragments[0].key, fragments[1].key);
   assert.equal(fragments[0].props.children[0][0].key, "p-0-line-same-0-inline");
   assert.equal(fragments[1].props.children[0][0].key, "p-0-line-same-1-inline");
+});
+
+test("merge review navigates to the backend merge target thread", () => {
+  const source = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/merge-review/merge-review-card.tsx"),
+    "utf8",
+  );
+  const compact = compactSource(source);
+
+  assert.match(compact, /const targetThreadId = response\\.target_thread_id \\|\\| threadId;/);
+  assert.match(compact, /threadId: targetThreadId/);
+});
+
+test("composer action buttons are not nested inside the textarea label", () => {
+  const source = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/message-composer.tsx"),
+    "utf8",
+  );
+  const composerCss = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/styles/modules/composer.css"),
+    "utf8",
+  );
+
+  assert.equal(source.includes("const textareaId = useId();"), true);
+  assert.match(source, /<label className="sr-only" htmlFor=\{textareaId\}>/);
+  assert.match(source, /id=\{textareaId\}/);
+  assert.doesNotMatch(
+    source,
+    /<label\s+className=\{`fa-composer-shell fa-composer-input-shell/,
+  );
+  assert.match(
+    compactSource(composerCss),
+    /\.fa-composer-icon, \.fa-composer-icon svg, \.fa-composer-icon \* \{ pointer-events: none; \}/,
+  );
+});
+
+test("branch action confirmation starts an automatic carried handoff run", () => {
+  const branchActionSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/use-thread-branch-actions.ts"),
+    "utf8",
+  );
+  const streamSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream.ts"),
+    "utf8",
+  );
+  const threadPageSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/thread-page.tsx"),
+    "utf8",
+  );
+  const compactBranchAction = compactSource(branchActionSource);
+  const compactStream = compactSource(streamSource);
+
+  assert.equal(compactBranchAction.includes("result.branch_action.handoff_message"), true);
+  assert.equal(compactBranchAction.includes("options.onRunHandoff?.("), true);
+  assert.match(threadPageSource, /runCarriedMessageInThread\(targetThreadId, message\)/);
+  assert.equal(compactStream.includes("client.streamHarnessRun( requestThreadId,"), true);
+  assert.equal(compactStream.includes("input: { messages: [] }"), true);
+  assert.equal(compactStream.includes("branch_handoff_auto_run: true"), true);
+});
+
+test("branch graph node hover AI decision shows only the key conclusion", () => {
+  const overlaySource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/branch-tree/branch-tree-detail-overlay.tsx"),
+    "utf8",
+  );
+  const branchTreeCss = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/styles/modules/branch-tree.css"),
+    "utf8",
+  );
+  const compactCss = compactSource(branchTreeCss);
+
+  assert.equal(overlaySource.includes("decisionConclusionText"), true);
+  assert.equal(overlaySource.includes("建议继续当前线程"), true);
+  assert.equal(overlaySource.includes("建议创建子分支"), true);
+  assert.equal(overlaySource.includes("建议创建同级分支"), true);
+  assert.equal(overlaySource.includes("建议回收分支结论"), true);
+  assert.equal(overlaySource.includes("decisionSummary"), true);
+  assert.equal(overlaySource.includes("fa-branch-node-ai-decision is-compact"), true);
+  assert.equal(overlaySource.includes("fa-branch-node-ai-decision-line"), true);
+  assert.equal(overlaySource.includes("fa-branch-node-ai-diagnostic"), false);
+  assert.equal(overlaySource.includes("fa-branch-node-ai-audit-note"), false);
+  assert.equal(
+    overlaySource.includes("Math.round(detailBranchDecision.score * 100)"),
+    false,
+  );
+  assert.equal(overlaySource.includes("detailBranchDecision.rationale"), false);
+  assert.equal(compactCss.includes(".fa-branch-node-ai-decision p {"), true);
+  assert.equal(compactCss.includes(".fa-branch-node-ai-decision.is-compact {"), true);
+  assert.equal(
+    compactCss.includes(
+      ".fa-branch-node-ai-decision.is-compact .fa-branch-node-ai-decision-line {",
+    ),
+    true,
+  );
+  assert.equal(compactCss.includes("-webkit-line-clamp: 1;"), true);
+  assert.equal(compactCss.includes("overflow: hidden;"), true);
+  assert.equal(compactCss.includes("white-space: nowrap;"), true);
 });

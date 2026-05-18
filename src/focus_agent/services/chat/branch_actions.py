@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage
@@ -9,6 +8,7 @@ from langchain.messages import AIMessage, HumanMessage
 from ...core.repo_call import has_repo_method
 from ...observability.tracing import build_trace_correlation
 from ..branch_actions import (
+    branch_handoff_message_from_text,
     branch_action_audit_event,
     build_branch_action_proposal,
     dismissal_message,
@@ -69,37 +69,7 @@ def _is_human_message(message: Any) -> bool:
 
 
 def _branch_handoff_text_from_message(message: str | None) -> str | None:
-    text = str(message or "").strip()
-    if not text:
-        return None
-    patterns = [
-        r"^(?:请|帮我|麻烦你)?(?:新建|创建)(?:一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
-        r"^(?:请|帮我|麻烦你)?(?:开一个|另开)(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
-        r"^(?:请|帮我|麻烦你)?(?:切换|切到)(?:到|一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
-        r"^(?:create|open|switch(?:\s+to)?)(?:\s+a|\s+an)?(?:\s+new|\s+sibling|\s+child)?\s+branch(?:\s+for|\s+to|\s+and|,|:)?\s*(?P<task>.+)$",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if not match:
-            continue
-        task = re.sub(
-            r"^(?:然后|并且|并|来|去|用于|用来|继续|and|then|to|for)\s*",
-            "",
-            match.group("task").strip(" ：:，,。；;"),
-            flags=re.IGNORECASE,
-        ).strip()
-        if task in {"吧", "呀", "啦", "呢", "一下", "看看", "可以吗", "好吗"}:
-            continue
-        if not task:
-            continue
-        if (
-            is_branch_action_request(task)
-            or is_branch_action_confirmation(task)
-            or is_branch_action_dismissal(task)
-        ):
-            continue
-        return task
-    return None
+    return branch_handoff_message_from_text(message)
 
 
 def _latest_branch_handoff_text(messages: list[Any]) -> str | None:
@@ -168,13 +138,13 @@ def _carry_branch_action_handoff_if_needed(
 ) -> None:
     if branch_record is None:
         return
-    if action.source_thread_id == action.target_parent_thread_id:
-        return
     child_thread_id = str(getattr(branch_record, "child_thread_id", "") or "")
     if not child_thread_id:
         return
-    handoff_text = _branch_handoff_text_from_message(user_message) or _latest_branch_handoff_text(
-        list(source_values.get("messages") or [])
+    handoff_text = (
+        branch_handoff_message_from_text(getattr(action, "handoff_message", None))
+        or _branch_handoff_text_from_message(user_message)
+        or _latest_branch_handoff_text(list(source_values.get("messages") or []))
     )
     _carry_handoff_text_to_branch(
         service=service,
@@ -241,6 +211,8 @@ def build_branch_action_proposal_result(
         target_parent_thread_id=target_parent,
         suggested_branch_name=infer_suggested_branch_name(message, recent_messages),
         reason="User requested a branch switch from chat.",
+        handoff_message=_branch_handoff_text_from_message(message)
+        or _latest_branch_handoff_text(recent_messages),
     )
     actions.append(action)
     is_chinese = service._is_chinese_text(message)

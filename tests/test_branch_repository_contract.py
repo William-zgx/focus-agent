@@ -287,6 +287,50 @@ def test_branch_crud_updates_and_merge_payload_contract(repository: BranchReposi
     assert merged.merge_decision == decision.model_dump(mode="json")
 
 
+def test_thread_resolution_contract(repository: BranchRepository):
+    repository.ensure_thread_owner(
+        thread_id="root-1",
+        root_thread_id="root-1",
+        owner_user_id="user-1",
+    )
+    repository.ensure_thread_owner(
+        thread_id="child-1",
+        root_thread_id="root-1",
+        owner_user_id="user-1",
+    )
+    branch = _branch(
+        "branch-1",
+        child_thread_id="child-1",
+        branch_status=BranchStatus.PAUSED,
+    )
+    repository.create(branch)
+
+    root = repository.resolve_thread_ref("root-1", owner_user_id="user-1")
+    child = repository.resolve_thread_ref("child-1", owner_user_id="user-1")
+    unknown = repository.resolve_thread_ref("unknown-thread", owner_user_id="user-1")
+
+    assert root.input_thread_id == "root-1"
+    assert root.root_thread_id == "root-1"
+    assert root.source_thread_id == "root-1"
+    assert root.is_root is True
+    assert root.branch_id is None
+    assert root.branch_status == BranchStatus.ACTIVE
+
+    assert child.input_thread_id == "child-1"
+    assert child.root_thread_id == "root-1"
+    assert child.source_thread_id == "child-1"
+    assert child.is_root is False
+    assert child.branch_id == branch.branch_id
+    assert child.branch_status == BranchStatus.PAUSED
+
+    assert unknown.input_thread_id == "unknown-thread"
+    assert unknown.root_thread_id == "unknown-thread"
+    assert unknown.source_thread_id == "unknown-thread"
+    assert unknown.is_root is True
+    assert unknown.branch_id is None
+    assert unknown.branch_status == BranchStatus.ACTIVE
+
+
 def test_branch_archive_activate_and_list_contract(repository: BranchRepository):
     records = [
         _branch(

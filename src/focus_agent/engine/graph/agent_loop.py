@@ -56,6 +56,7 @@ from ..graph_turn_helpers import (
 )
 from .policy import (
     _is_tool_carryover_confirmation,
+    _temporal_live_web_search_args,
     _tool_intent_plan_requires_temporal_anchor,
     _turn_tool_exposure_from_intent_plan,
     build_tool_intent_plan,
@@ -131,8 +132,19 @@ def make_agent_loop_node(
             pending_tool_action=pending_tool_action,
         )
         tool_policy = tool_intent_plan.policy
-        tool_exposure = _turn_tool_exposure_from_intent_plan(tool_intent_plan)
         temporal_anchor_required = _tool_intent_plan_requires_temporal_anchor(tool_intent_plan)
+        current_utc_time_result = _latest_tool_result_content(state_messages, "current_utc_time")
+        if tool_policy == "live_web_research" and current_utc_time_result:
+            anchored_args = _temporal_live_web_search_args(
+                tool_intent_plan.preferred_first_args,
+                fallback_query=tool_intent_text,
+                current_utc_time=current_utc_time_result,
+            )
+            if anchored_args and anchored_args != tool_intent_plan.preferred_first_args:
+                tool_intent_plan = tool_intent_plan.model_copy(
+                    update={"preferred_first_args": anchored_args}
+                )
+        tool_exposure = _turn_tool_exposure_from_intent_plan(tool_intent_plan)
         temporal_anchor_forced = False
         available_tools = _tools_for_policy_compat(
             tool_policy,
@@ -393,16 +405,20 @@ def make_agent_loop_node(
         evidence_bundle = normalize_evidence_bundle(
             completed_turn_messages,
             observed_at=observed_at or None,
+            user_query=tool_intent_text,
         )
         evidence_ledger = normalize_evidence_ledger(
             completed_turn_messages,
             observed_at=observed_at or None,
+            user_query=tool_intent_text,
         )
         execution_contract = evaluate_execution_contract(
             execution_contract,
             tool_results_seen=tool_result_names(completed_turn_messages),
             evidence_ledger=evidence_ledger,
             available_tool_names=known_names,
+            observed_at=observed_at or None,
+            user_query=tool_intent_text,
         )
         answer_verification = verify_answer_against_evidence(
             answer=_message_content_text(response)
@@ -411,6 +427,45 @@ def make_agent_loop_node(
             contract=execution_contract,
             evidence_ledger=evidence_ledger,
         )
+        live_web_repair_count = _live_web_answer_repair_count(state)
+        live_web_repair_taken = ""
+        if (
+            tool_policy == "live_web_research"
+            and not getattr(response, "tool_calls", None)
+            and _live_web_answer_needs_repair(answer_verification)
+        ):
+            repair_response = _live_web_repair_response(
+                state=state,
+                available_tools=available_tools,
+                tool_intent_plan=tool_intent_plan.model_dump(mode="json"),
+                fallback_query=tool_intent_text,
+                current_utc_time=observed_at or current_utc_time_result,
+                repair_count=live_web_repair_count,
+                verification=answer_verification,
+                execution_contract=execution_contract,
+            )
+            if repair_response is not None:
+                response = repair_response
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                answer_verification = {
+                    **answer_verification,
+                    "repair_action_taken": "retry_web_search",
+                }
+                live_web_repair_taken = "retry_web_search"
+            else:
+                response = AIMessage(
+                    content=_live_web_failure_answer(
+                        verification=answer_verification,
+                        execution_contract=execution_contract,
+                        evidence_ledger=evidence_ledger,
+                    )
+                )
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                answer_verification = {
+                    **answer_verification,
+                    "repair_action_taken": "answer_with_uncertainty",
+                }
+                live_web_repair_taken = "answer_with_uncertainty"
         citation_refs = _new_citation_refs(
             evidence_bundle_to_citation_refs(evidence_bundle),
             existing=list(state.get("citations", []) or []),
@@ -446,6 +501,10 @@ def make_agent_loop_node(
             intent_dumped["temporal_anchor_forced"] = True
         if external_answer_missing_citation:
             intent_dumped["external_answer_missing_citation"] = True
+        if live_web_repair_taken:
+            intent_dumped["live_web_answer_repair_action_taken"] = live_web_repair_taken
+            if live_web_repair_taken == "retry_web_search":
+                intent_dumped["live_web_answer_repair_count"] = live_web_repair_count + 1
         updates["pending_tool_action"] = _next_pending_tool_action(
             state=state,
             tool_intent_plan=intent_dumped,
@@ -479,6 +538,8 @@ def make_agent_loop_node(
             "evidence_ledger": evidence_ledger,
             "answer_verification": answer_verification,
         }
+        if live_web_repair_taken == "retry_web_search":
+            updates["plan_meta"]["live_web_answer_repair_count"] = live_web_repair_count + 1
         if tool_route_plan is not None:
             dumped = tool_route_plan.model_dump(mode="json")
             append_agent_state_record(
@@ -885,6 +946,115 @@ def _next_pending_tool_action(
         "created_turn_index": _current_turn_index(state),
         "expires_after_turns": 2,
     }
+
+
+def _live_web_answer_repair_count(state: AgentState) -> int:
+    plan_meta = state.get("plan_meta")
+    if isinstance(plan_meta, Mapping):
+        return _coerce_int(plan_meta.get("live_web_answer_repair_count"), default=0)
+    return 0
+
+
+def _live_web_answer_needs_repair(verification: Mapping[str, Any]) -> bool:
+    status = str(verification.get("status") or "")
+    repair_action = str(verification.get("repair_action") or "")
+    return status in {"unsupported", "blocked"} or repair_action in {
+        "call_missing_tool",
+        "refresh_stale_evidence",
+    }
+
+
+def _live_web_repair_response(
+    *,
+    state: AgentState,
+    available_tools: list[Any],
+    tool_intent_plan: Mapping[str, Any],
+    fallback_query: str,
+    current_utc_time: str | None,
+    repair_count: int,
+    verification: Mapping[str, Any],
+    execution_contract: Mapping[str, Any],
+) -> AIMessage | None:
+    if repair_count >= 1:
+        return None
+    if not _has_tool_named(available_tools, "web_search"):
+        return None
+    contract_status = str(execution_contract.get("status") or "")
+    repair_action = str(verification.get("repair_action") or "")
+    if contract_status == "blocked":
+        return None
+    if repair_action not in {"call_missing_tool", "refresh_stale_evidence"}:
+        return None
+    preferred_args = tool_intent_plan.get("preferred_first_args")
+    search_args = _temporal_live_web_search_args(
+        preferred_args if isinstance(preferred_args, Mapping) else None,
+        fallback_query=fallback_query,
+        current_utc_time=current_utc_time,
+    ) or {"query": fallback_query}
+    query = str(search_args.get("query") or fallback_query).strip()
+    if repair_action == "refresh_stale_evidence" and "刷新过期证据" not in query:
+        query = f"{query}（刷新过期证据；只返回与原始查询直接相关的最新来源）"
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "id": f"live-web-repair-search-{_current_turn_index(state) + 1}",
+                "name": "web_search",
+                "args": {"query": query},
+            }
+        ],
+    )
+
+
+def _live_web_failure_answer(
+    *,
+    verification: Mapping[str, Any],
+    execution_contract: Mapping[str, Any],
+    evidence_ledger: Sequence[Mapping[str, Any]],
+) -> str:
+    user_query = str(execution_contract.get("user_query") or "").strip()
+    unsupported = [
+        str(item)
+        for item in verification.get("unsupported_claims", []) or []
+        if str(item).strip()
+    ]
+    missing = [
+        str(item)
+        for item in execution_contract.get("missing", []) or []
+        if str(item).strip()
+    ]
+    if verification.get("stale_evidence"):
+        reason = "检索结果没有提供足够新的证据"
+    elif missing:
+        reason = f"缺少必要工具结果：{', '.join(missing)}"
+    elif unsupported:
+        reason = unsupported[0]
+    else:
+        reason = "检索证据不足以支撑一个可靠结论"
+    evidence_dates = _evidence_date_summary(evidence_ledger)
+    parts = [
+        "我不能可靠确认这个实时问题的答案。",
+        f"原因：{reason}。",
+    ]
+    if user_query:
+        parts.append(f"原始问题：{user_query}。")
+    if evidence_dates:
+        parts.append(f"已见证据时间：{evidence_dates}。")
+    parts.append("建议稍后重新检索，或提供一个明确来源让我核对。")
+    return "\n".join(parts)
+
+
+def _evidence_date_summary(evidence_ledger: Sequence[Mapping[str, Any]]) -> str:
+    dates: list[str] = []
+    for item in evidence_ledger:
+        if not isinstance(item, Mapping):
+            continue
+        value = str(item.get("published_at") or item.get("observed_at") or "").strip()
+        if value and value not in dates:
+            dates.append(value)
+        if len(dates) >= 3:
+            break
+    return ", ".join(dates)
 
 
 def _registered_tool_names(tool_registry: ToolRegistry, tools: Sequence[Any]) -> list[str]:

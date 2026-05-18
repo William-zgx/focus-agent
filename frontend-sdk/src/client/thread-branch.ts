@@ -17,6 +17,7 @@ import type {
   ThreadContextCompactResponse,
   ThreadContextPreviewRequest,
   ThreadContextPreviewResponse,
+  ThreadResolution,
 } from "../types.js";
 
 async function listConversations(this: FocusAgentEndpointContext): Promise<FocusAgentConversationListResponse> {
@@ -77,6 +78,13 @@ async function activateConversation(this: FocusAgentEndpointContext, rootThreadI
 
 async function getThreadState(this: FocusAgentEndpointContext, threadId: string): Promise<ThreadStateResponse> {
   return this.requestJson<ThreadStateResponse>(`/v1/threads/${encodeURIComponent(threadId)}`, {
+    method: "GET",
+    headers: {},
+  }, true);
+}
+
+async function getThreadResolution(this: FocusAgentEndpointContext, threadId: string): Promise<ThreadResolution> {
+  return this.requestJson<ThreadResolution>(`/v1/threads/${encodeURIComponent(threadId)}/resolution`, {
     method: "GET",
     headers: {},
   }, true);
@@ -144,8 +152,8 @@ async function dismissBranchAction(
   );
 }
 
-async function getBranchTree(this: FocusAgentEndpointContext, rootThreadId: string): Promise<BranchTreeResponse> {
-  return this.requestJson<BranchTreeResponse>(`/v1/branches/tree/${encodeURIComponent(rootThreadId)}`, {
+async function getBranchTree(this: FocusAgentEndpointContext, threadId: string): Promise<BranchTreeResponse> {
+  return this.requestJson<BranchTreeResponse>(`/v1/branches/tree/${encodeURIComponent(threadId)}`, {
     method: "GET",
     headers: {},
   }, true);
@@ -216,6 +224,7 @@ export interface ThreadBranchEndpoints {
   archiveConversation: OmitThisParameter<typeof archiveConversation>;
   activateConversation: OmitThisParameter<typeof activateConversation>;
   getThreadState: OmitThisParameter<typeof getThreadState>;
+  getThreadResolution: OmitThisParameter<typeof getThreadResolution>;
   previewThreadContext: OmitThisParameter<typeof previewThreadContext>;
   compactThreadContext: OmitThisParameter<typeof compactThreadContext>;
   executeBranchAction: OmitThisParameter<typeof executeBranchAction>;
@@ -236,6 +245,7 @@ const threadBranchEndpoints: FocusAgentEndpointMethodMap<ThreadBranchEndpoints> 
   archiveConversation,
   activateConversation,
   getThreadState,
+  getThreadResolution,
   previewThreadContext,
   compactThreadContext,
   executeBranchAction,

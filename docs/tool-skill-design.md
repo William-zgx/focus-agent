@@ -1,5 +1,7 @@
 # Tool and Skill System Design
 
+更新时间：2026-05-18
+
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
 ## Goals
@@ -78,9 +80,9 @@ Focus Agent should stay smaller by default: no unrestricted bash, no browser/com
 The concrete borrowing from Hermes is the toolset boundary itself. Focus Agent now
 derives a toolset catalog from runtime metadata and exposes it through
 `/v1/agent/toolsets`, so UI and governance code can inspect groups such as
-`workspace`, `web`, `artifact`, `memory`, and `skill` without duplicating a
-parallel registry. The catalog summarizes tool names, providers, risk levels,
-roles, policies, network use, and write/side-effect flags.
+`workspace`, `web`, `artifact`, `memory`, `productivity`, and `skill` without
+duplicating a parallel registry. The catalog summarizes tool names, providers,
+risk levels, roles, policies, network use, and write/side-effect flags.
 
 ## Skill Boundary
 
@@ -238,8 +240,17 @@ Focus Agent already has these default tools:
 - `skills_search`
 - `skills_refresh_index`
 - `skill_install`
+- `notes_create`
+- `notes_search`
+- `notes_update`
+- `tasks_create`
+- `tasks_list`
+- `tasks_update`
+- `productivity_capture`
 
-The newer product primitives make the agent useful beyond repository work: explicit memory control, URL reading, artifact iteration, and conversation summarization.
+The newer product primitives make the agent useful beyond repository work:
+explicit memory control, URL reading, artifact iteration, conversation
+summarization, and owner-scoped notes/tasks capture.
 
 The runtime also exposes a grouped view of those primitives:
 
@@ -247,6 +258,7 @@ The runtime also exposes a grouped view of those primitives:
 - `web`: live search and URL retrieval tools
 - `artifact`: generated document and draft iteration tools
 - `memory`: durable memory and conversation recovery tools
+- `productivity`: owner-scoped notes/tasks/capture tools
 - `skill`: bundled and local workflow inspection tools
 
 Web retrieval keeps a separate access-policy boundary. `web_fetch` only accepts
@@ -255,6 +267,46 @@ hosts, and can be narrowed further with `blocked_domains` and `allowed_domains`
 in `.focus_agent/tools.toml`. Blocked fetches emit structured policy metadata
 such as category, host, and matching rule so trajectory and UI surfaces can
 explain the denial.
+
+### Live Web Research Contract
+
+Fresh external questions are handled as an execution contract, not only as a
+tool availability hint. When the graph classifies a turn as `live_web_research`,
+it requires `web_search` evidence and uses `current_utc_time` first when the
+query contains relative time.
+
+```mermaid
+flowchart TD
+    User["fresh or relative-time query"] --> Policy["ToolIntentPlan"]
+    Policy --> Anchor{"temporal anchor required?"}
+    Anchor -- "yes" --> Time["current_utc_time"]
+    Time --> SearchArgs["absolute-date search query"]
+    Anchor -- "no" --> SearchArgs
+    SearchArgs --> Search["web_search / web_fetch"]
+    Search --> Evidence["evidence ledger"]
+    Evidence --> Verify["answer verification"]
+    Verify -- "missing/stale" --> Repair{"repair count < 1?"}
+    Repair -- "yes" --> Retry["retry web_search"]
+    Repair -- "no" --> Uncertain["answer with uncertainty"]
+    Verify -- "satisfied" --> Answer["final answer"]
+```
+
+Current rules:
+
+- Relative markers such as "today", "tomorrow", "yesterday", "this week",
+  "今天", "明天", "昨天", and "本周" require a time anchor when
+  `current_utc_time` is available.
+- The search query is rewritten with the original query, current UTC timestamp,
+  absolute date/range, and detected location/scope so providers do not guess the
+  time window from their own clock.
+- Evidence normalization only keeps web tool results relevant to the latest
+  user query when multiple web searches happen in the same turn.
+- Missing evidence maps to `call_missing_tool`; stale dated evidence maps to
+  `refresh_stale_evidence`; simple contradictions map to
+  `revise_answer_from_evidence`.
+- The graph retries a stale/missing live-web answer once with `web_search`.
+  If repair cannot produce reliable evidence, it returns an explicit
+  uncertainty answer instead of unsupported realtime claims.
 
 ## Tool Runtime Policy
 
@@ -292,6 +344,11 @@ Cache scopes are intentionally conservative:
 - `turn` is for values that should only survive within one user turn. The namespace includes the root thread and turn id, so parallel conversations do not clear each other.
 - `thread` is the default for workspace read tools such as `list_files`, `read_file`, `search_code`, and `codebase_stats`. Focus Agent conversation branches do not imply separate filesystem or git worktrees, so these reads should not become branch-local by default.
 - `branch` is reserved for future tools that read or write branch-local product state.
+
+Productivity tools do not introduce a separate cache scope. They are grouped by
+the `productivity` toolset and operate on owner-scoped notes/tasks state; reads
+are parallel-safe, while writes are side-effecting and serialized by the
+runtime.
 
 Execution control is enforced by the runtime, not by individual tools. Hard deadlines and upstream cancellation are treated as release-sensitive behavior: they fail the tool call without fallback so a slow or cancelled side-effect cannot be hidden behind a secondary provider.
 
@@ -333,6 +390,7 @@ Retrieval tools gather information from external or local sources.
 - `knowledge_search`
 - `memory_search`
 - `notes_search`
+- `tasks_list`
 - `artifact_search`
 
 ### Persistence Tools
@@ -345,6 +403,7 @@ Persistence tools save or update user-visible state.
 - `notes_update`
 - `tasks_create`
 - `tasks_update`
+- `productivity_capture`
 - `artifact_write`
 - `artifact_update`
 
@@ -372,6 +431,7 @@ The first general-agent batch is now part of the baseline:
 - Artifact iteration: `write_text_artifact`, `artifact_list`, `artifact_read`, `artifact_update`
 - Web retrieval: `web_search`, `web_fetch`
 - Explicit memory control: `memory_save`, `memory_search`, `memory_forget`
+- Productivity workbench: `notes_create`, `notes_search`, `notes_update`, `tasks_create`, `tasks_list`, `tasks_update`, `productivity_capture`
 - Conversation recovery: `conversation_summary`
 - Skill discovery and installation: `skills_list`, `skill_view`, `skill_sources`, `skills_search`, `skills_refresh_index`, `skill_install`
 
@@ -382,17 +442,21 @@ Current bundled skills already consume these primitives:
 - `research` uses `web_search`, `web_fetch`, and artifacts for evidence-backed answers.
 - `writing-plans` uses artifact list/read/update for iterative plans.
 - `autopilot` may save durable deliverables as artifacts and use memory for explicit durable facts.
+- future assistant workflows can combine notes/tasks primitives without hiding
+  product state in prompt text.
 
 ## Backlog
 
-The next product-tool expansion should focus on stores that are currently only conceptual:
+Notes and tasks are now first-class product data with explicit storage, API,
+tests, UI affordances, SDK methods, and tool primitives. The remaining backlog
+is workflow quality on top of those stores:
 
-- Notes: `notes_create`, `notes_search`, `notes_update`
-- Tasks: `tasks_create`, `tasks_list`, `tasks_update`
+- richer task event summarization and task filters,
+- note/task backlinks from conversations, Agent Team outputs, and artifacts,
+- skills that decide when to save to memory versus notes/tasks/artifacts,
+- user-configurable retention and archive policies.
 
-Notes and tasks should be first-class product data with explicit storage, API, tests, and UI affordances. They should not be simulated with hidden prompt conventions or arbitrary markdown files.
-
-Potential future skills after those stores exist:
+Potential future skills:
 
 - `personal-assistant`: route requests to memory, notes, tasks, or artifacts.
 - `meeting-notes`: turn notes into action items using notes and tasks tools.

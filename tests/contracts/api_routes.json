@@ -5885,6 +5885,34 @@
     },
     {
       "method": "GET",
+      "operation_id": "get_thread_resolution_v1_threads__thread_id__resolution_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/resolution",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/ThreadResolutionResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "get_harness_run_v2_runs__run_id__get",
       "parameters": [
         {
@@ -11401,6 +11429,16 @@
             }
           ]
         },
+        "handoff_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "kind": {
           "$ref": "#/components/schemas/BranchActionKind"
         },
@@ -11526,6 +11564,10 @@
           "default": 3,
           "type": "integer"
         },
+        "recommendation_diagnostics": {
+          "additionalProperties": true,
+          "type": "object"
+        },
         "recommendation_enabled": {
           "default": false,
           "type": "boolean"
@@ -11536,6 +11578,24 @@
         },
         "recommendation_mode": {
           "$ref": "#/components/schemas/BranchDecisionMode"
+        },
+        "recommendation_semantic_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "recommendation_semantic_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommendation_user_visible": {
+          "default": false,
+          "type": "boolean"
         },
         "split_threshold": {
           "default": 0.65,
@@ -15651,6 +15711,46 @@
       },
       "required": [
         "context_usage"
+      ],
+      "type": "object"
+    },
+    "ThreadResolutionResponse": {
+      "properties": {
+        "branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_status": {
+          "$ref": "#/components/schemas/BranchStatus"
+        },
+        "diagnostic": {
+          "default": "",
+          "type": "string"
+        },
+        "input_thread_id": {
+          "type": "string"
+        },
+        "is_root": {
+          "default": true,
+          "type": "boolean"
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "source_thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_thread_id",
+        "root_thread_id",
+        "source_thread_id"
       ],
       "type": "object"
     },

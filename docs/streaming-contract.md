@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-05-16
+更新时间：2026-05-18
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -115,11 +115,16 @@ tool.error -> failed
 When stream behavior, tool protocol filtering, frontend SDK reducers, or processing cards change, run:
 
 ```bash
-.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check
 ```
+
+If the streamed turn uses `live_web_research`, also verify relative-time
+queries anchor through `current_utc_time`, evidence is relevant to the latest
+user query, and stale evidence triggers at most one repair search before a
+supported answer or explicit uncertainty answer.
 
 When branch recommendation or Branch Action streaming behavior changes, include:
 

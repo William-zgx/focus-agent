@@ -22,11 +22,12 @@ Focus Agent 是一个 Web-first 的 Agent 应用骨架，当前已经发展成�
 - 支持 AI 辅助的分支决策与发送前分支推荐，并通过用户确认的 Branch Action 卡片执行
 - 提供流式聊天 API 和内置 React Web 界面 `/app`
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
+- 提供基于 owner 的生产力工作台（笔记 + 任务），并保留来源追踪（`/app/productivity/notes`、`/app/productivity/tasks`）
 - 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、管理员控制台、记忆链路和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
-- 提供仓库、git、网页、artifact 和 memory 工具
+- 提供仓库、git、网页、artifact、memory 和 productivity 工具
 
 ## 快速开始
 
@@ -63,6 +64,8 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 - `http://127.0.0.1:8000/app/agent/memory`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
+- `http://127.0.0.1:8000/app/productivity/notes`
+- `http://127.0.0.1:8000/app/productivity/tasks`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -93,6 +96,7 @@ docker compose up --build
 - [架构说明与模块导航](docs/architecture.md)
 - [Auth / Access](docs/auth-access.md)
 - [Agent Team Workbench](docs/agent-team-workbench.md)
+- [生产力工作台](docs/productivity-system.md)
 - [管理员控制台](docs/admin-console.md)
 - [分支决策与推荐](docs/branch-decisions.md)
 - [流式事件契约](docs/streaming-contract.md)

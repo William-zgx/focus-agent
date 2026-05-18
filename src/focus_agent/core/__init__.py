@@ -10,6 +10,7 @@ from .branching import (
     MergeDecision,
     MergeMode,
     MergeProposal,
+    ThreadResolution,
 )
 from .context_policy import ContextSlice, assemble_context
 from .merge_review import generate_merge_proposal
@@ -47,6 +48,7 @@ __all__ = [
     "PromptMode",
     "RequestContext",
     "StateModel",
+    "ThreadResolution",
     "assemble_context",
     "generate_merge_proposal",
     "initial_agent_state",

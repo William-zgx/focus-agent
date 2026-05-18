@@ -169,6 +169,7 @@ from .contract_models.chat import (
     ThreadContextCompactResponse,
     ThreadContextPreviewRequest,
     ThreadContextPreviewResponse,
+    ThreadResolutionResponse,
     ThreadStateResponse,
     UpdateConversationRequest,
 )
@@ -291,6 +292,7 @@ __all__ = [
     "ThreadContextPreviewRequest",
     "ThreadContextPreviewResponse",
     "ThreadContextCompactRequest",
+    "ThreadResolutionResponse",
     "ThreadStateResponse",
     "ThreadContextCompactResponse",
     "BranchActionNavigation",

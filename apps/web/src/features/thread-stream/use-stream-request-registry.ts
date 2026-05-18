@@ -50,6 +50,8 @@ export function useStreamRequestRegistry() {
 
 	function stopStreamRequest(threadId: string) {
 		abortControllersRef.current.get(threadId)?.abort();
+		abortControllersRef.current.delete(threadId);
+		activeRequestIdsRef.current.delete(threadId);
 	}
 
 	return {

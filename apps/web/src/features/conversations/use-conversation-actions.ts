@@ -11,7 +11,7 @@ export function useConversationActions() {
 		await queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
 		if (rootThreadId) {
 			await queryClient.invalidateQueries({
-				queryKey: queryKeys.branchTree(rootThreadId),
+				queryKey: queryKeys.branchTrees,
 			});
 			await queryClient.invalidateQueries({
 				queryKey: queryKeys.thread(rootThreadId),

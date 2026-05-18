@@ -52,6 +52,8 @@ Open:
 - `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
+- `http://127.0.0.1:8000/app/productivity/notes`
+- `http://127.0.0.1:8000/app/productivity/tasks`
 - `http://127.0.0.1:8000/healthz`
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`

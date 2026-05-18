@@ -138,6 +138,11 @@ def _install_postgres_modules(monkeypatch):
     monkeypatch.setitem(
         sys.modules, "focus_agent.repositories.postgres_user_repository", user_module
     )
+    monkeypatch.setattr(
+        runtime_mod,
+        "_langgraph_postgres_pool",
+        lambda *, settings, name: _FakeContextManager(f"{name}:{settings.database_uri}"),
+    )
     monkeypatch.setattr(runtime_mod, "PostgresRunJournal", run_journal_cls)
 
     return {

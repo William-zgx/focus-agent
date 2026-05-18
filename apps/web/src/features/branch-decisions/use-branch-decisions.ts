@@ -45,7 +45,7 @@ export function useBranchDecisionActions({
 			}),
 			rootThreadId
 				? queryClient.invalidateQueries({
-						queryKey: queryKeys.branchTree(rootThreadId),
+						queryKey: queryKeys.branchTrees,
 					})
 				: Promise.resolve(),
 		]);

@@ -895,6 +895,7 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/observability/trajectory/{turn_id}/promote" in route_paths
     assert "/v1/observability/trajectory/batch/promote-preview" in route_paths
     assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
+    assert "/v1/threads/{thread_id:path}/resolution" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve" in route_paths

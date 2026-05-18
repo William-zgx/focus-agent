@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable
-from contextlib import ExitStack
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -640,8 +640,20 @@ def _create_postgres_primary_persistence(
 
     assert settings.database_uri is not None
 
-    checkpointer = exit_stack.enter_context(PostgresSaver.from_conn_string(settings.database_uri))
-    store = exit_stack.enter_context(PostgresStore.from_conn_string(settings.database_uri))
+    if bool(getattr(settings, "postgres_pool_enabled", True)):
+        checkpointer_pool = exit_stack.enter_context(
+            _langgraph_postgres_pool(settings=settings, name="focus-agent-checkpointer")
+        )
+        store_pool = exit_stack.enter_context(
+            _langgraph_postgres_pool(settings=settings, name="focus-agent-store")
+        )
+        checkpointer = PostgresSaver(checkpointer_pool)
+        store = PostgresStore(store_pool)
+    else:
+        checkpointer = exit_stack.enter_context(
+            PostgresSaver.from_conn_string(settings.database_uri)
+        )
+        store = exit_stack.enter_context(PostgresStore.from_conn_string(settings.database_uri))
     checkpointer.setup()
     store.setup()
 
@@ -689,6 +701,31 @@ def _create_postgres_primary_persistence(
         artifact_metadata_repository,
         run_journal,
     )
+
+
+@contextmanager
+def _langgraph_postgres_pool(*, settings: Settings, name: str) -> Iterator[object]:
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+
+    assert settings.database_uri is not None
+    min_size = max(0, int(getattr(settings, "postgres_pool_min_size", 1) or 1))
+    max_size = max(1, int(getattr(settings, "postgres_pool_max_size", 4) or 4))
+    if min_size > max_size:
+        min_size = max_size
+    with ConnectionPool(
+        settings.database_uri,
+        min_size=min_size,
+        max_size=max_size,
+        kwargs={
+            "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
+        },
+        name=name,
+        open=True,
+    ) as pool:
+        yield pool
 
 
 def _create_local_fallback_persistence(

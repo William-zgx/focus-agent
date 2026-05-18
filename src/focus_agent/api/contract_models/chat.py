@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from focus_agent.core.branching import BranchActionProposal
+from focus_agent.core.branching import BranchActionProposal, ThreadResolution
 from focus_agent.core.governance import BranchDecisionSummary
 
 
@@ -115,6 +115,10 @@ class ThreadContextCompactResponse(ThreadStateResponse):
     pass
 
 
+class ThreadResolutionResponse(ThreadResolution):
+    pass
+
+
 __all__ = [
     "ChatTurnRequest",
     "ModelOptionResponse",
@@ -130,4 +134,5 @@ __all__ = [
     "ThreadContextCompactRequest",
     "ThreadStateResponse",
     "ThreadContextCompactResponse",
+    "ThreadResolutionResponse",
 ]

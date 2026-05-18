@@ -23,10 +23,11 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Streaming chat APIs and a built-in React web app at `/app`
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
+- Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, Admin Console, memory pipeline, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
-- Built-in repo, git, web, artifact, and memory tools
+- Built-in repo, git, web, artifact, memory, and productivity tools
 
 ## Quick Start
 
@@ -63,6 +64,8 @@ Then open:
 - `http://127.0.0.1:8000/app/agent/memory`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
+- `http://127.0.0.1:8000/app/productivity/notes`
+- `http://127.0.0.1:8000/app/productivity/tasks`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/app/observability/trajectory`
 - `http://127.0.0.1:8000/healthz`
@@ -93,6 +96,7 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 - [Architecture and module map](docs/architecture.md)
 - [Auth / Access](docs/auth-access.md)
 - [Agent Team Workbench](docs/agent-team-workbench.md)
+- [Productivity System](docs/productivity-system.md)
 - [Admin Console](docs/admin-console.md)
 - [Branch Decisions](docs/branch-decisions.md)
 - [Streaming Contract](docs/streaming-contract.md)

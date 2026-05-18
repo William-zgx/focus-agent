@@ -120,16 +120,52 @@ def score_branch_recommendation(
             BranchDecisionAction.CONTINUE_CURRENT.value,
         )
     )
+    explicit_source = str(_signal_value(by_name, "recommendation_explicit_source", "none"))
+    topic_drift_value = _signal_value(by_name, "recommendation_topic_drift", {})
+    topic_drift = topic_drift_value if isinstance(topic_drift_value, dict) else {}
+    semantic_value = _signal_value(by_name, "semantic_topic_relation", {})
+    semantic_topic_relation = semantic_value if isinstance(semantic_value, dict) else {}
     shape_value = _signal_value(by_name, "pre_turn_message_shape", {})
     shape = shape_value if isinstance(shape_value, dict) else {}
     pending_action = bool(_signal_value(by_name, "pending_branch_action", False))
+    has_history_context = bool(shape.get("has_history_context"))
 
     action = _recommendation_action(target)
+    routed_by = explicit_source
+    if (
+        action == BranchDecisionAction.CONTINUE_CURRENT
+        and explicit_source == "none"
+        and has_history_context
+    ):
+        drift_target = topic_drift.get("recommendation_target") if topic_drift else None
+        shape_target = shape.get("recommendation_target") if shape else None
+        if bool(topic_drift.get("has_topic_drift")) and drift_target:
+            action = _recommendation_action(str(drift_target))
+            routed_by = "topic_drift"
+        elif bool(shape.get("has_topic_drift")) and shape_target:
+            action = _recommendation_action(str(shape_target))
+            routed_by = "shape_topic_drift"
+        elif _semantic_topic_shift_confident(
+            semantic_topic_relation,
+            min_confidence=min_confidence,
+        ):
+            action = _semantic_recommendation_action_for_context(
+                semantic_topic_relation,
+                has_branch_context=bool(shape.get("has_branch_context")),
+            )
+            routed_by = "semantic_topic_relation"
+
     score = 0.72 if action == BranchDecisionAction.CONTINUE_CURRENT else 0.82
     if bool(shape.get("has_alternative")):
         score += 0.04
     if bool(shape.get("has_new_direction")):
         score += 0.06
+    if bool(shape.get("has_topic_drift")):
+        score += 0.08
+    if bool(topic_drift.get("has_topic_drift")):
+        score += 0.08
+    if routed_by == "semantic_topic_relation":
+        score = max(score, float(semantic_topic_relation.get("confidence") or 0.0))
     if action == BranchDecisionAction.FORK_SIBLING_BRANCH and bool(shape.get("has_branch_context")):
         score += 0.04
     if pending_action and action != BranchDecisionAction.CONTINUE_CURRENT:
@@ -139,7 +175,7 @@ def score_branch_recommendation(
         action=action,
         score=_clamp(score),
         threshold=min_confidence,
-        rationale=_recommendation_rationale(action=action, shape=shape),
+        rationale=_recommendation_rationale(action=action, shape=shape, routed_by=routed_by),
     )
 
 
@@ -169,6 +205,40 @@ def _recommendation_action(value: str) -> BranchDecisionAction:
     return BranchDecisionAction.CONTINUE_CURRENT
 
 
+def _semantic_topic_shift_confident(
+    value: dict[str, Any],
+    *,
+    min_confidence: float,
+) -> bool:
+    if str(value.get("status") or "").strip().lower() not in {"ok", "success"}:
+        return False
+    if not bool(value.get("topic_shift")):
+        return False
+    try:
+        confidence = float(value.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if confidence < float(min_confidence):
+        return False
+    return (
+        _recommendation_action(str(value.get("recommended_action")))
+        != BranchDecisionAction.CONTINUE_CURRENT
+    )
+
+
+def _semantic_recommendation_action_for_context(
+    value: dict[str, Any],
+    *,
+    has_branch_context: bool,
+) -> BranchDecisionAction:
+    action = _recommendation_action(str(value.get("recommended_action")))
+    if action == BranchDecisionAction.CONTINUE_CURRENT:
+        return action
+    if has_branch_context:
+        return BranchDecisionAction.FORK_SIBLING_BRANCH
+    return BranchDecisionAction.FORK_CHILD_BRANCH
+
+
 def _rationale(
     action: str,
     *,
@@ -191,6 +261,7 @@ def _recommendation_rationale(
     *,
     action: BranchDecisionAction,
     shape: dict[str, Any],
+    routed_by: str,
 ) -> str:
     shape_flags = [
         key.removeprefix("has_")
@@ -198,7 +269,7 @@ def _recommendation_rationale(
         if key.startswith("has_") and bool(enabled)
     ]
     flags = ", ".join(shape_flags) if shape_flags else "no strong pre-turn flags"
-    return f"{action.value} recommendation from incoming message, {flags}."
+    return f"{action.value} recommendation from incoming message, route={routed_by}, {flags}."
 
 
 __all__ = [

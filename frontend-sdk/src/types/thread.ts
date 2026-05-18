@@ -4,6 +4,7 @@ import type {
 } from "./common.js";
 import type {
 	BranchMeta,
+	BranchStatus,
 	FocusAgentBranchActionNavigation,
 	FocusAgentBranchActionProposal,
 	FocusAgentBranchRecord,
@@ -33,6 +34,18 @@ export interface FocusAgentCreateConversationRequest {
 export interface FocusAgentUpdateConversationRequest {
 	title: string;
 }
+
+export interface ThreadResolution {
+	input_thread_id: string;
+	root_thread_id: string;
+	source_thread_id: string;
+	branch_id?: string | null;
+	is_root: boolean;
+	branch_status: BranchStatus;
+	diagnostic: string;
+}
+
+export type FocusAgentThreadResolution = ThreadResolution;
 
 export interface ThreadContextPreviewRequest {
 	draft_message?: string | null;

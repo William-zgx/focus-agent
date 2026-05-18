@@ -1189,10 +1189,16 @@
 .fa-branch-node-ai-decision {
 	display: grid;
 	gap: 6px;
+	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--fa-info) 35%, var(--fa-border));
 	border-radius: 8px;
 	background: var(--fa-info-surface);
 	padding: 10px;
+}
+
+.fa-branch-node-ai-decision.is-compact {
+	gap: 0;
+	padding: 8px 10px;
 }
 
 .fa-branch-node-ai-decision-head {
@@ -1219,6 +1225,18 @@
 	color: var(--fa-text-muted);
 	font-size: 12px;
 	line-height: 1.45;
+	overflow: hidden;
+	display: -webkit-box;
+	text-overflow: ellipsis;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+}
+
+.fa-branch-node-ai-decision.is-compact .fa-branch-node-ai-decision-line {
+	display: block;
+	min-width: 0;
+	white-space: nowrap;
 }
 
 .fa-branch-node-actions {

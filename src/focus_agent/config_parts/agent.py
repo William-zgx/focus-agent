@@ -97,6 +97,11 @@ def _embedding_backend_env(env: MutableMapping[str, str], defaults: Any) -> str:
 
 
 def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, object]:
+    branch_recommendation_enabled = _env_bool(
+        env,
+        "AGENT_BRANCH_RECOMMENDATION_ENABLED",
+        default=defaults.agent_branch_recommendation_enabled,
+    )
     return {
         "plan_act_reflect_enabled": _env_bool(
             env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
@@ -187,11 +192,7 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 )
             ),
         ),
-        "agent_branch_recommendation_enabled": _env_bool(
-            env,
-            "AGENT_BRANCH_RECOMMENDATION_ENABLED",
-            default=defaults.agent_branch_recommendation_enabled,
-        ),
+        "agent_branch_recommendation_enabled": branch_recommendation_enabled,
         "agent_branch_recommendation_mode": _normalize_branch_recommendation_mode(
             env.get(
                 "AGENT_BRANCH_RECOMMENDATION_MODE",
@@ -202,6 +203,16 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             env,
             "AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE",
             defaults.agent_branch_recommendation_min_confidence,
+        ),
+        "agent_branch_recommendation_semantic_enabled": _env_bool(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_ENABLED",
+            default=branch_recommendation_enabled,
+        ),
+        "agent_branch_recommendation_semantic_model": _optional_string_env(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_MODEL",
+            defaults.agent_branch_recommendation_semantic_model,
         ),
         "skill_install_directory": (
             env.get("SKILL_INSTALL_DIRECTORY") or defaults.skill_install_directory

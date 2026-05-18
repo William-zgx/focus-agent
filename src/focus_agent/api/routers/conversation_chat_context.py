@@ -19,6 +19,7 @@ from ..contracts import (
     ThreadContextCompactResponse,
     ThreadContextPreviewRequest,
     ThreadContextPreviewResponse,
+    ThreadResolutionResponse,
     ThreadStateResponse,
     UpdateConversationRequest,
 )
@@ -173,6 +174,22 @@ def activate_conversation(
             }
         )
     )
+
+
+@router.get("/v1/threads/{thread_id:path}/resolution", response_model=ThreadResolutionResponse)
+def get_thread_resolution(
+    thread_id: str,
+    runtime: AppRuntime = Depends(get_app_runtime),
+    principal: Principal = Depends(get_current_principal),
+) -> ThreadResolutionResponse:
+    resolver = getattr(runtime.repo, "resolve_thread_ref", None)
+    if not callable(resolver):
+        raise HTTPException(status_code=503, detail="Thread resolution is not configured.")
+    try:
+        resolution = resolver(thread_id=thread_id, owner_user_id=principal.user_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return ThreadResolutionResponse.model_validate(resolution.model_dump(mode="json"))
 
 
 @router.get("/v1/threads/{thread_id:path}", response_model=ThreadStateResponse)

@@ -4469,6 +4469,8 @@ export interface components {
             executed_at?: string | null;
             /** Failed At */
             failed_at?: string | null;
+            /** Handoff Message */
+            handoff_message?: string | null;
             kind: components["schemas"]["BranchActionKind"];
             navigation?: components["schemas"]["BranchActionNavigation"] | null;
             /** Rationale */

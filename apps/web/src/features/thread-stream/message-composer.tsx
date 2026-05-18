@@ -2,7 +2,13 @@ import type {
 	ContextUsageResponse,
 	FocusAgentModelOption,
 } from "@focus-agent/web-sdk";
-import { type FormEvent, type KeyboardEvent, useEffect, useState } from "react";
+import {
+	type FormEvent,
+	type KeyboardEvent,
+	useEffect,
+	useId,
+	useState,
+} from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useModels } from "@/features/models/use-models";
@@ -74,6 +80,7 @@ export function MessageComposer({
 	const [modelId, setModelId] = useState(selectedModel ?? "");
 	const [thinkingMode, setThinkingMode] = useState(selectedThinkingMode ?? "");
 	const [modelPanelOpen, setModelPanelOpen] = useState(false);
+	const textareaId = useId();
 	const { message, resetEditDraftSignature, setMessage, textareaRef } =
 		useMessageComposerDraft({
 			editDraft,
@@ -192,20 +199,21 @@ export function MessageComposer({
 				</div>
 			) : null}
 
-			<label
+			<div
 				className={`fa-composer-shell fa-composer-input-shell ${isStreaming ? "is-streaming" : ""} ${
 					isReadOnly ? "is-readonly" : ""
 				}`}
 			>
-				<span className="sr-only">
+				<label className="sr-only" htmlFor={textareaId}>
 					{isReadOnly
 						? `${isChineseUi ? "消息" : "Message"} - ${readOnlyReason}`
 						: isChineseUi
 							? "消息"
 							: "Message"}
-				</span>
+				</label>
 				<div className="fa-composer-textarea-row fa-composer-input-row">
 					<textarea
+						id={textareaId}
 						className="fa-composer-textarea"
 						placeholder={
 							isReadOnly
@@ -359,12 +367,12 @@ export function MessageComposer({
 					</div>
 				</div>
 
-				<span className="sr-only">
-					{isChineseUi
-						? "这里先保持当前线程聚焦。只有当你想把问题拆到独立方向时，再创建分支。"
-						: "Keep the current thread focused here. Create a branch only when you want to split into a separate direction."}
-				</span>
-			</label>
-		</form>
+					<span className="sr-only">
+						{isChineseUi
+							? "这里先保持当前线程聚焦。只有当你想把问题拆到独立方向时，再创建分支。"
+							: "Keep the current thread focused here. Create a branch only when you want to split into a separate direction."}
+					</span>
+				</div>
+			</form>
 	);
 }

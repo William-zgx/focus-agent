@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-05-16
+Updated: 2026-05-18
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -125,7 +125,7 @@ These rules are regression-sensitive:
 - Tool Router enforcement means denied tools are not bound to the model.
 - Model Router observe mode records `model_route_decision`; enforce mode may replace the effective role model.
 - Self Repair and Review Queue record failure candidates and pending human-review items without writing eval datasets automatically.
-- Branch recommendations can create a pending Branch Action in `suggest` mode, but the user must confirm before fork/open/return side effects happen.
+- Branch recommendations can create a pending Branch Action in `suggest` mode, but the user must confirm before fork/open/return side effects happen. In `shadow`, recommendations remain audit-only and expose `recommendation_user_visible=false` plus diagnostic reasons.
 - Context Engineering records budget, compression, refs, and role views in `plan_meta`; it only materializes long observations when artifactization is enabled.
 - Task Ledger converts delegated tasks into traceable task nodes, delegated artifacts, critic verdicts, and optional final synthesis.
 - Critic enforce mode blocks rejected artifacts from synthesis and allows only one local retry task.
@@ -258,6 +258,13 @@ Branch Action; it still does not execute the fork. The user confirms or
 dismisses the Branch Action in the chat UI. See
 [branch-decisions.md](branch-decisions.md) for config flags, API/SDK details,
 and validation commands.
+
+Current pre-turn recommendation signals include explicit branch/continue hints
+and topic-drift hints. Topic drift can suggest a child branch from a root thread
+or a sibling branch from an existing child thread. Gate reasons such as
+`shadow_mode`, `below_threshold`, `pending_branch_action`, and
+`child_depth_exceeded` are stored in decision metadata so governance and Web UI
+can explain skipped or audit-only decisions.
 
 ### Observe-First Autonomy Outputs
 

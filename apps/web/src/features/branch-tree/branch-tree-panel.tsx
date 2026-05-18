@@ -38,9 +38,10 @@ export function BranchTreePanel() {
 			};
 		},
 	});
-	const { data, isLoading, refetch, isFetching } = useBranchTree(
-		params.conversationId,
-	);
+	const treeThreadId = params.threadId || params.conversationId;
+	const { data, isLoading, refetch, isFetching } = useBranchTree(treeThreadId);
+	const resolvedRootThreadId =
+		data?.root?.root_thread_id || params.conversationId;
 	const [focusedThreadId, setFocusedThreadId] = useState<string>("");
 	const graphShellRef = useRef<HTMLDivElement | null>(null);
 	const { data: conversationsData } = useConversations();
@@ -153,7 +154,7 @@ export function BranchTreePanel() {
 		detailNode,
 		onKeepDetailOpen: clearBranchDetailHideTimer,
 		root: data?.root,
-		rootThreadId: params.conversationId,
+		rootThreadId: resolvedRootThreadId,
 		routeThreadId: params.threadId,
 		selectedThreadId,
 	});
@@ -171,7 +172,7 @@ export function BranchTreePanel() {
 		await navigate({
 			to: "/c/$conversationId/t/$threadId",
 			params: {
-				conversationId: params.conversationId,
+				conversationId: resolvedRootThreadId,
 				threadId,
 			},
 		});
@@ -193,7 +194,7 @@ export function BranchTreePanel() {
 				<BranchTreeGraphToolbar
 					archivedBranchCount={data?.archived_branches?.length ?? 0}
 					canCreateBranch={Boolean(createBranchTargetThreadId)}
-					conversationId={params.conversationId}
+					conversationId={resolvedRootThreadId}
 					createBranchDisabled={isMergedCreateTarget || isCreatingBranch}
 					isChineseUi={isChineseUi}
 					isFetching={isFetching}

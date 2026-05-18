@@ -508,6 +508,12 @@
 		transform 0.18s ease;
 }
 
+.fa-composer-icon,
+.fa-composer-icon svg,
+.fa-composer-icon * {
+	pointer-events: none;
+}
+
 .fa-composer-icon-button:disabled {
 	opacity: 0.5;
 }

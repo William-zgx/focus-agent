@@ -1,6 +1,12 @@
 import type { FocusAgentBranchActionProposal } from "@focus-agent/web-sdk";
 
 import {
+	branchDecisionAuditOnlyText,
+	branchDecisionDiagnosticText,
+	shouldShowBranchDecisionDiagnostic,
+} from "@/shared/branch-decision-diagnostics";
+
+import {
 	branchActionStatusText,
 	branchActionTitle,
 } from "./message-list-helpers";
@@ -36,6 +42,13 @@ export function BranchActionCard({
 		typeof action.confidence === "number"
 			? `${Math.round(action.confidence * 100)}%`
 			: "";
+	const sourceDecisionStatus = action.source_decision_status ?? null;
+	const sourceDecisionDiagnostic = branchDecisionDiagnosticText(action);
+	const showSourceDecisionDiagnostic =
+		(!sourceDecisionStatus ||
+			shouldShowBranchDecisionDiagnostic(sourceDecisionStatus)) &&
+		Boolean(sourceDecisionDiagnostic);
+	const auditOnly = action.recommendation_user_visible === false;
 	return (
 		<div className="fa-message-row is-assistant assistant">
 			<div className="fa-message-stack">
@@ -89,6 +102,17 @@ export function BranchActionCard({
 								<a href={`#branch-decision-${action.source_decision_id}`}>
 									{isChineseUi ? "查看 AI 决策" : "View decision"}
 								</a>
+							</div>
+						) : null}
+						{showSourceDecisionDiagnostic ? (
+							<div className="fa-branch-action-card-diagnostic">
+								<span>{isChineseUi ? "诊断" : "Diagnostic"}</span>
+								<strong>{sourceDecisionDiagnostic}</strong>
+							</div>
+						) : null}
+						{auditOnly ? (
+							<div className="fa-branch-action-card-audit-note">
+								{branchDecisionAuditOnlyText(isChineseUi)}
 							</div>
 						) : null}
 					</div>

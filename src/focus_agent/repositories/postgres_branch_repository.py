@@ -6,7 +6,14 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
+from ..core.branching import (
+    BranchRecord,
+    BranchRole,
+    BranchStatus,
+    MergeDecision,
+    MergeProposal,
+    ThreadResolution,
+)
 from ..core.types import ConversationRecord
 from ..security.ownership import OwnershipAuditEvent, allow_ownership, deny_ownership
 from .branch_repository import BranchRepository
@@ -325,6 +332,49 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                 )
                 row = cur.fetchone()
         return None if row is None else str(row["owner_user_id"])
+
+    def resolve_thread_ref(
+        self, thread_id: str, *, owner_user_id: str | None = None
+    ) -> ThreadResolution:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM focus_branches WHERE child_thread_id = %s",
+                    (thread_id,),
+                )
+                branch_row = cur.fetchone()
+                cur.execute(
+                    """
+                    SELECT root_thread_id, owner_user_id
+                    FROM focus_thread_access
+                    WHERE thread_id = %s
+                    """,
+                    (thread_id,),
+                )
+                access_row = cur.fetchone()
+        if branch_row is not None:
+            record = self._row_to_record(branch_row)
+            resolved_owner = (
+                str(access_row["owner_user_id"]) if access_row is not None else record.owner_user_id
+            )
+            if owner_user_id is not None and resolved_owner not in {owner_user_id, "unknown"}:
+                raise PermissionError(f"Thread {thread_id} is owned by a different user.")
+            return ThreadResolution.from_branch_record(record, input_thread_id=thread_id)
+        if (
+            owner_user_id is not None
+            and access_row is not None
+            and str(access_row["owner_user_id"]) != owner_user_id
+        ):
+            raise PermissionError(f"Thread {thread_id} is owned by a different user.")
+        root_thread_id = str(access_row["root_thread_id"]) if access_row is not None else thread_id
+        return ThreadResolution.root(
+            thread_id,
+            input_thread_id=thread_id,
+            root_thread_id=root_thread_id,
+            diagnostic="resolved_from_thread_access"
+            if access_row is not None
+            else "unregistered_thread_assumed_root",
+        )
 
     def create_conversation(self, record: ConversationRecord) -> ConversationRecord:
         with self._connect() as conn:

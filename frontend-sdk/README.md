@@ -25,6 +25,7 @@ This SDK packages those concerns into a small, typed client layer.
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
 - Branch decision config/list/promote/dismiss helpers for AI-assisted branch recommendations
+- Productivity request helpers for notes/tasks/capture, including task lifecycle actions and event list
 - Trajectory observability helpers for overview/list/detail/stats/replay/promote plus batch promote-preview and replay-compare flows
 - Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
 - Strongly typed event names and payloads
@@ -36,7 +37,7 @@ This SDK packages those concerns into a small, typed client layer.
 ## Package Layout
 
 - `src/client.ts` - `FocusAgentClient` facade and endpoint mixin registration
-- `src/client/` - domain endpoint modules for auth, admin, agent-team, agent-governance, thread/branch, observability, and streaming
+- `src/client/` - domain endpoint modules for auth, admin, agent-team, agent-governance, thread/branch, productivity, observability, and streaming
 - `src/transport.ts` - shared HTTP/SSE transport, token resolution, `fetchImpl`, and abort handling
 - `src/errors.ts` - structured request error type
 - `src/types.ts` - public type barrel
@@ -114,6 +115,17 @@ const finalState = await client.collectStream(stream, {
 console.log(finalState.visibleText);
 ```
 
+```mermaid
+flowchart LR
+    App["Web App / Tool Agent"] --> SDK["FocusAgentClient"]
+    SDK --> NotesTasks["GET/PATCH/POST /v1/notes, /v1/tasks"]
+    SDK --> Capture["POST /v1/productivity/capture/note, /v1/productivity/capture/task"]
+    NotesTasks --> APIRoot["Focus Agent API"]
+    Capture --> APIRoot
+    APIRoot --> ProductivityService["ProductivityService"]
+    ProductivityService --> Repo["ProductivityRepository"]
+```
+
 ## Client API
 
 `FocusAgentClient` currently exposes these main methods:
@@ -131,12 +143,17 @@ console.log(finalState.visibleText);
 - `createAgentTeamSession()`, `listAgentTeamSessions()`, `getAgentTeamSession()`, `getAgentTeamSessionView()`, `planAgentTeamSession()`, `runAgentTeamSession()`, `cancelAgentTeamSession()`, `dispatchAgentTeamSession()`, `createAgentTeamTask()`, `listAgentTeamTasks()`, `getAgentTeamTaskStatus()`, `updateAgentTeamTask()`, `runAgentTeamTask()`, `retryAgentTeamTask()`, `cancelAgentTeamTask()`, `recordAgentTeamTaskOutput()`, `prepareAgentTeamMergeBundle()`, and `recordAgentTeamMergeDecision()` - manage Agent Team sessions, tasks, outputs, execution, cancellation, retry, and merge decisions
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app, including optional `context_usage`
+- `getThreadResolution()` - resolve a root or child thread id to its canonical root, source thread, branch id, and branch status
 - `previewThreadContext()` and `compactThreadContext()` - estimate the current thread context window with an optional draft message, or trigger non-destructive compaction for the active branch
 - `getBranchDecisionConfig()`, `listThreadBranchDecisions()`, `promoteBranchDecision()`, and `dismissBranchDecision()` - inspect and manage persisted branch decision/recommendation events
 - `executeBranchAction()` and `dismissBranchAction()` - accept or dismiss proposed branch actions
-- `getBranchTree()` - fetch the branch tree rooted at a conversation
+- `getBranchTree()` - fetch the branch tree for a root or child thread id; the server resolves child ids to the canonical root
 - `forkBranch()`, `renameBranch()`, `archiveBranch()`, `activateBranch()` - manage branch records
 - `prepareMergeProposal()` and `applyMergeDecision()` - drive merge review workflows
+- `listNotes()`, `createNote()`, `getNote()`, and `updateNote()` - notes CRUD/ownership operations
+- `listTasks()`, `createTask()`, `updateTask()`, `completeTask()`, and `archiveTask()` - tasks lifecycle CRUD
+- `listTaskEvents()` - inspect task event timeline
+- `captureNote()` and `captureTask()` - capture note/task payload from chat/tool contexts
 - `getObservabilityOverview()`, `listTrajectoryTurns()`, `getTrajectoryTurn()`, and `getTrajectoryStats()` - inspect runtime readiness and Postgres-backed trajectory observability data
 - `replayTrajectoryTurn()` and `promoteTrajectoryTurn()` - preview replay and dataset promotion payloads for a trajectory turn
 - `batchPromoteTrajectoryTurnsPreview()` and `batchReplayCompareTrajectoryTurns()` - run non-writing batch promotion previews and replay comparisons for selected trajectory turns
@@ -175,6 +192,12 @@ may complete without visible deltas: `message.completed` can use
 `branch_action` and an extra `branch_decision` payload field. Treat that as a
 terminal turn and render the returned Branch Action through the same state path
 as `getThreadState()`.
+
+Branch decision and Branch Action payloads may include `diagnostic`,
+`metadata.reason`, `source_decision_status`, `source_decision_mode`, and
+`recommendation_user_visible`. A value of `recommendation_user_visible=false`
+means the event is audit-only; UI code should show the diagnostic if helpful but
+not expose a confirm button for that event.
 
 Recommended usage:
 
@@ -318,7 +341,7 @@ make sdk-openapi-types-check
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch, conversation, merge proposal, imported-conclusion, Agent Team, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
+- Branch, conversation, merge proposal, imported-conclusion, Agent Team, productivity, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
 - `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.
 - `make sdk-openapi-types-check` tracks `docs/api/openapi.json` and `src/types/__generated__.ts`; intentional backend schema drift should include the regenerated OpenAPI and generated-type diff in review.

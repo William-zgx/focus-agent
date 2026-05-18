@@ -56,6 +56,23 @@ _REQUEST_ACTION_MARKERS = (
 _REQUEST_BRANCH_MARKERS = ("分支", "branch", "同级", "平级", "子分支", "下级", "父分支", "parent")
 _SIBLING_MARKERS = ("同级", "平级", "sibling")
 _CHILD_MARKERS = ("子分支", "下级", "child")
+_BRANCH_HANDOFF_PATTERNS = (
+    r"^(?:请|帮我|麻烦你)?(?:新建|创建|新开)(?:一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
+    r"^(?:请|帮我|麻烦你)?(?:开一个|另开)(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
+    r"^(?:请|帮我|麻烦你)?(?:切换|切到)(?:到|一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
+    r"^(?:create|open|switch(?:\s+to)?)(?:\s+a|\s+an)?(?:\s+new|\s+sibling|\s+child)?\s+branch(?:\s+for|\s+to|\s+and|,|:)?\s*(?P<task>.+)$",
+)
+_TOPIC_DRIFT_HANDOFF_PATTERNS = (
+    r"^(?:换个主题|换个方向|另一个问题|另外一个问题|不相关的问题)[，,。；;：:\s]*(?P<task>.+)$",
+    r"^(?:先看|先研究|先探索|单独看|单独研究|单独探索)(?:一下)?(?:另一个|另外一个|新的)?问题[，,。；;：:\s]*(?P<task>.+)$",
+)
+_HANDOFF_LEADING_FILLER_RE = re.compile(
+    r"^(?:然后|并且|来|去|用于|用来|继续|先|单独|帮我|请|麻烦你|and|then|to|for)\s*",
+    flags=re.IGNORECASE,
+)
+_HANDOFF_NESTED_TOPIC_RE = re.compile(
+    r"^(?:看|研究|探索)?(?:一下)?(?:另一个|另外一个|新的)?问题[，,。；;：:\s]*(?P<task>.+)$"
+)
 
 
 def utc_iso() -> str:
@@ -138,6 +155,48 @@ def target_parent_thread_id(
     return kind, source_thread_id
 
 
+def branch_handoff_message_from_text(message: str | None) -> str | None:
+    text = str(message or "").strip()
+    if not text:
+        return None
+    for pattern in (*_BRANCH_HANDOFF_PATTERNS, *_TOPIC_DRIFT_HANDOFF_PATTERNS):
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        task = _clean_handoff_message(match.group("task"))
+        if task:
+            return task
+    if _is_branch_action_control_only(text):
+        return None
+    return _clean_handoff_message(text)
+
+
+def _clean_handoff_message(value: str | None) -> str | None:
+    task = str(value or "").strip(" ：:，,。；;")
+    for _ in range(3):
+        next_task = _HANDOFF_LEADING_FILLER_RE.sub("", task).strip(" ：:，,。；;")
+        nested_topic = _HANDOFF_NESTED_TOPIC_RE.search(next_task)
+        if nested_topic:
+            next_task = nested_topic.group("task").strip(" ：:，,。；;")
+        if next_task == task:
+            break
+        task = next_task
+    if not task or task in {"吧", "呀", "啦", "呢", "一下", "看看", "可以吗", "好吗"}:
+        return None
+    if is_branch_action_request(task) or _is_branch_action_control_only(task):
+        return None
+    return task
+
+
+def _is_branch_action_control_only(message: str) -> bool:
+    normalized = _compact(message)
+    if not normalized:
+        return False
+    if normalized in _CONFIRM_MARKERS or normalized in _DISMISS_MARKERS:
+        return True
+    return any(marker in normalized for marker in ("直接切", "确认切", "goahead", "不要切", "别切"))
+
+
 def infer_suggested_branch_name(message: str, recent_messages: list[Any]) -> str | None:
     direct = _extract_branch_name(message)
     if direct:
@@ -163,6 +222,7 @@ def build_branch_action_proposal(
     suggested_branch_name: str | None,
     branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
     reason: str,
+    handoff_message: str | None = None,
 ) -> BranchActionProposal:
     return BranchActionProposal(
         action_id=f"branch-action-{uuid4()}",
@@ -174,6 +234,7 @@ def build_branch_action_proposal(
         suggested_branch_name=suggested_branch_name,
         branch_role=branch_role,
         reason=reason,
+        handoff_message=branch_handoff_message_from_text(handoff_message),
         created_at=utc_iso(),
     )
 
@@ -818,6 +879,7 @@ __all__ = [
     "is_branch_action_request",
     "requested_branch_action_kind",
     "target_parent_thread_id",
+    "branch_handoff_message_from_text",
     "infer_suggested_branch_name",
     "build_branch_action_proposal",
     "replace_branch_action",

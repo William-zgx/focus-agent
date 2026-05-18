@@ -1,6 +1,6 @@
 # Focus Agent Docs Index / 文档索引
 
-更新时间：2026-05-16
+更新时间：2026-05-18
 
 This is the canonical navigation entry for `docs/`. Root README files stay lightweight and describe the current platform-scale positioning; deeper guides live here and are grouped by use case.
 
@@ -26,6 +26,7 @@ flowchart LR
     Topics --> Admin["Admin Console"]
     Topics --> Streaming["Streaming Contract"]
     Topics --> ContextWindow["Context Window"]
+    Topics --> Productivity["Productivity System"]
     Topics --> Memory["Memory v2"]
     Topics --> Tools["Tool / Skill"]
     Ops --> Docker["Docker Deployment"]
@@ -55,13 +56,14 @@ flowchart LR
 
 - [agent-role-routing.md](agent-role-routing.md)：Agent Governance、role routing、tool routing、delegation、context、task ledger、critic gate 和 eval gate。
 - [branch-decisions.md](branch-decisions.md)：BranchDecisionEvent、发送前分支推荐、用户确认的 Branch Action、配置、API/SDK surface 和验证口径。
+- [productivity-system.md](productivity-system.md)：生产力工作台（笔记 + 任务）的 API、持久化、来源追踪、路由接入和验证口径。
 - [auth-access.md](auth-access.md)：登录、注册、Bearer/Demo token、refresh session、账号自助页面、ownership 和生产鉴权边界。
 - [agent-team-workbench.md](agent-team-workbench.md)：Agent Team Mission Runner 的目标驱动规划、DAG 执行、最终答案、API、持久化边界和多 Agent 开发验收口径。
 - [admin-console.md](admin-console.md)：管理员用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件、权限边界和验证口径。
 - [streaming-contract.md](streaming-contract.md)：SSE 事件模型、`message.delta` 可见文本边界、工具协议隔离、SDK reducer 和处理过程卡契约。
 - [context-window.md](context-window.md)：当前上下文窗口用量、发送栏 Context Meter、手动/自动压缩、API/SDK 和 `token_usage` 边界。
 - [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget、branch promotion 和 legacy fallback / migration 背景。
-- [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、运行时策略和扩展检查项。
+- [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、live-web evidence contract、productivity tools、运行时策略和扩展检查项。
 
 ## Operations And Release / 运维发布
 

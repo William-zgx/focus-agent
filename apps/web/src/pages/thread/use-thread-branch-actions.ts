@@ -30,6 +30,21 @@ function navigationFromBranchActionResult(
 	return null;
 }
 
+function branchActionHandoffMessage(
+	result: FocusAgentBranchActionExecuteResponse,
+): string {
+	return String(result.branch_action.handoff_message ?? "").trim();
+}
+
+interface BranchActionHandoffRun {
+	threadId: string;
+	message: string;
+}
+
+interface UseThreadBranchActionsOptions {
+	onRunHandoff?: (input: BranchActionHandoffRun) => Promise<unknown>;
+}
+
 const THREAD_BUSY_RETRY_ATTEMPTS = 80;
 const THREAD_BUSY_RETRY_DELAY_MS = 500;
 
@@ -83,7 +98,10 @@ async function retryThreadBusyConflict<T>(
 	throw lastError;
 }
 
-export function useThreadBranchActions(threadId: string) {
+export function useThreadBranchActions(
+	threadId: string,
+	options: UseThreadBranchActionsOptions = {},
+) {
 	const { client } = useFocusAgent();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
@@ -99,11 +117,11 @@ export function useThreadBranchActions(threadId: string) {
 	const branchActionThreadIdRef = useRef(threadId);
 
 	const refreshBranchActionSurfaces = useCallback(
-		async (rootThreadId: string, currentThreadId: string) => {
+		async (currentThreadId: string) => {
 			await Promise.all([
 				queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
 				queryClient.invalidateQueries({
-					queryKey: queryKeys.branchTree(rootThreadId),
+					queryKey: queryKeys.branchTrees,
 				}),
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.thread(currentThreadId),
@@ -153,7 +171,7 @@ export function useThreadBranchActions(threadId: string) {
 			}));
 			const threadState = await client.getThreadState(threadId);
 			queryClient.setQueryData(queryKeys.thread(threadId), threadState);
-			await refreshBranchActionSurfaces(threadState.root_thread_id, threadId);
+			await refreshBranchActionSurfaces(threadId);
 		},
 		[client, isChineseUi, queryClient, refreshBranchActionSurfaces, threadId],
 	);
@@ -177,15 +195,13 @@ export function useThreadBranchActions(threadId: string) {
 					queryKeys.thread(sourceThreadId),
 					result.thread_state,
 				);
-				await refreshBranchActionSurfaces(
-					result.thread_state.root_thread_id,
-					sourceThreadId,
-				);
+				await refreshBranchActionSurfaces(sourceThreadId);
 				const navigation = navigationFromBranchActionResult(result);
 				if (navigation) {
 					if (!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
 						return;
 					}
+					const handoffMessage = branchActionHandoffMessage(result);
 					await queryClient.invalidateQueries({
 						queryKey: queryKeys.thread(navigation.thread_id),
 					});
@@ -196,6 +212,12 @@ export function useThreadBranchActions(threadId: string) {
 							threadId: navigation.thread_id,
 						},
 					});
+					if (handoffMessage && navigation.thread_id !== sourceThreadId) {
+						void options.onRunHandoff?.({
+							threadId: navigation.thread_id,
+							message: handoffMessage,
+						});
+					}
 				}
 			} catch (error) {
 				if (
@@ -221,6 +243,7 @@ export function useThreadBranchActions(threadId: string) {
 			queryClient,
 			refreshBranchActionSurfaces,
 			refreshThreadAfterBranchActionFailure,
+			options,
 			threadId,
 		],
 	);
@@ -241,10 +264,7 @@ export function useThreadBranchActions(threadId: string) {
 					return;
 				}
 				queryClient.setQueryData(queryKeys.thread(sourceThreadId), threadState);
-				await refreshBranchActionSurfaces(
-					threadState.root_thread_id,
-					sourceThreadId,
-				);
+				await refreshBranchActionSurfaces(sourceThreadId);
 			} catch (error) {
 				if (
 					error instanceof ThreadBranchActionRetryCancelled ||

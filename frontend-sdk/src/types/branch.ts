@@ -1,4 +1,9 @@
 import type { FocusAgentTokenUsageSummary } from "./common.js";
+import type {
+	BranchDecisionMode,
+	BranchDecisionStatus,
+	FocusAgentBranchDecisionDiagnostic,
+} from "./branch-decision.js";
 
 export type BranchActionKind =
 	| "fork_sibling_branch"
@@ -35,8 +40,13 @@ export interface FocusAgentBranchActionProposal {
 	navigation?: FocusAgentBranchActionNavigation | null;
 	source?: string | null;
 	source_decision_id?: string | null;
+	source_decision_status?: BranchDecisionStatus | null;
+	source_decision_mode?: BranchDecisionMode | null;
 	confidence?: number | null;
 	rationale?: string | null;
+	recommendation_user_visible?: boolean | null;
+	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;
+	handoff_message?: string | null;
 }
 
 export type BranchRole =

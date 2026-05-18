@@ -74,13 +74,20 @@ _RECOMMEND_SIBLING_HINTS = (
     "换个方向",
 )
 _RECOMMEND_FORK_HINTS = (
-    "branch",
     "fork",
     "split",
     "parallel",
     "alternative",
     "explore separately",
-    "分支",
+    "new branch",
+    "create branch",
+    "create a branch",
+    "make a branch",
+    "open a branch",
+    "新建分支",
+    "创建分支",
+    "开分支",
+    "开一个分支",
     "另开",
     "新开",
     "新建",
@@ -101,6 +108,38 @@ _RECOMMEND_CONTINUE_HINTS = (
     "不用分支",
     "不要分支",
     "别开分支",
+)
+_RECOMMEND_TOPIC_DRIFT_HINTS = (
+    "change topic",
+    "switch topic",
+    "switch topics",
+    "new topic",
+    "another topic",
+    "different topic",
+    "another question",
+    "different question",
+    "separate question",
+    "separate issue",
+    "unrelated topic",
+    "unrelated question",
+    "different domain",
+    "look at another",
+    "换个主题",
+    "换个话题",
+    "换个问题",
+    "另一个问题",
+    "另一个话题",
+    "另一个主题",
+    "另一个议题",
+    "另一件事",
+    "不相关领域",
+    "不相关的问题",
+    "先看另一个",
+    "先聊另一个",
+    "新的议题",
+    "新议题",
+    "新问题",
+    "新的问题",
 )
 
 
@@ -176,13 +215,21 @@ def collect_branch_recommendation_signals(
     message: str,
     values: dict[str, Any],
     branch_meta: BranchMeta | None,
+    semantic_topic_relation: dict[str, Any] | None = None,
 ) -> list[BranchDecisionSignal]:
     messages = list(values.get("messages", []) or [])
     normalized = _compact(message)
     explicit_target = _recommendation_explicit_target(normalized, branch_meta=branch_meta)
+    explicit_source = _recommendation_explicit_source(normalized)
+    topic_drift = _recommendation_topic_drift(normalized, branch_meta=branch_meta)
     pending_action = latest_pending_branch_action(values.get("branch_actions")) is not None
     branch_status = branch_meta.branch_status if branch_meta is not None else BranchStatus.ACTIVE
-    shape = _pre_turn_message_shape(message=message, branch_meta=branch_meta)
+    shape = _pre_turn_message_shape(
+        message=message,
+        branch_meta=branch_meta,
+        messages=messages,
+    )
+    semantic_relation = _semantic_topic_relation_signal_value(semantic_topic_relation)
 
     return [
         BranchDecisionSignal(
@@ -192,6 +239,37 @@ def collect_branch_recommendation_signals(
             weight=0.40,
             evidence_refs=["incoming_user_message"],
             rationale="Incoming user wording maps to a deterministic branch recommendation target.",
+        ),
+        BranchDecisionSignal(
+            name="recommendation_explicit_source",
+            value=explicit_source,
+            score=1.0 if explicit_source != "none" else 0.0,
+            weight=0.20,
+            evidence_refs=["incoming_user_message"],
+            rationale="Incoming user wording contains an explicit branch or continue hint."
+            if explicit_source != "none"
+            else "No explicit branch or continue hint was detected.",
+        ),
+        BranchDecisionSignal(
+            name="recommendation_topic_drift",
+            value=topic_drift,
+            score=1.0 if bool(topic_drift.get("has_topic_drift")) else 0.0,
+            weight=0.35,
+            evidence_refs=["incoming_user_message"],
+            rationale="Incoming user wording clearly starts a new or unrelated topic."
+            if bool(topic_drift.get("has_topic_drift"))
+            else "No strong new-topic drift wording was detected.",
+        ),
+        BranchDecisionSignal(
+            name="semantic_topic_relation",
+            value=semantic_relation,
+            score=float(semantic_relation.get("confidence") or 0.0)
+            if bool(semantic_relation.get("topic_shift"))
+            and semantic_relation.get("status") in {"ok", "success"}
+            else 0.0,
+            weight=0.35,
+            evidence_refs=["incoming_user_message"],
+            rationale=str(semantic_relation.get("reason") or "Semantic topic relation was not run."),
         ),
         BranchDecisionSignal(
             name="pending_branch_action",
@@ -248,16 +326,71 @@ def _recommendation_explicit_target(
         if branch_meta is not None:
             return BranchDecisionAction.FORK_SIBLING_BRANCH
         return BranchDecisionAction.FORK_CHILD_BRANCH
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_FORK_HINTS):
+    if _has_recommend_fork_hint(normalized_message):
         return BranchDecisionAction.FORK_CHILD_BRANCH
     return BranchDecisionAction.CONTINUE_CURRENT
+
+
+def _recommendation_explicit_source(normalized_message: str) -> str:
+    if not normalized_message:
+        return "none"
+    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CONTINUE_HINTS):
+        return "continue_hint"
+    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CHILD_HINTS):
+        return "branch_hint"
+    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_SIBLING_HINTS):
+        return "branch_hint"
+    if _has_recommend_fork_hint(normalized_message):
+        return "branch_hint"
+    return "none"
+
+
+def _has_recommend_fork_hint(normalized_message: str) -> bool:
+    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_FORK_HINTS):
+        return True
+    if "分支" not in normalized_message:
+        return False
+    return bool(
+        re.search(
+            r"(新建|创建|建立|新开|另开|开一个|切到|切换到|单独开|单独创建).{0,8}分支"
+            r"|分支.{0,8}(新建|创建|建立|新开|另开|切换)",
+            normalized_message,
+        )
+    )
+
+
+def _recommendation_topic_drift(
+    normalized_message: str,
+    *,
+    branch_meta: BranchMeta | None,
+) -> dict[str, Any]:
+    matched_hint = _topic_drift_match(normalized_message)
+    target = (
+        BranchDecisionAction.FORK_SIBLING_BRANCH
+        if branch_meta is not None
+        else BranchDecisionAction.FORK_CHILD_BRANCH
+    )
+    return {
+        "has_topic_drift": matched_hint is not None,
+        "matched_hint": matched_hint,
+        "recommendation_target": target.value if matched_hint is not None else None,
+    }
 
 
 def _pre_turn_message_shape(
     *,
     message: str,
     branch_meta: BranchMeta | None,
+    messages: list[Any] | None = None,
 ) -> dict[str, Any]:
+    history_messages = list(messages or [])
+    history_human_count = sum(
+        1 for item in history_messages if _message_type(item) in {"human", "user"}
+    )
+    history_answer_count = sum(
+        1 for item in history_messages if _message_type(item) in {"ai", "assistant"}
+    )
+    has_history_context = bool(history_human_count or history_answer_count)
     compact = _compact(message)
     has_question = "?" in message or "？" in message
     has_alternative = any(
@@ -266,6 +399,7 @@ def _pre_turn_message_shape(
     has_new_direction = any(
         marker in compact for marker in ("another", "different", "另一个", "换个", "新方向")
     )
+    matched_topic_drift = _topic_drift_match(compact)
     has_branch_context = branch_meta is not None
     score = 0.45
     if has_question:
@@ -274,16 +408,74 @@ def _pre_turn_message_shape(
         score += 0.12
     if has_new_direction:
         score += 0.15
+    if matched_topic_drift is not None:
+        score += 0.18
     if has_branch_context:
         score += 0.05
+    recommendation_target = None
+    if matched_topic_drift is not None:
+        recommendation_target = (
+            BranchDecisionAction.FORK_SIBLING_BRANCH.value
+            if has_branch_context
+            else BranchDecisionAction.FORK_CHILD_BRANCH.value
+        )
     return {
         "has_question": has_question,
         "has_alternative": has_alternative,
         "has_new_direction": has_new_direction,
+        "has_topic_drift": matched_topic_drift is not None,
         "has_branch_context": has_branch_context,
+        "has_history_context": has_history_context,
+        "history_human_count": history_human_count,
+        "history_answer_count": history_answer_count,
+        "recommendation_target": recommendation_target,
         "message_chars": len(str(message or "")),
         "score": min(score, 1.0),
     }
+
+
+def _semantic_topic_relation_signal_value(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "status": "not_run",
+            "topic_shift": False,
+            "confidence": 0.0,
+            "recommended_action": BranchDecisionAction.CONTINUE_CURRENT.value,
+            "relatedness": None,
+            "relationship": None,
+            "reason": "Semantic classifier was not invoked.",
+            "model": None,
+        }
+    action = _semantic_recommended_action(value.get("recommended_action"))
+    try:
+        confidence = float(value.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    status = str(value.get("status") or "success").strip().lower()
+    if status in {"succeeded", "completed"}:
+        status = "success"
+    return {
+        "status": status or "error",
+        "topic_shift": bool(value.get("topic_shift")),
+        "confidence": max(0.0, min(confidence, 1.0)),
+        "recommended_action": action.value,
+        "relatedness": value.get("relatedness"),
+        "relationship": value.get("relationship"),
+        "reason": str(value.get("reason") or ""),
+        "model": value.get("model"),
+    }
+
+
+def _semantic_recommended_action(value: Any) -> BranchDecisionAction:
+    raw = str(value or "").strip()
+    for action in {
+        BranchDecisionAction.CONTINUE_CURRENT,
+        BranchDecisionAction.FORK_CHILD_BRANCH,
+        BranchDecisionAction.FORK_SIBLING_BRANCH,
+    }:
+        if raw == action.value:
+            return action
+    return BranchDecisionAction.CONTINUE_CURRENT
 
 
 def _recent_message_shape(*, messages: list[Any], recent_text: str) -> dict[str, Any]:
@@ -367,6 +559,16 @@ def _message_text(message: Any) -> str:
 
 def _compact(text: str) -> str:
     return re.sub(r"\s+", "", str(text or "").strip().lower())
+
+
+def _topic_drift_match(normalized_message: str) -> str | None:
+    if not normalized_message:
+        return None
+    for marker in _RECOMMEND_TOPIC_DRIFT_HINTS:
+        compact_marker = _compact(marker)
+        if compact_marker and compact_marker in normalized_message:
+            return marker
+    return None
 
 
 __all__ = ["collect_branch_decision_signals", "collect_branch_recommendation_signals"]

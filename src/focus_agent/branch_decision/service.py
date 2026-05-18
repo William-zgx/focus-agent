@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from hashlib import sha256
+from importlib import import_module
 from typing import Any
 
 from focus_agent.core.branching import (
@@ -10,6 +11,7 @@ from focus_agent.core.branching import (
     BranchMeta,
     BranchRole,
     BranchStatus,
+    ThreadResolution,
 )
 from focus_agent.core.governance import (
     BranchDecisionAction,
@@ -23,6 +25,7 @@ from focus_agent.core.governance import (
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.state import normalize_agent_state
 from focus_agent.services.branch_actions import (
+    branch_handoff_message_from_text,
     branch_action_audit_event,
     build_branch_action_proposal,
     infer_suggested_branch_name,
@@ -59,6 +62,17 @@ class BranchDecisionService:
         recommendation_mode = _branch_decision_mode(
             getattr(self.settings, "agent_branch_recommendation_mode", "shadow")
         )
+        recommendation_enabled = bool(
+            getattr(self.settings, "agent_branch_recommendation_enabled", False)
+        )
+        recommendation_semantic_enabled = bool(
+            getattr(self.settings, "agent_branch_recommendation_semantic_enabled", False)
+        )
+        recommendation_semantic_model = getattr(
+            self.settings,
+            "agent_branch_recommendation_semantic_model",
+            None,
+        )
         return BranchDecisionConfig(
             enabled=bool(getattr(self.settings, "agent_branch_decision_enabled", False)),
             mode=mode,
@@ -77,12 +91,22 @@ class BranchDecisionService:
             rate_limit_per_hour=int(
                 getattr(self.settings, "agent_branch_decision_rate_limit_per_hour", 3)
             ),
-            recommendation_enabled=bool(
-                getattr(self.settings, "agent_branch_recommendation_enabled", False)
-            ),
+            recommendation_enabled=recommendation_enabled,
             recommendation_mode=recommendation_mode,
             recommendation_min_confidence=float(
                 getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
+            ),
+            recommendation_semantic_enabled=recommendation_semantic_enabled,
+            recommendation_semantic_model=recommendation_semantic_model,
+            recommendation_user_visible=_recommendation_user_visible(
+                enabled=recommendation_enabled,
+                mode=recommendation_mode,
+            ),
+            recommendation_diagnostics=_recommendation_diagnostics(
+                enabled=recommendation_enabled,
+                mode=recommendation_mode,
+                semantic_enabled=recommendation_semantic_enabled,
+                semantic_model=recommendation_semantic_model,
             ),
         )
 
@@ -90,18 +114,37 @@ class BranchDecisionService:
         mode = _branch_decision_mode(
             getattr(self.settings, "agent_branch_recommendation_mode", "shadow")
         )
+        enabled = bool(getattr(self.settings, "agent_branch_recommendation_enabled", False))
+        semantic_enabled = bool(
+            getattr(self.settings, "agent_branch_recommendation_semantic_enabled", False)
+        )
+        semantic_model = getattr(
+            self.settings,
+            "agent_branch_recommendation_semantic_model",
+            None,
+        )
         return BranchDecisionConfig(
-            enabled=bool(getattr(self.settings, "agent_branch_recommendation_enabled", False)),
+            enabled=enabled,
             mode=mode,
             min_confidence=float(
                 getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
             ),
-            recommendation_enabled=bool(
-                getattr(self.settings, "agent_branch_recommendation_enabled", False)
-            ),
+            recommendation_enabled=enabled,
             recommendation_mode=mode,
             recommendation_min_confidence=float(
                 getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
+            ),
+            recommendation_semantic_enabled=semantic_enabled,
+            recommendation_semantic_model=semantic_model,
+            recommendation_user_visible=_recommendation_user_visible(
+                enabled=enabled,
+                mode=mode,
+            ),
+            recommendation_diagnostics=_recommendation_diagnostics(
+                enabled=enabled,
+                mode=mode,
+                semantic_enabled=semantic_enabled,
+                semantic_model=semantic_model,
             ),
         )
 
@@ -119,10 +162,9 @@ class BranchDecisionService:
         if not config.enabled:
             return None
         values = self._safe_get_values(thread_id)
-        branch_meta = self._branch_meta_from_values(values)
-        resolved_root_thread_id = root_thread_id or (
-            branch_meta.root_thread_id if branch_meta is not None else thread_id
-        )
+        resolution = self._thread_resolution(thread_id=thread_id, user_id=user_id)
+        branch_meta = self._branch_meta_for_thread(thread_id=thread_id, values=values)
+        resolved_root_thread_id = root_thread_id or resolution.root_thread_id
         message_hash = sha256(str(message or "").encode("utf-8")).hexdigest()[:16]
         idempotency_key = f"pre_turn:{thread_id}:{request_id or trace_id or message_hash}"
         try:
@@ -144,7 +186,9 @@ class BranchDecisionService:
                 user_id=user_id,
                 root_thread_id=resolved_root_thread_id,
                 source_thread_id=thread_id,
-                branch_id=branch_meta.branch_id if branch_meta is not None else None,
+                branch_id=branch_meta.branch_id
+                if branch_meta is not None
+                else resolution.branch_id,
                 recommendation_target=BranchDecisionRecommendationTarget.CONTINUE_CURRENT,
                 confidence=0.0,
                 action=BranchDecisionAction.CONTINUE_CURRENT,
@@ -192,10 +236,9 @@ class BranchDecisionService:
         if not config.enabled:
             return None
         values = self._safe_get_values(thread_id)
-        branch_meta = self._branch_meta_from_values(values)
-        resolved_root_thread_id = root_thread_id or (
-            branch_meta.root_thread_id if branch_meta is not None else thread_id
-        )
+        resolution = self._thread_resolution(thread_id=thread_id, user_id=user_id)
+        branch_meta = self._branch_meta_for_thread(thread_id=thread_id, values=values)
+        resolved_root_thread_id = root_thread_id or resolution.root_thread_id
         idempotency_key = (
             f"{thread_id}:{request_id or trace_id or len(values.get('messages') or [])}"
         )
@@ -217,7 +260,9 @@ class BranchDecisionService:
                 user_id=user_id,
                 root_thread_id=resolved_root_thread_id,
                 source_thread_id=thread_id,
-                branch_id=branch_meta.branch_id if branch_meta is not None else None,
+                branch_id=branch_meta.branch_id
+                if branch_meta is not None
+                else resolution.branch_id,
                 confidence=0.0,
                 action=BranchDecisionAction.SPLIT,
                 status=BranchDecisionStatus.ERROR,
@@ -298,6 +343,7 @@ class BranchDecisionService:
                 event,
                 status=BranchDecisionStatus.BLOCKED,
                 error="Only branch fork decisions can be promoted to a branch action.",
+                metadata={**event.metadata, "reason": "unsupported_promotion_action"},
             )
             return updated
         return self._promote_branch_action_decision(
@@ -350,7 +396,7 @@ class BranchDecisionService:
                 merge_candidate_threshold=config.merge_candidate_threshold,
             )
         )
-        status = self._gate_status(
+        status, gate_reason = self._gate_status(
             config=config,
             values=values,
             branch_meta=branch_meta,
@@ -360,6 +406,12 @@ class BranchDecisionService:
             thread_id=thread_id,
         )
         metadata: dict[str, Any] = {}
+        if status in {
+            BranchDecisionStatus.BLOCKED,
+            BranchDecisionStatus.SKIPPED,
+            BranchDecisionStatus.SHADOWED,
+        }:
+            metadata["reason"] = gate_reason
         if status == BranchDecisionStatus.SUGGESTED and config.mode == BranchDecisionMode.EXECUTE:
             metadata["downgraded_from_execute"] = True
             metadata["effective_mode"] = BranchDecisionMode.SUGGEST.value
@@ -421,6 +473,22 @@ class BranchDecisionService:
             signals=signals,
             min_confidence=config.min_confidence,
         )
+        if _should_run_semantic_topic_relation(signals=signals, action=best.action):
+            semantic_topic_relation = self._classify_semantic_topic_relation(
+                message=message,
+                values=values,
+                branch_meta=branch_meta,
+            )
+            signals = collect_branch_recommendation_signals(
+                message=message,
+                values=values,
+                branch_meta=branch_meta,
+                semantic_topic_relation=semantic_topic_relation,
+            )
+            best = score_branch_recommendation(
+                signals=signals,
+                min_confidence=config.min_confidence,
+            )
         action = best.action
         target_parent: str | None = None
         suggested_branch_name: str | None = None
@@ -440,7 +508,7 @@ class BranchDecisionService:
                 list(values.get("messages", []) or []),
             )
         recommendation_target = _recommendation_target_for_decision(action)
-        status = self._gate_recommendation_status(
+        status, gate_reason = self._gate_recommendation_status(
             config=config,
             values=values,
             branch_meta=branch_meta,
@@ -452,7 +520,25 @@ class BranchDecisionService:
             "phase": "pre_turn",
             "recommendation_target": recommendation_target.value,
             "message_hash": sha256(str(message or "").encode("utf-8")).hexdigest()[:16],
+            **_semantic_topic_relation_metadata(signals),
+            "recommendation_user_visible": _recommendation_user_visible(
+                enabled=config.enabled,
+                mode=config.mode,
+            )
+            and status == BranchDecisionStatus.SUGGESTED,
+            "diagnostic": {
+                "gate_reason": gate_reason,
+                "mode": config.mode.value,
+                "threshold": max(config.min_confidence, best.threshold),
+                **_semantic_topic_relation_diagnostic(signals),
+            },
         }
+        if status in {
+            BranchDecisionStatus.BLOCKED,
+            BranchDecisionStatus.SKIPPED,
+            BranchDecisionStatus.SHADOWED,
+        }:
+            metadata["reason"] = gate_reason
         if suggested_branch_name:
             metadata["suggested_branch_name"] = suggested_branch_name
         if target_parent:
@@ -461,7 +547,11 @@ class BranchDecisionService:
             BranchDecisionAction.FORK_CHILD_BRANCH,
             BranchDecisionAction.FORK_SIBLING_BRANCH,
         }:
-            metadata["handoff_message_preview"] = str(message or "").strip()[:240]
+            handoff_message = branch_handoff_message_from_text(message) or str(
+                message or ""
+            ).strip()
+            metadata["handoff_message"] = handoff_message
+            metadata["handoff_message_preview"] = handoff_message[:240]
         if status == BranchDecisionStatus.SUGGESTED and config.mode == BranchDecisionMode.EXECUTE:
             metadata["downgraded_from_execute"] = True
             metadata["effective_mode"] = BranchDecisionMode.SUGGEST.value
@@ -498,6 +588,82 @@ class BranchDecisionService:
             )
         return event
 
+    def _classify_semantic_topic_relation(
+        self,
+        *,
+        message: str,
+        values: dict[str, Any],
+        branch_meta: BranchMeta | None,
+    ) -> dict[str, Any]:
+        classifier = self._semantic_topic_relation_classifier()
+        if classifier is None:
+            return {
+                "status": "unavailable",
+                "topic_shift": False,
+                "confidence": 0.0,
+                "recommended_action": BranchDecisionAction.CONTINUE_CURRENT.value,
+                "reason": "No semantic topic relation classifier is configured.",
+            }
+        try:
+            result = _call_semantic_topic_relation_classifier(
+                classifier,
+                settings=self.settings,
+                message=message,
+                values=values,
+                branch_meta=branch_meta,
+            )
+        except Exception as exc:  # noqa: BLE001 - semantic recommendation must fail closed.
+            logger.warning("semantic topic relation classification failed", exc_info=True)
+            return {
+                "status": "unavailable",
+                "topic_shift": False,
+                "confidence": 0.0,
+                "recommended_action": BranchDecisionAction.CONTINUE_CURRENT.value,
+                "reason": str(exc) or exc.__class__.__name__,
+            }
+        return _normalize_semantic_topic_relation_result(result)
+
+    def _semantic_topic_relation_classifier(self) -> Any | None:
+        for attr in (
+            "classify_branch_recommendation_semantic",
+            "semantic_branch_recommendation_classifier",
+        ):
+            classifier = globals().get(attr)
+            if classifier is not None:
+                return classifier
+        for owner in (self.settings, self.branch_service, self.coordination_backend):
+            for attr in (
+                "agent_branch_recommendation_semantic_classifier",
+                "branch_recommendation_semantic_classifier",
+                "semantic_topic_relation_classifier",
+                "semantic_topic_classifier",
+                "classify_branch_recommendation_semantic",
+                "semantic_branch_recommendation_classifier",
+            ):
+                classifier = getattr(owner, attr, None) if owner is not None else None
+                if classifier is not None:
+                    return classifier
+        for module_name in (
+            "focus_agent.branch_decision.semantic",
+            "focus_agent.branch_decision.semantic_topic_relation",
+            "focus_agent.branch_decision.classifier",
+        ):
+            try:
+                module = import_module(module_name)
+            except ImportError:
+                continue
+            for attr in (
+                "classify_semantic_topic_relation",
+                "classify_topic_relation",
+                "semantic_topic_relation_classifier",
+                "classify_branch_recommendation_semantic",
+                "semantic_branch_recommendation_classifier",
+            ):
+                classifier = getattr(module, attr, None)
+                if classifier is not None:
+                    return classifier
+        return None
+
     def _gate_status(
         self,
         *,
@@ -508,23 +674,23 @@ class BranchDecisionService:
         threshold: float,
         user_id: str,
         thread_id: str,
-    ) -> BranchDecisionStatus:
+    ) -> tuple[BranchDecisionStatus, str]:
         del user_id
         if branch_meta is not None and branch_meta.branch_status in {
             BranchStatus.MERGED,
             BranchStatus.DISCARDED,
             BranchStatus.CLOSED,
         }:
-            return BranchDecisionStatus.BLOCKED
+            return BranchDecisionStatus.BLOCKED, "closed_branch"
         if latest_pending_branch_action(values.get("branch_actions")) is not None:
-            return BranchDecisionStatus.BLOCKED
+            return BranchDecisionStatus.BLOCKED, "pending_branch_action"
         if score < max(config.min_confidence, threshold):
-            return BranchDecisionStatus.SKIPPED
+            return BranchDecisionStatus.SKIPPED, "below_threshold"
         if self._rate_limited(thread_id=thread_id, limit=config.rate_limit_per_hour):
-            return BranchDecisionStatus.BLOCKED
+            return BranchDecisionStatus.BLOCKED, "rate_limited"
         if config.mode == BranchDecisionMode.SHADOW:
-            return BranchDecisionStatus.SHADOWED
-        return BranchDecisionStatus.SUGGESTED
+            return BranchDecisionStatus.SHADOWED, "shadow_mode"
+        return BranchDecisionStatus.SUGGESTED, "eligible"
 
     def _gate_recommendation_status(
         self,
@@ -535,13 +701,13 @@ class BranchDecisionService:
         action: BranchDecisionAction,
         score: float,
         threshold: float,
-    ) -> BranchDecisionStatus:
+    ) -> tuple[BranchDecisionStatus, str]:
         if branch_meta is not None and branch_meta.branch_status in {
             BranchStatus.MERGED,
             BranchStatus.DISCARDED,
             BranchStatus.CLOSED,
         }:
-            return BranchDecisionStatus.BLOCKED
+            return BranchDecisionStatus.BLOCKED, "closed_branch"
         if (
             action
             in {
@@ -550,20 +716,20 @@ class BranchDecisionService:
             }
             and latest_pending_branch_action(values.get("branch_actions")) is not None
         ):
-            return BranchDecisionStatus.BLOCKED
+            return BranchDecisionStatus.BLOCKED, "pending_branch_action"
         if score < max(config.min_confidence, threshold):
-            return BranchDecisionStatus.SKIPPED
+            return BranchDecisionStatus.SKIPPED, "below_threshold"
         if action == BranchDecisionAction.CONTINUE_CURRENT:
             if config.mode == BranchDecisionMode.SHADOW:
-                return BranchDecisionStatus.SHADOWED
-            return BranchDecisionStatus.SKIPPED
+                return BranchDecisionStatus.SHADOWED, "shadow_mode"
+            return BranchDecisionStatus.SKIPPED, "continue_current"
         if action == BranchDecisionAction.FORK_CHILD_BRANCH and self._child_depth_exceeded(
             branch_meta
         ):
-            return BranchDecisionStatus.BLOCKED
+            return BranchDecisionStatus.BLOCKED, "child_depth_exceeded"
         if config.mode == BranchDecisionMode.SHADOW:
-            return BranchDecisionStatus.SHADOWED
-        return BranchDecisionStatus.SUGGESTED
+            return BranchDecisionStatus.SHADOWED, "shadow_mode"
+        return BranchDecisionStatus.SUGGESTED, "eligible"
 
     def _child_depth_exceeded(self, branch_meta: BranchMeta | None) -> bool:
         try:
@@ -598,6 +764,7 @@ class BranchDecisionService:
                 event,
                 status=BranchDecisionStatus.BLOCKED,
                 error="A pending branch action already exists.",
+                metadata={**event.metadata, "reason": "pending_branch_action"},
             )
         branch_meta = self._branch_meta_from_values(values)
         requested_kind = _branch_action_kind_for_decision(event.action)
@@ -621,6 +788,9 @@ class BranchDecisionService:
             suggested_branch_name=suggested_branch_name,
             branch_role=_branch_role_for_recommendation(event.recommendation_target),
             reason=event.rationale,
+            handoff_message=str(event.metadata.get("handoff_message") or "").strip()
+            or str(event.metadata.get("handoff_message_preview") or "").strip()
+            or None,
         ).model_copy(
             update={
                 "source": "branch_decision",
@@ -679,6 +849,7 @@ class BranchDecisionService:
                 event,
                 status=BranchDecisionStatus.BLOCKED,
                 error="Branch merge proposal service is not configured.",
+                metadata={**event.metadata, "reason": "merge_service_unconfigured"},
             )
         try:
             proposal = self.branch_service.prepare_merge_proposal(
@@ -690,6 +861,14 @@ class BranchDecisionService:
                 event,
                 status=BranchDecisionStatus.BLOCKED,
                 error="Merge proposal preparation requires an existing child branch.",
+                metadata={**event.metadata, "reason": "merge_requires_child_branch"},
+            )
+        except ValueError as exc:
+            return self._update_event(
+                event,
+                status=BranchDecisionStatus.BLOCKED,
+                error=str(exc),
+                metadata={**event.metadata, "reason": "merge_requires_child_branch"},
             )
         except Exception as exc:  # noqa: BLE001 - proposal generation errors are audit evidence.
             logger.warning("branch decision merge proposal preparation failed", exc_info=True)
@@ -734,6 +913,45 @@ class BranchDecisionService:
         if repo is not None and has_repo_method(repo, "assert_thread_owner"):
             repo.assert_thread_owner(thread_id=thread_id, owner_user_id=user_id)
 
+    def _thread_resolution(self, *, thread_id: str, user_id: str) -> ThreadResolution:
+        repo = getattr(self.branch_service, "repo", None)
+        resolver = getattr(repo, "resolve_thread_ref", None)
+        if callable(resolver):
+            return resolver(thread_id=thread_id, owner_user_id=user_id)
+        return ThreadResolution(
+            input_thread_id=thread_id,
+            root_thread_id=thread_id,
+            source_thread_id=thread_id,
+            diagnostic="resolver_unavailable_assumed_root",
+        )
+
+    def _branch_meta_for_thread(
+        self, *, thread_id: str, values: dict[str, Any]
+    ) -> BranchMeta | None:
+        repo = getattr(self.branch_service, "repo", None)
+        get_by_child = getattr(repo, "get_by_child_thread_id", None)
+        if callable(get_by_child):
+            try:
+                record = get_by_child(thread_id)
+            except KeyError:
+                record = None
+            if record is not None:
+                return BranchMeta(
+                    branch_id=record.branch_id,
+                    root_thread_id=record.root_thread_id,
+                    parent_thread_id=record.parent_thread_id,
+                    return_thread_id=record.return_thread_id,
+                    branch_name=record.branch_name,
+                    branch_role=record.branch_role,
+                    branch_depth=record.branch_depth,
+                    branch_status=record.branch_status,
+                    is_archived=record.is_archived,
+                    archived_at=record.archived_at,
+                    fork_checkpoint_id=record.fork_checkpoint_id,
+                    fork_strategy=record.fork_strategy,
+                )
+        return self._branch_meta_from_values(values)
+
     def _safe_get_values(self, thread_id: str) -> dict[str, Any]:
         if not has_repo_method(self.graph, "get_state"):
             return normalize_agent_state()
@@ -749,6 +967,223 @@ class BranchDecisionService:
             return BranchMeta.model_validate(raw)
         except Exception:
             return None
+
+
+def _should_run_semantic_topic_relation(
+    *,
+    signals: list[Any],
+    action: BranchDecisionAction,
+) -> bool:
+    explicit_source = str(
+        _branch_recommendation_signal_value(
+            signals,
+            "recommendation_explicit_source",
+            "none",
+        )
+    )
+    shape = _branch_recommendation_signal_value(signals, "pre_turn_message_shape", {})
+    has_history_context = bool(
+        shape.get("has_history_context") if isinstance(shape, dict) else False
+    )
+    return (
+        explicit_source == "none"
+        and action == BranchDecisionAction.CONTINUE_CURRENT
+        and has_history_context
+    )
+
+
+def _branch_recommendation_signal_value(
+    signals: list[Any],
+    name: str,
+    default: Any,
+) -> Any:
+    for signal in signals:
+        if getattr(signal, "name", None) == name:
+            return getattr(signal, "value", default)
+    return default
+
+
+def _semantic_topic_relation_metadata(signals: list[Any]) -> dict[str, Any]:
+    relation = _semantic_topic_relation_from_signals(signals)
+    return {
+        "semantic_relatedness": relation.get("relatedness"),
+        "semantic_relationship": relation.get("relationship"),
+        "semantic_reason": relation.get("reason"),
+        "semantic_model": relation.get("model"),
+        "semantic_classifier_status": relation.get("status"),
+    }
+
+
+def _semantic_topic_relation_diagnostic(signals: list[Any]) -> dict[str, Any]:
+    relation = _semantic_topic_relation_from_signals(signals)
+    return {
+        "semantic_topic_shift": bool(relation.get("topic_shift")),
+        "semantic_confidence": float(relation.get("confidence") or 0.0),
+        "semantic_recommended_action": relation.get("recommended_action"),
+        "semantic_classifier_status": relation.get("status"),
+        "semantic_reason": relation.get("reason"),
+    }
+
+
+def _semantic_topic_relation_from_signals(signals: list[Any]) -> dict[str, Any]:
+    value = _branch_recommendation_signal_value(signals, "semantic_topic_relation", {})
+    return value if isinstance(value, dict) else {}
+
+
+def _call_semantic_topic_relation_classifier(
+    classifier: Any,
+    *,
+    settings: Any,
+    message: str,
+    values: dict[str, Any],
+    branch_meta: BranchMeta | None,
+) -> Any:
+    callable_classifier = _semantic_topic_relation_callable(classifier)
+    messages = list(values.get("messages", []) or [])
+    kwargs = {
+        "settings": settings,
+        "message": message,
+        "incoming_message": message,
+        "values": values,
+        "messages": messages,
+        "branch_history": messages,
+        "branch_meta": branch_meta,
+        "on_branch": branch_meta is not None,
+        "selected_model": _selected_model_from_values(values),
+    }
+    for candidate_kwargs in (
+        kwargs,
+        {
+            "message": message,
+            "branch_history": messages,
+            "on_branch": branch_meta is not None,
+        },
+        {
+            "settings": settings,
+            "message": message,
+            "branch_history": messages,
+            "on_branch": branch_meta is not None,
+            "selected_model": _selected_model_from_values(values),
+        },
+        {
+            "message": message,
+            "messages": messages,
+            "branch_meta": branch_meta,
+        },
+        {
+            "message": message,
+            "values": values,
+        },
+        {
+            "message": message,
+        },
+    ):
+        try:
+            return callable_classifier(**candidate_kwargs)
+        except TypeError:
+            continue
+    return callable_classifier(message, messages, branch_meta)
+
+
+def _semantic_topic_relation_callable(classifier: Any) -> Any:
+    for attr in (
+        "classify_semantic_topic_relation",
+        "classify_topic_relation",
+        "classify",
+        "evaluate",
+    ):
+        candidate = getattr(classifier, attr, None)
+        if callable(candidate):
+            return candidate
+    if callable(classifier):
+        return classifier
+    raise TypeError("semantic topic relation classifier is not callable")
+
+
+def _normalize_semantic_topic_relation_result(result: Any) -> dict[str, Any]:
+    payload = _model_payload(result)
+    if not payload or set(payload) == {"raw_response"}:
+        return {
+            "status": "non_json" if payload else "error",
+            "topic_shift": False,
+            "confidence": 0.0,
+            "recommended_action": BranchDecisionAction.CONTINUE_CURRENT.value,
+            "reason": "Semantic classifier returned no structured result.",
+        }
+    return {
+        "status": _semantic_status(payload.get("status")),
+        "topic_shift": bool(
+            payload.get("topic_shift")
+            if "topic_shift" in payload
+            else payload.get("is_topic_shift", payload.get("new_topic", False))
+        ),
+        "confidence": _semantic_confidence(payload),
+        "recommended_action": _semantic_recommended_action(
+            payload.get("recommended_action")
+            or payload.get("action")
+            or payload.get("recommendation_target")
+        ).value,
+        "relatedness": payload.get("relatedness")
+        if "relatedness" in payload
+        else payload.get("semantic_relatedness", payload.get("relatedness_score")),
+        "relationship": payload.get("relationship")
+        if "relationship" in payload
+        else payload.get("relation", payload.get("semantic_relationship")),
+        "reason": str(payload.get("reason") or payload.get("rationale") or ""),
+        "model": payload.get("model") or payload.get("model_name"),
+    }
+
+
+def _selected_model_from_values(values: dict[str, Any]) -> str | None:
+    for key in ("selected_model", "model", "model_id"):
+        text = str(values.get(key) or "").strip()
+        if text:
+            return text
+    return None
+
+
+def _model_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump(mode="json")
+        return dumped if isinstance(dumped, dict) else {}
+    dict_method = getattr(value, "dict", None)
+    if callable(dict_method):
+        dumped = dict_method()
+        return dumped if isinstance(dumped, dict) else {}
+    raw_dict = getattr(value, "__dict__", None)
+    return raw_dict if isinstance(raw_dict, dict) else {}
+
+
+def _semantic_status(value: Any) -> str:
+    status = str(value or "success").strip().lower()
+    if status in {"succeeded", "completed"}:
+        return "success"
+    return status or "error"
+
+
+def _semantic_confidence(payload: dict[str, Any]) -> float:
+    raw = payload.get("confidence")
+    if raw is None:
+        raw = payload.get("score", payload.get("probability", 0.0))
+    try:
+        return max(0.0, min(float(raw or 0.0), 1.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _semantic_recommended_action(value: Any) -> BranchDecisionAction:
+    raw = str(value or "").strip()
+    for action in {
+        BranchDecisionAction.CONTINUE_CURRENT,
+        BranchDecisionAction.FORK_CHILD_BRANCH,
+        BranchDecisionAction.FORK_SIBLING_BRANCH,
+    }:
+        if raw == action.value:
+            return action
+    return BranchDecisionAction.CONTINUE_CURRENT
 
 
 def _branch_decision_mode(value: object) -> BranchDecisionMode:
@@ -788,6 +1223,28 @@ def _branch_role_for_recommendation(
     if target == BranchDecisionRecommendationTarget.FORK_CHILD_BRANCH:
         return BranchRole.DEEP_DIVE
     return BranchRole.EXPLORE_ALTERNATIVES
+
+
+def _recommendation_user_visible(*, enabled: bool, mode: BranchDecisionMode) -> bool:
+    return bool(enabled and mode == BranchDecisionMode.SUGGEST)
+
+
+def _recommendation_diagnostics(
+    *,
+    enabled: bool,
+    mode: BranchDecisionMode,
+    semantic_enabled: bool = False,
+    semantic_model: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "enabled": bool(enabled),
+        "mode": mode.value,
+        "user_visible": _recommendation_user_visible(enabled=enabled, mode=mode),
+        "shadow_records_events_only": mode == BranchDecisionMode.SHADOW,
+        "pending_action_mode": BranchDecisionMode.SUGGEST.value,
+        "semantic_enabled": bool(semantic_enabled),
+        "semantic_model": semantic_model,
+    }
 
 
 def _now_iso() -> str:

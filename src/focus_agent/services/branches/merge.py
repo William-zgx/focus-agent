@@ -32,8 +32,11 @@ class BranchMergeCoordinator:
 
     def prepare_merge_proposal(self, *, child_thread_id: str, user_id: str) -> MergeProposal:
         svc = self.service
-        svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=user_id)
-        branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = svc._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=user_id,
+            operation="Preparing a merge proposal",
+        )
         svc._ensure_branch_not_merged(branch_record)
         child_config = {"configurable": {"thread_id": child_thread_id}}
         snapshot = svc.graph.get_state(child_config)
@@ -107,8 +110,11 @@ class BranchMergeCoordinator:
         proposal_overrides: MergeProposalOverrides | None = None,
     ) -> ImportedConclusion | None:
         svc = self.service
-        svc.repo.assert_thread_owner(thread_id=child_thread_id, owner_user_id=context.user_id)
-        branch_record = svc.repo.get_by_child_thread_id(child_thread_id)
+        branch_record = svc._require_child_branch_record(
+            child_thread_id=child_thread_id,
+            user_id=context.user_id,
+            operation="Applying a merge decision",
+        )
         svc._ensure_branch_not_merged(branch_record)
         child_config = {"configurable": {"thread_id": child_thread_id}}
         snapshot = svc.graph.get_state(child_config)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from langchain.messages import ToolMessage
@@ -25,6 +26,7 @@ def build_execution_contract(
             "policy": normalized_policy or "direct_answer",
             "required_tools": [],
             "required_evidence": False,
+            "temporal_anchor_required": False,
             "status": "not_required",
             "missing": [],
             "blocked_reason": "",
@@ -40,6 +42,7 @@ def build_execution_contract(
         "policy": normalized_policy,
         "required_tools": required_tools,
         "required_evidence": True if required_evidence is None else bool(required_evidence),
+        "temporal_anchor_required": bool(temporal_anchor_required),
         "status": "missing_required_tools",
         "missing": list(required_tools),
         "blocked_reason": "",
@@ -52,6 +55,8 @@ def evaluate_execution_contract(
     tool_results_seen: Iterable[str],
     evidence_ledger: Sequence[Mapping[str, Any]] = (),
     available_tool_names: Sequence[str] = (),
+    observed_at: str | None = None,
+    user_query: str | None = None,
 ) -> dict[str, Any]:
     required_tools = [str(item) for item in contract.get("required_tools") or [] if str(item)]
     seen = {str(item) for item in tool_results_seen if str(item)}
@@ -78,6 +83,8 @@ def evaluate_execution_contract(
         "blocked_reason": blocked_reason,
         "required_evidence": required_evidence,
         "evidence_count": len(evidence_ledger),
+        "observed_at": observed_at or str(contract.get("observed_at") or ""),
+        "user_query": user_query or str(contract.get("user_query") or ""),
     }
 
 
@@ -104,6 +111,15 @@ def verify_answer_against_evidence(
             required_tools_satisfied=False,
             unsupported_claims=["live_web_research contract is missing required tools or evidence"],
             repair_action="call_missing_tool",
+        )
+    stale_reason = _stale_evidence_reason(contract or {}, evidence_ledger)
+    if stale_reason:
+        return _verification(
+            "unsupported",
+            required_tools_satisfied=True,
+            unsupported_claims=[stale_reason],
+            repair_action="refresh_stale_evidence",
+            stale_evidence=True,
         )
     stripped_answer = str(answer or "").strip()
     if not stripped_answer:
@@ -145,6 +161,7 @@ def _verification(
     unsupported_claims: Sequence[str] = (),
     contradictions: Sequence[str] = (),
     repair_action: str = "",
+    stale_evidence: bool = False,
 ) -> dict[str, Any]:
     return {
         "status": status,
@@ -153,7 +170,122 @@ def _verification(
         "unsupported_claims": list(unsupported_claims),
         "contradictions": list(contradictions),
         "repair_action": repair_action,
+        "stale_evidence": stale_evidence,
     }
+
+
+def _stale_evidence_reason(
+    contract: Mapping[str, Any],
+    evidence_ledger: Sequence[Mapping[str, Any]],
+) -> str:
+    if str(contract.get("policy") or "") != "live_web_research":
+        return ""
+    query = str(contract.get("user_query") or "").strip()
+    if not (bool(contract.get("temporal_anchor_required")) or _query_needs_fresh_evidence(query)):
+        return ""
+    observed_at = _parse_date(str(contract.get("observed_at") or ""))
+    if observed_at is None:
+        return ""
+    min_fresh_date = _fresh_evidence_min_date(query, observed_at)
+    stale_items: list[str] = []
+    dated_items = 0
+    fresh_items = 0
+    for item in evidence_ledger:
+        if not isinstance(item, Mapping):
+            continue
+        item_date = _parse_date(str(item.get("published_at") or item.get("observed_at") or ""))
+        if item_date is None:
+            continue
+        dated_items += 1
+        if item_date >= min_fresh_date:
+            fresh_items += 1
+            continue
+        label = str(item.get("title") or item.get("source_name") or item.get("url") or "evidence")
+        stale_items.append(f"{label} ({item_date.isoformat()})")
+    if dated_items and not fresh_items:
+        stale_summary = "; ".join(stale_items[:3])
+        return (
+            "live_web_research evidence is stale for the requested time window"
+            f" (fresh from {min_fresh_date.isoformat()}; stale evidence: {stale_summary})"
+        )
+    return ""
+
+
+def _fresh_evidence_min_date(query: str, observed_at: date) -> date:
+    lowered = query.lower()
+    if _contains_temporal_marker(lowered, ("近一周", "最近一周", "过去一周", "last 7 days", "past week")):
+        return observed_at - timedelta(days=6)
+    if re.search(r"(?<![a-z0-9_])recent(?:ly)?(?![a-z0-9_])", lowered):
+        return observed_at - timedelta(days=6)
+    if _contains_temporal_marker(lowered, ("本周", "这周", "this week")):
+        return observed_at - timedelta(days=observed_at.weekday())
+    if _contains_temporal_marker(lowered, ("昨天", "yesterday")):
+        return observed_at - timedelta(days=1)
+    return observed_at
+
+
+def _query_needs_fresh_evidence(query: str) -> bool:
+    lowered = query.lower()
+    return bool(
+        _contains_temporal_marker(
+            lowered,
+            (
+                "今天",
+                "明天",
+                "昨天",
+                "本周",
+                "这周",
+                "近一周",
+                "最近",
+                "近期",
+                "today",
+                "tomorrow",
+                "yesterday",
+                "this week",
+                "recent",
+                "current",
+                "now",
+            ),
+        )
+    )
+
+
+def _contains_temporal_marker(lowered_text: str, markers: Sequence[str]) -> bool:
+    for marker in markers:
+        normalized = marker.strip().lower()
+        if not normalized:
+            continue
+        if re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", normalized):
+            pattern = (
+                r"(?<![a-z0-9_])"
+                + r"\s+".join(re.escape(part) for part in normalized.split())
+                + r"(?![a-z0-9_])"
+            )
+            if re.search(pattern, lowered_text):
+                return True
+            continue
+        if normalized in lowered_text:
+            return True
+    return False
+
+
+def _parse_date(value: str) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).date()
+    except ValueError:
+        match = re.search(r"\d{4}-\d{2}-\d{2}", text)
+        if not match:
+            return None
+        try:
+            return date.fromisoformat(match.group(0))
+        except ValueError:
+            return None
 
 
 def _detect_simple_event_contradiction(

@@ -31,6 +31,15 @@ export interface FocusAgentBranchDecisionSignal {
 	rationale: string;
 }
 
+export interface FocusAgentBranchDecisionDiagnostic {
+	code?: string | null;
+	message?: string | null;
+	reason?: string | null;
+	status?: BranchDecisionStatus | string | null;
+	details?: Record<string, unknown> | null;
+	[key: string]: unknown;
+}
+
 export interface FocusAgentBranchDecisionConfig {
 	enabled: boolean;
 	mode: BranchDecisionMode;
@@ -42,6 +51,9 @@ export interface FocusAgentBranchDecisionConfig {
 	recommendation_enabled: boolean;
 	recommendation_mode: BranchDecisionMode;
 	recommendation_min_confidence: number;
+	recommendation_user_visible: boolean;
+	recommendation_diagnostics: FocusAgentBranchDecisionDiagnostic;
+	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;
 }
 
 export interface FocusAgentBranchDecisionEvent {
@@ -67,6 +79,8 @@ export interface FocusAgentBranchDecisionEvent {
 	promoted_action_id?: string | null;
 	dismiss_reason?: string | null;
 	error?: string | null;
+	recommendation_user_visible?: boolean | null;
+	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;
 	metadata: Record<string, unknown>;
 	created_at: string;
 	updated_at: string;

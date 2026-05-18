@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-16
+更新时间：2026-05-18
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
@@ -12,6 +12,7 @@
 - Streaming Contract：[streaming-contract.md](streaming-contract.md)
 - Context Window：[context-window.md](context-window.md)
 - Memory：[memory-system-v2.md](memory-system-v2.md)
+- Productivity：[productivity-system.md](productivity-system.md)
 - Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
 - Docker / Compose：[docker-deployment.md](docker-deployment.md)
 - Observability 操作手册：[observability-runbook.md](observability-runbook.md)
@@ -54,6 +55,7 @@ flowchart LR
     API --> Decision["Branch Decision APIs"]
     API --> Admin["Admin APIs"]
     API --> Obs["Observability APIs"]
+    API --> Productivity["Productivity APIs"]
     Chat --> Graph["LangGraph Agent Graph"]
     Graph --> Tools["Tool Runtime"]
     Graph --> Memory["Memory Pipeline"]
@@ -64,6 +66,8 @@ flowchart LR
     MemoryRepo --> MemoryTables["focus_memories / focus_memory_embeddings"]
     Trace --> PG["Postgres"]
     Repo --> PG
+    Productivity --> ProductivityRepo["Productivity Repository"]
+    ProductivityRepo --> PG
     GovRepo --> PG
     MemoryTables --> PG
     Tools --> ArtifactStore["ArtifactStore"]
@@ -151,7 +155,7 @@ Persistence
 - `RuntimePersistence`：`checkpointer`、`store`、branch repository、trajectory recorder、artifact metadata repository。
 - `RuntimeMemoryComponents`：`memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`、`memory_embedding_service`。
 - `RuntimeRegistries`：`skill_registry`、`tool_registry`。
-- `RuntimeServices`：`branch_service`、`branch_decision_service`、`agent_team_service`。
+- `RuntimeServices`：`branch_service`、`branch_decision_service`、`agent_team_service`、`user_service`、`productivity_service`。
 
 这些结构由 `_create_runtime_persistence()`、`_create_memory_components()`、`_create_runtime_registries()`、`_create_runtime_graph()` 和 `_create_runtime_services()` 分段创建，最后汇总为 `AppRuntime`。`AppRuntime` 仍保留稳定字段：
 
@@ -160,6 +164,8 @@ Persistence
 - `branch_service`：fork、merge 和 branch tree 业务服务。
 - `branch_decision_service`：post-turn branch decision 和 pre-turn branch recommendation 业务服务。
 - `agent_team_service`：Agent Team session / task / output 业务服务。
+- `user_service`：local user/session/role 业务服务。
+- `productivity_service`、`productivity_repository`：owner-scoped notes/tasks/capture 业务服务和 repository。
 - `coordination_backend`、`background_worker`：thread lease、durable background job 和后台 side-effect 调度。
 - `checkpointer`：LangGraph checkpoint persistence。
 - `store`：LangGraph store，用于 checkpoint/graph 兼容路径和无数据库 local fallback。
@@ -209,12 +215,13 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
 | Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events|snapshot|trajectory` | V2 harness run、流式 run、resume、查询、事件回放、snapshot、trajectory 与取消 |
-| Threads | `GET /v1/threads/{thread_id}`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、当前上下文窗口预览和非破坏式压缩 |
-| Branches | fork、archive、activate、rename、proposal、merge、tree、branch action execute/dismiss | 分支生命周期和用户确认的分支动作 |
+| Threads | `GET /v1/threads/{thread_id}`、`GET /v1/threads/{thread_id}/resolution`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、root/child 线程引用解析、当前上下文窗口预览和非破坏式压缩 |
+| Branches | fork、archive、activate、rename、proposal、merge、tree、branch action execute/dismiss | 分支生命周期、root/child-aware branch tree 和用户确认的分支动作 |
 | Branch Decisions | `GET /v1/branch-decisions/config`、`GET /v1/threads/{thread_id}/branch-decisions`、decision promote / dismiss | post-turn 决策记录和 pre-turn recommendation 证据 |
 | Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
 | Agent Team | `/v1/agent-team/*` | Mission session、DAG planning/run、task lifecycle、outputs、merge bundle 和 merge decision |
 | Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
+| Productivity | `GET/POST /v1/notes`、`GET/PATCH /v1/notes/{note_id}`、`GET/POST /v1/tasks`、`GET/PATCH /v1/tasks/{task_id}`、`POST /v1/tasks/{task_id}/complete`、`POST /v1/tasks/{task_id}/archive`、`GET /v1/tasks/{task_id}/events`、`POST /v1/productivity/capture/note`、`POST /v1/productivity/capture/task` | owner-scoped notes/tasks workbench，包含 capture 与事件追踪 |
 | Admin | `/v1/admin/users/*`、`/v1/admin/audit-events` | 用户目录、详情、会话撤销、密码重置、状态、角色和审计事件管理 |
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
 
@@ -227,7 +234,49 @@ API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业�
 - `require_scopes()` / `require_roles()` 为路由级 scope / role enforcement 提供 dependency helper。
 - `get_chat_service()` 通过 `ChatServicePorts.from_runtime(runtime)` 创建 `ChatService`，避免 ChatService 直接依赖完整 runtime 对象。
 
-### 6.1 Admin Console 权限边界
+### 6.1 Productivity API 与数据边界
+
+生产力模块包含独立的 note/task CRUD 与 capture 入口，路由位于
+`src/focus_agent/api/routers/productivity.py`，并由 `AppRuntime` 上挂载的
+`productivity_service` 与 `productivity_repository` 运行。
+
+```mermaid
+flowchart TD
+    Producer["Browser / Web App / SDK"] --> APIRouter["/v1/notes, /v1/tasks, /v1/productivity/capture/*"]
+    APIRouter --> AuthN["get_current_principal"]
+    AuthN --> ProductService["ProductivityService"]
+    ProductService --> Repo["ProductivityRepository"]
+    Repo --> InMemory["InMemoryProductivityRepository"]
+    Repo --> Postgres["PostgreSQL focus_notes/focus_tasks/focus_task_events"]
+```
+
+```mermaid
+flowchart LR
+    BrowserWebSDK["Browser / SDK"] --> NotesTasks["GET/PATCH/POST /v1/notes, /v1/tasks"]
+    BrowserWebSDK --> Capture["POST /v1/productivity/capture/note, /v1/productivity/capture/task"]
+    NotesTasks --> AuthN["get_current_principal"]
+    Capture --> AuthN
+    AuthN --> ProductService["ProductivityService"]
+    ProductService --> Repo["ProductivityRepository"]
+    Repo --> InMemory["InMemoryProductivityRepository"]
+    Repo --> SQLite["SQLiteProductivityRepository (adapter)"]
+    Repo --> PG["PostgreSQL focus_notes/focus_tasks/focus_task_events"]
+    PG --> Events["Task events"]
+```
+
+边界规则：
+
+- 持久化对象始终按 `user_id` 作用域读取和写入，owner 不一致会得到 404/空列表，避免列表与操作跨用户泄露。
+- 笔记支持归档/恢复、标题-内容、标签检索、关键字搜索、来源元数据（`source_*`）和来源追踪字段。
+- 任务支持 `todo`、`in_progress`、`completed`、`archived` 状态迁移；`complete` 与 `archive` 通过专用接口封装业务语义。
+- 每次任务更新会写入 `focus_task_events`，用于回看历史变更；capture 接口会按 `source_kind`/`payload` 补齐可追溯元数据。
+- 列表接口参数：
+  - notes：`q`、`tag`、`include_archived`、`limit`、`offset`
+  - tasks：`status`、`include_archived`、`limit`、`offset`
+- SDK/前端目前仍会在列表请求里附带 `source_kind`（用于来源筛选 UI），但当前 API 路由未声明该查询参数，因此会被忽略；若要恢复服务端过滤，需要先扩展路由+repository+测试契约。
+- `GET /v1/notes/{note_id}`、`GET /v1/tasks/{task_id}` 均为 owner-scoped；不存在或无权限时返回 404。
+
+### 6.2 Admin Console 权限边界
 
 认证、账号自助和 access model 的 canonical 文档是 [auth-access.md](auth-access.md)；Admin Console 的 canonical 文档是 [admin-console.md](admin-console.md)。架构层只保留安全边界：
 
@@ -380,6 +429,9 @@ main thread
 
 - `root_thread_id` 表示整棵会话树。
 - `child_thread_id` 是分支自己的 LangGraph thread。
+- repository 的 `resolve_thread_ref()` 和 `GET /v1/threads/{thread_id}/resolution` 是 root/child 解析边界；branch tree 可以从 root 或 child 打开，最终按 canonical root 查询。
+- archive/activate/rename/proposal/merge 等 child-only 操作会显式拒绝 root thread id，并返回 400 诊断，而不是把 root 误报为未知分支。
+- 子分支 payload 会用 `branch_fork_message_count` 隐藏 fork 时复制过来的 Branch Action 控制消息，避免新分支 transcript 显示“创建确认卡”旧上下文。
 - `branch_depth` 受 `BRANCH_MAX_DEPTH` 控制。
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
@@ -410,6 +462,7 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - tool router：按 role、tool policy、risk、side effect 过滤工具。
 - skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具。
 - artifact tools：通过 `ArtifactStore` protocol 读写正文，默认 `LocalArtifactStore` 仍写入 `ARTIFACT_DIR` 下的文件系统；Postgres 只保存 artifact metadata。
+- live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。
 
 ## 13. Agent Governance 概览
 
@@ -451,9 +504,18 @@ flowchart TD
 - artifact metadata
 - trajectory turn / step observability tables
 - branch decision / recommendation events
+- productivity notes / tasks / task-events
 - feedback events、context/memory evidence、skill selection events
 
-应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 conversation、thread access、branch、branch decision、artifact、Agent Team、productivity、feedback、context/memory evidence、skill selection event、coordination 和 rate-limit 等表。当前 schema version 是 v17：v15 增加 multi-agent coordination 表，v16 增加 `focus_rate_limit_buckets`，v17 增加 `focus_branch_decision_events` 及其 idempotency 索引，用于 Postgres-backed branch decision / recommendation 记录。仓库仍保留 `focus_schema_migrations` 和逐版本 Python migration 作为应用 schema 的真实迁移记录；Alembic `001_baseline` 通过 `ensure_app_postgres_schema_on_connection()` 桥接到这套迁移，Docker entrypoint 在存在 `DATABASE_URI` 时执行 `alembic upgrade head`。
+应用 schema 位于 `src/focus_agent/repositories/postgres_schema.py`，包括 conversation、thread access、branch、branch decision、artifact、Agent Team、productivity、feedback、context/memory evidence、skill selection event、coordination 和 rate-limit 等表。当前 schema version 是 v17：
+
+- v13：新增 productivity 主表 `focus_notes` / `focus_tasks` / `focus_task_events`
+- v14：为 notes/tasks 增加来源元数据索引字段（`source_kind` / `source_id` / `source_url` / `pinned_context` / `captured_from`）
+- v15：新增 multi-agent coordination 表
+- v16：新增 `focus_rate_limit_buckets`
+- v17：新增 `focus_branch_decision_events` 及其 idempotency 索引
+
+仓库仍保留 `focus_schema_migrations` 和逐版本 Python migration 作为应用 schema 的真实迁移记录；Alembic `001_baseline` 通过 `ensure_app_postgres_schema_on_connection()` 桥接到这套迁移，Docker entrypoint 在存在 `DATABASE_URI` 时执行 `alembic upgrade head`。
 
 Agent Team 的 Postgres 主表使用 `data_json JSONB NOT NULL` 保存完整 Pydantic model，辅助列只用于按用户、root thread、session/task 和创建时间查询排序。schema migration 会逐版本执行，因此已有数据库会继续升级到当前 schema，包括 merge review、feedback、context evidence、skill operation、coordination 和 rate-limit 表。
 
@@ -516,6 +578,7 @@ pages/auth/               login and registration
 pages/account/            profile, password, and session self-service
 pages/admin/              user and audit administration
 pages/observability/      overview and trajectory workbench
+pages/productivity/       note/task workbench（notes/tasks）
 features/                 branch, conversation, merge, models, stream, trajectory
 shared/                   config, query keys, SDK provider, UI, styles
 ```
@@ -536,13 +599,26 @@ shared/                   config, query keys, SDK provider, UI, styles
 - `/app/admin/users`
 - `/app/admin/users/{userId}`
 - `/app/admin/audit-events`
+- `/app/productivity/notes`
+- `/app/productivity/tasks`
 - `/app/auth/login`
 - `/app/auth/register`
 - `/app/account/profile`
 - `/app/account/security`
 - `/app/account/sessions`
 
-`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/types/__generated__.ts` 由 `scripts/generate-sdk-types.sh` 通过 `openapi-typescript` 从 `docs/api/openapi.json` 生成，用作 OpenAPI drift guard；当前公共 barrel 仍优先导出手写领域类型。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端必须发送符合 SDK validator 的 canonical SSE payload，例如 `tool.call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+`frontend-sdk` 提供 typed client、types、guards、stream parser、transport、request errors 和 reducers。`src/client.ts` 是 `FocusAgentClient` facade，具体 endpoint 组装在 `src/client/` 下按 auth、admin、agent-team、agent-governance、productivity、thread/branch、observability、streaming 分区；`src/types.ts` 是 public type barrel，领域类型拆在 `src/types/` 下。`src/types/__generated__.ts` 由 `scripts/generate-sdk-types.sh` 通过 `openapi-typescript` 从 `docs/api/openapi.json` 生成，用作 OpenAPI drift guard；当前公共 barrel 仍优先导出手写领域类型。`src/transport.ts` 承载 fetch/token/AbortSignal/SSE transport glue，`src/errors.ts` 暴露 `FocusAgentRequestError`，`src/transport.validation.ts` 与 `tsconfig.validation.json` 用于 transport-focused SDK validation。后端必须发送符合 SDK validator 的 canonical SSE payload，例如 `tool.call.delta` 的可选 `id` / `name` 为空时应省略而不是传 `null`。Web App 使用 SDK client + React Query 访问后端，保持 API contract、SDK 类型和 UI 数据访问一致。
+
+```mermaid
+flowchart LR
+    User["Productivity Shell / Web App"] --> ReactQuery["React Query"]
+    ReactQuery --> SDK["frontend-sdk productivity endpoints"]
+    SDK --> Routes["/v1/notes, /v1/tasks, /v1/productivity/capture/*"]
+    Routes --> Service["ProductivityService"]
+    Service --> Repo["ProductivityRepository"]
+    Repo --> InMemory["InMemoryProductivityRepository"]
+    Repo --> Postgres["PostgreSQL focus_notes/focus_tasks/focus_task_events"]
+```
 
 Admin Web 使用独立的 `pages/admin/` 路由和 admin CSS module。`/app/admin/users/{userId}` 通过详情抽屉承载 Profile、Access、Security 和 Audit tabs；`/app/admin/audit-events` 通过 URL query 同步 actor/resource/decision 过滤和选中事件。普通聊天 header 不暴露 admin 导航。
 
@@ -636,6 +712,13 @@ make ci
 ```
 
 `make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。CI pytest 通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免 repo-local secrets 影响结果。
+
+影响生产力工作台：
+
+```bash
+uv run pytest tests/test_productivity_api.py tests/test_productivity_repository.py tests/test_default_tools.py -k productivity
+make ui-smoke-productivity
+```
 
 影响 SDK：
 
@@ -741,6 +824,10 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Branch decision API：`src/focus_agent/api/routers/branch_decisions.py`
 - Branch naming / memory promotion：`src/focus_agent/services/branch_naming_policy.py`、`src/focus_agent/services/branch_memory_promotion.py`
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
+- Productivity API：`src/focus_agent/api/routers/productivity.py`
+- Productivity Service：`src/focus_agent/services/productivity.py`
+- Productivity Repository：`src/focus_agent/repositories/productivity_repository.py`，其中 `InMemoryProductivityRepository` 与 `PostgresProductivityRepository` 为运行时默认路径；`sqlite_productivity_repository.py` 提供本地持久化适配。
+- Productivity Tool Module：`src/focus_agent/capabilities/default_tool_modules/productivity.py`
 - Alembic config：`alembic.ini`、`migrations/env.py`、`migrations/versions/001_baseline.py`
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
 - ArtifactStore：`src/focus_agent/storage/artifact_store.py`、`src/focus_agent/storage/local_artifact_store.py`
@@ -752,7 +839,11 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Web message transcript facade：`apps/web/src/entities/messages/message-transcript.ts`
 - Web message transcript modules：`apps/web/src/entities/messages/message-transcript-*.ts`
 - Web thread streaming hooks：`apps/web/src/features/thread-stream/`
+- Productivity web pages/routes：`apps/web/src/pages/productivity/productivity-page.tsx`、`apps/web/src/app/router.tsx`
+- Productivity shell 与导航：`apps/web/src/app/shell/app-shell-config.ts`、`apps/web/src/app/shell/app-shell-global-navigation.tsx`
+- Productivity source-level smoke：`apps/web/scripts/productivity-smoke.mjs`
 - SDK facade：`frontend-sdk/src/client.ts`、`frontend-sdk/src/types.ts`
 - SDK endpoint/type modules：`frontend-sdk/src/client/`、`frontend-sdk/src/types/`
 - SDK transport：`frontend-sdk/src/transport.ts`
+- Productivity SDK endpoint/types：`frontend-sdk/src/client/productivity.ts`、`frontend-sdk/src/types/productivity.ts`
 - Stream event extraction：`src/focus_agent/transport/stream_events.py`

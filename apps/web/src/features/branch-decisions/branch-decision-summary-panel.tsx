@@ -4,9 +4,17 @@ import type {
 } from "@focus-agent/web-sdk";
 import { useState } from "react";
 
+import {
+	branchDecisionAuditOnlyText,
+	branchDecisionDiagnosticText,
+	shouldShowBranchDecisionDiagnostic,
+} from "@/shared/branch-decision-diagnostics";
 import { Badge, Button, Surface } from "@/shared/ui/primitives";
 
-import { useBranchDecisionActions } from "./use-branch-decisions";
+import {
+	useBranchDecisionActions,
+	useBranchDecisionConfig,
+} from "./use-branch-decisions";
 
 type BranchDecisionSummaryPanelProps = {
 	isChineseUi: boolean;
@@ -25,21 +33,36 @@ export function BranchDecisionSummaryPanel({
 }: BranchDecisionSummaryPanelProps) {
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const decision = summary?.latest_decision ?? null;
+	const { data: config } = useBranchDecisionConfig();
 	const { dismiss, promote } = useBranchDecisionActions({
 		rootThreadId,
 		threadId,
 	});
+	const configDiagnostic = branchDecisionDiagnosticText({
+		diagnostic: config?.diagnostic ?? config?.recommendation_diagnostics,
+	});
+	const diagnostic = decision
+		? branchDecisionDiagnosticText(decision) || configDiagnostic
+		: "";
+	const recommendationUserVisible =
+		decision?.recommendation_user_visible ??
+		config?.recommendation_user_visible;
+	const auditOnly = recommendationUserVisible === false;
 
 	if (
 		!decision ||
-		decision.status === "skipped" ||
-		decision.recommendation_target === "continue_current"
+		((decision.status === "skipped" ||
+			decision.recommendation_target === "continue_current") &&
+			!diagnostic &&
+			!auditOnly)
 	) {
 		return null;
 	}
 
-	const actionable = Boolean(summary?.actionable && !isReadOnly);
+	const actionable = Boolean(summary?.actionable && !isReadOnly && !auditOnly);
 	const busy = promote.isPending || dismiss.isPending;
+	const showDiagnostic =
+		shouldShowBranchDecisionDiagnostic(decision.status) || auditOnly;
 	return (
 		<Surface
 			className="fa-branch-decision-summary"
@@ -61,6 +84,17 @@ export function BranchDecisionSummaryPanel({
 					<div className="fa-branch-decision-summary-text">
 						{decision.rationale}
 					</div>
+					{showDiagnostic && diagnostic ? (
+						<div className="fa-branch-decision-diagnostic">
+							<span>{isChineseUi ? "诊断" : "Diagnostic"}</span>
+							<strong>{diagnostic}</strong>
+						</div>
+					) : null}
+					{auditOnly ? (
+						<div className="fa-branch-decision-audit-note">
+							{branchDecisionAuditOnlyText(isChineseUi)}
+						</div>
+					) : null}
 				</div>
 				<div className="fa-branch-decision-summary-actions">
 					<Button
@@ -105,7 +139,11 @@ export function BranchDecisionSummaryPanel({
 				</div>
 			</div>
 			{drawerOpen ? (
-				<BranchDecisionDrawer decision={decision} isChineseUi={isChineseUi} />
+				<BranchDecisionDrawer
+					decision={decision}
+					diagnostic={diagnostic}
+					isChineseUi={isChineseUi}
+				/>
 			) : null}
 			{promote.error || dismiss.error ? (
 				<div className="fa-branch-decision-error">
@@ -118,9 +156,11 @@ export function BranchDecisionSummaryPanel({
 
 function BranchDecisionDrawer({
 	decision,
+	diagnostic,
 	isChineseUi,
 }: {
 	decision: FocusAgentBranchDecisionEvent;
+	diagnostic: string;
 	isChineseUi: boolean;
 }) {
 	return (
@@ -138,6 +178,12 @@ function BranchDecisionDrawer({
 					<span>{isChineseUi ? "动作" : "Action"}</span>
 					<strong>{decision.action}</strong>
 				</div>
+				{diagnostic ? (
+					<div>
+						<span>{isChineseUi ? "诊断" : "Diagnostic"}</span>
+						<strong>{diagnostic}</strong>
+					</div>
+				) : null}
 			</div>
 			<div className="fa-branch-decision-signals">
 				{decision.signals.map((signal) => (
@@ -193,6 +239,7 @@ function decisionStatusLabel(
 				error: "错误",
 				promoted: "已生成确认项",
 				shadowed: "影子评估",
+				skipped: "已跳过",
 				suggested: "待确认",
 			}
 		: {
@@ -201,6 +248,7 @@ function decisionStatusLabel(
 				error: "Error",
 				promoted: "Promoted",
 				shadowed: "Shadow",
+				skipped: "Skipped",
 				suggested: "Suggested",
 			};
 	return labels[decision.status] ?? decision.status;

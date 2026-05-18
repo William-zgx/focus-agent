@@ -69,7 +69,14 @@ def archive_branch_route(
     except ConcurrentTurnError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _raise_child_thread_diagnostic(
+            runtime=runtime,
+            thread_id=child_thread_id,
+            user_id=principal.user_id,
+            exc=exc,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -94,7 +101,14 @@ def rename_branch_route(
     except ConcurrentTurnError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _raise_child_thread_diagnostic(
+            runtime=runtime,
+            thread_id=child_thread_id,
+            user_id=principal.user_id,
+            exc=exc,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -114,7 +128,14 @@ def activate_branch_route(
     except ConcurrentTurnError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _raise_child_thread_diagnostic(
+            runtime=runtime,
+            thread_id=child_thread_id,
+            user_id=principal.user_id,
+            exc=exc,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -136,7 +157,12 @@ def prepare_branch_merge_proposal(
     except ConcurrentTurnError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _raise_child_thread_diagnostic(
+            runtime=runtime,
+            thread_id=child_thread_id,
+            user_id=principal.user_id,
+            exc=exc,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return proposal.model_dump(mode="json")
@@ -150,9 +176,24 @@ def submit_merge_decision(
     principal: Principal = Depends(get_current_principal),
 ) -> ApplyMergeDecisionResponse:
     try:
-        record = runtime.repo.get_by_child_thread_id(child_thread_id)
+        require_child = getattr(runtime.branch_service, "_require_child_branch_record", None)
+        if callable(require_child):
+            record = require_child(
+                child_thread_id=child_thread_id,
+                user_id=principal.user_id,
+                operation="Submitting a merge decision",
+            )
+        else:
+            record = runtime.repo.get_by_child_thread_id(child_thread_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _raise_child_thread_diagnostic(
+            runtime=runtime,
+            thread_id=child_thread_id,
+            user_id=principal.user_id,
+            exc=exc,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     decision = MergeDecision.model_validate(payload.model_dump(exclude={"user_id"}))
     try:
         imported = runtime.branch_service.apply_merge_decision(
@@ -187,19 +228,26 @@ def get_branch_tree_view(
     principal: Principal = Depends(get_current_principal),
 ) -> BranchTreeResponse:
     try:
+        resolved_root_thread_id = _resolve_root_thread_id(
+            runtime=runtime,
+            thread_id=root_thread_id,
+            user_id=principal.user_id,
+        )
         root = runtime.branch_service.get_branch_tree(
-            root_thread_id=root_thread_id, user_id=principal.user_id
+            root_thread_id=resolved_root_thread_id, user_id=principal.user_id
         )
         archived_branches = runtime.branch_service.list_archived_branches(
-            root_thread_id=root_thread_id,
+            root_thread_id=resolved_root_thread_id,
             user_id=principal.user_id,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     token_usage_by_thread = _token_usage_by_thread_for_root(
-        runtime=runtime, root_thread_id=root_thread_id
+        runtime=runtime, root_thread_id=resolved_root_thread_id
     )
-    root_thread_usage = _token_usage_for_root_thread(runtime=runtime, root_thread_id=root_thread_id)
+    root_thread_usage = _token_usage_for_root_thread(
+        runtime=runtime, root_thread_id=resolved_root_thread_id
+    )
     return BranchTreeResponse(
         root=_annotate_branch_tree_token_usage(
             root,
@@ -215,3 +263,51 @@ def get_branch_tree_view(
             for item in archived_branches
         ],
     )
+
+
+def _resolve_root_thread_id(*, runtime: AppRuntime, thread_id: str, user_id: str) -> str:
+    resolver = getattr(runtime.repo, "resolve_thread_ref", None)
+    if not callable(resolver):
+        return thread_id
+    return str(resolver(thread_id=thread_id, owner_user_id=user_id).root_thread_id)
+
+
+def _raise_child_thread_diagnostic(
+    *,
+    runtime: AppRuntime,
+    thread_id: str,
+    user_id: str,
+    exc: KeyError,
+) -> None:
+    resolver = getattr(runtime.repo, "resolve_thread_ref", None)
+    if callable(resolver):
+        try:
+            resolution = resolver(thread_id=thread_id, owner_user_id=user_id)
+        except PermissionError as permission_error:
+            raise HTTPException(status_code=403, detail=str(permission_error)) from permission_error
+        if resolution.is_root and _is_registered_thread_root(
+            runtime=runtime,
+            root_thread_id=str(resolution.root_thread_id),
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Thread {thread_id} is a root thread. This branch operation requires "
+                    "a child_thread_id."
+                ),
+            ) from exc
+    raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _is_registered_thread_root(*, runtime: AppRuntime, root_thread_id: str) -> bool:
+    get_owner = getattr(runtime.repo, "get_thread_owner", None)
+    if callable(get_owner) and get_owner(thread_id=root_thread_id) is not None:
+        return True
+    get_conversation = getattr(runtime.repo, "get_conversation", None)
+    if not callable(get_conversation):
+        return False
+    try:
+        get_conversation(root_thread_id)
+    except Exception:
+        return False
+    return True

@@ -235,7 +235,7 @@ _POLICY_FIELD_SPECS: tuple[ConfigFieldSpec, ...] = (
         "AGENT_BRANCH_RECOMMENDATION_MODE",
         "Branch recommendation mode",
         "string",
-        "Control recommendation behavior.",
+        "Control recommendation behavior: shadow records diagnostics only; suggest may create pending cards.",
         ("shadow", "suggest"),
     ),
     ConfigFieldSpec(

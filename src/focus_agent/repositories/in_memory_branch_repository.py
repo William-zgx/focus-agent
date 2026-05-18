@@ -4,7 +4,14 @@ from collections.abc import MutableSequence
 from datetime import UTC, datetime
 from threading import RLock
 
-from ..core.branching import BranchRecord, BranchRole, BranchStatus, MergeDecision, MergeProposal
+from ..core.branching import (
+    BranchRecord,
+    BranchRole,
+    BranchStatus,
+    MergeDecision,
+    MergeProposal,
+    ThreadResolution,
+)
 from ..core.types import ConversationRecord
 from ..security.ownership import (
     OwnershipAuditEvent,
@@ -258,6 +265,37 @@ class InMemoryBranchRepository(BranchRepository):
     def get_thread_owner(self, *, thread_id: str) -> str | None:
         with self._lock:
             return self._thread_access.get(thread_id)
+
+    def resolve_thread_ref(
+        self, thread_id: str, *, owner_user_id: str | None = None
+    ) -> ThreadResolution:
+        with self._lock:
+            child_record = next(
+                (
+                    record
+                    for record in self._branches.values()
+                    if record.child_thread_id == thread_id
+                ),
+                None,
+            )
+            owner = self._thread_access.get(thread_id)
+            access_root = self._thread_roots.get(thread_id)
+        if child_record is not None:
+            resolved_owner = owner or child_record.owner_user_id
+            if owner_user_id is not None and resolved_owner not in {owner_user_id, "unknown"}:
+                raise PermissionError(f"Thread {thread_id} is owned by a different user.")
+            return ThreadResolution.from_branch_record(child_record, input_thread_id=thread_id)
+        if owner_user_id is not None and owner is not None and owner != owner_user_id:
+            raise PermissionError(f"Thread {thread_id} is owned by a different user.")
+        root_thread_id = access_root or thread_id
+        return ThreadResolution.root(
+            thread_id,
+            input_thread_id=thread_id,
+            root_thread_id=root_thread_id,
+            diagnostic="resolved_from_thread_access"
+            if access_root
+            else "unregistered_thread_assumed_root",
+        )
 
     def create_conversation(self, record: ConversationRecord) -> ConversationRecord:
         with self._lock:

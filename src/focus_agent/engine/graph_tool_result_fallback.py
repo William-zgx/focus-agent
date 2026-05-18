@@ -10,7 +10,11 @@ from ..core.repo_call import has_repo_method
 from ..core.state import AgentState
 from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget
-from .graph_evidence import evidence_bundle_source_snippets, normalize_evidence_bundle
+from .graph_evidence import (
+    evidence_bundle_source_snippets,
+    normalize_evidence_bundle,
+    relevant_web_tool_call_ids,
+)
 from .graph_tool_history_repair import _message_text
 
 _TOOL_CALL_REPAIR_FALLBACK_TEXT = (
@@ -143,13 +147,16 @@ def _tool_observation_summary(payload: Any, raw: str) -> str:
 
 def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
     snippets: list[str] = []
+    latest_turn = _latest_turn_messages(prompt_messages)
+    latest_user = _latest_human_message_text(latest_turn)
+    relevant_web_call_ids = relevant_web_tool_call_ids(latest_turn, user_query=latest_user)
     snippets.extend(
         evidence_bundle_source_snippets(
-            normalize_evidence_bundle(_latest_turn_messages(prompt_messages))
+            normalize_evidence_bundle(latest_turn, user_query=latest_user)
         )
     )
     pending_calls: dict[str, dict[str, Any]] = {}
-    for message in _latest_turn_messages(prompt_messages):
+    for message in latest_turn:
         if isinstance(message, AIMessage):
             for call in getattr(message, "tool_calls", None) or []:
                 if not isinstance(call, dict):
@@ -173,6 +180,24 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
 
         call_id = str(getattr(message, "tool_call_id", "") or "")
         call = pending_calls.pop(call_id, None)
+        if (
+            relevant_web_call_ids is not None
+            and call_id not in relevant_web_call_ids
+            and (
+                (
+                    call is not None
+                    and str(call.get("name") or "") in {"web_search", "web_fetch"}
+                )
+                or (
+                    call is None
+                    and (
+                        _looks_like_web_observation_payload(payload)
+                        or _looks_like_web_observation_payload(prompt_payload)
+                    )
+                )
+            )
+        ):
+            continue
         if call is not None:
             args_summary = _tool_call_args_summary(call.get("args"))
             status = str(getattr(message, "status", "success") or "success")
@@ -261,6 +286,18 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
             snippets.append(f"- {_truncate_inline(raw)}")
 
     return list(dict.fromkeys(snippets))
+
+
+def _looks_like_web_observation_payload(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("tool") in {"web_search", "web_fetch"}:
+        return True
+    if isinstance(payload.get("results"), list) and (payload.get("provider") or payload.get("query")):
+        return True
+    return bool(payload.get("url") or payload.get("final_url")) and (
+        "content" in payload or "text" in payload or "summary" in payload
+    )
 
 
 def _prompt_observation_payload(message: ToolMessage) -> Any | None:

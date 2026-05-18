@@ -50,6 +50,7 @@ make ci-test
 make ci
 make ui-smoke
 make ui-smoke-observability
+make ui-smoke-productivity
 make test-graph-builder
 make test-chat-service
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
@@ -121,16 +122,17 @@ make web-build
 
 Web lint/format 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
 
-5. 如果改动影响 stream 可见性、工具协议过滤、frontend stream reducer 或处理过程卡：
+5. 如果改动影响 stream 可见性、工具协议过滤、frontend stream reducer、处理过程卡或 live-web execution contract：
 
 ```bash
-.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py -q
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check
 ```
 
 公开 SSE 事件契约和内部 `quarantine` / `visible` phase 边界见 [streaming-contract.md](streaming-contract.md)。浏览器检查应包含真实工具调用问题，并确认 assistant 气泡不出现 DSML/XML/function-call 文本，同时工具处理卡仍正常展示。
+如果改动 live-web 行为，请用包含 "today"、"tomorrow" 或 "本周" 的相对时间问题验证 `current_utc_time` 会先锚定时间再 `web_search`；过期证据最多触发一次修复检索，最终应给出有证据的回答或明确的不确定说明。
 
 6. 如果改动影响 Agent Team planning、execution、final-answer synthesis 或 Mission Runner UI：
 
@@ -202,6 +204,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ```
 
 `doctor` 是只读诊断命令。它需要 Postgres `DATABASE_URI`，会检查 provider 选择、pgvector extension/table/dimensions/index 状态；本地 auto 模式缺少 `embeddinggemma` 时会输出 `ollama pull embeddinggemma` 提示。如果 API 是通过托管本地 Postgres 启动的，新 shell 里先 `source .focus_agent/postgres/runtime.env`。
+如果改动 prompt 过滤，请覆盖无关个人偏好、称呼/口令记忆、sticky 语言/语气偏好，以及 `MemoryRetrievalPlan.selected_memory_ids`。
 
 13. 如果改动影响 runtime coordination、durable background jobs、thread turn lease 或 branch refresh 调度：
 
@@ -218,7 +221,9 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security
 
 ```bash
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
+uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
 uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
+node --test tests/test_thread_stream_frontend_regressions.mjs
 make contract-check
 make sdk-openapi-types-check
 make web-check
@@ -226,6 +231,7 @@ make web-check
 
 真实浏览器验证时，开启 `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` 和
 `AGENT_BRANCH_RECOMMENDATION_MODE=suggest`，并使用明确要求创建子分支或同级分支的 prompt。需要确认推荐卡片出现、该推荐没有继续进入普通 graph turn、确认/取消后 thread 与 branch tree cache 都刷新正确。
+同时验证 `GET /v1/threads/{thread_id}/resolution` 对 root、child、unknown thread 的返回，以及从 child thread 路由打开分支树仍能解析到 root。
 
 15. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
 
@@ -323,6 +329,27 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_api_trajectory_observability.py \
   tests/test_chat_service.py
 ```
+
+19. 如果改动生产力工作台（notes/tasks/capture）：
+
+```bash
+uv run pytest tests/test_productivity_api.py tests/test_productivity_repository.py tests/test_default_tools.py -k productivity
+make ui-smoke-productivity
+```
+
+如果要同步检查生产力页面源代码扫描面的接入，也跑：
+
+```bash
+pnpm --dir apps/web smoke:productivity
+```
+
+常见失败定位点：
+
+- `apps/web/src/app/router.tsx` 的 `/productivity/notes` 与 `/productivity/tasks` 路由是否注册
+- `apps/web/src/app/shell/app-shell-config.ts` 的 `isProductivityPath` 路径判定
+- `apps/web/src/app/shell/app-shell-global-navigation.tsx` 导航项是否存在
+- `frontend-sdk/src/client/productivity.ts` 与 `frontend-sdk/src/types/productivity.ts`
+- `src/focus_agent/api/routers/productivity.py` 与 `src/focus_agent/services/productivity.py` 的 404 ownership 与 capture 行为
 
 `make ci-test` 会把 `FOCUS_AGENT_LOCAL_ENV_FILE` 指向一个不存在的文件再跑 pytest，更接近 GitHub Actions，也避免本机 `.focus_agent/local.env` 里的配置掩盖测试环境缺口。隐私/脱敏测试不要断言过短数字片段（例如区号），应检查完整手机号或密钥片段，避免时间戳造成误报。
 
