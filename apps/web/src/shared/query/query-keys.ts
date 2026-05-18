@@ -78,4 +78,5 @@ export const queryKeys = {
 	adminAuditEventsRoot: ["admin-audit-events"] as const,
 	adminAuditEvents: (filtersKey: string) =>
 		["admin-audit-events", filtersKey] as const,
+	adminConfig: ["admin-config"] as const,
 };

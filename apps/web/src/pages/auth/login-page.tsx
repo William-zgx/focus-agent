@@ -103,8 +103,21 @@ export function LoginPage() {
 	}
 
 	return (
-		<LoginPageShell
-			advanced={
+		<LoginPageShell motionVariant="login">
+			<div className="fa-auth-login-access">
+				<LoginForm
+					authReady={ready}
+					authError={authError ?? null}
+					effectiveReturnTo={effectiveReturnTo}
+					onDemoLogin={handleDemoLogin}
+					onPasswordSubmit={handlePasswordSubmit}
+					password={password}
+					setPassword={setPassword}
+					setUsername={setUsername}
+					showsDisabledDemoTokenHint={showsDisabledDemoTokenHint}
+					submitting={submitting}
+					username={username}
+				/>
 				<TokenLoginPanel
 					authReady={ready}
 					clearStoredToken={clearStoredToken}
@@ -115,23 +128,8 @@ export function LoginPage() {
 					submitting={submitting}
 					token={token}
 				/>
-			}
-			motionVariant="login"
-		>
-			<LoginIntro effectiveReturnTo={effectiveReturnTo} />
-			<LoginForm
-				authReady={ready}
-				authError={authError ?? null}
-				effectiveReturnTo={effectiveReturnTo}
-				onDemoLogin={handleDemoLogin}
-				onPasswordSubmit={handlePasswordSubmit}
-				password={password}
-				setPassword={setPassword}
-				setUsername={setUsername}
-				showsDisabledDemoTokenHint={showsDisabledDemoTokenHint}
-				submitting={submitting}
-				username={username}
-			/>
+			</div>
+			<LoginIntro />
 		</LoginPageShell>
 	);
 }

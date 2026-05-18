@@ -56,10 +56,12 @@ const expectations = [
       files.shellGlobalNav.includes('to="/productivity/tasks"'),
   },
   {
-    name: "workspace sidebar links notes and tasks",
+    name: "workspace sidebar does not duplicate productivity tabs",
     pass:
-      files.shellSidebar.includes('to="/productivity/tasks"') &&
-      files.shellSidebar.includes('to="/productivity/notes"'),
+      !files.shellSidebar.includes('to="/productivity/tasks"') &&
+      !files.shellSidebar.includes('to="/productivity/notes"') &&
+      files.productivityPage.includes('to="/productivity/tasks"') &&
+      files.productivityPage.includes('to="/productivity/notes"'),
   },
   {
     name: "productivity page has dense notes and tasks surfaces",

@@ -544,7 +544,13 @@
 .fa-panel-resizer {
 	position: relative;
 	z-index: 3;
+	align-self: stretch;
+	justify-self: center;
+	width: 28px;
+	min-height: 0;
+	height: auto;
 	margin: 10px 0;
+	border: 0;
 	cursor: col-resize;
 	border-radius: 999px;
 	outline: none;
@@ -555,7 +561,7 @@
 .fa-panel-resizer::before {
 	content: "";
 	position: absolute;
-	inset: 0;
+	inset: 0 8px;
 	background: linear-gradient(
 		180deg,
 		transparent,

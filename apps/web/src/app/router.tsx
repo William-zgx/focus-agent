@@ -17,6 +17,7 @@ import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { AgentTeamWorkbenchPage } from "@/pages/agent-team/team-workbench-page";
 import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
+import { AdminConfigPage } from "@/pages/admin/admin-config-page";
 import { AdminUserDetailPage } from "@/pages/admin/admin-user-detail-page";
 import { AdminUsersPage } from "@/pages/admin/admin-users-page";
 import { AccountProfilePage } from "@/pages/account/profile-page";
@@ -328,6 +329,12 @@ const adminAuditEventsRoute = createRoute({
 	component: protect(<AdminAuditEventsPage />),
 });
 
+const adminConfigRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/admin/config",
+	component: protect(<AdminConfigPage />),
+});
+
 const authRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/auth",
@@ -380,6 +387,7 @@ const routeTree = rootRoute.addChildren([
 	adminUsersRoute,
 	adminUserDetailRoute,
 	adminAuditEventsRoute,
+	adminConfigRoute,
 	authRoute,
 	loginRoute,
 	registerRoute,

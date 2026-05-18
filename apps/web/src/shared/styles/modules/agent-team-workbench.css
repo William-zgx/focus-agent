@@ -49,48 +49,82 @@
 }
 
 .fa-agent-team-studio-dag {
-	width: 236px;
-	height: 82px;
-	color: var(--fa-accent);
+	width: 304px;
+	height: 124px;
+	color: var(--fa-accent-text-strong);
 	overflow: visible;
 	filter: drop-shadow(
-		0 10px 18px color-mix(in srgb, var(--fa-bg) 42%, transparent)
+		0 16px 28px color-mix(in srgb, var(--fa-bg) 48%, transparent)
 	);
 }
 
-.fa-agent-team-studio-dag .edge {
+.fa-agent-team-studio-dag .dag-thread,
+.fa-agent-team-studio-dag .dag-signal {
 	fill: none;
-	stroke: url(#agent-team-dag-edge);
-	stroke-width: 1.5;
 	stroke-linecap: round;
+	stroke-linejoin: round;
 }
 
-.fa-agent-team-studio-dag .edge-strong {
-	stroke-width: 2;
+.fa-agent-team-studio-dag .dag-thread {
+	stroke: color-mix(in srgb, currentColor 46%, var(--fa-border-subtle));
+	stroke-width: 2.2;
+	opacity: 0.86;
 }
 
-.fa-agent-team-studio-dag .node rect {
-	fill: color-mix(in srgb, var(--fa-panel-1) 86%, transparent 14%);
-	stroke: color-mix(in srgb, var(--fa-accent) 30%, var(--fa-border-subtle));
+.fa-agent-team-studio-dag .dag-thread.is-shadow {
+	stroke: color-mix(in srgb, var(--fa-text) 11%, transparent);
+	stroke-width: 6;
+	opacity: 0.46;
+}
+
+.fa-agent-team-studio-dag .dag-signal {
+	stroke-width: 1.6;
+	stroke-dasharray: 7 118;
+	stroke-dashoffset: 0;
+	opacity: 0.94;
+	animation: fa-agent-team-dag-signal 4.8s linear infinite;
+}
+
+.fa-agent-team-studio-dag .dag-node rect {
+	stroke: color-mix(in srgb, currentColor 34%, var(--fa-border-subtle));
 	stroke-width: 1;
+	filter: drop-shadow(
+		0 5px 10px color-mix(in srgb, var(--fa-bg) 46%, transparent)
+	);
 }
 
-.fa-agent-team-studio-dag .node-root rect {
-	fill: color-mix(in srgb, var(--fa-accent) 20%, var(--fa-panel-1) 80%);
-	stroke: color-mix(in srgb, var(--fa-accent) 62%, var(--fa-border-subtle));
+.fa-agent-team-studio-dag .dag-node.is-goal rect {
+	stroke: color-mix(in srgb, currentColor 58%, var(--fa-border-subtle));
 }
 
-.fa-agent-team-studio-dag .node-final rect {
-	fill: color-mix(in srgb, var(--fa-success) 18%, var(--fa-panel-1) 82%);
-	stroke: color-mix(in srgb, var(--fa-success) 58%, var(--fa-border-subtle));
+.fa-agent-team-studio-dag .dag-node.is-result rect {
+	stroke: color-mix(in srgb, var(--fa-success) 72%, var(--fa-border-subtle));
+	stroke-width: 1.2;
+	filter: drop-shadow(
+		0 8px 14px color-mix(in srgb, var(--fa-success) 18%, transparent)
+	);
 }
 
 .fa-agent-team-studio-dag text {
 	fill: var(--fa-text);
-	font-size: 8px;
+	font-size: 9px;
 	font-weight: 800;
-	letter-spacing: 0.01em;
+	letter-spacing: 0;
 	text-anchor: middle;
+	dominant-baseline: middle;
+	pointer-events: none;
+}
+
+@keyframes fa-agent-team-dag-signal {
+	to {
+		stroke-dashoffset: -125;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fa-agent-team-studio-dag .dag-signal {
+		animation: none;
+	}
 }
 
 .fa-agent-team-studio-grid {
@@ -1199,7 +1233,8 @@
 	}
 
 	.fa-agent-team-studio-dag {
-		width: 210px;
+		width: 272px;
+		justify-self: start;
 	}
 
 	.fa-agent-team-studio-rail-main {
@@ -1231,7 +1266,7 @@
 	}
 
 	.fa-agent-team-studio-dag {
-		width: min(100%, 206px);
+		width: min(100%, 272px);
 		height: auto;
 	}
 }

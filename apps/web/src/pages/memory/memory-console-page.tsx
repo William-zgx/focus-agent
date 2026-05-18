@@ -7,6 +7,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { useShellUi } from "@/app/shell/shell-ui-context";
 import { queryKeys } from "@/shared/query/query-keys";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
@@ -36,8 +37,46 @@ const CANDIDATE_STATUS_OPTIONS = [
 	"discarded",
 ];
 
+const KIND_LABELS_ZH: Record<string, string> = {
+	branch_finding: "分支发现",
+	imported_conclusion: "导入结论",
+	project_fact: "项目事实",
+	turn_summary: "轮次摘要",
+	user_preference: "用户偏好",
+	user_profile: "用户画像",
+};
+
+const STATUS_LABELS_ZH: Record<string, string> = {
+	accepted: "已接受",
+	active: "生效中",
+	conflict: "冲突",
+	discarded: "已丢弃",
+	forgotten: "已遗忘",
+	needs_review: "待审查",
+	pending: "待处理",
+	rejected: "已拒绝",
+};
+
+const VISIBILITY_LABELS_ZH: Record<string, string> = {
+	private: "私有",
+	promotable: "可提升",
+	shared: "共享",
+};
+
+const AUDIT_ACTION_LABELS_ZH: Record<string, string> = {
+	accepted: "接受",
+	conflict: "冲突",
+	discarded: "丢弃",
+	forgotten: "遗忘",
+	merged: "合并",
+	rejected: "拒绝",
+	skipped: "跳过",
+	write: "写入",
+};
+
 export function MemoryConsolePage() {
 	const { client, ready } = useFocusAgent();
+	const { isChineseUi } = useShellUi();
 	const queryClient = useQueryClient();
 	const [kind, setKind] = useState("");
 	const [status, setStatus] = useState("active");
@@ -114,74 +153,78 @@ export function MemoryConsolePage() {
 		<main className="fa-trajectory-workbench">
 			<section className="fa-trajectory-workbench-header">
 				<div className="fa-trajectory-workbench-header-copy">
-					<p className="fa-trajectory-workbench-eyebrow">Canonical Memory</p>
+					<p className="fa-trajectory-workbench-eyebrow">
+						{isChineseUi ? "Canonical Memory" : "Canonical Memory"}
+					</p>
 					<div className="fa-trajectory-workbench-heading">
-						<h1>Postgres Memory Console</h1>
+						<h1>
+							{isChineseUi ? "Postgres 记忆控制台" : "Postgres Memory Console"}
+						</h1>
 					</div>
 				</div>
 				<div className="fa-trajectory-workbench-header-side">
 					<p className="fa-trajectory-workbench-focus-note">
 						{memoryQuery.data?.backend ?? "postgres"} · {memories.length}{" "}
-						records
+						{isChineseUi ? "条记录" : "records"}
 					</p>
 				</div>
 			</section>
 
 			<section className="fa-trajectory-workbench-filters">
 				<label className="fa-observability-filter">
-					<span>Kind</span>
+					<span>{isChineseUi ? "类型" : "Kind"}</span>
 					<select
 						value={kind}
 						onChange={(event) => setKind(event.target.value)}
 					>
 						{KIND_OPTIONS.map((option) => (
 							<option key={option || "all"} value={option}>
-								{option || "all"}
+								{memoryKindLabel(option, isChineseUi)}
 							</option>
 						))}
 					</select>
 				</label>
 				<label className="fa-observability-filter">
-					<span>Status</span>
+					<span>{isChineseUi ? "状态" : "Status"}</span>
 					<select
 						value={status}
 						onChange={(event) => setStatus(event.target.value)}
 					>
 						{STATUS_OPTIONS.map((option) => (
 							<option key={option || "all"} value={option}>
-								{option || "all"}
+								{memoryStatusOptionLabel(option, isChineseUi)}
 							</option>
 						))}
 					</select>
 				</label>
 				<label className="fa-observability-filter">
-					<span>Visibility</span>
+					<span>{isChineseUi ? "可见性" : "Visibility"}</span>
 					<select
 						value={visibility}
 						onChange={(event) => setVisibility(event.target.value)}
 					>
 						{VISIBILITY_OPTIONS.map((option) => (
 							<option key={option || "all"} value={option}>
-								{option || "all"}
+								{memoryVisibilityLabel(option, isChineseUi)}
 							</option>
 						))}
 					</select>
 				</label>
 				<label className="fa-observability-filter">
-					<span>Candidate status</span>
+					<span>{isChineseUi ? "候选状态" : "Candidate status"}</span>
 					<select
 						value={candidateStatus}
 						onChange={(event) => setCandidateStatus(event.target.value)}
 					>
 						{CANDIDATE_STATUS_OPTIONS.map((option) => (
 							<option key={option || "all"} value={option}>
-								{option || "all"}
+								{memoryStatusOptionLabel(option, isChineseUi)}
 							</option>
 						))}
 					</select>
 				</label>
 				<label className="fa-observability-filter">
-					<span>Root thread</span>
+					<span>{isChineseUi ? "根线程" : "Root thread"}</span>
 					<input
 						value={rootThreadId}
 						onChange={(event) => setRootThreadId(event.target.value)}
@@ -192,9 +235,13 @@ export function MemoryConsolePage() {
 			<section className="fa-trajectory-workbench-story-grid">
 				<article className="fa-trajectory-workbench-story-card">
 					<div className="fa-trajectory-workbench-section-head">
-						<h2>Records</h2>
+						<h2>{isChineseUi ? "记忆记录" : "Records"}</h2>
 						<span>
-							{memoryQuery.isFetching ? "loading" : `${memories.length}`}
+							{memoryQuery.isFetching
+								? isChineseUi
+									? "加载中"
+									: "loading"
+								: `${memories.length}`}
 						</span>
 					</div>
 					<div className="fa-trajectory-overview-list">
@@ -207,16 +254,19 @@ export function MemoryConsolePage() {
 							>
 								<div>
 									<span>
-										{item.kind} · {item.status}
+										{memoryKindLabel(item.kind, isChineseUi)} ·{" "}
+										{memoryStatusLabel(item.status, isChineseUi)}
 									</span>
-									<strong>{compact(memoryDisplayText(item), 120)}</strong>
-									<em>{embeddingDisplayText(item)}</em>
+									<strong>
+										{compact(memoryDisplayText(item, isChineseUi), 120)}
+									</strong>
+									<em>{embeddingDisplayText(item, isChineseUi)}</em>
 								</div>
 							</button>
 						))}
 						{!memories.length ? (
 							<div className="fa-route-state-card">
-								No memory records found.
+								{isChineseUi ? "暂无记忆记录。" : "No memory records found."}
 							</div>
 						) : null}
 					</div>
@@ -224,7 +274,7 @@ export function MemoryConsolePage() {
 
 				<article className="fa-trajectory-workbench-story-card">
 					<div className="fa-trajectory-workbench-section-head">
-						<h2>Detail</h2>
+						<h2>{isChineseUi ? "详情" : "Detail"}</h2>
 						{selected ? (
 							<button
 								className="fa-admin-secondary-button"
@@ -234,43 +284,63 @@ export function MemoryConsolePage() {
 								onClick={() => forgetMutation.mutate(selected.memory_id)}
 								type="button"
 							>
-								{forgetMutation.isPending ? "Forgetting" : "Forget"}
+								{forgetMutation.isPending
+									? isChineseUi
+										? "遗忘中"
+										: "Forgetting"
+									: isChineseUi
+										? "遗忘"
+										: "Forget"}
 							</button>
 						) : null}
 					</div>
 					{selected ? (
-						<MemoryDetail item={selected} />
+						<MemoryDetail isChineseUi={isChineseUi} item={selected} />
 					) : (
-						<div className="fa-route-state-card">Select a memory record.</div>
+						<div className="fa-route-state-card">
+							{isChineseUi ? "请选择一条记忆记录。" : "Select a memory record."}
+						</div>
 					)}
 				</article>
 
 				<article className="fa-trajectory-workbench-story-card">
 					<div className="fa-trajectory-workbench-section-head">
-						<h2>Audit</h2>
+						<h2>{isChineseUi ? "审计" : "Audit"}</h2>
 						<span>{auditItems.length}</span>
 					</div>
 					<div className="fa-trajectory-workbench-raw-stack">
 						{auditItems.map((item) => (
-							<AuditRow key={item.event_id} item={item} />
+							<AuditRow
+								isChineseUi={isChineseUi}
+								key={item.event_id}
+								item={item}
+							/>
 						))}
 						{!auditItems.length ? (
-							<div className="fa-route-state-card">No audit events.</div>
+							<div className="fa-route-state-card">
+								{isChineseUi ? "暂无审计事件。" : "No audit events."}
+							</div>
 						) : null}
 					</div>
 				</article>
 
 				<article className="fa-trajectory-workbench-story-card">
 					<div className="fa-trajectory-workbench-section-head">
-						<h2>Candidates</h2>
+						<h2>{isChineseUi ? "候选记忆" : "Candidates"}</h2>
 						<span>{candidates.length}</span>
 					</div>
 					<div className="fa-trajectory-workbench-raw-stack">
 						{candidates.map((item) => (
-							<CandidateRow key={item.candidate_id} item={item} />
+							<CandidateRow
+								isChineseUi={isChineseUi}
+								key={item.candidate_id}
+								item={item}
+							/>
 						))}
 						{!candidates.length ? (
-							<div className="fa-route-state-card">No candidates.</div>
+							<div className="fa-route-state-card">
+								{isChineseUi ? "暂无候选记忆。" : "No candidates."}
+							</div>
 						) : null}
 					</div>
 				</article>
@@ -279,7 +349,13 @@ export function MemoryConsolePage() {
 	);
 }
 
-function MemoryDetail({ item }: { item: FocusAgentMemoryRecord }) {
+function MemoryDetail({
+	isChineseUi,
+	item,
+}: {
+	isChineseUi: boolean;
+	item: FocusAgentMemoryRecord;
+}) {
 	return (
 		<dl className="fa-observability-detail-grid">
 			<div>
@@ -287,50 +363,63 @@ function MemoryDetail({ item }: { item: FocusAgentMemoryRecord }) {
 				<dd>{item.memory_id}</dd>
 			</div>
 			<div>
-				<dt>Namespace</dt>
+				<dt>{isChineseUi ? "命名空间" : "Namespace"}</dt>
 				<dd>{(item.namespace ?? []).join("/")}</dd>
 			</div>
 			<div>
-				<dt>Source</dt>
+				<dt>{isChineseUi ? "来源" : "Source"}</dt>
 				<dd>
 					{item.source_branch_id ||
 						item.source_thread_id ||
 						item.root_thread_id ||
-						"none"}
+						(isChineseUi ? "无" : "none")}
 				</dd>
 			</div>
 			<div>
-				<dt>Embedding status</dt>
-				<dd>{item.embedding_status || "unknown"}</dd>
+				<dt>{isChineseUi ? "Embedding 状态" : "Embedding status"}</dt>
+				<dd>{memoryStatusLabel(item.embedding_status || "", isChineseUi)}</dd>
 			</div>
 			<div>
-				<dt>Embedding model</dt>
-				<dd>{item.embedding_model_id || "none"}</dd>
+				<dt>{isChineseUi ? "Embedding 模型" : "Embedding model"}</dt>
+				<dd>{item.embedding_model_id || (isChineseUi ? "无" : "none")}</dd>
 			</div>
 			<div>
-				<dt>Embedding updated</dt>
-				<dd>{formatMemoryTimestamp(item.embedding_updated_at)}</dd>
+				<dt>{isChineseUi ? "Embedding 更新时间" : "Embedding updated"}</dt>
+				<dd>{formatMemoryTimestamp(item.embedding_updated_at, isChineseUi)}</dd>
 			</div>
 			<div>
-				<dt>Summary</dt>
-				<dd>{memoryDisplayText(item)}</dd>
+				<dt>{isChineseUi ? "摘要" : "Summary"}</dt>
+				<dd>{memoryDisplayText(item, isChineseUi)}</dd>
 			</div>
 		</dl>
 	);
 }
 
-function AuditRow({ item }: { item: FocusAgentMemoryAuditEvent }) {
+function AuditRow({
+	isChineseUi,
+	item,
+}: {
+	isChineseUi: boolean;
+	item: FocusAgentMemoryAuditEvent;
+}) {
 	return (
 		<div className="fa-observability-detail-block">
 			<strong>
-				{item.action} · {item.decision}
+				{auditActionLabel(item.action, isChineseUi)} ·{" "}
+				{memoryStatusLabel(item.decision, isChineseUi)}
 			</strong>
 			<p>{item.reason || item.memory_id || item.event_id}</p>
 		</div>
 	);
 }
 
-function CandidateRow({ item }: { item: FocusAgentMemoryCandidate }) {
+function CandidateRow({
+	isChineseUi,
+	item,
+}: {
+	isChineseUi: boolean;
+	item: FocusAgentMemoryCandidate;
+}) {
 	const candidateSummary =
 		typeof item.record?.summary === "string"
 			? item.record.summary
@@ -341,7 +430,7 @@ function CandidateRow({ item }: { item: FocusAgentMemoryCandidate }) {
 	return (
 		<div className="fa-observability-detail-block">
 			<strong>
-				{item.status || "pending"} ·{" "}
+				{memoryStatusLabel(item.status || "pending", isChineseUi)} ·{" "}
 				{item.branch_id || item.task_id || item.candidate_id}
 			</strong>
 			<p>{compact(candidateSummary ?? "", 120)}</p>
@@ -353,17 +442,20 @@ function compact(value: string, limit: number) {
 	return value.length > limit ? `${value.slice(0, limit - 1)}...` : value;
 }
 
-function embeddingDisplayText(item: FocusAgentMemoryRecord) {
+function embeddingDisplayText(
+	item: FocusAgentMemoryRecord,
+	isChineseUi: boolean,
+) {
 	return [
-		item.embedding_status || "unknown",
-		item.embedding_model_id || "no model",
-		formatMemoryTimestamp(item.embedding_updated_at),
+		memoryStatusLabel(item.embedding_status || "", isChineseUi),
+		item.embedding_model_id || (isChineseUi ? "无模型" : "no model"),
+		formatMemoryTimestamp(item.embedding_updated_at, isChineseUi),
 	].join(" · ");
 }
 
-function formatMemoryTimestamp(value?: string | null) {
+function formatMemoryTimestamp(value?: string | null, isChineseUi = false) {
 	if (!value) {
-		return "none";
+		return isChineseUi ? "无" : "none";
 	}
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) {
@@ -372,9 +464,58 @@ function formatMemoryTimestamp(value?: string | null) {
 	return date.toLocaleString();
 }
 
-function memoryDisplayText(item: FocusAgentMemoryRecord) {
+function memoryDisplayText(item: FocusAgentMemoryRecord, isChineseUi = false) {
 	if (item.payload_redacted || item.status === "forgotten") {
-		return "[forgotten]";
+		return isChineseUi ? "[已遗忘]" : "[forgotten]";
 	}
 	return item.summary || item.content || item.memory_id;
+}
+
+function memoryKindLabel(
+	value: string | null | undefined,
+	isChineseUi: boolean,
+) {
+	const normalized = value || "";
+	if (!normalized) return isChineseUi ? "全部" : "all";
+	if (!isChineseUi) return normalized;
+	return KIND_LABELS_ZH[normalized] ?? normalized;
+}
+
+function memoryStatusLabel(
+	value: string | null | undefined,
+	isChineseUi: boolean,
+) {
+	const normalized = value || "";
+	if (!normalized) return isChineseUi ? "未知" : "unknown";
+	if (!isChineseUi) return normalized;
+	return STATUS_LABELS_ZH[normalized] ?? normalized;
+}
+
+function memoryStatusOptionLabel(
+	value: string | null | undefined,
+	isChineseUi: boolean,
+) {
+	const normalized = value || "";
+	if (!normalized) return isChineseUi ? "全部" : "all";
+	return memoryStatusLabel(normalized, isChineseUi);
+}
+
+function memoryVisibilityLabel(
+	value: string | null | undefined,
+	isChineseUi: boolean,
+) {
+	const normalized = value || "";
+	if (!normalized) return isChineseUi ? "全部" : "all";
+	if (!isChineseUi) return normalized;
+	return VISIBILITY_LABELS_ZH[normalized] ?? normalized;
+}
+
+function auditActionLabel(
+	value: string | null | undefined,
+	isChineseUi: boolean,
+) {
+	const normalized = value || "";
+	if (!normalized) return isChineseUi ? "未知操作" : "unknown";
+	if (!isChineseUi) return normalized;
+	return AUDIT_ACTION_LABELS_ZH[normalized] ?? normalized;
 }

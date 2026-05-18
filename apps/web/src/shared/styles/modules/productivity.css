@@ -1,19 +1,10 @@
 .fa-productivity-layout {
 	display: grid;
-	gap: 12px;
+	align-content: start;
+	gap: 10px;
 	min-height: 100%;
-	padding: 16px;
-	border: 1px solid var(--fa-border-subtle);
-	border-radius: 30px;
-	background:
-		linear-gradient(180deg, rgba(28, 28, 38, 0.96), rgba(13, 13, 18, 0.92)),
-		radial-gradient(
-			circle at top right,
-			color-mix(in srgb, var(--fa-accent) 10%, transparent),
-			transparent 46%
-		);
-	box-shadow: var(--fa-shadow);
-	overflow: hidden;
+	padding: 10px 10px 16px;
+	overflow: visible;
 }
 
 .fa-productivity-header {
@@ -21,10 +12,11 @@
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 12px;
-	padding: 12px;
+	padding: 6px 4px 8px;
 	border: 1px solid var(--fa-border-subtle);
-	border-radius: 18px;
-	background: color-mix(in srgb, var(--fa-panel-2) 84%, transparent 16%);
+	border-width: 0 0 1px;
+	border-radius: 0;
+	background: transparent;
 }
 
 .fa-productivity-header > div {
@@ -64,11 +56,11 @@
 	flex: 0 0 auto;
 	align-items: center;
 	gap: 4px;
-	padding: 4px;
+	padding: 3px;
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 999px;
-	background: var(--fa-toolbar-shell-bg);
-	box-shadow: var(--fa-toolbar-shell-shadow);
+	background: color-mix(in srgb, var(--fa-panel-1) 58%, transparent 42%);
+	box-shadow: none;
 }
 
 .fa-productivity-tab {
@@ -105,7 +97,7 @@
 
 .fa-productivity-grid {
 	display: grid;
-	gap: 12px;
+	gap: 10px;
 	min-height: 0;
 }
 
@@ -119,17 +111,11 @@
 	gap: 10px;
 	align-content: start;
 	min-width: 0;
-	padding: 12px;
+	padding: 11px;
 	border: 1px solid var(--fa-border-subtle);
-	border-radius: 18px;
-	background:
-		linear-gradient(180deg, rgba(28, 28, 38, 0.94), rgba(13, 13, 18, 0.9)),
-		radial-gradient(
-			circle at top right,
-			color-mix(in srgb, var(--fa-accent) 7%, transparent),
-			transparent 42%
-		);
-	box-shadow: var(--fa-message-shadow);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-1) 66%, transparent 34%);
+	box-shadow: none;
 }
 
 .fa-productivity-panel-heading {
@@ -148,7 +134,8 @@
 .fa-productivity-note-list,
 .fa-productivity-task-list {
 	display: grid;
-	gap: 8px;
+	gap: 6px;
+	min-height: 0;
 }
 
 .fa-productivity-note,
@@ -158,11 +145,11 @@
 	display: grid;
 	gap: 5px;
 	min-width: 0;
-	padding: 10px;
+	padding: 8px 9px;
 	border: 1px solid var(--fa-border-subtle);
-	border-radius: 12px;
-	background: color-mix(in srgb, var(--fa-panel-1) 82%, transparent 18%);
-	box-shadow: 0 8px 20px rgba(4, 10, 22, 0.1);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-1) 48%, transparent 52%);
+	box-shadow: none;
 }
 
 .fa-productivity-note-top {
@@ -194,7 +181,7 @@
 	padding: 3px 7px;
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 999px;
-	background: color-mix(in srgb, var(--fa-panel-3) 74%, transparent 26%);
+	background: color-mix(in srgb, var(--fa-panel-3) 52%, transparent 48%);
 	color: var(--fa-text-muted);
 	font-size: 0.74rem;
 	font-weight: 700;
@@ -212,12 +199,12 @@
 
 .fa-productivity-note-input {
 	width: 100%;
-	min-height: 180px;
+	min-height: 150px;
 	padding: 10px;
 	resize: vertical;
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 8px;
-	background: color-mix(in srgb, var(--fa-panel-1) 86%, transparent 14%);
+	background: color-mix(in srgb, var(--fa-panel-1) 58%, transparent 42%);
 	color: var(--fa-text);
 	line-height: 1.45;
 }
@@ -233,7 +220,7 @@
 
 .fa-productivity-empty {
 	margin: 0;
-	padding: 12px;
+	padding: 10px 2px;
 	color: var(--fa-text-muted);
 	font-size: 0.82rem;
 }
@@ -285,11 +272,11 @@
 .fa-productivity-detail-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 8px;
+	gap: 6px;
 }
 
 .fa-productivity-stat strong {
-	font-size: 1.25rem;
+	font-size: 1.1rem;
 	line-height: 1;
 }
 
@@ -304,7 +291,7 @@
 .fa-productivity-task:hover,
 .fa-productivity-task.is-selected {
 	border-color: var(--fa-border-strong);
-	background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-1) 90%);
+	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-1) 92%);
 }
 
 .fa-productivity-task small {
@@ -343,7 +330,10 @@
 		display: grid;
 	}
 
-	.fa-productivity-tabs,
+	.fa-productivity-tabs {
+		flex-wrap: wrap;
+	}
+
 	.fa-productivity-stat-grid,
 	.fa-productivity-detail-grid {
 		width: 100%;

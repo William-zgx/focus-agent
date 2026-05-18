@@ -55,7 +55,7 @@ export function useShellResizer(options: {
 		};
 	}, [isResizing, setSidebarWidth]);
 
-	function handleResizerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+	function handleResizerPointerDown(event: ReactPointerEvent<HTMLHRElement>) {
 		if (sidebarCollapsed) return;
 		resizeSessionRef.current = {
 			pointerId: event.pointerId,
@@ -67,7 +67,7 @@ export function useShellResizer(options: {
 		event.preventDefault();
 	}
 
-	function handleResizerKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+	function handleResizerKeyDown(event: KeyboardEvent<HTMLHRElement>) {
 		if (event.key === "ArrowLeft") {
 			event.preventDefault();
 			setSidebarWidth((value) => clampSidebarWidth(value - 16));

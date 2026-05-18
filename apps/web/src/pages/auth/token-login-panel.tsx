@@ -22,14 +22,43 @@ export function TokenLoginPanel({
 	token: string;
 }) {
 	const isSubmitDisabled = !authReady || Boolean(submitting);
+	const tokenPanelId = "fa-auth-token-login-panel";
 
 	return (
 		<div className="fa-auth-advanced">
-			<button onClick={() => setShowToken((value) => !value)} type="button">
-				使用 Bearer Token
+			<button
+				className="fa-auth-debug-toggle"
+				aria-controls={tokenPanelId}
+				aria-label="开发者调试"
+				aria-expanded={showToken}
+				title="开发者调试"
+				onClick={() => setShowToken((value) => !value)}
+				type="button"
+			>
+				<svg
+					aria-hidden="true"
+					className="fa-auth-debug-icon"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.8"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+				>
+					<path d="M9 16h6" />
+					<path d="M9 8h6" />
+					<path d="M8 9l-3 3 3 3" />
+					<path d="M16 15l3-3-3-3" />
+					<path d="M10.5 6c0-.8.7-1.5 1.5-1.5h0c.8 0 1.5.7 1.5 1.5M10.5 18c0 .8.7 1.5 1.5 1.5h0c.8 0 1.5-.7 1.5-1.5" />
+				</svg>
+				<span className="sr-only">开发者调试</span>
 			</button>
 			{showToken ? (
-				<form className="fa-auth-form" onSubmit={onTokenSubmit}>
+				<form
+					className="fa-auth-form fa-auth-debug-form"
+					id={tokenPanelId}
+					onSubmit={onTokenSubmit}
+				>
 					<label>
 						Access token
 						<textarea

@@ -17,6 +17,7 @@ from .route_utils.token_usage import (
     _annotate_branch_tree_token_usage,
 )
 from .routers import (
+    admin_config,
     admin_users,
     agent_governance,
     agent_team,
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(harness_runs.router)
     register_frontend_routes(app, settings=settings)
     app.include_router(auth_models.router)
+    app.include_router(admin_config.router)
     app.include_router(admin_users.router)
     app.include_router(agent_team.router)
     app.include_router(agent_governance.router)

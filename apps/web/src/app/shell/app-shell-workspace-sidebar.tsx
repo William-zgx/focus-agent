@@ -4,6 +4,7 @@ type AppShellWorkspaceSidebarProps = {
 	activeAgentWorkbenchModule:
 		| "diagnostics"
 		| "governance"
+		| "memory"
 		| "productivity"
 		| "team";
 	agentTeamRootThreadId: string;
@@ -89,7 +90,9 @@ export function AppShellWorkspaceSidebar({
 							</strong>
 						</Link>
 						<Link
-							className={`fa-workspace-sidebar-item ${pathname === "/agent/memory" ? "is-active" : ""}`.trim()}
+							className={`fa-workspace-sidebar-item ${
+								activeAgentWorkbenchModule === "memory" ? "is-active" : ""
+							}`.trim()}
 							to="/agent/memory"
 						>
 							<span>{isChineseUi ? "记忆" : "Memory"}</span>
@@ -97,36 +100,6 @@ export function AppShellWorkspaceSidebar({
 								{isChineseUi
 									? "记录、候选与审计"
 									: "Records, candidates, audit"}
-							</strong>
-						</Link>
-						<Link
-							className={`fa-workspace-sidebar-item ${
-								activeAgentWorkbenchModule === "productivity" &&
-								pathname === "/productivity/tasks"
-									? "is-active"
-									: ""
-							}`.trim()}
-							to="/productivity/tasks"
-						>
-							<span>{isChineseUi ? "任务" : "Tasks"}</span>
-							<strong>
-								{isChineseUi ? "队列、状态与证据" : "Queue, status, evidence"}
-							</strong>
-						</Link>
-						<Link
-							className={`fa-workspace-sidebar-item ${
-								activeAgentWorkbenchModule === "productivity" &&
-								pathname === "/productivity/notes"
-									? "is-active"
-									: ""
-							}`.trim()}
-							to="/productivity/notes"
-						>
-							<span>{isChineseUi ? "笔记" : "Notes"}</span>
-							<strong>
-								{isChineseUi
-									? "决定、风险与后续"
-									: "Decisions, risks, follow-up"}
 							</strong>
 						</Link>
 					</>
@@ -148,6 +121,15 @@ export function AppShellWorkspaceSidebar({
 							<span>{isChineseUi ? "审计事件" : "Audit events"}</span>
 							<strong>
 								{isChineseUi ? "登录与操作记录" : "Login and action records"}
+							</strong>
+						</Link>
+						<Link
+							className={`fa-workspace-sidebar-item ${pathname === "/admin/config" ? "is-active" : ""}`.trim()}
+							to="/admin/config"
+						>
+							<span>{isChineseUi ? "配置中心" : "Config center"}</span>
+							<strong>
+								{isChineseUi ? "模型、工具与策略" : "Models, tools, policies"}
 							</strong>
 						</Link>
 					</>

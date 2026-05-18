@@ -265,10 +265,7 @@
 .fa-trajectory-workbench-shell {
 	min-height: 0;
 	display: grid;
-	grid-template-columns: minmax(286px, 316px) minmax(0, 1.34fr) minmax(
-			258px,
-			292px
-		);
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 	gap: 14px;
 	align-items: start;
 }
@@ -684,10 +681,8 @@
 
 @media (max-width: 1420px) {
 	.fa-trajectory-workbench-shell {
-		grid-template-columns: minmax(270px, 304px) minmax(0, 1.2fr) minmax(
-				248px,
-				280px
-			);
+		grid-auto-rows: minmax(calc(100vh - 190px), auto);
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 	}
 
 	.fa-trajectory-overview-grid,
@@ -704,6 +699,7 @@
 	.fa-trajectory-workbench-shell,
 	.fa-trajectory-workbench-summary-top,
 	.fa-trajectory-workbench-section-head {
+		grid-auto-rows: auto;
 		grid-template-columns: 1fr;
 		flex-direction: column;
 	}

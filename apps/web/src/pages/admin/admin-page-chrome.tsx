@@ -4,7 +4,7 @@ import type { PropsWithChildren, ReactNode } from "react";
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
-type AdminRouteKey = "users" | "audit";
+type AdminRouteKey = "users" | "audit" | "config";
 
 type AdminConsoleLayoutProps = {
 	active: AdminRouteKey;
@@ -55,7 +55,6 @@ export function AdminAccessGate({ children }: PropsWithChildren) {
 }
 
 export function AdminConsoleLayout({
-	active,
 	children,
 	drawer,
 	drawerLabel,
@@ -70,7 +69,6 @@ export function AdminConsoleLayout({
 				<div className={`fa-admin-console ${drawer ? "has-drawer" : ""}`}>
 					<main className="fa-admin-console-main">
 						<AdminPageHeading
-							active={active}
 							title={title}
 							summary={summary}
 							side={side}
@@ -89,40 +87,12 @@ export function AdminConsoleLayout({
 	);
 }
 
-export function AdminRouteTabs({ active }: { active: AdminRouteKey }) {
-	const { isChineseUi } = useShellUi();
-
-	return (
-		<nav
-			aria-label={isChineseUi ? "管理员页面" : "Admin pages"}
-			className="fa-trajectory-workbench-tabs fa-admin-tabs"
-		>
-			<Link
-				className={`fa-trajectory-workbench-tab ${active === "users" ? "is-active" : ""}`}
-				to="/admin/users"
-			>
-				<span>{isChineseUi ? "用户" : "Users"}</span>
-				<strong>{isChineseUi ? "账号 / 角色" : "Accounts / roles"}</strong>
-			</Link>
-			<Link
-				className={`fa-trajectory-workbench-tab ${active === "audit" ? "is-active" : ""}`}
-				to="/admin/audit-events"
-			>
-				<span>{isChineseUi ? "审计" : "Audit"}</span>
-				<strong>{isChineseUi ? "操作 / 决策" : "Actions / decisions"}</strong>
-			</Link>
-		</nav>
-	);
-}
-
 export function AdminPageHeading({
-	active,
 	title,
 	summary,
 	side,
 	toolbar,
 }: {
-	active: AdminRouteKey;
 	title: string;
 	summary: string;
 	side?: ReactNode;
@@ -142,16 +112,15 @@ export function AdminPageHeading({
 					<h1>{title}</h1>
 					<p>{summary}</p>
 				</div>
-				<AdminRouteTabs active={active} />
+				{side || toolbar ? (
+					<div className="fa-trajectory-workbench-header-side">
+						{side}
+						{toolbar ? (
+							<div className="fa-admin-console-toolbar">{toolbar}</div>
+						) : null}
+					</div>
+				) : null}
 			</div>
-			{side || toolbar ? (
-				<div className="fa-trajectory-workbench-header-side">
-					{side}
-					{toolbar ? (
-						<div className="fa-admin-console-toolbar">{toolbar}</div>
-					) : null}
-				</div>
-			) : null}
 		</section>
 	);
 }

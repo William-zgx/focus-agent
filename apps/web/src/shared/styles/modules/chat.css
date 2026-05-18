@@ -456,6 +456,8 @@
 }
 
 .fa-chat-main-body.is-agent-workbench-route > .fa-observability-layout,
+.fa-chat-main-body.is-agent-workbench-route > .fa-trajectory-workbench,
+.fa-chat-main-body.is-agent-workbench-route > .fa-productivity-layout,
 .fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
 .fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout,
 .fa-chat-main-body.is-admin-route > .fa-admin-layout {

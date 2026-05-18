@@ -5,9 +5,13 @@ import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEn
 import type {
   FocusAgentAuditEventListRequest,
   FocusAgentAuditEventListResponse,
+  FocusAgentAdminConfig,
   FocusAgentAdminResetPasswordRequest,
   FocusAgentCreateUserRequest,
   FocusAgentRevokeUserSessionRequest,
+  FocusAgentUpdateAdminModelConfigRequest,
+  FocusAgentUpdateAdminPolicyConfigRequest,
+  FocusAgentUpdateAdminToolConfigRequest,
   FocusAgentUpdateUserRequest,
   FocusAgentUpdateUserRolesRequest,
   FocusAgentUpdateUserStatusRequest,
@@ -177,6 +181,62 @@ async function listAuditEvents(
   );
 }
 
+async function getAdminConfig(this: FocusAgentEndpointContext): Promise<FocusAgentAdminConfig> {
+  return this.requestJson<FocusAgentAdminConfig>(
+    "/v1/admin/config",
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
+async function updateAdminModelConfig(
+  this: FocusAgentEndpointContext,
+  request: FocusAgentUpdateAdminModelConfigRequest,
+): Promise<FocusAgentAdminConfig> {
+  return this.requestJson<FocusAgentAdminConfig>(
+    "/v1/admin/config/models",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function updateAdminToolConfig(
+  this: FocusAgentEndpointContext,
+  request: FocusAgentUpdateAdminToolConfigRequest,
+): Promise<FocusAgentAdminConfig> {
+  return this.requestJson<FocusAgentAdminConfig>(
+    "/v1/admin/config/tools",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
+async function updateAdminPolicyConfig(
+  this: FocusAgentEndpointContext,
+  request: FocusAgentUpdateAdminPolicyConfigRequest,
+): Promise<FocusAgentAdminConfig> {
+  return this.requestJson<FocusAgentAdminConfig>(
+    "/v1/admin/config/policies",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
 export interface AdminEndpoints {
   listUserSessions: OmitThisParameter<typeof listUserSessions>;
   revokeUserSession: OmitThisParameter<typeof revokeUserSession>;
@@ -188,6 +248,10 @@ export interface AdminEndpoints {
   updateUserStatus: OmitThisParameter<typeof updateUserStatus>;
   updateUserRoles: OmitThisParameter<typeof updateUserRoles>;
   listAuditEvents: OmitThisParameter<typeof listAuditEvents>;
+  getAdminConfig: OmitThisParameter<typeof getAdminConfig>;
+  updateAdminModelConfig: OmitThisParameter<typeof updateAdminModelConfig>;
+  updateAdminToolConfig: OmitThisParameter<typeof updateAdminToolConfig>;
+  updateAdminPolicyConfig: OmitThisParameter<typeof updateAdminPolicyConfig>;
 }
 
 const adminEndpoints: FocusAgentEndpointMethodMap<AdminEndpoints> = {
@@ -201,6 +265,10 @@ const adminEndpoints: FocusAgentEndpointMethodMap<AdminEndpoints> = {
   updateUserStatus,
   updateUserRoles,
   listAuditEvents,
+  getAdminConfig,
+  updateAdminModelConfig,
+  updateAdminToolConfig,
+  updateAdminPolicyConfig,
 };
 
 export function applyAdminEndpoints(Client: EndpointClientConstructor): void {

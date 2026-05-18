@@ -34,9 +34,9 @@ export function AppShell({ children }: PropsWithChildren) {
 	const {
 		conversationId,
 		threadId,
-		isAdminRoute,
 		isAdminShell,
 		isAgentGovernanceRoute,
+		isAgentMemoryRoute,
 		isAgentTeamRoute,
 		isAgentWorkbenchShell,
 		isChatRoute,
@@ -49,28 +49,20 @@ export function AppShell({ children }: PropsWithChildren) {
 		rootThreadSearch,
 		sessionId,
 		shellMode,
-		userId,
 	} = useShellRouteState();
-	const {
-		activeAgentWorkbenchModule,
-		adminNavTarget,
-		agentTeamRootThreadId,
-		chatNavTarget,
-		lastAgentTeamTarget,
-	} = useShellNavTargets({
-		conversationId,
-		isAdminRoute,
-		isAgentGovernanceRoute,
-		isAgentTeamRoute,
-		isChatRoute,
-		isObservabilityRoute,
-		isProductivityRoute,
-		pathname,
-		rootThreadSearch,
-		sessionId,
-		threadId,
-		userId,
-	});
+	const { activeAgentWorkbenchModule, agentTeamRootThreadId, chatNavTarget } =
+		useShellNavTargets({
+			conversationId,
+			isAgentGovernanceRoute,
+			isAgentMemoryRoute,
+			isAgentTeamRoute,
+			isChatRoute,
+			isObservabilityRoute,
+			isProductivityRoute,
+			rootThreadSearch,
+			sessionId,
+			threadId,
+		});
 	const {
 		languagePreference,
 		setLanguagePreference,
@@ -295,15 +287,10 @@ export function AppShell({ children }: PropsWithChildren) {
 					</div>
 					<div className="fa-sidebar-dock">
 						<AppShellGlobalNavigation
-							adminNavTarget={adminNavTarget}
-							agentTeamRootThreadId={agentTeamRootThreadId}
 							chatNavTarget={chatNavTarget}
-							isAdminRoute={isAdminRoute}
-							isAgentWorkbenchShell={isAgentWorkbenchShell}
 							isChatRoute={isChatRoute}
 							isChineseUi={isChineseUi}
 							isProductivityRoute={isProductivityRoute}
-							lastAgentTeamTarget={lastAgentTeamTarget}
 						/>
 						{principal ? (
 							<fieldset

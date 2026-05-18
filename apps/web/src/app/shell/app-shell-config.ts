@@ -52,11 +52,6 @@ export type AgentTeamNavTarget = {
 	sessionId?: string;
 };
 
-export type AdminNavTarget =
-	| { page: "audit" }
-	| { page: "user"; userId: string }
-	| { page: "users" };
-
 export type ShellMode = "admin" | "agent-workbench" | "chat";
 
 export function isProductivityPath(pathname: string) {
@@ -85,6 +80,7 @@ export function isAdminPath(pathname: string) {
 		pathname === "/admin/users" ||
 		pathname.startsWith("/admin/users/") ||
 		pathname === "/admin/audit-events" ||
+		pathname === "/admin/config" ||
 		pathname.startsWith("/account/")
 	);
 }

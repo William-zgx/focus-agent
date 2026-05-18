@@ -39,15 +39,16 @@ export function useShellRouteState() {
 	const isObservabilityRoute =
 		routeState.pathname === "/observability/overview" ||
 		routeState.pathname === "/observability/trajectory";
+	const isAgentMemoryRoute = routeState.pathname === "/agent/memory";
 	const isAgentGovernanceRoute =
 		routeState.pathname === "/agent/governance" ||
-		routeState.pathname === "/agent/memory" ||
 		routeState.pathname === "/agent/roles";
 	const isProductivityRoute = isProductivityPath(routeState.pathname);
 	const isAdminRoute =
 		routeState.pathname === "/admin/users" ||
 		routeState.pathname.startsWith("/admin/users/") ||
-		routeState.pathname === "/admin/audit-events";
+		routeState.pathname === "/admin/audit-events" ||
+		routeState.pathname === "/admin/config";
 
 	return {
 		...routeState,
@@ -59,6 +60,7 @@ export function useShellRouteState() {
 		isChatRoute,
 		isAgentTeamRoute,
 		isObservabilityRoute,
+		isAgentMemoryRoute,
 		isAgentGovernanceRoute,
 		isProductivityRoute,
 		isAdminRoute,

@@ -858,7 +858,17 @@
 }
 
 .fa-agent-role-hero {
+	align-items: stretch;
 	min-height: auto;
+}
+
+.fa-agent-role-hero .fa-observability-hero-copy,
+.fa-agent-role-policy-grid {
+	height: 100%;
+}
+
+.fa-agent-role-hero .fa-observability-hero-copy {
+	align-content: center;
 }
 
 .fa-agent-role-policy-grid {

@@ -78,3 +78,175 @@ export interface FocusAgentAuditEventListResponse {
   limit: number;
   offset: number;
 }
+
+export interface FocusAgentAdminConfigSource {
+  path: string;
+  exists: boolean;
+  writable: boolean;
+}
+
+export interface FocusAgentAdminConfigValue {
+  key: string;
+  env_key?: string | null;
+  label: string;
+  value?: unknown;
+  value_type: string;
+  source: string;
+  editable: boolean;
+  sensitive: boolean;
+  configured?: boolean | null;
+  requires_restart: boolean;
+  description?: string | null;
+  options: string[];
+}
+
+export interface FocusAgentAdminConfigProvider {
+  id: string;
+  label?: string | null;
+  backend_provider?: string | null;
+  aliases: string[];
+  logo_slug?: string | null;
+  logo_letter?: string | null;
+  base_url_env?: string | null;
+  base_url_default?: string | null;
+  base_url_configured: boolean;
+  api_key_env?: string | null;
+  api_key_configured: boolean;
+}
+
+export interface FocusAgentAdminModelConfigEntry {
+  id: string;
+  label?: string | null;
+  supports_thinking?: boolean | null;
+  default_thinking_enabled?: boolean | null;
+  request_kwargs: Record<string, unknown>;
+  thinking_enabled_request_kwargs: Record<string, unknown>;
+  thinking_disabled_request_kwargs: Record<string, unknown>;
+  thinking_disabled_model_name?: string | null;
+  reasoning_effort?: string | null;
+  no_temperature?: boolean | null;
+  thinking_enable_extra_body_type?: string | null;
+  thinking_disable_extra_body_type?: string | null;
+  thinking_disable_switch_model?: string | null;
+}
+
+export interface FocusAgentAdminModelConfig {
+  source: FocusAgentAdminConfigSource;
+  default_model: string | null;
+  helper_model?: string | null;
+  model_choices: string[];
+  providers: FocusAgentAdminConfigProvider[];
+  models: FocusAgentAdminModelConfigEntry[];
+  requires_restart: boolean;
+}
+
+export interface FocusAgentAdminToolConfigEntry {
+  name: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  settings: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+export interface FocusAgentAdminToolProviderConfig {
+  id: string;
+  enabled: boolean;
+  order?: number | null;
+  metadata: Record<string, unknown>;
+  overrides: string[];
+}
+
+export interface FocusAgentAdminToolConfig {
+  source: FocusAgentAdminConfigSource;
+  tools: FocusAgentAdminToolConfigEntry[];
+  providers: FocusAgentAdminToolProviderConfig[];
+  requires_restart: boolean;
+}
+
+export interface FocusAgentAdminPolicyConfig {
+  source: FocusAgentAdminConfigSource;
+  items: FocusAgentAdminConfigValue[];
+  requires_restart: boolean;
+}
+
+export interface FocusAgentAdminSystemConfig {
+  source: FocusAgentAdminConfigSource;
+  items: FocusAgentAdminConfigValue[];
+}
+
+export interface FocusAgentAdminConfig {
+  models: FocusAgentAdminModelConfig;
+  tools: FocusAgentAdminToolConfig;
+  policies: FocusAgentAdminPolicyConfig;
+  system: FocusAgentAdminSystemConfig;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  message?: string | null;
+}
+
+export interface FocusAgentUpdateAdminModelProviderConfig {
+  id: string;
+  label?: string | null;
+  backend_provider?: string | null;
+  aliases?: string[];
+  logo_slug?: string | null;
+  logo_letter?: string | null;
+  base_url_env?: string | null;
+  base_url_default?: string | null;
+  api_key_env?: string | null;
+  api_key_default?: string | null;
+}
+
+export interface FocusAgentUpdateAdminModelConfigEntry {
+  id: string;
+  label?: string | null;
+  supports_thinking?: boolean | null;
+  default_thinking_enabled?: boolean | null;
+  request_kwargs?: Record<string, unknown>;
+  thinking_enabled_request_kwargs?: Record<string, unknown>;
+  thinking_disabled_request_kwargs?: Record<string, unknown>;
+  thinking_disabled_model_name?: string | null;
+  reasoning_effort?: string | null;
+  no_temperature?: boolean | null;
+  thinking_enable_extra_body_type?: string | null;
+  thinking_disable_extra_body_type?: string | null;
+  thinking_disable_switch_model?: string | null;
+}
+
+export interface FocusAgentUpdateAdminModelConfigRequest {
+  reason?: string | null;
+  default_model?: string | null;
+  helper_model?: string | null;
+  model_choices?: string[];
+  providers?: FocusAgentUpdateAdminModelProviderConfig[];
+  models?: FocusAgentUpdateAdminModelConfigEntry[];
+}
+
+export interface FocusAgentUpdateAdminToolConfigEntry {
+  name: string;
+  enabled?: boolean | null;
+  label?: string | null;
+  description?: string | null;
+  settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FocusAgentUpdateAdminToolProviderConfig {
+  id: string;
+  enabled?: boolean;
+  order?: number | null;
+  metadata?: Record<string, unknown>;
+  overrides?: string[];
+}
+
+export interface FocusAgentUpdateAdminToolConfigRequest {
+  reason?: string | null;
+  tools?: FocusAgentUpdateAdminToolConfigEntry[];
+  providers?: FocusAgentUpdateAdminToolProviderConfig[];
+}
+
+export interface FocusAgentUpdateAdminPolicyConfigRequest {
+  reason?: string | null;
+  values: Record<string, unknown>;
+}

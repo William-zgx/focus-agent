@@ -21,12 +21,38 @@ function statusTone(status: FocusAgentTaskStatus) {
 	return "is-neutral";
 }
 
+function statusLabel(status: FocusAgentTaskStatus, isChineseUi: boolean) {
+	if (!isChineseUi) return status;
+	if (status === "todo") return "待办";
+	if (status === "in_progress") return "进行中";
+	if (status === "completed") return "已完成";
+	return "已归档";
+}
+
 function noteTitleFromDraft(value: string) {
 	const [firstLine] = value
 		.split("\n")
 		.map((line) => line.trim())
 		.filter(Boolean);
 	return firstLine?.slice(0, 80) || "Untitled note";
+}
+
+function sourceLabel(sourceKind: string, isChineseUi: boolean) {
+	if (!isChineseUi) return sourceKind;
+	if (sourceKind === "chat") return "对话";
+	if (sourceKind === "agent_team") return "Agent Team";
+	if (sourceKind === "merge_review") return "采纳单";
+	if (sourceKind === "task_output") return "任务输出";
+	if (sourceKind === "note") return "笔记";
+	if (sourceKind === "manual") return "手动";
+	return sourceKind;
+}
+
+function noteStatusLabel(status: string, isChineseUi: boolean) {
+	if (!isChineseUi) return status;
+	if (status === "active") return "活跃";
+	if (status === "archived") return "已归档";
+	return status;
 }
 
 export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
@@ -129,7 +155,15 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 			<header className="fa-productivity-header">
 				<div>
 					<span>{isChineseUi ? "生产力" : "Productivity"}</span>
-					<h1>{mode === "notes" ? "Notes" : "Tasks"}</h1>
+					<h1>
+						{mode === "notes"
+							? isChineseUi
+								? "笔记"
+								: "Notes"
+							: isChineseUi
+								? "任务"
+								: "Tasks"}
+					</h1>
 					<p>
 						{isChineseUi
 							? "把线程、任务和验证依据压缩成可扫读的工作台。"
@@ -199,7 +233,7 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 									</div>
 									<p>{note.body || note.title}</p>
 									<div className="fa-productivity-chip-row">
-										<span>{note.status}</span>
+										<span>{noteStatusLabel(note.status, isChineseUi)}</span>
 										<SourceAffordance
 											isChineseUi={isChineseUi}
 											source={{
@@ -251,7 +285,9 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 							onChange={(event) => setDraftNote(event.target.value)}
 						/>
 						<div className="fa-productivity-draft-meta">
-							<span>{draftNote.trim().length} chars</span>
+							<span>
+								{draftNote.trim().length} {isChineseUi ? "字" : "chars"}
+							</span>
 							<button
 								type="button"
 								disabled={!draftNote.trim() || createNoteMutation.isPending}
@@ -274,7 +310,9 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 						<div className="fa-productivity-stat-grid">
 							{Object.entries(taskCounts).map(([status, count]) => (
 								<div className="fa-productivity-stat" key={status}>
-									<span>{status}</span>
+									<span>
+										{statusLabel(status as FocusAgentTaskStatus, isChineseUi)}
+									</span>
 									<strong>{count}</strong>
 								</div>
 							))}
@@ -290,7 +328,7 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 									<span
 										className={`fa-productivity-pill ${statusTone(task.status)}`}
 									>
-										{task.status}
+										{statusLabel(task.status, isChineseUi)}
 									</span>
 									<strong>{task.title}</strong>
 									<small>{task.due_at ?? task.updated_at}</small>
@@ -339,7 +377,9 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 								</div>
 								<div>
 									<span>{isChineseUi ? "状态" : "Status"}</span>
-									<strong>{selectedTask.status}</strong>
+									<strong>
+										{statusLabel(selectedTask.status, isChineseUi)}
+									</strong>
 								</div>
 								<button
 									type="button"
@@ -376,7 +416,9 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 							onChange={(event) => setDraftTaskDescription(event.target.value)}
 						/>
 						<div className="fa-productivity-draft-meta">
-							<span>{draftTaskTitle.trim().length} chars</span>
+							<span>
+								{draftTaskTitle.trim().length} {isChineseUi ? "字" : "chars"}
+							</span>
 							<button
 								type="button"
 								disabled={
@@ -417,6 +459,7 @@ function SourceAffordance({
 			: source.source_note_id
 				? "note"
 				: "manual");
+	const displayLabel = sourceLabel(label, isChineseUi);
 	const sourceId =
 		source.source_id ??
 		source.source_thread_id ??
@@ -445,13 +488,13 @@ function SourceAffordance({
 				}}
 				to="/c/$conversationId/t/$threadId"
 			>
-				{label}
+				{displayLabel}
 			</Link>
 		);
 	}
 	return (
 		<span className="fa-productivity-source-link">
-			{sourceId ? `${label}:${sourceId.slice(0, 8)}` : label}
+			{sourceId ? `${displayLabel}:${sourceId.slice(0, 8)}` : displayLabel}
 		</span>
 	);
 }

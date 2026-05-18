@@ -114,14 +114,15 @@ export function AccountPortal({
 
 	return (
 		<section className="fa-auth-login-intro">
-			<p className="fa-auth-login-chip">Focus Agent</p>
-			<h1>你的工作入口</h1>
+			<p className="fa-auth-login-chip">Focus Agent · 已登录</p>
+			<h1>继续你的 AI 工作台</h1>
 			<p className="fa-auth-description">
-				快速进入对话、协作与复盘场景，也可以管理当前账号。
+				快速进入主对话、Agent
+				Team、治理、复盘诊断、效率清单与授权的系统管理模块。
 			</p>
 			<div className="fa-auth-feature-list">
-				<strong>登录身份已激活</strong>
-				<p>当前账号可直接访问已授权的页面。</p>
+				<strong>身份与权限已激活</strong>
+				<p>当前账号的角色权限会决定可访问的工作区和管理入口。</p>
 			</div>
 			<AccountSummary isAdmin={isAdmin} principal={principal} />
 
