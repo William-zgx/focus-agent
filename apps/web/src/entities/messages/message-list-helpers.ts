@@ -205,7 +205,7 @@ export function branchActionStatusText(
 		case "executed":
 			return isChineseUi ? "已完成" : "Done";
 		case "dismissed":
-			return isChineseUi ? "已取消" : "Dismissed";
+			return isChineseUi ? "已继续当前分支" : "Staying in current branch";
 		case "failed":
 			return isChineseUi ? "执行失败" : "Failed";
 		default:

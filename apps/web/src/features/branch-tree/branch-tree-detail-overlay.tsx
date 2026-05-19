@@ -76,8 +76,8 @@ function decisionConclusionText(
 ) {
 	if (isBranchHandoffDecision(decision)) {
 		return isChineseUi
-			? "继续在当前新分支处理带入问题"
-			: "Continue the carried question in this new branch";
+			? "问题已带到这个分支"
+			: "The question moved to this branch";
 	}
 	if (decision.action === "split") {
 		return isChineseUi ? "建议创建新分支" : "Suggest creating a new branch";
@@ -100,9 +100,7 @@ function decisionConclusionText(
 }
 
 function branchHandoffKickerText(isChineseUi: boolean) {
-	return isChineseUi
-		? "轻量 AI 建议 · 已接收"
-		: "Light AI suggestion · Received";
+	return isChineseUi ? "Focus Score · 已接收" : "Focus Score · Received";
 }
 
 export function BranchNodeDetailOverlay({
@@ -140,6 +138,7 @@ export function BranchNodeDetailOverlay({
 	useEffect(() => {
 		if (renameBranchTarget?.thread_id !== detailNode?.thread_id) return;
 		renameInputRef.current?.focus();
+		renameInputRef.current?.select();
 	}, [detailNode?.thread_id, renameBranchTarget?.thread_id]);
 
 	if (!detailNode || typeof document === "undefined") return null;
@@ -153,6 +152,8 @@ export function BranchNodeDetailOverlay({
 	const decisionSummary = detailBranchDecision
 		? decisionConclusionText(detailBranchDecision, isChineseUi)
 		: "";
+	const isRenamingBranch =
+		renameBranchTarget?.thread_id === detailNode.thread_id;
 	const metaRows = [
 		[threadLabel(isChineseUi), detailNode.thread_id],
 		[parentLabel(isChineseUi), rowForParent],
@@ -200,7 +201,42 @@ export function BranchNodeDetailOverlay({
 				}
 			>
 				<div className="fa-branch-node-detail-head">
-					{detailNode.branch_id ? (
+					{isRenamingBranch ? (
+						<form
+							className="fa-inline-rename-form is-branch-title"
+							onSubmit={onRenameSubmit}
+						>
+							<label
+								className="sr-only"
+								htmlFor={`branch-rename-input-${detailNode.thread_id}`}
+							>
+								{isChineseUi ? "重命名分支" : "Rename branch"}
+							</label>
+							<input
+								id={`branch-rename-input-${detailNode.thread_id}`}
+								className="fa-inline-rename-input"
+								ref={renameInputRef}
+								disabled={isWorking}
+								value={renameBranchDraft}
+								onChange={(event) => onRenameDraftChange(event.target.value)}
+							/>
+							<button
+								className="fa-branch-inline-action is-primary"
+								disabled={isWorking || !renameBranchDraft.trim()}
+								type="submit"
+							>
+								{isChineseUi ? "保存" : "Save"}
+							</button>
+							<button
+								className="fa-branch-inline-action"
+								disabled={isWorking}
+								onClick={onCancelRename}
+								type="button"
+							>
+								{isChineseUi ? "取消" : "Cancel"}
+							</button>
+						</form>
+					) : detailNode.branch_id ? (
 						<button
 							className="fa-branch-node-title fa-branch-node-title-button"
 							{...tooltipProps(
@@ -262,46 +298,9 @@ export function BranchNodeDetailOverlay({
 					</div>
 				) : null}
 
-				{renameBranchTarget?.thread_id === detailNode.thread_id ? (
-					<form
-						className="fa-inline-rename-form is-branch"
-						onSubmit={onRenameSubmit}
-					>
-						<label
-							className="sr-only"
-							htmlFor={`branch-rename-input-${detailNode.thread_id}`}
-						>
-							{isChineseUi ? "重命名分支" : "Rename branch"}
-						</label>
-						<input
-							id={`branch-rename-input-${detailNode.thread_id}`}
-							className="fa-inline-rename-input"
-							ref={renameInputRef}
-							disabled={isWorking}
-							value={renameBranchDraft}
-							onChange={(event) => onRenameDraftChange(event.target.value)}
-						/>
-						<button
-							className="fa-branch-inline-action is-primary"
-							disabled={isWorking || !renameBranchDraft.trim()}
-							type="submit"
-						>
-							{isChineseUi ? "保存" : "Save"}
-						</button>
-						<button
-							className="fa-branch-inline-action"
-							disabled={isWorking}
-							onClick={onCancelRename}
-							type="button"
-						>
-							{isChineseUi ? "取消" : "Cancel"}
-						</button>
-					</form>
-				) : null}
-
 				<div className="fa-branch-node-actions">
 					{detailNode.branch_id &&
-					renameBranchTarget?.thread_id !== detailNode.thread_id ? (
+					!isRenamingBranch ? (
 						<button
 							className="fa-branch-inline-action"
 							{...tooltipProps(

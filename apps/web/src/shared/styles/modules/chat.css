@@ -249,6 +249,9 @@
 	min-width: 180px;
 	max-width: min(320px, 34vw);
 	flex: 1 1 240px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .fa-conversation-switcher::after {
@@ -264,7 +267,14 @@
 	pointer-events: none;
 }
 
+.fa-conversation-jump {
+	position: relative;
+	flex: 0 0 36px;
+	min-width: 36px;
+}
+
 .fa-conversation-select,
+.fa-conversation-title-button,
 .fa-composer-select {
 	width: 100%;
 	appearance: none;
@@ -282,6 +292,23 @@
 		transform 0.18s ease;
 }
 
+.fa-conversation-title-button {
+	min-width: 0;
+	flex: 1 1 auto;
+	height: 39px;
+	overflow: hidden;
+	padding: 11px 12px;
+	border-radius: 14px;
+	box-shadow: 0 10px 24px rgba(4, 10, 22, 0.12);
+	cursor: text;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1.2;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .fa-conversation-select {
 	border-radius: 14px;
 	padding: 11px 38px 11px 14px;
@@ -290,11 +317,25 @@
 	box-shadow: 0 10px 24px rgba(4, 10, 22, 0.12);
 }
 
+.fa-conversation-jump-select {
+	height: 39px;
+	padding: 0;
+	color: transparent;
+	cursor: pointer;
+}
+
+.fa-conversation-jump-select option {
+	color: var(--fa-text);
+	background: var(--fa-panel-2);
+}
+
+.fa-conversation-title-button:hover,
 .fa-conversation-select:hover,
 .fa-composer-select:hover {
 	border-color: rgba(129, 140, 248, 0.4);
 }
 
+.fa-conversation-title-button:focus-visible,
 .fa-conversation-select:focus,
 .fa-composer-select:focus,
 .fa-composer-textarea:focus {
@@ -417,12 +458,48 @@
 	min-width: 240px;
 }
 
+.fa-inline-rename-form.is-conversation {
+	flex: 1 1 300px;
+	min-width: 0;
+	max-width: none;
+	white-space: nowrap;
+}
+
+.fa-inline-rename-form.is-conversation .fa-branch-action-button {
+	flex: 0 0 auto;
+	min-height: 34px;
+	padding: 0 10px;
+	white-space: nowrap;
+}
+
+.fa-inline-rename-form.is-conversation .fa-inline-rename-input {
+	flex: 1 1 160px;
+	min-width: 118px;
+}
+
 .fa-inline-rename-form.is-branch {
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	min-width: 0;
 	border-top: 1px solid rgba(255, 255, 255, 0.06);
 	padding-top: 8px;
+}
+
+.fa-inline-rename-form.is-header-branch.is-inline {
+	flex: 1 1 250px;
+	min-width: 220px;
+	max-width: min(360px, 38vw);
+}
+
+.fa-focus-branches-button.is-renaming {
+	cursor: default;
+}
+
+.fa-current-branch-prefix {
+	flex: 0 0 auto;
+	color: var(--fa-text-muted);
+	font-weight: 700;
+	white-space: nowrap;
 }
 
 .fa-inline-rename-input {
@@ -1531,6 +1608,12 @@
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 12px;
+	cursor: pointer;
+	list-style: none;
+}
+
+.fa-branch-action-card-header::-webkit-details-marker {
+	display: none;
 }
 
 .fa-branch-action-card-title {
@@ -1566,6 +1649,17 @@
 	border-color: color-mix(in srgb, var(--fa-info) 48%, var(--fa-border));
 	background: var(--fa-info-surface);
 	color: var(--fa-info-text);
+}
+
+.fa-branch-action-card-toggle {
+	flex: 0 0 auto;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.fa-branch-action-card-toggle:hover {
+	color: var(--fa-text);
 }
 
 .fa-branch-action-card-body {

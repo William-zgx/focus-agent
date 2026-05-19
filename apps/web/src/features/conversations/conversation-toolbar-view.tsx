@@ -72,7 +72,7 @@ export function ConversationToolbarView({
 	}, [renameTarget]);
 
 	function handleConversationDoubleClick(
-		event: MouseEvent<HTMLLabelElement | HTMLSelectElement>,
+		event: MouseEvent<HTMLButtonElement>,
 	) {
 		if (!activeConversation || isWorking) return;
 		event.preventDefault();
@@ -82,50 +82,109 @@ export function ConversationToolbarView({
 
 	return (
 		<div className="fa-toolbar-cluster fa-conversation-toolbar">
-			<label
-				className="fa-conversation-switcher"
-				{...tooltipProps(
-					activeConversation
-						? isChineseUi
-							? "切换对话；双击当前名称可重命名"
-							: "Switch conversations; double-click the current name to rename"
-						: isChineseUi
-							? "切换或新建对话"
-							: "Switch or create a conversation",
-				)}
-				onDoubleClickCapture={handleConversationDoubleClick}
-			>
-				<span className="sr-only">{isChineseUi ? "对话" : "Conversation"}</span>
-				<select
-					aria-label={isChineseUi ? "对话" : "Conversation"}
-					className="fa-conversation-select"
-					disabled={isLoading || isWorking || activeConversations.length === 0}
-					onChange={(event) => onSelectConversation(event.target.value)}
-					onDoubleClickCapture={handleConversationDoubleClick}
-					value={activeConversation?.root_thread_id ?? ""}
+			{renameTarget ? (
+				<form
+					className="fa-inline-rename-form is-conversation"
+					onSubmit={onRenameSubmit}
 				>
-					{isLoading ? (
-						<option value="">
-							{isChineseUi ? "正在加载对话..." : "Loading conversations..."}
-						</option>
-					) : null}
-					{!isLoading && !activeConversation ? (
-						<option value="">
-							{isChineseUi ? "暂无对话" : "No conversations"}
-						</option>
-					) : null}
-					{!isLoading
-						? activeConversations.map((conversation) => (
-								<option
-									key={conversation.root_thread_id}
-									value={conversation.root_thread_id}
-								>
-									{conversation.title}
+					<label className="sr-only" htmlFor={renameInputId}>
+						{isChineseUi ? "重命名对话" : "Rename conversation"}
+					</label>
+					<input
+						id={renameInputId}
+						className="fa-inline-rename-input"
+						ref={renameInputRef}
+						value={renameDraft}
+						onChange={(event) => onRenameDraftChange(event.target.value)}
+						disabled={isWorking}
+					/>
+					<button
+						className="fa-branch-action-button is-primary"
+						disabled={isWorking || !renameDraft.trim()}
+						type="submit"
+					>
+						{isChineseUi ? "保存" : "Save"}
+					</button>
+					<button
+						className="fa-branch-action-button"
+						disabled={isWorking}
+						onClick={onCancelRename}
+						type="button"
+					>
+						{isChineseUi ? "取消" : "Cancel"}
+					</button>
+				</form>
+			) : (
+				<div className="fa-conversation-switcher">
+					<button
+						aria-label={
+							activeConversation
+								? isChineseUi
+									? `当前对话：${activeConversation.title}。双击重命名。`
+									: `Current conversation: ${activeConversation.title}. Double-click to rename.`
+								: isChineseUi
+									? "当前无对话"
+									: "No current conversation"
+						}
+						className="fa-conversation-title-button"
+						disabled={!activeConversation || isWorking}
+						onDoubleClick={handleConversationDoubleClick}
+						type="button"
+						{...tooltipProps(
+							activeConversation
+								? isChineseUi
+									? "双击重命名当前对话"
+									: "Double-click to rename this conversation"
+								: isChineseUi
+									? "暂无当前对话"
+									: "No current conversation",
+						)}
+					>
+						{activeConversation?.title ??
+							(isChineseUi ? "暂无对话" : "No conversation")}
+					</button>
+					<label
+						className="fa-conversation-jump"
+						{...tooltipProps(
+							isChineseUi ? "切换对话" : "Switch conversations",
+						)}
+					>
+						<span className="sr-only">
+							{isChineseUi ? "切换对话" : "Switch conversation"}
+						</span>
+						<select
+							aria-label={isChineseUi ? "切换对话" : "Switch conversation"}
+							className="fa-conversation-select fa-conversation-jump-select"
+							disabled={
+								isLoading || isWorking || activeConversations.length === 0
+							}
+							onChange={(event) => onSelectConversation(event.target.value)}
+							value={activeConversation?.root_thread_id ?? ""}
+						>
+							{isLoading ? (
+								<option value="">
+									{isChineseUi ? "正在加载对话..." : "Loading conversations..."}
 								</option>
-							))
-						: null}
-				</select>
-			</label>
+							) : null}
+							{!isLoading && !activeConversation ? (
+								<option value="">
+									{isChineseUi ? "暂无对话" : "No conversations"}
+								</option>
+							) : null}
+							{!isLoading
+								? activeConversations.map((conversation) => (
+										<option
+											key={conversation.root_thread_id}
+											value={conversation.root_thread_id}
+										>
+											{conversation.title}
+										</option>
+									))
+								: null}
+						</select>
+					</label>
+				</div>
+			)}
 
 			<div className="fa-conversation-toolbar-actions">
 				{activeConversation ? (
@@ -183,36 +242,6 @@ export function ConversationToolbarView({
 				<div className="fa-toolbar-note is-danger">
 					{isChineseUi ? "加载对话失败。" : "Failed to load conversations."}
 				</div>
-			) : null}
-			{renameTarget ? (
-				<form className="fa-inline-rename-form" onSubmit={onRenameSubmit}>
-					<label className="sr-only" htmlFor={renameInputId}>
-						{isChineseUi ? "重命名对话" : "Rename conversation"}
-					</label>
-					<input
-						id={renameInputId}
-						className="fa-inline-rename-input"
-						ref={renameInputRef}
-						value={renameDraft}
-						onChange={(event) => onRenameDraftChange(event.target.value)}
-						disabled={isWorking}
-					/>
-					<button
-						className="fa-branch-action-button is-primary"
-						disabled={isWorking || !renameDraft.trim()}
-						type="submit"
-					>
-						{isChineseUi ? "保存" : "Save"}
-					</button>
-					<button
-						className="fa-branch-action-button"
-						disabled={isWorking}
-						onClick={onCancelRename}
-						type="button"
-					>
-						{isChineseUi ? "取消" : "Cancel"}
-					</button>
-				</form>
 			) : null}
 		</div>
 	);

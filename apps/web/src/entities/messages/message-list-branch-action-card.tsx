@@ -1,8 +1,13 @@
-import type { FocusAgentBranchActionProposal } from "@focus-agent/web-sdk";
+import type {
+	FocusAgentBranchActionProposal,
+	FocusAgentBranchDecisionEvent,
+} from "@focus-agent/web-sdk";
+import { useEffect, useState } from "react";
 
 import {
 	branchDecisionAuditOnlyText,
 	branchDecisionDiagnosticText,
+	branchDecisionSemanticDiagnosticEntries,
 	shouldShowBranchDecisionDiagnostic,
 } from "@/shared/branch-decision-diagnostics";
 
@@ -12,12 +17,53 @@ import {
 } from "./message-list-helpers";
 import { normalizeText } from "./message-transcript";
 
+function scorePercent(score: number) {
+	return `${Math.round(score * 100)}%`;
+}
+
+function branchActionFocusMetric({
+	action,
+	isChineseUi,
+	sourceDecision,
+}: {
+	action: FocusAgentBranchActionProposal;
+	isChineseUi: boolean;
+	sourceDecision?: FocusAgentBranchDecisionEvent | null;
+}) {
+	const semanticEntries = sourceDecision
+		? branchDecisionSemanticDiagnosticEntries(sourceDecision)
+		: [];
+	const relatedness = semanticEntries.find(
+		(entry) => entry.key === "semantic_relatedness",
+	)?.value;
+	if (relatedness) {
+		return {
+			kind: "relevance",
+			label: isChineseUi ? "Focus Score" : "Focus Score",
+			shortLabel: `Focus Score ${relatedness}`,
+			value: relatedness,
+		};
+	}
+	if (typeof action.confidence === "number") {
+		const value = scorePercent(action.confidence);
+		return {
+			kind: "routing",
+			label: isChineseUi ? "路由置信度" : "Routing confidence",
+			shortLabel: isChineseUi ? `路由置信度 ${value}` : `Routing ${value}`,
+			value,
+		};
+	}
+	return null;
+}
+
 export function BranchActionCard({
 	action,
 	isChineseUi,
 	isReadOnly,
 	onExecute,
+	onContinueCurrent,
 	onDismiss,
+	sourceDecision,
 	errorMessage,
 	isBusy,
 }: {
@@ -26,10 +72,13 @@ export function BranchActionCard({
 	isReadOnly: boolean;
 	errorMessage?: string;
 	isBusy?: boolean;
+	sourceDecision?: FocusAgentBranchDecisionEvent | null;
 	onExecute?: (action: FocusAgentBranchActionProposal) => void;
+	onContinueCurrent?: (action: FocusAgentBranchActionProposal) => void;
 	onDismiss?: (action: FocusAgentBranchActionProposal) => void;
 }) {
 	const pending = action.status === "pending";
+	const [isExpanded, setIsExpanded] = useState(pending);
 	const disabled = isReadOnly || Boolean(isBusy);
 	const branchName =
 		normalizeText(action.suggested_branch_name) ||
@@ -38,10 +87,13 @@ export function BranchActionCard({
 		normalizeText(errorMessage) || normalizeText(action.error);
 	const isAiSuggested =
 		action.source === "branch_decision" || Boolean(action.source_decision_id);
-	const confidence =
-		typeof action.confidence === "number"
-			? `${Math.round(action.confidence * 100)}%`
-			: "";
+	const routingConfidence =
+		typeof action.confidence === "number" ? scorePercent(action.confidence) : "";
+	const focusMetric = branchActionFocusMetric({
+		action,
+		isChineseUi,
+		sourceDecision,
+	});
 	const sourceDecisionStatus = action.source_decision_status ?? null;
 	const sourceDecisionDiagnostic = branchDecisionDiagnosticText(action);
 	const showSourceDecisionDiagnostic =
@@ -49,6 +101,36 @@ export function BranchActionCard({
 			shouldShowBranchDecisionDiagnostic(sourceDecisionStatus)) &&
 		Boolean(sourceDecisionDiagnostic);
 	const auditOnly = action.recommendation_user_visible === false;
+	const toggleLabel = isExpanded
+		? isChineseUi
+			? "收起详情"
+			: "Hide details"
+		: isChineseUi
+			? "展开详情"
+			: "Show details";
+	const executeLabel = isBusy
+		? isChineseUi
+			? "处理中..."
+			: "Working..."
+		: isChineseUi
+			? "确认切换"
+			: "Confirm route";
+	const continueLabel = isChineseUi
+		? "继续当前分支"
+		: "Stay in current branch";
+	const executeBranchAction = () => {
+		setIsExpanded(false);
+		onExecute?.(action);
+	};
+	const continueCurrentBranch = () => {
+		setIsExpanded(false);
+		(onContinueCurrent ?? onDismiss)?.(action);
+	};
+
+	useEffect(() => {
+		setIsExpanded(pending);
+	}, [pending]);
+
 	return (
 		<div className="fa-message-row is-assistant assistant">
 			<div className="fa-message-stack">
@@ -57,10 +139,14 @@ export function BranchActionCard({
 						{isChineseUi ? "分支操作" : "Branch action"}
 					</div>
 				</div>
-				<div
+				<details
 					className={`fa-message-bubble is-assistant fa-branch-action-card is-${action.status}`}
+					onToggle={(event) =>
+						setIsExpanded((event.currentTarget as HTMLDetailsElement).open)
+					}
+					open={isExpanded}
 				>
-					<div className="fa-branch-action-card-header">
+					<summary className="fa-branch-action-card-header">
 						<div>
 							<div className="fa-branch-action-card-title">
 								{branchActionTitle(action, isChineseUi)}
@@ -73,14 +159,15 @@ export function BranchActionCard({
 							{isAiSuggested ? (
 								<span className="fa-branch-action-card-badge is-ai">
 									{isChineseUi ? "AI 建议" : "AI"}
-									{confidence ? ` · ${confidence}` : ""}
+									{focusMetric ? ` · ${focusMetric.shortLabel}` : ""}
 								</span>
 							) : null}
 							<span className="fa-branch-action-card-badge">
 								{action.branch_role}
 							</span>
 						</div>
-					</div>
+						<span className="fa-branch-action-card-toggle">{toggleLabel}</span>
+					</summary>
 					<div className="fa-branch-action-card-body">
 						<div>
 							<span>{isChineseUi ? "目标" : "Target"}</span>
@@ -104,6 +191,19 @@ export function BranchActionCard({
 								</a>
 							</div>
 						) : null}
+						{focusMetric ? (
+							<div>
+								<span>{focusMetric.label}</span>
+								<strong>{focusMetric.value}</strong>
+							</div>
+						) : null}
+						{routingConfidence &&
+						(!focusMetric || focusMetric.kind !== "routing") ? (
+							<div>
+								<span>{isChineseUi ? "路由置信度" : "Routing confidence"}</span>
+								<strong>{routingConfidence}</strong>
+							</div>
+						) : null}
 						{showSourceDecisionDiagnostic ? (
 							<div className="fa-branch-action-card-diagnostic">
 								<span>{isChineseUi ? "诊断" : "Diagnostic"}</span>
@@ -121,28 +221,22 @@ export function BranchActionCard({
 							<button
 								className="fa-chat-toolbar-button is-primary"
 								disabled={disabled}
-								onClick={() => onExecute?.(action)}
+								onClick={executeBranchAction}
 								type="button"
 							>
-								{isBusy
-									? isChineseUi
-										? "处理中..."
-										: "Working..."
-									: isChineseUi
-										? "确认切换"
-										: "Confirm"}
+								{executeLabel}
 							</button>
 							<button
 								className="fa-chat-toolbar-button"
 								disabled={disabled}
-								onClick={() => onDismiss?.(action)}
+								onClick={continueCurrentBranch}
 								type="button"
 							>
-								{isChineseUi ? "取消" : "Dismiss"}
+								{continueLabel}
 							</button>
 						</div>
 					) : null}
-				</div>
+				</details>
 			</div>
 		</div>
 	);

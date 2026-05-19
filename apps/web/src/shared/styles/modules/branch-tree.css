@@ -1102,6 +1102,29 @@
 	opacity: 0.72;
 }
 
+.fa-inline-rename-form.is-branch-title {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	width: 100%;
+}
+
+.fa-inline-rename-form.is-branch-title .fa-inline-rename-input {
+	flex: 1 1 100%;
+	width: 100%;
+	height: 30px;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.fa-inline-rename-form.is-branch-title .fa-branch-inline-action {
+	flex: 0 0 auto;
+	padding: 4px 8px;
+	font-size: 10px;
+}
+
 .fa-branch-node-subtitle {
 	color: var(--fa-text-soft);
 	font-size: 11px;

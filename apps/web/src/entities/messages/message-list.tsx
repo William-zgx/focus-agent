@@ -1,6 +1,7 @@
 import {
 	safeVisibleText,
 	type FocusAgentBranchActionProposal,
+	type FocusAgentBranchDecisionSummary,
 	type FocusAgentStreamStep,
 	type FocusAgentToolApprovalInterrupt,
 	type RunFailedPayload,
@@ -16,7 +17,17 @@ import {
 import { AgentRunBubble } from "./message-list-streaming-bubble";
 import { ToolApprovalCard } from "./message-list-tool-approval-card";
 import { ToolActivityCard } from "./message-list-tool-activity-card";
-import { buildTranscriptItems, normalizeText } from "./message-transcript";
+import {
+	buildTranscriptItems,
+	normalizeMessageType,
+	normalizeText,
+	type TranscriptDisplayMessage,
+	type TranscriptItem,
+} from "./message-transcript";
+
+type MessageListRenderItem =
+	| { kind: "branch-action"; action: FocusAgentBranchActionProposal }
+	| { kind: "transcript"; item: TranscriptItem };
 
 interface MessageListProps {
 	isReadOnly?: boolean;
@@ -28,6 +39,7 @@ interface MessageListProps {
 	streamProcessingSteps?: FocusAgentStreamStep[];
 	streamFailed?: RunFailedPayload;
 	branchActions?: FocusAgentBranchActionProposal[];
+	branchDecisionSummary?: FocusAgentBranchDecisionSummary | null;
 	branchActionErrors?: Record<string, string>;
 	branchActionInFlightId?: string | null;
 	toolApprovalInterrupts?: FocusAgentToolApprovalInterrupt[];
@@ -37,6 +49,9 @@ interface MessageListProps {
 	isChineseUi?: boolean;
 	onEditMessage?: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
+	onContinueCurrentBranchAction?: (
+		action: FocusAgentBranchActionProposal,
+	) => void;
 	onDismissBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval?: (
 		interrupt: FocusAgentToolApprovalInterrupt,
@@ -54,6 +69,7 @@ export function MessageList({
 	streamProcessingSteps,
 	streamFailed,
 	branchActions = [],
+	branchDecisionSummary = null,
 	branchActionErrors = {},
 	branchActionInFlightId = null,
 	toolApprovalInterrupts = [],
@@ -63,6 +79,7 @@ export function MessageList({
 	isChineseUi = false,
 	onEditMessage,
 	onExecuteBranchAction,
+	onContinueCurrentBranchAction,
 	onDismissBranchAction,
 	onDecideToolApproval,
 }: MessageListProps) {
@@ -74,10 +91,38 @@ export function MessageList({
 	const visibleStreamReply = normalizeText(safeStreamVisibleText)
 		? safeStreamVisibleText
 		: "";
+	const latestBranchDecision = branchDecisionSummary?.latest_decision ?? null;
+	const renderItems = useMemo(
+		() => buildMessageListRenderItems(transcriptItems, branchActions),
+		[branchActions, transcriptItems],
+	);
 
 	return (
 		<div className="fa-message-list">
-			{transcriptItems.map((item) => {
+			{renderItems.map((renderItem) => {
+				if (renderItem.kind === "branch-action") {
+					const action = renderItem.action;
+					return (
+						<BranchActionCard
+							key={action.action_id}
+							action={action}
+							isChineseUi={isChineseUi}
+							isReadOnly={isReadOnly || isStreaming}
+							errorMessage={branchActionErrors[action.action_id]}
+							isBusy={branchActionInFlightId === action.action_id}
+							sourceDecision={
+								latestBranchDecision?.decision_id === action.source_decision_id
+									? latestBranchDecision
+									: null
+							}
+							onExecute={onExecuteBranchAction}
+							onContinueCurrent={onContinueCurrentBranchAction}
+							onDismiss={onDismissBranchAction}
+						/>
+					);
+				}
+
+				const item = renderItem.item;
 				if (item.kind === "tool-activity") {
 					return (
 						<ToolActivityCard
@@ -101,19 +146,6 @@ export function MessageList({
 					/>
 				);
 			})}
-
-			{branchActions.map((action) => (
-				<BranchActionCard
-					key={action.action_id}
-					action={action}
-					isChineseUi={isChineseUi}
-					isReadOnly={isReadOnly || isStreaming}
-					errorMessage={branchActionErrors[action.action_id]}
-					isBusy={branchActionInFlightId === action.action_id}
-					onExecute={onExecuteBranchAction}
-					onDismiss={onDismissBranchAction}
-				/>
-			))}
 
 			{toolApprovalInterrupts.map((interrupt) => (
 				<ToolApprovalCard
@@ -151,4 +183,86 @@ export function MessageList({
 			) : null}
 		</div>
 	);
+}
+
+function buildMessageListRenderItems(
+	transcriptItems: TranscriptItem[],
+	branchActions: FocusAgentBranchActionProposal[],
+): MessageListRenderItem[] {
+	if (branchActions.length === 0) {
+		return transcriptItems.map((item) => ({ kind: "transcript", item }));
+	}
+
+	const actionBuckets = new Map<number, FocusAgentBranchActionProposal[]>();
+	for (const action of [...branchActions].sort(compareBranchActions)) {
+		const insertionIndex = branchActionInsertionIndex(transcriptItems, action);
+		const bucket = actionBuckets.get(insertionIndex) ?? [];
+		bucket.push(action);
+		actionBuckets.set(insertionIndex, bucket);
+	}
+
+	const renderItems: MessageListRenderItem[] = [];
+	for (let index = 0; index <= transcriptItems.length; index += 1) {
+		for (const action of actionBuckets.get(index) ?? []) {
+			renderItems.push({ kind: "branch-action", action });
+		}
+		const item = transcriptItems[index];
+		if (item) {
+			renderItems.push({ kind: "transcript", item });
+		}
+	}
+	return renderItems;
+}
+
+function branchActionInsertionIndex(
+	transcriptItems: TranscriptItem[],
+	action: FocusAgentBranchActionProposal,
+) {
+	const handoffMessage = normalizeText(action.handoff_message).replace(
+		/\s+/g,
+		" ",
+	);
+	if (!handoffMessage) {
+		return transcriptItems.length;
+	}
+
+	let anchorIndex = -1;
+	for (let index = 0; index < transcriptItems.length; index += 1) {
+		const item = transcriptItems[index];
+		if (!isHumanMessage(item)) continue;
+		const itemContent = normalizeText(item.content).replace(/\s+/g, " ");
+		if (itemContent === handoffMessage) {
+			anchorIndex = index;
+		}
+	}
+	if (anchorIndex < 0) {
+		return transcriptItems.length;
+	}
+
+	let insertionIndex = anchorIndex + 1;
+	while (insertionIndex < transcriptItems.length) {
+		if (isHumanMessage(transcriptItems[insertionIndex])) break;
+		insertionIndex += 1;
+	}
+	return insertionIndex;
+}
+
+function isHumanMessage(
+	item: TranscriptItem,
+): item is TranscriptDisplayMessage {
+	return (
+		item.kind === "message" && normalizeMessageType(item.type) === "human"
+	);
+}
+
+function compareBranchActions(
+	left: FocusAgentBranchActionProposal,
+	right: FocusAgentBranchActionProposal,
+) {
+	return branchActionTime(left) - branchActionTime(right);
+}
+
+function branchActionTime(action: FocusAgentBranchActionProposal) {
+	const timestamp = Date.parse(action.created_at);
+	return Number.isFinite(timestamp) ? timestamp : 0;
 }

@@ -70,12 +70,19 @@ function upsertProcessingStep(
   return { ...state, processingSteps: nextSteps };
 }
 
-function stepStatusForTask(payloadStatus: unknown): FocusAgentStreamStepStatus {
+function stepStatusForTask(data: Record<string, unknown>): FocusAgentStreamStepStatus {
+  const payloadStatus = data.status;
   if (payloadStatus === "completed" || payloadStatus === "failed") {
     return payloadStatus;
   }
   if (payloadStatus === "running" || payloadStatus === "pending") {
     return payloadStatus;
+  }
+  if ("error" in data && data.error !== null && data.error !== undefined) {
+    return "failed";
+  }
+  if ("result" in data || data.error === null) {
+    return "completed";
   }
   return "running";
 }
@@ -185,19 +192,22 @@ function upsertTaskStep(
   const data = event.data;
   const namespace = namespaceKey(data.namespace);
   const eventLabel = stringValue(data.event);
+  const taskName = stringValue(data.name);
   const id =
     stringValue(data.id) ??
     (namespace && eventLabel ? `${namespace}:${eventLabel}` : undefined) ??
     namespace ??
+    taskName ??
     eventLabel ??
     "task";
-  const label = stringValue(data.label) ?? eventLabel ?? "Task";
+  const label = stringValue(data.label) ?? taskName ?? eventLabel ?? "Task";
   return upsertProcessingStep(state, {
     id,
     kind: "task",
     label,
-    status: stepStatusForTask(data.status),
+    status: stepStatusForTask(data),
     content: compactText(data.message) ?? compactText(data.value),
+    name: taskName,
     metadata: data.metadata,
     namespace: data.namespace,
     eventName: event.event,

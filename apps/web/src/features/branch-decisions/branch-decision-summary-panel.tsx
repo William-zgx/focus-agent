@@ -80,14 +80,12 @@ export function BranchDecisionSummaryPanel({
 		auditOnly ||
 		isBranchHandoff ||
 		semanticDiagnosticEntries.length > 0;
-	const scoreLabel = !isBranchHandoff ? scorePercent(decision.score) : null;
-	const summarySegments = isBranchHandoff
-		? [
-				decisionKickerLabel(decision, isChineseUi),
-				decisionStatusLabel(decision, isChineseUi),
-				decisionActionLabel(decision, isChineseUi),
-			]
-		: ["Focus Score", scoreLabel];
+	const focusMetric = branchDecisionFocusMetric({
+		decision,
+		isChineseUi,
+		semanticDiagnosticEntries,
+	});
+	const summarySegments = ["Focus Score", focusMetric.value];
 	const summaryLabel = summarySegments.join(" · ");
 	return (
 		<section
@@ -110,8 +108,8 @@ export function BranchDecisionSummaryPanel({
 					aria-expanded={drawerOpen}
 					aria-label={
 						isChineseUi
-							? `${summaryLabel}。悬停或点击查看诊断详情。`
-							: `${summaryLabel}. Hover or click for diagnostic details.`
+							? `${summaryLabel}。查看详情。`
+							: `${summaryLabel}. View details.`
 					}
 					className="fa-branch-decision-summary-trigger"
 					data-handoff={isBranchHandoff ? "true" : undefined}
@@ -121,21 +119,9 @@ export function BranchDecisionSummaryPanel({
 					variant="ghost"
 				>
 					<span className="fa-branch-decision-summary-kicker">
-						<Badge tone="info">
-							{isBranchHandoff
-								? decisionKickerLabel(decision, isChineseUi)
-								: "Focus Score"}
-						</Badge>
-						{isBranchHandoff ? (
-							<span>{decisionStatusLabel(decision, isChineseUi)}</span>
-						) : null}
-						{scoreLabel ? <span>{scoreLabel}</span> : null}
+						<Badge tone="info">Focus Score</Badge>
+						<span>{focusMetric.value}</span>
 					</span>
-					{isBranchHandoff ? (
-						<strong className="fa-branch-decision-summary-title">
-							{decisionActionLabel(decision, isChineseUi)}
-						</strong>
-					) : null}
 					{showAuditNote ? (
 						<span className="fa-branch-decision-audit-note">
 							{branchDecisionAuditOnlyText(isChineseUi)}
@@ -144,7 +130,7 @@ export function BranchDecisionSummaryPanel({
 				</Button>
 				<div
 					aria-label={
-						isChineseUi ? "AI 建议诊断详情" : "AI suggestion diagnostic details"
+						isChineseUi ? "Focus Score 路由详情" : "Focus Score routing details"
 					}
 					className="fa-branch-decision-summary-details"
 					id={detailId}
@@ -161,6 +147,7 @@ export function BranchDecisionSummaryPanel({
 						})}
 						isChineseUi={isChineseUi}
 						isBranchHandoff={isBranchHandoff}
+						semanticDiagnosticEntries={semanticDiagnosticEntries}
 					/>
 					<div className="fa-branch-decision-summary-actions">
 						{actionable ? (
@@ -170,7 +157,7 @@ export function BranchDecisionSummaryPanel({
 								size="sm"
 								variant="primary"
 							>
-								{isChineseUi ? "生成分支确认项" : "Promote"}
+								{isChineseUi ? "确认分支去向" : "Confirm routing"}
 							</Button>
 						) : null}
 						{actionable ? (
@@ -205,42 +192,52 @@ function BranchDecisionDrawer({
 	detailNote,
 	isChineseUi,
 	isBranchHandoff,
+	semanticDiagnosticEntries,
 }: {
 	decision: FocusAgentBranchDecisionEvent;
 	detailNote: string;
 	isChineseUi: boolean;
 	isBranchHandoff: boolean;
+	semanticDiagnosticEntries: ReturnType<
+		typeof branchDecisionSemanticDiagnosticEntries
+	>;
 }) {
 	const handoffRunStatus = branchHandoffRunStatus(decision);
+	const focusMetric = branchDecisionFocusMetric({
+		decision,
+		isChineseUi,
+		semanticDiagnosticEntries,
+	});
+	const routingConfidence = scorePercent(decision.score);
 	return (
 		<div className="fa-branch-decision-drawer">
 			<div className="fa-branch-decision-drawer-grid">
 				<div>
-					<span>{isChineseUi ? "结论" : "Conclusion"}</span>
-					<strong>{decisionActionLabel(decision, isChineseUi)}</strong>
+					<span>{focusMetric.label}</span>
+					<strong>{focusMetric.value}</strong>
 				</div>
-				{!isBranchHandoff ? (
+				{focusMetric.kind !== "routing" ? (
 					<div>
-						<span>Focus Score</span>
-						<strong>{scorePercent(decision.score)}</strong>
+						<span>{isChineseUi ? "路由置信度" : "Routing confidence"}</span>
+						<strong>{routingConfidence}</strong>
 					</div>
 				) : null}
 				<div>
-					<span>{isChineseUi ? "状态" : "Status"}</span>
-					<strong>{decisionStatusLabel(decision, isChineseUi)}</strong>
+					<span>{isChineseUi ? "主线判断" : "Flow fit"}</span>
+					<strong>{branchDecisionFitLabel(decision, isChineseUi)}</strong>
 				</div>
 				<div>
-					<span>{isChineseUi ? "模式" : "Mode"}</span>
-					<strong>{decision.mode}</strong>
+					<span>{isChineseUi ? "建议去向" : "Suggested routing"}</span>
+					<strong>{branchDecisionRoutingLabel(decision, isChineseUi)}</strong>
 				</div>
-				{isBranchHandoff ? (
-					<div>
-						<span>{isChineseUi ? "自动生成" : "Auto run"}</span>
-						<strong>
-							{branchHandoffRunStatusLabel(handoffRunStatus, isChineseUi)}
-						</strong>
-					</div>
-				) : null}
+				<div>
+					<span>{isChineseUi ? "当前状态" : "Current status"}</span>
+					<strong>
+						{isBranchHandoff
+							? branchHandoffRunStatusLabel(handoffRunStatus, isChineseUi)
+							: decisionStatusLabel(decision, isChineseUi)}
+					</strong>
+				</div>
 				{detailNote ? (
 					<div>
 						<span>{isChineseUi ? "说明" : "Note"}</span>
@@ -254,6 +251,34 @@ function BranchDecisionDrawer({
 
 function scorePercent(score: number) {
 	return `${Math.round(score * 100)}%`;
+}
+
+function branchDecisionFocusMetric({
+	decision,
+	isChineseUi,
+	semanticDiagnosticEntries,
+}: {
+	decision: FocusAgentBranchDecisionEvent;
+	isChineseUi: boolean;
+	semanticDiagnosticEntries: ReturnType<
+		typeof branchDecisionSemanticDiagnosticEntries
+	>;
+}) {
+	const relatedness = semanticDiagnosticEntries.find(
+		(entry) => entry.key === "semantic_relatedness",
+	)?.value;
+	if (relatedness) {
+		return {
+			kind: "relevance",
+			label: isChineseUi ? "当前问题关联度" : "Question relevance",
+			value: relatedness,
+		};
+	}
+	return {
+		kind: "routing",
+		label: isChineseUi ? "路由判断置信度" : "Routing confidence",
+		value: scorePercent(decision.score),
+	};
 }
 
 function branchDecisionDetailNote({
@@ -270,97 +295,106 @@ function branchDecisionDetailNote({
 	showDiagnostic: boolean;
 }) {
 	if (isBranchHandoff) {
-		return branchHandoffDetailText(isChineseUi);
+		return "";
 	}
 	if (auditOnly) {
 		return branchDecisionAuditOnlyText(isChineseUi);
 	}
 	if (decision.status === "suggested") {
 		return isChineseUi
-			? "已生成可确认的分支建议。"
-			: "A branch recommendation is ready to confirm.";
+			? "已准备好分支去向判断，可确认是否切换。"
+			: "The routing judgment is ready to confirm.";
 	}
 	if (decision.status === "blocked") {
 		return isChineseUi
-			? "当前条件阻止继续创建分支建议。"
-			: "The current conditions block another branch recommendation.";
+			? "当前已有待处理的分支去向，暂不重复提示。"
+			: "A routing decision is already pending.";
 	}
 	if (decision.status === "skipped") {
 		return isChineseUi
-			? "本轮不需要创建新的分支操作。"
-			: "No new branch action is needed for this turn.";
+			? "当前问题仍可留在当前分支。"
+			: "The current question can stay in this branch.";
 	}
 	if (decision.status === "error" || showDiagnostic) {
 		return isChineseUi
-			? "建议诊断已记录，当前展示关键结论。"
-			: "Diagnostics were recorded; this view shows the key conclusion.";
+			? "已记录路由判断，当前只展示关键结论。"
+			: "Routing diagnostics were recorded; this view shows the key conclusion.";
 	}
 	return "";
 }
 
 function branchHandoffRunStatusLabel(status: string, isChineseUi: boolean) {
 	if (status === "interrupted") {
-		return isChineseUi ? "自动生成已中断" : "Auto generation interrupted";
+		return isChineseUi ? "切换后回复已停止" : "Reply after routing stopped";
 	}
 	if (status === "error") {
-		return isChineseUi ? "自动生成失败" : "Auto generation failed";
+		return isChineseUi ? "切换后回复失败" : "Reply after routing failed";
 	}
 	if (status === "success") {
-		return isChineseUi ? "自动生成已完成" : "Auto generation completed";
+		return isChineseUi ? "已切到更匹配的分支" : "Routed to a better-fit branch";
 	}
 	if (status === "running") {
-		return isChineseUi ? "自动生成中" : "Auto generation running";
+		return isChineseUi ? "正在切到更匹配的分支" : "Routing to a better-fit branch";
 	}
-	return isChineseUi ? "已接收" : "Received";
+	return isChineseUi ? "已接收，等待继续处理" : "Received and ready to continue";
 }
 
-function branchHandoffDetailText(isChineseUi: boolean) {
-	return isChineseUi
-		? "新分支已接收带入问题，继续在当前分支处理"
-		: "The new branch received the carried question; continue in the current branch";
-}
-
-function decisionKickerLabel(
-	decision: FocusAgentBranchDecisionEvent,
-	isChineseUi: boolean,
-) {
-	if (isBranchHandoffDecision(decision)) {
-		return isChineseUi ? "轻量 AI 建议" : "Light AI suggestion";
-	}
-	return isChineseUi ? "AI 建议" : "AI suggestion";
-}
-
-function decisionActionLabel(
+function branchDecisionFitLabel(
 	decision: FocusAgentBranchDecisionEvent,
 	isChineseUi: boolean,
 ) {
 	if (isBranchHandoffDecision(decision)) {
 		return isChineseUi
-			? "继续在当前新分支处理带入问题"
-			: "Continue the carried question in this new branch";
+			? "原问题与当前分支主线偏离，已带到更合适的分支"
+			: "The question drifted from the previous flow and was routed here";
 	}
-	if (decision.action === "split") {
+	if (
+		decision.action === "split" ||
+		decision.action === "fork_child_branch" ||
+		decision.action === "fork_sibling_branch"
+	) {
 		return isChineseUi
-			? "建议创建一个低风险新分支"
-			: "Suggest creating a low-risk branch";
-	}
-	if (decision.action === "fork_child_branch") {
-		return isChineseUi ? "建议创建子分支" : "Suggest creating a child branch";
-	}
-	if (decision.action === "fork_sibling_branch") {
-		return isChineseUi ? "建议切换到同级分支" : "Suggest a sibling branch";
+			? "当前问题和这个节点主线的贴合度较低"
+			: "The current question has low fit with this node's flow";
 	}
 	if (decision.action === "merge_candidate") {
 		return isChineseUi
-			? "这个分支可能已适合回收结论"
-			: "This branch may be ready to merge back";
+			? "这个分支的结论已经比较完整"
+			: "This branch looks ready to fold back";
 	}
 	if (decision.action === "continue_current") {
-		return isChineseUi ? "建议继续当前线程" : "Suggest continuing this thread";
+		return isChineseUi
+			? "当前问题仍贴合这个节点主线"
+			: "The current question still fits this node's flow";
 	}
 	return isChineseUi
-		? "这个线程可能已适合收束结论"
-		: "This thread may be ready to conclude";
+		? "当前节点已经接近可收束状态"
+		: "This node is close to a conclusion";
+}
+
+function branchDecisionRoutingLabel(
+	decision: FocusAgentBranchDecisionEvent,
+	isChineseUi: boolean,
+) {
+	if (isBranchHandoffDecision(decision)) {
+		return isChineseUi ? "留在这个新分支继续" : "Continue in this routed branch";
+	}
+	if (decision.action === "split") {
+		return isChineseUi ? "另开一个低风险分支" : "Open a low-risk branch";
+	}
+	if (decision.action === "fork_child_branch") {
+		return isChineseUi ? "切到子分支处理" : "Route to a child branch";
+	}
+	if (decision.action === "fork_sibling_branch") {
+		return isChineseUi ? "切到同级分支处理" : "Route to a sibling branch";
+	}
+	if (decision.action === "merge_candidate") {
+		return isChineseUi ? "回收分支结论" : "Merge branch findings";
+	}
+	if (decision.action === "continue_current") {
+		return isChineseUi ? "继续留在当前分支" : "Stay in the current branch";
+	}
+	return isChineseUi ? "整理并收束当前结论" : "Conclude this thread";
 }
 
 function decisionStatusLabel(

@@ -60,6 +60,17 @@ function isBranchActionNavigation(
 	);
 }
 
+function streamEventRunId(event: FocusAgentEvent): string | null {
+	const { data } = event;
+	const candidates = [data.run_id, data.turn_id];
+	for (const candidate of candidates) {
+		if (typeof candidate === "string" && candidate.length > 0) {
+			return candidate;
+		}
+	}
+	return null;
+}
+
 function branchActionHandoffMessage(
 	action: FocusAgentBranchActionProposal | null | undefined,
 ): string {
@@ -183,8 +194,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 				}
 
 				nextState = reduceStreamEvent(nextState, event);
-				const runId =
-					typeof event.data.run_id === "string" ? event.data.run_id : null;
+				const runId = streamEventRunId(event);
 				if (runId) {
 					activeRunIdsRef.current.set(requestThreadId, runId);
 				}
@@ -386,6 +396,11 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 
 	function stopStreaming() {
 		const runId = activeRunIdsRef.current.get(options.threadId);
+		if (runId) {
+			void client
+				.cancelHarnessRun(runId, { action: "interrupt" })
+				.catch(() => undefined);
+		}
 		requestRegistry.stopStreamRequest(options.threadId);
 		activeRunIdsRef.current.delete(options.threadId);
 		const cleanup = resolveStreamRequestCleanup(false, true);
@@ -401,11 +416,6 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 			}),
 		);
 		void invalidateThreadStreamSurfaces(queryClient, options.threadId);
-		if (runId) {
-			void client
-				.cancelHarnessRun(runId, { action: "interrupt" })
-				.catch(() => undefined);
-		}
 	}
 
 	const currentEntry =

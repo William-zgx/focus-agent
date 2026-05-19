@@ -85,7 +85,122 @@ function stringifyDetailContent(value: unknown) {
 	}
 }
 
-function stepFromStreamStep(step: FocusAgentStreamStep): ProcessingStepEntry {
+const PREP_TASK_NAMES = new Set([
+	"bootstrap_turn",
+	"retrieve_memory",
+	"assemble_context",
+	"role_route_dry_run",
+	"delegation_governance",
+	"plan",
+]);
+
+const WRAP_UP_TASK_NAMES = new Set([
+	"summarize_turn",
+	"extract_memories",
+	"write_memories",
+	"maybe_interrupt_for_merge",
+]);
+
+function streamStepSourceName(step: FocusAgentStreamStep) {
+	return normalizeText(step.name) || normalizeText(step.label);
+}
+
+function streamStepLabel(step: FocusAgentStreamStep, isChineseUi: boolean) {
+	const sourceName = streamStepSourceName(step);
+	if (step.kind === "reasoning") {
+		return isChineseUi ? "组织回答思路" : "Reasoning";
+	}
+	if (sourceName === "agent_loop") {
+		return isChineseUi ? "生成回答" : "Generate reply";
+	}
+	if (sourceName === "summarize_turn") {
+		return isChineseUi ? "整理本轮结果" : "Summarize turn";
+	}
+	if (sourceName === "extract_memories" || sourceName === "write_memories") {
+		return isChineseUi ? "更新记忆" : "Update memory";
+	}
+	if (sourceName === "maybe_interrupt_for_merge") {
+		return isChineseUi ? "检查分支切换" : "Check branch handoff";
+	}
+	return normalizeText(step.label) || normalizeText(step.name) || step.kind;
+}
+
+function aggregateStepStatus(steps: FocusAgentStreamStep[]) {
+	if (steps.some((step) => step.status === "failed")) {
+		return "failed";
+	}
+	if (steps.some((step) => step.status === "running")) {
+		return "running";
+	}
+	if (steps.some((step) => step.status === "pending")) {
+		return "pending";
+	}
+	return "completed";
+}
+
+function compactStreamProcessingSteps(
+	processingSteps: FocusAgentStreamStep[] | undefined,
+	isChineseUi: boolean,
+) {
+	const steps = processingSteps ?? [];
+	const prepSteps = steps.filter(
+		(step) => step.kind === "task" && PREP_TASK_NAMES.has(streamStepSourceName(step)),
+	);
+	const wrapUpSteps = steps.filter(
+		(step) =>
+			step.kind === "task" && WRAP_UP_TASK_NAMES.has(streamStepSourceName(step)),
+	);
+	if (prepSteps.length === 0 && wrapUpSteps.length === 0) {
+		return steps;
+	}
+
+	const compactedPrepStep: FocusAgentStreamStep = {
+		id: "stream-prep",
+		kind: "task",
+		label: isChineseUi ? "准备上下文" : "Prepare context",
+		status: aggregateStepStatus(prepSteps),
+		name: "stream_prep",
+	};
+	const compactedWrapUpStep: FocusAgentStreamStep = {
+		id: "stream-wrap-up",
+		kind: "task",
+		label: isChineseUi ? "保存结果" : "Save result",
+		status: aggregateStepStatus(wrapUpSteps),
+		name: "stream_wrap_up",
+	};
+
+	const compactedSteps: FocusAgentStreamStep[] = [];
+	let prepInserted = false;
+	let wrapUpInserted = false;
+	for (const step of steps) {
+		const sourceName = streamStepSourceName(step);
+		const isPrepStep =
+			step.kind === "task" && PREP_TASK_NAMES.has(sourceName);
+		if (isPrepStep) {
+			if (!prepInserted) {
+				compactedSteps.push(compactedPrepStep);
+				prepInserted = true;
+			}
+			continue;
+		}
+		const isWrapUpStep =
+			step.kind === "task" && WRAP_UP_TASK_NAMES.has(sourceName);
+		if (isWrapUpStep) {
+			if (!wrapUpInserted) {
+				compactedSteps.push(compactedWrapUpStep);
+				wrapUpInserted = true;
+			}
+			continue;
+		}
+		compactedSteps.push(step);
+	}
+	return compactedSteps;
+}
+
+function stepFromStreamStep(
+	step: FocusAgentStreamStep,
+	isChineseUi: boolean,
+): ProcessingStepEntry {
 	const detailContent =
 		typeof step.result === "undefined"
 			? normalizeText(step.content)
@@ -94,7 +209,7 @@ function stepFromStreamStep(step: FocusAgentStreamStep): ProcessingStepEntry {
 	return {
 		id: step.id,
 		kind: step.kind,
-		label: normalizeText(step.label) || normalizeText(step.name) || step.kind,
+		label: streamStepLabel(step, isChineseUi),
 		status: step.status,
 		tone: toneForStatus(step.status),
 		content: truncateText(
@@ -116,11 +231,15 @@ function stepFromStreamStep(step: FocusAgentStreamStep): ProcessingStepEntry {
 }
 
 function buildStreamActivity({
+	isChineseUi,
 	processingSteps,
 }: {
 	processingSteps?: FocusAgentStreamStep[];
+	isChineseUi: boolean;
 }): ToolActivityItem {
-	const steps = (processingSteps ?? []).map(stepFromStreamStep);
+	const steps = compactStreamProcessingSteps(processingSteps, isChineseUi).map(
+		(step) => stepFromStreamStep(step, isChineseUi),
+	);
 	const toolNames = uniqueToolNames(
 		steps
 			.filter((step) => step.kind === "tool")
@@ -158,8 +277,9 @@ export function AgentRunBubble({
 		() =>
 			buildStreamActivity({
 				processingSteps,
+				isChineseUi,
 			}),
-		[processingSteps],
+		[processingSteps, isChineseUi],
 	);
 
 	if (!isStreaming && activity.steps.length === 0) {

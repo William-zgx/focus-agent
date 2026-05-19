@@ -1,6 +1,7 @@
 import type { BranchMeta } from "@focus-agent/web-sdk";
 import {
 	type FormEvent,
+	type MouseEvent,
 	type RefObject,
 	useEffect,
 	useId,
@@ -112,43 +113,63 @@ export function ThreadHeaderActionButtons({
 		}
 	}, [isRenamingCurrentBranch]);
 
+	function handleRenameBranchDoubleClick(
+		event: MouseEvent<HTMLButtonElement>,
+	) {
+		event.preventDefault();
+		event.stopPropagation();
+		onRenameCurrentBranch();
+	}
+
 	return (
 		<div ref={actionsRef} className="fa-chat-header-actions">
 			<div className="fa-chat-header-primary-actions">
 				{isRenamingCurrentBranch ? (
-					<form
-						className="fa-inline-rename-form is-header-branch"
-						onSubmit={onRenameCurrentBranchSubmit}
+					<div
+						className="fa-chat-toolbar-pill fa-focus-branches-button is-renaming"
+						data-compact-button="true"
+						data-full-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
 					>
-						<label className="sr-only" htmlFor={renameInputId}>
-							{isChineseUi ? "重命名当前分支" : "Rename current branch"}
-						</label>
-						<input
-							id={renameInputId}
-							ref={renameInputRef}
-							className="fa-inline-rename-input"
-							disabled={isWorking}
-							onChange={(event) =>
-								onRenameCurrentBranchDraftChange(event.target.value)
-							}
-							value={renameCurrentBranchDraft}
-						/>
-						<button
-							className="fa-branch-inline-action is-primary"
-							disabled={isWorking || !renameCurrentBranchDraft.trim()}
-							type="submit"
+						<span className="fa-toolbar-icon" aria-hidden="true">
+							<BranchFocusIcon />
+						</span>
+						<span className="fa-current-branch-prefix">
+							{isChineseUi ? "当前分支" : "current"}:
+						</span>
+						<form
+							className="fa-inline-rename-form is-header-branch is-inline"
+							onSubmit={onRenameCurrentBranchSubmit}
 						>
-							{isChineseUi ? "保存" : "Save"}
-						</button>
-						<button
-							className="fa-branch-inline-action"
-							disabled={isWorking}
-							onClick={onCancelRenameCurrentBranch}
-							type="button"
-						>
-							{isChineseUi ? "取消" : "Cancel"}
-						</button>
-					</form>
+							<label className="sr-only" htmlFor={renameInputId}>
+								{isChineseUi ? "重命名当前分支" : "Rename current branch"}
+							</label>
+							<input
+								id={renameInputId}
+								ref={renameInputRef}
+								className="fa-inline-rename-input"
+								disabled={isWorking}
+								onChange={(event) =>
+									onRenameCurrentBranchDraftChange(event.target.value)
+								}
+								value={renameCurrentBranchDraft}
+							/>
+							<button
+								className="fa-branch-inline-action is-primary"
+								disabled={isWorking || !renameCurrentBranchDraft.trim()}
+								type="submit"
+							>
+								{isChineseUi ? "保存" : "Save"}
+							</button>
+							<button
+								className="fa-branch-inline-action"
+								disabled={isWorking}
+								onClick={onCancelRenameCurrentBranch}
+								type="button"
+							>
+								{isChineseUi ? "取消" : "Cancel"}
+							</button>
+						</form>
+					</div>
 				) : (
 					<button
 						className="fa-chat-toolbar-pill fa-focus-branches-button"
@@ -170,7 +191,7 @@ export function ThreadHeaderActionButtons({
 						)}
 						aria-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
 						onClick={onFocusBranchPanel}
-						onDoubleClick={onRenameCurrentBranch}
+						onDoubleClick={handleRenameBranchDoubleClick}
 						type="button"
 					>
 						<span className="fa-toolbar-icon" aria-hidden="true">

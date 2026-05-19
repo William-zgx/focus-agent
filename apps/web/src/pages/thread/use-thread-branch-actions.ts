@@ -36,12 +36,19 @@ function branchActionHandoffMessage(
 	return String(result.branch_action.handoff_message ?? "").trim();
 }
 
+function branchActionProposalHandoffMessage(
+	action: FocusAgentBranchActionProposal,
+): string {
+	return String(action.handoff_message ?? "").trim();
+}
+
 interface BranchActionHandoffRun {
 	threadId: string;
 	message: string;
 }
 
 interface UseThreadBranchActionsOptions {
+	onContinueCurrentBranch?: (input: BranchActionHandoffRun) => Promise<unknown>;
 	onRunHandoff?: (input: BranchActionHandoffRun) => Promise<unknown>;
 }
 
@@ -292,6 +299,58 @@ export function useThreadBranchActions(
 		],
 	);
 
+	const continueCurrentBranchAction = useCallback(
+		async (action: FocusAgentBranchActionProposal) => {
+			const requestEpoch = beginBranchActionRequest(action.action_id);
+			if (requestEpoch === null) {
+				return;
+			}
+			const sourceThreadId = threadId;
+			try {
+				const threadState = await retryThreadBusyConflict(
+					() => client.dismissBranchAction(sourceThreadId, action.action_id),
+					() => isCurrentBranchActionRequest(requestEpoch, sourceThreadId),
+				);
+				if (!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+					return;
+				}
+				queryClient.setQueryData(queryKeys.thread(sourceThreadId), threadState);
+				await refreshBranchActionSurfaces(sourceThreadId);
+				const handoffMessage = branchActionProposalHandoffMessage(action);
+				if (handoffMessage) {
+					void options.onContinueCurrentBranch?.({
+						threadId: sourceThreadId,
+						message: handoffMessage,
+					});
+				}
+			} catch (error) {
+				if (
+					error instanceof ThreadBranchActionRetryCancelled ||
+					!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)
+				) {
+					return;
+				}
+				console.error("Failed to continue current branch action", error);
+				await refreshThreadAfterBranchActionFailure(action.action_id, error);
+			} finally {
+				if (isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {
+					endBranchActionRequest(action.action_id);
+				}
+			}
+		},
+		[
+			beginBranchActionRequest,
+			client,
+			endBranchActionRequest,
+			isCurrentBranchActionRequest,
+			options,
+			queryClient,
+			refreshBranchActionSurfaces,
+			refreshThreadAfterBranchActionFailure,
+			threadId,
+		],
+	);
+
 	useEffect(() => {
 		branchActionThreadIdRef.current = threadId;
 		branchActionRequestEpochRef.current += 1;
@@ -309,6 +368,7 @@ export function useThreadBranchActions(
 	return {
 		branchActionErrors,
 		branchActionInFlightId,
+		continueCurrentBranchAction,
 		dismissBranchAction,
 		executeBranchAction,
 	};

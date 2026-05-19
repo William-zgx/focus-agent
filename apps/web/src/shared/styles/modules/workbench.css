@@ -191,6 +191,7 @@
 }
 
 :root[data-theme="light"] .fa-conversation-select,
+:root[data-theme="light"] .fa-conversation-title-button,
 :root[data-theme="light"] .fa-chat-toolbar-button,
 :root[data-theme="light"] .fa-chat-toolbar-pill,
 :root[data-theme="light"] .fa-conversation-token-trigger,
@@ -212,6 +213,7 @@
 
 :root[data-theme="light"] .fa-brand-title,
 :root[data-theme="light"] .fa-conversation-select,
+:root[data-theme="light"] .fa-conversation-title-button,
 :root[data-theme="light"] .fa-toolbar-primary,
 :root[data-theme="light"] .fa-toolbar-secondary,
 :root[data-theme="light"] .fa-conversation-token-trigger,

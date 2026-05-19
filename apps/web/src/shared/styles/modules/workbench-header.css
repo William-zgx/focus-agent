@@ -16,6 +16,11 @@
 	overflow: hidden;
 }
 
+.fa-chat-header-copy:has(.fa-inline-rename-form.is-conversation) {
+	max-width: min(100%, 620px);
+	overflow: visible;
+}
+
 .fa-toolbar-cluster {
 	display: flex;
 	align-items: center;
@@ -30,6 +35,7 @@
 }
 
 .fa-conversation-toolbar-actions {
+	flex: 0 0 auto;
 	margin-left: 0;
 }
 
@@ -40,6 +46,12 @@
 	min-width: 108px;
 	max-width: min(150px, 16vw);
 	flex: 0 1 140px;
+}
+
+.fa-inline-rename-form.is-conversation {
+	flex: 1 1 360px;
+	min-width: 0;
+	max-width: none;
 }
 
 .fa-conversation-switcher::after {
@@ -60,6 +72,16 @@
 	line-height: 1.2;
 	box-shadow: 0 10px 24px rgba(4, 10, 22, 0.08);
 	cursor: pointer;
+}
+
+.fa-conversation-title-button {
+	min-width: 0;
+	padding: 10px 12px;
+}
+
+.fa-conversation-jump-select {
+	padding: 0;
+	color: transparent;
 }
 
 .fa-conversation-select:hover {

@@ -279,6 +279,7 @@
 :root[data-theme="light"] .fa-chat-toolbar-button,
 :root[data-theme="light"] .fa-conversation-token-trigger,
 :root[data-theme="light"] .fa-conversation-select,
+:root[data-theme="light"] .fa-conversation-title-button,
 :root[data-theme="light"] .fa-composer-model-trigger,
 :root[data-theme="light"] .fa-composer-icon-button.is-clear {
 	background: var(--fa-toolbar-button-bg);

@@ -20,6 +20,11 @@
 	overflow: hidden;
 }
 
+.fa-chat-header-copy:has(.fa-inline-rename-form.is-conversation) {
+	max-width: min(100%, 560px);
+	overflow: visible;
+}
+
 .fa-conversation-toolbar {
 	flex: 0 1 auto;
 	justify-content: flex-start;
@@ -62,6 +67,12 @@
 	max-width: 150px;
 }
 
+.fa-inline-rename-form.is-conversation {
+	flex-basis: 320px;
+	min-width: 0;
+	max-width: none;
+}
+
 .fa-conversation-switcher::after {
 	right: 12px;
 	width: 7px;
@@ -73,6 +84,23 @@
 	padding: 8px 32px 8px 10px;
 	border-radius: 11px;
 	font-size: 12px;
+}
+
+.fa-conversation-title-button {
+	height: 34px;
+	padding: 8px 10px;
+	border-radius: 11px;
+	font-size: 12px;
+}
+
+.fa-conversation-jump {
+	flex-basis: 34px;
+	min-width: 34px;
+}
+
+.fa-conversation-jump-select {
+	padding: 0;
+	color: transparent;
 }
 
 .fa-chat-toolbar-pill,

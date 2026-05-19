@@ -75,9 +75,13 @@ export function ThreadPage() {
 	const {
 		branchActionErrors,
 		branchActionInFlightId,
+		continueCurrentBranchAction,
 		dismissBranchAction,
 		executeBranchAction,
 	} = useThreadBranchActions(threadId, {
+		onContinueCurrentBranch: ({ threadId: targetThreadId, message }) => {
+			return runCarriedMessageInThread(targetThreadId, message);
+		},
 		onRunHandoff: ({ threadId: targetThreadId, message }) => {
 			return runCarriedMessageInThread(targetThreadId, message);
 		},
@@ -189,6 +193,9 @@ export function ThreadPage() {
 			onCompactContext={handleCompactContext}
 			onDecideToolApproval={(interrupt, approved) =>
 				void handleDecideToolApproval(interrupt, approved)
+			}
+			onContinueCurrentBranchAction={(action) =>
+				void continueCurrentBranchAction(action)
 			}
 			onDismissBranchAction={(action) => void dismissBranchAction(action)}
 			onEditMessage={setEditDraft}
