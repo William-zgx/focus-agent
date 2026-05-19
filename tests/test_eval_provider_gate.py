@@ -12,8 +12,7 @@ def test_eval_workflow_missing_provider_key_policy_defaults() -> None:
 
     assert (
         "PROVIDER_EVAL_MISSING_KEY_POLICY: "
-        "${{ vars.PROVIDER_EVAL_MISSING_KEY_POLICY || "
-        "(github.event_name == 'pull_request' && 'skip' || 'fail') }}"
+        "${{ vars.PROVIDER_EVAL_MISSING_KEY_POLICY || 'skip' }}"
     ) in text
 
 
