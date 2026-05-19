@@ -464,6 +464,10 @@ def _memory_relevant_for_query(hit: Any, *, query: str) -> bool:
         return True
 
     text = f"{record.summary} {record.content}".casefold()
+    if _contains_prompt_injection_marker(text):
+        return True
+    if record.kind.value == "user_profile":
+        return not _contains_sensitive_or_handle_preference(text)
     if _contains_sensitive_or_handle_preference(text):
         return _query_mentions_sensitive_or_handle(query)
 
@@ -496,6 +500,19 @@ def _contains_sensitive_or_handle_preference(text: str) -> bool:
             "token",
             "api key",
             "api_key",
+        )
+    )
+
+
+def _contains_prompt_injection_marker(text: str) -> bool:
+    return any(
+        marker in text
+        for marker in (
+            "ignore all previous instructions",
+            "ignore previous instructions",
+            "忽略系统指令",
+            "忽略之前的指令",
+            "忽略所有指令",
         )
     )
 
@@ -534,6 +551,8 @@ def _is_sticky_response_preference(text: str) -> bool:
             "回答语言",
             "语气",
             "tone",
+            "emoji",
+            "表情",
             "简洁",
             "详细",
             "concise",

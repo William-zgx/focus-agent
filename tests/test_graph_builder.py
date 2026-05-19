@@ -1282,6 +1282,47 @@ def test_graph_repairs_once_then_fails_credibly_for_stale_live_web_evidence(monk
     assert result.value["plan_meta"]["live_web_answer_repair_count"] == 1
 
 
+def test_graph_does_not_retry_live_web_search_when_result_has_no_evidence(monkeypatch):
+    web_calls = []
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return json.dumps({"query": query, "error": "timeout"}, ensure_ascii=False)
+
+    _patch_static_chat_model(
+        monkeypatch,
+        content="web_search 超时失败，已去重 fallback，建议稍后重试。",
+    )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(content="搜索一个会超时的网页，两次 fallback 不应重复风暴。")
+            ],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-timeout-live-web"),
+        version="v2",
+    )
+
+    final_answers = [
+        message.content
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None)
+    ]
+    assert len(web_calls) == 1
+    assert "稍后" in final_answers[-1]
+    assert (
+        result.value["answer_verification"]["repair_action_taken"]
+        == "answer_with_uncertainty"
+    )
+    assert "live_web_answer_repair_count" not in result.value["plan_meta"]
+
+
 def test_graph_recovers_pending_web_search_from_confirmation(monkeypatch):
     web_calls = []
 

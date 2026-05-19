@@ -36,7 +36,8 @@ def apply_prompt_budget_guard(
             message
             for index, message in enumerate(guarded)
             if index != main_system_index
-            and (index in mandatory_indices or isinstance(message, SystemMessage))
+            and index in mandatory_indices
+            and not isinstance(message, SystemMessage)
         ]
         other_units = counter.count(other_messages)
         target_units = max(0, budget.prompt_token_limit - other_units)

@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-"${PYTHON:-.venv/bin/python}" -m tests.eval \
+read -r -a PYTHON_CMD <<< "${PYTHON:-.venv/bin/python}"
+
+"${PYTHON_CMD[@]}" -m tests.eval \
   --suite "${FOCUS_AGENT_EVAL_SUITE:-harness_stability}" \
   --concurrency "${FOCUS_AGENT_EVAL_CONCURRENCY:-1}" \
   --baseline "${FOCUS_AGENT_EVAL_BASELINE:-docs/eval/baseline.json}" \

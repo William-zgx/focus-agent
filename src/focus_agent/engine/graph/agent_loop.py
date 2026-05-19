@@ -985,6 +985,12 @@ def _live_web_repair_response(
         return None
     if repair_action not in {"call_missing_tool", "refresh_stale_evidence"}:
         return None
+    if repair_action == "call_missing_tool":
+        state_messages = list(state.get("messages", []) or [])
+        if _latest_turn_has_tool_result(
+            state_messages, "web_search"
+        ) or _latest_turn_has_tool_result(state_messages, "web_fetch"):
+            return None
     preferred_args = tool_intent_plan.get("preferred_first_args")
     search_args = _temporal_live_web_search_args(
         preferred_args if isinstance(preferred_args, Mapping) else None,

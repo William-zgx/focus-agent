@@ -83,9 +83,14 @@ _NO_TOOL_INTENT_MARKERS = (
     "直接回复",
     "直接返回",
     "只回答",
+    "只基于当前问题",
+    "只基于当前消息",
+    "只基于本轮问题",
     "一句话说明",
     "一句话解释",
     "single word",
+    "only answer the current question",
+    "only use the current question",
     "no tools",
     "without tools",
     "do not browse",
@@ -448,6 +453,8 @@ _FRESH_EXTERNAL_INTENT_MARKERS = (
     "hot",
 )
 
+_BARE_CURRENT_MARKERS = {"当前", "current", "now", "现在"}
+
 
 _WEB_LOOKUP_ACTION_MARKERS = (
     "联网",
@@ -590,6 +597,28 @@ _CODE_OR_FILE_REFERENCE_RE = re.compile(
     r"(?i)(?:^|[\s`])(?:[\w.-]+/)+[\w.-]+\.(?:py|ts|tsx|js|jsx|md|toml|json|yaml|yml)\b"
     r"|\b[a-z][a-z0-9]+_[a-z0-9_]+\b"
 )
+_EN_CONTEXTUAL_CURRENT_RE = re.compile(
+    r"(?i)\bcurrent\s+"
+    r"(?:user|turn|request|question|prompt|message|instruction|constraint|answer|task|topic|"
+    r"context|config|branch|conversation)\b"
+)
+_CN_CONTEXTUAL_CURRENT_MARKERS = (
+    "当前用户",
+    "当前轮",
+    "当前请求",
+    "当前问题",
+    "当前提示",
+    "当前消息",
+    "当前指令",
+    "当前约束",
+    "当前回答",
+    "当前任务",
+    "当前主题",
+    "当前上下文",
+    "当前配置",
+    "当前分支",
+    "当前对话",
+)
 
 
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
@@ -614,6 +643,15 @@ def _marker_matches(lowered_text: str, marker: str) -> bool:
 def _matched_markers(text: str, markers: tuple[str, ...]) -> tuple[str, ...]:
     lowered = text.lower()
     return tuple(marker for marker in markers if _marker_matches(lowered, marker))
+
+
+def _contextual_current_hits(text: str) -> tuple[str, ...]:
+    hits: list[str] = []
+    if _EN_CONTEXTUAL_CURRENT_RE.search(text):
+        hits.append("current")
+    if any(marker in text for marker in _CN_CONTEXTUAL_CURRENT_MARKERS):
+        hits.append("当前")
+    return tuple(hits)
 
 
 def _academic_web_lookup_hits(text: str) -> tuple[str, ...]:
@@ -918,6 +956,16 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     live_hits = _matched_markers(normalized, _LIVE_WEB_INTENT_MARKERS)
     fresh_external_hits = _matched_markers(normalized, _FRESH_EXTERNAL_INTENT_MARKERS)
     web_lookup_hits = _matched_markers(normalized, _WEB_LOOKUP_ACTION_MARKERS)
+    if not web_lookup_hits:
+        live_hits, fresh_external_hits = _filter_bare_current_hits(
+            live_hits, fresh_external_hits
+        )
+    contextual_current_hits = set(_contextual_current_hits(normalized))
+    if contextual_current_hits:
+        live_hits = tuple(hit for hit in live_hits if hit not in contextual_current_hits)
+        fresh_external_hits = tuple(
+            hit for hit in fresh_external_hits if hit not in contextual_current_hits
+        )
     academic_lookup_hits = _academic_web_lookup_hits(normalized)
     code_reference_hit = bool(_CODE_OR_FILE_REFERENCE_RE.search(normalized))
     if academic_lookup_hits:
@@ -1071,6 +1119,19 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         confidence=0.55,
         reason_codes=("default_direct_answer",),
     )
+
+
+def _filter_bare_current_hits(
+    live_hits: tuple[str, ...],
+    fresh_external_hits: tuple[str, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    live_non_current = tuple(hit for hit in live_hits if hit not in _BARE_CURRENT_MARKERS)
+    fresh_non_current = tuple(
+        hit for hit in fresh_external_hits if hit not in _BARE_CURRENT_MARKERS
+    )
+    if live_non_current or fresh_non_current:
+        return live_hits, fresh_external_hits
+    return live_non_current, fresh_non_current
 
 
 def _exposure(

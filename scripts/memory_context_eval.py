@@ -12,7 +12,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from scripts.memory_context_helpers import (
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.memory_context_helpers import (  # noqa: E402
     _candidate_age_summary,
     _candidate_aging,
     _coerce_datetime,
@@ -37,7 +41,6 @@ from scripts.memory_context_helpers import (
     _with_privacy_summary,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_quality.jsonl"
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
 DEFAULT_TREND_REPORT_JSON = Path("reports/release-gate/memory-context-trend.json")
