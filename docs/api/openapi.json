@@ -10551,6 +10551,11 @@
       },
       "RuntimeReadinessResponse": {
         "properties": {
+          "active_connections": {
+            "default": 0,
+            "title": "Active Connections",
+            "type": "integer"
+          },
           "app_version": {
             "anyOf": [
               {

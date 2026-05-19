@@ -1,7 +1,12 @@
 """Runtime compatibility exports and shared runtime utilities."""
 
 from .model_router import ModelChoice, ModelRouter, ModelRouterDecision, TaskKind
-from .thread_pool import shared_thread_pool, shutdown_thread_pool, thread_pool_max_workers
+from .thread_pool import (
+    shared_thread_pool,
+    shutdown_thread_pool,
+    thread_pool_max_workers,
+    tool_thread_pool,
+)
 
 
 def __getattr__(name: str):
@@ -23,4 +28,5 @@ __all__ = [
     "shutdown_thread_pool",
     "TaskKind",
     "thread_pool_max_workers",
+    "tool_thread_pool",
 ]

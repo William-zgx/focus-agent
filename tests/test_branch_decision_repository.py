@@ -209,6 +209,6 @@ def test_postgres_branch_decision_update_returns_deduped_existing_event(monkeypa
 
 
 def test_postgres_schema_registers_branch_decision_migration() -> None:
-    assert SCHEMA_VERSION == 17
+    assert SCHEMA_VERSION == 18
     versions = [version for version, _migration in _MIGRATIONS]
-    assert versions[-1] == 17
+    assert versions[-1] == 18

@@ -128,6 +128,7 @@ class RuntimeReadinessResponse(BaseModel):
     app_version: str | None = None
     environment: str | None = None
     deployment: str | None = None
+    active_connections: int = 0
     checks: list[RuntimeComponentStatusResponse] = Field(default_factory=list)
 
 

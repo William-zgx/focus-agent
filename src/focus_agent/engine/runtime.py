@@ -73,6 +73,8 @@ class RuntimePersistence:
     trajectory_recorder: object | None
     artifact_metadata_repository: object | None
     run_journal: object
+    postgres_connection_provider: PostgresConnectionProvider | None = None
+    pool: PostgresConnectionProvider | None = None
 
 
 @dataclass(slots=True)
@@ -238,12 +240,14 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         settings=settings,
         exit_stack=exit_stack,
         memory_embedding_setup=memory_embedding_setup,
+        postgres_connection_provider=postgres_connection_provider,
     )
     memory = _create_memory_components(
         settings=settings,
         store=persistence.store,
         memory_repository=persistence.memory_repository,
         memory_embedding_setup=memory_embedding_setup,
+        coordination_backend=coordination_backend,
     )
     registries = _create_runtime_registries(
         settings=settings,
@@ -309,7 +313,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         durable_background_worker=None,
         multi_agent_maintenance_worker=multi_agent_maintenance_worker,
         coordination_backend=coordination_backend,
-        postgres_connection_provider=postgres_connection_provider,
+        postgres_connection_provider=persistence.postgres_connection_provider,
         _exit_stack=exit_stack,
     )
 
@@ -333,6 +337,7 @@ def _create_runtime_persistence(
     settings: Settings,
     exit_stack: ExitStack,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
+    postgres_connection_provider: PostgresConnectionProvider | None,
 ) -> RuntimePersistence:
     if settings.database_uri:
         logger.info("Runtime persistence backend selected: postgres-primary")
@@ -350,6 +355,7 @@ def _create_runtime_persistence(
             settings=settings,
             exit_stack=exit_stack,
             memory_embedding_setup=memory_embedding_setup,
+            postgres_connection_provider=postgres_connection_provider,
         )
     else:
         logger.info("Runtime persistence backend selected: local-fallback")
@@ -375,6 +381,8 @@ def _create_runtime_persistence(
         trajectory_recorder=trajectory_recorder,
         artifact_metadata_repository=artifact_metadata_repository,
         run_journal=run_journal,
+        postgres_connection_provider=postgres_connection_provider,
+        pool=postgres_connection_provider,
     )
 
 
@@ -383,9 +391,10 @@ def _create_postgres_connection_provider(settings: Settings) -> PostgresConnecti
         return None
     return PostgresConnectionProvider(
         settings.database_uri,
-        pool_enabled=bool(getattr(settings, "postgres_pool_enabled", True)),
-        min_size=int(getattr(settings, "postgres_pool_min_size", 1) or 1),
-        max_size=int(getattr(settings, "postgres_pool_max_size", 4) or 4),
+        pool_enabled=bool(getattr(settings, "db_pool_enabled", True))
+        and bool(getattr(settings, "postgres_pool_enabled", True)),
+        min_size=int(getattr(settings, "postgres_pool_min_size", 2) or 2),
+        max_size=int(getattr(settings, "db_pool_max", 20) or 20),
         slow_query_threshold_ms=float(
             getattr(settings, "postgres_slow_query_threshold_ms", 500.0) or 500.0
         ),
@@ -408,6 +417,7 @@ def _create_memory_components(
     store: object,
     memory_repository: object | None = None,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup | None = None,
+    coordination_backend: CoordinationBackend | None = None,
 ) -> RuntimeMemoryComponents:
     memory_policy = MemoryPolicy()
     memory_embedding_service, memory_embedding_backend_error = _create_memory_embedding_service(
@@ -434,6 +444,7 @@ def _create_memory_components(
         repository=memory_repository,
         policy=memory_policy,
         embedding_service=memory_embedding_service,
+        coordination_backend=coordination_backend,
     )
     memory_extractor = MemoryExtractor(mode=settings.agent_memory_extractor_mode)
     return RuntimeMemoryComponents(
@@ -618,6 +629,7 @@ def _create_postgres_primary_persistence(
     settings: Settings,
     exit_stack: ExitStack,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
+    postgres_connection_provider: PostgresConnectionProvider | None,
 ) -> tuple[
     object,
     object,
@@ -640,7 +652,9 @@ def _create_postgres_primary_persistence(
 
     assert settings.database_uri is not None
 
-    if bool(getattr(settings, "postgres_pool_enabled", True)):
+    if bool(getattr(settings, "db_pool_enabled", True)) and bool(
+        getattr(settings, "postgres_pool_enabled", True)
+    ):
         checkpointer_pool = exit_stack.enter_context(
             _langgraph_postgres_pool(settings=settings, name="focus-agent-checkpointer")
         )
@@ -657,7 +671,11 @@ def _create_postgres_primary_persistence(
     checkpointer.setup()
     store.setup()
 
-    repo = PostgresBranchRepository(settings.database_uri)
+    repo = _create_repository_with_provider(
+        PostgresBranchRepository,
+        settings.database_uri,
+        connection_provider=postgres_connection_provider,
+    )
     _setup_component_if_available(repo)
     user_repository = PostgresUserRepository(settings.database_uri)
     _setup_component_if_available(user_repository)
@@ -665,7 +683,11 @@ def _create_postgres_primary_persistence(
     artifact_metadata_repository = ArtifactMetadataRepository(settings.database_uri)
     _setup_component_if_available(artifact_metadata_repository)
 
-    memory_repository = PostgresMemoryRepository(settings.database_uri)
+    memory_repository = _create_repository_with_provider(
+        PostgresMemoryRepository,
+        settings.database_uri,
+        connection_provider=postgres_connection_provider,
+    )
     _setup_memory_repository_if_available(
         memory_repository,
         settings=settings,
@@ -679,7 +701,11 @@ def _create_postgres_primary_persistence(
     if _trajectory_enabled(settings):
         from ..repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
-        candidate = PostgresTrajectoryRepository(settings.database_uri)
+        candidate = _create_repository_with_provider(
+            PostgresTrajectoryRepository,
+            settings.database_uri,
+            connection_provider=postgres_connection_provider,
+        )
         try:
             _setup_component_if_available(candidate)
         except Exception:  # noqa: BLE001
@@ -703,14 +729,28 @@ def _create_postgres_primary_persistence(
     )
 
 
+def _create_repository_with_provider(
+    repository_cls: object,
+    database_uri: str,
+    *,
+    connection_provider: PostgresConnectionProvider | None,
+) -> object:
+    kwargs: dict[str, object] = {}
+    if connection_provider is not None:
+        signature = inspect.signature(repository_cls)
+        if "connection_provider" in signature.parameters:
+            kwargs["connection_provider"] = connection_provider
+    return repository_cls(database_uri, **kwargs)  # type: ignore[operator]
+
+
 @contextmanager
 def _langgraph_postgres_pool(*, settings: Settings, name: str) -> Iterator[object]:
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
 
     assert settings.database_uri is not None
-    min_size = max(0, int(getattr(settings, "postgres_pool_min_size", 1) or 1))
-    max_size = max(1, int(getattr(settings, "postgres_pool_max_size", 4) or 4))
+    min_size = max(0, int(getattr(settings, "postgres_pool_min_size", 2) or 2))
+    max_size = max(1, int(getattr(settings, "db_pool_max", 20) or 20))
     if min_size > max_size:
         min_size = max_size
     with ConnectionPool(

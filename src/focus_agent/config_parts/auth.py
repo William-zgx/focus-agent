@@ -14,6 +14,7 @@ _INSECURE_AUTH_JWT_SECRETS = {
     "change-me-before-sharing",
     "change-me-in-shared-env",
 }
+_PLACEHOLDER_AUTH_JWT_SECRET_PARTS = ("change", "example", "replace")
 _DEVELOPMENT_ENVIRONMENT_NAMES = {"dev", "development", "local", "test", "testing", "ci"}
 _MINIMUM_AUTH_JWT_SECRET_LENGTH = 32
 
@@ -197,11 +198,11 @@ def _configured_auth_jwt_secrets(settings: Any) -> tuple[tuple[str, str], ...]:
     return tuple(secrets)
 
 
-def _jwt_secret_security_failures(settings: Any) -> list[str]:
-    secrets = _configured_auth_jwt_secrets(settings)
-    if not secrets:
+def _jwt_secret_security_failures_for(
+    secrets: tuple[tuple[str, str], ...], *, require_configured: bool
+) -> list[str]:
+    if not secrets and require_configured:
         return ["AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key"]
-
     failures: list[str] = []
     for label, secret in secrets:
         normalized_secret = _normalize_optional_string(secret)
@@ -210,11 +211,36 @@ def _jwt_secret_security_failures(settings: Any) -> list[str]:
             continue
         if normalized_secret in _INSECURE_AUTH_JWT_SECRETS:
             failures.append(f"{label} must not use a development or demo default")
+        elif any(part in normalized_secret.lower() for part in _PLACEHOLDER_AUTH_JWT_SECRET_PARTS):
+            failures.append(f"{label} must not include change/example/replace placeholders")
         if len(normalized_secret) < _MINIMUM_AUTH_JWT_SECRET_LENGTH:
             failures.append(
                 f"{label} must be at least {_MINIMUM_AUTH_JWT_SECRET_LENGTH} characters"
             )
     return failures
+
+
+def _jwt_secret_security_failures(settings: Any) -> list[str]:
+    return _jwt_secret_security_failures_for(
+        _configured_auth_jwt_secrets(settings),
+        require_configured=True,
+    )
+
+
+def validate_auth_enabled_jwt_secrets(
+    settings: Any, *, require_configured: bool = False
+) -> None:
+    if not getattr(settings, "auth_enabled", False):
+        return
+
+    failures = _jwt_secret_security_failures_for(
+        _configured_auth_jwt_secrets(settings),
+        require_configured=require_configured,
+    )
+    if failures:
+        raise ValueError(
+            "Unsafe JWT secret configuration while AUTH_ENABLED=true: " + "; ".join(failures)
+        )
 
 
 def validate_jwt_secret_for_environment(settings: Any) -> None:

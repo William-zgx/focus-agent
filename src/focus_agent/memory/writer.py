@@ -39,11 +39,13 @@ class MemoryWriter:
         repository=None,
         policy: MemoryPolicy | None = None,
         embedding_service: MemoryEmbeddingService | None = None,
+        coordination_backend: Any | None = None,
     ):
         self.store = store
         self.repository = repository
         self.policy = policy or MemoryPolicy()
         self.embedding_service = embedding_service
+        self.coordination_backend = coordination_backend
 
     def write_records(self, records: list[MemoryWriteRequest]) -> list[str]:
         if self.repository is not None:
@@ -51,6 +53,7 @@ class MemoryWriter:
                 repository=self.repository,
                 policy=self.policy,
                 embedding_service=self.embedding_service,
+                coordination_backend=self.coordination_backend,
             ).write_records(
                 records,
                 actor="memory_writer",
@@ -85,6 +88,7 @@ class MemoryWriter:
                 repository=self.repository,
                 policy=self.policy,
                 embedding_service=self.embedding_service,
+                coordination_backend=self.coordination_backend,
             )
             outcome = service.persist_records(
                 records,

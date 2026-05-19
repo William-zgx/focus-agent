@@ -36,6 +36,15 @@ Keep provider credentials in `.focus_agent/local.env` or another untracked local
 
 To add an OpenAI-compatible chat model for one deployment, add provider/model metadata to `.focus_agent/models.toml` and put only secret endpoint values in `.focus_agent/local.env`. Add entries to `src/focus_agent/defaults/models.toml` only when a model should become built-in for every fresh setup.
 
+If `AUTH_ENABLED=true`, replace the sample `AUTH_JWT_SECRET` before startup.
+The API refuses explicitly configured JWT secrets shorter than 32 characters or
+containing placeholder text such as `change`, `example`, or `replace`, even for
+local runs. Use a generated local secret, for example:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
 ## 2. Start The API
 
 ```bash
@@ -126,7 +135,25 @@ Production environments should usually preinstall the Postgres `vector` extensio
 AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
 ```
 
-## 5. Runtime Coordination
+## 5. Local Checkpoint Signatures
+
+When the local pickle-backed fallback is used, checkpoint and store files are
+loaded only if they are owned by the current user. Signature verification is on
+by default: set `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` to a stable local secret so
+new pickle files get a matching `<file>.sig` HMAC signature and can be restored
+on the next startup.
+
+For a short rollback or migration window with existing unsigned local pickle
+files, set:
+
+```env
+FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=false
+```
+
+Remove that flag after the service rewrites the checkpoint files with
+`FOCUS_AGENT_CHECKPOINT_HMAC_KEY` configured.
+
+## 6. Runtime Coordination
 
 Default local coordination is local-first:
 
@@ -146,7 +173,7 @@ DATABASE_URI=postgresql://user:pass@host:5432/focus_agent
 
 Durable jobs use claim tokens and claim heartbeats; thread turns use per-thread leases. Post-turn branch title/metadata refresh is scheduled after the chat turn lease is released, so immediate background workers should not contend with the active turn lock.
 
-## 6. Branch Recommendations
+## 7. Branch Recommendations
 
 Branch decision automation is disabled by default. To collect recommendation
 evidence without changing chat behavior:
@@ -171,7 +198,7 @@ AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE=0.72
 card in the chat transcript. See [Branch Decisions](branch-decisions.md) for the
 full config, API, SDK, and validation contract.
 
-## 7. Frontend Development
+## 8. Frontend Development
 
 To develop the frontend against the local API:
 

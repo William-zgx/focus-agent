@@ -62,3 +62,17 @@ Before public release, maintainers should review:
 - dependency update posture
 - artifact writing paths and filesystem assumptions
 - any examples that could be mistaken for production-ready security defaults
+
+Runtime startup now fails fast when `AUTH_ENABLED=true` and an explicitly
+configured `AUTH_JWT_SECRET` or active JWT key is shorter than 32 characters or
+contains placeholder text such as `change`, `example`, or `replace`. Production
+and other non-development environments still require a configured signing key,
+issuer, enabled auth, disabled demo tokens, and rate limiting.
+
+Local pickle-backed checkpoints are only loaded when the checkpoint file is
+owned by the current user. By default, loads also require a matching
+`<checkpoint>.sig` HMAC-SHA256 signature generated with
+`FOCUS_AGENT_CHECKPOINT_HMAC_KEY`. To read legacy unsigned local checkpoints
+during rollback or migration, set `FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=false`
+temporarily, then re-enable verification after the checkpoint has been rewritten
+with a signature.

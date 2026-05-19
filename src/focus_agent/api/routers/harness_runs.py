@@ -39,8 +39,8 @@ from focus_agent.observability.tracing import build_invoke_config, build_trace_c
 from focus_agent.observability.trajectory import utc_now
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
-from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.services.branches.actions import branch_handoff_message_from_text
+from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.transport.stream_events import (
     STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,

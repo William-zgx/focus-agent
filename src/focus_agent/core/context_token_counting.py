@@ -134,23 +134,35 @@ def estimate_text_token_count(
     )
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=32)
+def _tiktoken_encoding_for_model(model: str):
+    tiktoken = importlib.import_module("tiktoken")
+    return tiktoken.encoding_for_model(model)
+
+
+@lru_cache(maxsize=32)
+def _tiktoken_get_encoding(encoding_name: str):
+    tiktoken = importlib.import_module("tiktoken")
+    return tiktoken.get_encoding(encoding_name)
+
+
+@lru_cache(maxsize=32)
 def _resolve_tokenizer_detail(tokenizer_id: str | None):
     try:
-        tiktoken = importlib.import_module("tiktoken")
+        importlib.import_module("tiktoken")
     except Exception:  # noqa: BLE001
         return None, None
 
     normalized = str(tokenizer_id or "").strip()
     try:
         if normalized:
-            return tiktoken.encoding_for_model(normalized), normalized
+            return _tiktoken_encoding_for_model(normalized), normalized
     except Exception:  # noqa: BLE001
         pass
 
     for fallback in (DEFAULT_TOKENIZER_ID, "o200k_base"):
         try:
-            return tiktoken.get_encoding(fallback), fallback
+            return _tiktoken_get_encoding(fallback), fallback
         except Exception:  # noqa: BLE001
             continue
     return None, None

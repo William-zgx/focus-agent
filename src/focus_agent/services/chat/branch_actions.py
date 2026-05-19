@@ -8,8 +8,8 @@ from langchain.messages import AIMessage, HumanMessage
 from ...core.repo_call import has_repo_method
 from ...observability.tracing import build_trace_correlation
 from ..branch_actions import (
-    branch_handoff_message_from_text,
     branch_action_audit_event,
+    branch_handoff_message_from_text,
     build_branch_action_proposal,
     dismissal_message,
     execution_message,

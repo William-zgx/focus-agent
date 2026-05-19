@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import MutableSequence
 
 import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ..core.branching import (
     BranchRecord,
@@ -16,28 +17,33 @@ from ..core.branching import (
 )
 from ..core.types import ConversationRecord
 from ..security.ownership import OwnershipAuditEvent, allow_ownership, deny_ownership
+from ._postgres_base import PostgresMixin
 from .branch_repository import BranchRepository
 from .postgres_branch_mappers import PostgresBranchMapperMixin, branch_row_params
 from .postgres_branch_mappers import branch_params as _branch_params
 from .postgres_schema import ensure_app_postgres_schema_on_connection
 
+_PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
 
-class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
-    def __init__(self, database_uri: str):
+
+class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchRepository):
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ):
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
 
     def setup(self) -> None:
-        with psycopg.connect(self.database_uri) as conn:
+        with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
 
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
-
     def _backfill_conversations(self, *, owner_user_id: str) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT ta.root_thread_id
                     FROM focus_thread_access ta
                     LEFT JOIN focus_conversations c ON c.root_thread_id = ta.root_thread_id
@@ -46,13 +52,13 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                       AND c.root_thread_id IS NULL
                     ORDER BY ta.created_at DESC, ta.root_thread_id DESC
                     """,
-                    (owner_user_id,),
-                )
-                rows = cur.fetchall()
-                for row in rows:
-                    root_thread_id = str(row["root_thread_id"])
-                    cur.execute(
-                        """
+                (owner_user_id,),
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                root_thread_id = str(row["root_thread_id"])
+                cur.execute(
+                    """
                         INSERT INTO focus_conversations (
                             root_thread_id,
                             owner_user_id,
@@ -64,19 +70,18 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                         VALUES (%s, %s, %s, %s, false, NULL)
                         ON CONFLICT (root_thread_id) DO NOTHING
                         """,
-                        (
-                            root_thread_id,
-                            owner_user_id,
-                            self._default_conversation_title(root_thread_id),
-                            True,
-                        ),
-                    )
+                    (
+                        root_thread_id,
+                        owner_user_id,
+                        self._default_conversation_title(root_thread_id),
+                        True,
+                    ),
+                )
 
     def create(self, record: BranchRecord) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_branches (
                         branch_id, root_thread_id, parent_thread_id, child_thread_id, return_thread_id,
                         owner_user_id, branch_name, branch_role, branch_depth, branch_status,
@@ -106,130 +111,120 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                         merge_decision = EXCLUDED.merge_decision,
                         updated_at = now()
                     """,
-                    _branch_params(record),
-                )
+                _branch_params(record),
+            )
 
     def get(self, branch_id: str) -> BranchRecord:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM focus_branches WHERE branch_id = %s", (branch_id,))
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute("SELECT * FROM focus_branches WHERE branch_id = %s", (branch_id,))
+            row = cur.fetchone()
         if row is None:
             raise KeyError(f"Unknown branch_id: {branch_id}")
         return self._row_to_record(row)
 
     def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM focus_branches WHERE child_thread_id = %s", (child_thread_id,)
-                )
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT * FROM focus_branches WHERE child_thread_id = %s", (child_thread_id,)
+            )
+            row = cur.fetchone()
         if row is None:
             raise KeyError(f"Unknown child_thread_id: {child_thread_id}")
         return self._row_to_record(row)
 
     def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT * FROM focus_branches
                     WHERE root_thread_id = %s
                     ORDER BY branch_depth, branch_name, child_thread_id
                     """,
-                    (root_thread_id,),
-                )
-                rows = cur.fetchall()
+                (root_thread_id,),
+            )
+            rows = cur.fetchall()
         return [self._row_to_record(row) for row in rows]
 
     def list_by_parent_thread_id(self, parent_thread_id: str) -> list[BranchRecord]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT * FROM focus_branches
                     WHERE parent_thread_id = %s
                     ORDER BY branch_name, child_thread_id
                     """,
-                    (parent_thread_id,),
-                )
-                rows = cur.fetchall()
+                (parent_thread_id,),
+            )
+            rows = cur.fetchall()
         return [self._row_to_record(row) for row in rows]
 
     def save_merge_proposal(self, branch_id: str, proposal: MergeProposal) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_branches
                     SET merge_proposal = %s, updated_at = now()
                     WHERE branch_id = %s
                     """,
-                    (Jsonb(proposal.model_dump(mode="json")), branch_id),
-                )
+                (Jsonb(proposal.model_dump(mode="json")), branch_id),
+            )
 
     def save_merge_decision(self, branch_id: str, decision: MergeDecision) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_branches
                     SET merge_decision = %s, updated_at = now()
                     WHERE branch_id = %s
                     """,
-                    (Jsonb(decision.model_dump(mode="json")), branch_id),
-                )
+                (Jsonb(decision.model_dump(mode="json")), branch_id),
+            )
 
     def update_status(self, branch_id: str, status: BranchStatus) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_branches
                     SET branch_status = %s, updated_at = now()
                     WHERE branch_id = %s
                     """,
-                    (status.value, branch_id),
-                )
+                (status.value, branch_id),
+            )
 
     def update_archive_state(self, branch_id: str, *, is_archived: bool) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_branches
                     SET is_archived = %s,
                         archived_at = CASE WHEN %s THEN now() ELSE NULL END,
                         updated_at = now()
                     WHERE branch_id = %s
                     """,
-                    (is_archived, is_archived, branch_id),
-                )
+                (is_archived, is_archived, branch_id),
+            )
 
     def update_branch_name(self, branch_id: str, branch_name: str) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_branches
                     SET branch_name = %s, updated_at = now()
                     WHERE branch_id = %s
                     """,
-                    (branch_name, branch_id),
-                )
+                (branch_name, branch_id),
+            )
 
     def update_branch_role(self, branch_id: str, branch_role: BranchRole) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_branches
                     SET branch_role = %s, updated_at = now()
                     WHERE branch_id = %s
                     """,
-                    (branch_role.value, branch_id),
-                )
+                (branch_role.value, branch_id),
+            )
 
     def ensure_thread_owner(
         self,
@@ -241,31 +236,30 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
         request_id: str | None = None,
     ) -> None:
         events = audit_events if audit_events is not None else []
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_thread_access (thread_id, root_thread_id, owner_user_id)
                     VALUES (%s, %s, %s)
                     ON CONFLICT (thread_id) DO NOTHING
                     """,
-                    (thread_id, root_thread_id, owner_user_id),
+                (thread_id, root_thread_id, owner_user_id),
+            )
+            cur.execute(
+                "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
+                (thread_id,),
+            )
+            existing = cur.fetchone()
+            if existing is None or str(existing["owner_user_id"]) != owner_user_id:
+                deny_ownership(
+                    events,
+                    principal=owner_user_id,
+                    resource_type="thread",
+                    resource_id=thread_id,
+                    action="access",
+                    reason="owner_mismatch",
+                    request_id=request_id,
                 )
-                cur.execute(
-                    "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
-                    (thread_id,),
-                )
-                existing = cur.fetchone()
-                if existing is None or str(existing["owner_user_id"]) != owner_user_id:
-                    deny_ownership(
-                        events,
-                        principal=owner_user_id,
-                        resource_type="thread",
-                        resource_id=thread_id,
-                        action="access",
-                        reason="owner_mismatch",
-                        request_id=request_id,
-                    )
         allow_ownership(
             events,
             principal=owner_user_id,
@@ -285,13 +279,12 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
         request_id: str | None = None,
     ) -> None:
         events = audit_events if audit_events is not None else []
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
-                    (thread_id,),
-                )
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
+                (thread_id,),
+            )
+            row = cur.fetchone()
         if row is None:
             deny_ownership(
                 events,
@@ -324,34 +317,32 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
         )
 
     def get_thread_owner(self, *, thread_id: str) -> str | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
-                    (thread_id,),
-                )
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT owner_user_id FROM focus_thread_access WHERE thread_id = %s",
+                (thread_id,),
+            )
+            row = cur.fetchone()
         return None if row is None else str(row["owner_user_id"])
 
     def resolve_thread_ref(
         self, thread_id: str, *, owner_user_id: str | None = None
     ) -> ThreadResolution:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM focus_branches WHERE child_thread_id = %s",
-                    (thread_id,),
-                )
-                branch_row = cur.fetchone()
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT * FROM focus_branches WHERE child_thread_id = %s",
+                (thread_id,),
+            )
+            branch_row = cur.fetchone()
+            cur.execute(
+                """
                     SELECT root_thread_id, owner_user_id
                     FROM focus_thread_access
                     WHERE thread_id = %s
                     """,
-                    (thread_id,),
-                )
-                access_row = cur.fetchone()
+                (thread_id,),
+            )
+            access_row = cur.fetchone()
         if branch_row is not None:
             record = self._row_to_record(branch_row)
             resolved_owner = (
@@ -377,10 +368,9 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
         )
 
     def create_conversation(self, record: ConversationRecord) -> ConversationRecord:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_conversations (
                         root_thread_id,
                         owner_user_id,
@@ -398,42 +388,40 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                         archived_at = EXCLUDED.archived_at,
                         updated_at = now()
                     """,
-                    (
-                        record.root_thread_id,
-                        record.owner_user_id,
-                        record.title,
-                        record.title_pending_ai,
-                        record.is_archived,
-                        record.archived_at,
-                    ),
-                )
+                (
+                    record.root_thread_id,
+                    record.owner_user_id,
+                    record.title,
+                    record.title_pending_ai,
+                    record.is_archived,
+                    record.archived_at,
+                ),
+            )
         return self.get_conversation(record.root_thread_id)
 
     def get_conversation(self, root_thread_id: str) -> ConversationRecord:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM focus_conversations WHERE root_thread_id = %s",
-                    (root_thread_id,),
-                )
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT * FROM focus_conversations WHERE root_thread_id = %s",
+                (root_thread_id,),
+            )
+            row = cur.fetchone()
         if row is None:
             raise KeyError(f"Unknown root_thread_id: {root_thread_id}")
         return self._row_to_conversation(row)
 
     def list_conversations(self, *, owner_user_id: str) -> list[ConversationRecord]:
         self._backfill_conversations(owner_user_id=owner_user_id)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT * FROM focus_conversations
                     WHERE owner_user_id = %s
                     ORDER BY is_archived ASC, created_at DESC, root_thread_id DESC
                     """,
-                    (owner_user_id,),
-                )
-                rows = cur.fetchall()
+                (owner_user_id,),
+            )
+            rows = cur.fetchall()
         return [self._row_to_conversation(row) for row in rows]
 
     def update_conversation_title(
@@ -445,37 +433,36 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
         title_pending_ai: bool | None = None,
     ) -> ConversationRecord:
         self._backfill_conversations(owner_user_id=owner_user_id)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT owner_user_id FROM focus_conversations WHERE root_thread_id = %s",
-                    (root_thread_id,),
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT owner_user_id FROM focus_conversations WHERE root_thread_id = %s",
+                (root_thread_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(f"Unknown root_thread_id: {root_thread_id}")
+            if str(row["owner_user_id"]) != owner_user_id:
+                raise PermissionError(
+                    f"User {owner_user_id} cannot update conversation {root_thread_id}."
                 )
-                row = cur.fetchone()
-                if row is None:
-                    raise KeyError(f"Unknown root_thread_id: {root_thread_id}")
-                if str(row["owner_user_id"]) != owner_user_id:
-                    raise PermissionError(
-                        f"User {owner_user_id} cannot update conversation {root_thread_id}."
-                    )
-                if title_pending_ai is None:
-                    cur.execute(
-                        """
+            if title_pending_ai is None:
+                cur.execute(
+                    """
                         UPDATE focus_conversations
                         SET title = %s, updated_at = now()
                         WHERE root_thread_id = %s
                         """,
-                        (title, root_thread_id),
-                    )
-                else:
-                    cur.execute(
-                        """
+                    (title, root_thread_id),
+                )
+            else:
+                cur.execute(
+                    """
                         UPDATE focus_conversations
                         SET title = %s, title_pending_ai = %s, updated_at = now()
                         WHERE root_thread_id = %s
                         """,
-                        (title, title_pending_ai, root_thread_id),
-                    )
+                    (title, title_pending_ai, root_thread_id),
+                )
         return self.get_conversation(root_thread_id)
 
     def update_conversation_archive_state(
@@ -486,39 +473,37 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
         is_archived: bool,
     ) -> ConversationRecord:
         self._backfill_conversations(owner_user_id=owner_user_id)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT owner_user_id FROM focus_conversations WHERE root_thread_id = %s",
-                    (root_thread_id,),
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT owner_user_id FROM focus_conversations WHERE root_thread_id = %s",
+                (root_thread_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(f"Unknown root_thread_id: {root_thread_id}")
+            if str(row["owner_user_id"]) != owner_user_id:
+                raise PermissionError(
+                    f"User {owner_user_id} cannot update conversation {root_thread_id}."
                 )
-                row = cur.fetchone()
-                if row is None:
-                    raise KeyError(f"Unknown root_thread_id: {root_thread_id}")
-                if str(row["owner_user_id"]) != owner_user_id:
-                    raise PermissionError(
-                        f"User {owner_user_id} cannot update conversation {root_thread_id}."
-                    )
-                cur.execute(
-                    """
+            cur.execute(
+                """
                     UPDATE focus_conversations
                     SET is_archived = %s,
                         archived_at = CASE WHEN %s THEN now() ELSE NULL END,
                         updated_at = now()
                     WHERE root_thread_id = %s
                     """,
-                    (is_archived, is_archived, root_thread_id),
-                )
+                (is_archived, is_archived, root_thread_id),
+            )
         return self.get_conversation(root_thread_id)
 
     def upsert_thread_access_rows(self, rows: list[dict[str, object]]) -> int:
         if not rows:
             return 0
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                for row in rows:
-                    cur.execute(
-                        """
+        with self._cursor(dict_row=True) as cur:
+            for row in rows:
+                cur.execute(
+                    """
                         INSERT INTO focus_thread_access (
                             thread_id,
                             root_thread_id,
@@ -530,23 +515,22 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                             root_thread_id = EXCLUDED.root_thread_id,
                             owner_user_id = EXCLUDED.owner_user_id
                         """,
-                        (
-                            str(row["thread_id"]),
-                            str(row["root_thread_id"]),
-                            str(row["owner_user_id"]),
-                            row.get("created_at"),
-                        ),
-                    )
+                    (
+                        str(row["thread_id"]),
+                        str(row["root_thread_id"]),
+                        str(row["owner_user_id"]),
+                        row.get("created_at"),
+                    ),
+                )
         return len(rows)
 
     def upsert_conversation_rows(self, rows: list[dict[str, object]]) -> int:
         if not rows:
             return 0
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                for row in rows:
-                    cur.execute(
-                        """
+        with self._cursor(dict_row=True) as cur:
+            for row in rows:
+                cur.execute(
+                    """
                         INSERT INTO focus_conversations (
                             root_thread_id,
                             owner_user_id,
@@ -566,28 +550,27 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                             archived_at = EXCLUDED.archived_at,
                             updated_at = COALESCE(EXCLUDED.updated_at, now())
                         """,
-                        (
-                            str(row["root_thread_id"]),
-                            str(row["owner_user_id"]),
-                            str(row["title"]),
-                            bool(row.get("title_pending_ai", False)),
-                            bool(row.get("is_archived", False)),
-                            row.get("archived_at"),
-                            row.get("created_at"),
-                            row.get("updated_at"),
-                        ),
-                    )
+                    (
+                        str(row["root_thread_id"]),
+                        str(row["owner_user_id"]),
+                        str(row["title"]),
+                        bool(row.get("title_pending_ai", False)),
+                        bool(row.get("is_archived", False)),
+                        row.get("archived_at"),
+                        row.get("created_at"),
+                        row.get("updated_at"),
+                    ),
+                )
         return len(rows)
 
     def upsert_branch_rows(self, rows: list[dict[str, object]]) -> int:
         if not rows:
             return 0
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                for row in rows:
-                    payload = branch_row_params(row)
-                    cur.execute(
-                        """
+        with self._cursor(dict_row=True) as cur:
+            for row in rows:
+                payload = branch_row_params(row)
+                cur.execute(
+                    """
                         INSERT INTO focus_branches (
                             branch_id, root_thread_id, parent_thread_id, child_thread_id, return_thread_id,
                             owner_user_id, branch_name, branch_role, branch_depth, branch_status,
@@ -617,8 +600,8 @@ class PostgresBranchRepository(PostgresBranchMapperMixin, BranchRepository):
                             merge_decision = EXCLUDED.merge_decision,
                             updated_at = now()
                         """,
-                        payload,
-                    )
+                    payload,
+                )
         return len(rows)
 
 

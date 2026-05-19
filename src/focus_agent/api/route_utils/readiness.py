@@ -377,12 +377,23 @@ def _build_runtime_readiness(runtime: Any) -> RuntimeReadinessResponse:
                 detail="shutdown in progress; refusing new traffic",
             )
         )
+    postgres_metrics = _snapshot_metrics(
+        getattr(runtime, "postgres_connection_provider", None),
+        "postgres_metrics_error",
+    )
+    active_connections = int(
+        postgres_metrics.get("active_connections")
+        or postgres_metrics.get("postgres_active_connections")
+        or postgres_metrics.get("postgres_connection_in_use")
+        or 0
+    )
     return RuntimeReadinessResponse(
         status="ok" if ready else "degraded",
         ready=ready,
         app_version=getattr(settings, "app_version", None),
         environment=getattr(settings, "app_environment", None),
         deployment=getattr(settings, "deployment_name", None),
+        active_connections=active_connections,
         checks=checks,
     )
 

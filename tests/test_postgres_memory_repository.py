@@ -738,7 +738,7 @@ def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 17
+    assert SCHEMA_VERSION == 18
     assert len(executed) == 1
     sql = " ".join(executed[0].split())
     assert sql.startswith("UPDATE focus_memories SET")
@@ -749,6 +749,20 @@ def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
     assert "data_json->>'content' IS DISTINCT FROM ''" in sql
     assert "data_json->>'summary' IS DISTINCT FROM '[forgotten]'" in sql
     assert "OR deleted_at IS NULL" in sql
+
+
+def test_postgres_memory_embedding_status_migration_shape():
+    executed: list[str] = []
+    migration = dict(_MIGRATIONS)[18]
+
+    migration(lambda sql, params=None: executed.append(sql))
+
+    assert len(executed) == 4
+    combined = " ".join(" ".join(sql.split()) for sql in executed)
+    assert "ADD COLUMN IF NOT EXISTS embedding_status" in combined
+    assert "DEFAULT 'pending'" in combined
+    assert "data_json->>'embedding_status'" in combined
+    assert "idx_focus_memories_embedding_status_updated" in combined
 
 
 def test_postgres_memory_embeddings_migration_uses_optional_pgvector_storage():

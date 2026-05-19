@@ -78,6 +78,8 @@ class PostgresConnectionProvider:
                 "postgres_connection_opened_total": self._opened_total,
                 "postgres_connection_returned_total": self._returned_total,
                 "postgres_connection_in_use": self._in_use,
+                "postgres_active_connections": self._in_use,
+                "active_connections": self._in_use,
                 "postgres_query_total": self._query_total,
                 "postgres_query_error_total": self._query_error_total,
                 "postgres_slow_query_total": self._slow_query_total,

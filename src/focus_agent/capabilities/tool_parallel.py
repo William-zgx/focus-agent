@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, wait
 from contextvars import copy_context
 
-from focus_agent.runtime.thread_pool import shared_thread_pool
+from focus_agent.runtime.thread_pool import shared_thread_pool, tool_thread_pool
 
 from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, cache_key
@@ -21,6 +22,7 @@ ExecuteSingle = Callable[
     [ToolExecutionInput, ContextBudget, ToolResultCacheStore | None, str | None, int | None],
     ToolExecutionResult,
 ]
+_TOOL_POOL_ISOLATED_ENV = "FOCUS_AGENT_TOOL_POOL_ISOLATED"
 
 
 def classify_tool_parallel_execution(runtime: ToolRuntimeMeta) -> ToolParallelClassification:
@@ -83,7 +85,7 @@ def run_parallel_batch(
             representative_by_cache_key[item_cache_key] = item
 
     workers = max(1, min(len(unique_calls), max_parallel_workers))
-    pool = shared_thread_pool()
+    pool = tool_thread_pool() if _tool_pool_isolated() else shared_thread_pool()
     pending = {}
     remaining = iter(unique_calls)
 
@@ -138,3 +140,10 @@ def run_parallel_batch(
                 )
             )
     return results
+
+
+def _tool_pool_isolated() -> bool:
+    value = os.environ.get(_TOOL_POOL_ISOLATED_ENV)
+    if value is None:
+        return True
+    return value.strip().lower() in {"1", "true", "yes", "on"}

@@ -3,15 +3,79 @@
 Backward compatibility is preserved by legacy shims under focus_agent.services.agent_team_*.py.
 """
 
-from .planning import *
-from .planning import __all__ as _planning_all
-from .run import *
-from .run import __all__ as _run_all
-from .service import *
-from .service import __all__ as _service_all
+from .planning import (
+    AgentTeamPlanDraft,
+    AgentTeamPlanningMixin,
+    AgentTeamPlanningService,
+    AgentTeamPlanOptions,
+    AgentTeamTaskDraft,
+    MissionDeliverable,
+    MissionProfile,
+    _adaptive_task_specs,
+    _dedupe_values,
+    _fallback_task_specs,
+    _merge_context_refs,
+    _skill_plan_for_session,
+    _task_draft_from_spec,
+    _validate_task_draft,
+    classify_mission,
+    compile_mission_dag,
+    contains_cjk,
+    focused_goal,
+    infer_focus,
+    is_coarse_plan,
+    max_tasks_for_options,
+    plan_deliverables,
+)
+from .run import AgentTeamMergeMixin, AgentTeamRunMixin
+from .service import (
+    _DEFAULT_DISPATCH_TASKS,
+    _ROLE_TO_BRANCH_ROLE,
+    AgentTeamService,
+    AgentTeamWorkspaceService,
+    _dedupe,
+    _now,
+)
 
 __all__ = [
-    *_service_all,
-    *_run_all,
-    *_planning_all,
+    "AgentTeamService",
+    "AgentTeamWorkspaceService",
+    "_DEFAULT_DISPATCH_TASKS",
+    "_ROLE_TO_BRANCH_ROLE",
+    "_dedupe",
+    "_now",
+    "AgentTeamMergeMixin",
+    "AgentTeamRunMixin",
+    "AgentTeamPlanDraft",
+    "AgentTeamPlanOptions",
+    "AgentTeamPlanningService",
+    "AgentTeamTaskDraft",
+    "MissionDeliverable",
+    "MissionProfile",
+    "classify_mission",
+    "compile_mission_dag",
+    "plan_deliverables",
+    "_adaptive_task_specs",
+    "_fallback_task_specs",
+    "MissionDeliverable",
+    "MissionProfile",
+    "classify_mission",
+    "compile_mission_dag",
+    "plan_deliverables",
+    "AgentTeamPlanDraft",
+    "AgentTeamPlanOptions",
+    "AgentTeamTaskDraft",
+    "MissionDeliverable",
+    "MissionProfile",
+    "_dedupe_values",
+    "_merge_context_refs",
+    "_skill_plan_for_session",
+    "_task_draft_from_spec",
+    "contains_cjk",
+    "focused_goal",
+    "infer_focus",
+    "is_coarse_plan",
+    "max_tasks_for_options",
+    "AgentTeamPlanningMixin",
+    "_validate_task_draft",
 ]

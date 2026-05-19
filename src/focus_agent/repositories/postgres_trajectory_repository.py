@@ -6,9 +6,11 @@ from datetime import datetime
 from typing import Any
 
 import psycopg
-from psycopg.rows import dict_row
+
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ..observability.trajectory import TurnTrajectoryRecord
+from ._postgres_base import PostgresMixin
 from .postgres_trajectory_mappers import PostgresTrajectoryMapperMixin
 from .postgres_trajectory_query import PostgresTrajectoryQueryMixin
 from .postgres_trajectory_schema import PostgresTrajectorySchemaMixin
@@ -44,23 +46,29 @@ class TrajectoryTurnQuery:
     newest_first: bool = True
 
 
+_PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
+
+
 class PostgresTrajectoryRepository(
+    PostgresMixin,
     PostgresTrajectorySchemaMixin,
     PostgresTrajectoryStatsMixin,
     PostgresTrajectoryQueryMixin,
     PostgresTrajectoryMapperMixin,
 ):
-    def __init__(self, database_uri: str):
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ):
         self.database_uri = database_uri
-
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
+        self.connection_provider = connection_provider
 
     def record_turn(self, record: TurnTrajectoryRecord) -> None:
-        with psycopg.connect(self.database_uri) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_trajectory_turns (
                         id,
                         schema_version,
@@ -126,11 +134,11 @@ class PostgresTrajectoryRepository(
                         %(finished_at)s
                     )
                     """,
-                    self._turn_params(record),
-                )
-                for index, step in enumerate(record.trajectory):
-                    cur.execute(
-                        """
+                self._turn_params(record),
+            )
+            for index, step in enumerate(record.trajectory):
+                cur.execute(
+                    """
                         INSERT INTO focus_trajectory_steps (
                             turn_id,
                             step_index,
@@ -162,8 +170,8 @@ class PostgresTrajectoryRepository(
                             %(runtime)s
                         )
                         """,
-                        self._step_params(record.id, index, step),
-                    )
+                    self._step_params(record.id, index, step),
+                )
 
     def list_turns(
         self,
@@ -175,20 +183,18 @@ class PostgresTrajectoryRepository(
     ) -> list[dict[str, Any]]:
         normalized = self._normalize_query(query, filters=filters, limit=limit, offset=offset)
         sql, params = self._build_turn_select_sql(query=normalized, select_clause="SELECT t.*")
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
         return [self._row_to_turn_summary(row) for row in rows]
 
     def get_turn(self, turn_id: str) -> TurnTrajectoryRecord | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT t.* FROM focus_trajectory_turns t WHERE t.id = %(turn_id)s",
-                    {"turn_id": turn_id},
-                )
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT t.* FROM focus_trajectory_turns t WHERE t.id = %(turn_id)s",
+                {"turn_id": turn_id},
+            )
+            row = cur.fetchone()
         if row is None:
             return None
 
@@ -200,18 +206,17 @@ class PostgresTrajectoryRepository(
         if not normalized_turn_ids:
             return {}
 
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT s.*
                     FROM focus_trajectory_steps s
                     WHERE s.turn_id = ANY(%(turn_ids)s)
                     ORDER BY s.turn_id, s.step_index
                     """,
-                    {"turn_ids": normalized_turn_ids},
-                )
-                rows = cur.fetchall()
+                {"turn_ids": normalized_turn_ids},
+            )
+            rows = cur.fetchall()
 
         steps_by_turn_id: dict[str, list[dict[str, Any]]] = {
             turn_id: [] for turn_id in normalized_turn_ids
@@ -230,10 +235,9 @@ class PostgresTrajectoryRepository(
     ) -> list[dict[str, Any]]:
         normalized = self._normalize_query(query, filters=filters, limit=limit, offset=offset)
         sql, params = self._build_turn_select_sql(query=normalized, select_clause="SELECT t.*")
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
         turn_ids = [str(row["id"]) for row in rows]
         steps_by_turn_id = self.list_steps_by_turn_ids(turn_ids)

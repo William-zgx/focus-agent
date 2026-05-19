@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -78,7 +79,7 @@ class MemoryRecord(MemoryModel):
     promoted_to_main: bool = False
     fingerprint: str | None = None
     semantic_key: str | None = None
-    embedding_status: str | None = None
+    embedding_status: Literal["pending", "ready", "failed"] = "pending"
     embedding_model_id: str | None = None
     embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=_utcnow)

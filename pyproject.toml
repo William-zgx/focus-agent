@@ -64,7 +64,7 @@ target-version = "py311"
 # repository-wide cleanup. Import sorting (I), line-length (E501), warnings (W),
 # modernization (UP), naming (N), annotations (ANN), and complexity (C90/PLR)
 # can be enabled after the existing backlog is fixed in smaller batches.
-select = ["E4", "E7", "E9", "F", "B"]
+select = ["E4", "E7", "E9", "F", "B", "I"]
 ignore = [
   # Existing code intentionally strips a small set of punctuation characters.
   "B005",
@@ -79,16 +79,13 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "src/focus_agent/delegation/__init__.py" = ["F403"]
 "src/focus_agent/services/agent_team.py" = ["F403"]
-"src/focus_agent/services/agent_team/__init__.py" = ["F403"]
 "src/focus_agent/services/agent_team/run.py" = ["F403"]
-"src/focus_agent/services/branch_actions.py" = ["F403", "I001"]
 "src/focus_agent/services/branch_lifecycle.py" = ["F403"]
 "src/focus_agent/services/branch_memory_promotion.py" = ["F403"]
 "src/focus_agent/services/branch_merge.py" = ["F403"]
 "src/focus_agent/services/branch_naming_policy.py" = ["F403"]
 "src/focus_agent/services/branch_tree.py" = ["F403"]
 "src/focus_agent/services/branches.py" = ["F403"]
-"src/focus_agent/services/branches/__init__.py" = ["F403"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import psycopg
-
 
 class PostgresTrajectorySchemaMixin:
     database_uri: str
 
     def setup(self) -> None:
-        with psycopg.connect(self.database_uri) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor() as cur:
+            cur.execute(
+                """
                     CREATE TABLE IF NOT EXISTS focus_trajectory_turns (
                         id UUID PRIMARY KEY,
                         schema_version INT NOT NULL DEFAULT 1,
@@ -45,23 +42,23 @@ class PostgresTrajectorySchemaMixin:
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                     )
                     """
-                )
-                for column_name, column_type in (
-                    ("request_id", "TEXT"),
-                    ("trace_id", "TEXT"),
-                    ("root_span_id", "TEXT"),
-                    ("environment", "TEXT"),
-                    ("deployment", "TEXT"),
-                    ("app_version", "TEXT"),
-                ):
-                    cur.execute(
-                        f"""
+            )
+            for column_name, column_type in (
+                ("request_id", "TEXT"),
+                ("trace_id", "TEXT"),
+                ("root_span_id", "TEXT"),
+                ("environment", "TEXT"),
+                ("deployment", "TEXT"),
+                ("app_version", "TEXT"),
+            ):
+                cur.execute(
+                    f"""
                         ALTER TABLE focus_trajectory_turns
                         ADD COLUMN IF NOT EXISTS {column_name} {column_type}
                         """
-                    )
-                cur.execute(
-                    """
+                )
+            cur.execute(
+                """
                     CREATE TABLE IF NOT EXISTS focus_trajectory_steps (
                         id BIGSERIAL PRIMARY KEY,
                         turn_id UUID NOT NULL REFERENCES focus_trajectory_turns(id) ON DELETE CASCADE,
@@ -81,34 +78,34 @@ class PostgresTrajectorySchemaMixin:
                         UNIQUE (turn_id, step_index)
                     )
                     """
-                )
-                cur.execute(
-                    """
+            )
+            cur.execute(
+                """
                     CREATE INDEX IF NOT EXISTS idx_focus_traj_turns_thread_time
                     ON focus_trajectory_turns(thread_id, created_at DESC)
                     """
-                )
-                cur.execute(
-                    """
+            )
+            cur.execute(
+                """
                     CREATE INDEX IF NOT EXISTS idx_focus_traj_turns_root_time
                     ON focus_trajectory_turns(root_thread_id, created_at DESC)
                     """
-                )
-                cur.execute(
-                    """
+            )
+            cur.execute(
+                """
                     CREATE INDEX IF NOT EXISTS idx_focus_traj_turns_request_id
                     ON focus_trajectory_turns(request_id)
                     """
-                )
-                cur.execute(
-                    """
+            )
+            cur.execute(
+                """
                     CREATE INDEX IF NOT EXISTS idx_focus_traj_turns_trace_id
                     ON focus_trajectory_turns(trace_id)
                     """
-                )
-                cur.execute(
-                    """
+            )
+            cur.execute(
+                """
                     CREATE INDEX IF NOT EXISTS idx_focus_traj_steps_turn
                     ON focus_trajectory_steps(turn_id, step_index)
                     """
-                )
+            )

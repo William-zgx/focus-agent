@@ -387,7 +387,8 @@ def test_memory_service_persist_records_emits_skip_decision_when_policy_rejects(
     assert repo.audit_events[0].action == "policy"
 
 
-def test_memory_service_writes_embeddings_after_accept_and_merge():
+def test_memory_service_writes_embeddings_after_accept_and_merge(monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "false")
     repo = _FakeMemoryRepository()
     embedding_service = _RecordingEmbeddingService()
     service = MemoryService(repository=repo, embedding_service=embedding_service)
@@ -422,7 +423,8 @@ def test_memory_service_writes_embeddings_after_accept_and_merge():
     assert embedding_service.calls[-1].content == "Please keep answers direct."
 
 
-def test_memory_service_embedding_failure_does_not_block_write():
+def test_memory_service_embedding_failure_does_not_block_write(monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "false")
     repo = _FakeMemoryRepository()
     service = MemoryService(
         repository=repo,

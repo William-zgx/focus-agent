@@ -33,6 +33,11 @@ def load_runtime_config(
         "tool_max_parallel_workers": int(
             env.get("TOOL_MAX_PARALLEL_WORKERS", str(defaults.tool_max_parallel_workers))
         ),
+        "tool_pool_isolated": _env_bool(
+            env,
+            "FOCUS_AGENT_TOOL_POOL_ISOLATED",
+            default=defaults.tool_pool_isolated,
+        ),
         "background_worker_max_concurrency": int(
             env.get(
                 "BACKGROUND_WORKER_MAX_CONCURRENCY",
@@ -85,17 +90,44 @@ def load_runtime_config(
                 str(defaults.runtime_thread_lock_heartbeat_seconds),
             )
         ),
-        "postgres_pool_enabled": str(
-            env.get("POSTGRES_POOL_ENABLED", str(defaults.postgres_pool_enabled))
-        )
-        .strip()
-        .lower()
-        not in {"0", "false", "no", "off"},
+        "db_pool_enabled": _env_bool(
+            env,
+            "FOCUS_AGENT_DB_POOL_ENABLED",
+            default=_env_bool(
+                env,
+                "POSTGRES_POOL_ENABLED",
+                default=defaults.postgres_pool_enabled,
+            ),
+        ),
+        "db_pool_max": int(
+            env.get(
+                "FOCUS_AGENT_DB_POOL_MAX",
+                env.get(
+                    "DB_POOL_MAX",
+                    env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.db_pool_max)),
+                ),
+            )
+        ),
+        "postgres_pool_enabled": _env_bool(
+            env,
+            "FOCUS_AGENT_DB_POOL_ENABLED",
+            default=_env_bool(
+                env,
+                "POSTGRES_POOL_ENABLED",
+                default=defaults.postgres_pool_enabled,
+            ),
+        ),
         "postgres_pool_min_size": int(
             env.get("POSTGRES_POOL_MIN_SIZE", str(defaults.postgres_pool_min_size))
         ),
         "postgres_pool_max_size": int(
-            env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.postgres_pool_max_size))
+            env.get(
+                "FOCUS_AGENT_DB_POOL_MAX",
+                env.get(
+                    "DB_POOL_MAX",
+                    env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.postgres_pool_max_size)),
+                ),
+            )
         ),
         "postgres_slow_query_threshold_ms": float(
             env.get(

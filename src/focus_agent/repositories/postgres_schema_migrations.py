@@ -439,6 +439,7 @@ def _run_migration_v8(execute: Callable[..., object]) -> None:
             scope TEXT NOT NULL,
             visibility TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'active',
+            embedding_status TEXT NOT NULL DEFAULT 'pending',
             user_id TEXT,
             root_thread_id TEXT,
             source_thread_id TEXT,
@@ -514,6 +515,12 @@ def _run_migration_v8(execute: Callable[..., object]) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_focus_memories_namespace_status_updated
         ON focus_memories(namespace, status, updated_at DESC)
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_embedding_status_updated
+        ON focus_memories(embedding_status, updated_at DESC)
         """
     )
     execute(
@@ -1248,6 +1255,43 @@ def _run_migration_v17(execute: Callable[..., object]) -> None:
     )
 
 
+def _run_migration_v18(execute: Callable[..., object]) -> None:
+    execute(
+        """
+        ALTER TABLE focus_memories
+        ADD COLUMN IF NOT EXISTS embedding_status TEXT NOT NULL DEFAULT 'pending'
+        """
+    )
+    execute(
+        """
+        UPDATE focus_memories
+        SET embedding_status = CASE
+            WHEN data_json->>'embedding_status' IN ('pending', 'ready', 'failed')
+                THEN data_json->>'embedding_status'
+            ELSE 'pending'
+        END
+        """
+    )
+    execute(
+        """
+        UPDATE focus_memories
+        SET data_json = jsonb_set(
+            data_json,
+            '{embedding_status}',
+            to_jsonb(embedding_status),
+            true
+        )
+        WHERE data_json->>'embedding_status' IS DISTINCT FROM embedding_status
+        """
+    )
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_focus_memories_embedding_status_updated
+        ON focus_memories(embedding_status, updated_at DESC)
+        """
+    )
+
+
 def _normalize_pgvector_extension_mode(value: object) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in {"auto", "auto_create", "create", "create_if_missing"}:
@@ -1275,4 +1319,5 @@ _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (15, _run_migration_v15),
     (16, _run_migration_v16),
     (17, _run_migration_v17),
+    (18, _run_migration_v18),
 )

@@ -186,6 +186,7 @@ def _build_source_state(tmp_path: Path) -> tuple[Path, Path]:
         "memory-1",
         {"type": "imported_conclusion", "summary": "existing state"},
     )
+    store.close()
 
     saver = PersistentInMemorySaver(state_dir / "langgraph-checkpoints.pkl")
     base_config = {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}}
@@ -214,6 +215,7 @@ def _build_source_state(tmp_path: Path) -> tuple[Path, Path]:
         [("tasks", {"pending": True})],
         task_id="task-1",
     )
+    saver.close()
 
     return workspace_dir, state_dir
 
@@ -221,6 +223,7 @@ def _build_source_state(tmp_path: Path) -> tuple[Path, Path]:
 def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgres(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("FOCUS_AGENT_CHECKPOINT_HMAC_KEY", "migrate-test-hmac-key-32-characters")
     workspace_dir, state_dir = _build_source_state(tmp_path)
     report_path = tmp_path / "dry-run-report.json"
 
@@ -264,6 +267,7 @@ def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgre
 
 
 def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_CHECKPOINT_HMAC_KEY", "migrate-test-hmac-key-32-characters")
     workspace_dir, _state_dir = _build_source_state(tmp_path)
     fake_store = FakePostgresStore()
     fake_saver = FakePostgresSaver()
@@ -348,6 +352,7 @@ def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monk
 
 
 def test_run_migration_backfills_memory_embeddings_idempotently(tmp_path, monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_CHECKPOINT_HMAC_KEY", "migrate-test-hmac-key-32-characters")
     workspace_dir, _state_dir = _build_source_state(tmp_path)
     fake_store = FakePostgresStore()
     fake_saver = FakePostgresSaver()

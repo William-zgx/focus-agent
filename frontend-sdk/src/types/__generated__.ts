@@ -6469,6 +6469,11 @@ export interface components {
         };
         /** RuntimeReadinessResponse */
         RuntimeReadinessResponse: {
+            /**
+             * Active Connections
+             * @default 0
+             */
+            active_connections: number;
             /** App Version */
             app_version?: string | null;
             /** Checks */

@@ -162,6 +162,7 @@ export interface FocusAgentRuntimeReadiness {
   app_version?: string | null;
   environment?: string | null;
   deployment?: string | null;
+  active_connections: number;
   checks: FocusAgentRuntimeComponentStatus[];
 }
 

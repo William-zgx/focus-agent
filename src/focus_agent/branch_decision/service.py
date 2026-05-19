@@ -26,8 +26,8 @@ from focus_agent.core.governance import (
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.state import normalize_agent_state
 from focus_agent.services.branch_actions import (
-    branch_handoff_message_from_text,
     branch_action_audit_event,
+    branch_handoff_message_from_text,
     build_branch_action_proposal,
     infer_suggested_branch_name,
     latest_pending_branch_action,

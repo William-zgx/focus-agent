@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
+from types import SimpleNamespace
 from typing import Any
 
-from .auth import _auth_jwt_keys_from_env
+from .auth import _auth_jwt_keys_from_env, validate_auth_enabled_jwt_secrets
 from .common import _env_bool, _split_csv
+
+_AUTH_JWT_SECRET_INPUT_KEYS = (
+    "AUTH_JWT_SECRET",
+    "AUTH_JWT_KEYS",
+    "AUTH_JWT_SECRETS",
+    "AUTH_JWT_JWKS",
+)
 
 
 def load_auth_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, object]:
-    return {
+    values = {
         "auth_enabled": _env_bool(env, "AUTH_ENABLED", default=defaults.auth_enabled),
         "auth_demo_tokens_enabled": _env_bool(
             env, "AUTH_DEMO_TOKENS_ENABLED", default=defaults.auth_demo_tokens_enabled
@@ -50,3 +58,9 @@ def load_auth_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, 
         ),
         "auth_cookie_samesite": env.get("AUTH_COOKIE_SAMESITE", defaults.auth_cookie_samesite),
     }
+    if values["auth_enabled"] and any(key in env for key in _AUTH_JWT_SECRET_INPUT_KEYS):
+        validate_auth_enabled_jwt_secrets(
+            SimpleNamespace(**values, resolved_env=dict(env)),
+            require_configured=True,
+        )
+    return values

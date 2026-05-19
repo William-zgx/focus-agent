@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,8 @@ from .config_parts.server import load_server_config
 from .config_parts.trajectory import load_trajectory_config
 from .runtime import secrets as secret_runtime
 
+logger = logging.getLogger("focus_agent.config")
+
 _BASE_SECRET_ENV_KEYS = frozenset(
     {
         "ANTHROPIC_API_KEY",
@@ -69,6 +72,7 @@ _BASE_SECRET_ENV_KEYS = frozenset(
         "AUTH_JWT_SECRETS",
         "DATABASE_URI",
         "DEEPSEEK_API_KEY",
+        "LANGSMITH_API_KEY",
         "MOONSHOT_API_KEY",
         "OLLAMA_API_KEY",
         "OPENAI_API_KEY",
@@ -76,6 +80,7 @@ _BASE_SECRET_ENV_KEYS = frozenset(
         "AGENT_MEMORY_EMBEDDING_API_KEY",
     }
 )
+_REDACTED_SECRET = "[REDACTED]"
 
 
 def ensure_runtime_directories(settings: Settings) -> None:
@@ -145,6 +150,7 @@ class Settings:
     metrics_cache_ttl_seconds: int = 15
     metrics_governance_recent_limit: int = 1000
     tool_max_parallel_workers: int = 4
+    tool_pool_isolated: bool = True
     background_worker_max_concurrency: int = 2
     background_queue_max_size: int = 1000
     background_job_backend: str = "memory"
@@ -155,9 +161,11 @@ class Settings:
     background_job_old_pending_seconds: float = 900.0
     runtime_thread_lock_ttl_seconds: float = 300.0
     runtime_thread_lock_heartbeat_seconds: float = 30.0
+    db_pool_enabled: bool = True
+    db_pool_max: int = 20
     postgres_pool_enabled: bool = True
-    postgres_pool_min_size: int = 1
-    postgres_pool_max_size: int = 4
+    postgres_pool_min_size: int = 2
+    postgres_pool_max_size: int = 20
     postgres_slow_query_threshold_ms: float = 500.0
     local_checkpoint_path: str | None = None
     local_store_path: str | None = None
@@ -363,13 +371,26 @@ def _resolve_secret_provider_env(
     tool_catalog: ToolCatalogConfig,
 ) -> dict[str, str]:
     resolved = dict(env)
+    resolved_from_provider: dict[str, str] = {}
     for key in sorted(_secret_env_keys(resolved, model_catalog, tool_catalog)):
         if resolved.get(key):
             continue
         value = secret_runtime.try_get_secret(secret_provider, key)
         if value:
             resolved[key] = str(value)
+            resolved_from_provider[key] = _redact_secret(value)
+    if resolved_from_provider:
+        logger.debug("Resolved secret provider values: %s", resolved_from_provider)
     return resolved
+
+
+def _redact_secret(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if not text:
+        return ""
+    return _REDACTED_SECRET
 
 
 def _secret_env_keys(

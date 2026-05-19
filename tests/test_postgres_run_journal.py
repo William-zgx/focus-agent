@@ -14,7 +14,7 @@ def test_postgres_harness_journal_migration_shape():
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 17
+    assert SCHEMA_VERSION == 18
     combined = " ".join(" ".join(sql.split()) for sql in executed)
     assert "CREATE TABLE IF NOT EXISTS focus_harness_runs" in combined
     assert "CREATE TABLE IF NOT EXISTS focus_harness_run_events" in combined

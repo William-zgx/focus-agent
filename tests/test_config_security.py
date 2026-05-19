@@ -38,6 +38,7 @@ _CONFIG_ENV_KEYS = (
     "METRICS_CACHE_TTL_SECONDS",
     "METRICS_GOVERNANCE_RECENT_LIMIT",
     "TOOL_MAX_PARALLEL_WORKERS",
+    "FOCUS_AGENT_TOOL_POOL_ISOLATED",
     "BACKGROUND_WORKER_MAX_CONCURRENCY",
     "BACKGROUND_QUEUE_MAX_SIZE",
     "BACKGROUND_JOB_BACKEND",
@@ -96,6 +97,7 @@ def test_settings_from_env_allows_development_defaults(monkeypatch, tmp_path, en
     assert settings.metrics_cache_ttl_seconds == 15
     assert settings.metrics_governance_recent_limit == 1000
     assert settings.tool_max_parallel_workers == 4
+    assert settings.tool_pool_isolated is True
     assert settings.background_worker_max_concurrency == 2
     assert settings.background_queue_max_size == 1000
     assert settings.background_job_backend == "memory"
@@ -111,6 +113,7 @@ def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path
     monkeypatch.setenv("METRICS_CACHE_TTL_SECONDS", "3")
     monkeypatch.setenv("METRICS_GOVERNANCE_RECENT_LIMIT", "25")
     monkeypatch.setenv("TOOL_MAX_PARALLEL_WORKERS", "7")
+    monkeypatch.setenv("FOCUS_AGENT_TOOL_POOL_ISOLATED", "false")
     monkeypatch.setenv("BACKGROUND_WORKER_MAX_CONCURRENCY", "3")
     monkeypatch.setenv("BACKGROUND_QUEUE_MAX_SIZE", "42")
     monkeypatch.setenv("BACKGROUND_JOB_BACKEND", "postgres")
@@ -128,6 +131,7 @@ def test_settings_from_env_loads_metrics_resource_controls(monkeypatch, tmp_path
     assert settings.metrics_cache_ttl_seconds == 3
     assert settings.metrics_governance_recent_limit == 25
     assert settings.tool_max_parallel_workers == 7
+    assert settings.tool_pool_isolated is False
     assert settings.background_worker_max_concurrency == 3
     assert settings.background_queue_max_size == 42
     assert settings.background_job_backend == "postgres"
@@ -320,8 +324,8 @@ def test_settings_from_env_parses_jwt_key_rotation_config(monkeypatch, tmp_path)
         json.dumps(
             {
                 "keys": [
-                    {"kid": "current", "secret": "current-secret"},
-                    {"kid": "previous", "secret": "previous-secret"},
+                    {"kid": "current", "secret": _SECURE_CURRENT_JWT_SECRET},
+                    {"kid": "previous", "secret": _SECURE_PREVIOUS_JWT_SECRET},
                 ]
             }
         ),
@@ -331,8 +335,8 @@ def test_settings_from_env_parses_jwt_key_rotation_config(monkeypatch, tmp_path)
 
     assert settings.auth_jwt_key_id == "current"
     assert [(key.kid, key.secret, key.active) for key in settings.auth_jwt_keys] == [
-        ("current", "current-secret", True),
-        ("previous", "previous-secret", True),
+        ("current", _SECURE_CURRENT_JWT_SECRET, True),
+        ("previous", _SECURE_PREVIOUS_JWT_SECRET, True),
     ]
 
 

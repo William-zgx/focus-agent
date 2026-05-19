@@ -7,8 +7,11 @@ from langgraph.graph import END, START, StateGraph
 from focus_agent.core.types import PromptMode
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 
+_HMAC_KEY = "local-graph-persistence-test-key-32-chars"
 
-def test_persistent_in_memory_saver_restores_thread_state(tmp_path: Path):
+
+def test_persistent_in_memory_saver_restores_thread_state(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_CHECKPOINT_HMAC_KEY", _HMAC_KEY)
     checkpoint_path = tmp_path / "langgraph-checkpoints.pkl"
     saver = PersistentInMemorySaver(checkpoint_path)
 
@@ -22,6 +25,7 @@ def test_persistent_in_memory_saver_restores_thread_state(tmp_path: Path):
 
     config = {"configurable": {"thread_id": "thread-1"}}
     graph.invoke({"question": "hello"}, config=config)
+    saver.close()
 
     restored_graph = builder.compile(checkpointer=PersistentInMemorySaver(checkpoint_path))
     restored_state = restored_graph.get_state(config)
@@ -29,7 +33,8 @@ def test_persistent_in_memory_saver_restores_thread_state(tmp_path: Path):
     assert restored_state.values["answer"] == "HELLO"
 
 
-def test_persistent_in_memory_store_restores_items(tmp_path: Path):
+def test_persistent_in_memory_store_restores_items(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_CHECKPOINT_HMAC_KEY", _HMAC_KEY)
     store_path = tmp_path / "langgraph-store.pkl"
     store = PersistentInMemoryStore(store_path)
     namespace = ("conversation", "root-1", "main")
@@ -37,6 +42,7 @@ def test_persistent_in_memory_store_restores_items(tmp_path: Path):
     store.put(
         namespace, "memory-1", {"summary": "existing conclusion", "type": "imported_conclusion"}
     )
+    store.close()
 
     restored = PersistentInMemoryStore(store_path)
     item = restored.get(namespace, "memory-1")

@@ -6,7 +6,6 @@ from typing import Any
 from uuid import uuid4
 
 import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.memory.models import (
@@ -16,7 +15,9 @@ from focus_agent.memory.models import (
     MemorySearchHit,
     MemoryStatus,
 )
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
+from ._postgres_base import PostgresMixin
 from .memory_repository import (
     MemoryEmbeddingListQuery,
     MemoryEmbeddingMetadata,
@@ -51,18 +52,22 @@ from .postgres_schema import (
     rebuild_memory_embedding_index_on_connection,
 )
 
+_PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
 
-class PostgresMemoryRepository(MemoryRepository):
+
+class PostgresMemoryRepository(PostgresMixin, MemoryRepository):
     def __init__(
         self,
         database_uri: str,
         *,
+        connection_provider: PostgresConnectionProvider | None = None,
         dimensions: int = 1536,
         vector_index: bool = False,
         memory_embeddings_enabled: bool = False,
         pgvector_extension_mode: str = "auto_create",
     ):
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
         self.dimensions = dimensions
         self.vector_index = vector_index
         self.memory_embeddings_enabled = memory_embeddings_enabled
@@ -76,7 +81,7 @@ class PostgresMemoryRepository(MemoryRepository):
         memory_embeddings_enabled: bool | None = None,
         pgvector_extension_mode: str | None = None,
     ) -> None:
-        with psycopg.connect(self.database_uri) as conn:
+        with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(
                 conn,
                 dimensions=self.dimensions if dimensions is None else dimensions,
@@ -93,19 +98,15 @@ class PostgresMemoryRepository(MemoryRepository):
                 ),
             )
 
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
-
     def inspect_pgvector_support(
         self,
         *,
         dimensions: int | None = None,
         vector_index: bool = False,
     ) -> dict[str, object]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT
                         EXISTS (
                             SELECT 1 FROM pg_extension WHERE extname = 'vector'
@@ -127,8 +128,8 @@ class PostgresMemoryRepository(MemoryRepository):
                             WHERE indexname = 'idx_focus_memory_embeddings_vector'
                         ) AS vector_index_exists
                     """
-                )
-                row = cur.fetchone() or {}
+            )
+            row = cur.fetchone() or {}
         table_exists = bool(row.get("embeddings_table_exists"))
         column_type = row.get("embedding_column_type")
         configured_dimensions = self.dimensions if dimensions is None else dimensions
@@ -160,7 +161,7 @@ class PostgresMemoryRepository(MemoryRepository):
             if pgvector_extension_mode is None
             else pgvector_extension_mode
         )
-        with psycopg.connect(self.database_uri) as conn:
+        with self._connection() as conn:
             rebuild_memory_embedding_index_on_connection(
                 conn,
                 dimensions=resolved_dimensions,
@@ -178,18 +179,19 @@ class PostgresMemoryRepository(MemoryRepository):
 
     def upsert_record(self, record: MemoryRecord) -> str:
         payload = record.model_dump(mode="json")
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_memories (
                         memory_id, namespace, kind, scope, visibility, status,
+                        embedding_status,
                         user_id, root_thread_id, source_thread_id, source_branch_id,
                         semantic_key, fingerprint, confidence, importance,
                         summary, content, promoted_to_main,
                         created_at, updated_at, deleted_at, data_json
                     ) VALUES (
                         %(memory_id)s, %(namespace)s, %(kind)s, %(scope)s, %(visibility)s, %(status)s,
+                        %(embedding_status)s,
                         %(user_id)s, %(root_thread_id)s, %(source_thread_id)s, %(source_branch_id)s,
                         %(semantic_key)s, %(fingerprint)s, %(confidence)s, %(importance)s,
                         %(summary)s, %(content)s, %(promoted_to_main)s,
@@ -201,6 +203,7 @@ class PostgresMemoryRepository(MemoryRepository):
                         scope = EXCLUDED.scope,
                         visibility = EXCLUDED.visibility,
                         status = EXCLUDED.status,
+                        embedding_status = EXCLUDED.embedding_status,
                         user_id = EXCLUDED.user_id,
                         root_thread_id = EXCLUDED.root_thread_id,
                         source_thread_id = EXCLUDED.source_thread_id,
@@ -216,8 +219,8 @@ class PostgresMemoryRepository(MemoryRepository):
                         deleted_at = EXCLUDED.deleted_at,
                         data_json = EXCLUDED.data_json
                     """,
-                    record_params(record, payload=payload),
-                )
+                record_params(record, payload=payload),
+            )
         return record.memory_id
 
     def find_existing(
@@ -246,19 +249,18 @@ class PostgresMemoryRepository(MemoryRepository):
         if scope:
             clauses.append("scope = %(scope)s")
             params["scope"] = scope
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                f"""
                     SELECT data_json
                     FROM focus_memories
                     WHERE {" AND ".join(clauses)}
                     ORDER BY updated_at DESC
                     LIMIT 1
                     """,
-                    params,
-                )
-                row = cur.fetchone()
+                params,
+            )
+            row = cur.fetchone()
         if row is None:
             return None
         return record_from_payload(row["data_json"])
@@ -272,10 +274,9 @@ class PostgresMemoryRepository(MemoryRepository):
     ) -> list[MemorySearchHit]:
         normalized_query = " ".join((query or "").split())
         like_query = f"%{normalized_query}%" if normalized_query else "%"
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT data_json,
                            CASE
                              WHEN %(query)s = '' THEN 0.0
@@ -298,14 +299,14 @@ class PostgresMemoryRepository(MemoryRepository):
                     ORDER BY text_score DESC, importance DESC, updated_at DESC
                     LIMIT %(limit)s
                     """,
-                    {
-                        "namespace": list(namespace),
-                        "query": normalized_query,
-                        "like_query": like_query,
-                        "limit": max(1, int(limit)),
-                    },
-                )
-                rows = cur.fetchall()
+                {
+                    "namespace": list(namespace),
+                    "query": normalized_query,
+                    "like_query": like_query,
+                    "limit": max(1, int(limit)),
+                },
+            )
+            rows = cur.fetchall()
         hits: list[MemorySearchHit] = []
         for row in rows:
             record = record_from_payload(row["data_json"])
@@ -315,28 +316,24 @@ class PostgresMemoryRepository(MemoryRepository):
 
     def list_records(self, query: MemoryListQuery) -> list[MemoryRecord]:
         clauses, params = memory_list_filters(query)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                f"""
                     SELECT data_json
                     FROM focus_memories
                     WHERE {" AND ".join(clauses)}
                     ORDER BY updated_at DESC, memory_id DESC
                     LIMIT %(limit)s OFFSET %(offset)s
                     """,
-                    params,
-                )
-                rows = cur.fetchall()
+                params,
+            )
+            rows = cur.fetchall()
         return [record_from_payload(row["data_json"]) for row in rows]
 
     def get_record(self, memory_id: str) -> MemoryRecord | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT data_json FROM focus_memories WHERE memory_id = %s", (memory_id,)
-                )
-                row = cur.fetchone()
+        with self._cursor(dict_row=True) as cur:
+            cur.execute("SELECT data_json FROM focus_memories WHERE memory_id = %s", (memory_id,))
+            row = cur.fetchone()
         if row is None:
             return None
         return record_from_payload(row["data_json"])
@@ -415,10 +412,9 @@ class PostgresMemoryRepository(MemoryRepository):
             **embedding_extra_metadata(extra),
         }
         now = datetime.now(UTC)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     UPDATE focus_memory_embeddings
                     SET
                         status = 'stale',
@@ -432,22 +428,22 @@ class PostgresMemoryRepository(MemoryRepository):
                       AND status = 'active'
                       AND deleted_at IS NULL
                     """,
-                    {
-                        "memory_id": memory_id,
-                        "provider_id": provider_id,
-                        "model_id": model_id,
-                        "content_hash": content_hash or "",
-                        "updated_at": now,
-                        "stale_metadata_json": Jsonb(
-                            {
-                                "stale_reason": "memory_content_changed",
-                                "replaced_by_content_hash": content_hash or "",
-                            }
-                        ),
-                    },
-                )
-                cur.execute(
-                    """
+                {
+                    "memory_id": memory_id,
+                    "provider_id": provider_id,
+                    "model_id": model_id,
+                    "content_hash": content_hash or "",
+                    "updated_at": now,
+                    "stale_metadata_json": Jsonb(
+                        {
+                            "stale_reason": "memory_content_changed",
+                            "replaced_by_content_hash": content_hash or "",
+                        }
+                    ),
+                },
+            )
+            cur.execute(
+                """
                     INSERT INTO focus_memory_embeddings (
                         embedding_id, memory_id, namespace, provider_id, model_id, dimensions,
                         content_hash, embedding, status, created_at, updated_at, deleted_at, metadata_json
@@ -470,21 +466,21 @@ class PostgresMemoryRepository(MemoryRepository):
                         metadata_json = EXCLUDED.metadata_json,
                         updated_at = EXCLUDED.updated_at
                     """,
-                    {
-                        "embedding_id": embedding_id,
-                        "memory_id": memory_id,
-                        "namespace": list(namespace),
-                        "provider_id": provider_id,
-                        "model_id": model_id,
-                        "dimensions": len(values),
-                        "embedding": vector_literal(values),
-                        "status": status,
-                        "content_hash": content_hash or "",
-                        "metadata_json": Jsonb(metadata_payload),
-                        "created_at": created_at or now,
-                        "updated_at": updated_at or now,
-                    },
-                )
+                {
+                    "embedding_id": embedding_id,
+                    "memory_id": memory_id,
+                    "namespace": list(namespace),
+                    "provider_id": provider_id,
+                    "model_id": model_id,
+                    "dimensions": len(values),
+                    "embedding": vector_literal(values),
+                    "status": status,
+                    "content_hash": content_hash or "",
+                    "metadata_json": Jsonb(metadata_payload),
+                    "created_at": created_at or now,
+                    "updated_at": updated_at or now,
+                },
+            )
         return memory_id
 
     def upsert_memory_embedding(self, payload: object | None = None, **kwargs: object) -> str:
@@ -535,10 +531,9 @@ class PostgresMemoryRepository(MemoryRepository):
         if model_id is not None:
             clauses.append("e.model_id = %(model_id)s")
             params["model_id"] = model_id
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                f"""
                     SELECT
                         m.data_json,
                         e.embedding_id,
@@ -559,9 +554,9 @@ class PostgresMemoryRepository(MemoryRepository):
                     ORDER BY score DESC, m.importance DESC, e.updated_at DESC, e.memory_id DESC
                     LIMIT %(limit)s
                     """,
-                    params,
-                )
-                rows = cur.fetchall()
+                params,
+            )
+            rows = cur.fetchall()
         hits: list[MemoryEmbeddingSearchHit] = []
         for row in rows:
             record = record_from_payload(row["data_json"])
@@ -623,19 +618,18 @@ class PostgresMemoryRepository(MemoryRepository):
         )
 
     def get_embedding_status(self, memory_id: str) -> str | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT status
                     FROM focus_memory_embeddings
                     WHERE memory_id = %s AND deleted_at IS NULL
                     ORDER BY updated_at DESC, embedding_id DESC
                     LIMIT 1
                     """,
-                    (memory_id,),
-                )
-                row = cur.fetchone()
+                (memory_id,),
+            )
+            row = cur.fetchone()
         return None if row is None else str(row["status"])
 
     def get_memory_embedding(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
@@ -651,10 +645,9 @@ class PostgresMemoryRepository(MemoryRepository):
         return self.get_embedding_metadata(memory_id)
 
     def get_embedding_metadata(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT
                         embedding_id,
                         memory_id,
@@ -670,9 +663,9 @@ class PostgresMemoryRepository(MemoryRepository):
                     FROM focus_memory_embeddings
                     WHERE memory_id = %s AND deleted_at IS NULL
                     """,
-                    (memory_id,),
-                )
-                row = cur.fetchone()
+                (memory_id,),
+            )
+            row = cur.fetchone()
         return None if row is None else embedding_metadata_from_row(row)
 
     def update_embedding_status(
@@ -683,24 +676,23 @@ class PostgresMemoryRepository(MemoryRepository):
         metadata: Mapping[str, object] | None = None,
     ) -> bool:
         now = datetime.now(UTC)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                if metadata is None:
-                    cur.execute(
-                        """
+        with self._cursor(dict_row=True) as cur:
+            if metadata is None:
+                cur.execute(
+                    """
                         UPDATE focus_memory_embeddings
                         SET status = %(status)s, updated_at = %(updated_at)s
                         WHERE memory_id = %(memory_id)s AND deleted_at IS NULL
                         """,
-                        {
-                            "memory_id": memory_id,
-                            "status": status,
-                            "updated_at": now,
-                        },
-                    )
-                else:
-                    cur.execute(
-                        """
+                    {
+                        "memory_id": memory_id,
+                        "status": status,
+                        "updated_at": now,
+                    },
+                )
+            else:
+                cur.execute(
+                    """
                         UPDATE focus_memory_embeddings
                         SET
                             status = %(status)s,
@@ -708,14 +700,14 @@ class PostgresMemoryRepository(MemoryRepository):
                             updated_at = %(updated_at)s
                         WHERE memory_id = %(memory_id)s AND deleted_at IS NULL
                         """,
-                        {
-                            "memory_id": memory_id,
-                            "status": status,
-                            "metadata_json": Jsonb(dict(metadata)),
-                            "updated_at": now,
-                        },
-                    )
-                rowcount = cur.rowcount
+                    {
+                        "memory_id": memory_id,
+                        "status": status,
+                        "metadata_json": Jsonb(dict(metadata)),
+                        "updated_at": now,
+                    },
+                )
+            rowcount = cur.rowcount
         return rowcount > 0
 
     def set_memory_embedding_status(
@@ -754,10 +746,9 @@ class PostgresMemoryRepository(MemoryRepository):
             offset=offset,
         )
         where = where_clause(clauses)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                f"""
                     SELECT
                         embedding_id,
                         memory_id,
@@ -775,9 +766,9 @@ class PostgresMemoryRepository(MemoryRepository):
                     ORDER BY updated_at DESC, memory_id DESC
                     LIMIT %(limit)s OFFSET %(offset)s
                     """,
-                    params,
-                )
-                rows = cur.fetchall()
+                params,
+            )
+            rows = cur.fetchall()
         return [embedding_metadata_from_row(row) for row in rows]
 
     def list_memory_embedding_metadata(
@@ -804,12 +795,9 @@ class PostgresMemoryRepository(MemoryRepository):
         )
 
     def delete_embedding(self, memory_id: str) -> bool:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM focus_memory_embeddings WHERE memory_id = %s", (memory_id,)
-                )
-                rowcount = cur.rowcount
+        with self._cursor(dict_row=True) as cur:
+            cur.execute("DELETE FROM focus_memory_embeddings WHERE memory_id = %s", (memory_id,))
+            rowcount = cur.rowcount
         return rowcount > 0
 
     def delete_memory_embedding(self, memory_id: str) -> bool:
@@ -843,10 +831,9 @@ class PostgresMemoryRepository(MemoryRepository):
         )
         self.upsert_record(updated)
         tombstone_id = str(uuid4())
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_memory_tombstones (
                         tombstone_id, memory_id, namespace, semantic_key, fingerprint,
                         actor, reason, created_at, data_json
@@ -864,38 +851,37 @@ class PostgresMemoryRepository(MemoryRepository):
                         data_json = EXCLUDED.data_json
                     RETURNING tombstone_id
                     """,
-                    {
-                        "tombstone_id": tombstone_id,
-                        "memory_id": memory_id,
-                        "namespace": list(existing.namespace),
-                        "semantic_key": existing.semantic_key,
-                        "fingerprint": existing.fingerprint,
-                        "actor": actor,
-                        "reason": reason,
-                        "created_at": now,
-                        "data_json": Jsonb(
-                            {
-                                "memory_id": memory_id,
-                                "namespace": list(existing.namespace),
-                                "semantic_key": existing.semantic_key,
-                                "fingerprint": existing.fingerprint,
-                                "actor": actor,
-                                "reason": reason,
-                                "created_at": now.isoformat(),
-                            }
-                        ),
-                    },
-                )
-                row = cur.fetchone()
+                {
+                    "tombstone_id": tombstone_id,
+                    "memory_id": memory_id,
+                    "namespace": list(existing.namespace),
+                    "semantic_key": existing.semantic_key,
+                    "fingerprint": existing.fingerprint,
+                    "actor": actor,
+                    "reason": reason,
+                    "created_at": now,
+                    "data_json": Jsonb(
+                        {
+                            "memory_id": memory_id,
+                            "namespace": list(existing.namespace),
+                            "semantic_key": existing.semantic_key,
+                            "fingerprint": existing.fingerprint,
+                            "actor": actor,
+                            "reason": reason,
+                            "created_at": now.isoformat(),
+                        }
+                    ),
+                },
+            )
+            row = cur.fetchone()
         self.delete_embedding(memory_id)
         return str(row["tombstone_id"]) if row else tombstone_id
 
     def append_audit_event(self, event: MemoryAuditEvent) -> str:
         payload = event.model_dump(mode="json")
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_memory_audit_events (
                         event_id, action, decision, memory_id, candidate_id, actor,
                         reason, namespace, user_id, root_thread_id, source_thread_id,
@@ -907,13 +893,13 @@ class PostgresMemoryRepository(MemoryRepository):
                     )
                     ON CONFLICT (event_id) DO NOTHING
                     """,
-                    {
-                        **payload,
-                        "decision": str(payload.get("decision") or ""),
-                        "namespace": list(event.namespace),
-                        "data_json": Jsonb(payload),
-                    },
-                )
+                {
+                    **payload,
+                    "decision": str(payload.get("decision") or ""),
+                    "namespace": list(event.namespace),
+                    "data_json": Jsonb(payload),
+                },
+            )
         return event.event_id
 
     def list_audit_events(
@@ -935,27 +921,25 @@ class PostgresMemoryRepository(MemoryRepository):
             limit=limit,
         )
         where = where_clause(clauses)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                f"""
                     SELECT data_json
                     FROM focus_memory_audit_events
                     {where}
                     ORDER BY created_at DESC, event_id DESC
                     LIMIT %(limit)s
                     """,
-                    params,
-                )
-                rows = cur.fetchall()
+                params,
+            )
+            rows = cur.fetchall()
         return [MemoryAuditEvent.model_validate(decode_json(row["data_json"])) for row in rows]
 
     def upsert_candidate(self, candidate: MemoryCandidate) -> str:
         payload = candidate.model_dump(mode="json")
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     INSERT INTO focus_memory_candidates (
                         candidate_id, status, agent_id, task_id, branch_id,
                         root_thread_id, user_id, evidence_refs, created_at, updated_at, data_json
@@ -975,12 +959,12 @@ class PostgresMemoryRepository(MemoryRepository):
                         updated_at = EXCLUDED.updated_at,
                         data_json = EXCLUDED.data_json
                     """,
-                    {
-                        **payload,
-                        "evidence_refs": list(candidate.evidence_refs),
-                        "data_json": Jsonb(payload),
-                    },
-                )
+                {
+                    **payload,
+                    "evidence_refs": list(candidate.evidence_refs),
+                    "data_json": Jsonb(payload),
+                },
+            )
         return candidate.candidate_id
 
     def list_candidates(
@@ -1000,19 +984,18 @@ class PostgresMemoryRepository(MemoryRepository):
             limit=limit,
         )
         where = where_clause(clauses)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                f"""
                     SELECT data_json
                     FROM focus_memory_candidates
                     {where}
                     ORDER BY updated_at DESC, candidate_id DESC
                     LIMIT %(limit)s
                     """,
-                    params,
-                )
-                rows = cur.fetchall()
+                params,
+            )
+            rows = cur.fetchall()
         return [MemoryCandidate.model_validate(decode_json(row["data_json"])) for row in rows]
 
     def update_candidate_status(
@@ -1022,17 +1005,16 @@ class PostgresMemoryRepository(MemoryRepository):
         status: str,
         reason: str | None = None,
     ) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
                     SELECT data_json
                     FROM focus_memory_candidates
                     WHERE candidate_id = %s
                     """,
-                    (candidate_id,),
-                )
-                row = cur.fetchone()
+                (candidate_id,),
+            )
+            row = cur.fetchone()
         if row is None:
             return
         candidate = MemoryCandidate.model_validate(decode_json(row["data_json"]))

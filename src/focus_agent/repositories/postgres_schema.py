@@ -9,7 +9,7 @@ from .postgres_schema_migrations import (
     _run_migration_v10,
 )
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 _SCHEMA_MIGRATION_LOCK_ID = 7612044473148256129
 
 

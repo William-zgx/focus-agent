@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -37,9 +38,11 @@ class MemoryService:
         repository: MemoryRepository,
         policy: MemoryPolicy | None = None,
         embedding_service: MemoryEmbeddingService | None = None,
+        coordination_backend: Any | None = None,
     ):
         self.repository = repository
         self.policy = policy or MemoryPolicy()
+        self.coordination_backend = coordination_backend
         self.embedding_service = (
             embedding_service
             if embedding_service is not None
@@ -206,6 +209,8 @@ class MemoryService:
         )
 
     def _write_embedding_best_effort(self, record: MemoryRecord) -> None:
+        if _memory_embedding_async_enabled() and self._enqueue_embedding_best_effort(record):
+            return
         if self.embedding_service is None:
             return
         try:
@@ -216,6 +221,34 @@ class MemoryService:
                 record.memory_id,
                 exc_info=True,
             )
+
+    def _enqueue_embedding_best_effort(self, record: MemoryRecord) -> bool:
+        backend = self.coordination_backend
+        if backend is None:
+            logger.debug(
+                "memory embedding enqueue skipped for memory_id=%s: coordination backend unavailable",
+                record.memory_id,
+            )
+            return False
+        payload = {
+            "memory_id": record.memory_id,
+            "namespace": list(record.namespace),
+        }
+        try:
+            enqueue = getattr(backend, "enqueue", None)
+            if callable(enqueue):
+                return bool(enqueue("memory_embedding", payload))
+            logger.debug(
+                "memory embedding enqueue skipped for memory_id=%s: enqueue API unavailable",
+                record.memory_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "failed to enqueue memory embedding for memory_id=%s",
+                record.memory_id,
+                exc_info=True,
+            )
+        return False
 
     def _decision(
         self,
@@ -293,6 +326,11 @@ def _record_from_request(request: MemoryWriteRequest) -> MemoryRecord:
     record.fingerprint = memory_fingerprint(record)
     record.semantic_key = request.semantic_key or memory_semantic_key(record)
     return record
+
+
+def _memory_embedding_async_enabled() -> bool:
+    value = os.environ.get("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "true")
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _sanitize_request(request: MemoryWriteRequest) -> MemoryWriteRequest:
