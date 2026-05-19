@@ -325,17 +325,23 @@
 .fa-auth-login-intro {
 	display: grid;
 	align-content: start;
-	gap: 9px;
+	gap: 10px;
 	max-width: 440px;
-	padding: 12px 0 10px;
+	padding: clamp(16px, 2.2vw, 22px);
 	border-radius: 8px;
-	background: transparent;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0)),
+		linear-gradient(145deg, rgba(20, 184, 166, 0.045), transparent 54%);
 	position: relative;
 	min-width: 0;
+	min-height: 100%;
 }
 
 .fa-auth-login-intro::before {
 	content: "";
+	position: absolute;
+	top: 0;
+	left: 2px;
 	height: 1px;
 	width: 84px;
 	background: linear-gradient(
@@ -357,6 +363,7 @@
 	display: flex;
 	align-items: center;
 	width: fit-content;
+	margin-top: 0;
 }
 
 .fa-auth-login-brand .fa-brand-mark {
@@ -395,33 +402,145 @@
 }
 
 .fa-auth-login-visual {
-	margin: 10px -14px 0 -14px;
+	margin: 8px -18px -4px -22px;
 	overflow: visible;
 }
 
-.fa-auth-login-visual img {
+.fa-auth-login-illustration {
 	display: block;
 	width: 100%;
-	aspect-ratio: 16 / 10;
-	object-fit: cover;
-	object-position: center;
-	opacity: 1;
-	filter: drop-shadow(0 14px 24px rgba(37, 99, 235, 0.06));
-	mix-blend-mode: darken;
-	-webkit-mask-image: radial-gradient(
-		ellipse at center,
-		rgb(0, 0, 0) 68%,
-		rgba(0, 0, 0, 0.9) 86%,
-		rgba(0, 0, 0, 0.24) 97%,
-		transparent 100%
-	);
-	mask-image: radial-gradient(
-		ellipse at center,
-		rgb(0, 0, 0) 68%,
-		rgba(0, 0, 0, 0.9) 86%,
-		rgba(0, 0, 0, 0.24) 97%,
-		transparent 100%
-	);
+	height: auto;
+	aspect-ratio: 16 / 6.4;
+	overflow: visible;
+}
+
+.fa-auth-login-illustration-lines path,
+.fa-auth-login-illustration-dashes path {
+	fill: none;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.fa-auth-login-illustration-lines path {
+	stroke: url("#fa-login-line-cool");
+	stroke-width: 4;
+}
+
+.fa-auth-login-illustration-lines path:first-child,
+.fa-auth-login-illustration-lines path:last-child {
+	stroke: url("#fa-login-line-warm");
+}
+
+.fa-auth-login-illustration-dashes path {
+	stroke: color-mix(in srgb, var(--fa-accent) 40%, transparent);
+	stroke-dasharray: 5 8;
+	stroke-width: 2;
+}
+
+.fa-auth-login-orbit {
+	fill: color-mix(in srgb, var(--fa-panel-1) 60%, transparent);
+	stroke: color-mix(in srgb, var(--fa-accent) 26%, transparent);
+	stroke-width: 1.5;
+}
+
+.fa-auth-login-orbit.is-inner {
+	fill: color-mix(in srgb, var(--fa-panel-1) 86%, transparent);
+}
+
+.fa-auth-login-node {
+	fill: color-mix(in srgb, var(--fa-panel-1) 94%, white 6%);
+	stroke: color-mix(in srgb, var(--fa-accent) 18%, transparent);
+	stroke-width: 1.5;
+	filter: drop-shadow(0 8px 16px rgba(37, 99, 235, 0.12));
+}
+
+.fa-auth-login-node.is-start,
+.fa-auth-login-node-dot {
+	fill: url("#fa-login-blue-chip");
+	stroke: none;
+}
+
+.fa-auth-login-node-dot.is-warm {
+	fill: url("#fa-login-orange-chip");
+}
+
+.fa-auth-login-card rect:first-child {
+	fill: url("#fa-login-card");
+	stroke: color-mix(in srgb, var(--fa-text-muted) 18%, transparent);
+	stroke-width: 1;
+}
+
+.fa-auth-login-card rect:not(:first-child) {
+	fill: color-mix(in srgb, var(--fa-text-muted) 40%, transparent);
+}
+
+.fa-auth-login-card .fa-auth-login-chip.is-blue {
+	fill: url("#fa-login-blue-chip");
+}
+
+.fa-auth-login-card .fa-auth-login-chip.is-teal {
+	fill: url("#fa-login-teal-chip");
+}
+
+.fa-auth-login-card .fa-auth-login-chip.is-warm {
+	fill: url("#fa-login-orange-chip");
+}
+
+.fa-auth-login-card .fa-auth-login-line {
+	fill: color-mix(in srgb, var(--fa-text-muted) 40%, transparent);
+}
+
+.fa-auth-login-card .fa-auth-login-line.is-strong {
+	fill: url("#fa-login-line-cool");
+}
+
+.fa-auth-login-card circle {
+	fill: color-mix(in srgb, var(--fa-text-muted) 45%, transparent);
+}
+
+.fa-auth-login-card.is-top rect:nth-of-type(3),
+.fa-auth-login-card.is-bottom rect:nth-of-type(3) {
+	fill: url("#fa-login-line-cool");
+}
+
+.fa-auth-login-card.is-final rect:first-child {
+	fill: color-mix(in srgb, #fff7ed 72%, white 28%);
+	stroke: color-mix(in srgb, #fb923c 34%, transparent);
+}
+
+.fa-auth-login-card.is-final rect:not(:first-child) {
+	fill: color-mix(in srgb, #f97316 38%, var(--fa-text-muted) 20%);
+}
+
+.fa-auth-login-card.is-final .fa-auth-login-chip.is-warm {
+	fill: url("#fa-login-orange-chip");
+}
+
+.fa-auth-login-card.is-final .fa-auth-login-line {
+	fill: color-mix(in srgb, #f97316 34%, var(--fa-text-muted) 30%);
+}
+
+.fa-auth-login-status circle {
+	fill: color-mix(in srgb, var(--fa-panel-1) 94%, white 6%);
+	stroke: color-mix(in srgb, var(--fa-accent) 16%, transparent);
+	stroke-width: 1.5;
+}
+
+.fa-auth-login-status path {
+	fill: none;
+	stroke: #2f80ed;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 4;
+}
+
+.fa-auth-login-status path:first-of-type {
+	stroke: #22c7bd;
+}
+
+.fa-auth-login-sparkles path {
+	fill: #fb923c;
+	opacity: 0.78;
 }
 
 .fa-auth-login-form {
@@ -1027,7 +1146,7 @@
 	min-width: 0;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 640px) {
 	.fa-auth-page,
 	.fa-account-layout {
 		min-height: calc(100vh - 72px);
@@ -1082,11 +1201,11 @@
 
 	.fa-auth-login-visual {
 		margin: 8px 0 0;
-		max-height: 148px;
-		overflow: hidden;
+		max-height: none;
+		overflow: visible;
 	}
 
-	.fa-auth-login-visual img {
+	.fa-auth-login-illustration {
 		opacity: 0.82;
 	}
 
@@ -1142,9 +1261,9 @@
 	}
 }
 
-@media (min-width: 980px) {
+@media (min-width: 641px) {
 	.fa-auth-login-panel {
-		padding: 28px;
+		padding: 22px;
 	}
 
 	.fa-auth-login-panel.is-login-panel {
@@ -1152,9 +1271,9 @@
 	}
 
 	.fa-auth-login-shell {
-		grid-template-columns: minmax(340px, 0.82fr) minmax(440px, 502px);
-		align-items: start;
-		gap: 32px;
+		grid-template-columns: minmax(276px, 0.9fr) minmax(350px, 1.1fr);
+		align-items: stretch;
+		gap: clamp(18px, 3vw, 32px);
 	}
 
 	.fa-auth-login-access {
@@ -1166,12 +1285,19 @@
 	}
 
 	.fa-auth-login-form {
-		padding: 22px;
+		padding: clamp(16px, 2.2vw, 22px);
 		margin-left: 0;
 		align-content: start;
+		min-height: 100%;
 	}
 
 	.fa-auth-login-intro {
-		padding-top: 10px;
+		padding-top: clamp(16px, 2.2vw, 22px);
+	}
+}
+
+@media (min-width: 980px) {
+	.fa-auth-login-shell {
+		grid-template-columns: minmax(360px, 0.82fr) minmax(440px, 502px);
 	}
 }
