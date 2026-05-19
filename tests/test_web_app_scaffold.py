@@ -70,6 +70,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'path: "/auth"' in router_text
     assert 'path: "/auth/login"' in router_text
     assert 'path: "/auth/register"' in router_text
+    assert 'path: "/admin/users/$userId"' in router_text
     assert "LoginPage" in router_text
     assert 'to: "/auth/login"' in router_text
     assert "AuthGate" in router_text
@@ -134,7 +135,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "已登录" not in app_shell_text
     assert "lastChatTarget" in app_shell_text
     assert "lastAgentTeamTarget" in app_shell_text
-    assert "lastAdminTarget" in app_shell_text
+    assert "lastAdminTarget" not in app_shell_text
     assert "rootThreadSearch" in app_shell_text
     assert 'pathname === "/observability/overview"' in app_shell_text
     assert 'pathname === "/observability/trajectory"' in app_shell_text
@@ -142,7 +143,8 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'pathname === "/agent/roles"' in app_shell_text
     assert "isDiagnosticsRoute" not in app_shell_text
     assert "const chatNavLabel" in app_shell_text
-    assert "const agentTeamNavLabel" in app_shell_text
+    assert "const productivityNavLabel" in app_shell_text
+    assert "const agentTeamNavLabel" not in app_shell_text
     assert "const adminNavLabel" in app_shell_text
     assert "const sidebarToggleLabel" in app_shell_text
     assert "const currentAccountLabel" in app_shell_text
@@ -150,11 +152,12 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "aria-label={currentAccountTooltip}" in app_shell_text
     assert "tooltipProps(currentAccountTooltip)" in app_shell_text
     assert "aria-label={chatNavLabel}" in app_shell_text
-    assert "aria-label={agentTeamNavLabel}" in app_shell_text
+    assert "aria-label={productivityNavLabel}" in app_shell_text
     assert "aria-label={adminNavLabel}" in app_shell_text
-    assert "!isChatRoute ? (" in app_shell_text
+    assert "chatNavTarget ? (" in app_shell_text
     assert "tooltipProps(adminNavLabel)" in app_shell_text
-    assert 'to="/agent-team/$sessionId"' in app_shell_text
+    assert "tooltipProps(productivityNavLabel)" in app_shell_text
+    assert 'to="/productivity/tasks"' in app_shell_text
     assert "agentTeamRootThreadId" in app_shell_text
     assert "is-${shellMode}-shell" in app_shell_text
     assert "fa-workspace-sidebar-toggle" in app_shell_text
@@ -163,9 +166,9 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'to="/agent-team"' in app_shell_text
     assert 'to="/observability/overview"' in app_shell_text
     assert 'to="/agent/governance"' in app_shell_text
+    assert 'to="/admin/config"' in app_shell_text
     assert 'to="/admin/users"' in app_shell_text
     assert 'to="/admin/audit-events"' in app_shell_text
-    assert 'to="/admin/users/$userId"' in app_shell_text
     global_navigation_text = (
         web_root / "src" / "app" / "shell" / "app-shell-global-navigation.tsx"
     ).read_text()

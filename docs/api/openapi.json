@@ -1,6 +1,957 @@
 {
   "components": {
     "schemas": {
+      "AdminConfigModelResponse": {
+        "properties": {
+          "default_thinking_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Thinking Enabled"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "no_temperature": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Temperature"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "request_kwargs": {
+            "additionalProperties": true,
+            "title": "Request Kwargs",
+            "type": "object"
+          },
+          "supports_thinking": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supports Thinking"
+          },
+          "thinking_disable_extra_body_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Disable Extra Body Type"
+          },
+          "thinking_disable_switch_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Disable Switch Model"
+          },
+          "thinking_disabled_model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Disabled Model Name"
+          },
+          "thinking_disabled_request_kwargs": {
+            "additionalProperties": true,
+            "title": "Thinking Disabled Request Kwargs",
+            "type": "object"
+          },
+          "thinking_enable_extra_body_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Enable Extra Body Type"
+          },
+          "thinking_enabled_request_kwargs": {
+            "additionalProperties": true,
+            "title": "Thinking Enabled Request Kwargs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdminConfigModelResponse",
+        "type": "object"
+      },
+      "AdminConfigModelSectionResponse": {
+        "properties": {
+          "default_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Model"
+          },
+          "helper_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helper Model"
+          },
+          "model_choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Model Choices",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/AdminConfigModelResponse"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/AdminConfigProviderResponse"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "requires_restart": {
+            "default": false,
+            "title": "Requires Restart",
+            "type": "boolean"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AdminConfigSourceResponse"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "AdminConfigModelSectionResponse",
+        "type": "object"
+      },
+      "AdminConfigPolicySectionResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminConfigValueResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "requires_restart": {
+            "default": true,
+            "title": "Requires Restart",
+            "type": "boolean"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AdminConfigSourceResponse"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "AdminConfigPolicySectionResponse",
+        "type": "object"
+      },
+      "AdminConfigProviderResponse": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "api_key_configured": {
+            "default": false,
+            "title": "Api Key Configured",
+            "type": "boolean"
+          },
+          "api_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Env"
+          },
+          "backend_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend Provider"
+          },
+          "base_url_configured": {
+            "default": false,
+            "title": "Base Url Configured",
+            "type": "boolean"
+          },
+          "base_url_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url Default"
+          },
+          "base_url_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url Env"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "logo_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Letter"
+          },
+          "logo_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Slug"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdminConfigProviderResponse",
+        "type": "object"
+      },
+      "AdminConfigResponse": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "models": {
+            "$ref": "#/components/schemas/AdminConfigModelSectionResponse"
+          },
+          "policies": {
+            "$ref": "#/components/schemas/AdminConfigPolicySectionResponse"
+          },
+          "system": {
+            "$ref": "#/components/schemas/AdminConfigSystemSectionResponse"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/AdminConfigToolSectionResponse"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "models",
+          "tools",
+          "policies",
+          "system"
+        ],
+        "title": "AdminConfigResponse",
+        "type": "object"
+      },
+      "AdminConfigSourceResponse": {
+        "properties": {
+          "exists": {
+            "default": false,
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "writable": {
+            "default": true,
+            "title": "Writable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "AdminConfigSourceResponse",
+        "type": "object"
+      },
+      "AdminConfigSystemSectionResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminConfigValueResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AdminConfigSourceResponse"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "AdminConfigSystemSectionResponse",
+        "type": "object"
+      },
+      "AdminConfigToolProviderResponse": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "overrides": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Overrides",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdminConfigToolProviderResponse",
+        "type": "object"
+      },
+      "AdminConfigToolResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "title": "Settings",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "description"
+        ],
+        "title": "AdminConfigToolResponse",
+        "type": "object"
+      },
+      "AdminConfigToolSectionResponse": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/AdminConfigToolProviderResponse"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "requires_restart": {
+            "default": true,
+            "title": "Requires Restart",
+            "type": "boolean"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AdminConfigSourceResponse"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/AdminConfigToolResponse"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "AdminConfigToolSectionResponse",
+        "type": "object"
+      },
+      "AdminConfigValueResponse": {
+        "properties": {
+          "configured": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "editable": {
+            "default": true,
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "env_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env Key"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "requires_restart": {
+            "default": false,
+            "title": "Requires Restart",
+            "type": "boolean"
+          },
+          "sensitive": {
+            "default": false,
+            "title": "Sensitive",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "runtime",
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "value_type": {
+            "default": "string",
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AdminConfigValueResponse",
+        "type": "object"
+      },
+      "AdminModelConfigPayload": {
+        "properties": {
+          "default_thinking_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Thinking Enabled"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "no_temperature": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Temperature"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "request_kwargs": {
+            "additionalProperties": true,
+            "title": "Request Kwargs",
+            "type": "object"
+          },
+          "supports_thinking": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supports Thinking"
+          },
+          "thinking_disable_extra_body_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Disable Extra Body Type"
+          },
+          "thinking_disable_switch_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Disable Switch Model"
+          },
+          "thinking_disabled_model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Disabled Model Name"
+          },
+          "thinking_disabled_request_kwargs": {
+            "additionalProperties": true,
+            "title": "Thinking Disabled Request Kwargs",
+            "type": "object"
+          },
+          "thinking_enable_extra_body_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Enable Extra Body Type"
+          },
+          "thinking_enabled_request_kwargs": {
+            "additionalProperties": true,
+            "title": "Thinking Enabled Request Kwargs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdminModelConfigPayload",
+        "type": "object"
+      },
+      "AdminModelConfigUpdateRequest": {
+        "properties": {
+          "default_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Model"
+          },
+          "helper_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helper Model"
+          },
+          "model_choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Choices"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdminModelConfigPayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdminModelProviderConfigPayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providers"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "AdminModelConfigUpdateRequest",
+        "type": "object"
+      },
+      "AdminModelProviderConfigPayload": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "api_key_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Default"
+          },
+          "api_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Env"
+          },
+          "backend_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend Provider"
+          },
+          "base_url_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url Default"
+          },
+          "base_url_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url Env"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "logo_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Letter"
+          },
+          "logo_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Slug"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdminModelProviderConfigPayload",
+        "type": "object"
+      },
+      "AdminPolicyConfigUpdateRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "title": "AdminPolicyConfigUpdateRequest",
+        "type": "object"
+      },
       "AdminResetPasswordRequest": {
         "properties": {
           "new_password": {
@@ -17,6 +968,148 @@
           "reason"
         ],
         "title": "AdminResetPasswordRequest",
+        "type": "object"
+      },
+      "AdminToolConfigPayload": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "title": "Settings",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AdminToolConfigPayload",
+        "type": "object"
+      },
+      "AdminToolConfigUpdateRequest": {
+        "properties": {
+          "providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdminToolProviderConfigPayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providers"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdminToolConfigPayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tools"
+          }
+        },
+        "title": "AdminToolConfigUpdateRequest",
+        "type": "object"
+      },
+      "AdminToolProviderConfigPayload": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "overrides": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Overrides",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdminToolProviderConfigPayload",
         "type": "object"
       },
       "AgentArtifactListResponse": {
@@ -4891,6 +5984,17 @@
             ],
             "title": "Failed At"
           },
+          "handoff_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handoff Message"
+          },
           "kind": {
             "$ref": "#/components/schemas/BranchActionKind"
           },
@@ -5034,6 +6138,11 @@
             "title": "Rate Limit Per Hour",
             "type": "integer"
           },
+          "recommendation_diagnostics": {
+            "additionalProperties": true,
+            "title": "Recommendation Diagnostics",
+            "type": "object"
+          },
           "recommendation_enabled": {
             "default": false,
             "title": "Recommendation Enabled",
@@ -5047,6 +6156,27 @@
           "recommendation_mode": {
             "$ref": "#/components/schemas/BranchDecisionMode",
             "default": "shadow"
+          },
+          "recommendation_semantic_enabled": {
+            "default": false,
+            "title": "Recommendation Semantic Enabled",
+            "type": "boolean"
+          },
+          "recommendation_semantic_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Semantic Model"
+          },
+          "recommendation_user_visible": {
+            "default": false,
+            "title": "Recommendation User Visible",
+            "type": "boolean"
           },
           "split_threshold": {
             "default": 0.65,
@@ -9712,6 +10842,54 @@
         "title": "ThreadContextPreviewResponse",
         "type": "object"
       },
+      "ThreadResolutionResponse": {
+        "properties": {
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "branch_status": {
+            "$ref": "#/components/schemas/BranchStatus",
+            "default": "active"
+          },
+          "diagnostic": {
+            "default": "",
+            "title": "Diagnostic",
+            "type": "string"
+          },
+          "input_thread_id": {
+            "title": "Input Thread Id",
+            "type": "string"
+          },
+          "is_root": {
+            "default": true,
+            "title": "Is Root",
+            "type": "boolean"
+          },
+          "root_thread_id": {
+            "title": "Root Thread Id",
+            "type": "string"
+          },
+          "source_thread_id": {
+            "title": "Source Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input_thread_id",
+          "root_thread_id",
+          "source_thread_id"
+        ],
+        "title": "ThreadResolutionResponse",
+        "type": "object"
+      },
       "ThreadStateResponse": {
         "properties": {
           "active_skill_ids": {
@@ -13608,6 +14786,170 @@
           }
         ],
         "summary": "Background Jobs Summary",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/config": {
+      "get": {
+        "operationId": "get_admin_config_v1_admin_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Admin Config",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/config/models": {
+      "patch": {
+        "operationId": "patch_admin_model_config_v1_admin_config_models_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminModelConfigUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Admin Model Config",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/config/policies": {
+      "patch": {
+        "operationId": "patch_admin_policy_config_v1_admin_config_policies_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPolicyConfigUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Admin Policy Config",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/config/tools": {
+      "patch": {
+        "operationId": "patch_admin_tool_config_v1_admin_config_tools_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminToolConfigUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Admin Tool Config",
         "tags": [
           "admin"
         ]
@@ -21415,6 +22757,50 @@
           }
         ],
         "summary": "Preview Thread Context"
+      }
+    },
+    "/v1/threads/{thread_id}/resolution": {
+      "get": {
+        "operationId": "get_thread_resolution_v1_threads__thread_id__resolution_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadResolutionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Thread Resolution"
       }
     },
     "/v2/runs/{run_id}": {

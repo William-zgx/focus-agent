@@ -390,7 +390,13 @@ def test_release_evidence_requires_release_id_for_production_pack(tmp_path: Path
         release_evidence.run_release_evidence(output_root=tmp_path)
 
 
-def test_release_evidence_writes_summary_and_copies_pack_to_storage(tmp_path: Path) -> None:
+def test_release_evidence_writes_summary_and_copies_pack_to_storage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+    monkeypatch.delenv("RELEASE_GATE_ARTIFACT_NAME", raising=False)
+
     source_dir = _source_dir(tmp_path)
     manifest = release_evidence.run_release_evidence(
         release_id="prod-release",

@@ -174,6 +174,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Config */
+        get: operations["get_admin_config_v1_admin_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Admin Model Config */
+        patch: operations["patch_admin_model_config_v1_admin_config_models_patch"];
+        trace?: never;
+    };
+    "/v1/admin/config/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Admin Policy Config */
+        patch: operations["patch_admin_policy_config_v1_admin_config_policies_patch"];
+        trace?: never;
+    };
+    "/v1/admin/config/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Admin Tool Config */
+        patch: operations["patch_admin_tool_config_v1_admin_config_tools_patch"];
+        trace?: never;
+    };
     "/v1/admin/users": {
         parameters: {
             query?: never;
@@ -2309,6 +2377,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/threads/{thread_id}/resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thread Resolution */
+        get: operations["get_thread_resolution_v1_threads__thread_id__resolution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -2466,12 +2551,365 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminConfigModelResponse */
+        AdminConfigModelResponse: {
+            /** Default Thinking Enabled */
+            default_thinking_enabled?: boolean | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** No Temperature */
+            no_temperature?: boolean | null;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
+            /** Request Kwargs */
+            request_kwargs?: {
+                [key: string]: unknown;
+            };
+            /** Supports Thinking */
+            supports_thinking?: boolean | null;
+            /** Thinking Disable Extra Body Type */
+            thinking_disable_extra_body_type?: string | null;
+            /** Thinking Disable Switch Model */
+            thinking_disable_switch_model?: string | null;
+            /** Thinking Disabled Model Name */
+            thinking_disabled_model_name?: string | null;
+            /** Thinking Disabled Request Kwargs */
+            thinking_disabled_request_kwargs?: {
+                [key: string]: unknown;
+            };
+            /** Thinking Enable Extra Body Type */
+            thinking_enable_extra_body_type?: string | null;
+            /** Thinking Enabled Request Kwargs */
+            thinking_enabled_request_kwargs?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AdminConfigModelSectionResponse */
+        AdminConfigModelSectionResponse: {
+            /** Default Model */
+            default_model?: string | null;
+            /** Helper Model */
+            helper_model?: string | null;
+            /** Model Choices */
+            model_choices?: string[];
+            /** Models */
+            models?: components["schemas"]["AdminConfigModelResponse"][];
+            /** Providers */
+            providers?: components["schemas"]["AdminConfigProviderResponse"][];
+            /**
+             * Requires Restart
+             * @default false
+             */
+            requires_restart: boolean;
+            source: components["schemas"]["AdminConfigSourceResponse"];
+        };
+        /** AdminConfigPolicySectionResponse */
+        AdminConfigPolicySectionResponse: {
+            /** Items */
+            items?: components["schemas"]["AdminConfigValueResponse"][];
+            /**
+             * Requires Restart
+             * @default true
+             */
+            requires_restart: boolean;
+            source: components["schemas"]["AdminConfigSourceResponse"];
+        };
+        /** AdminConfigProviderResponse */
+        AdminConfigProviderResponse: {
+            /** Aliases */
+            aliases?: string[];
+            /**
+             * Api Key Configured
+             * @default false
+             */
+            api_key_configured: boolean;
+            /** Api Key Env */
+            api_key_env?: string | null;
+            /** Backend Provider */
+            backend_provider?: string | null;
+            /**
+             * Base Url Configured
+             * @default false
+             */
+            base_url_configured: boolean;
+            /** Base Url Default */
+            base_url_default?: string | null;
+            /** Base Url Env */
+            base_url_env?: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Logo Letter */
+            logo_letter?: string | null;
+            /** Logo Slug */
+            logo_slug?: string | null;
+        };
+        /** AdminConfigResponse */
+        AdminConfigResponse: {
+            /** Message */
+            message?: string | null;
+            models: components["schemas"]["AdminConfigModelSectionResponse"];
+            policies: components["schemas"]["AdminConfigPolicySectionResponse"];
+            system: components["schemas"]["AdminConfigSystemSectionResponse"];
+            tools: components["schemas"]["AdminConfigToolSectionResponse"];
+            /** Updated At */
+            updated_at?: string | null;
+            /** Updated By */
+            updated_by?: string | null;
+        };
+        /** AdminConfigSourceResponse */
+        AdminConfigSourceResponse: {
+            /**
+             * Exists
+             * @default false
+             */
+            exists: boolean;
+            /** Path */
+            path: string;
+            /**
+             * Writable
+             * @default true
+             */
+            writable: boolean;
+        };
+        /** AdminConfigSystemSectionResponse */
+        AdminConfigSystemSectionResponse: {
+            /** Items */
+            items?: components["schemas"]["AdminConfigValueResponse"][];
+            source: components["schemas"]["AdminConfigSourceResponse"];
+        };
+        /** AdminConfigToolProviderResponse */
+        AdminConfigToolProviderResponse: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Order */
+            order?: number | null;
+            /** Overrides */
+            overrides?: string[];
+        };
+        /** AdminConfigToolResponse */
+        AdminConfigToolResponse: {
+            /** Description */
+            description: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Label */
+            label: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Settings */
+            settings?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AdminConfigToolSectionResponse */
+        AdminConfigToolSectionResponse: {
+            /** Providers */
+            providers?: components["schemas"]["AdminConfigToolProviderResponse"][];
+            /**
+             * Requires Restart
+             * @default true
+             */
+            requires_restart: boolean;
+            source: components["schemas"]["AdminConfigSourceResponse"];
+            /** Tools */
+            tools?: components["schemas"]["AdminConfigToolResponse"][];
+        };
+        /** AdminConfigValueResponse */
+        AdminConfigValueResponse: {
+            /** Configured */
+            configured?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Editable
+             * @default true
+             */
+            editable: boolean;
+            /** Env Key */
+            env_key?: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Options */
+            options?: string[];
+            /**
+             * Requires Restart
+             * @default false
+             */
+            requires_restart: boolean;
+            /**
+             * Sensitive
+             * @default false
+             */
+            sensitive: boolean;
+            /**
+             * Source
+             * @default runtime
+             */
+            source: string;
+            /** Value */
+            value?: unknown;
+            /**
+             * Value Type
+             * @default string
+             */
+            value_type: string;
+        };
+        /** AdminModelConfigPayload */
+        AdminModelConfigPayload: {
+            /** Default Thinking Enabled */
+            default_thinking_enabled?: boolean | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** No Temperature */
+            no_temperature?: boolean | null;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
+            /** Request Kwargs */
+            request_kwargs?: {
+                [key: string]: unknown;
+            };
+            /** Supports Thinking */
+            supports_thinking?: boolean | null;
+            /** Thinking Disable Extra Body Type */
+            thinking_disable_extra_body_type?: string | null;
+            /** Thinking Disable Switch Model */
+            thinking_disable_switch_model?: string | null;
+            /** Thinking Disabled Model Name */
+            thinking_disabled_model_name?: string | null;
+            /** Thinking Disabled Request Kwargs */
+            thinking_disabled_request_kwargs?: {
+                [key: string]: unknown;
+            };
+            /** Thinking Enable Extra Body Type */
+            thinking_enable_extra_body_type?: string | null;
+            /** Thinking Enabled Request Kwargs */
+            thinking_enabled_request_kwargs?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AdminModelConfigUpdateRequest */
+        AdminModelConfigUpdateRequest: {
+            /** Default Model */
+            default_model?: string | null;
+            /** Helper Model */
+            helper_model?: string | null;
+            /** Model Choices */
+            model_choices?: string[] | null;
+            /** Models */
+            models?: components["schemas"]["AdminModelConfigPayload"][] | null;
+            /** Providers */
+            providers?: components["schemas"]["AdminModelProviderConfigPayload"][] | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** AdminModelProviderConfigPayload */
+        AdminModelProviderConfigPayload: {
+            /** Aliases */
+            aliases?: string[];
+            /** Api Key Default */
+            api_key_default?: string | null;
+            /** Api Key Env */
+            api_key_env?: string | null;
+            /** Backend Provider */
+            backend_provider?: string | null;
+            /** Base Url Default */
+            base_url_default?: string | null;
+            /** Base Url Env */
+            base_url_env?: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Logo Letter */
+            logo_letter?: string | null;
+            /** Logo Slug */
+            logo_slug?: string | null;
+        };
+        /** AdminPolicyConfigUpdateRequest */
+        AdminPolicyConfigUpdateRequest: {
+            /** Reason */
+            reason?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
         /** AdminResetPasswordRequest */
         AdminResetPasswordRequest: {
             /** New Password */
             new_password: string;
             /** Reason */
             reason: string;
+        };
+        /** AdminToolConfigPayload */
+        AdminToolConfigPayload: {
+            /** Description */
+            description?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Label */
+            label?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Settings */
+            settings?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AdminToolConfigUpdateRequest */
+        AdminToolConfigUpdateRequest: {
+            /** Providers */
+            providers?: components["schemas"]["AdminToolProviderConfigPayload"][] | null;
+            /** Reason */
+            reason?: string | null;
+            /** Tools */
+            tools?: components["schemas"]["AdminToolConfigPayload"][] | null;
+        };
+        /** AdminToolProviderConfigPayload */
+        AdminToolProviderConfigPayload: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Order */
+            order?: number | null;
+            /** Overrides */
+            overrides?: string[];
         };
         /** AgentArtifactListResponse */
         AgentArtifactListResponse: {
@@ -4534,6 +4972,10 @@ export interface components {
              * @default 3
              */
             rate_limit_per_hour: number;
+            /** Recommendation Diagnostics */
+            recommendation_diagnostics?: {
+                [key: string]: unknown;
+            };
             /**
              * Recommendation Enabled
              * @default false
@@ -4546,6 +4988,18 @@ export interface components {
             recommendation_min_confidence: number;
             /** @default shadow */
             recommendation_mode: components["schemas"]["BranchDecisionMode"];
+            /**
+             * Recommendation Semantic Enabled
+             * @default false
+             */
+            recommendation_semantic_enabled: boolean;
+            /** Recommendation Semantic Model */
+            recommendation_semantic_model?: string | null;
+            /**
+             * Recommendation User Visible
+             * @default false
+             */
+            recommendation_user_visible: boolean;
             /**
              * Split Threshold
              * @default 0.65
@@ -6126,6 +6580,29 @@ export interface components {
         ThreadContextPreviewResponse: {
             context_usage: components["schemas"]["ContextUsageResponse"];
         };
+        /** ThreadResolutionResponse */
+        ThreadResolutionResponse: {
+            /** Branch Id */
+            branch_id?: string | null;
+            /** @default active */
+            branch_status: components["schemas"]["BranchStatus"];
+            /**
+             * Diagnostic
+             * @default
+             */
+            diagnostic: string;
+            /** Input Thread Id */
+            input_thread_id: string;
+            /**
+             * Is Root
+             * @default true
+             */
+            is_root: boolean;
+            /** Root Thread Id */
+            root_thread_id: string;
+            /** Source Thread Id */
+            source_thread_id: string;
+        };
         /** ThreadStateResponse */
         ThreadStateResponse: {
             /** Active Skill Ids */
@@ -7596,6 +8073,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundJobSummaryResponse"];
+                };
+            };
+        };
+    };
+    get_admin_config_v1_admin_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminConfigResponse"];
+                };
+            };
+        };
+    };
+    patch_admin_model_config_v1_admin_config_models_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_admin_policy_config_v1_admin_config_policies_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPolicyConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_admin_tool_config_v1_admin_config_tools_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminToolConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -11926,6 +12522,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreadContextPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thread_resolution_v1_threads__thread_id__resolution_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadResolutionResponse"];
                 };
             };
             /** @description Validation Error */
