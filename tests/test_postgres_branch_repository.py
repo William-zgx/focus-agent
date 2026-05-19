@@ -208,7 +208,10 @@ def test_postgres_branch_repository_setup_and_write_queries(monkeypatch):
             if normalized.startswith("SELECT owner_user_id FROM focus_thread_access"):
                 self._fetchone = thread_access.get(str(params[0]))
                 return
-            if normalized.startswith("SELECT * FROM focus_conversations"):
+            if (
+                normalized.startswith("SELECT * FROM focus_conversations")
+                or "FROM focus_conversations WHERE root_thread_id = %s" in normalized
+            ):
                 self._fetchone = conversations.get(str(params[0]))
             else:
                 self._fetchone = None

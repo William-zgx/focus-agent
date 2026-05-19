@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..route_helpers import run_sync_route_call
+
 logger = logging.getLogger("focus_agent.api.branch_handoff_decisions")
 
 
@@ -115,7 +117,9 @@ async def ensure_branch_handoff_decision_from_journal(
     if not callable(list_decisions):
         return None
     try:
-        existing = list_decisions(thread_id=thread_id, user_id=user_id, limit=1)
+        existing = await run_sync_route_call(
+            list_decisions, thread_id=thread_id, user_id=user_id, limit=1
+        )
     except Exception:  # noqa: BLE001
         return None
     if existing:
@@ -145,7 +149,8 @@ async def ensure_branch_handoff_decision_from_journal(
         return None
     run = handoff_runs[-1]
     message = _handoff_message_from_run(run)
-    event = record_branch_handoff_decision_for_run(
+    event = await run_sync_route_call(
+        record_branch_handoff_decision_for_run,
         runtime=runtime,
         thread_id=thread_id,
         user_id=user_id,
@@ -156,7 +161,8 @@ async def ensure_branch_handoff_decision_from_journal(
         run_status=getattr(run, "status", None),
     )
     if event is not None:
-        mark_branch_handoff_decision_outcome(
+        await run_sync_route_call(
+            mark_branch_handoff_decision_outcome,
             runtime=runtime,
             decision=event,
             run_status=str(getattr(run, "status", "") or ""),

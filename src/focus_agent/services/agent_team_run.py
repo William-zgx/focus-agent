@@ -192,7 +192,7 @@ class AgentTeamRunMixin:
             return session, self.list_tasks(session_id=session_id, user_id=user_id)
         max_parallel = _max_parallel_runs_for(self.settings)
         selected_task_ids = {task_id for task_id in task_ids or [] if task_id}
-        with self._lock:
+        with self._scheduler_lock(session_id):
             tasks = self.repository.list_tasks(session_id=session_id)
             active_count = sum(
                 1
@@ -216,8 +216,8 @@ class AgentTeamRunMixin:
             if selected_task_ids:
                 runnable = [task for task in runnable if task.task_id in selected_task_ids]
             runnable = runnable[: min(remaining_capacity, _MAX_MISSION_SCHEDULER_TASKS)]
-            for task in runnable:
-                queued = task.model_copy(
+            queued_tasks = [
+                task.model_copy(
                     update={
                         "status": AgentTeamTaskStatus.QUEUED,
                         "run_status": "queued",
@@ -228,7 +228,10 @@ class AgentTeamRunMixin:
                         "updated_at": _now(),
                     }
                 )
-                self.repository.save_task(queued)
+                for task in runnable
+            ]
+            self.repository.save_tasks_bulk(queued_tasks)
+            for queued in queued_tasks:
                 self._enqueue_task_run(task_id=queued.task_id, user_id=user_id)
             if runnable:
                 self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
@@ -329,7 +332,7 @@ class AgentTeamRunMixin:
                 "updated_at": _now(),
             }
         )
-        with self._lock:
+        with self._scheduler_lock(queued.session_id):
             self.repository.save_task(queued)
             self._touch_session(queued.session_id, status=AgentTeamSessionStatus.RUNNING)
         self._enqueue_task_run(task_id=task_id, user_id=user_id)
@@ -337,7 +340,8 @@ class AgentTeamRunMixin:
 
     def run_task_claimed(self, *, task_id: str, user_id: str) -> AgentTeamTask:
         owner = f"agent-team:{uuid4().hex}"
-        with self._lock:
+        task = self.get_task(task_id, user_id=user_id)
+        with self._scheduler_lock(task.session_id):
             claimed = self.repository.claim_task(
                 task_id=task_id,
                 owner=owner,
@@ -351,7 +355,7 @@ class AgentTeamRunMixin:
         )
         resource_claims = self._acquire_task_resource_claims(claimed)
         if resource_locks_required and claimed.resource_claims and not resource_claims:
-            with self._lock:
+            with self._scheduler_lock(claimed.session_id):
                 task = self.repository.release_task_claim(
                     task_id=task_id,
                     claim_token=claimed.claim_token or "",
@@ -403,7 +407,7 @@ class AgentTeamRunMixin:
                 )
             elif failure_strategy == FailureStrategy.ESCALATE:
                 final_status = AgentTeamTaskStatus.BLOCKED
-            with self._lock:
+            with self._scheduler_lock(claimed.session_id):
                 task = self.repository.release_task_claim(
                     task_id=task_id,
                     claim_token=claimed.claim_token or "",
@@ -465,7 +469,7 @@ class AgentTeamRunMixin:
                 )
             elif failure_strategy == FailureStrategy.ESCALATE:
                 final_status = AgentTeamTaskStatus.BLOCKED
-        with self._lock:
+        with self._scheduler_lock(claimed.session_id):
             claim_alive = self.repository.heartbeat_task_claim(
                 task_id=task_id,
                 claim_token=claimed.claim_token or "",
@@ -546,7 +550,7 @@ class AgentTeamRunMixin:
     ) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
         session = self.get_session(session_id, user_id=user_id)
         now = _now()
-        with self._lock:
+        with self._scheduler_lock(session_id):
             for task in self.repository.list_tasks(session_id=session_id):
                 if task.status in {
                     AgentTeamTaskStatus.PENDING,
@@ -589,7 +593,7 @@ class AgentTeamRunMixin:
         status = (
             AgentTeamTaskStatus.QUEUED if dependencies_satisfied else AgentTeamTaskStatus.PENDING
         )
-        with self._lock:
+        with self._scheduler_lock(task.session_id):
             reset = task.model_copy(
                 update={
                     "status": status,
@@ -635,7 +639,7 @@ class AgentTeamRunMixin:
             if task.status == AgentTeamTaskStatus.RUNNING
             else AgentTeamTaskStatus.CANCELLED
         )
-        with self._lock:
+        with self._scheduler_lock(task.session_id):
             updated = task.model_copy(
                 update={
                     "status": status,

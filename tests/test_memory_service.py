@@ -222,6 +222,15 @@ class _FakeMemoryEmbeddingRepository:
         return memory_id
 
 
+class _EnqueueBackend:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def enqueue(self, kind: str, payload: dict[str, Any]) -> bool:
+        self.calls.append((kind, payload))
+        return True
+
+
 def test_memory_service_redacts_sensitive_content_in_records_decisions_and_audit():
     repo = _FakeMemoryRepository()
     service = MemoryService(repository=repo)
@@ -309,6 +318,59 @@ def test_memory_service_merges_same_semantic_key_and_marks_conflicts():
     assert conflict.action == "possible_conflict"
     assert repo.records[conflict.memory_id].status == MemoryStatus.CONFLICT
     assert repo.audit_events[-1].action == "possible_conflict"
+
+
+def test_memory_service_resets_ready_embedding_status_when_merged_text_changes(monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "true")
+    repo = _FakeMemoryRepository()
+    backend = _EnqueueBackend()
+    service = MemoryService(repository=repo, coordination_backend=backend)
+    existing = MemoryRecord(
+        memory_id="memory-1",
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=user_profile_namespace("user-1"),
+        content="请用中文回答。",
+        summary="请用中文回答。",
+        tags=["profile"],
+        user_id="user-1",
+        importance=0.8,
+        semantic_key="pref-language",
+        fingerprint="existing-fingerprint",
+        embedding_status="ready",
+        embedding_model_id="embedding-model",
+        embedding_updated_at=datetime(2026, 5, 1, tzinfo=UTC),
+    )
+    repo.upsert_record(existing)
+
+    decision = service.upsert_request(
+        MemoryWriteRequest(
+            kind=MemoryKind.USER_PREFERENCE,
+            scope=MemoryScope.USER,
+            visibility=MemoryVisibility.SHARED,
+            namespace=user_profile_namespace("user-1"),
+            content="请用英文回答。",
+            summary="请用英文回答。",
+            user_id="user-1",
+            importance=0.9,
+            semantic_key="pref-language",
+        ),
+        actor="unit-test",
+        reason="replacement",
+    )
+
+    stored = repo.records["memory-1"]
+    assert decision.status == MemoryWriteDecisionStatus.MERGED
+    assert stored.embedding_status == "pending"
+    assert stored.embedding_model_id is None
+    assert stored.embedding_updated_at is None
+    assert backend.calls == [
+        (
+            "memory_embedding",
+            {"memory_id": "memory-1", "namespace": list(user_profile_namespace("user-1"))},
+        )
+    ]
 
 
 def test_memory_service_forget_records_tombstone_audit_and_not_found_decision():

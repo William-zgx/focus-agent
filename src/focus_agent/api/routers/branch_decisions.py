@@ -13,6 +13,7 @@ from ..contracts import (
     BranchDecisionListResponse,
 )
 from ..deps import get_app_runtime, get_current_principal
+from ..route_helpers import run_sync_route_call
 from ..route_utils.branch_handoff_decisions import ensure_branch_handoff_decision_from_journal
 
 router = APIRouter()
@@ -48,7 +49,8 @@ async def list_thread_branch_decisions(
             user_id=principal.user_id,
             request_id=getattr(getattr(request, "state", None), "request_id", None),
         )
-        events = service.list_decisions(
+        events = await run_sync_route_call(
+            service.list_decisions,
             thread_id=thread_id,
             user_id=principal.user_id,
             status=status,

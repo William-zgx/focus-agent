@@ -27,6 +27,10 @@ def test_architecture_report_collects_large_files_and_import_boundary_issues(
 
     assert report["summary"]["blocking"] is False
     assert report["summary"]["status"] == "issues"
+    assert report["line_count_top10"][0] == {
+        "lines": 6,
+        "path": "frontend-sdk/src/client.ts",
+    }
     assert {item["path"] for item in report["large_files"]} == {"frontend-sdk/src/client.ts"}
     assert {item["path"] for item in report["import_boundary_issues"]} == {
         "apps/web/src/view.ts",
@@ -56,4 +60,6 @@ def test_architecture_report_cli_is_non_blocking(tmp_path: Path, capsys) -> None
     assert exit_code == 0
     assert stdout["blocking"] is False
     assert stdout["issue_count"] == 1
+    assert stdout["line_count_top10"] == [{"lines": 4, "path": "src/focus_agent/large.py"}]
     assert saved["summary"]["status"] == "issues"
+    assert saved["line_count_top10"] == stdout["line_count_top10"]

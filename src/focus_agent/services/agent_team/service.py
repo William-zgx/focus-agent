@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from threading import RLock
+from time import perf_counter
 from uuid import uuid4
 
 from focus_agent.core.agent_team import (
@@ -16,6 +18,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.core.branching import BranchRole
+from focus_agent.observability.metrics import AGENT_TEAM_SCHEDULER_LOCK_WAIT_MS
 from focus_agent.repositories.agent_team_repository import (
     AgentTeamRepository,
     InMemoryAgentTeamRepository,
@@ -624,6 +627,28 @@ class AgentTeamService(
         self.background_work = background_work
         self.workspace_service = workspace_service or AgentTeamWorkspaceService()
         self._lock = RLock()
+        self._session_locks_guard = RLock()
+        self._session_locks: dict[str, RLock] = {}
+
+    def _lock_for_session(self, session_id: str) -> RLock:
+        with self._session_locks_guard:
+            lock = self._session_locks.get(session_id)
+            if lock is None:
+                lock = RLock()
+                self._session_locks[session_id] = lock
+            return lock
+
+    @contextmanager
+    def _scheduler_lock(self, session_id: str) -> Iterator[None]:
+        start = perf_counter()
+        lock = self._lock_for_session(session_id)
+        lock.acquire()
+        wait_ms = (perf_counter() - start) * 1000.0
+        AGENT_TEAM_SCHEDULER_LOCK_WAIT_MS.record(wait_ms, {"session_id": session_id})
+        try:
+            yield
+        finally:
+            lock.release()
 
 
 __all__ = [

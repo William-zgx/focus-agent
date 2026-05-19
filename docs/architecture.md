@@ -179,6 +179,43 @@ Persistence
 
 当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence，并初始化 `PostgresMemoryRepository`。默认 memory embedding backend 为 `auto`，会优先探测本地 Ollama `embeddinggemma`，并按 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 管理 pgvector v10 schema；无 `DATABASE_URI` 时使用 local fallback，memory repository 和 pgvector shadow 不可用。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
 
+### 4.1 Perf P1/P2 Runtime Path
+
+`perf-p1` 和 `perf-p2` 把高频同步 I/O 从请求热路径拆开，但所有改动都保留 feature flag 回滚口：
+
+```mermaid
+flowchart LR
+    API["FastAPI route"] --> RouteHelper["run_sync_route_call"]
+    RouteHelper --> Repo["Sync repository"]
+    Runtime["AppRuntime"] --> PGProvider["PostgresConnectionProvider"]
+    PGProvider --> PGPool["psycopg pool"]
+    Runtime --> CheckpointChoice{"FOCUS_AGENT_CHECKPOINT_BACKEND"}
+    CheckpointChoice --> Pickle["signed pickle saver"]
+    CheckpointChoice --> SQLite["SQLite checkpoint saver"]
+    Memory["MemoryService"] --> Redact["sensitive redaction"]
+    Redact -->|safe| Queue["memory_embedding job"]
+    Queue --> Worker["DurableBackgroundWorker"]
+    Worker --> Embedding["MemoryEmbeddingWorker"]
+    Tools["tool_parallel"] --> ToolPool["isolated tool_thread_pool"]
+```
+
+Key boundaries:
+
+- Postgres repositories share `PostgresConnectionProvider`; `FOCUS_AGENT_DB_POOL_ENABLED=false` restores short-lived connections.
+- Local checkpoint writes are debounced by default; `FOCUS_AGENT_CHECKPOINT_INCREMENTAL=false` restores per-write flush.
+- Pickle checkpoints require owner and HMAC validation when `FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=true`; `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` must be stable across restarts.
+- `FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite` switches only the local LangGraph checkpointer to SQLite. The default remains `pickle`.
+- Memory writes enqueue `memory_embedding` durable jobs when `FOCUS_AGENT_MEMORY_EMBED_ASYNC=true`; setting it to `false` restores synchronous best-effort embedding.
+- Tool execution uses `tool_thread_pool` when `FOCUS_AGENT_TOOL_POOL_ISOLATED=true`; setting it to `false` returns tool batches to the shared pool.
+
+Operational metrics to watch during rollout:
+
+- `/readyz.active_connections` for DB pool activity.
+- `focus_agent.tool_pool.active` and `focus_agent.tool_pool.queue` for tool pool saturation.
+- `agent_team_scheduler_lock_wait_ms` for scheduler lock contention.
+- durable background job pending/retry/dead-letter counts for `memory_embedding` backlog.
+- checkpoint benchmark output from `scripts/bench_checkpoint.py` for local fallback write latency and file growth.
+
 ## 5. 模型 Provider 与 Catalog
 
 模型路径现在收口成一个配置驱动链路：

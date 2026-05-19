@@ -153,6 +153,18 @@ FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=false
 Remove that flag after the service rewrites the checkpoint files with
 `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` configured.
 
+Local performance rollout flags are documented in `.env.example`. The defaults
+enable DB pooling, checkpoint debounce, async memory embedding dispatch, and the
+isolated tool pool. For rollback, set the specific flag off and restart:
+
+```env
+FOCUS_AGENT_DB_POOL_ENABLED=false
+FOCUS_AGENT_CHECKPOINT_INCREMENTAL=false
+FOCUS_AGENT_MEMORY_EMBED_ASYNC=false
+FOCUS_AGENT_TOOL_POOL_ISOLATED=false
+FOCUS_AGENT_CHECKPOINT_BACKEND=pickle
+```
+
 ## 6. Runtime Coordination
 
 Default local coordination is local-first:

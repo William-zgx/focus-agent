@@ -16,6 +16,31 @@ from focus_agent.core.governance import (
     SkillSelectionEvent,
 )
 
+_CONTEXT_MEMORY_EVIDENCE_COLUMNS = """
+    evidence_id, user_id, thread_id, turn_id, source_kind,
+    selected_memories, excluded_memories, compaction_summary,
+    drift_report, artifact_refs, token_counting, risk_flags,
+    data_json, created_at
+"""
+
+_SKILL_SELECTION_EVENT_COLUMNS = """
+    selection_id, user_id, message_hash, selection_source,
+    explicit_hints, activated_skill_ids, semantic_candidates,
+    confidence, feedback, user_override, data_json, created_at, updated_at
+"""
+
+_SKILL_PREFERENCE_COLUMNS = """
+    preference_id, user_id, skill_id, state, data_json, created_at, updated_at
+"""
+
+_BRANCH_DECISION_EVENT_COLUMNS = """
+    decision_id, user_id, root_thread_id, source_thread_id,
+    branch_id, action, status, mode, score, threshold, signals,
+    rationale, request_id, trace_id, idempotency_key,
+    promoted_action_id, dismiss_reason, error, metadata,
+    data_json, created_at, updated_at, executed_at
+"""
+
 
 class PostgresGovernanceRepository:
     def __init__(self, database_uri: str):
@@ -214,7 +239,8 @@ class PostgresGovernanceRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT * FROM focus_context_memory_evidence
+                    SELECT {_CONTEXT_MEMORY_EVIDENCE_COLUMNS}
+                    FROM focus_context_memory_evidence
                     {where}
                     ORDER BY created_at DESC, evidence_id DESC
                     LIMIT %(limit)s
@@ -274,7 +300,11 @@ class PostgresGovernanceRepository:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT * FROM focus_skill_selection_events WHERE selection_id = %s",
+                    f"""
+                    SELECT {_SKILL_SELECTION_EVENT_COLUMNS}
+                    FROM focus_skill_selection_events
+                    WHERE selection_id = %s
+                    """,
                     (selection_id,),
                 )
                 row = cur.fetchone()
@@ -300,7 +330,8 @@ class PostgresGovernanceRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT * FROM focus_skill_selection_events
+                    SELECT {_SKILL_SELECTION_EVENT_COLUMNS}
+                    FROM focus_skill_selection_events
                     {where}
                     ORDER BY created_at DESC, selection_id DESC
                     LIMIT %(limit)s
@@ -366,8 +397,9 @@ class PostgresGovernanceRepository:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """
-                    SELECT * FROM focus_skill_preferences
+                    f"""
+                    SELECT {_SKILL_PREFERENCE_COLUMNS}
+                    FROM focus_skill_preferences
                     WHERE user_id = %s AND skill_id = %s
                     """,
                     (user_id, skill_id),
@@ -379,8 +411,9 @@ class PostgresGovernanceRepository:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """
-                    SELECT * FROM focus_skill_preferences
+                    f"""
+                    SELECT {_SKILL_PREFERENCE_COLUMNS}
+                    FROM focus_skill_preferences
                     WHERE user_id = %s
                     ORDER BY updated_at DESC, skill_id
                     """,
@@ -500,7 +533,11 @@ class PostgresGovernanceRepository:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT * FROM focus_branch_decision_events WHERE decision_id = %s",
+                    f"""
+                    SELECT {_BRANCH_DECISION_EVENT_COLUMNS}
+                    FROM focus_branch_decision_events
+                    WHERE decision_id = %s
+                    """,
                     (decision_id,),
                 )
                 row = cur.fetchone()
@@ -538,7 +575,8 @@ class PostgresGovernanceRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT * FROM focus_branch_decision_events
+                    SELECT {_BRANCH_DECISION_EVENT_COLUMNS}
+                    FROM focus_branch_decision_events
                     {where}
                     ORDER BY created_at DESC, decision_id DESC
                     LIMIT %(limit)s

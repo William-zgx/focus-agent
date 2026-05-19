@@ -21,6 +21,7 @@ REGISTERED_BACKGROUND_JOB_KINDS = frozenset(
     {
         "agent_team_run_session",
         "agent_team_run_task",
+        "memory_embedding",
         "context_compaction",
         "conversation_title",
         "branch_title",
@@ -95,6 +96,8 @@ def register_default_background_job_handlers(
     branch_service: Any | None = None,
     agent_team_service: Any | None = None,
     branch_decision_service: Any | None = None,
+    memory_embedding_service: Any | None = None,
+    memory_repository: Any | None = None,
 ) -> None:
     def _register(
         kind: str, handler: Any, payload_factory: Callable[[dict[str, Any]], dict[str, Any]]
@@ -170,6 +173,23 @@ def register_default_background_job_handlers(
                 "trace_id": str(payload.get("trace_id") or "") or None,
             },
         )
+    if memory_embedding_service is not None and memory_repository is not None:
+        from ..memory.embedding_worker import MemoryEmbeddingWorker
+
+        worker = MemoryEmbeddingWorker(
+            repository=memory_repository,
+            embedding_service=memory_embedding_service,
+        )
+        _register(
+            "memory_embedding",
+            worker.process_payload,
+            lambda payload: {
+                "memory_id": _required_payload_string(payload, "memory_id"),
+                "namespace": _required_payload_namespace(payload),
+                "attempt": int(payload.get("_attempt") or 1),
+                "max_attempts": int(payload.get("_max_attempts") or 3),
+            },
+        )
 
 
 class DurableBackgroundWorker:
@@ -234,7 +254,11 @@ class DurableBackgroundWorker:
             if handler is None:
                 raise KeyError(f"unregistered durable background job kind: {spec.kind}")
             heartbeat = self._start_job_claim_heartbeat(spec.key, claim)
-            handler(dict(spec.payload))
+            payload = dict(spec.payload)
+            if spec.kind == "memory_embedding":
+                payload["_attempt"] = claim.attempt
+                payload["_max_attempts"] = spec.max_attempts
+            handler(payload)
             if not self._stop_job_claim_heartbeat(heartbeat):
                 raise _DurableJobClaimLostError("durable background job claim heartbeat lost")
         except Exception as exc:  # noqa: BLE001 - durable worker records and moves to the next job
@@ -580,6 +604,15 @@ def _required_payload_string(payload: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"background job payload field is required: {key}")
     return value.strip()
+
+
+def _required_payload_namespace(payload: dict[str, Any]) -> tuple[str, ...]:
+    value = payload.get("namespace")
+    if isinstance(value, (list, tuple)):
+        namespace = tuple(str(item).strip() for item in value if str(item).strip())
+        if namespace:
+            return namespace
+    raise ValueError("background job payload field is required: namespace")
 
 
 __all__ = [

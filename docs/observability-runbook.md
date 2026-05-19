@@ -58,8 +58,32 @@ Alert guidance should use the existing `/metrics` scrape. Start with these signa
 - `focus_agent_trajectory_metrics_available == 0`: the runtime is up but trajectory aggregates cannot be read.
 - `focus_agent_trajectory_non_succeeded_count / focus_agent_trajectory_turn_count`: alert on a sustained failure-rate increase, not a single failed turn.
 - `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
+- `focus_agent.tool_pool.queue`: warn when the isolated tool pool queue grows for multiple scrape windows; pair it with `focus_agent.tool_pool.active`.
+- `agent_team_scheduler_lock_wait_ms`: warn when p95 rises above the single-digit millisecond target during multi-session agent-team starts.
+- `focus_background_jobs{kind="memory_embedding",status="retrying|dead_lettered"}` or the admin background job summary: investigate embedding provider health or redaction spikes before enabling 100% async embedding.
+- `/readyz.active_connections`: track DB pool in-use connections during rollout and compare against `FOCUS_AGENT_DB_POOL_MAX`.
 
 Keep alert labels aligned with `app_version`, `environment`, `deployment`, `component`, and trajectory `status` so release regressions can be separated from general traffic noise.
+
+## 1.1 Perf Rollout Checks
+
+Before moving a perf flag from 10% to 50% or 100%, capture the same small bundle each time:
+
+```bash
+curl http://127.0.0.1:8000/readyz > reports/release-gate/readyz.json
+curl http://127.0.0.1:8000/metrics > reports/release-gate/metrics.prom
+uv run python scripts/bench_checkpoint.py --backend pickle --turns 500 > reports/release-gate/checkpoint-pickle.json
+uv run python scripts/bench_scheduler_lock.py --sessions 10 > reports/release-gate/scheduler-lock.json
+uv run python scripts/bench_tool_parallel.py --tools 10 > reports/release-gate/tool-parallel.txt
+```
+
+Interpretation:
+
+- DB pool: `active_connections` should return to zero when requests drain; sustained growth without matching traffic suggests a leaked connection scope.
+- Checkpoint: p95 writes should stay low and size samples should grow in coarse steps under debounce instead of after every write.
+- Memory async: pending `memory_embedding` jobs should drain; retrying/dead-letter growth points at provider outage or schema mismatch.
+- Tool pool: queue depth should remain near zero when workers are not saturated.
+- Scheduler lock: 10 independent sessions should show p95 lock wait below 5 ms on a quiet local runner.
 
 Executable alert-rule checks should write a small JSON report for release review. The release-health helper accepts it with `--alert-report-json` and fails the release if the report has no executable rule coverage, declares a failed status, or contains firing alerts. A minimal passing report looks like:
 

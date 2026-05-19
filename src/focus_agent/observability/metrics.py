@@ -112,10 +112,16 @@ TOOL_POOL_QUEUE = _observable_gauge(
     description="Queued tasks in the isolated tool thread pool.",
     callback=tool_pool_queue_size,
 )
+AGENT_TEAM_SCHEDULER_LOCK_WAIT_MS = _histogram(
+    "agent_team_scheduler_lock_wait_ms",
+    unit="ms",
+    description="Time spent waiting for an agent-team scheduler session lock.",
+)
 
 
 __all__ = [
     "ACTIVE_RUNS",
+    "AGENT_TEAM_SCHEDULER_LOCK_WAIT_MS",
     "LLM_TOKENS",
     "MODEL_CHOICE",
     "RUN_STATUS",

@@ -6,6 +6,10 @@ This module keeps explicit compatibility exports for tests and legacy imports.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
+
 from focus_agent.observability.trajectory_actions import (
     build_promoted_dataset_payload,
     load_turn_export,
@@ -18,11 +22,20 @@ from .route_utils.token_usage import (
     _annotate_branch_tree_token_usage,
 )
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+async def run_sync_route_call(func: Callable[P, R], /, *args: P.args, **kwargs: P.kwargs) -> R:
+    return await asyncio.to_thread(func, *args, **kwargs)
+
+
 __all__ = [
     "_aggregate_token_usage_from_turns",
     "_annotate_branch_tree_token_usage",
     "app_lifespan",
     "build_promoted_dataset_payload",
     "load_turn_export",
+    "run_sync_route_call",
     "run_replay_for_turn",
 ]

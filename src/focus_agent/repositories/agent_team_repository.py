@@ -40,6 +40,10 @@ class AgentTeamRepository(ABC):
     def save_task(self, task: AgentTeamTask) -> None:
         raise NotImplementedError
 
+    def save_tasks_bulk(self, tasks: list[AgentTeamTask]) -> None:
+        for task in tasks:
+            self.save_task(task)
+
     @abstractmethod
     def get_task(self, task_id: str) -> AgentTeamTask:
         raise NotImplementedError
@@ -217,6 +221,13 @@ class InMemoryAgentTeamRepository(AgentTeamRepository):
     def save_task(self, task: AgentTeamTask) -> None:
         with self._lock:
             self._tasks[task.task_id] = task
+
+    def save_tasks_bulk(self, tasks: list[AgentTeamTask]) -> None:
+        if not tasks:
+            return
+        with self._lock:
+            for task in tasks:
+                self._tasks[task.task_id] = task
 
     def get_task(self, task_id: str) -> AgentTeamTask:
         with self._lock:

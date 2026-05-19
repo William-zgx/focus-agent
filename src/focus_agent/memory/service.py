@@ -7,8 +7,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..repositories.memory_repository import MemoryRepository
+from ..services.coordination import BackgroundJobSpec
 from .dedupe import (
     has_textual_overlap,
     memory_fingerprint,
@@ -122,6 +124,8 @@ class MemoryService:
         )
         if existing is None:
             self.repository.upsert_record(record)
+            if _is_redacted_record(record):
+                self._record_redaction_audit(record, request=sanitized, actor=actor)
             self._write_embedding_best_effort(record)
             return self._decision(
                 status=MemoryWriteDecisionStatus.ACCEPTED,
@@ -152,6 +156,8 @@ class MemoryService:
         merged = merge_duplicate_records(existing, sanitized)
         merged = merged.model_copy(update={"status": MemoryStatus.ACTIVE})
         self.repository.upsert_record(merged)
+        if _is_redacted_record(merged):
+            self._record_redaction_audit(merged, request=sanitized, actor=actor)
         self._write_embedding_best_effort(merged)
         return self._decision(
             status=MemoryWriteDecisionStatus.MERGED,
@@ -209,13 +215,22 @@ class MemoryService:
         )
 
     def _write_embedding_best_effort(self, record: MemoryRecord) -> None:
+        if _is_redacted_record(record):
+            self._mark_embedding_failed(record, reason="sensitive_content_redacted")
+            return
         if _memory_embedding_async_enabled() and self._enqueue_embedding_best_effort(record):
             return
         if self.embedding_service is None:
             return
         try:
-            self.embedding_service.ensure_embedding(record)
+            result = self.embedding_service.ensure_embedding(record)
+            if isinstance(result, dict) and str(result.get("status") or "") in {
+                "written",
+                "skipped",
+            }:
+                self._mark_embedding_ready(record)
         except Exception:  # noqa: BLE001
+            self._mark_embedding_failed(record, reason="embedding_failed")
             logger.warning(
                 "failed to write memory embedding for memory_id=%s",
                 record.memory_id,
@@ -235,6 +250,26 @@ class MemoryService:
             "namespace": list(record.namespace),
         }
         try:
+            job_backend = getattr(backend, "job_deduper", None)
+            if has_repo_method(job_backend, "enqueue_job"):
+                enqueued = bool(
+                    job_backend.enqueue_job(
+                        BackgroundJobSpec(
+                            kind="memory_embedding",
+                            key=f"memory:memory_embedding:{record.memory_id}",
+                            payload=payload,
+                            max_attempts=3,
+                            dedupe_policy="replace",
+                            idempotency_key=f"memory:memory_embedding:{record.memory_id}",
+                        )
+                    )
+                )
+                if not enqueued:
+                    logger.debug(
+                        "memory embedding enqueue skipped for memory_id=%s: job already queued",
+                        record.memory_id,
+                    )
+                return True
             enqueue = getattr(backend, "enqueue", None)
             if callable(enqueue):
                 return bool(enqueue("memory_embedding", payload))
@@ -249,6 +284,60 @@ class MemoryService:
                 exc_info=True,
             )
         return False
+
+    def _mark_embedding_ready(self, record: MemoryRecord) -> None:
+        self._update_embedding_status(record, "ready")
+
+    def _mark_embedding_failed(self, record: MemoryRecord, *, reason: str) -> None:
+        self._update_embedding_status(record, "failed", reason=reason)
+
+    def _update_embedding_status(
+        self,
+        record: MemoryRecord,
+        status: str,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        if not has_repo_method(self.repository, "upsert_record"):
+            return
+        provider = getattr(self.embedding_service, "provider", None)
+        now = datetime.now(UTC)
+        self.repository.upsert_record(
+            record.model_copy(
+                update={
+                    "embedding_status": status,
+                    "embedding_model_id": getattr(provider, "model_id", None),
+                    "embedding_updated_at": now,
+                    "updated_at": now,
+                }
+            )
+        )
+
+    def _record_redaction_audit(
+        self,
+        record: MemoryRecord,
+        *,
+        request: MemoryWriteRequest,
+        actor: str,
+    ) -> None:
+        audit = MemoryAuditEvent(
+            event_id=str(uuid4()),
+            action="redact_sensitive_content",
+            decision=MemoryWriteDecisionStatus.SKIPPED,
+            memory_id=record.memory_id,
+            actor=actor,
+            reason="sensitive_content_redacted",
+            namespace=request.namespace,
+            user_id=request.user_id,
+            root_thread_id=request.root_thread_id,
+            source_thread_id=request.source_thread_id,
+            source_branch_id=request.source_branch_id,
+            data={
+                **_redacted_payload(request),
+                "embedding_skipped": True,
+            },
+        )
+        self.repository.append_audit_event(audit)
 
     def _decision(
         self,
@@ -368,6 +457,10 @@ def _redacted_payload(request: MemoryWriteRequest) -> dict[str, object]:
 
 _SENSITIVE_PATTERNS = (
     re.compile(r"\b(sk-[A-Za-z0-9_-]{12,}|xox[baprs]-[A-Za-z0-9-]{10,})\b"),
+    re.compile(r"\bgh[pou]_[A-Za-z0-9_]{12,}\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
+    re.compile(r"(?i)\bhttps?://[^/\s:@]+:[^/\s@]+@"),
     re.compile(r"(?i)\b(api[_ -]?key|token|secret|password)\s*[:=]\s*['\"]?[^'\"\s,;]+"),
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
 )
@@ -378,6 +471,10 @@ def _redact_sensitive_text(text: str) -> str:
     for pattern in _SENSITIVE_PATTERNS:
         redacted = pattern.sub("[redacted]", redacted)
     return redacted
+
+
+def _is_redacted_record(record: MemoryRecord) -> bool:
+    return any(str(tag).casefold() == "redacted" for tag in record.tags)
 
 
 def _is_possible_conflict(existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:

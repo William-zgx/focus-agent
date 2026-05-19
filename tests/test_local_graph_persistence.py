@@ -5,7 +5,11 @@ from pathlib import Path
 from langgraph.graph import END, START, StateGraph
 
 from focus_agent.core.types import PromptMode
-from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
+from focus_agent.engine.local_persistence import (
+    PersistentInMemorySaver,
+    PersistentInMemoryStore,
+    PersistentSQLiteSaver,
+)
 
 _HMAC_KEY = "local-graph-persistence-test-key-32-chars"
 
@@ -62,3 +66,29 @@ def test_persistent_in_memory_saver_allows_prompt_mode_without_warning(tmp_path:
 
     assert decoded == PromptMode.EXPLORE
     assert "Deserializing unregistered type focus_agent.core.types.PromptMode" not in caplog.text
+
+
+def test_persistent_sqlite_saver_restores_thread_state(tmp_path: Path):
+    checkpoint_path = tmp_path / "langgraph-checkpoints.sqlite3"
+    saver = PersistentSQLiteSaver(checkpoint_path)
+
+    builder = StateGraph(dict)
+    builder.add_node(
+        "write_answer", lambda state: {"answer": (state.get("question") or "").upper()}
+    )
+    builder.add_edge(START, "write_answer")
+    builder.add_edge("write_answer", END)
+    graph = builder.compile(checkpointer=saver)
+
+    config = {"configurable": {"thread_id": "thread-1"}}
+    graph.invoke({"question": "hello"}, config=config)
+    saver.close()
+
+    restored = PersistentSQLiteSaver(checkpoint_path)
+    try:
+        restored_graph = builder.compile(checkpointer=restored)
+        restored_state = restored_graph.get_state(config)
+    finally:
+        restored.close()
+
+    assert restored_state.values["answer"] == "HELLO"

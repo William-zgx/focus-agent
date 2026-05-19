@@ -87,6 +87,10 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
                     if value["data_json"]["task_id"] == params[0]
                 ]
 
+        def executemany(self, sql, param_sets):
+            for params in param_sets:
+                self.execute(sql, params)
+
         def fetchone(self):
             return self._fetchone
 

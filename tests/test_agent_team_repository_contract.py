@@ -208,6 +208,35 @@ def test_agent_team_repository_contract_upserts_models_and_replaces_output_paylo
     assert repo.list_task_outputs(task_id=task.task_id) == [updated_output]
 
 
+def test_agent_team_repository_contract_bulk_saves_tasks(
+    agent_team_repo_factory: RepositoryFactory,
+) -> None:
+    repo = agent_team_repo_factory()
+    session = _session(session_id="session-bulk")
+    first = _task(task_id="task-bulk-a", session_id=session.session_id)
+    second = _task(
+        task_id="task-bulk-b",
+        session_id=session.session_id,
+        created_at="2026-04-25T10:02:00+00:00",
+    )
+
+    repo.create_session(session)
+    repo.save_tasks_bulk([first, second])
+
+    updated_first = first.model_copy(
+        update={
+            "status": AgentTeamTaskStatus.DONE,
+            "updated_at": "2026-04-25T11:00:00+00:00",
+        }
+    )
+    repo.save_tasks_bulk([updated_first])
+
+    assert repo.list_tasks(session_id=session.session_id) == [updated_first, second]
+    assert repo.get_task(first.task_id) == updated_first
+    repo.save_tasks_bulk([])
+    assert repo.list_tasks(session_id=session.session_id) == [updated_first, second]
+
+
 def test_agent_team_repository_contract_lists_sessions_tasks_and_outputs_in_stable_order(
     agent_team_repo_factory: RepositoryFactory,
 ) -> None:

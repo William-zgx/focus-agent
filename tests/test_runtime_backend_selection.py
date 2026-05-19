@@ -349,6 +349,57 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(
         runtime.close()
 
 
+def test_create_runtime_selects_optional_sqlite_checkpoint_backend(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    def fake_build_tool_registry(*, settings, skill_registry, store=None, checkpointer=None):
+        captured["store"] = store
+        captured["checkpointer"] = checkpointer
+        return {"tool_registry": True}
+
+    class _FakePickleSaver:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeSQLiteSaver:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeLocalStore:
+        def __init__(self, path: Path):
+            self.path = Path(path)
+
+    class _FakeInMemoryBranchRepository:
+        pass
+
+    class _FakeInMemoryAgentTeamRepository:
+        pass
+
+    class _FakeInMemoryUserRepository:
+        pass
+
+    _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
+    monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakePickleSaver)
+    monkeypatch.setattr(runtime_mod, "PersistentSQLiteSaver", _FakeSQLiteSaver)
+    monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
+    monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
+    monkeypatch.setattr(
+        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
+    )
+    monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
+
+    settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
+    settings.resolved_env["FOCUS_AGENT_CHECKPOINT_BACKEND"] = "sqlite"
+    runtime = runtime_mod.create_runtime(settings)
+    try:
+        assert isinstance(runtime.checkpointer, _FakeSQLiteSaver)
+        assert runtime.checkpointer.path == tmp_path / "langgraph-checkpoints.sqlite3"
+        assert runtime.store.path == tmp_path / "langgraph-store.pkl"
+        assert captured["checkpointer"] is runtime.checkpointer
+    finally:
+        runtime.close()
+
+
 def test_create_runtime_injects_deterministic_memory_embedding_service(monkeypatch, tmp_path):
     def fake_build_tool_registry(
         *,

@@ -22,6 +22,7 @@ DEFAULT_SCAN_PATHS = (
     "tests/eval",
 )
 DEFAULT_LARGE_FILE_THRESHOLD = 800
+DEFAULT_LINE_COUNT_TOP_N = 10
 SCANNED_SUFFIXES = {".css", ".js", ".jsx", ".md", ".mjs", ".py", ".ts", ".tsx"}
 IGNORED_DIRS = {
     ".git",
@@ -135,6 +136,22 @@ def collect_large_files(
     return large_files
 
 
+def collect_line_count_top(
+    files: Iterable[Path],
+    *,
+    root: Path,
+    limit: int = DEFAULT_LINE_COUNT_TOP_N,
+) -> list[dict[str, Any]]:
+    line_counts = [
+        {
+            "lines": _line_count(path),
+            "path": _relative(path, root=root),
+        }
+        for path in files
+    ]
+    return sorted(line_counts, key=lambda item: (-item["lines"], item["path"]))[:limit]
+
+
 def _python_imports(path: Path) -> list[tuple[int, str]]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -221,6 +238,7 @@ def build_architecture_report(
     root_path = Path(root).resolve()
     files = _iter_files(scan_paths, root=root_path)
     large_files = collect_large_files(files, root=root_path, threshold=large_file_threshold)
+    line_count_top10 = collect_line_count_top(files, root=root_path)
     boundary_issues = collect_import_boundary_issues(files, root=root_path)
     issue_count = len(large_files) + len(boundary_issues)
     return {
@@ -241,6 +259,7 @@ def build_architecture_report(
             "scanned_file_count": len(files),
             "blocking": False,
         },
+        "line_count_top10": line_count_top10,
         "large_files": large_files,
         "import_boundary_issues": boundary_issues,
     }
@@ -292,6 +311,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "blocking": False,
                 "issue_count": report["summary"]["issue_count"],
+                "line_count_top10": report["line_count_top10"],
                 "report_json": str(target),
                 "status": report["summary"]["status"],
             },

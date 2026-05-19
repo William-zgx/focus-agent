@@ -25,6 +25,18 @@ from .postgres_schema import ensure_app_postgres_schema_on_connection
 
 _PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
 
+_BRANCH_COLUMNS = """
+    branch_id, root_thread_id, parent_thread_id, child_thread_id, return_thread_id,
+    owner_user_id, branch_name, branch_role, branch_depth, branch_status,
+    is_archived, archived_at, fork_checkpoint_id, fork_strategy,
+    merge_proposal, merge_decision
+"""
+
+_CONVERSATION_COLUMNS = """
+    root_thread_id, owner_user_id, title, title_pending_ai, is_archived,
+    archived_at, created_at, updated_at
+"""
+
 
 class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchRepository):
     def __init__(
@@ -116,7 +128,10 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
 
     def get(self, branch_id: str) -> BranchRecord:
         with self._cursor(dict_row=True) as cur:
-            cur.execute("SELECT * FROM focus_branches WHERE branch_id = %s", (branch_id,))
+            cur.execute(
+                f"SELECT {_BRANCH_COLUMNS} FROM focus_branches WHERE branch_id = %s",
+                (branch_id,),
+            )
             row = cur.fetchone()
         if row is None:
             raise KeyError(f"Unknown branch_id: {branch_id}")
@@ -125,7 +140,8 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
     def get_by_child_thread_id(self, child_thread_id: str) -> BranchRecord:
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                "SELECT * FROM focus_branches WHERE child_thread_id = %s", (child_thread_id,)
+                f"SELECT {_BRANCH_COLUMNS} FROM focus_branches WHERE child_thread_id = %s",
+                (child_thread_id,),
             )
             row = cur.fetchone()
         if row is None:
@@ -135,8 +151,8 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
     def list_by_root_thread_id(self, root_thread_id: str) -> list[BranchRecord]:
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                """
-                    SELECT * FROM focus_branches
+                f"""
+                    SELECT {_BRANCH_COLUMNS} FROM focus_branches
                     WHERE root_thread_id = %s
                     ORDER BY branch_depth, branch_name, child_thread_id
                     """,
@@ -148,8 +164,8 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
     def list_by_parent_thread_id(self, parent_thread_id: str) -> list[BranchRecord]:
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                """
-                    SELECT * FROM focus_branches
+                f"""
+                    SELECT {_BRANCH_COLUMNS} FROM focus_branches
                     WHERE parent_thread_id = %s
                     ORDER BY branch_name, child_thread_id
                     """,
@@ -330,7 +346,7 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
     ) -> ThreadResolution:
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                "SELECT * FROM focus_branches WHERE child_thread_id = %s",
+                f"SELECT {_BRANCH_COLUMNS} FROM focus_branches WHERE child_thread_id = %s",
                 (thread_id,),
             )
             branch_row = cur.fetchone()
@@ -402,7 +418,7 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
     def get_conversation(self, root_thread_id: str) -> ConversationRecord:
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                "SELECT * FROM focus_conversations WHERE root_thread_id = %s",
+                f"SELECT {_CONVERSATION_COLUMNS} FROM focus_conversations WHERE root_thread_id = %s",
                 (root_thread_id,),
             )
             row = cur.fetchone()
@@ -414,8 +430,8 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
         self._backfill_conversations(owner_user_id=owner_user_id)
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                """
-                    SELECT * FROM focus_conversations
+                f"""
+                    SELECT {_CONVERSATION_COLUMNS} FROM focus_conversations
                     WHERE owner_user_id = %s
                     ORDER BY is_archived ASC, created_at DESC, root_thread_id DESC
                     """,

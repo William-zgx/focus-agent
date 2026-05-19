@@ -1,0 +1,191 @@
+{
+  "generated_at": "2026-05-19T00:00:00+08:00",
+  "branch": "integration/p2",
+  "baseline": {
+    "p1_tag": "perf-p1",
+    "p1_commit": "a7d4882"
+  },
+  "status": "blocked_for_live_rollout",
+  "blockers": [
+    {
+      "item": "wrk 200-concurrent SSE 5 minute run",
+      "reason": "wrk is not installed in the local environment"
+    },
+    {
+      "item": "API live smoke and 1000-turn long-session pressure",
+      "reason": "local API startup needs provider credentials such as OPENAI_API_KEY"
+    },
+    {
+      "item": "P2 eval baseline comparison",
+      "reason": "local eval smoke requires OPENAI_API_KEY; all 11 smoke cases failed with missing API key environment error"
+    },
+    {
+      "item": "10% -> 50% -> 100% production flag rollout",
+      "reason": "requires a live deployment target and 30 minute observation windows"
+    }
+  ],
+  "implemented_flags": {
+    "FOCUS_AGENT_DB_POOL_ENABLED": {
+      "default": "true",
+      "rollback": "false",
+      "scope": "Postgres repository connection pooling"
+    },
+    "FOCUS_AGENT_CHECKPOINT_INCREMENTAL": {
+      "default": "true",
+      "rollback": "false",
+      "scope": "local pickle saver/store debounce"
+    },
+    "FOCUS_AGENT_MEMORY_EMBED_ASYNC": {
+      "default": "true",
+      "rollback": "false",
+      "scope": "memory embedding enqueue and durable worker"
+    },
+    "FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE": {
+      "default": "true",
+      "rollback": "false",
+      "scope": "local pickle owner/HMAC verification"
+    },
+    "FOCUS_AGENT_CHECKPOINT_HMAC_KEY": {
+      "default": "",
+      "rollback": "set stable key; only unset for unsigned legacy migration with verification off",
+      "scope": "local pickle signature key"
+    },
+    "FOCUS_AGENT_TOOL_POOL_ISOLATED": {
+      "default": "true",
+      "rollback": "false",
+      "scope": "parallel tool execution thread pool isolation"
+    },
+    "FOCUS_AGENT_CHECKPOINT_BACKEND": {
+      "default": "pickle",
+      "rollback": "pickle",
+      "scope": "local LangGraph checkpoint backend selection"
+    }
+  },
+  "local_gate_results": [
+    {
+      "command": "uv run --extra dev pytest <P2 targeted suites> -q",
+      "status": "passed",
+      "summary": "162 passed, 8 skipped"
+    },
+    {
+      "command": "uv run --extra openai --extra dev pytest tests -q -k \"not slow\"",
+      "status": "passed",
+      "summary": "1515 passed, 15 skipped, 1 deselected"
+    },
+    {
+      "command": "uv run --extra dev ruff check src",
+      "status": "passed"
+    },
+    {
+      "command": "make lint-strict",
+      "status": "passed"
+    },
+    {
+      "command": "make architecture-report",
+      "status": "passed",
+      "summary": "emitted line_count_top10; legacy harness_runs.py absent"
+    },
+    {
+      "command": "pnpm sdk:check",
+      "status": "passed"
+    },
+    {
+      "command": "pnpm contract:check",
+      "status": "passed"
+    },
+    {
+      "command": "make sdk-openapi-types-check",
+      "status": "passed"
+    },
+    {
+      "command": "uv run python -m tests.eval --suite smoke --concurrency 1 --report-json reports/release-gate/eval-smoke.json",
+      "status": "blocked_env",
+      "summary": "11/11 failed because OPENAI_API_KEY is unset"
+    }
+  ],
+  "local_perf_samples": {
+    "checkpoint_pickle_100_turns": {
+      "p50_write_ms": 0.005875015631318092,
+      "p95_write_ms": 0.017119108815677464,
+      "max_write_ms": 2.5790409999899566,
+      "final_bytes": 27660,
+      "size_samples": [
+        {
+          "turn": 25,
+          "bytes": 6509
+        },
+        {
+          "turn": 50,
+          "bytes": 13461
+        },
+        {
+          "turn": 75,
+          "bytes": 20557
+        },
+        {
+          "turn": 100,
+          "bytes": 27660
+        }
+      ]
+    },
+    "checkpoint_sqlite_100_turns": {
+      "p50_write_ms": 0.06724998820573092,
+      "p95_write_ms": 0.13830979587510228,
+      "max_write_ms": 0.39391597965732217,
+      "final_bytes": 77824,
+      "size_samples": [
+        {
+          "turn": 25,
+          "bytes": 36864
+        },
+        {
+          "turn": 50,
+          "bytes": 57344
+        },
+        {
+          "turn": 75,
+          "bytes": 69632
+        },
+        {
+          "turn": 100,
+          "bytes": 77824
+        }
+      ]
+    },
+    "scheduler_lock_10_sessions": {
+      "p50_lock_wait_ms": 0.0010840012691915035,
+      "p95_lock_wait_ms": 0.004212826024740934,
+      "max_lock_wait_ms": 0.021875021047890186,
+      "samples": 200
+    },
+    "tool_parallel_10_tools": {
+      "elapsed_ms": 12.83,
+      "tools": 10,
+      "workers": 10,
+      "sleep_ms": 10.0,
+      "results": 10
+    }
+  },
+  "rollout_plan": [
+    {
+      "stage": "10%",
+      "duration_minutes": 30,
+      "status": "not_started"
+    },
+    {
+      "stage": "50%",
+      "duration_minutes": 30,
+      "status": "not_started"
+    },
+    {
+      "stage": "100%",
+      "duration_minutes": 30,
+      "status": "not_started"
+    }
+  ],
+  "review": {
+    "backend": "P1 backend review gaps fixed before P2; P2 backend reviewer findings fixed in d7ef048 and related tests passed",
+    "frontend": "SDK and API contract checks passed locally",
+    "final_signoff": "pending live performance suite and rollout observation"
+  }
+}

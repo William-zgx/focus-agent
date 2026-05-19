@@ -145,9 +145,14 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
         self._upsert_task(task)
 
     def _upsert_task(self, task: AgentTeamTask) -> None:
+        self.save_tasks_bulk([task])
+
+    def save_tasks_bulk(self, tasks: list[AgentTeamTask]) -> None:
+        if not tasks:
+            return
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
+                cur.executemany(
                     """
                     INSERT INTO focus_agent_team_tasks (
                         task_id, session_id, created_at, updated_at, data_json
@@ -160,13 +165,16 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
                         updated_at = EXCLUDED.updated_at,
                         data_json = EXCLUDED.data_json
                     """,
-                    {
-                        "task_id": task.task_id,
-                        "session_id": task.session_id,
-                        "created_at": task.created_at,
-                        "updated_at": task.updated_at,
-                        "data_json": Jsonb(self._model_payload(task)),
-                    },
+                    [
+                        {
+                            "task_id": task.task_id,
+                            "session_id": task.session_id,
+                            "created_at": task.created_at,
+                            "updated_at": task.updated_at,
+                            "data_json": Jsonb(self._model_payload(task)),
+                        }
+                        for task in tasks
+                    ],
                 )
 
     def get_task(self, task_id: str) -> AgentTeamTask:

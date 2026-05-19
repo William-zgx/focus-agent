@@ -6,6 +6,7 @@ import hmac
 import logging
 import os
 import pickle
+import sqlite3
 import threading
 import weakref
 from collections import defaultdict
@@ -297,6 +298,214 @@ class PersistentInMemorySaver(_DebouncedFlushMixin, InMemorySaver):
         with self._lock:
             super().delete_thread(thread_id)
             self._flush_dirty_now()
+
+
+class PersistentSQLiteSaver(InMemorySaver):
+    def __init__(self, path: str | Path):
+        self.path = Path(path).expanduser()
+        _flush_open_persistence_for_path(self.path)
+        self._lock = RLock()
+        super().__init__(serde=_focus_agent_checkpoint_serde())
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self.setup()
+        self._restore()
+        _register_persistence_instance(self)
+
+    def setup(self) -> None:
+        with self._conn:
+            self._conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS checkpoint_storage (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL,
+                    checkpoint_id TEXT NOT NULL,
+                    checkpoint_type TEXT NOT NULL,
+                    checkpoint BLOB NOT NULL,
+                    metadata_type TEXT NOT NULL,
+                    metadata BLOB NOT NULL,
+                    parent_checkpoint_id TEXT,
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    version BLOB NOT NULL,
+                    value_type TEXT NOT NULL,
+                    value BLOB NOT NULL,
+                    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
+                );
+
+                CREATE TABLE IF NOT EXISTS checkpoint_writes (
+                    thread_id TEXT NOT NULL,
+                    checkpoint_ns TEXT NOT NULL,
+                    checkpoint_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    write_idx INTEGER NOT NULL,
+                    channel TEXT NOT NULL,
+                    value_type TEXT NOT NULL,
+                    value BLOB NOT NULL,
+                    task_path TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx)
+                );
+                """
+            )
+
+    def _restore(self) -> None:
+        storage = defaultdict(lambda: defaultdict(dict))
+        writes = defaultdict(dict)
+        blobs = {}
+        for row in self._conn.execute(
+            """
+            SELECT thread_id, checkpoint_ns, checkpoint_id, checkpoint_type, checkpoint,
+                   metadata_type, metadata, parent_checkpoint_id
+            FROM checkpoint_storage
+            """
+        ):
+            thread_id, checkpoint_ns, checkpoint_id = row[0], row[1], row[2]
+            storage[thread_id][checkpoint_ns][checkpoint_id] = (
+                (row[3], bytes(row[4])),
+                (row[5], bytes(row[6])),
+                row[7],
+            )
+        for row in self._conn.execute(
+            """
+            SELECT thread_id, checkpoint_ns, channel, version, value_type, value
+            FROM checkpoint_blobs
+            """
+        ):
+            version = pickle.loads(bytes(row[3]))
+            blobs[(row[0], row[1], row[2], version)] = (row[4], bytes(row[5]))
+        for row in self._conn.execute(
+            """
+            SELECT thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx,
+                   channel, value_type, value, task_path
+            FROM checkpoint_writes
+            """
+        ):
+            outer_key = (row[0], row[1], row[2])
+            inner_key = (row[3], int(row[4]))
+            writes[outer_key][inner_key] = (row[3], row[5], (row[6], bytes(row[7])), row[8])
+        self.storage = storage
+        self.writes = writes
+        self.blobs = blobs
+
+    def put(self, config, checkpoint, metadata, new_versions):
+        with self._lock:
+            result = super().put(config, checkpoint, metadata, new_versions)
+            thread_id = result["configurable"]["thread_id"]
+            checkpoint_ns = result["configurable"].get("checkpoint_ns", "")
+            checkpoint_id = result["configurable"]["checkpoint_id"]
+            checkpoint_b, metadata_b, parent_checkpoint_id = self.storage[thread_id][
+                checkpoint_ns
+            ][checkpoint_id]
+            rows = []
+            for channel, version in new_versions.items():
+                value_type, value = self.blobs[(thread_id, checkpoint_ns, channel, version)]
+                rows.append(
+                    (
+                        thread_id,
+                        checkpoint_ns,
+                        channel,
+                        sqlite3.Binary(pickle.dumps(version, protocol=pickle.HIGHEST_PROTOCOL)),
+                        value_type,
+                        sqlite3.Binary(value),
+                    )
+                )
+            with self._conn:
+                self._conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO checkpoint_blobs (
+                        thread_id, checkpoint_ns, channel, version, value_type, value
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+                self._conn.execute(
+                    """
+                    INSERT OR REPLACE INTO checkpoint_storage (
+                        thread_id, checkpoint_ns, checkpoint_id, checkpoint_type, checkpoint,
+                        metadata_type, metadata, parent_checkpoint_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        thread_id,
+                        checkpoint_ns,
+                        checkpoint_id,
+                        checkpoint_b[0],
+                        sqlite3.Binary(checkpoint_b[1]),
+                        metadata_b[0],
+                        sqlite3.Binary(metadata_b[1]),
+                        parent_checkpoint_id,
+                    ),
+                )
+        return result
+
+    def put_writes(self, config, writes, task_id, task_path=""):
+        with self._lock:
+            super().put_writes(config, writes, task_id, task_path)
+            configurable = config["configurable"]
+            thread_id = configurable["thread_id"]
+            checkpoint_ns = configurable.get("checkpoint_ns", "")
+            checkpoint_id = configurable["checkpoint_id"]
+            outer_key = (thread_id, checkpoint_ns, checkpoint_id)
+            rows = [
+                (
+                    thread_id,
+                    checkpoint_ns,
+                    checkpoint_id,
+                    write_task_id,
+                    write_idx,
+                    channel,
+                    value[0],
+                    sqlite3.Binary(value[1]),
+                    write_task_path,
+                )
+                for (write_task_id, write_idx), (
+                    _,
+                    channel,
+                    value,
+                    write_task_path,
+                ) in self.writes[outer_key].items()
+            ]
+            with self._conn:
+                self._conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO checkpoint_writes (
+                        thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx,
+                        channel, value_type, value, task_path
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def delete_thread(self, thread_id: str) -> None:
+        with self._lock:
+            super().delete_thread(thread_id)
+            with self._conn:
+                self._conn.execute("DELETE FROM checkpoint_storage WHERE thread_id = ?", (thread_id,))
+                self._conn.execute("DELETE FROM checkpoint_blobs WHERE thread_id = ?", (thread_id,))
+                self._conn.execute("DELETE FROM checkpoint_writes WHERE thread_id = ?", (thread_id,))
+
+    async def aput(self, config, checkpoint, metadata, new_versions):
+        return self.put(config, checkpoint, metadata, new_versions)
+
+    async def aput_writes(self, config, writes, task_id, task_path=""):
+        self.put_writes(config, writes, task_id, task_path)
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        self.delete_thread(thread_id)
+
+    def close(self) -> None:
+        with self._lock:
+            conn = getattr(self, "_conn", None)
+            if conn is not None:
+                conn.close()
+                self._conn = None
 
 
 class PersistentInMemoryStore(_DebouncedFlushMixin, InMemoryStore):

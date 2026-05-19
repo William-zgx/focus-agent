@@ -33,6 +33,11 @@ jobs:
       - name: Run pytest
         run: make ci-test
 
+      - name: Run asyncio debug route boundary tests
+        env:
+          PYTHONASYNCIODEBUG: "1"
+        run: uv run --extra dev pytest tests/unit/test_route_async_boundaries.py -q
+
   contracts:
     name: Contract check
     runs-on: ubuntu-latest

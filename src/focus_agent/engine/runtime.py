@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import os
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -12,7 +13,11 @@ from ..capabilities import ToolRegistry, build_tool_registry
 from ..config import Settings, ensure_runtime_directories
 from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
-from ..engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
+from ..engine.local_persistence import (
+    PersistentInMemorySaver,
+    PersistentInMemoryStore,
+    PersistentSQLiteSaver,
+)
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..memory.embedding import (
     MemoryEmbeddingError,
@@ -183,6 +188,8 @@ class AppRuntime:
             branch_service=self.branch_service,
             agent_team_service=self.agent_team_service,
             branch_decision_service=self.branch_decision_service,
+            memory_embedding_service=self.memory_embedding_service,
+            memory_repository=self.memory_repository,
         )
         worker = DurableBackgroundWorker(
             name="runtime",
@@ -792,7 +799,7 @@ def _create_local_fallback_persistence(
         if settings.local_store_path
         else persistence_dir / "langgraph-store.pkl"
     )
-    checkpointer = PersistentInMemorySaver(checkpoint_path)
+    checkpointer = _create_local_checkpointer(settings, persistence_dir, checkpoint_path)
     store = PersistentInMemoryStore(store_path)
     repo = InMemoryBranchRepository()
     user_repository = InMemoryUserRepository()
@@ -809,6 +816,35 @@ def _create_local_fallback_persistence(
         None,
         None,
         run_journal,
+    )
+
+
+def _create_local_checkpointer(
+    settings: Settings,
+    persistence_dir: Path,
+    checkpoint_path: Path,
+) -> object:
+    backend = str(
+        getattr(settings, "resolved_env", {}).get("FOCUS_AGENT_CHECKPOINT_BACKEND", "")
+        or os.environ.get("FOCUS_AGENT_CHECKPOINT_BACKEND", "")
+        or "pickle"
+    ).strip().lower()
+    if backend == "pickle":
+        return PersistentInMemorySaver(checkpoint_path)
+    if backend == "sqlite":
+        if settings.local_checkpoint_path:
+            candidate = Path(settings.local_checkpoint_path).expanduser()
+            sqlite_path = (
+                candidate
+                if candidate.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
+                else candidate.with_suffix(".sqlite3")
+            )
+        else:
+            sqlite_path = persistence_dir / "langgraph-checkpoints.sqlite3"
+        return PersistentSQLiteSaver(sqlite_path)
+    raise ValueError(
+        "FOCUS_AGENT_CHECKPOINT_BACKEND must be one of: pickle, sqlite "
+        f"(got {backend!r})."
     )
 
 

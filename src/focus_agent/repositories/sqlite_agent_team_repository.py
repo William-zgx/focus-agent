@@ -194,8 +194,13 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
         self._upsert_task(task)
 
     def _upsert_task(self, task: AgentTeamTask) -> None:
+        self.save_tasks_bulk([task])
+
+    def save_tasks_bulk(self, tasks: list[AgentTeamTask]) -> None:
+        if not tasks:
+            return
         with self._connect() as conn:
-            conn.execute(
+            conn.executemany(
                 """
                 INSERT INTO agent_team_tasks (
                     task_id, session_id, created_at, updated_at, data_json
@@ -205,13 +210,16 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                     updated_at = excluded.updated_at,
                     data_json = excluded.data_json
                 """,
-                (
-                    task.task_id,
-                    task.session_id,
-                    task.created_at,
-                    task.updated_at,
-                    task.model_dump_json(),
-                ),
+                [
+                    (
+                        task.task_id,
+                        task.session_id,
+                        task.created_at,
+                        task.updated_at,
+                        task.model_dump_json(),
+                    )
+                    for task in tasks
+                ],
             )
             conn.commit()
 

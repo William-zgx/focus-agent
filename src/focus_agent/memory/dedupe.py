@@ -63,10 +63,19 @@ def user_preference_topic(text: str) -> str | None:
 
 def merge_duplicate_records(existing: MemoryRecord, incoming: MemoryWriteRequest) -> MemoryRecord:
     now = datetime.now(UTC)
+    next_content = incoming.content or existing.content
+    next_summary = incoming.summary or existing.summary
+    embedding_update = {}
+    if next_content != existing.content or next_summary != existing.summary:
+        embedding_update = {
+            "embedding_status": "pending",
+            "embedding_model_id": None,
+            "embedding_updated_at": None,
+        }
     merged = existing.model_copy(
         update={
-            "content": incoming.content or existing.content,
-            "summary": incoming.summary or existing.summary,
+            "content": next_content,
+            "summary": next_summary,
             "tags": sorted(set(existing.tags) | set(incoming.tags)),
             "evidence_refs": sorted(set(existing.evidence_refs) | set(incoming.evidence_refs)),
             "confidence": max(
@@ -77,6 +86,7 @@ def merge_duplicate_records(existing: MemoryRecord, incoming: MemoryWriteRequest
             "importance": max(existing.importance, incoming.importance),
             "promoted_to_main": existing.promoted_to_main or incoming.promoted_to_main,
             "updated_at": now,
+            **embedding_update,
         }
     )
     merged.semantic_key = memory_semantic_key(merged)

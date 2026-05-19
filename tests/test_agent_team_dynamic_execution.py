@@ -1,13 +1,37 @@
 from __future__ import annotations
 
+from threading import Event, Thread
+
 from focus_agent.agent_delegation_models import AgentArtifact, AgentTask
 from focus_agent.agent_execution_types import SubagentConfig, SubagentRunResult
 from focus_agent.agent_roles import AgentRole
 from focus_agent.core.agent_team import (
+    AgentTeamTask,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.repositories.agent_team_repository import InMemoryAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
+
+
+class SubmitOnlyBackgroundWork:
+    def submit(self, **kwargs: object) -> bool:
+        return True
+
+
+class BlockingBulkRepository(InMemoryAgentTeamRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.block_session_id: str | None = None
+        self.entered = Event()
+        self.release = Event()
+
+    def save_tasks_bulk(self, tasks: list[AgentTeamTask]) -> None:
+        session_id = tasks[0].session_id if tasks else None
+        if session_id == self.block_session_id:
+            self.entered.set()
+            assert self.release.wait(timeout=5)
+        super().save_tasks_bulk(tasks)
 
 
 class MetadataExecutor:
@@ -294,6 +318,59 @@ def test_run_ready_tasks_does_not_start_dependents_after_failed_dependency() -> 
     assert by_id[root.task_id].status == AgentTeamTaskStatus.FAILED
     assert by_id[dependent.task_id].status == AgentTeamTaskStatus.PENDING
     assert service.list_task_outputs(task_id=dependent.task_id, user_id="user-1") == []
+
+
+def test_scheduler_lock_is_scoped_per_session() -> None:
+    repository = BlockingBulkRepository()
+    service = AgentTeamService(
+        branch_service=None,
+        repository=repository,
+        background_work=SubmitOnlyBackgroundWork(),
+    )
+    blocked = service.create_session(root_thread_id="root-a", user_id="user-1", goal="Blocked")
+    other = service.create_session(root_thread_id="root-b", user_id="user-1", goal="Other")
+    service.create_task(
+        session_id=blocked.session_id,
+        user_id="user-1",
+        role=AgentTeamTaskRole.BACKEND_EXECUTOR,
+        goal="blocked task",
+        create_branch=False,
+    )
+    other_task = service.create_task(
+        session_id=other.session_id,
+        user_id="user-1",
+        role=AgentTeamTaskRole.BACKEND_EXECUTOR,
+        goal="other task",
+        create_branch=False,
+    )
+    repository.block_session_id = blocked.session_id
+
+    blocked_thread = Thread(
+        target=service.run_ready_tasks,
+        kwargs={"session_id": blocked.session_id, "user_id": "user-1"},
+    )
+    blocked_thread.start()
+    assert repository.entered.wait(timeout=5)
+
+    other_done = Event()
+
+    def run_other() -> None:
+        service.run_ready_tasks(session_id=other.session_id, user_id="user-1")
+        other_done.set()
+
+    other_thread = Thread(target=run_other)
+    other_thread.start()
+    assert other_done.wait(timeout=1)
+    assert (
+        service.get_task(other_task.task_id, user_id="user-1").status
+        == AgentTeamTaskStatus.QUEUED
+    )
+
+    repository.release.set()
+    blocked_thread.join(timeout=5)
+    other_thread.join(timeout=5)
+    assert not blocked_thread.is_alive()
+    assert not other_thread.is_alive()
 
 
 def test_merge_bundle_requests_changes_without_review_or_verification_evidence() -> None:
