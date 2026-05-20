@@ -4,10 +4,72 @@ import logging
 import uuid
 from copy import deepcopy
 
+from ...core.branch_messages import branch_seed_messages
 from ...core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
-from ...core.types import ConversationRecord
+from ...core.types import ConversationRecord, PromptMode
 
 logger = logging.getLogger("focus_agent.branches")
+
+_LOCAL_SNAPSHOT_SEED_RESETS: dict[str, object] = {
+    "recent_messages": [],
+    "assembled_context": "",
+    "llm_calls": 0,
+    "branch_meta": None,
+    "branch_actions": [],
+    "branch_action_audit": [],
+    "branch_local_findings": [],
+    "merge_proposal": None,
+    "merge_decision": None,
+    "prompt_mode": PromptMode.EXPLORE,
+    "retrieved_memories": [],
+    "memory_prompt_block": "",
+    "memory_retrieval_plan": {},
+    "active_skill_ids": [],
+    "available_skills_block": "",
+    "active_skills_block": "",
+    "selected_model": "",
+    "selected_thinking_mode": "",
+    "role_route_plan": None,
+    "governance_records": [],
+    "memory_curator_decision": None,
+    "tool_intent_plan": None,
+    "tool_route_plan": None,
+    "pending_tool_action": None,
+    "evidence_bundle": [],
+    "evidence_ledger": [],
+    "execution_contract": None,
+    "answer_verification": None,
+    "agent_delegation_plan": None,
+    "agent_runs": [],
+    "model_route_decision": None,
+    "agent_failure_records": [],
+    "agent_review_queue": [],
+    "context_budget_decision": None,
+    "context_compression_plan": None,
+    "context_artifact_refs": [],
+    "role_context_views": [],
+    "context_compaction": {},
+    "agent_task_ledger": None,
+    "delegated_artifacts": [],
+    "artifact_synthesis_result": None,
+    "critic_gate_result": None,
+    "memory_write_requests": [],
+    "memory_write_result": {},
+    "plan": None,
+    "current_step_id": "",
+    "reflection": None,
+    "plan_meta": {},
+}
+
+
+def _local_snapshot_seed_values(parent_values: dict) -> dict:
+    seed_values = deepcopy(parent_values)
+    seed_values["messages"] = branch_seed_messages(
+        list(parent_values.get("messages") or []),
+        values=parent_values,
+    )
+    seed_values.update(deepcopy(_LOCAL_SNAPSHOT_SEED_RESETS))
+    return seed_values
 
 
 class BranchLifecycleCoordinator:
@@ -58,6 +120,13 @@ class BranchLifecycleCoordinator:
             child_thread_id = str(uuid.uuid4())
             fork_strategy = "local_snapshot_seed"
 
+        seed_values = (
+            _local_snapshot_seed_values(parent_values)
+            if fork_strategy == "local_snapshot_seed"
+            else parent_values
+        )
+        seed_message_count = len(list(seed_values.get("messages") or []))
+
         branch_meta = BranchMeta(
             branch_id=branch_id,
             root_thread_id=root_thread_id,
@@ -75,9 +144,7 @@ class BranchLifecycleCoordinator:
         branch_meta_payload["branch_role_pending_ai"] = (
             branch_role == BranchRole.EXPLORE_ALTERNATIVES
         )
-        branch_meta_payload["branch_fork_message_count"] = len(
-            list(parent_values.get("messages") or [])
-        )
+        branch_meta_payload["branch_fork_message_count"] = seed_message_count
         if name_source is not None:
             branch_meta_payload["branch_name_source"] = name_source
 
@@ -99,7 +166,7 @@ class BranchLifecycleCoordinator:
             if fork_strategy == "local_snapshot_seed":
                 svc.graph.update_state(
                     {"configurable": {"thread_id": child_thread_id}},
-                    parent_values,
+                    seed_values,
                     as_node="bootstrap_turn",
                 )
 

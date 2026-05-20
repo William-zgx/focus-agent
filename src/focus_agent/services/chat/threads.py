@@ -9,6 +9,7 @@ from typing import Any
 from langchain.messages import SystemMessage
 from pydantic import BaseModel, ValidationError
 
+from ...core.branch_messages import branch_fork_message_count, branch_visible_messages
 from ...core.branching import BranchMeta, BranchStatus, ThreadResolution
 from ...core.repo_call import (
     REPO_METHOD_ERROR,
@@ -28,9 +29,6 @@ from ...transport.stream_events import (
     sanitize_stream_visible_text,
 )
 from .branch_actions import (
-    is_branch_action_confirmation,
-    is_branch_action_dismissal,
-    is_branch_action_request,
     normalize_branch_actions,
     serialize_branch_actions,
 )
@@ -210,141 +208,13 @@ def thread_state_messages(messages: list[Any], *, limit: int) -> list[dict[str, 
     return payloads
 
 
-def _branch_fork_message_count(values: dict[str, Any]) -> int | None:
-    branch_meta = values.get("branch_meta")
-    if not isinstance(branch_meta, dict):
-        return None
-    try:
-        fork_message_count = int(branch_meta.get("branch_fork_message_count"))
-    except (TypeError, ValueError):
-        return None
-    if fork_message_count <= 0:
-        return None
-    return fork_message_count
-
-
-_COPIED_BRANCH_CONTROL_AI_PREFIXES = (
-    "已创建并切换到新分支：",
-    "已创建并切换到新分支:",
-    "Created and switched to the new branch:",
-    "我已准备好分支切换确认项：",
-    "I prepared a branch switch confirmation:",
-    "已取消这次分支切换请求。",
-    "Canceled this branch switch request.",
-)
-
-
-def _message_content(message: Any) -> Any:
-    if isinstance(message, dict):
-        return message.get("content", "")
-    return getattr(message, "content", "")
-
-
-def _is_copied_branch_control_ai_message(message: Any) -> bool:
-    if not is_ai_message_type(_message_type_name(message)):
-        return False
-    text = " ".join(confirmed_visible_ai_text(_message_content(message)).split())
-    return any(text.startswith(prefix) for prefix in _COPIED_BRANCH_CONTROL_AI_PREFIXES)
-
-
-def _is_copied_branch_control_human_message(message: Any) -> bool:
-    if not is_human_message_type(_message_type_name(message)):
-        return False
-    text = message_content_to_text(_message_content(message))
-    return (
-        is_branch_action_request(text)
-        or is_branch_action_confirmation(text)
-        or is_branch_action_dismissal(text)
-    )
-
-
-def _normalized_human_message_text(message: Any) -> str:
-    if not is_human_message_type(_message_type_name(message)):
-        return ""
-    return " ".join(message_content_to_text(_message_content(message)).split())
-
-
-def _local_human_texts(messages: list[Any], *, copied_count: int) -> set[str]:
-    return {
-        text
-        for message in messages[copied_count:]
-        if (text := _normalized_human_message_text(message))
-    }
-
-
-def _is_copied_branch_recommendation_handoff(
-    messages: list[Any],
-    *,
-    index: int,
-    copied_count: int,
-    local_human_texts: set[str],
-) -> bool:
-    if index >= copied_count:
-        return False
-    text = _normalized_human_message_text(messages[index])
-    if not text or text not in local_human_texts:
-        return False
-    if index + 1 >= copied_count:
-        return True
-    return _is_copied_branch_control_ai_message(messages[index + 1])
-
-
-def _is_local_duplicate_handoff_before_response(
-    messages: list[Any],
-    *,
-    index: int,
-    copied_count: int,
-) -> bool:
-    if index < copied_count:
-        return False
-    text = _normalized_human_message_text(messages[index])
-    if not text:
-        return False
-    for later in messages[index + 1 :]:
-        later_type = _message_type_name(later)
-        if is_human_message_type(later_type):
-            return _normalized_human_message_text(later) == text
-        if is_ai_message_type(later_type) or is_tool_message_type(later_type):
-            return False
-    return False
-
-
-def _branch_thread_messages(messages: list[Any], *, values: dict[str, Any]) -> list[Any]:
-    fork_message_count = _branch_fork_message_count(values)
-    if fork_message_count is None:
-        return messages
-    copied_count = fork_message_count if fork_message_count <= len(messages) else 0
-    local_human_texts = _local_human_texts(messages, copied_count=copied_count)
-    visible_messages: list[Any] = []
-    for index, message in enumerate(messages):
-        if _is_copied_branch_control_ai_message(message):
-            continue
-        if index < copied_count and _is_copied_branch_control_human_message(message):
-            continue
-        if _is_copied_branch_recommendation_handoff(
-            messages,
-            index=index,
-            copied_count=copied_count,
-            local_human_texts=local_human_texts,
-        ):
-            continue
-        if _is_local_duplicate_handoff_before_response(
-            messages,
-            index=index,
-            copied_count=copied_count,
-        ):
-            continue
-        visible_messages.append(message)
-    return visible_messages
-
-
 def _thread_state_branch_actions(
     values: dict[str, Any],
     *,
     thread_id: str,
 ) -> list[dict[str, Any]]:
     actions = normalize_branch_actions(values.get("branch_actions"))
-    if _branch_fork_message_count(values) is not None:
+    if branch_fork_message_count(values) is not None:
         actions = [action for action in actions if action.source_thread_id == thread_id]
     return serialize_branch_actions(actions)
 
@@ -395,7 +265,7 @@ def response_payload(
     trace_correlation: Any = None,
 ) -> dict[str, Any]:
     messages = values.get("messages", [])
-    thread_messages = _branch_thread_messages(list(messages), values=values)
+    thread_messages = branch_visible_messages(list(messages), values=values)
     branch_actions = _thread_state_branch_actions(values, thread_id=thread_id)
     selected_model = str(values.get("selected_model") or settings.model)
     selected_thinking_mode = effective_thinking_mode(

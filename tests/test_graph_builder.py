@@ -404,6 +404,42 @@ def test_messages_for_model_uses_recent_messages_when_no_tool_exchange_is_active
     ]
 
 
+def test_messages_for_model_filters_copied_branch_control_context():
+    handoff = "10月份去济州岛，那个时候的气温怎么样啊？"
+    state = {
+        "branch_meta": {
+            "branch_id": "branch-new",
+            "root_thread_id": "root-1",
+            "parent_thread_id": "root-1",
+            "branch_fork_message_count": 4,
+        },
+        "recent_messages": [
+            HumanMessage(content="我想去济州岛旅游，你能给我一份攻略大纲吗？"),
+            AIMessage(content="济州岛旅行可以按区域和主题规划。"),
+            HumanMessage(content="新建子分支，详细的做一下去汉拿山的攻略。"),
+            AIMessage(content="我已准备好分支切换确认项：创建子分支 一个新分支。请点击确认。"),
+            HumanMessage(content=handoff),
+            HumanMessage(content=handoff),
+        ],
+        "messages": [
+            HumanMessage(content="我想去济州岛旅游，你能给我一份攻略大纲吗？"),
+            AIMessage(content="济州岛旅行可以按区域和主题规划。"),
+            HumanMessage(content="新建子分支，详细的做一下去汉拿山的攻略。"),
+            AIMessage(content="我已准备好分支切换确认项：创建子分支 一个新分支。请点击确认。"),
+            HumanMessage(content=handoff),
+            HumanMessage(content=handoff),
+        ],
+    }
+
+    messages = _messages_for_model(state)
+
+    assert [message.content for message in messages] == [
+        "我想去济州岛旅游，你能给我一份攻略大纲吗？",
+        "济州岛旅行可以按区域和主题规划。",
+        handoff,
+    ]
+
+
 def test_messages_for_model_keeps_only_latest_unanswered_human_turn():
     state = {
         "recent_messages": [
@@ -1316,10 +1352,7 @@ def test_graph_does_not_retry_live_web_search_when_result_has_no_evidence(monkey
     ]
     assert len(web_calls) == 1
     assert "稍后" in final_answers[-1]
-    assert (
-        result.value["answer_verification"]["repair_action_taken"]
-        == "answer_with_uncertainty"
-    )
+    assert result.value["answer_verification"]["repair_action_taken"] == "answer_with_uncertainty"
     assert "live_web_answer_repair_count" not in result.value["plan_meta"]
 
 

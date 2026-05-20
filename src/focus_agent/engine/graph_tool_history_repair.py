@@ -6,6 +6,7 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from ..config import Settings
+from ..core.branch_messages import branch_fork_message_count, branch_visible_messages
 from ..core.state import AgentState
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 
@@ -65,8 +66,13 @@ def _collapse_unanswered_trailing_humans(messages: list[Any]) -> list[Any]:
 
 
 def _messages_for_model(state: AgentState) -> list[Any]:
-    recent_messages = list(state.get("recent_messages") or [])
-    messages = list(state.get("messages", []) or [])
+    raw_recent_messages = list(state.get("recent_messages") or [])
+    messages = branch_visible_messages(list(state.get("messages", []) or []), values=state)
+    recent_messages = (
+        messages[-len(raw_recent_messages) :]
+        if raw_recent_messages and branch_fork_message_count(state) is not None
+        else raw_recent_messages
+    )
     trailing_tool_span_start = _find_trailing_tool_span_start(messages)
     if trailing_tool_span_start is None:
         selected = _collapse_unanswered_trailing_humans(recent_messages or messages)

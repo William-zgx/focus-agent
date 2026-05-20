@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 
 from ..agent_context_engineering import build_context_engineering_decision
 from ..config import Settings
+from ..core.branch_messages import branch_visible_messages
 from ..core.context_policy import assemble_context as build_context_slice
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
@@ -91,9 +92,16 @@ def make_assemble_context_node(
         )
         active_skills_block = skill_registry.render_active_skills_block(active_skill_ids)
         available_skills_block = skill_registry.render_available_skills_block()
+        prompt_state = {
+            **dict(state),
+            "messages": branch_visible_messages(
+                list(state.get("messages", []) or []),
+                values=state,
+            ),
+        }
         context_slice = build_context_slice(
             {
-                **dict(state),
+                **prompt_state,
                 "pinned_items": deepcopy(state.get("pinned_items", [])),
                 "merge_queue": deepcopy(state.get("merge_queue", [])),
                 "_memory_lines": [

@@ -95,6 +95,47 @@ def test_prepare_run_payload_keeps_explicit_message_when_input_has_messages():
     assert initial_values == {"messages": []}
 
 
+def test_prepare_run_payload_skips_duplicate_branch_handoff_auto_run_input():
+    class _Selection:
+        stripped_message = "carried question"
+        skill_ids = ()
+        prompt_mode = None
+
+    class _Chat:
+        runtime = SimpleNamespace(settings=SimpleNamespace(model="model-1"))
+
+        def _select_skills_for_message(self, **kwargs):
+            self.selection_kwargs = kwargs
+            return _Selection()
+
+        def _preflight_thread_access(self, **kwargs):
+            self.preflight_kwargs = kwargs
+            return (
+                SimpleNamespace(root_thread_id="root-1"),
+                None,
+                {"messages": [HumanMessage(content="carried question")]},
+            )
+
+        def _effective_thinking_mode(self, **kwargs):
+            del kwargs
+            return "auto"
+
+    payload = harness_runs.HarnessRunRequest(
+        message="carried question",
+        metadata={"branch_handoff_auto_run": True},
+    )
+
+    graph_payload, _context, _branch_meta, _initial_values = harness_runs._prepare_run_payload(
+        thread_id="thread-1",
+        user_id="user-1",
+        payload=payload,
+        chat=_Chat(),
+    )
+
+    assert graph_payload["messages"] == []
+    assert graph_payload["task_brief"] == "carried question"
+
+
 def test_run_message_from_payload_cleans_branch_handoff_auto_run():
     payload = harness_runs.HarnessRunRequest(
         message="新建子分支，探索济州岛10月亲子住宿，20字以内。",

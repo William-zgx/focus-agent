@@ -82,8 +82,13 @@ def _prepare_run_payload(
         selected_model = getattr(getattr(chat, "runtime", None), "settings", None)
         if selected_model is not None:
             selected_model = getattr(selected_model, "model", None)
+    input_messages = _run_input_messages_for_state(
+        message=message,
+        payload=payload,
+        initial_values=initial_values,
+    )
     graph_payload: dict[str, Any] = {
-        "messages": [HumanMessage(content=message)],
+        "messages": input_messages,
         "task_brief": selection.stripped_message or message,
         "active_skill_ids": list(selection.skill_ids),
         "selected_model": selected_model,
@@ -99,6 +104,61 @@ def _prepare_run_payload(
     if selection.prompt_mode is not None:
         graph_payload["prompt_mode"] = selection.prompt_mode
     return graph_payload, context, branch_meta, initial_values
+
+
+def _run_input_messages_for_state(
+    *,
+    message: str,
+    payload: HarnessRunRequest,
+    initial_values: dict[str, Any],
+) -> list[HumanMessage]:
+    if _is_branch_handoff_auto_run(payload) and _latest_human_message_matches(
+        initial_values.get("messages"),
+        message,
+    ):
+        return []
+    return [HumanMessage(content=message)]
+
+
+def _latest_human_message_matches(messages: Any, text: str) -> bool:
+    normalized = _normalized_message_text(text)
+    if not normalized:
+        return False
+    for message in reversed(list(messages or [])):
+        if isinstance(message, HumanMessage):
+            return _normalized_message_text(message.content) == normalized
+        if isinstance(message, dict):
+            message_type = str(message.get("type") or message.get("role") or "").lower()
+            if message_type in {"human", "user"}:
+                return _normalized_message_text(message.get("content")) == normalized
+            if message_type in {"ai", "assistant", "tool"}:
+                return False
+            continue
+        message_type = str(
+            getattr(message, "type", message.__class__.__name__.replace("Message", "").lower())
+            or ""
+        ).lower()
+        if message_type == "human":
+            return _normalized_message_text(getattr(message, "content", "")) == normalized
+        if message_type in {"ai", "assistant", "tool"}:
+            return False
+    return False
+
+
+def _normalized_message_text(value: Any) -> str:
+    if isinstance(value, list):
+        text = " ".join(
+            str(item.get("text") or item.get("content") or item)
+            if isinstance(item, dict)
+            else str(item)
+            for item in value
+            if item is not None
+        )
+    elif isinstance(value, dict):
+        text = str(value.get("text") or value.get("content") or "")
+    else:
+        text = str(value or "")
+    return " ".join(text.split())
 
 
 def _prepare_resume_payload(
