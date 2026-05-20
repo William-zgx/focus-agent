@@ -51,21 +51,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v8.1.0
 
       - name: Install Python dependencies
         run: make install-openai
 
       - name: Restore nightly trend history
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: reports/nightly/history
           key: nightly-regression-history-${{ github.ref_name }}-${{ github.run_id }}
@@ -176,14 +176,14 @@ jobs:
 
       - name: Save nightly trend history
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: reports/nightly/history
           key: nightly-regression-history-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Upload nightly reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-regression-${{ github.run_id }}
           path: |
