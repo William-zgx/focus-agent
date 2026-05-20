@@ -231,6 +231,7 @@ make web-check
 
 真实浏览器验证时，开启 `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` 和
 `AGENT_BRANCH_RECOMMENDATION_MODE=suggest`，并使用明确要求创建子分支或同级分支的 prompt。需要确认推荐卡片出现、该推荐没有继续进入普通 graph turn、确认/取消后 thread 与 branch tree cache 都刷新正确。
+如果改动触及 handoff 隔离，还需要使用不同 sentinel 跑“子分支 -> 同级分支”真实浏览器流程，确认最终同级分支 transcript、`GET /v1/threads/{thread_id}` 和 context preview 只包含自己的交接文本，不包含源子分支交接文本或无关 thread id。
 同时验证 `GET /v1/threads/{thread_id}/resolution` 对 root、child、unknown thread 的返回，以及从 child thread 路由打开分支树仍能解析到 root。
 
 15. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：

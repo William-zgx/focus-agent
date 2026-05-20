@@ -468,7 +468,9 @@ main thread
 - `child_thread_id` 是分支自己的 LangGraph thread。
 - repository 的 `resolve_thread_ref()` 和 `GET /v1/threads/{thread_id}/resolution` 是 root/child 解析边界；branch tree 可以从 root 或 child 打开，最终按 canonical root 查询。
 - archive/activate/rename/proposal/merge 等 child-only 操作会显式拒绝 root thread id，并返回 400 诊断，而不是把 root 误报为未知分支。
-- 子分支 payload 会用 `branch_fork_message_count` 隐藏 fork 时复制过来的 Branch Action 控制消息，避免新分支 transcript 显示“创建确认卡”旧上下文。
+- `local_snapshot_seed` fork 会先净化父线程快照：移除复制过来的 Branch Action 控制消息、已执行确认回执、临时 tool / prompt / agent 状态，并用 `branch_fork_message_count` 记录新分支初始可见消息边界。
+- Branch Action 的 `handoff_message` 会在新 child / sibling thread 中作为唯一交接 user message 注入；如果 seed 中已经有相同 human message，auto-run 不会重复追加。
+- UI transcript、模型消息组装和 context preview 都使用 branch-visible message 过滤，避免同级分支上下文或旧确认卡泄漏进新分支。
 - `branch_depth` 受 `BRANCH_MAX_DEPTH` 控制。
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。

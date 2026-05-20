@@ -243,6 +243,10 @@ For browser validation, enable `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` and
 child or sibling branch. Confirm that the recommendation card appears, the
 normal graph turn is skipped for that recommendation, and confirm/dismiss keeps
 thread and branch-tree caches current.
+If the change touches handoff isolation, also run a child-to-sibling real
+browser flow with distinct sentinel text in each branch. Confirm the final
+sibling transcript, `GET /v1/threads/{thread_id}`, and context preview contain
+only the sibling handoff, not the source child handoff or an unrelated thread id.
 Also verify `GET /v1/threads/{thread_id}/resolution` for root, child, and unknown
 threads, and confirm branch tree routes work when opened from a child thread id.
 

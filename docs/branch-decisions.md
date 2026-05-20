@@ -1,6 +1,6 @@
 # Branch Decisions And Recommendations
 
-更新时间：2026-05-18
+更新时间：2026-05-21
 
 This document is the canonical guide for Focus Agent branch decision records,
 pre-turn branch recommendations, and user-confirmed Branch Actions. Branch
@@ -117,6 +117,12 @@ Important implementation boundaries:
   per-thread turn lease while it writes the proposal message and pending action.
 - V2 non-streaming and streaming routes short-circuit before graph invocation
   when a promoted pre-turn recommendation creates a Branch Action.
+- Executing a Branch Action forks from the target parent, then carries only the
+  normalized `handoff_message` into the destination thread. The fork seed drops
+  copied Branch Action control turns and transient runtime fields before the
+  destination thread is used for UI rendering, context preview, or model input.
+- Browser handoff auto-runs are idempotent for the latest carried human message:
+  if the fork already contains that handoff, replay does not append it again.
 - Streaming Branch Action execution waits for the worker thread to finish even
   if the stream coroutine is cancelled, so run status and branch side effects do
   not diverge.
@@ -260,10 +266,13 @@ or stream completion because a caller may have started from either a root or a
 child thread id.
 
 Child thread payloads hide copied branch-control messages from the fork moment.
-`branch_fork_message_count` is used to remove copied Branch Action request,
-confirmation, and proposal messages from the child transcript while keeping the
-actual branch conversation visible. If the stored fork count is stale or larger
-than the message list, no messages are dropped.
+For local snapshot forks, copied Branch Action request, confirmation, proposal,
+tool/runtime scratch fields, and stale prompt assembly state are removed before
+the child checkpoint is written. `branch_fork_message_count` records the visible
+seed boundary for compatibility, while transcript rendering, model input, and
+context preview all apply the same branch-visible message filter. The carried
+handoff text should appear once in the target thread and should not bring along
+source sibling context or unrelated thread ids.
 
 If the backend returns a thread-busy conflict because the previous turn is still
 settling, the Web hook retries for a bounded window. The retry loop is tied to
