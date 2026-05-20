@@ -16,6 +16,20 @@ function compactSource(sourceText) {
   return sourceText.split(/\s+/u).join(" ");
 }
 
+function readCssModule(relativePath, seen = new Set()) {
+  const normalizedPath = relativePath.replaceAll(path.sep, "/");
+  if (seen.has(normalizedPath)) {
+    return "";
+  }
+  seen.add(normalizedPath);
+  const absolutePath = path.join(repoRoot, normalizedPath);
+  const sourceText = readFileSync(absolutePath, "utf8");
+  const relativeDir = path.dirname(normalizedPath);
+  return sourceText.replace(/@import\s+["'](.+?)["'];/gu, (_match, importPath) =>
+    readCssModule(path.join(relativeDir, importPath), seen),
+  );
+}
+
 function extractFunction(sourceText, functionName) {
   const signature = new RegExp(`(?:export\\s+)?function\\s+${functionName}\\s*\\(`);
   const start = sourceText.search(signature);
@@ -1745,10 +1759,7 @@ test("composer action buttons are not nested inside the textarea label", () => {
     path.join(repoRoot, "apps/web/src/features/thread-stream/message-composer.tsx"),
     "utf8",
   );
-  const composerCss = readFileSync(
-    path.join(repoRoot, "apps/web/src/shared/styles/modules/composer.css"),
-    "utf8",
-  );
+  const composerCss = readCssModule("apps/web/src/shared/styles/modules/composer.css");
 
   assert.equal(source.includes("const textareaId = useId();"), true);
   assert.match(source, /<label className="sr-only" htmlFor=\{textareaId\}>/);
@@ -1793,10 +1804,7 @@ test("branch graph node hover AI decision shows only the key conclusion", () => 
     path.join(repoRoot, "apps/web/src/features/branch-tree/branch-tree-detail-overlay.tsx"),
     "utf8",
   );
-  const branchTreeCss = readFileSync(
-    path.join(repoRoot, "apps/web/src/shared/styles/modules/branch-tree.css"),
-    "utf8",
-  );
+  const branchTreeCss = readCssModule("apps/web/src/shared/styles/modules/branch-tree.css");
   const compactCss = compactSource(branchTreeCss);
 
   assert.equal(overlaySource.includes("decisionConclusionText"), true);
@@ -1844,10 +1852,7 @@ test("branch decision summary stays compact while hover details keep diagnostics
     path.join(repoRoot, "apps/web/src/pages/thread/thread-page-content.tsx"),
     "utf8",
   );
-  const chatCss = readFileSync(
-    path.join(repoRoot, "apps/web/src/shared/styles/modules/chat.css"),
-    "utf8",
-  );
+  const chatCss = readCssModule("apps/web/src/shared/styles/modules/chat.css");
   const summaryMainSource = summaryPanelSource.split("function BranchDecisionDrawer")[0];
   const drawerSource = summaryPanelSource.split("function BranchDecisionDrawer")[1] ?? "";
   const compactCss = compactSource(chatCss);

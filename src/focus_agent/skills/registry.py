@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import math
-import re
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from ..config import Settings
-from ..core.types import PromptMode
 from .models import (
     SkillDefinition,
     SkillInstallResult,
@@ -19,230 +15,54 @@ from .models import (
     SkillSemanticCandidate,
     SkillSourceDefinition,
 )
-
-_SKILL_FILE_NAME = "SKILL.md"
-_SEMANTIC_CANDIDATE_LIMIT = 3
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
-_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "be",
-    "before",
-    "but",
-    "by",
-    "for",
-    "from",
-    "has",
-    "in",
-    "into",
-    "is",
-    "it",
-    "needs",
-    "of",
-    "on",
-    "or",
-    "should",
-    "skill",
-    "skills",
-    "that",
-    "the",
-    "this",
-    "to",
-    "tool",
-    "tools",
-    "use",
-    "user",
-    "wants",
-    "when",
-    "with",
-    "work",
-    "you",
-}
-
-_QUERY_ALIAS_MARKERS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
-    (("发布前", "发布", "发版", "上线", "里程碑"), ("release", "readiness", "checklist")),
-    (("构建失败", "构建", "编译"), ("build", "failure", "fix")),
-    (("修复", "报错", "失败"), ("fix", "failure")),
-    (("测试", "单测", "回归"), ("test", "tdd", "regression")),
-    (("评审", "审查", "复查"), ("review",)),
-    (("安全", "权限", "漏洞"), ("security", "review")),
-    (("文档", "说明", "readme"), ("documentation", "docs")),
-    (("计划", "方案", "拆解"), ("plan", "planning")),
-    (("调研", "研究", "资料"), ("research",)),
-    (("提交", "合并", "拉取请求"), ("git", "pr", "workflow")),
+from .registry_matching import (
+    _SEMANTIC_CANDIDATE_LIMIT,
+    _add_weighted_tokens,
+    _cosine_score,
+    _selection_source,
+    _semantic_enabled,
+    _skill_semantic_vector,
+)
+from .registry_parsing import (
+    _coerce_prompt_mode,
+    _normalize_list,
+    _split_frontmatter,
+)
+from .registry_paths import _normalize_skill_id, bundled_skills_dir
+from .registry_rendering import (
+    _install_result_to_dict as _install_result_to_dict,
+)
+from .registry_rendering import (
+    _search_result_to_dict as _search_result_to_dict,
+)
+from .registry_rendering import (
+    render_skill_install_json as render_skill_install_json,
+)
+from .registry_rendering import (
+    render_skill_sources_json as render_skill_sources_json,
+)
+from .registry_rendering import (
+    render_skill_view_json as render_skill_view_json,
+)
+from .registry_rendering import (
+    render_skills_list_json as render_skills_list_json,
+)
+from .registry_rendering import (
+    render_skills_refresh_index_json as render_skills_refresh_index_json,
+)
+from .registry_rendering import (
+    render_skills_search_json as render_skills_search_json,
+)
+from .registry_sources import (
+    _parse_source_location as _parse_source_location,
+)
+from .registry_sources import (
+    _path_is_relative_to,
+    _search_result_from_skill,
+    _source_definitions_from_settings,
 )
 
-
-def bundled_skills_dir() -> Path:
-    return Path(__file__).resolve().parent / "builtin"
-
-
-def _normalize_skill_id(value: str) -> str:
-    return value.strip().lower().replace("_", "-")
-
-
-def _normalize_list(value: Any) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return tuple(item.strip() for item in value.split(",") if item.strip())
-    if isinstance(value, list):
-        return tuple(str(item).strip() for item in value if str(item).strip())
-    return ()
-
-
-def _parse_scalar(value: str) -> Any:
-    stripped = value.strip()
-    if not stripped:
-        return ""
-    if stripped.startswith("[") and stripped.endswith("]"):
-        inner = stripped[1:-1].strip()
-        if not inner:
-            return []
-        return [item.strip().strip("\"'") for item in inner.split(",") if item.strip()]
-    lowered = stripped.lower()
-    if lowered in {"true", "false"}:
-        return lowered == "true"
-    return stripped.strip("\"'")
-
-
-def _parse_frontmatter_block(block: str) -> dict[str, Any]:
-    parsed: dict[str, Any] = {}
-    current_list_key: str | None = None
-
-    for raw_line in block.splitlines():
-        line = raw_line.rstrip()
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("- ") and current_list_key:
-            parsed.setdefault(current_list_key, [])
-            parsed[current_list_key].append(_parse_scalar(stripped[2:]))
-            continue
-        if ":" not in line:
-            current_list_key = None
-            continue
-        key, raw_value = line.split(":", 1)
-        key = key.strip()
-        value = raw_value.strip()
-        if not value:
-            parsed[key] = []
-            current_list_key = key
-            continue
-        parsed[key] = _parse_scalar(value)
-        current_list_key = None
-
-    return parsed
-
-
-def _split_frontmatter(raw_text: str) -> tuple[dict[str, Any], str]:
-    lines = raw_text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}, raw_text.strip()
-
-    for index in range(1, len(lines)):
-        if lines[index].strip() != "---":
-            continue
-        frontmatter = "\n".join(lines[1:index])
-        body = "\n".join(lines[index + 1 :]).strip()
-        return _parse_frontmatter_block(frontmatter), body
-
-    return {}, raw_text.strip()
-
-
-def _coerce_prompt_mode(value: Any) -> PromptMode | None:
-    if not value:
-        return None
-    try:
-        return PromptMode(str(value).strip())
-    except ValueError:
-        return None
-
-
-def _semantic_enabled(value: object) -> bool:
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    return text in {"1", "true", "yes", "on"}
-
-
-def _tokens(value: str) -> tuple[str, ...]:
-    return tuple(
-        token
-        for token in _TOKEN_RE.findall(value.lower().replace("_", " "))
-        if len(token) > 1 and token not in _STOPWORDS
-    )
-
-
-def _body_headings(body: str) -> tuple[str, ...]:
-    return tuple(
-        match.group(1).strip().strip("#").strip()
-        for match in _HEADING_RE.finditer(body)
-        if match.group(1).strip()
-    )
-
-
-def _add_weighted_tokens(vector: dict[str, float], value: str, weight: float) -> None:
-    for token in _tokens(value):
-        vector[token] = vector.get(token, 0.0) + weight
-    lowered = value.lower()
-    for markers, aliases in _QUERY_ALIAS_MARKERS:
-        if not any(marker in lowered for marker in markers):
-            continue
-        for alias in aliases:
-            if alias not in _STOPWORDS:
-                vector[alias] = vector.get(alias, 0.0) + weight
-
-
-def _skill_semantic_vector(skill: SkillDefinition) -> dict[str, float]:
-    vector: dict[str, float] = {}
-    _add_weighted_tokens(vector, skill.description, 3.0)
-    for item in skill.when_to_use:
-        _add_weighted_tokens(vector, item, 4.0)
-    for item in skill.recommended_tools:
-        _add_weighted_tokens(vector, item, 1.5)
-    for heading in _body_headings(skill.body):
-        _add_weighted_tokens(vector, heading, 2.0)
-    return vector
-
-
-def _cosine_score(query: dict[str, float], document: dict[str, float]) -> float:
-    if not query or not document:
-        return 0.0
-    dot = sum(weight * document.get(token, 0.0) for token, weight in query.items())
-    if dot <= 0:
-        return 0.0
-    query_norm = math.sqrt(sum(weight * weight for weight in query.values()))
-    document_norm = math.sqrt(sum(weight * weight for weight in document.values()))
-    if query_norm <= 0 or document_norm <= 0:
-        return 0.0
-    return dot / (query_norm * document_norm)
-
-
-def _selection_source(
-    *,
-    explicit_matched: bool,
-    prefix_matched: bool,
-    semantic_matched: bool,
-) -> str:
-    sources = [
-        source
-        for source, matched in (
-            ("explicit", explicit_matched),
-            ("prefix", prefix_matched),
-            ("semantic", semantic_matched),
-        )
-        if matched
-    ]
-    if not sources:
-        return "none"
-    if len(sources) == 1:
-        return sources[0]
-    return "mixed"
+_SKILL_FILE_NAME = "SKILL.md"
 
 
 class SkillRegistry:
@@ -913,239 +733,3 @@ class SkillRegistry:
             if skill is not None and skill.skill_id == skill_id:
                 return skill
         return None
-
-
-def _path_is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
-
-
-def _search_result_from_skill(
-    skill: SkillDefinition,
-    *,
-    score: float,
-    installed: bool,
-) -> SkillSearchResult:
-    return SkillSearchResult(
-        skill_id=skill.skill_id,
-        description=skill.description,
-        source_id=skill.source_id,
-        source_type=skill.source_type,
-        path=str(skill.path),
-        installed=installed,
-        trust_level=skill.trust_level,
-        version=skill.version,
-        provenance=skill.provenance,
-        checksum=skill.checksum,
-        recommended_tools=skill.recommended_tools,
-        capability_requirements=skill.capability_requirements,
-        score=round(float(score), 4),
-        rationale="Installed semantic/local match."
-        if installed
-        else "External local source match.",
-    )
-
-
-def _source_definitions_from_settings(settings: Settings) -> tuple[SkillSourceDefinition, ...]:
-    enabled_sources = {
-        str(source).strip().lower()
-        for source in getattr(settings, "skill_sources_enabled", ("installed",)) or ()
-        if str(source).strip()
-    }
-    trusted_sources = {
-        str(source).strip().lower()
-        for source in getattr(
-            settings, "skill_trusted_sources", ("installed", "project", "builtin")
-        )
-        or ()
-        if str(source).strip()
-    }
-    sources = [
-        SkillSourceDefinition(
-            source_id="project",
-            source_type="local",
-            label="Project skills",
-            enabled="project" in enabled_sources or "installed" in enabled_sources,
-            trusted=True,
-            location=str(Path(getattr(settings, "skill_install_directory", ".focus_agent/skills"))),
-        ),
-        SkillSourceDefinition(
-            source_id="builtin",
-            source_type="builtin",
-            label="Bundled skills",
-            enabled=True,
-            trusted=True,
-            location=str(bundled_skills_dir()),
-        ),
-    ]
-    for raw in getattr(settings, "skill_source_locations", ()) or ():
-        source = _parse_source_location(
-            str(raw), trusted_sources=trusted_sources, enabled_sources=enabled_sources
-        )
-        if source is not None:
-            sources.append(source)
-    return tuple(sources)
-
-
-def _parse_source_location(
-    raw: str,
-    *,
-    trusted_sources: set[str],
-    enabled_sources: set[str],
-) -> SkillSourceDefinition | None:
-    text = raw.strip()
-    if not text:
-        return None
-    source_id = ""
-    source_type = "local"
-    location = text
-    if "=" in text:
-        source_id, location = [part.strip() for part in text.split("=", 1)]
-    if ":" in location and not location.startswith(("/", "~", ".")):
-        maybe_type, maybe_location = [part.strip() for part in location.split(":", 1)]
-        if maybe_type in {"local", "git", "http", "https", "ai-skills"}:
-            source_type = "http" if maybe_type == "https" else maybe_type
-            location = maybe_location
-    if not source_id:
-        source_id = _normalize_skill_id(Path(location).name or source_type)
-    source_id = source_id.strip().lower()
-    return SkillSourceDefinition(
-        source_id=source_id,
-        source_type=source_type,
-        label=source_id,
-        enabled=not enabled_sources
-        or source_id in enabled_sources
-        or "external" in enabled_sources,
-        trusted=source_id in trusted_sources,
-        location=location,
-    )
-
-
-def _search_result_to_dict(result: SkillSearchResult) -> dict[str, Any]:
-    return {
-        "skill_id": result.skill_id,
-        "description": result.description,
-        "source_id": result.source_id,
-        "source_type": result.source_type,
-        "path": result.path,
-        "installed": result.installed,
-        "trust_level": result.trust_level,
-        "version": result.version,
-        "provenance": result.provenance,
-        "checksum": result.checksum,
-        "recommended_tools": list(result.recommended_tools),
-        "capability_requirements": list(result.capability_requirements),
-        "score": result.score,
-        "rationale": result.rationale,
-    }
-
-
-def _install_result_to_dict(result: SkillInstallResult) -> dict[str, Any]:
-    return {
-        "success": result.success,
-        "skill_id": result.skill_id,
-        "source_id": result.source_id,
-        "installed": result.installed,
-        "installed_path": result.installed_path,
-        "requires_review": result.requires_review,
-        "error": result.error,
-        "metadata": dict(result.metadata or {}),
-    }
-
-
-def render_skills_list_json(registry: SkillRegistry) -> str:
-    return json.dumps(
-        {
-            "success": True,
-            "skills": registry.list_skills(),
-        },
-        ensure_ascii=False,
-    )
-
-
-def render_skill_view_json(registry: SkillRegistry, *, skill_id: str) -> str:
-    payload = registry.view_skill(skill_id)
-    if payload is None:
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"Skill '{skill_id}' not found.",
-            },
-            ensure_ascii=False,
-        )
-    return json.dumps(
-        {
-            "success": True,
-            **payload,
-        },
-        ensure_ascii=False,
-    )
-
-
-def render_skill_sources_json(registry: SkillRegistry) -> str:
-    return json.dumps(
-        {
-            "success": True,
-            "sources": registry.list_sources(),
-        },
-        ensure_ascii=False,
-    )
-
-
-def render_skills_search_json(
-    registry: SkillRegistry,
-    *,
-    query: str,
-    scope: str = "installed",
-    sources: Iterable[str] = (),
-    limit: int = 5,
-) -> str:
-    return json.dumps(
-        {
-            "success": True,
-            "query": query,
-            "scope": scope,
-            "results": [
-                _search_result_to_dict(result)
-                for result in registry.search_skills(
-                    query,
-                    scope=scope,
-                    sources=sources,
-                    limit=limit,
-                )
-            ],
-        },
-        ensure_ascii=False,
-    )
-
-
-def render_skill_install_json(
-    registry: SkillRegistry,
-    *,
-    skill_id: str,
-    source_id: str = "installed",
-    version: str | None = None,
-    mode: str = "project",
-) -> str:
-    return json.dumps(
-        _install_result_to_dict(
-            registry.install_skill(
-                skill_id=skill_id,
-                source_id=source_id,
-                version=version,
-                mode=mode,
-            )
-        ),
-        ensure_ascii=False,
-    )
-
-
-def render_skills_refresh_index_json(
-    registry: SkillRegistry,
-    *,
-    sources: Iterable[str] = (),
-) -> str:
-    return json.dumps(registry.refresh_index(sources=sources), ensure_ascii=False)

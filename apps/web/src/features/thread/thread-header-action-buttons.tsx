@@ -113,9 +113,7 @@ export function ThreadHeaderActionButtons({
 		}
 	}, [isRenamingCurrentBranch]);
 
-	function handleRenameBranchDoubleClick(
-		event: MouseEvent<HTMLButtonElement>,
-	) {
+	function handleRenameBranchDoubleClick(event: MouseEvent<HTMLButtonElement>) {
 		event.preventDefault();
 		event.stopPropagation();
 		onRenameCurrentBranch();

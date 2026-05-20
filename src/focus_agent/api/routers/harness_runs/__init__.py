@@ -5,7 +5,16 @@ from types import ModuleType
 
 from fastapi import APIRouter
 
-from . import detail, list, promote, replay
+from . import (
+    detail,
+    list,
+    promote,
+    replay,
+    replay_execution,
+    replay_helpers,
+    replay_models,
+    replay_streaming,
+)
 
 router = APIRouter()
 router.include_router(replay.router)
@@ -13,7 +22,16 @@ router.include_router(detail.router)
 router.include_router(list.router)
 router.include_router(promote.router)
 
-_COMPAT_MODULES = (replay, detail, list, promote)
+_COMPAT_MODULES = (
+    replay,
+    replay_models,
+    replay_helpers,
+    replay_execution,
+    replay_streaming,
+    detail,
+    list,
+    promote,
+)
 
 for _module in _COMPAT_MODULES:
     for _name, _value in vars(_module).items():

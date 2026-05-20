@@ -1,0 +1,712 @@
+.fa-chat-main-body .fa-tool-activity-detail-meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	color: var(--fa-text-soft);
+	font-size: 10px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-language {
+	max-width: 86px;
+	overflow: hidden;
+	padding: 2px 6px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
+	text-overflow: ellipsis;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-toggle {
+	color: var(--fa-text-muted);
+	font-weight: 700;
+}
+
+.fa-chat-main-body
+	.fa-tool-activity-detail[open]
+	.fa-tool-activity-detail-toggle {
+	color: color-mix(in srgb, var(--fa-accent-cyan) 72%, var(--fa-text) 28%);
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body {
+	padding: 0 10px 10px;
+	border-top: 1px solid color-mix(in srgb, var(--fa-border) 66%, transparent);
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body .fa-message-code-block {
+	border-radius: 10px;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body .fa-message-code-header {
+	padding: 6px 10px;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body .fa-message-code-block pre {
+	max-height: 240px;
+	padding: 12px;
+	font-size: 12px;
+}
+
+.fa-branch-action-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.fa-branch-action-card-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	cursor: pointer;
+	list-style: none;
+}
+
+.fa-branch-action-card-header::-webkit-details-marker {
+	display: none;
+}
+
+.fa-branch-action-card-title {
+	color: var(--fa-text);
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.fa-branch-action-card-meta,
+.fa-branch-action-card-body span {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-branch-action-card-badge {
+	border: 1px solid var(--fa-border);
+	border-radius: 999px;
+	color: var(--fa-text-muted);
+	font-size: 11px;
+	padding: 3px 8px;
+	white-space: nowrap;
+}
+
+.fa-branch-action-card-badge-stack {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.fa-branch-action-card-badge.is-ai {
+	border-color: color-mix(in srgb, var(--fa-info) 48%, var(--fa-border));
+	background: var(--fa-info-surface);
+	color: var(--fa-info-text);
+}
+
+.fa-branch-action-card-toggle {
+	flex: 0 0 auto;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.fa-branch-action-card-toggle:hover {
+	color: var(--fa-text);
+}
+
+.fa-branch-action-card-body {
+	display: grid;
+	gap: 8px;
+}
+
+.fa-branch-action-card-body div {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.fa-branch-action-card-body code {
+	overflow-wrap: anywhere;
+}
+
+.fa-branch-action-card-body a {
+	color: var(--fa-accent-text-strong);
+	text-decoration: none;
+}
+
+.fa-branch-action-card-body a:hover {
+	text-decoration: underline;
+}
+
+.fa-branch-action-card-body .is-danger strong {
+	color: var(--fa-danger);
+}
+
+.fa-branch-action-card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.fa-branch-decision-summary {
+	position: absolute;
+	right: 20px;
+	bottom: 16px;
+	z-index: 8;
+	display: flex;
+	justify-content: flex-end;
+	margin: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	pointer-events: none;
+}
+
+.fa-branch-decision-summary-popover {
+	position: relative;
+	display: inline-flex;
+	max-width: min(100%, 760px);
+	min-inline-size: 0;
+	margin: 0;
+	border: 0;
+	padding: 0;
+	pointer-events: auto;
+}
+
+.fa-branch-decision-summary-trigger {
+	max-width: 100%;
+	overflow: hidden;
+	border-color: var(--fa-border-subtle);
+	border-radius: var(--fa-radius-pill);
+	background: var(--fa-panel);
+	box-shadow: var(--fa-shadow-sm);
+	padding-inline: 10px 12px;
+	color: var(--fa-text);
+	white-space: nowrap;
+	backdrop-filter: blur(12px);
+}
+
+.fa-branch-decision-summary-trigger[data-handoff="true"] {
+	max-width: min(100%, 620px);
+}
+
+.fa-branch-decision-summary-kicker {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-branch-decision-summary-title {
+	display: block;
+	flex: 1 1 auto;
+	overflow: hidden;
+	min-width: 0;
+	color: var(--fa-text);
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+}
+
+.fa-branch-decision-summary-details {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 8px);
+	z-index: 20;
+	display: none;
+	width: min(520px, calc(100vw - 32px));
+	max-height: min(52vh, 420px);
+	overflow: auto;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background-color: var(--fa-panel-1);
+	/* biome-ignore format: the branch decision regression checks this compact gradient declaration. */
+	background-image: linear-gradient(180deg, var(--fa-panel-2), var(--fa-panel-1));
+	box-shadow: var(--fa-shadow-lg);
+	backdrop-filter: none;
+}
+
+.fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history {
+	padding-bottom: 72px;
+}
+
+.fa-branch-decision-summary-popover:hover .fa-branch-decision-summary-details,
+.fa-branch-decision-summary-popover:has(
+		.fa-branch-decision-summary-trigger:focus-visible
+	)
+	.fa-branch-decision-summary-details {
+	display: block;
+}
+
+.fa-branch-decision-summary-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+	border-top: 1px solid var(--fa-border-subtle);
+	padding: 0 10px 10px;
+}
+
+.fa-branch-decision-drawer {
+	padding: 9px 10px 10px;
+}
+
+.fa-branch-decision-drawer-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 6px;
+}
+
+.fa-branch-decision-drawer-grid div,
+.fa-branch-decision-signal {
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 8px;
+	background: var(--fa-panel-1);
+	padding: 6px 8px;
+}
+
+.fa-branch-decision-drawer-grid div:first-child {
+	grid-column: 1 / -1;
+}
+
+.fa-branch-decision-drawer-grid span,
+.fa-branch-decision-signal span {
+	display: block;
+	color: var(--fa-text-muted);
+	font-size: 10px;
+	line-height: 1.25;
+}
+
+.fa-branch-decision-drawer-grid strong {
+	display: -webkit-box;
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: 12px;
+	line-height: 1.3;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow-wrap: anywhere;
+}
+
+.fa-branch-decision-signals {
+	display: grid;
+	gap: 5px;
+	max-height: 150px;
+	margin-top: 8px;
+	overflow: auto;
+	padding-right: 2px;
+}
+
+.fa-branch-decision-signal div {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.fa-branch-decision-signal p {
+	display: -webkit-box;
+	overflow: hidden;
+	margin: 3px 0 0;
+	color: var(--fa-text-muted);
+	font-size: 11px;
+	line-height: 1.35;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.fa-branch-decision-signal strong {
+	overflow: hidden;
+	color: var(--fa-text);
+	font-size: 12px;
+	line-height: 1.3;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fa-branch-decision-error {
+	border-top: 1px solid var(--fa-border-subtle);
+	color: var(--fa-danger);
+	font-size: 12px;
+	padding: 0 14px 12px;
+}
+
+@media (max-width: 720px) {
+	.fa-branch-decision-summary-actions {
+		justify-content: flex-start;
+	}
+
+	.fa-branch-decision-summary {
+		right: 12px;
+		bottom: 12px;
+		left: auto;
+	}
+
+	.fa-branch-decision-summary-details {
+		position: fixed;
+		top: auto;
+		right: 12px;
+		bottom: 72px;
+		left: 12px;
+		width: auto;
+		max-height: min(64vh, 420px);
+	}
+
+	.fa-branch-decision-drawer-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.fa-tool-approval-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	border: 1px solid color-mix(in srgb, var(--fa-warning) 38%, var(--fa-border));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-warning) 8%, var(--fa-panel));
+	box-shadow: var(--fa-message-shadow);
+	padding: 14px;
+}
+
+.fa-tool-approval-card-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.fa-tool-approval-card-title {
+	color: var(--fa-text);
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.fa-tool-approval-card-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.fa-tool-approval-card-meta span,
+.fa-tool-approval-card-body span {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-tool-approval-card-badge {
+	border: 1px solid color-mix(in srgb, var(--fa-warning) 45%, var(--fa-border));
+	border-radius: 999px;
+	color: var(--fa-text);
+	font-size: 11px;
+	padding: 3px 8px;
+	white-space: nowrap;
+}
+
+.fa-tool-approval-card-body {
+	display: grid;
+	gap: 6px;
+}
+
+.fa-tool-approval-card-body pre {
+	max-height: 220px;
+	overflow: auto;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-bg) 72%, transparent);
+	color: var(--fa-text);
+	font-size: 12px;
+	line-height: 1.5;
+	margin: 0;
+	padding: 10px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.fa-tool-approval-card-error {
+	color: var(--fa-danger);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.fa-tool-approval-card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+@media (max-width: 900px) {
+	.fa-chat-main-body .fa-tool-activity-stack {
+		max-width: min(100%, 680px);
+	}
+
+	.fa-chat-main-body .fa-tool-activity-summary {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-chat-main-body .fa-tool-activity-toggle {
+		justify-self: start;
+	}
+}
+
+.fa-thread-layout {
+	gap: 18px;
+}
+
+.fa-transcript-panel {
+	background:
+		linear-gradient(180deg, rgba(24, 24, 34, 0.97), rgba(10, 10, 15, 0.97)),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.12),
+			transparent 40%
+		);
+}
+
+.fa-thread-toolbar {
+	padding: 18px 20px 14px;
+}
+
+.fa-thread-id {
+	margin-top: 16px;
+	font-size: 17px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+
+.fa-thread-chip-row {
+	gap: 8px;
+}
+
+.fa-thread-chip {
+	font-size: 10px;
+}
+
+.fa-chat-history {
+	padding: 16px;
+	background:
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.1),
+			transparent 28%
+		), linear-gradient(180deg, rgba(14, 14, 19, 0.92), rgba(11, 11, 16, 0.98));
+}
+
+.fa-chat-history-shell {
+	min-height: 100%;
+	border-radius: 22px;
+	border: 1px solid rgba(255, 255, 255, 0.05);
+	background:
+		linear-gradient(180deg, rgba(15, 15, 21, 0.82), rgba(10, 10, 15, 0.9)),
+		radial-gradient(
+			circle at top right,
+			rgba(56, 189, 248, 0.05),
+			transparent 42%
+		);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+	padding: 18px;
+}
+
+.fa-message-list {
+	gap: 18px;
+}
+
+.fa-message-stack {
+	gap: 9px;
+	max-width: min(740px, 88%);
+}
+
+.fa-message-role {
+	padding: 4px 10px;
+	font-size: 10px;
+	letter-spacing: 0.14em;
+}
+
+.fa-message-bubble {
+	padding: 16px 18px;
+}
+
+.fa-message-content {
+	font-size: 14px;
+	line-height: 1.72;
+}
+
+.fa-thread-layout {
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) auto;
+	gap: 14px;
+	min-height: 0;
+}
+
+.fa-transcript-panel {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	background:
+		linear-gradient(180deg, rgba(18, 18, 26, 0.98), rgba(10, 10, 15, 0.98)),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.14),
+			transparent 40%
+		);
+}
+
+.fa-chat-header-top {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: 16px;
+}
+
+.fa-chat-header-copy {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: auto;
+	flex: 0 0 auto;
+	max-width: none;
+}
+
+.fa-chat-header-actions {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: max-content;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 16px;
+	margin-left: auto;
+	min-width: 0;
+	width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding-bottom: 2px;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(129, 140, 248, 0.32) transparent;
+}
+
+.fa-chat-header-actions::-webkit-scrollbar {
+	height: 6px;
+}
+
+.fa-chat-header-actions::-webkit-scrollbar-thumb {
+	border-radius: 999px;
+	background: rgba(129, 140, 248, 0.32);
+}
+
+.fa-chat-header-primary-actions,
+.fa-chat-header-nav {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	flex-wrap: nowrap;
+	min-width: max-content;
+}
+
+.fa-chat-toolbar-pill,
+.fa-chat-toolbar-button {
+	width: auto;
+	min-height: 42px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 14px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: linear-gradient(
+		180deg,
+		rgba(37, 37, 48, 0.98),
+		rgba(18, 18, 24, 0.98)
+	);
+	color: var(--fa-text);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+	font-size: 13px;
+	font-weight: 600;
+	white-space: nowrap;
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		box-shadow 0.18s ease,
+		transform 0.18s ease;
+}
+
+.fa-chat-toolbar-pill:hover,
+.fa-chat-toolbar-button:hover {
+	border-color: rgba(129, 140, 248, 0.32);
+	background: linear-gradient(
+		180deg,
+		rgba(44, 44, 58, 0.98),
+		rgba(25, 25, 34, 0.98)
+	);
+}
+
+.fa-chat-toolbar-button.is-primary {
+	border-color: rgba(129, 140, 248, 0.44);
+	background: linear-gradient(
+		135deg,
+		rgba(99, 102, 241, 0.98),
+		rgba(139, 92, 246, 0.98)
+	);
+	color: white;
+	box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+}
+
+.fa-chat-toolbar-button.is-primary:hover {
+	background: linear-gradient(
+		135deg,
+		rgba(115, 119, 248, 0.98),
+		rgba(149, 103, 248, 0.98)
+	);
+	box-shadow: 0 0 28px rgba(99, 102, 241, 0.36);
+}
+
+.fa-chat-toolbar-button:disabled,
+.fa-chat-toolbar-pill:disabled {
+	opacity: 0.56;
+}
+
+.fa-chat-header-actions.is-compact [data-compact-button="true"] {
+	width: 42px;
+	min-width: 42px;
+	height: 42px;
+	padding: 0;
+	gap: 0;
+	justify-content: center;
+}
+
+.fa-chat-header-actions.is-compact
+	[data-compact-button="true"]
+	.fa-toolbar-text {
+	display: none;
+}
+
+.fa-chat-header-actions.is-compact .fa-focus-branches-button .fa-toolbar-text {
+	display: inline;
+}
+
+.fa-chat-header-actions.is-compact .fa-focus-branches-button {
+	width: auto;
+	min-width: auto;
+	padding: 8px 12px;
+	gap: 8px;
+}
+
+.fa-conversation-icon-button {
+	width: 42px;
+	min-width: 42px;
+	justify-content: center;
+	padding: 0;
+}
+
+.fa-toolbar-text {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

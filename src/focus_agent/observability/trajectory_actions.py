@@ -1,30 +1,24 @@
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 from focus_agent.config import Settings
+from focus_agent.eval.trajectory_replay import (
+    build_replay_comparison,
+    convert_trajectory_records,
+)
 from focus_agent.repositories.postgres_trajectory_repository import (
     PostgresTrajectoryRepository,
     TrajectoryTurnQuery,
 )
 
 
-def _load_eval_helpers():
-    repo_root = Path(__file__).resolve().parents[3]
-    repo_root_text = str(repo_root)
-    if repo_root_text not in sys.path:
-        sys.path.insert(0, repo_root_text)
-    from tests.eval.runner import build_default_runtime, run_case
-    from tests.eval.trajectory_replay import (
-        build_replay_comparison,
-        convert_trajectory_records,
-    )
+def _load_replay_runtime():
+    from focus_agent.eval.runner import build_default_runtime, run_case
 
-    return build_default_runtime, run_case, build_replay_comparison, convert_trajectory_records
+    return build_default_runtime, run_case
 
 
 def load_turn_export(
@@ -46,7 +40,6 @@ def build_promoted_dataset_payload(
     copy_answer_substring: bool = False,
     answer_substring_chars: int = 160,
 ) -> dict[str, Any]:
-    _, _, _, convert_trajectory_records = _load_eval_helpers()
     converted = convert_trajectory_records(
         [record],
         case_id_prefix=case_id_prefix,
@@ -86,9 +79,7 @@ def run_replay_for_turn(
     copy_answer_substring: bool = False,
     answer_substring_chars: int = 160,
 ) -> dict[str, Any]:
-    build_default_runtime, run_case, build_replay_comparison, convert_trajectory_records = (
-        _load_eval_helpers()
-    )
+    build_default_runtime, run_case = _load_replay_runtime()
     converted = convert_trajectory_records(
         [record],
         case_id_prefix=case_id_prefix,

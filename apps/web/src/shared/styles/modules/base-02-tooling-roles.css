@@ -1,0 +1,326 @@
+.fa-observability-tool-board {
+	display: grid;
+	gap: 10px;
+	padding: 13px 14px;
+	border-radius: 18px;
+	border: 1px solid var(--fa-border-subtle);
+	background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
+}
+
+.fa-observability-section-copy.is-inline h3 {
+	font-size: 0.96rem;
+}
+
+.fa-observability-tool-list {
+	display: grid;
+	gap: 8px;
+}
+
+.fa-observability-tool-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--fa-panel-2) 72%, transparent 28%);
+	border: 1px solid var(--fa-border-subtle);
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.fa-observability-tool-row > div {
+	display: grid;
+	gap: 4px;
+}
+
+.fa-observability-tool-row span {
+	color: var(--fa-text-muted);
+}
+
+.fa-observability-tool-row:hover,
+.fa-observability-tool-row.is-active {
+	border-color: var(--fa-border-strong);
+	background: color-mix(in srgb, var(--fa-panel-3) 70%, var(--fa-accent) 8%);
+}
+
+.fa-observability-inline-chip-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.fa-observability-raw-toggle {
+	display: grid;
+	gap: 10px;
+}
+
+.fa-observability-raw-toggle summary {
+	cursor: pointer;
+	color: var(--fa-text-muted);
+}
+
+.fa-observability-raw-toggle pre {
+	margin: 0;
+	max-height: 200px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	padding: 12px;
+	border-radius: 14px;
+	border: 1px solid var(--fa-border-subtle);
+	background: color-mix(in srgb, var(--fa-panel-2) 90%, transparent 10%);
+	color: var(--fa-text-muted);
+	font-family: "SFMono-Regular", "JetBrains Mono", monospace;
+	font-size: 0.82rem;
+	line-height: 1.45;
+}
+
+.fa-agent-role-console {
+	gap: 18px;
+}
+
+.fa-agent-role-hero {
+	align-items: stretch;
+	min-height: auto;
+}
+
+.fa-agent-role-hero .fa-observability-hero-copy,
+.fa-agent-role-policy-grid {
+	height: 100%;
+}
+
+.fa-agent-role-hero .fa-observability-hero-copy {
+	align-content: center;
+}
+
+.fa-agent-role-policy-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fa-agent-role-grid {
+	display: grid;
+	grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+	gap: 14px;
+	align-items: start;
+}
+
+.fa-agent-role-panel {
+	grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.fa-agent-role-model-list,
+.fa-agent-role-decision-list,
+.fa-agent-role-trajectory-list,
+.fa-agent-role-dry-run-form {
+	display: grid;
+	gap: 10px;
+}
+
+.fa-agent-role-model-row,
+.fa-agent-role-decision-card,
+.fa-agent-role-trajectory-row {
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 16px;
+	background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
+}
+
+.fa-agent-role-model-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 11px 12px;
+}
+
+.fa-agent-role-model-row span,
+.fa-agent-role-decision-card span,
+.fa-agent-role-trajectory-row span {
+	color: var(--fa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.72rem;
+}
+
+.fa-agent-role-model-row strong,
+.fa-agent-role-decision-card strong,
+.fa-agent-role-trajectory-row strong {
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-role-field {
+	width: 100%;
+}
+
+.fa-agent-role-field textarea {
+	min-height: 118px;
+	resize: vertical;
+}
+
+.fa-agent-role-field textarea,
+.fa-agent-role-field input {
+	width: 100%;
+	color: var(--fa-text);
+}
+
+.fa-agent-role-decision-card {
+	display: grid;
+	gap: 10px;
+	padding: 12px;
+}
+
+.fa-agent-role-decision-card > div {
+	display: grid;
+	gap: 4px;
+}
+
+.fa-agent-role-decision-card p {
+	margin: 0;
+	color: var(--fa-text-muted);
+}
+
+.fa-agent-role-decision-card pre,
+.fa-agent-role-trajectory-row pre {
+	margin: 0;
+	max-height: 260px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	padding: 11px;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-2) 90%, transparent 10%);
+	color: var(--fa-text-muted);
+	font-family: "SFMono-Regular", "JetBrains Mono", monospace;
+	font-size: 0.78rem;
+	line-height: 1.45;
+}
+
+.fa-agent-role-trajectory {
+	display: grid;
+	gap: 12px;
+}
+
+.fa-agent-role-trajectory-row {
+	padding: 0;
+}
+
+.fa-agent-role-trajectory-row summary {
+	display: grid;
+	grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+	gap: 12px;
+	align-items: center;
+	padding: 12px;
+	cursor: pointer;
+}
+
+.fa-agent-role-trajectory-row pre {
+	margin: 0 12px 12px;
+}
+
+.fa-agent-role-ops-panel {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+
+.fa-agent-role-ops-list {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+
+.fa-agent-role-ops-card {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
+}
+
+.fa-agent-role-ops-card > div:first-child,
+.fa-agent-role-ops-chips,
+.fa-agent-role-ops-metrics {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.fa-agent-role-ops-card > div:first-child {
+	justify-content: space-between;
+}
+
+.fa-agent-role-ops-card strong,
+.fa-agent-role-ops-card p {
+	overflow-wrap: anywhere;
+}
+
+.fa-agent-role-ops-card p {
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 0.82rem;
+}
+
+.fa-agent-role-ops-chips {
+	flex-wrap: wrap;
+}
+
+.fa-agent-role-ops-chips span {
+	display: inline-flex;
+	align-items: center;
+	min-height: 22px;
+	padding: 2px 7px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: var(--fa-panel-2);
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	font-weight: 800;
+}
+
+.fa-agent-role-ops-metrics {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fa-agent-role-ops-metrics > div {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	padding: 9px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 10px;
+	background: var(--fa-panel-2);
+}
+
+.fa-agent-role-ops-metrics span {
+	color: var(--fa-text-muted);
+	font-size: 0.7rem;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+.fa-agent-role-ops-metrics strong {
+	color: var(--fa-text);
+	font-size: 0.92rem;
+}
+
+.fa-observability-preset.is-primary {
+	border-color: var(--fa-border-strong);
+	background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-panel-3) 76%);
+	color: var(--fa-text);
+}
+
+@media (max-width: 900px) {
+	.fa-agent-role-policy-grid,
+	.fa-agent-role-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-role-trajectory-row summary {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}

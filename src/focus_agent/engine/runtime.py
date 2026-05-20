@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import inspect
 import logging
-import os
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 
 from ..branch_decision import BranchDecisionService
 from ..capabilities import ToolRegistry, build_tool_registry
@@ -14,9 +12,13 @@ from ..config import Settings, ensure_runtime_directories
 from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..engine.local_persistence import (
-    PersistentInMemorySaver,
-    PersistentInMemoryStore,
-    PersistentSQLiteSaver,
+    PersistentInMemorySaver as PersistentInMemorySaver,
+)
+from ..engine.local_persistence import (
+    PersistentInMemoryStore as PersistentInMemoryStore,
+)
+from ..engine.local_persistence import (
+    PersistentSQLiteSaver as PersistentSQLiteSaver,
 )
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..memory.embedding import (
@@ -28,12 +30,21 @@ from ..multi_agent.maintenance import MultiAgentMaintenanceWorker
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
 from ..repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
 from ..repositories.branch_repository import BranchRepository
-from ..repositories.in_memory_branch_repository import InMemoryBranchRepository
+from ..repositories.in_memory_branch_repository import (
+    InMemoryBranchRepository as InMemoryBranchRepository,
+)
 from ..repositories.productivity_repository import (
-    InMemoryProductivityRepository,
+    InMemoryProductivityRepository as InMemoryProductivityRepository,
+)
+from ..repositories.productivity_repository import (
     ProductivityRepository,
 )
-from ..repositories.user_repository import InMemoryUserRepository, UserRepository
+from ..repositories.user_repository import (
+    InMemoryUserRepository as InMemoryUserRepository,
+)
+from ..repositories.user_repository import (
+    UserRepository,
+)
 from ..services.agent_team import AgentTeamService
 from ..services.background_work import (
     BackgroundJobHandlerRegistry,
@@ -48,6 +59,22 @@ from ..services.users import UserService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
 from ..storage.postgres import PostgresConnectionProvider
+from .runtime_persistence import (
+    _create_local_checkpointer as _create_local_checkpointer,
+)
+from .runtime_persistence import (
+    _create_local_fallback_persistence,
+    _create_postgres_primary_persistence,
+)
+from .runtime_persistence import (
+    _create_repository_with_provider as _create_repository_with_provider,
+)
+from .runtime_persistence import (
+    _postgres_run_journal_cls as _postgres_run_journal_cls,
+)
+from .runtime_persistence import (
+    _sqlite_run_journal_cls as _sqlite_run_journal_cls,
+)
 
 logger = logging.getLogger("focus_agent.runtime")
 
@@ -613,143 +640,6 @@ def _create_runtime_services(
     )
 
 
-def _postgres_run_journal_cls() -> object:
-    if PostgresRunJournal is not None:
-        return PostgresRunJournal
-    from ..harness.observability.postgres_run_journal import (
-        PostgresRunJournal as PostgresRunJournalClass,
-    )
-
-    return PostgresRunJournalClass
-
-
-def _sqlite_run_journal_cls() -> object:
-    if SQLiteRunJournal is not None:
-        return SQLiteRunJournal
-    from ..harness.observability.run_journal import SQLiteRunJournal as SQLiteRunJournalClass
-
-    return SQLiteRunJournalClass
-
-
-def _create_postgres_primary_persistence(
-    *,
-    settings: Settings,
-    exit_stack: ExitStack,
-    memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
-    postgres_connection_provider: PostgresConnectionProvider | None,
-) -> tuple[
-    object,
-    object,
-    BranchRepository,
-    UserRepository,
-    object | None,
-    ProductivityRepository,
-    object | None,
-    object,
-    object,
-]:
-    from langgraph.checkpoint.postgres import PostgresSaver
-    from langgraph.store.postgres import PostgresStore
-
-    from ..repositories.artifact_metadata_repository import ArtifactMetadataRepository
-    from ..repositories.postgres_branch_repository import PostgresBranchRepository
-    from ..repositories.postgres_memory_repository import PostgresMemoryRepository
-    from ..repositories.postgres_productivity_repository import PostgresProductivityRepository
-    from ..repositories.postgres_user_repository import PostgresUserRepository
-
-    assert settings.database_uri is not None
-
-    if bool(getattr(settings, "db_pool_enabled", True)) and bool(
-        getattr(settings, "postgres_pool_enabled", True)
-    ):
-        checkpointer_pool = exit_stack.enter_context(
-            _langgraph_postgres_pool(settings=settings, name="focus-agent-checkpointer")
-        )
-        store_pool = exit_stack.enter_context(
-            _langgraph_postgres_pool(settings=settings, name="focus-agent-store")
-        )
-        checkpointer = PostgresSaver(checkpointer_pool)
-        store = PostgresStore(store_pool)
-    else:
-        checkpointer = exit_stack.enter_context(
-            PostgresSaver.from_conn_string(settings.database_uri)
-        )
-        store = exit_stack.enter_context(PostgresStore.from_conn_string(settings.database_uri))
-    checkpointer.setup()
-    store.setup()
-
-    repo = _create_repository_with_provider(
-        PostgresBranchRepository,
-        settings.database_uri,
-        connection_provider=postgres_connection_provider,
-    )
-    _setup_component_if_available(repo)
-    user_repository = PostgresUserRepository(settings.database_uri)
-    _setup_component_if_available(user_repository)
-
-    artifact_metadata_repository = ArtifactMetadataRepository(settings.database_uri)
-    _setup_component_if_available(artifact_metadata_repository)
-
-    memory_repository = _create_repository_with_provider(
-        PostgresMemoryRepository,
-        settings.database_uri,
-        connection_provider=postgres_connection_provider,
-    )
-    _setup_memory_repository_if_available(
-        memory_repository,
-        settings=settings,
-        memory_embedding_setup=memory_embedding_setup,
-    )
-
-    productivity_repository = PostgresProductivityRepository(settings.database_uri)
-    _setup_component_if_available(productivity_repository)
-
-    trajectory_recorder = None
-    if _trajectory_enabled(settings):
-        from ..repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
-
-        candidate = _create_repository_with_provider(
-            PostgresTrajectoryRepository,
-            settings.database_uri,
-            connection_provider=postgres_connection_provider,
-        )
-        try:
-            _setup_component_if_available(candidate)
-        except Exception:  # noqa: BLE001
-            logger.warning("failed to initialize Postgres trajectory persistence", exc_info=True)
-        else:
-            trajectory_recorder = candidate
-
-    run_journal = _postgres_run_journal_cls()(settings.database_uri)
-    _setup_component_if_available(run_journal)
-
-    return (
-        checkpointer,
-        store,
-        repo,
-        user_repository,
-        memory_repository,
-        productivity_repository,
-        trajectory_recorder,
-        artifact_metadata_repository,
-        run_journal,
-    )
-
-
-def _create_repository_with_provider(
-    repository_cls: object,
-    database_uri: str,
-    *,
-    connection_provider: PostgresConnectionProvider | None,
-) -> object:
-    kwargs: dict[str, object] = {}
-    if connection_provider is not None:
-        signature = inspect.signature(repository_cls)
-        if "connection_provider" in signature.parameters:
-            kwargs["connection_provider"] = connection_provider
-    return repository_cls(database_uri, **kwargs)  # type: ignore[operator]
-
-
 @contextmanager
 def _langgraph_postgres_pool(*, settings: Settings, name: str) -> Iterator[object]:
     from psycopg.rows import dict_row
@@ -774,78 +664,6 @@ def _langgraph_postgres_pool(*, settings: Settings, name: str) -> Iterator[objec
     ) as pool:
         yield pool
 
-
-def _create_local_fallback_persistence(
-    settings: Settings,
-) -> tuple[
-    object,
-    object,
-    BranchRepository,
-    UserRepository,
-    object | None,
-    ProductivityRepository,
-    object | None,
-    object | None,
-    object,
-]:
-    persistence_dir = Path(settings.branch_db_path).expanduser().parent
-    checkpoint_path = (
-        Path(settings.local_checkpoint_path).expanduser()
-        if settings.local_checkpoint_path
-        else persistence_dir / "langgraph-checkpoints.pkl"
-    )
-    store_path = (
-        Path(settings.local_store_path).expanduser()
-        if settings.local_store_path
-        else persistence_dir / "langgraph-store.pkl"
-    )
-    checkpointer = _create_local_checkpointer(settings, persistence_dir, checkpoint_path)
-    store = PersistentInMemoryStore(store_path)
-    repo = InMemoryBranchRepository()
-    user_repository = InMemoryUserRepository()
-    productivity_repository = InMemoryProductivityRepository()
-    run_journal = _sqlite_run_journal_cls()(persistence_dir / "harness_runs.sqlite3")
-    _setup_component_if_available(run_journal)
-    return (
-        checkpointer,
-        store,
-        repo,
-        user_repository,
-        None,
-        productivity_repository,
-        None,
-        None,
-        run_journal,
-    )
-
-
-def _create_local_checkpointer(
-    settings: Settings,
-    persistence_dir: Path,
-    checkpoint_path: Path,
-) -> object:
-    backend = str(
-        getattr(settings, "resolved_env", {}).get("FOCUS_AGENT_CHECKPOINT_BACKEND", "")
-        or os.environ.get("FOCUS_AGENT_CHECKPOINT_BACKEND", "")
-        or "pickle"
-    ).strip().lower()
-    if backend == "pickle":
-        return PersistentInMemorySaver(checkpoint_path)
-    if backend == "sqlite":
-        if settings.local_checkpoint_path:
-            candidate = Path(settings.local_checkpoint_path).expanduser()
-            sqlite_path = (
-                candidate
-                if candidate.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
-                else candidate.with_suffix(".sqlite3")
-            )
-        else:
-            sqlite_path = persistence_dir / "langgraph-checkpoints.sqlite3"
-        return PersistentSQLiteSaver(sqlite_path)
-    raise ValueError(
-        "FOCUS_AGENT_CHECKPOINT_BACKEND must be one of: pickle, sqlite "
-        f"(got {backend!r})."
-    )
 
 
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:

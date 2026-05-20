@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib import parse as urllib_parse
 from uuid import uuid4
 
+from observability_ui_smoke_helpers import _tail_text
 from ui_smoke_test import (
     CdpWebSocket,
     collect_browser_diagnostics,
@@ -42,13 +43,6 @@ SCENARIOS = ("success", "failed", "zero-step", "missing-detail", "all")
 def _is_local_url(url: str) -> bool:
     parsed = urllib_parse.urlparse(url)
     return (parsed.hostname or "").strip().lower() in {"127.0.0.1", "localhost"}
-
-
-def _tail_text(path: Path, *, max_lines: int = 40) -> str:
-    if not path.exists():
-        return ""
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return "\n".join(lines[-max_lines:])
 
 
 def _wait_for_health(

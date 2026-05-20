@@ -12,14 +12,21 @@ def _read(path: Path) -> str:
 
 
 def _read_agent_team_styles() -> str:
-    facade_text = _read(AGENT_TEAM_STYLES)
     module_dir = AGENT_TEAM_STYLES.parent
-    imported = [
-        _read(module_dir / line.split('"', 2)[1])
-        for line in facade_text.splitlines()
-        if line.startswith("@import ") and '"' in line
-    ]
-    return "\n".join([facade_text, *imported])
+    seen: set[Path] = set()
+
+    def read_with_imports(path: Path) -> list[str]:
+        if path in seen:
+            return []
+        seen.add(path)
+        text = _read(path)
+        chunks = [text]
+        for line in text.splitlines():
+            if line.startswith("@import ") and '"' in line:
+                chunks.extend(read_with_imports(module_dir / line.split('"', 2)[1]))
+        return chunks
+
+    return "\n".join(read_with_imports(AGENT_TEAM_STYLES))
 
 
 def _read_task_surface_text() -> str:

@@ -975,7 +975,8 @@
       "ThreadStateResponse"
     ],
     "apps/web/src/entities/messages/message-list-branch-action-card.tsx": [
-      "FocusAgentBranchActionProposal"
+      "FocusAgentBranchActionProposal",
+      "FocusAgentBranchDecisionEvent"
     ],
     "apps/web/src/entities/messages/message-list-helpers.ts": [
       "FocusAgentBranchActionProposal",
@@ -993,6 +994,7 @@
     ],
     "apps/web/src/entities/messages/message-list.tsx": [
       "FocusAgentBranchActionProposal",
+      "FocusAgentBranchDecisionSummary",
       "FocusAgentStreamStep",
       "FocusAgentToolApprovalInterrupt",
       "RunFailedPayload",
@@ -1220,19 +1222,27 @@
     "apps/web/src/pages/admin/admin-audit-events-page.tsx": [
       "FocusAgentAuditEvent"
     ],
-    "apps/web/src/pages/admin/admin-config-page.tsx": [
+    "apps/web/src/pages/admin/admin-config-controls.tsx": [
+      "FocusAgentAdminConfigValue"
+    ],
+    "apps/web/src/pages/admin/admin-config-draft-utils.ts": [
       "FocusAgentAdminConfig",
       "FocusAgentAdminConfigProvider",
       "FocusAgentAdminConfigValue",
       "FocusAgentAdminModelConfigEntry",
       "FocusAgentAdminToolConfigEntry",
-      "FocusAgentAdminToolProviderConfig",
+      "FocusAgentAdminToolProviderConfig"
+    ],
+    "apps/web/src/pages/admin/admin-config-page.tsx": [
       "FocusAgentUpdateAdminModelConfigEntry",
       "FocusAgentUpdateAdminModelConfigRequest",
       "FocusAgentUpdateAdminModelProviderConfig",
       "FocusAgentUpdateAdminToolConfigEntry",
       "FocusAgentUpdateAdminToolConfigRequest",
       "FocusAgentUpdateAdminToolProviderConfig"
+    ],
+    "apps/web/src/pages/admin/admin-config-tool-policy-panels.tsx": [
+      "FocusAgentAdminConfigValue"
     ],
     "apps/web/src/pages/admin/admin-user-detail-panels.tsx": [
       "FocusAgentAuditEvent",

@@ -76,8 +76,8 @@ function decisionConclusionText(
 ) {
 	if (isBranchHandoffDecision(decision)) {
 		return isChineseUi
-			? "问题已带到这个分支"
-			: "The question moved to this branch";
+			? "继续在当前新分支处理带入问题"
+			: "Continue the carried question in this new branch";
 	}
 	if (decision.action === "split") {
 		return isChineseUi ? "建议创建新分支" : "Suggest creating a new branch";
@@ -100,7 +100,7 @@ function decisionConclusionText(
 }
 
 function branchHandoffKickerText(isChineseUi: boolean) {
-	return isChineseUi ? "Focus Score · 已接收" : "Focus Score · Received";
+	return isChineseUi ? "轻量 AI 建议 · 已接收" : "Focus Score · Received";
 }
 
 export function BranchNodeDetailOverlay({
@@ -299,8 +299,7 @@ export function BranchNodeDetailOverlay({
 				) : null}
 
 				<div className="fa-branch-node-actions">
-					{detailNode.branch_id &&
-					!isRenamingBranch ? (
+					{detailNode.branch_id && !isRenamingBranch ? (
 						<button
 							className="fa-branch-inline-action"
 							{...tooltipProps(

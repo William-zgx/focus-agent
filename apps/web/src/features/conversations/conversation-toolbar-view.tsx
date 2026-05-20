@@ -71,9 +71,7 @@ export function ConversationToolbarView({
 		renameInputRef.current?.focus();
 	}, [renameTarget]);
 
-	function handleConversationDoubleClick(
-		event: MouseEvent<HTMLButtonElement>,
-	) {
+	function handleConversationDoubleClick(event: MouseEvent<HTMLButtonElement>) {
 		if (!activeConversation || isWorking) return;
 		event.preventDefault();
 		event.stopPropagation();
@@ -145,9 +143,7 @@ export function ConversationToolbarView({
 					</button>
 					<label
 						className="fa-conversation-jump"
-						{...tooltipProps(
-							isChineseUi ? "切换对话" : "Switch conversations",
-						)}
+						{...tooltipProps(isChineseUi ? "切换对话" : "Switch conversations")}
 					>
 						<span className="sr-only">
 							{isChineseUi ? "切换对话" : "Switch conversation"}

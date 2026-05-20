@@ -457,6 +457,16 @@
 	overflow-wrap: anywhere;
 }
 
+.fa-agent-team-final-answer-text {
+	color: var(--fa-text);
+	line-height: 1.55;
+	white-space: pre-wrap;
+}
+
+.fa-agent-team-result-placeholder {
+	border-style: dashed;
+}
+
 .fa-agent-team-task-topline > div {
 	display: grid;
 	gap: 2px;

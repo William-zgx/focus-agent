@@ -367,12 +367,12 @@ export function MessageComposer({
 					</div>
 				</div>
 
-					<span className="sr-only">
-						{isChineseUi
-							? "这里先保持当前线程聚焦。只有当你想把问题拆到独立方向时，再创建分支。"
-							: "Keep the current thread focused here. Create a branch only when you want to split into a separate direction."}
-					</span>
-				</div>
-			</form>
+				<span className="sr-only">
+					{isChineseUi
+						? "这里先保持当前线程聚焦。只有当你想把问题拆到独立方向时，再创建分支。"
+						: "Keep the current thread focused here. Create a branch only when you want to split into a separate direction."}
+				</span>
+			</div>
+		</form>
 	);
 }

@@ -250,9 +250,7 @@ function branchActionInsertionIndex(
 function isHumanMessage(
 	item: TranscriptItem,
 ): item is TranscriptDisplayMessage {
-	return (
-		item.kind === "message" && normalizeMessageType(item.type) === "human"
-	);
+	return item.kind === "message" && normalizeMessageType(item.type) === "human";
 }
 
 function compareBranchActions(

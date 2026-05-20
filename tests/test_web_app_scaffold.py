@@ -465,9 +465,9 @@ def test_conversation_rename_uses_inline_form_not_browser_prompt():
     assert "const conversation = await createConversation();" in conversation_toolbar_text
     assert "window.prompt" not in conversation_toolbar_text
     assert "window.prompt" not in branch_tree_text
-    assert "onDoubleClickCapture={handleConversationDoubleClick}" in conversation_toolbar_text
-    assert 'className="fa-inline-rename-form"' in conversation_toolbar_text
-    assert 'className="fa-inline-rename-form is-branch"' in branch_tree_text
+    assert "onDoubleClick={handleConversationDoubleClick}" in conversation_toolbar_text
+    assert 'className="fa-inline-rename-form is-conversation"' in conversation_toolbar_text
+    assert 'className="fa-inline-rename-form is-branch-title"' in branch_tree_text
     assert "onDoubleClick={() => onStartRename(detailNode)}" in branch_tree_text
     assert ".fa-inline-rename-input" in styles_text
 
@@ -479,8 +479,9 @@ def test_thread_header_allows_double_click_current_branch_rename():
         root / "apps" / "web" / "src" / "features" / "thread" / "thread-header-action-buttons.tsx",
     )
 
-    assert "onDoubleClick={onRenameCurrentBranch}" in thread_header_text
-    assert 'className="fa-inline-rename-form is-header-branch"' in thread_header_text
+    assert "onDoubleClick={handleRenameBranchDoubleClick}" in thread_header_text
+    assert "onRenameCurrentBranch();" in thread_header_text
+    assert 'className="fa-inline-rename-form is-header-branch is-inline"' in thread_header_text
     assert "await renameBranch(threadId, nextName);" in thread_header_text
 
 
@@ -513,8 +514,8 @@ def test_conversation_switcher_only_lists_active_conversations():
     assert "const archivedConversations" not in conversation_toolbar_text
     assert "<optgroup" not in conversation_toolbar_text
     assert (
-        "disabled={isLoading || isWorking || activeConversations.length === 0}"
-        in conversation_toolbar_text
+        "disabled={ isLoading || isWorking || activeConversations.length === 0 }"
+        in _compact(conversation_toolbar_text)
     )
     assert "activeConversations.find(" in conversation_toolbar_text
     assert "conversation.root_thread_id === conversationId" in conversation_toolbar_text

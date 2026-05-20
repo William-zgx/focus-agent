@@ -39,7 +39,7 @@ const applyPresetStart = files.trajectoryWorkbenchState.indexOf(
   "function applyPreset(preset: PresetMode)",
 );
 const resetFiltersStart = files.trajectoryWorkbenchState.indexOf(
-  "\n  function resetFilters",
+  "function resetFilters",
   applyPresetStart,
 );
 const applyPresetBlock =

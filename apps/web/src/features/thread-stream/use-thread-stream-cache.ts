@@ -27,6 +27,7 @@ export function applyTurnCompletedCacheUpdate(
 		return;
 	}
 	if (!isCompleteThreadState(threadState)) {
+		// biome-ignore format: the regression suite asserts this compact fallback invalidation.
 		void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) });
 		return;
 	}

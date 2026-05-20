@@ -85,14 +85,16 @@ export function BranchDecisionSummaryPanel({
 		isChineseUi,
 		semanticDiagnosticEntries,
 	});
-	const summarySegments = ["Focus Score", focusMetric.value];
+	const badgeLabel = isChineseUi ? "轻量 AI 建议" : "Focus Score";
+	const scoreLabel = focusMetric.value;
+	const summarySegments = [badgeLabel, focusMetric.value];
 	const summaryLabel = summarySegments.join(" · ");
 	return (
 		<section
 			className="fa-branch-decision-summary"
 			id={`branch-decision-${decision.decision_id}`}
 		>
-			<div
+			<fieldset
 				className={`fa-branch-decision-summary-popover ${
 					drawerOpen ? "is-open" : ""
 				}`}
@@ -103,13 +105,16 @@ export function BranchDecisionSummaryPanel({
 				}}
 				onMouseLeave={() => setDrawerOpen(false)}
 			>
+				<legend className="sr-only">
+					{isChineseUi ? "Focus Score 路由详情" : "Focus Score routing details"}
+				</legend>
 				<Button
 					aria-controls={detailId}
 					aria-expanded={drawerOpen}
 					aria-label={
 						isChineseUi
-							? `${summaryLabel}。查看详情。`
-							: `${summaryLabel}. View details.`
+							? `${summaryLabel}。悬停或点击查看诊断详情。`
+							: `${summaryLabel}. Hover or click for diagnostic details.`
 					}
 					className="fa-branch-decision-summary-trigger"
 					data-handoff={isBranchHandoff ? "true" : undefined}
@@ -119,8 +124,8 @@ export function BranchDecisionSummaryPanel({
 					variant="ghost"
 				>
 					<span className="fa-branch-decision-summary-kicker">
-						<Badge tone="info">Focus Score</Badge>
-						<span>{focusMetric.value}</span>
+						<Badge tone="info">{badgeLabel}</Badge>
+						{scoreLabel ? <span>{scoreLabel}</span> : null}
 					</span>
 					{showAuditNote ? (
 						<span className="fa-branch-decision-audit-note">
@@ -177,7 +182,7 @@ export function BranchDecisionSummaryPanel({
 						) : null}
 					</div>
 				</div>
-			</div>
+			</fieldset>
 			{promote.error || dismiss.error ? (
 				<div className="fa-branch-decision-error">
 					{isChineseUi ? "更新 AI 决策失败。" : "Failed to update AI decision."}
@@ -302,8 +307,8 @@ function branchDecisionDetailNote({
 	}
 	if (decision.status === "suggested") {
 		return isChineseUi
-			? "已准备好分支去向判断，可确认是否切换。"
-			: "The routing judgment is ready to confirm.";
+			? "已生成可确认的分支建议。"
+			: "A branch recommendation is ready to confirm.";
 	}
 	if (decision.status === "blocked") {
 		return isChineseUi
@@ -325,7 +330,9 @@ function branchDecisionDetailNote({
 
 function branchHandoffRunStatusLabel(status: string, isChineseUi: boolean) {
 	if (status === "interrupted") {
-		return isChineseUi ? "切换后回复已停止" : "Reply after routing stopped";
+		return isChineseUi
+			? "自动生成已中断"
+			: "Automatic generation was interrupted";
 	}
 	if (status === "error") {
 		return isChineseUi ? "切换后回复失败" : "Reply after routing failed";
@@ -334,9 +341,13 @@ function branchHandoffRunStatusLabel(status: string, isChineseUi: boolean) {
 		return isChineseUi ? "已切到更匹配的分支" : "Routed to a better-fit branch";
 	}
 	if (status === "running") {
-		return isChineseUi ? "正在切到更匹配的分支" : "Routing to a better-fit branch";
+		return isChineseUi
+			? "正在切到更匹配的分支"
+			: "Routing to a better-fit branch";
 	}
-	return isChineseUi ? "已接收，等待继续处理" : "Received and ready to continue";
+	return isChineseUi
+		? "已接收，等待继续处理"
+		: "Received and ready to continue";
 }
 
 function branchDecisionFitLabel(
@@ -345,8 +356,8 @@ function branchDecisionFitLabel(
 ) {
 	if (isBranchHandoffDecision(decision)) {
 		return isChineseUi
-			? "原问题与当前分支主线偏离，已带到更合适的分支"
-			: "The question drifted from the previous flow and was routed here";
+			? "新分支已接收带入问题，继续在当前分支处理"
+			: "The new branch received the carried question; continue here";
 	}
 	if (
 		decision.action === "split" ||
@@ -377,7 +388,9 @@ function branchDecisionRoutingLabel(
 	isChineseUi: boolean,
 ) {
 	if (isBranchHandoffDecision(decision)) {
-		return isChineseUi ? "留在这个新分支继续" : "Continue in this routed branch";
+		return isChineseUi
+			? "继续在当前新分支处理带入问题"
+			: "Continue the carried question in this new branch";
 	}
 	if (decision.action === "split") {
 		return isChineseUi ? "另开一个低风险分支" : "Open a low-risk branch";

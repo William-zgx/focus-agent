@@ -24,6 +24,10 @@ DEFAULT_SCAN_PATHS = (
 DEFAULT_LARGE_FILE_THRESHOLD = 800
 DEFAULT_LINE_COUNT_TOP_N = 10
 SCANNED_SUFFIXES = {".css", ".js", ".jsx", ".md", ".mjs", ".py", ".ts", ".tsx"}
+GENERATED_FILE_MARKERS = (
+    "This file was auto-generated",
+    "Do not make direct changes",
+)
 IGNORED_DIRS = {
     ".git",
     ".mypy_cache",
@@ -115,6 +119,11 @@ def _line_count(path: Path) -> int:
     return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
 
 
+def _is_generated_file(path: Path) -> bool:
+    header = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[:8])
+    return any(marker in header for marker in GENERATED_FILE_MARKERS)
+
+
 def collect_large_files(
     files: Iterable[Path],
     *,
@@ -123,6 +132,8 @@ def collect_large_files(
 ) -> list[dict[str, Any]]:
     large_files: list[dict[str, Any]] = []
     for path in files:
+        if _is_generated_file(path):
+            continue
         lines = _line_count(path)
         if lines <= threshold:
             continue
@@ -148,6 +159,7 @@ def collect_line_count_top(
             "path": _relative(path, root=root),
         }
         for path in files
+        if not _is_generated_file(path)
     ]
     return sorted(line_counts, key=lambda item: (-item["lines"], item["path"]))[:limit]
 

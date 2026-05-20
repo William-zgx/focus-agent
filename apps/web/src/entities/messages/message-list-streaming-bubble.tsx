@@ -144,11 +144,13 @@ function compactStreamProcessingSteps(
 ) {
 	const steps = processingSteps ?? [];
 	const prepSteps = steps.filter(
-		(step) => step.kind === "task" && PREP_TASK_NAMES.has(streamStepSourceName(step)),
+		(step) =>
+			step.kind === "task" && PREP_TASK_NAMES.has(streamStepSourceName(step)),
 	);
 	const wrapUpSteps = steps.filter(
 		(step) =>
-			step.kind === "task" && WRAP_UP_TASK_NAMES.has(streamStepSourceName(step)),
+			step.kind === "task" &&
+			WRAP_UP_TASK_NAMES.has(streamStepSourceName(step)),
 	);
 	if (prepSteps.length === 0 && wrapUpSteps.length === 0) {
 		return steps;
@@ -174,8 +176,7 @@ function compactStreamProcessingSteps(
 	let wrapUpInserted = false;
 	for (const step of steps) {
 		const sourceName = streamStepSourceName(step);
-		const isPrepStep =
-			step.kind === "task" && PREP_TASK_NAMES.has(sourceName);
+		const isPrepStep = step.kind === "task" && PREP_TASK_NAMES.has(sourceName);
 		if (isPrepStep) {
 			if (!prepInserted) {
 				compactedSteps.push(compactedPrepStep);

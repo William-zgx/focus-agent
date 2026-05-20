@@ -1,20 +1,27 @@
+import { type CSSProperties, useId } from "react";
+
 import { FocusAgentBrand } from "@/shared/ui/focus-agent-brand";
 
 function TaskCard({
 	accent,
+	cardShadowId,
 	className,
 	width = 132,
 	x,
 	y,
 }: {
 	accent: "blue" | "teal" | "warm";
+	cardShadowId: string;
 	className?: string;
 	width?: number;
 	x: number;
 	y: number;
 }) {
 	return (
-		<g className={`fa-auth-login-card ${className ?? ""}`} filter="url(#fa-login-card-shadow)">
+		<g
+			className={`fa-auth-login-card ${className ?? ""}`}
+			filter={`url(#${cardShadowId})`}
+		>
 			<rect height="58" rx="13" width={width} x={x} y={y} />
 			<rect
 				className={`fa-auth-login-chip is-${accent}`}
@@ -24,8 +31,22 @@ function TaskCard({
 				x={x + 18}
 				y={y + 20}
 			/>
-			<rect className="fa-auth-login-line is-strong" height="5" rx="2.5" width="58" x={x + 50} y={y + 18} />
-			<rect className="fa-auth-login-line" height="5" rx="2.5" width={Math.min(76, width - 62)} x={x + 50} y={y + 34} />
+			<rect
+				className="fa-auth-login-line is-strong"
+				height="5"
+				rx="2.5"
+				width="58"
+				x={x + 50}
+				y={y + 18}
+			/>
+			<rect
+				className="fa-auth-login-line"
+				height="5"
+				rx="2.5"
+				width={Math.min(76, width - 62)}
+				x={x + 50}
+				y={y + 34}
+			/>
 			<circle cx={x + width - 20} cy={y + 42} r="2.5" />
 			<circle cx={x + width - 10} cy={y + 42} r="2.5" />
 		</g>
@@ -33,6 +54,24 @@ function TaskCard({
 }
 
 export function LoginIntro() {
+	const generatedId = useId().replaceAll(":", "");
+	const lineCoolId = `${generatedId}-fa-login-line-cool`;
+	const lineWarmId = `${generatedId}-fa-login-line-warm`;
+	const cardId = `${generatedId}-fa-login-card`;
+	const blueChipId = `${generatedId}-fa-login-blue-chip`;
+	const tealChipId = `${generatedId}-fa-login-teal-chip`;
+	const orangeChipId = `${generatedId}-fa-login-orange-chip`;
+	const cardShadowId = `${generatedId}-fa-login-card-shadow`;
+	const warmShadowId = `${generatedId}-fa-login-warm-shadow`;
+	const paintUrls = {
+		"--fa-login-blue-chip": `url(#${blueChipId})`,
+		"--fa-login-card": `url(#${cardId})`,
+		"--fa-login-line-cool": `url(#${lineCoolId})`,
+		"--fa-login-line-warm": `url(#${lineWarmId})`,
+		"--fa-login-orange-chip": `url(#${orangeChipId})`,
+		"--fa-login-teal-chip": `url(#${tealChipId})`,
+	} as CSSProperties;
+
 	return (
 		<section className="fa-auth-login-intro">
 			<div className="fa-auth-login-brand">
@@ -46,41 +85,66 @@ export function LoginIntro() {
 				<svg
 					className="fa-auth-login-illustration"
 					role="presentation"
+					style={paintUrls}
 					viewBox="0 10 760 250"
 				>
 					<defs>
-						<linearGradient id="fa-login-line-cool" x1="0" x2="1" y1="0" y2="0">
+						<linearGradient id={lineCoolId} x1="0" x2="1" y1="0" y2="0">
 							<stop offset="0" stopColor="#2f80ed" />
 							<stop offset="0.55" stopColor="#38bdf8" />
 							<stop offset="1" stopColor="#35d0bd" />
 						</linearGradient>
-						<linearGradient id="fa-login-line-warm" x1="0" x2="1" y1="0" y2="0">
+						<linearGradient id={lineWarmId} x1="0" x2="1" y1="0" y2="0">
 							<stop offset="0" stopColor="#2f80ed" />
 							<stop offset="1" stopColor="#fb923c" />
 						</linearGradient>
-						<linearGradient id="fa-login-card" x1="0" x2="0" y1="0" y2="1">
+						<linearGradient id={cardId} x1="0" x2="0" y1="0" y2="1">
 							<stop offset="0" stopColor="#ffffff" />
 							<stop offset="1" stopColor="#f8fbff" />
 						</linearGradient>
-						<linearGradient id="fa-login-blue-chip" x1="0" x2="1" y1="0" y2="1">
+						<linearGradient id={blueChipId} x1="0" x2="1" y1="0" y2="1">
 							<stop offset="0" stopColor="#67e8f9" />
 							<stop offset="1" stopColor="#2563eb" />
 						</linearGradient>
-						<linearGradient id="fa-login-teal-chip" x1="0" x2="1" y1="0" y2="1">
+						<linearGradient id={tealChipId} x1="0" x2="1" y1="0" y2="1">
 							<stop offset="0" stopColor="#5eead4" />
 							<stop offset="1" stopColor="#14b8a6" />
 						</linearGradient>
-						<linearGradient id="fa-login-orange-chip" x1="0" x2="1" y1="0" y2="1">
+						<linearGradient id={orangeChipId} x1="0" x2="1" y1="0" y2="1">
 							<stop offset="0" stopColor="#fdba74" />
 							<stop offset="1" stopColor="#f97316" />
 						</linearGradient>
-						<filter id="fa-login-card-shadow" colorInterpolationFilters="sRGB">
-							<feDropShadow dx="0" dy="9" floodColor="#1d4ed8" floodOpacity="0.12" stdDeviation="8" />
-							<feDropShadow dx="0" dy="2" floodColor="#0f172a" floodOpacity="0.07" stdDeviation="2" />
+						<filter id={cardShadowId} colorInterpolationFilters="sRGB">
+							<feDropShadow
+								dx="0"
+								dy="9"
+								floodColor="#1d4ed8"
+								floodOpacity="0.12"
+								stdDeviation="8"
+							/>
+							<feDropShadow
+								dx="0"
+								dy="2"
+								floodColor="#0f172a"
+								floodOpacity="0.07"
+								stdDeviation="2"
+							/>
 						</filter>
-						<filter id="fa-login-warm-shadow" colorInterpolationFilters="sRGB">
-							<feDropShadow dx="0" dy="12" floodColor="#fb923c" floodOpacity="0.22" stdDeviation="11" />
-							<feDropShadow dx="0" dy="2" floodColor="#0f172a" floodOpacity="0.07" stdDeviation="2" />
+						<filter id={warmShadowId} colorInterpolationFilters="sRGB">
+							<feDropShadow
+								dx="0"
+								dy="12"
+								floodColor="#fb923c"
+								floodOpacity="0.22"
+								stdDeviation="11"
+							/>
+							<feDropShadow
+								dx="0"
+								dy="2"
+								floodColor="#0f172a"
+								floodOpacity="0.07"
+								stdDeviation="2"
+							/>
 						</filter>
 					</defs>
 
@@ -101,31 +165,105 @@ export function LoginIntro() {
 					</g>
 
 					<circle className="fa-auth-login-orbit" cx="28" cy="134" r="29" />
-					<circle className="fa-auth-login-orbit is-inner" cx="28" cy="134" r="16" />
-					<circle className="fa-auth-login-node is-start" cx="28" cy="134" r="9" />
+					<circle
+						className="fa-auth-login-orbit is-inner"
+						cx="28"
+						cy="134"
+						r="16"
+					/>
+					<circle
+						className="fa-auth-login-node is-start"
+						cx="28"
+						cy="134"
+						r="9"
+					/>
 					<circle className="fa-auth-login-node" cx="232" cy="134" r="18" />
 					<circle className="fa-auth-login-node-dot" cx="232" cy="134" r="6" />
 					<circle className="fa-auth-login-node" cx="644" cy="134" r="18" />
-					<circle className="fa-auth-login-node-dot is-warm" cx="644" cy="134" r="6" />
+					<circle
+						className="fa-auth-login-node-dot is-warm"
+						cx="644"
+						cy="134"
+						r="6"
+					/>
 
-					<TaskCard accent="blue" className="is-left" width={118} x={84} y={105} />
-					<TaskCard accent="teal" className="is-top" width={128} x={314} y={35} />
-					<TaskCard accent="blue" className="is-bottom" width={128} x={314} y={175} />
-					<TaskCard accent="teal" className="is-media" width={112} x={488} y={35} />
-					<TaskCard accent="blue" className="is-chart" width={112} x={488} y={175} />
+					<TaskCard
+						accent="blue"
+						cardShadowId={cardShadowId}
+						className="is-left"
+						width={118}
+						x={84}
+						y={105}
+					/>
+					<TaskCard
+						accent="teal"
+						cardShadowId={cardShadowId}
+						className="is-top"
+						width={128}
+						x={314}
+						y={35}
+					/>
+					<TaskCard
+						accent="blue"
+						cardShadowId={cardShadowId}
+						className="is-bottom"
+						width={128}
+						x={314}
+						y={175}
+					/>
+					<TaskCard
+						accent="teal"
+						cardShadowId={cardShadowId}
+						className="is-media"
+						width={112}
+						x={488}
+						y={35}
+					/>
+					<TaskCard
+						accent="blue"
+						cardShadowId={cardShadowId}
+						className="is-chart"
+						width={112}
+						x={488}
+						y={175}
+					/>
 
-					<g className="fa-auth-login-status" filter="url(#fa-login-card-shadow)">
+					<g className="fa-auth-login-status" filter={`url(#${cardShadowId})`}>
 						<circle cx="464" cy="64" r="19" />
 						<path d="M 456 64 L 463 71 L 474 57" />
 						<circle cx="464" cy="204" r="19" />
 						<path d="M 456 204 L 463 211 L 474 197" />
 					</g>
 
-					<g className="fa-auth-login-card is-final" filter="url(#fa-login-warm-shadow)">
+					<g
+						className="fa-auth-login-card is-final"
+						filter={`url(#${warmShadowId})`}
+					>
 						<rect height="58" rx="13" width="78" x="676" y="105" />
-						<rect className="fa-auth-login-chip is-warm" height="18" rx="5" width="18" x="692" y="125" />
-						<rect className="fa-auth-login-line is-strong" height="5" rx="2.5" width="24" x="722" y="124" />
-						<rect className="fa-auth-login-line" height="5" rx="2.5" width="28" x="722" y="141" />
+						<rect
+							className="fa-auth-login-chip is-warm"
+							height="18"
+							rx="5"
+							width="18"
+							x="692"
+							y="125"
+						/>
+						<rect
+							className="fa-auth-login-line is-strong"
+							height="5"
+							rx="2.5"
+							width="24"
+							x="722"
+							y="124"
+						/>
+						<rect
+							className="fa-auth-login-line"
+							height="5"
+							rx="2.5"
+							width="28"
+							x="722"
+							y="141"
+						/>
 					</g>
 					<g className="fa-auth-login-sparkles">
 						<path d="M 730 74 L 734 84 L 744 88 L 734 92 L 730 102 L 726 92 L 716 88 L 726 84 Z" />

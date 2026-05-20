@@ -88,7 +88,9 @@ export function BranchActionCard({
 	const isAiSuggested =
 		action.source === "branch_decision" || Boolean(action.source_decision_id);
 	const routingConfidence =
-		typeof action.confidence === "number" ? scorePercent(action.confidence) : "";
+		typeof action.confidence === "number"
+			? scorePercent(action.confidence)
+			: "";
 	const focusMetric = branchActionFocusMetric({
 		action,
 		isChineseUi,
@@ -115,9 +117,7 @@ export function BranchActionCard({
 		: isChineseUi
 			? "确认切换"
 			: "Confirm route";
-	const continueLabel = isChineseUi
-		? "继续当前分支"
-		: "Stay in current branch";
+	const continueLabel = isChineseUi ? "继续当前分支" : "Stay in current branch";
 	const executeBranchAction = () => {
 		setIsExpanded(false);
 		onExecute?.(action);

@@ -42,7 +42,7 @@ const files = {
   agentTeamCss: readCssModule(
     resolve(appRoot, "src/shared/styles/modules/agent-team.css"),
   ),
-  baseCss: readFileSync(resolve(appRoot, "src/shared/styles/modules/base.css"), "utf8"),
+  baseCss: readCssModule(resolve(appRoot, "src/shared/styles/modules/base.css")),
 };
 
 const expectations = [

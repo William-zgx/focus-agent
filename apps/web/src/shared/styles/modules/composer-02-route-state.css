@@ -1,0 +1,42 @@
+.fa-route-state {
+	display: flex;
+	min-height: 100vh;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+}
+
+.fa-route-state-card {
+	border-radius: 24px;
+	border: 1px solid var(--fa-border);
+	background:
+		linear-gradient(180deg, rgba(28, 28, 38, 0.96), rgba(13, 13, 18, 0.92)),
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.12),
+			transparent 48%
+		);
+	padding: 22px 24px;
+	color: var(--fa-text);
+	box-shadow: var(--fa-shadow);
+}
+
+.fa-route-state-title {
+	margin: 0;
+	color: var(--fa-text);
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.fa-route-state-link {
+	display: inline-flex;
+	margin-top: 12px;
+	color: var(--fa-accent-text);
+	font-size: 14px;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.fa-route-state-link:hover {
+	color: var(--fa-accent-text-strong);
+}

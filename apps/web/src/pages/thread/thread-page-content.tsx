@@ -33,7 +33,9 @@ interface ThreadPageContentProps {
 	messages: Array<Record<string, unknown>>;
 	onClearEditDraft: () => void;
 	onCompactContext: () => Promise<void> | void;
-	onContinueCurrentBranchAction: (action: FocusAgentBranchActionProposal) => void;
+	onContinueCurrentBranchAction: (
+		action: FocusAgentBranchActionProposal,
+	) => void;
 	onDismissBranchAction: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval: (
 		interrupt: FocusAgentToolApprovalInterrupt,

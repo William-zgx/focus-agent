@@ -113,7 +113,6 @@ def _is_writable_team_task(task: AgentTeamTask) -> bool:
         AgentTeamTaskRole.BACKEND_EXECUTOR,
         AgentTeamTaskRole.FRONTEND_EXECUTOR,
         AgentTeamTaskRole.TEST_ENGINEER,
-        AgentTeamTaskRole.WRITER,
     }
 
 
