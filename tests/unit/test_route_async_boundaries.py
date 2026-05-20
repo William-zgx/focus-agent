@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 from types import SimpleNamespace
 
 from focus_agent.api.route_helpers import run_sync_route_call
@@ -10,24 +10,39 @@ from focus_agent.api.route_utils.branch_handoff_decisions import (
 )
 
 
-def _sleep_and_return(delay: float, value: str) -> str:
-    time.sleep(delay)
+def _wait_for_release(
+    started: threading.Event,
+    release: threading.Event,
+    value: str,
+) -> str:
+    started.set()
+    if not release.wait(timeout=2):
+        raise TimeoutError("sync route call was not released")
     return value
+
+
+async def _wait_until_started(started: threading.Event) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 1
+    while not started.is_set():
+        if loop.time() >= deadline:
+            raise AssertionError("sync route call did not start")
+        await asyncio.sleep(0.001)
 
 
 def test_run_sync_route_call_does_not_block_event_loop() -> None:
     async def scenario() -> None:
-        blocking = asyncio.create_task(run_sync_route_call(_sleep_and_return, 0.05, "done"))
-        ticker = asyncio.create_task(asyncio.sleep(0.01, result="tick"))
-
-        done, _pending = await asyncio.wait(
-            {blocking, ticker},
-            timeout=0.2,
-            return_when=asyncio.FIRST_COMPLETED,
+        started = threading.Event()
+        release = threading.Event()
+        blocking = asyncio.create_task(
+            run_sync_route_call(_wait_for_release, started, release, "done")
         )
 
-        assert ticker in done
-        assert await ticker == "tick"
+        await _wait_until_started(started)
+        assert await asyncio.sleep(0.01, result="tick") == "tick"
+        assert not blocking.done()
+
+        release.set()
         assert await blocking == "done"
 
     asyncio.run(scenario())
@@ -35,12 +50,19 @@ def test_run_sync_route_call_does_not_block_event_loop() -> None:
 
 def test_branch_handoff_journal_helper_does_not_block_event_loop() -> None:
     class Service:
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.release = threading.Event()
+
         def list_decisions(self, **_kwargs):
-            time.sleep(0.05)
+            self.started.set()
+            if not self.release.wait(timeout=2):
+                raise TimeoutError("branch decision service was not released")
             return [SimpleNamespace(decision_id="decision-1")]
 
     async def scenario() -> None:
-        runtime = SimpleNamespace(branch_decision_service=Service())
+        service = Service()
+        runtime = SimpleNamespace(branch_decision_service=service)
         blocking = asyncio.create_task(
             ensure_branch_handoff_decision_from_journal(
                 runtime=runtime,
@@ -48,16 +70,12 @@ def test_branch_handoff_journal_helper_does_not_block_event_loop() -> None:
                 user_id="user-1",
             )
         )
-        ticker = asyncio.create_task(asyncio.sleep(0.01, result="tick"))
 
-        done, _pending = await asyncio.wait(
-            {blocking, ticker},
-            timeout=0.2,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        await _wait_until_started(service.started)
+        assert await asyncio.sleep(0.01, result="tick") == "tick"
+        assert not blocking.done()
 
-        assert ticker in done
-        assert await ticker == "tick"
+        service.release.set()
         assert (await blocking).decision_id == "decision-1"
 
     asyncio.run(scenario())
