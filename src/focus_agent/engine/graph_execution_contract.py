@@ -124,6 +124,15 @@ def verify_answer_against_evidence(
     stripped_answer = str(answer or "").strip()
     if not stripped_answer:
         return _verification("verified", required_tools_satisfied=True)
+    if evidence_ledger and _is_low_information_live_answer(stripped_answer):
+        return _verification(
+            "unsupported",
+            required_tools_satisfied=True,
+            unsupported_claims=[
+                "live_web_research answer is only an acknowledgement despite available evidence"
+            ],
+            repair_action="fallback_to_tool_results",
+        )
     contradiction = _detect_simple_event_contradiction(stripped_answer, evidence_ledger)
     if contradiction:
         return _verification(
@@ -327,6 +336,25 @@ def _detect_simple_event_contradiction(
             "Answer denies a leader visit, but the evidence contains leader-visit event language."
         )
     return ""
+
+
+def _is_low_information_live_answer(answer: str) -> bool:
+    normalized = re.sub(r"[\s,，.。!！?？;；:：、]+", "", str(answer or "").strip()).lower()
+    return normalized in {
+        "ok",
+        "okay",
+        "yes",
+        "done",
+        "好",
+        "好的",
+        "可以",
+        "收到",
+        "明白",
+        "嗯",
+        "嗯嗯",
+        "是",
+        "是的",
+    }
 
 
 def _contains_negative_visit_claim(text: str) -> bool:

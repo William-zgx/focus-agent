@@ -100,7 +100,7 @@ function decisionConclusionText(
 }
 
 function branchHandoffKickerText(isChineseUi: boolean) {
-	return isChineseUi ? "轻量 AI 建议 · 已接收" : "Focus Score · Received";
+	return isChineseUi ? "Focus Score · 已接收" : "Focus Score · Received";
 }
 
 export function BranchNodeDetailOverlay({

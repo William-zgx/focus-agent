@@ -9,6 +9,7 @@ from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
 from focus_agent.config import Settings
 from focus_agent.core.branching import (
+    BranchActionKind,
     BranchRecord,
     BranchRole,
     BranchStatus,
@@ -243,6 +244,55 @@ def test_local_snapshot_seed_removes_branch_control_messages_and_state():
     assert child_state["agent_runs"] == []
     assert child_state["plan_meta"] == {}
     assert child_state["branch_meta"]["branch_fork_message_count"] == 1
+
+
+def test_sibling_handoff_seed_drops_parent_turn_instructions():
+    service = object.__new__(BranchService)
+    service.repo = FakeRepo()
+    service.graph = FakeGraph(
+        {
+            "root-1": {
+                "messages": [
+                    HumanMessage(content="浏览器回归 V2 proxy 修复：请只回复 OK。"),
+                    AIMessage(content="OK"),
+                    HumanMessage(content="今天北京的天气怎么样？"),
+                ],
+                "branch_actions": [
+                    {
+                        "action_id": "action-1",
+                        "kind": BranchActionKind.FORK_SIBLING_BRANCH.value,
+                        "status": "pending",
+                        "root_thread_id": "root-1",
+                        "source_thread_id": "root-1",
+                        "target_parent_thread_id": "root-1",
+                        "suggested_branch_name": "北京天气",
+                        "branch_role": "execute",
+                        "reason": "topic shift",
+                        "created_at": "2026-05-21T00:00:00+00:00",
+                        "handoff_message": "今天北京的天气怎么样？",
+                    }
+                ],
+            }
+        }
+    )
+    service.thread_client = None
+    service.proposal_model = None
+    service.settings = SimpleNamespace(branch_max_depth=5)
+    service.store = None
+    service.memory_writer = None
+    service.repo.ensure_thread_owner(
+        thread_id="root-1", root_thread_id="root-1", owner_user_id="user-1"
+    )
+
+    record = service.fork_branch(
+        parent_thread_id="root-1",
+        user_id="user-1",
+        branch_role=BranchRole.EXECUTE,
+    )
+
+    child_state = service.graph.states[record.child_thread_id]
+    assert child_state["messages"] == []
+    assert child_state["branch_meta"]["branch_fork_message_count"] == 0
 
 
 def test_branch_service_prefers_helper_model_for_internal_flows(monkeypatch):

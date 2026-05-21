@@ -85,7 +85,7 @@ export function BranchDecisionSummaryPanel({
 		isChineseUi,
 		semanticDiagnosticEntries,
 	});
-	const badgeLabel = isChineseUi ? "轻量 AI 建议" : "Focus Score";
+	const badgeLabel = "Focus Score";
 	const scoreLabel = focusMetric.value;
 	const summarySegments = [badgeLabel, focusMetric.value];
 	const summaryLabel = summarySegments.join(" · ");

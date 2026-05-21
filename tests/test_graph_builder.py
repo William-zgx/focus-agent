@@ -1318,6 +1318,58 @@ def test_graph_repairs_once_then_fails_credibly_for_stale_live_web_evidence(monk
     assert result.value["plan_meta"]["live_web_answer_repair_count"] == 1
 
 
+def test_graph_falls_back_to_tool_results_when_live_web_answer_is_ack(monkeypatch):
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        return "2026-05-21T02:30:00Z"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return json.dumps(
+            {
+                "query": query,
+                "answer": "今天北京多云，气温 16℃ 到 28℃。",
+                "results": [
+                    {
+                        "title": "北京天气",
+                        "url": "https://weather.example/beijing",
+                        "content": "今天北京多云，气温 16℃ 到 28℃。",
+                        "published_at": "2026-05-21",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    _patch_static_chat_model(monkeypatch, content="OK")
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="今天北京的天气怎么样？")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-live-web-ack"),
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+    assert final_answer != "OK"
+    assert "保守整理" in final_answer
+    assert "今天北京多云" in final_answer
+    assert result.value["answer_verification"]["status"] == "verified"
+    assert (
+        result.value["answer_verification"]["repair_action_taken"]
+        == "fallback_to_tool_results"
+    )
+
+
 def test_graph_does_not_retry_live_web_search_when_result_has_no_evidence(monkeypatch):
     web_calls = []
 

@@ -176,6 +176,25 @@ def _branch_action_handoff_texts(values: dict[str, Any]) -> set[str]:
     return texts
 
 
+def _branch_action_kind(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("kind") or "").strip()
+    return str(getattr(item, "kind", "") or "").strip()
+
+
+def _has_sibling_branch_handoff(values: dict[str, Any]) -> bool:
+    for item in list(values.get("branch_actions") or []):
+        if _branch_action_kind(item) != "fork_sibling_branch":
+            continue
+        if isinstance(item, dict):
+            raw_text = item.get("handoff_message")
+        else:
+            raw_text = getattr(item, "handoff_message", None)
+        if str(raw_text or "").strip():
+            return True
+    return False
+
+
 def branch_fork_message_count(values: dict[str, Any]) -> int | None:
     branch_meta = values.get("branch_meta")
     if not isinstance(branch_meta, dict):
@@ -264,6 +283,8 @@ def branch_visible_messages(messages: list[Any], *, values: dict[str, Any]) -> l
 
 
 def branch_seed_messages(messages: list[Any], *, values: dict[str, Any]) -> list[Any]:
+    if _has_sibling_branch_handoff(values):
+        return []
     handoff_texts = _branch_action_handoff_texts(values)
     seed_messages: list[Any] = []
     for message in messages:

@@ -448,38 +448,54 @@ def make_agent_loop_node(
             and not getattr(response, "tool_calls", None)
             and _live_web_answer_needs_repair(answer_verification)
         ):
-            repair_response = _live_web_repair_response(
-                state=state,
-                available_tools=available_tools,
-                tool_intent_plan=tool_intent_plan.model_dump(mode="json"),
-                fallback_query=tool_intent_text,
-                current_utc_time=observed_at or current_utc_time_result,
-                repair_count=live_web_repair_count,
-                verification=answer_verification,
-                execution_contract=execution_contract,
-            )
-            if repair_response is not None:
-                response = repair_response
-                completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                answer_verification = {
-                    **answer_verification,
-                    "repair_action_taken": "retry_web_search",
-                }
-                live_web_repair_taken = "retry_web_search"
-            else:
+            if str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
                 response = AIMessage(
-                    content=_live_web_failure_answer(
-                        verification=answer_verification,
-                        execution_contract=execution_contract,
-                        evidence_ledger=evidence_ledger,
-                    )
+                    content=_fallback_answer_from_tool_results(completed_turn_messages)
                 )
                 completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                answer_verification = verify_answer_against_evidence(
+                    answer=_message_content_text(response),
+                    contract=execution_contract,
+                    evidence_ledger=evidence_ledger,
+                )
                 answer_verification = {
                     **answer_verification,
-                    "repair_action_taken": "answer_with_uncertainty",
+                    "repair_action_taken": "fallback_to_tool_results",
                 }
-                live_web_repair_taken = "answer_with_uncertainty"
+                live_web_repair_taken = "fallback_to_tool_results"
+            else:
+                repair_response = _live_web_repair_response(
+                    state=state,
+                    available_tools=available_tools,
+                    tool_intent_plan=tool_intent_plan.model_dump(mode="json"),
+                    fallback_query=tool_intent_text,
+                    current_utc_time=observed_at or current_utc_time_result,
+                    repair_count=live_web_repair_count,
+                    verification=answer_verification,
+                    execution_contract=execution_contract,
+                )
+                if repair_response is not None:
+                    response = repair_response
+                    completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                    answer_verification = {
+                        **answer_verification,
+                        "repair_action_taken": "retry_web_search",
+                    }
+                    live_web_repair_taken = "retry_web_search"
+                else:
+                    response = AIMessage(
+                        content=_live_web_failure_answer(
+                            verification=answer_verification,
+                            execution_contract=execution_contract,
+                            evidence_ledger=evidence_ledger,
+                        )
+                    )
+                    completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                    answer_verification = {
+                        **answer_verification,
+                        "repair_action_taken": "answer_with_uncertainty",
+                    }
+                    live_web_repair_taken = "answer_with_uncertainty"
         citation_refs = _new_citation_refs(
             evidence_bundle_to_citation_refs(evidence_bundle),
             existing=list(state.get("citations", []) or []),

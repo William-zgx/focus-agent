@@ -1809,7 +1809,7 @@ test("branch graph node hover AI decision shows only the key conclusion", () => 
 
   assert.equal(overlaySource.includes("decisionConclusionText"), true);
   assert.equal(overlaySource.includes("isBranchHandoffDecision"), true);
-  assert.equal(overlaySource.includes("轻量 AI 建议 · 已接收"), true);
+  assert.equal(overlaySource.includes("Focus Score · 已接收"), true);
   assert.equal(overlaySource.includes("继续在当前新分支处理带入问题"), true);
   assert.equal(overlaySource.includes("建议继续当前线程"), true);
   assert.equal(overlaySource.includes("建议创建子分支"), true);
@@ -1943,7 +1943,7 @@ test("branch decision summary stays compact while hover details keep diagnostics
 	  assert.equal(summaryPanelSource.includes("isBranchHandoffDecision"), true);
 	  assert.equal(summaryPanelSource.includes("showAuditNote = auditOnly && !isBranchHandoff"), true);
 	  assert.equal(summaryPanelSource.includes('data-handoff={isBranchHandoff ? "true" : undefined}'), true);
-	  assert.equal(summaryPanelSource.includes("轻量 AI 建议"), true);
+	  assert.equal(summaryPanelSource.includes("Focus Score"), true);
 	  assert.equal(summaryPanelSource.includes("已接收"), true);
 	  assert.equal(summaryPanelSource.includes("继续在当前新分支处理带入问题"), true);
 	  assert.equal(
@@ -1955,7 +1955,7 @@ test("branch decision summary stays compact while hover details keep diagnostics
 	  assert.equal(summaryPanelSource.includes("Focus Score"), true);
 	  assert.equal(summaryPanelSource.includes("scorePercent(decision.score)"), true);
 	  assert.equal(summaryPanelSource.includes('Badge tone="info"'), true);
-	  assert.equal(summaryPanelSource.includes(': "Focus Score"'), true);
+	  assert.equal(summaryPanelSource.includes('const badgeLabel = "Focus Score"'), true);
 	  assert.equal(summaryPanelSource.includes("branchDecisionDetailNote"), true);
 	  assert.equal(summaryPanelSource.includes("已生成可确认的分支建议。"), true);
 	  assert.equal(
