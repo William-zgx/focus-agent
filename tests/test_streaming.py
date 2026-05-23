@@ -1,4 +1,8 @@
-from focus_agent.core.tool_protocol import safe_visible_text_transition
+from focus_agent.core.tool_protocol import (
+    looks_like_potential_textual_tool_call_prefix,
+    looks_like_textual_tool_call_artifact,
+    safe_visible_text_transition,
+)
 from focus_agent.transport.stream_events import (
     STREAM_VISIBILITY_QUARANTINE,
     STREAM_VISIBILITY_VISIBLE,
@@ -460,6 +464,26 @@ def test_extract_visible_text_delta_ignores_internal_continuation_loop():
     assert extract_visible_text_delta(chunk) == ""
 
 
+def test_extract_visible_text_delta_ignores_chinese_tool_deliberation():
+    chunk = DummyChunk(
+        content=(
+            "和 websearch。我因为不满意搜索结果而犹豫和重复调用，这是不对的。"
+            "现在我直接执行：1. webfetch抓取 Threads帖子；"
+            '2. web_search英文搜索 "OpenAI Codex latest news May2026"。'
+        )
+    )
+    assert extract_visible_text_delta(chunk) == ""
+    assert looks_like_stream_visible_text_artifact(chunk.content)
+
+
+def test_core_tool_protocol_flags_chinese_tool_deliberation_fragments():
+    assert looks_like_textual_tool_call_artifact(
+        "和 websearch。我因为不满意搜索结果而犹豫和重复调用，这是不对的。"
+    )
+    assert looks_like_textual_tool_call_artifact("和 webfetch。")
+    assert looks_like_potential_textual_tool_call_prefix("我因为")
+
+
 def test_extract_visible_text_delta_ignores_english_internal_process_narration():
     assert (
         extract_visible_text_delta(DummyChunk(content="Let me fetch the latest tool results."))
@@ -498,6 +522,24 @@ def test_safe_stream_visible_text_transition_holds_split_english_process_prefixe
     assert pending_text == ""
 
 
+def test_safe_stream_visible_text_transition_hides_split_chinese_tool_deliberation():
+    visible_text, pending_text = safe_stream_visible_text_transition("", "我因为")
+    assert visible_text == ""
+    assert pending_text == "我因为"
+
+    visible_text, pending_text = safe_stream_visible_text_transition(
+        visible_text,
+        "不满意搜索结果而犹豫和重复调用，这是不对的。现在我直接执行：",
+        pending_text=pending_text,
+    )
+    assert visible_text == ""
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_stream_visible_text_transition("", "和 websearch。")
+    assert visible_text == ""
+    assert pending_text == ""
+
+
 def test_safe_stream_visible_text_transition_releases_plain_i_sentence():
     visible_text, pending_text = safe_stream_visible_text_transition("", "I")
     assert visible_text == ""
@@ -517,6 +559,7 @@ def test_potential_stream_visible_artifact_prefix_includes_english_markers():
     assert looks_like_potential_stream_visible_text_artifact_prefix("Let")
     assert looks_like_potential_stream_visible_text_artifact_prefix("I should")
     assert looks_like_potential_stream_visible_text_artifact_prefix("Wait")
+    assert looks_like_potential_stream_visible_text_artifact_prefix("我因为")
     assert not looks_like_potential_stream_visible_text_artifact_prefix("普通结论")
 
 

@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-05-18
+更新时间：2026-05-24
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -67,7 +67,7 @@ The internal phase can be carried as `stream_phase` / `focus_agent_stream_phase`
 
 ## 3. Tool Protocol Isolation
 
-Real tool calls must use the model/tool-call interface and public tool events. DSML, XML-ish function-call text, bracket tool markers, and internal process narration are not valid visible assistant text.
+Real tool calls must use the model/tool-call interface and public tool events. DSML, XML-ish function-call text, bracket tool markers, bare tool references such as `websearch` / `webfetch`, and internal process narration are not valid visible assistant text.
 
 Filtering is intentionally layered:
 
@@ -75,6 +75,7 @@ Filtering is intentionally layered:
 - The harness stream producer gates visible text by phase and filters textual artifacts from visible, reasoning, and completed content.
 - The frontend SDK reducer applies `safeVisibleTextTransition()` as a defensive layer for replayed events, older servers, and split deltas.
 - Web transcript filtering still protects historical messages that were persisted before the current contract.
+- Chinese tool-deliberation fragments are treated as internal process text, including split prefixes such as `我因为` and visible-looking fragments that describe retrying or directly invoking web tools.
 
 This layered filtering is not redundant. Each layer protects a different failure mode.
 

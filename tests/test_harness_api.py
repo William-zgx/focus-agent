@@ -2032,6 +2032,28 @@ def test_produce_run_stream_drops_visible_phase_english_process_narration(monkey
     asyncio.run(scenario())
 
 
+def test_produce_run_stream_drops_visible_phase_chinese_tool_deliberation(monkeypatch):
+    chunks = [
+        _visible_ai_chunk(
+            "和 websearch。我因为不满意搜索结果而犹豫和重复调用，这是不对的。"
+            "现在我直接执行：1. webfetch抓取 Threads帖子；"
+            '2. web_search英文搜索 "OpenAI Codex latest news May2026"。'
+        ),
+        _visible_ai_chunk("最终安全回答"),
+    ]
+
+    async def scenario():
+        events, _statuses, _ended = await _collect_produced_events(
+            monkeypatch,
+            chunks,
+            final_messages=[AIMessage(content="最终安全回答。")],
+        )
+        assert _message_deltas(events) == ["最终安全回答"]
+        assert _completed_messages(events) == ["最终安全回答。"]
+
+    asyncio.run(scenario())
+
+
 def test_produce_run_stream_drops_split_visible_phase_english_process_narration(monkeypatch):
     chunks = [
         _visible_ai_chunk("Let"),

@@ -56,6 +56,12 @@ const INTERNAL_SEARCH_RESULT_NARRATION_RE =
   /(?:我已经|我已)(?:从|在).{0,12}搜索结果.{0,80}(?:获取|拿到|掌握|整理)/ims;
 const INTERNAL_CONTINUATION_LOOP_RE =
   /(?=.{0,260}(?:获取|查询|搜索|执行|处理|分析|计划|数据|网页|页面|行情))(?:如果(?:你)?(?:没有|无)(?:进一步|额外|其他|特别|新的?)?(?:指示|要求|需求|回复)|如无(?:其他|额外|特别|新的?)?(?:要求|指示)|当前(?:继续|正在)(?:执行|处理|获取|分析)|我将(?:默认)?继续(?:执行|推进|处理)|请确认是否继续|如果没有回复|请稍候|正在(?:获取|查询|处理|分析)(?:数据)?)/ims;
+const INTERNAL_TOOL_DELIBERATION_RE =
+  /(?=.{0,360}(?:web[_\s-]?search|web[_\s-]?fetch|工具|tool|搜索结果))(?:我(?:因为|之前|刚才).{0,180}(?:搜索结果|重复调用|工具|web[_\s-]?search|web[_\s-]?fetch)|我(?:现在|直接|将|会|需要|必须|要).{0,120}(?:执行|调用).{0,120}(?:web[_\s-]?search|web[_\s-]?fetch|工具|tool|搜索|抓取|获取)|(?:这是不对的|不应该这样|不再重复调用).{0,180}(?:执行|调用|工具|web[_\s-]?search|web[_\s-]?fetch)|现在我(?:直接)?执行\s*[:：]|(?:搜索结果).{0,120}(?:犹豫|重复调用|不满意))/ims;
+const INTERNAL_TOOL_DELIBERATION_PREFIX_RE =
+  /^\s*(?:我|我因|我因为|我之|我之前|我刚|我刚才|现在我|现在我直|现在我直接|现在我直接执|现在我直接执行|这是|这是不|这是不对|这是不对的|不再|不再重复|搜索结果|搜|搜索)$/is;
+const INTERNAL_TOOL_REFERENCE_FRAGMENT_RE =
+  /^\s*(?:和|与|及|、|,|，)?\s*web[_\s-]?(?:search|fetch)\s*[。.,，;；]?\s*$/is;
 const INTERNAL_ENGLISH_PROCESS_NARRATION_RE =
   /^\s*(?:let\s+me(?:\s+\w+){0,8}\s+(?:fetch|search|look|browse|check|inspect|open|query|calculate|use|call|try|produce\s+(?:the\s+)?final\s+answer|draft\s+(?:the\s+)?final\s+answer|write\s+(?:the\s+)?final\s+answer)|i\s+(?:should|need\s+to|will|can|am\s+going\s+to|must|have\s+to)\s+(?:fetch|search|look|browse|check|inspect|open|query|calculate|use|call|try|continue|retry)|i\s+must\s+not\s+call\s+more\s+tools|wait(?:,|\b).{0,160}(?:tool|fetch|search|look|browse|check|need|should|actually|final)|(?:analysis|assistant\s+final|final\s+answer)\s*[:：]\s*(?:$|<|```|tool|function))/ims;
 const INTERNAL_FINAL_ANSWER_BOUNDARY_RE =
@@ -213,7 +219,9 @@ function sanitizeProtocolVisibleText(value: unknown, knownToolNames?: Iterable<s
     looksLikeStructuredToolCallJson(originalText, knownToolNames) ||
     INTERNAL_PROCESS_NARRATION_RE.test(text) ||
     INTERNAL_SEARCH_RESULT_NARRATION_RE.test(text) ||
-    INTERNAL_CONTINUATION_LOOP_RE.test(text)
+    INTERNAL_CONTINUATION_LOOP_RE.test(text) ||
+    INTERNAL_TOOL_DELIBERATION_RE.test(text) ||
+    INTERNAL_TOOL_REFERENCE_FRAGMENT_RE.test(text)
   ) {
     return "";
   }
@@ -235,7 +243,9 @@ function sanitizeProtocolVisibleText(value: unknown, knownToolNames?: Iterable<s
     looksLikeEnglishProcessNarration(suffix) ||
     INTERNAL_PROCESS_NARRATION_RE.test(normalizedSuffix) ||
     INTERNAL_SEARCH_RESULT_NARRATION_RE.test(normalizedSuffix) ||
-    INTERNAL_CONTINUATION_LOOP_RE.test(normalizedSuffix)
+    INTERNAL_CONTINUATION_LOOP_RE.test(normalizedSuffix) ||
+    INTERNAL_TOOL_DELIBERATION_RE.test(normalizedSuffix) ||
+    INTERNAL_TOOL_REFERENCE_FRAGMENT_RE.test(normalizedSuffix)
   ) {
     return "";
   }
@@ -259,6 +269,8 @@ function classifyToolProtocolText(
     INTERNAL_PROCESS_NARRATION_RE.test(text) ||
     INTERNAL_SEARCH_RESULT_NARRATION_RE.test(text) ||
     INTERNAL_CONTINUATION_LOOP_RE.test(text) ||
+    INTERNAL_TOOL_DELIBERATION_RE.test(text) ||
+    INTERNAL_TOOL_REFERENCE_FRAGMENT_RE.test(text) ||
     sanitizeProtocolVisibleText(originalText, knownToolNames) !== originalText
   ) {
     return "internal";
@@ -285,7 +297,10 @@ function looksLikePotentialTextualToolCallPrefix(value: unknown): boolean {
   if (!text || text.length > 512) {
     return false;
   }
-  return TOOL_CALL_PREFIX_RE.test(text);
+  return (
+    TOOL_CALL_PREFIX_RE.test(text) ||
+    INTERNAL_TOOL_DELIBERATION_PREFIX_RE.test(text)
+  );
 }
 
 export function safeVisibleTextTransition(

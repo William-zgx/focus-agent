@@ -362,8 +362,11 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     reduceStreamEvent,
     safeVisibleText,
   } = loadSdkStreamFunctions();
+  const chineseToolDeliberation =
+    '和 websearch。我因为不满意搜索结果而犹豫和重复调用，这是不对的。现在我直接执行：1. webfetch抓取 Threads帖子；2. web_search英文搜索 "OpenAI Codex latest news May2026"。';
 
   assert.equal(looksLikeTextualToolCallArtifact("[web_fetch] 尝试获取沪指数据，请稍等。"), true);
+  assert.equal(looksLikeTextualToolCallArtifact(chineseToolDeliberation), true);
   assert.equal(
     looksLikeTextualToolCallArtifact(
       '让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。\n\n< | | DSML | | tool_calls>\n< | | DSML | | invoke nameweb_search">\n< | | DSML | | parameter name="query" string="true">AI breakthroughs</ | | DSML | | parameter>',
@@ -493,6 +496,7 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
   );
   assert.equal(safeVisibleText("[web_search] searching"), "");
   assert.equal(safeVisibleText("**[web_fetch]** 尝试通过东方财富API获取数据。"), "");
+  assert.equal(safeVisibleText(chineseToolDeliberation), "");
   assert.equal(safeVisibleText("让我尝试获取更详细的日线数据："), "");
   assert.equal(safeVisibleText("让我进一步获取几个关键来源的详细内容，以便给出更有深度的回答。"), "");
   assert.equal(safeVisibleText("如果没有新指示，我将默认继续执行。请确认是否继续。"), "");
@@ -521,6 +525,41 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withArtifactDelta.visibleText, "");
+
+  const withChineseToolDeliberation = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: chineseToolDeliberation,
+      channel: "message",
+    },
+  });
+  assert.equal(withChineseToolDeliberation.visibleText, "");
+
+  let withSplitChineseToolDeliberation = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "我因为",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitChineseToolDeliberation.visibleText, "");
+  withSplitChineseToolDeliberation = reduceStreamEvent(withSplitChineseToolDeliberation, {
+    event: "message.delta",
+    data: {
+      delta: "不满意搜索结果而犹豫和重复调用，这是不对的。现在我直接执行：",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitChineseToolDeliberation.visibleText, "");
+
+  const withBareChineseToolFragment = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "和 websearch。",
+      channel: "message",
+    },
+  });
+  assert.equal(withBareChineseToolFragment.visibleText, "");
 
   let withSplitArtifact = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -1485,6 +1524,7 @@ test("message transcript hides degraded tool protocol content from state and fal
     "https://www.shrutigupta01.com/ai-agent-frameworks-in-2026/parameter>\n12000parameter>\ninvoke>",
     '="max_fetch_length" stringfalse8000parameter>',
     '="read="filepath" string="true">tool-observation://webfetch/2026/state-of-agents',
+    '和 websearch。我因为不满意搜索结果而犹豫和重复调用，这是不对的。现在我直接执行：1. webfetch抓取 Threads帖子；2. web_search英文搜索 "OpenAI Codex latest news May2026"。',
   ];
 
   for (const protocolText of protocolTexts) {

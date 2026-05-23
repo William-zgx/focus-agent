@@ -58,6 +58,29 @@ _INTERNAL_ENGLISH_PROCESS_NARRATION_RE = re.compile(
     r"(?:analysis|assistant\s+final|final\s+answer)\s*[:：]\s*(?:$|<|```|tool|function)"
     r")"
 )
+_INTERNAL_TOOL_DELIBERATION_RE = re.compile(
+    r"(?ims)(?=.{0,360}(?:web[_\s-]?search|web[_\s-]?fetch|工具|tool|搜索结果))"
+    r"(?:"
+    r"我(?:因为|之前|刚才).{0,180}(?:搜索结果|重复调用|工具|web[_\s-]?search|web[_\s-]?fetch)|"
+    r"我(?:现在|直接|将|会|需要|必须|要).{0,120}(?:执行|调用).{0,120}"
+    r"(?:web[_\s-]?search|web[_\s-]?fetch|工具|tool|搜索|抓取|获取)|"
+    r"(?:这是不对的|不应该这样|不再重复调用).{0,180}"
+    r"(?:执行|调用|工具|web[_\s-]?search|web[_\s-]?fetch)|"
+    r"现在我(?:直接)?执行\s*[:：]|"
+    r"(?:搜索结果).{0,120}(?:犹豫|重复调用|不满意)"
+    r")"
+)
+_INTERNAL_TOOL_DELIBERATION_PREFIX_RE = re.compile(
+    r"(?is)^\s*(?:"
+    r"我|我因|我因为|我之|我之前|我刚|我刚才|"
+    r"现在我|现在我直|现在我直接|现在我直接执|现在我直接执行|"
+    r"这是|这是不|这是不对|这是不对的|"
+    r"不再|不再重复|搜索结果|搜|搜索"
+    r")$"
+)
+_INTERNAL_TOOL_REFERENCE_FRAGMENT_RE = re.compile(
+    r"(?is)^\s*(?:和|与|及|、|,|，)?\s*web[_\s-]?(?:search|fetch)\s*[。.,，;；]?\s*$"
+)
 _INTERNAL_FINAL_ANSWER_BOUNDARY_RE = re.compile(
     r"(?is)\b(?:"
     r"let['’]s\s+go|"
@@ -150,6 +173,7 @@ def looks_like_potential_stream_visible_text_artifact_prefix(text: Any) -> bool:
         return False
     return looks_like_potential_textual_tool_call_prefix(value) or bool(
         _INTERNAL_ENGLISH_PROCESS_PREFIX_RE.match(value)
+        or _INTERNAL_TOOL_DELIBERATION_PREFIX_RE.match(value)
     )
 
 
@@ -167,6 +191,10 @@ def sanitize_stream_visible_text(text: Any) -> str:
     if not value.strip():
         return ""
     if looks_like_textual_tool_call_artifact(value):
+        return ""
+    if _INTERNAL_TOOL_DELIBERATION_RE.search(value) or _INTERNAL_TOOL_REFERENCE_FRAGMENT_RE.search(
+        value
+    ):
         return ""
     if not _INTERNAL_ENGLISH_PROCESS_NARRATION_RE.search(value):
         return value

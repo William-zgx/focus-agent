@@ -134,6 +134,29 @@ _INTERNAL_CONTINUATION_LOOP_RE = re.compile(
     r"我将(?:默认)?继续(?:执行|推进|处理)|"
     r"请确认是否继续|如果没有回复|请稍候|正在(?:获取|查询|处理|分析)(?:数据)?)"
 )
+_INTERNAL_TOOL_DELIBERATION_RE = re.compile(
+    r"(?ims)(?=.{0,360}(?:web[_\s-]?search|web[_\s-]?fetch|工具|tool|搜索结果))"
+    r"(?:"
+    r"我(?:因为|之前|刚才).{0,180}(?:搜索结果|重复调用|工具|web[_\s-]?search|web[_\s-]?fetch)|"
+    r"我(?:现在|直接|将|会|需要|必须|要).{0,120}(?:执行|调用).{0,120}"
+    r"(?:web[_\s-]?search|web[_\s-]?fetch|工具|tool|搜索|抓取|获取)|"
+    r"(?:这是不对的|不应该这样|不再重复调用).{0,180}"
+    r"(?:执行|调用|工具|web[_\s-]?search|web[_\s-]?fetch)|"
+    r"现在我(?:直接)?执行\s*[:：]|"
+    r"(?:搜索结果).{0,120}(?:犹豫|重复调用|不满意)"
+    r")"
+)
+_INTERNAL_TOOL_DELIBERATION_PREFIX_RE = re.compile(
+    r"(?is)^\s*(?:"
+    r"我|我因|我因为|我之|我之前|我刚|我刚才|"
+    r"现在我|现在我直|现在我直接|现在我直接执|现在我直接执行|"
+    r"这是|这是不|这是不对|这是不对的|"
+    r"不再|不再重复|搜索结果|搜|搜索"
+    r")$"
+)
+_INTERNAL_TOOL_REFERENCE_FRAGMENT_RE = re.compile(
+    r"(?is)^\s*(?:和|与|及|、|,|，)?\s*web[_\s-]?(?:search|fetch)\s*[。.,，;；]?\s*$"
+)
 
 
 def _normalized_tool_names(known_tool_names: Iterable[str] | None = None) -> set[str]:
@@ -180,6 +203,8 @@ def looks_like_textual_tool_call_artifact(
         _INTERNAL_PROCESS_NARRATION_RE.search(lowered)
         or _INTERNAL_SEARCH_RESULT_NARRATION_RE.search(lowered)
         or _INTERNAL_CONTINUATION_LOOP_RE.search(lowered)
+        or _INTERNAL_TOOL_DELIBERATION_RE.search(lowered)
+        or _INTERNAL_TOOL_REFERENCE_FRAGMENT_RE.search(lowered)
     )
 
 
@@ -187,7 +212,10 @@ def looks_like_potential_textual_tool_call_prefix(text: object) -> bool:
     candidate = str(text or "").strip()
     if not candidate or len(candidate) > 512:
         return False
-    return bool(_TOOL_CALL_PREFIX_RE.match(candidate))
+    return bool(
+        _TOOL_CALL_PREFIX_RE.match(candidate)
+        or _INTERNAL_TOOL_DELIBERATION_PREFIX_RE.match(candidate)
+    )
 
 
 def safe_visible_text_transition(
