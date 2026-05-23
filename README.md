@@ -4,11 +4,22 @@
 
 **English** | [中文](README.zh-CN.md)
 
+[![CI](https://github.com/William-zgx/focus-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/William-zgx/focus-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Node.js 20+](https://img.shields.io/badge/node.js-20%2B-339933?logo=node.js&logoColor=white)
+
 ![Focus Agent showcase](docs/assets/focus-agent-readme-hero.svg)
 
-Focus Agent is a web-first Agent application scaffold that has grown into a small platform for branching conversations, live responses, access control, admin operations, observability, memory, Agent Team workflows, and a typed frontend SDK.
+Focus Agent is a branch-aware, web-first Agent application scaffold for long AI workflows. Its core idea is simple: keep the main thread focused, let exploration happen in temporary branches, and merge conclusions back only when they are ready.
 
-It is designed for teams that want a local-first, understandable foundation for longer AI workflows while keeping the main platform boundaries explicit. It is no longer just a minimal demo: backend runtime, Web app, SDK, persistence adapters, release/eval tooling, and Agent Team collaboration are maintained as separate areas.
+Around that branching workflow, the project provides streaming chat APIs, a React Web app, a typed frontend SDK, access control, Admin operations, observability, memory, Productivity tools, and Agent Team workflows as supporting surfaces.
+
+## Project Status
+
+Focus Agent is an open-source application scaffold and reference implementation, not a hosted SaaS product. It is intended for local development, product prototyping, and adaptation into team-owned branch-aware AI workspaces.
+
+The branch workflow, backend API, SSE stream contract, frontend SDK, and documented Web surfaces are protected by contract, build, and smoke checks. Deployment choices such as model provider, auth policy, PostgreSQL hosting, observability backend, and release process remain explicit configuration decisions for each adopter.
 
 ## Why Focus Agent
 
@@ -28,6 +39,19 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Access control, Admin Console, memory pipeline, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
 - Built-in repo read/edit, git, web, artifact, memory, and productivity tools with guarded workspace command execution
+
+## Repository Layout
+
+| Path | Purpose |
+|------|---------|
+| `src/focus_agent/` | Python backend runtime, API, services, persistence, tools, memory, and observability modules |
+| `apps/web/` | React Web App served under `/app` |
+| `frontend-sdk/` | Typed TypeScript SDK for API, SSE, and stream reducer integration |
+| `docs/` | Architecture, setup, deployment, feature, contract, and operations documentation |
+| `migrations/` | Alembic migrations for PostgreSQL-backed deployments |
+| `scripts/` | Local setup, validation, release, screenshot, and maintenance helpers |
+| `tests/` | Python, contract, integration, eval, and frontend regression tests |
+| `compose.yaml`, `compose.prod.yaml` | Local and production-oriented Docker Compose entry points |
 
 ## Quick Start
 
@@ -87,6 +111,32 @@ docker compose up --build
 ```
 
 For production or staging, use `compose.prod.yaml` with an external Postgres connection in `FOCUS_AGENT_DATABASE_URI`.
+
+## Development and Validation
+
+Use `make help` to list the maintained local commands. The broad local CI parity check is:
+
+```bash
+make ci
+```
+
+For focused changes, use the narrower gates documented in [docs/development.md](docs/development.md). Common examples are:
+
+```bash
+make lint-strict
+make contract-check
+pnpm sdk:check
+pnpm web:check
+pnpm web:build
+```
+
+If your change affects user-facing behavior, streaming events, auth, storage, or SDK types, include the relevant tests and update documentation in the same pull request.
+
+## Contributing and Support
+
+Contributions are welcome when they keep the runtime understandable, tested, and easy to adapt. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup, pull request expectations, and issue-reporting guidance.
+
+Please use the GitHub issue templates for bugs, feature requests, and documentation improvements. For vulnerabilities or sensitive findings, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 ## Documentation
 
