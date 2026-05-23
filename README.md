@@ -27,7 +27,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, Admin Console, memory pipeline, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
-- Built-in repo, git, web, artifact, memory, and productivity tools
+- Built-in repo read/edit, git, web, artifact, memory, and productivity tools with guarded workspace command execution
 
 ## Quick Start
 

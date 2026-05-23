@@ -225,6 +225,8 @@ Focus Agent already has these default tools:
 - `read_file`
 - `search_code`
 - `codebase_stats`
+- `apply_patch`
+- `run_workspace_command`
 - `git_status`
 - `git_diff`
 - `git_log`
@@ -254,7 +256,7 @@ summarization, and owner-scoped notes/tasks capture.
 
 The runtime also exposes a grouped view of those primitives:
 
-- `workspace`: repository file, code search, and git inspection tools
+- `workspace`: repository file, code search, code editing, command execution, and git inspection tools
 - `web`: live search and URL retrieval tools
 - `artifact`: generated document and draft iteration tools
 - `memory`: durable memory and conversation recovery tools
@@ -406,6 +408,8 @@ Persistence tools save or update user-visible state.
 - `productivity_capture`
 - `artifact_write`
 - `artifact_update`
+- `apply_patch`
+- `run_workspace_command`
 
 ### Conversation Tools
 
@@ -429,6 +433,7 @@ Utility tools provide deterministic helper capabilities.
 The first general-agent batch is now part of the baseline:
 
 - Artifact iteration: `write_text_artifact`, `artifact_list`, `artifact_read`, `artifact_update`
+- Workspace code work: `list_files`, `read_file`, `search_code`, `codebase_stats`, `apply_patch`, `run_workspace_command`, `git_status`, `git_diff`, `git_log`
 - Web retrieval: `web_search`, `web_fetch`
 - Explicit memory control: `memory_save`, `memory_search`, `memory_forget`
 - Productivity workbench: `notes_create`, `notes_search`, `notes_update`, `tasks_create`, `tasks_list`, `tasks_update`, `productivity_capture`
@@ -480,6 +485,7 @@ flowchart LR
 
 - Read tools should be explicit about scope and truncation.
 - Write tools should return stable ids or paths for follow-up turns.
+- Code-modifying and workspace-command tools should require approval, stay inside the workspace root, avoid shell execution, and use allowlists for local commands.
 - Destructive tools should either be explicit privacy controls, such as `memory_forget`, or use reversible and soft-delete behavior first.
 - Connector tools should default off and require user configuration.
 - Tools should emit structured tool events so the frontend can show clear activity cards.

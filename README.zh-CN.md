@@ -27,7 +27,7 @@ Focus Agent 是一个 Web-first 的 Agent 应用骨架，当前已经发展成�
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、管理员控制台、记忆链路和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
-- 提供仓库、git、网页、artifact、memory 和 productivity 工具
+- 提供仓库读写、git、网页、artifact、memory 和 productivity 工具，并对 workspace 命令执行做保护
 
 ## 快速开始
 

@@ -312,11 +312,12 @@ uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
 uv run python -m tests.eval --suite trajectory_failures --concurrency 1 --max-cases 1
 ```
 
-工作区查询和 graph builder 回归还应覆盖 local-first 工具路径：
+工作区查询、受保护的工作区编辑和 graph builder 回归还应覆盖
+local-first 工具路径：
 
 ```bash
 make test-graph-builder
-uv run pytest tests/test_default_tools.py::test_search_code_skips_local_focus_agent_runtime_dir
+uv run pytest tests/test_default_tools.py -k "search_code or apply_patch or run_workspace_command"
 uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
