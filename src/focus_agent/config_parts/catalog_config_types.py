@@ -18,6 +18,7 @@ class ProviderConfig:
     api_key_env: str | None = None
     api_key_default: str | None = None
 
+
 @dataclass(frozen=True, slots=True)
 class ConfiguredModel:
     id: str
@@ -34,6 +35,7 @@ class ConfiguredModel:
     thinking_disable_extra_body_type: str | None = None
     thinking_disable_switch_model: str | None = None
 
+
 @dataclass(frozen=True, slots=True)
 class WebSearchConfig:
     enabled: bool = True
@@ -44,17 +46,20 @@ class WebSearchConfig:
     api_key_env: str | None = "TAVILY_API_KEY"
     api_key_default: str | None = None
 
+
 @dataclass(frozen=True, slots=True)
 class CurrentUtcTimeToolConfig:
     enabled: bool = True
     label: str = "Current UTC Time"
     description: str = "Return the current UTC timestamp in ISO-8601 format."
 
+
 @dataclass(frozen=True, slots=True)
 class WriteTextArtifactToolConfig:
     enabled: bool = True
     label: str = "Write Text Artifact"
     description: str = "Write a text artifact to disk and return its location."
+
 
 @dataclass(frozen=True, slots=True)
 class ArtifactListToolConfig:
@@ -64,6 +69,7 @@ class ArtifactListToolConfig:
     default_max_results: int = 50
     max_results_cap: int = 200
 
+
 @dataclass(frozen=True, slots=True)
 class ArtifactReadToolConfig:
     enabled: bool = True
@@ -71,11 +77,13 @@ class ArtifactReadToolConfig:
     description: str = "Read a saved text artifact by filename or artifact id."
     max_chars: int = 50000
 
+
 @dataclass(frozen=True, slots=True)
 class ArtifactUpdateToolConfig:
     enabled: bool = True
     label: str = "Artifact Update"
     description: str = "Replace, append to, or prepend content in an existing text artifact."
+
 
 @dataclass(frozen=True, slots=True)
 class ListFilesToolConfig:
@@ -84,6 +92,7 @@ class ListFilesToolConfig:
     description: str = "List workspace files under a directory using a glob-like pattern."
     default_max_results: int = 200
     max_results_cap: int = 500
+
 
 @dataclass(frozen=True, slots=True)
 class ReadFileToolConfig:
@@ -94,6 +103,7 @@ class ReadFileToolConfig:
     max_lines: int = 400
     max_chars: int = 50000
 
+
 @dataclass(frozen=True, slots=True)
 class SearchCodeToolConfig:
     enabled: bool = True
@@ -101,6 +111,7 @@ class SearchCodeToolConfig:
     description: str = "Search for matching text in workspace files and return matching lines."
     default_max_results: int = 30
     max_results_cap: int = 100
+
 
 @dataclass(frozen=True, slots=True)
 class CodebaseStatsToolConfig:
@@ -110,11 +121,42 @@ class CodebaseStatsToolConfig:
     default_max_files: int = 5000
     max_files_cap: int = 10000
 
+
+@dataclass(frozen=True, slots=True)
+class ApplyPatchToolConfig:
+    enabled: bool = True
+    label: str = "Apply Patch"
+    description: str = "Apply a unified diff to text files under the workspace root."
+    max_patch_bytes: int = 200000
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceCommandToolConfig:
+    enabled: bool = True
+    label: str = "Run Workspace Command"
+    description: str = "Run an allowlisted test, lint, build, or check command in the workspace."
+    allowed_commands: tuple[str, ...] = (
+        "cargo",
+        "go",
+        "make",
+        "mypy",
+        "npm",
+        "pnpm",
+        "pytest",
+        "ruff",
+        "uv",
+    )
+    default_timeout_seconds: int = 60
+    max_timeout_seconds: int = 300
+    max_output_chars: int = 20000
+
+
 @dataclass(frozen=True, slots=True)
 class GitStatusToolConfig:
     enabled: bool = True
     label: str = "Git Status"
     description: str = "Inspect the current repository status from the workspace root."
+
 
 @dataclass(frozen=True, slots=True)
 class GitDiffToolConfig:
@@ -125,6 +167,7 @@ class GitDiffToolConfig:
     max_context_lines: int = 20
     max_diff_chars: int = 20000
 
+
 @dataclass(frozen=True, slots=True)
 class GitLogToolConfig:
     enabled: bool = True
@@ -132,6 +175,7 @@ class GitLogToolConfig:
     description: str = "Return recent commits from the current repository."
     default_limit: int = 10
     max_limit: int = 50
+
 
 @dataclass(frozen=True, slots=True)
 class WebFetchToolConfig:
@@ -143,11 +187,13 @@ class WebFetchToolConfig:
     blocked_domains: tuple[str, ...] = ()
     allowed_domains: tuple[str, ...] = ()
 
+
 @dataclass(frozen=True, slots=True)
 class MemorySaveToolConfig:
     enabled: bool = True
     label: str = "Memory Save"
     description: str = "Save an explicit durable memory such as a user preference or project fact."
+
 
 @dataclass(frozen=True, slots=True)
 class MemorySearchToolConfig:
@@ -157,11 +203,13 @@ class MemorySearchToolConfig:
     default_limit: int = 5
     max_limit: int = 20
 
+
 @dataclass(frozen=True, slots=True)
 class MemoryForgetToolConfig:
     enabled: bool = True
     label: str = "Memory Forget"
     description: str = "Delete a saved memory by id from an explicit or default memory namespace."
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationSummaryToolConfig:
@@ -171,11 +219,13 @@ class ConversationSummaryToolConfig:
     default_recent_messages: int = 8
     max_recent_messages: int = 30
 
+
 @dataclass(frozen=True, slots=True)
 class SkillsListToolConfig:
     enabled: bool = True
     label: str = "Skills List"
     description: str = "List bundled and local skills with their descriptions and trigger prefixes."
+
 
 @dataclass(frozen=True, slots=True)
 class SkillViewToolConfig:
@@ -183,11 +233,13 @@ class SkillViewToolConfig:
     label: str = "Skill View"
     description: str = "Load the full instructions for a named skill."
 
+
 @dataclass(frozen=True, slots=True)
 class SkillSourcesToolConfig:
     enabled: bool = True
     label: str = "Skill Sources"
     description: str = "List configured skill sources and trust metadata."
+
 
 @dataclass(frozen=True, slots=True)
 class SkillsSearchToolConfig:
@@ -197,6 +249,7 @@ class SkillsSearchToolConfig:
     default_limit: int = 5
     max_limit_cap: int = 20
 
+
 @dataclass(frozen=True, slots=True)
 class SkillInstallToolConfig:
     enabled: bool = True
@@ -205,17 +258,20 @@ class SkillInstallToolConfig:
         "Install a trusted local skill, or return a review-required result for external sources."
     )
 
+
 @dataclass(frozen=True, slots=True)
 class SkillsRefreshIndexToolConfig:
     enabled: bool = True
     label: str = "Skills Refresh Index"
     description: str = "Refresh the runtime skill index after project or source changes."
 
+
 @dataclass(frozen=True, slots=True)
 class ProductivityToolConfig:
     enabled: bool = True
     label: str = "Productivity"
     description: str = "Create, search, and update personal notes or tasks."
+
 
 @dataclass(frozen=True, slots=True)
 class ToolProviderConfig:

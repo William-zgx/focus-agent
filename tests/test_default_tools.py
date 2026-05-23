@@ -11,12 +11,15 @@ from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
 from focus_agent.capabilities.default_tools import get_default_tools
+from focus_agent.capabilities.tool_manifest import normalize_tool_metadata
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
 from focus_agent.config import (
+    ApplyPatchToolConfig,
     GitLogToolConfig,
     ListFilesToolConfig,
     ReadFileToolConfig,
+    RunWorkspaceCommandToolConfig,
     SearchCodeToolConfig,
     Settings,
     ToolCatalogConfig,
@@ -511,6 +514,31 @@ def test_tool_runtime_metadata_marks_parallel_cacheable_and_fallback_capabilitie
     assert tools["search_code"].metadata["cache_scope"] == "thread"
     assert tools["web_search"].metadata["fallback_group"] == "web_search"
     assert tools["write_text_artifact"].metadata["side_effect"] is True
+    assert tools["apply_patch"].metadata["requires_approval"] is True
+    assert tools["apply_patch"].metadata["requires_workspace_write"] is True
+    assert tools["apply_patch"].metadata["side_effect_kind"] == "workspace_write"
+    assert tools["run_workspace_command"].metadata["side_effect"] is True
+    assert tools["run_workspace_command"].metadata["requires_workspace_write"] is True
+    assert tools["run_workspace_command"].metadata["requires_approval"] is True
+
+
+def test_builtin_write_tools_keep_security_floor_when_metadata_overlay_downgrades():
+    metadata = normalize_tool_metadata(
+        name="apply_patch",
+        overlay={
+            "side_effect": False,
+            "requires_workspace_write": False,
+            "requires_approval": False,
+            "risk_level": "low",
+            "side_effect_kind": "read_only",
+        },
+    )
+
+    assert metadata["side_effect"] is True
+    assert metadata["requires_workspace_write"] is True
+    assert metadata["requires_approval"] is True
+    assert metadata["risk_level"] == "medium"
+    assert metadata["side_effect_kind"] == "workspace_write"
 
 
 def test_web_search_falls_back_to_duckduckgo_when_tavily_key_missing(monkeypatch):
@@ -692,6 +720,8 @@ def test_default_tools_expose_only_one_web_search_tool(monkeypatch):
     assert "read_file" in tools
     assert "search_code" in tools
     assert "codebase_stats" in tools
+    assert "apply_patch" in tools
+    assert "run_workspace_command" in tools
     assert "git_status" in tools
     assert "git_diff" in tools
     assert "git_log" in tools
@@ -703,7 +733,9 @@ def test_disabled_tools_are_removed_from_registry(monkeypatch):
     tools = _tool_map(
         Settings(
             tool_catalog=ToolCatalogConfig(
+                apply_patch=ApplyPatchToolConfig(enabled=False),
                 list_files=ListFilesToolConfig(enabled=False),
+                run_workspace_command=RunWorkspaceCommandToolConfig(enabled=False),
                 git_log=GitLogToolConfig(enabled=False),
             ),
             web_search=WebSearchConfig(provider="duckduckgo"),
@@ -711,6 +743,8 @@ def test_disabled_tools_are_removed_from_registry(monkeypatch):
     )
 
     assert "list_files" not in tools
+    assert "apply_patch" not in tools
+    assert "run_workspace_command" not in tools
     assert "git_log" not in tools
     assert "read_file" in tools
     assert "web_search" in tools
@@ -1524,6 +1558,186 @@ def test_search_code_glob_matches_root_level_files_with_double_star(tmp_path):
     matched_paths = [item["path"] for item in payload["results"]]
     assert "main.py" in matched_paths
     assert "pkg/module.py" in matched_paths
+
+
+def test_apply_patch_modifies_text_files_and_stays_within_workspace(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    sample = project / "src" / "app.py"
+    sample.parent.mkdir()
+    sample.write_text("def greet():\n    return 'hi'\n", encoding="utf-8")
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    patch = """diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,2 +1,2 @@
+ def greet():
+-    return 'hi'
++    return 'hello'
+"""
+    payload = json.loads(tools["apply_patch"].invoke({"patch": patch}))
+
+    assert payload["applied"] is True
+    assert payload["changed_files"] == ["src/app.py"]
+    assert sample.read_text(encoding="utf-8") == "def greet():\n    return 'hello'\n"
+
+    outside_patch = """diff --git a/../outside.txt b/../outside.txt
+--- a/../outside.txt
++++ b/../outside.txt
+@@ -1 +1 @@
+-outside
++changed
+"""
+    with pytest.raises(ValueError, match="workspace root"):
+        tools["apply_patch"].invoke({"patch": outside_patch})
+
+    outside = tmp_path / "outside.py"
+    outside.write_text("VALUE = 'outside'\n", encoding="utf-8")
+    link = project / "linked.py"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        return
+    symlink_patch = """diff --git a/linked.py b/linked.py
+--- a/linked.py
++++ b/linked.py
+@@ -1 +1 @@
+-VALUE = 'outside'
++VALUE = 'changed'
+"""
+    with pytest.raises(ValueError, match="workspace root"):
+        tools["apply_patch"].invoke({"patch": symlink_patch})
+    assert outside.read_text(encoding="utf-8") == "VALUE = 'outside'\n"
+
+
+def test_apply_patch_rejects_binary_files_and_large_patches(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    binary = project / "data.bin"
+    binary.write_bytes(b"\x00\x01demo\n")
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            tool_catalog=ToolCatalogConfig(
+                apply_patch=ApplyPatchToolConfig(max_patch_bytes=32),
+            ),
+        )
+    )
+
+    too_large_patch = """diff --git a/demo.txt b/demo.txt
+--- a/demo.txt
++++ b/demo.txt
+@@ -1 +1 @@
+-a
++b
+"""
+    with pytest.raises(ValueError, match="max_patch_bytes"):
+        tools["apply_patch"].invoke({"patch": too_large_patch})
+
+    tools = _tool_map(Settings(workspace_root=str(project)))
+    binary_patch = """diff --git a/data.bin b/data.bin
+--- a/data.bin
++++ b/data.bin
+@@ -1 +1 @@
+-demo
++changed
+"""
+    with pytest.raises(ValueError, match="binary file"):
+        tools["apply_patch"].invoke({"patch": binary_patch})
+
+
+def test_apply_patch_rejects_symlink_and_submodule_patches(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    symlink_patch = """diff --git a/link b/link
+new file mode 120000
+index 0000000..dce0f2b
+--- /dev/null
++++ b/link
+@@ -0,0 +1 @@
++/tmp/outside
+\\ No newline at end of file
+"""
+    submodule_patch = """diff --git a/vendor/lib b/vendor/lib
+new file mode 160000
+index 0000000..1111111
+--- /dev/null
++++ b/vendor/lib
+@@ -0,0 +1 @@
++Subproject commit 1111111111111111111111111111111111111111
+"""
+
+    with pytest.raises(ValueError, match="Symlink and submodule"):
+        tools["apply_patch"].invoke({"patch": symlink_patch})
+    with pytest.raises(ValueError, match="Symlink and submodule"):
+        tools["apply_patch"].invoke({"patch": submodule_patch})
+
+    assert not (project / "link").is_symlink()
+    assert not (project / "vendor").exists()
+
+
+def test_run_workspace_command_runs_allowlisted_commands_and_blocks_unsafe_ones(
+    tmp_path, monkeypatch
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    pytest_script = project / "pytest"
+    pytest_script.write_text(
+        "#!/bin/sh\necho 'pytest 9.0.0'\necho \"secret=${OPENAI_API_KEY:-missing}\"\n",
+        encoding="utf-8",
+    )
+    pytest_script.chmod(0o755)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            tool_catalog=ToolCatalogConfig(
+                run_workspace_command=RunWorkspaceCommandToolConfig(
+                    default_timeout_seconds=5,
+                    max_timeout_seconds=10,
+                    max_output_chars=2000,
+                )
+            ),
+        )
+    )
+
+    payload = json.loads(
+        tools["run_workspace_command"].invoke(
+            {"command": ["./pytest", "--version"], "timeout_seconds": 10}
+        )
+    )
+
+    assert payload["command"] == ["./pytest", "--version"]
+    assert payload["cwd"] == "."
+    assert payload["exit_code"] == 0
+    assert "pytest" in payload["stdout"].lower()
+    assert "secret=missing" in payload["stdout"]
+    assert "sk-test-secret" not in payload["stdout"]
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke({"command": ["sh", "-c", "echo unsafe"]})
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke({"command": ["pnpm", "install"]})
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke({"command": ["ruff", "check", "--fix", "."]})
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke({"command": ["ruff", "format", "."]})
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke({"command": ["uv", "run", "ruff", "check", "--fix"]})
+    with pytest.raises(ValueError, match="valid list"):
+        tools["run_workspace_command"].invoke({"command": "pytest; touch pwned"})
+    with pytest.raises(ValueError, match="workspace root"):
+        tools["run_workspace_command"].invoke({"command": ["./pytest", "--version"], "cwd": ".."})
+    with pytest.raises(ValueError, match="workspace root"):
+        tools["run_workspace_command"].invoke({"command": [str(tmp_path / "pytest"), "--version"]})
+    with pytest.raises(ValueError, match="workspace root"):
+        tools["run_workspace_command"].invoke(
+            {"command": ["./pytest", "--rootdir=/tmp", "--version"]}
+        )
+    assert not (project / "pwned").exists()
 
 
 def test_git_tools_return_status_diff_and_log(tmp_path):

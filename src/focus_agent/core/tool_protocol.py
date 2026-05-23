@@ -24,6 +24,7 @@ DEFAULT_TEXTUAL_TOOL_NAMES = frozenset(
     {
         "artifact_list",
         "artifact_read",
+        "apply_patch",
         "codebase_stats",
         "conversation_summary",
         "current_utc_time",
@@ -32,6 +33,7 @@ DEFAULT_TEXTUAL_TOOL_NAMES = frozenset(
         "git_status",
         "list_files",
         "read_file",
+        "run_workspace_command",
         "search_code",
         "skills_list",
         "skill_view",

@@ -100,6 +100,28 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "intent_policies": ("workspace_lookup", "execution"),
         "allowed_roles": ("executor",),
     },
+    "apply_patch": {
+        "toolset": "workspace",
+        "side_effect": True,
+        "side_effect_kind": "workspace_write",
+        "requires_workspace_write": True,
+        "requires_approval": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+        "intent_tags": ("code_edit",),
+        "allowed_roles": ("executor",),
+    },
+    "run_workspace_command": {
+        "toolset": "workspace",
+        "side_effect": True,
+        "side_effect_kind": "workspace_command",
+        "requires_workspace_write": True,
+        "requires_approval": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+        "intent_tags": ("command_execution", "verification"),
+        "allowed_roles": ("executor",),
+    },
     "git_status": {
         "toolset": "workspace",
         "parallel_safe": True,
@@ -314,6 +336,33 @@ def default_tool_metadata(name: str) -> dict[str, Any]:
     return _normalize_metadata(_LEGACY_TOOL_DEFAULTS.get(str(name).strip(), {}))
 
 
+_SECURITY_FLOOR_BOOL_FIELDS = (
+    "side_effect",
+    "requires_workspace_write",
+    "requires_approval",
+    "requires_network",
+)
+_RISK_LEVEL_ORDER = {"low": 0, "medium": 1, "high": 2}
+
+
+def _apply_builtin_security_floor(name: str, merged: dict[str, Any]) -> None:
+    defaults = default_tool_metadata(name)
+    if not defaults:
+        return
+    for field_name in _SECURITY_FLOOR_BOOL_FIELDS:
+        if defaults.get(field_name) is True:
+            merged[field_name] = True
+    if defaults.get("side_effect_kind"):
+        merged["side_effect_kind"] = defaults["side_effect_kind"]
+
+    default_risk = str(defaults.get("risk_level") or "").strip()
+    configured_risk = str(merged.get("risk_level") or "").strip()
+    if not default_risk:
+        return
+    if _RISK_LEVEL_ORDER.get(configured_risk, -1) < _RISK_LEVEL_ORDER.get(default_risk, 0):
+        merged["risk_level"] = default_risk
+
+
 def normalize_tool_metadata(
     *,
     name: str,
@@ -326,6 +375,7 @@ def normalize_tool_metadata(
         **_normalize_metadata(metadata),
         **_normalize_metadata(overlay),
     }
+    _apply_builtin_security_floor(name, merged)
     if provider_id and (provider_id != "builtin" or not merged.get("provider_id")):
         merged["provider_id"] = provider_id
     if merged.get("side_effect_kind") == "workspace_write":

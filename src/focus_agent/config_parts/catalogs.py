@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from .catalog_config_types import (
+    ApplyPatchToolConfig,
     ArtifactListToolConfig,
     ArtifactReadToolConfig,
     ArtifactUpdateToolConfig,
@@ -26,6 +27,7 @@ from .catalog_config_types import (
     ProductivityToolConfig,
     ProviderConfig,
     ReadFileToolConfig,
+    RunWorkspaceCommandToolConfig,
     SearchCodeToolConfig,
     SkillInstallToolConfig,
     SkillsListToolConfig,
@@ -210,7 +212,6 @@ def _load_basic_tool_config(
 
 
 @dataclass(frozen=True, slots=True)
-
 class ModelCatalogConfig:
     default_model: str | None = None
     helper_model: str | None = None
@@ -232,6 +233,10 @@ class ToolCatalogConfig:
     read_file: ReadFileToolConfig = field(default_factory=ReadFileToolConfig)
     search_code: SearchCodeToolConfig = field(default_factory=SearchCodeToolConfig)
     codebase_stats: CodebaseStatsToolConfig = field(default_factory=CodebaseStatsToolConfig)
+    apply_patch: ApplyPatchToolConfig = field(default_factory=ApplyPatchToolConfig)
+    run_workspace_command: RunWorkspaceCommandToolConfig = field(
+        default_factory=RunWorkspaceCommandToolConfig
+    )
     git_status: GitStatusToolConfig = field(default_factory=GitStatusToolConfig)
     git_diff: GitDiffToolConfig = field(default_factory=GitDiffToolConfig)
     git_log: GitLogToolConfig = field(default_factory=GitLogToolConfig)
@@ -380,6 +385,15 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
     "codebase_stats": ToolCatalogSectionSpec(
         CodebaseStatsToolConfig,
         int_fields=("default_max_files", "max_files_cap"),
+    ),
+    "apply_patch": ToolCatalogSectionSpec(
+        ApplyPatchToolConfig,
+        int_fields=("max_patch_bytes",),
+    ),
+    "run_workspace_command": ToolCatalogSectionSpec(
+        RunWorkspaceCommandToolConfig,
+        int_fields=("default_timeout_seconds", "max_timeout_seconds", "max_output_chars"),
+        tuple_fields=("allowed_commands",),
     ),
     "git_status": ToolCatalogSectionSpec(GitStatusToolConfig),
     "git_diff": ToolCatalogSectionSpec(

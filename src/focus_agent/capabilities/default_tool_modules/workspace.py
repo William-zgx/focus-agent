@@ -4,6 +4,8 @@ import fnmatch
 import json
 import os
 import re
+import shlex
+import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -63,6 +65,76 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
     ".yaml": "YAML",
     ".yml": "YAML",
 }
+_FORBIDDEN_COMMAND_TOKENS = {
+    "add",
+    "create",
+    "dlx",
+    "exec",
+    "install",
+    "remove",
+    "run-script",
+    "shell",
+    "uninstall",
+}
+_SENSITIVE_ENV_NAME_MARKERS = (
+    "API_KEY",
+    "AUTH",
+    "COOKIE",
+    "CREDENTIAL",
+    "JWT",
+    "KEY",
+    "PASSWORD",
+    "PRIVATE",
+    "SECRET",
+    "SESSION",
+    "TOKEN",
+)
+_SAFE_VERSION_FLAGS = {"--version", "-V", "-v"}
+_PACKAGE_SCRIPT_COMMANDS = {
+    "a11y:baseline",
+    "build",
+    "check",
+    "lint",
+    "style:check",
+    "test",
+    "validate:transport",
+}
+_MAKE_TARGETS = {
+    "architecture-report",
+    "check",
+    "ci",
+    "ci-test",
+    "contract-check",
+    "format-check",
+    "frontend-check",
+    "frontend-check-full",
+    "lint",
+    "lint-strict",
+    "openapi-export",
+    "production-smoke",
+    "sdk-build",
+    "sdk-check",
+    "sdk-openapi-types-check",
+    "sdk-validate-transport",
+    "test",
+    "test-chat-service",
+    "test-graph-builder",
+    "test-thread-stream-frontend-regressions",
+    "ui-smoke",
+    "ui-smoke-agent-team-adoption",
+    "ui-smoke-observability",
+    "ui-smoke-productivity",
+    "web-build",
+    "web-check",
+    "web-format-check",
+    "web-format-check-full",
+    "web-lint",
+    "web-lint-full",
+}
+_UV_RUN_COMMANDS = {"mypy", "pytest", "ruff"}
+_DIRECT_COMMANDS = {"mypy", "pytest", "ruff"}
+_LANGUAGE_TEST_COMMANDS = {"cargo": "test", "go": "test"}
+_UNSUPPORTED_PATCH_FILE_MODES = {"120000", "160000"}
 
 
 def _language_for_path(path: Path) -> str:
@@ -115,6 +187,242 @@ def _search_result_context(lines: list[str], *, line_number: int) -> str | None:
     return _format_numbered_lines(lines[line_number - 1 : end_line], start_line=line_number)
 
 
+def _patch_token_path(token: str) -> str | None:
+    path = token.strip()
+    if not path or path in {"/dev/null", "dev/null"}:
+        return None
+    if path.startswith(("a/", "b/")):
+        path = path[2:]
+    return path or None
+
+
+def _patch_line_token(value: str) -> str | None:
+    try:
+        parts = shlex.split(value, posix=True)
+    except ValueError:
+        parts = value.split()
+    return parts[0] if parts else None
+
+
+def _patch_paths(patch: str) -> tuple[str, ...]:
+    paths: list[str] = []
+    for line in patch.splitlines():
+        candidates: list[str] = []
+        if line.startswith("diff --git "):
+            try:
+                parts = shlex.split(line, posix=True)
+            except ValueError:
+                parts = line.split()
+            candidates.extend(parts[2:4])
+        elif line.startswith(("--- ", "+++ ")):
+            token = _patch_line_token(line[4:])
+            if token is not None:
+                candidates.append(token)
+        elif line.startswith(("rename from ", "rename to ")):
+            candidates.append(line.split(" ", 2)[2])
+        elif line.startswith(("copy from ", "copy to ")):
+            candidates.append(line.split(" ", 2)[2])
+
+        for token in candidates:
+            path = _patch_token_path(token)
+            if path is not None:
+                paths.append(path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _validate_patch_paths(
+    *, patch: str, workspace_root: Path, max_patch_bytes: int
+) -> tuple[str, ...]:
+    patch_size = len(patch.encode("utf-8"))
+    if patch_size > max_patch_bytes:
+        raise ValueError(f"patch exceeds max_patch_bytes ({max_patch_bytes}).")
+    if "GIT binary patch" in patch:
+        raise ValueError("Binary patches are not supported.")
+    if _patch_mentions_unsupported_file_mode(patch):
+        raise ValueError("Symlink and submodule patches are not supported.")
+    paths = _patch_paths(patch)
+    if not paths:
+        raise ValueError("patch must include at least one file path.")
+    for path in paths:
+        resolved = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
+        if resolved.exists() and resolved.is_file():
+            _read_text_file(resolved)
+    return paths
+
+
+def _patch_mentions_unsupported_file_mode(patch: str) -> bool:
+    for line in patch.splitlines():
+        if not line.startswith(("new file mode ", "deleted file mode ", "old mode ", "new mode ")):
+            continue
+        mode = line.rsplit(" ", 1)[-1].strip()
+        if mode in _UNSUPPORTED_PATCH_FILE_MODES:
+            return True
+    return False
+
+
+def _run_git_apply(*, workspace_root: Path, patch: str, check: bool) -> str:
+    args = ["git", "apply", "--whitespace=nowarn"]
+    if check:
+        args.append("--check")
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=workspace_root,
+            input=patch,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("git is not installed.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("git apply timed out.") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "unknown git apply error"
+        raise RuntimeError(detail)
+    return completed.stdout.strip()
+
+
+def _normalize_command(command: list[str]) -> list[str]:
+    if not isinstance(command, list) or not command:
+        raise ValueError("command must be a non-empty list of arguments.")
+    normalized = [str(item) for item in command]
+    if any(not item.strip() for item in normalized):
+        raise ValueError("command arguments must not be empty.")
+    return normalized
+
+
+def _allowed_command_names(raw: object) -> set[str]:
+    if isinstance(raw, str):
+        return {item.strip() for item in raw.split(",") if item.strip()}
+    if isinstance(raw, (list, tuple, set)):
+        return {str(item).strip() for item in raw if str(item).strip()}
+    return set()
+
+
+def _command_base(command: list[str]) -> str:
+    return Path(command[0]).name
+
+
+def _has_forbidden_command_token(command: list[str]) -> bool:
+    return any(token.strip().lower() in _FORBIDDEN_COMMAND_TOKENS for token in command[1:])
+
+
+def _package_command_allowed(command: list[str], *, base: str) -> bool:
+    if _has_forbidden_command_token(command):
+        return False
+    if "run" in command:
+        index = command.index("run")
+        return len(command) > index + 1 and command[index + 1] in _PACKAGE_SCRIPT_COMMANDS
+    return any(token in _PACKAGE_SCRIPT_COMMANDS for token in command[1:])
+
+
+def _make_command_allowed(command: list[str]) -> bool:
+    if len(command) < 2:
+        return False
+    if any(token.startswith("-") for token in command[1:]):
+        return False
+    return all(token in _MAKE_TARGETS for token in command[1:])
+
+
+def _uv_command_allowed(command: list[str]) -> bool:
+    if len(command) < 3 or command[1] != "run":
+        return False
+    if _has_forbidden_command_token(command):
+        return False
+    uv_command = Path(command[2]).name
+    if uv_command == "ruff":
+        return _ruff_command_allowed([uv_command, *command[3:]])
+    return uv_command in _UV_RUN_COMMANDS
+
+
+def _ruff_command_allowed(command: list[str]) -> bool:
+    if len(command) == 2 and command[1] in _SAFE_VERSION_FLAGS:
+        return True
+    if len(command) < 2:
+        return False
+    subcommand = command[1]
+    args = command[2:]
+    if subcommand == "check":
+        return not any(arg in {"--fix", "--fix-only", "--unsafe-fixes"} for arg in args)
+    if subcommand == "format":
+        return "--check" in args
+    return False
+
+
+def _workspace_command_allowed(command: list[str], allowed_commands: set[str]) -> bool:
+    base = _command_base(command)
+    if base not in allowed_commands:
+        return False
+    if base == "ruff":
+        return _ruff_command_allowed(command)
+    if base in _DIRECT_COMMANDS:
+        return True
+    if base == "uv":
+        return _uv_command_allowed(command)
+    if base in {"npm", "pnpm"}:
+        return _package_command_allowed(command, base=base)
+    if base == "make":
+        return _make_command_allowed(command)
+    if base in _LANGUAGE_TEST_COMMANDS:
+        return len(command) >= 2 and command[1] == _LANGUAGE_TEST_COMMANDS[base]
+    return False
+
+
+def _command_arg_path_candidate(argument: str) -> str | None:
+    value = argument.strip()
+    if not value:
+        return None
+    if value.startswith("-"):
+        if "=" not in value:
+            return None
+        value = value.split("=", 1)[1].strip()
+    if "::" in value:
+        value = value.split("::", 1)[0]
+    if (
+        value in {".", ".."}
+        or value.startswith(("/", "./", "../", "~"))
+        or "/" in value
+        or "\\" in value
+    ):
+        return value
+    return None
+
+
+def _validate_command_paths(command: list[str], *, workspace_root: Path) -> None:
+    for argument in command[1:]:
+        path = _command_arg_path_candidate(argument)
+        if path is None:
+            continue
+        _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
+
+
+def _resolve_command_executable(command: list[str], *, workspace_root: Path) -> list[str]:
+    executable = command[0]
+    if "/" not in executable and "\\" not in executable:
+        return command
+    resolved = _resolve_workspace_path(raw_path=executable, workspace_root=workspace_root)
+    if not resolved.exists():
+        raise FileNotFoundError(executable)
+    if not resolved.is_file():
+        raise IsADirectoryError(executable)
+    return [str(resolved), *command[1:]]
+
+
+def _workspace_command_env() -> dict[str, str]:
+    env: dict[str, str] = {}
+    for key, value in os.environ.items():
+        normalized_key = key.upper()
+        if any(marker in normalized_key for marker in _SENSITIVE_ENV_NAME_MARKERS):
+            continue
+        env[key] = value
+    env["FOCUS_AGENT_WORKSPACE_COMMAND"] = "1"
+    return env
+
+
 def build_workspace_tools(
     *,
     workspace_root: Path,
@@ -132,6 +440,12 @@ def build_workspace_tools(
 
     def _validate_search_code_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "query")
+
+    def _validate_apply_patch_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "patch")
+
+    def _validate_run_workspace_command_args(args: dict[str, Any]) -> None:
+        _normalize_command(args.get("command"))
 
     @tool
     def list_files(path: str = ".", pattern: str = "**/*", max_results: int | None = None) -> str:
@@ -397,12 +711,136 @@ def build_workspace_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), path=path)
             raise
 
+    @tool
+    def apply_patch(patch: str) -> str:
+        """Apply a unified diff to text files under the workspace root."""
+        tool_name = "apply_patch"
+        emit_tool_event(tool_name=tool_name, stage="start", patch_bytes=len(patch.encode("utf-8")))
+        try:
+            changed_paths = _validate_patch_paths(
+                patch=patch,
+                workspace_root=workspace_root,
+                max_patch_bytes=tool_catalog.apply_patch.max_patch_bytes,
+            )
+            _run_git_apply(workspace_root=workspace_root, patch=patch, check=True)
+            _run_git_apply(workspace_root=workspace_root, patch=patch, check=False)
+            payload = {
+                "workspace_root": str(workspace_root),
+                "changed_files": list(changed_paths),
+                "applied": True,
+                "method": "git apply",
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            emit_tool_event(
+                tool_name=tool_name, stage="end", result_count=len(changed_paths), output=result
+            )
+            return result
+        except Exception as exc:  # noqa: BLE001
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
+            raise
+
+    @tool
+    def run_workspace_command(
+        command: list[str],
+        cwd: str = ".",
+        timeout_seconds: int | None = None,
+        max_output_chars: int | None = None,
+    ) -> str:
+        """Run an allowlisted workspace command without a shell."""
+        tool_name = "run_workspace_command"
+        normalized_command = _normalize_command(command)
+        emit_tool_event(tool_name=tool_name, stage="start", command=normalized_command, cwd=cwd)
+        try:
+            working_dir = _resolve_workspace_path(raw_path=cwd, workspace_root=workspace_root)
+            if not working_dir.exists():
+                raise FileNotFoundError(cwd)
+            if not working_dir.is_dir():
+                raise NotADirectoryError(cwd)
+            allowed_commands = _allowed_command_names(
+                tool_catalog.run_workspace_command.allowed_commands
+            )
+            if not _workspace_command_allowed(normalized_command, allowed_commands):
+                raise ValueError(
+                    "command is not allowlisted; pass argv for a supported test, lint, "
+                    "build, or check command."
+                )
+            _validate_command_paths(normalized_command, workspace_root=workspace_root)
+            resolved_command = _resolve_command_executable(
+                normalized_command, workspace_root=workspace_root
+            )
+            requested_timeout = (
+                tool_catalog.run_workspace_command.default_timeout_seconds
+                if timeout_seconds is None
+                else int(timeout_seconds)
+            )
+            capped_timeout = max(
+                1,
+                min(requested_timeout, tool_catalog.run_workspace_command.max_timeout_seconds),
+            )
+            requested_output_chars = (
+                tool_catalog.run_workspace_command.max_output_chars
+                if max_output_chars is None
+                else int(max_output_chars)
+            )
+            capped_output_chars = max(
+                100,
+                min(requested_output_chars, tool_catalog.run_workspace_command.max_output_chars),
+            )
+            timed_out = False
+            try:
+                completed = subprocess.run(
+                    resolved_command,
+                    cwd=working_dir,
+                    env=_workspace_command_env(),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=capped_timeout,
+                    check=False,
+                )
+                returncode: int | None = completed.returncode
+                stdout = completed.stdout
+                stderr = completed.stderr
+            except subprocess.TimeoutExpired as exc:
+                timed_out = True
+                returncode = None
+                stdout = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+                stderr = (exc.stderr or "") if isinstance(exc.stderr, str) else ""
+            stdout_truncated = len(stdout) > capped_output_chars
+            stderr_truncated = len(stderr) > capped_output_chars
+            payload = {
+                "command": normalized_command,
+                "cwd": _coerce_relative_posix(working_dir, workspace_root),
+                "exit_code": returncode,
+                "timed_out": timed_out,
+                "timeout_seconds": capped_timeout,
+                "stdout": stdout[:capped_output_chars],
+                "stderr": stderr[:capped_output_chars],
+                "stdout_truncated": stdout_truncated,
+                "stderr_truncated": stderr_truncated,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
+            return result
+        except Exception as exc:  # noqa: BLE001
+            emit_tool_event(
+                tool_name=tool_name,
+                stage="error",
+                error=str(exc),
+                command=normalized_command,
+                cwd=cwd,
+            )
+            raise
+
     return (
         {
             "list_files": list_files,
             "read_file": read_file,
             "search_code": search_code,
             "codebase_stats": codebase_stats,
+            "apply_patch": apply_patch,
+            "run_workspace_command": run_workspace_command,
         },
         {
             "list_files": {
@@ -430,6 +868,24 @@ def build_workspace_tools(
                 "cacheable": True,
                 "cache_scope": "thread",
                 "max_observation_chars": 5000,
+            },
+            "apply_patch": {
+                "side_effect": True,
+                "side_effect_kind": "workspace_write",
+                "requires_workspace_write": True,
+                "requires_approval": True,
+                "risk_level": "medium",
+                "validator": _validate_apply_patch_args,
+                "max_observation_chars": 5000,
+            },
+            "run_workspace_command": {
+                "side_effect": True,
+                "side_effect_kind": "workspace_command",
+                "requires_workspace_write": True,
+                "requires_approval": True,
+                "risk_level": "medium",
+                "validator": _validate_run_workspace_command_args,
+                "max_observation_chars": 8000,
             },
         },
     )

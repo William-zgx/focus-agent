@@ -158,6 +158,17 @@ def test_load_tool_catalog_document_reads_web_search_config(tmp_path):
                 'blocked_domains = ["blocked.example", "*.internal.example"]',
                 'allowed_domains = "docs.example,developer.example"',
                 "",
+                "[apply_patch]",
+                "max_patch_bytes = 12345",
+                "requires_approval = true",
+                "",
+                "[run_workspace_command]",
+                'allowed_commands = ["pytest", "ruff"]',
+                "default_timeout_seconds = 7",
+                "max_timeout_seconds = 11",
+                "max_output_chars = 2222",
+                "requires_approval = true",
+                "",
                 "[web_search]",
                 "enabled = true",
                 'provider = "tavily"',
@@ -183,11 +194,22 @@ def test_load_tool_catalog_document_reads_web_search_config(tmp_path):
     assert loaded.web_search.api_key_env == "SEARCH_API_KEY"
     assert loaded.web_fetch.blocked_domains == ("blocked.example", "*.internal.example")
     assert loaded.web_fetch.allowed_domains == ("docs.example", "developer.example")
+    assert loaded.apply_patch.max_patch_bytes == 12345
+    assert loaded.metadata_overlay_for("apply_patch") == {"requires_approval": True}
+    assert loaded.run_workspace_command.allowed_commands == ("pytest", "ruff")
+    assert loaded.run_workspace_command.default_timeout_seconds == 7
+    assert loaded.run_workspace_command.max_timeout_seconds == 11
+    assert loaded.run_workspace_command.max_output_chars == 2222
+    assert loaded.metadata_overlay_for("run_workspace_command") == {"requires_approval": True}
     assert loaded.section_names[:5] == (
         "list_files",
         "skills_list",
         "skill_view",
         "web_fetch",
+        "apply_patch",
+    )
+    assert loaded.section_names[5:7] == (
+        "run_workspace_command",
         "web_search",
     )
     assert loaded.by_name["web_search"].provider == "tavily"

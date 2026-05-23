@@ -55,6 +55,24 @@ description = "Summarize file counts and line counts for the current workspace."
 default_max_files = 5000
 max_files_cap = 10000
 
+[apply_patch]
+enabled = true
+label = "Apply Patch"
+description = "Apply a unified diff to text files under the workspace root."
+max_patch_bytes = 200000
+requires_approval = true
+
+[run_workspace_command]
+enabled = true
+label = "Run Workspace Command"
+description = "Run an allowlisted test, lint, build, or check command in the workspace."
+allowed_commands = ["cargo", "go", "make", "mypy", "npm", "pnpm", "pytest", "ruff", "uv"]
+default_timeout_seconds = 60
+max_timeout_seconds = 300
+max_output_chars = 20000
+requires_workspace_write = true
+requires_approval = true
+
 [git_status]
 enabled = true
 label = "Git Status"
