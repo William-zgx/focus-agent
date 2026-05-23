@@ -190,6 +190,36 @@ def test_fake_delegated_executor_blocks_exhausted_budget_before_completion():
     assert results[0].artifacts == []
 
 
+def test_delegated_executor_requires_real_workspace_write_tool_for_write_tasks():
+    settings = Settings(agent_delegation_execution_mode="fake")
+    task = AgentTask(
+        task_id="task-write",
+        role=AgentRole.EXECUTOR,
+        goal="Modify code in the workspace.",
+        allowed_tools=["search_code"],
+        acceptance_criteria=["code is changed"],
+        run_isolation_key="role:executor",
+        requires_workspace_write=True,
+    )
+
+    blocked = run_delegated_tasks(
+        tasks=[task],
+        registry=SubagentRegistry.from_settings(settings),
+        executor=FakeDelegatedRunExecutor(),
+    )
+
+    task.allowed_tools = ["apply_patch"]
+    runnable = run_delegated_tasks(
+        tasks=[task],
+        registry=SubagentRegistry.from_settings(settings),
+        executor=FakeDelegatedRunExecutor(),
+    )
+
+    assert blocked[0].status == "needs_review"
+    assert "no write tool is allowed" in str(blocked[0].error)
+    assert runnable[0].status == "completed"
+
+
 def test_inline_and_background_execution_modes_are_not_stubbed():
     inline = executor_for_mode("inline")
     background = executor_for_mode("background")

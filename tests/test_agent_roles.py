@@ -112,7 +112,14 @@ def test_build_role_route_plan_records_governed_dry_run_decisions_when_enabled()
     plan = build_role_route_plan(
         settings=settings,
         task_text="Implement backend runtime changes and verify tests.",
-        available_tool_names=("search_code", "read_file", "web_search", "write_text_artifact"),
+        available_tool_names=(
+            "search_code",
+            "read_file",
+            "web_search",
+            "apply_patch",
+            "run_workspace_command",
+            "write_text_artifact",
+        ),
         tool_policy="execution",
     )
 
@@ -129,6 +136,8 @@ def test_build_role_route_plan_records_governed_dry_run_decisions_when_enabled()
     assert executor.tool_governance.allowed_tools == [
         "search_code",
         "read_file",
+        "apply_patch",
+        "run_workspace_command",
         "write_text_artifact",
     ]
     assert executor.tool_governance.denied_tools == ["web_search"]

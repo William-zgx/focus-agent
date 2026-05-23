@@ -136,6 +136,8 @@ _ROLE_GOVERNANCE: Mapping[AgentRole, tuple[str, ...]] = {
         "codebase_stats",
         "git_status",
         "git_diff",
+        "apply_patch",
+        "run_workspace_command",
         "artifact_list",
         "artifact_read",
         "artifact_update",
@@ -358,7 +360,14 @@ def _governance_for(role: AgentRole, available_tool_names: tuple[str, ...]) -> R
             name in allowed for name in ("web_search", "web_fetch", "current_utc_time")
         ),
         allow_workspace_write=any(
-            name in allowed for name in ("write_text_artifact", "artifact_update", "skill_install")
+            name in allowed
+            for name in (
+                "apply_patch",
+                "run_workspace_command",
+                "write_text_artifact",
+                "artifact_update",
+                "skill_install",
+            )
         ),
     )
 

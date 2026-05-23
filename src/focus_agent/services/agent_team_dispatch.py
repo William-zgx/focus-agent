@@ -54,6 +54,17 @@ _DEFAULT_DISPATCH_TASKS: tuple[
     ),
 )
 
+_DEFAULT_TASK_TYPES: dict[AgentTeamTaskRole, str] = {
+    AgentTeamTaskRole.PLANNER: "coordination",
+    AgentTeamTaskRole.ARCHITECT: "coordination",
+    AgentTeamTaskRole.BACKEND_EXECUTOR: "implementation",
+    AgentTeamTaskRole.FRONTEND_EXECUTOR: "implementation",
+    AgentTeamTaskRole.TEST_ENGINEER: "verification",
+    AgentTeamTaskRole.REVIEWER: "review",
+    AgentTeamTaskRole.VERIFIER: "verification",
+    AgentTeamTaskRole.WRITER: "documentation",
+}
+
 
 class AgentTeamDispatchMixin:
     def dispatch_default_tasks(
@@ -88,7 +99,7 @@ class AgentTeamDispatchMixin:
                 dependencies=dependencies,
                 planning_rationale="Legacy dispatch template task retained for backwards compatibility.",
                 sort_order=len(created_by_role) + 1,
-                task_type="coordination" if role == AgentTeamTaskRole.PLANNER else "execution",
+                task_type=_DEFAULT_TASK_TYPES.get(role, "coordination"),
                 plan_source="legacy_template",
                 create_branch=create_branches,
                 parent_thread_id=parent_thread_id or session.root_thread_id,

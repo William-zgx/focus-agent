@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 
 from focus_agent.config import Settings
-from focus_agent.core.agent_team import AgentTeamSession, AgentTeamTask, AgentTeamTaskStatus
+from focus_agent.core.agent_team import (
+    AgentTeamSession,
+    AgentTeamTask,
+    AgentTeamTaskRole,
+    AgentTeamTaskStatus,
+)
 from focus_agent.services.agent_team import AgentTeamService
 from focus_agent.services.agent_team_run_helpers import _allowed_tools_for_task
 
@@ -101,8 +106,67 @@ def test_agent_team_plan_prefetches_skills_and_injects_allowed_tools(tmp_path) -
     assert all(task.skill_resolution_events for task in tasks)
     assert any(ref.get("skill_id") == "team-support" for ref in tasks[0].context_refs)
     assert "skill:team-support" in tasks[0].capability_requirements
-    assert "git_diff" in _allowed_tools_for_task(tasks[0])
-    assert "skills_search" in _allowed_tools_for_task(tasks[0])
+    planner_tools = _allowed_tools_for_task(tasks[0])
+    executor_tools = _allowed_tools_for_task(tasks[1])
+    assert "git_diff" in planner_tools
+    assert "skills_search" in planner_tools
+    assert "write_text_artifact" in executor_tools
+    assert "apply_patch" not in executor_tools
+    assert "run_workspace_command" not in executor_tools
+
+
+def test_agent_team_review_and_verification_tasks_do_not_get_write_tools() -> None:
+    timestamp = "2026-01-01T00:00:00+00:00"
+    reviewer = AgentTeamTask(
+        task_id="review",
+        session_id="session",
+        role=AgentTeamTaskRole.REVIEWER,
+        goal="Review the patch.",
+        task_type="execution",
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    verifier = AgentTeamTask(
+        task_id="verify",
+        session_id="session",
+        role=AgentTeamTaskRole.VERIFIER,
+        goal="Verify evidence.",
+        write_scope=["tests/**"],
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    test_engineer = AgentTeamTask(
+        task_id="test",
+        session_id="session",
+        role=AgentTeamTaskRole.TEST_ENGINEER,
+        goal="Add focused tests.",
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    scoped_test_engineer = AgentTeamTask(
+        task_id="scoped-test",
+        session_id="session",
+        role=AgentTeamTaskRole.TEST_ENGINEER,
+        goal="Add focused tests.",
+        scope=["apply_patch", "run_workspace_command"],
+        write_scope=["tests/**"],
+        context_refs=[
+            {
+                "kind": "skill",
+                "recommended_tools": ["apply_patch", "run_workspace_command", "git_diff"],
+            }
+        ],
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+    assert "apply_patch" not in _allowed_tools_for_task(reviewer)
+    assert "run_workspace_command" not in _allowed_tools_for_task(verifier)
+    assert "apply_patch" in _allowed_tools_for_task(test_engineer)
+    scoped_tools = _allowed_tools_for_task(scoped_test_engineer)
+    assert "apply_patch" not in scoped_tools
+    assert "run_workspace_command" not in scoped_tools
+    assert "git_diff" in scoped_tools
 
 
 def test_agent_team_plan_replace_cancels_unstarted_tasks_without_repository_delete() -> None:

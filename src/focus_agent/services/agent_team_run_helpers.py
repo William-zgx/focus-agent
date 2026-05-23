@@ -26,6 +26,16 @@ _AGENT_ROLE_TO_TEAM_ROLE: dict[AgentRole, AgentTeamTaskRole] = {
     AgentRole.MEMORY_CURATOR: AgentTeamTaskRole.PLANNER,
     AgentRole.SKILL_SCOUT: AgentTeamTaskRole.PLANNER,
 }
+_DEFAULT_WRITABLE_TEAM_ROLES = {
+    AgentTeamTaskRole.BACKEND_EXECUTOR,
+    AgentTeamTaskRole.FRONTEND_EXECUTOR,
+    AgentTeamTaskRole.TEST_ENGINEER,
+}
+_CONDITIONAL_WRITABLE_TEAM_ROLES = {
+    *_DEFAULT_WRITABLE_TEAM_ROLES,
+    AgentTeamTaskRole.WRITER,
+}
+_UNSCOPED_WORKSPACE_WRITE_TOOLS = {"apply_patch", "run_workspace_command"}
 
 
 def _task_identity(task: AgentTeamTask) -> tuple[AgentTeamTaskRole, str]:
@@ -105,15 +115,13 @@ def _should_use_task_workspace(task: AgentTeamTask, executor: DelegatedRunExecut
 
 
 def _is_writable_team_task(task: AgentTeamTask) -> bool:
+    if task.role not in _CONDITIONAL_WRITABLE_TEAM_ROLES:
+        return False
     if task.write_scope:
         return True
     if task.task_type in {"implementation", "execution"}:
         return True
-    return task.role in {
-        AgentTeamTaskRole.BACKEND_EXECUTOR,
-        AgentTeamTaskRole.FRONTEND_EXECUTOR,
-        AgentTeamTaskRole.TEST_ENGINEER,
-    }
+    return task.role in _DEFAULT_WRITABLE_TEAM_ROLES
 
 
 def _allowed_tools_for_task(task: AgentTeamTask) -> list[str]:
@@ -131,7 +139,19 @@ def _allowed_tools_for_task(task: AgentTeamTask) -> list[str]:
         else:
             tools.extend(str(tool) for tool in raw_tools if str(tool).strip())
     if _is_writable_team_task(task):
-        tools.extend(["search_code", "write_text_artifact"])
+        tools.extend(
+            [
+                "list_files",
+                "read_file",
+                "search_code",
+                "git_diff",
+                "write_text_artifact",
+            ]
+        )
+        if not task.write_scope:
+            tools.extend(["apply_patch", "run_workspace_command"])
+    if task.write_scope:
+        tools = [tool for tool in tools if tool not in _UNSCOPED_WORKSPACE_WRITE_TOOLS]
     return _dedupe(tools)
 
 

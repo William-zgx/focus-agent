@@ -233,7 +233,14 @@ def _has_network_tool(allowed_tools: list[str]) -> bool:
 
 def _has_workspace_write_tool(allowed_tools: list[str]) -> bool:
     return bool(
-        set(allowed_tools).intersection({"write_text_artifact", "artifact_update", "search_code"})
+        set(allowed_tools).intersection(
+            {
+                "apply_patch",
+                "artifact_update",
+                "run_workspace_command",
+                "write_text_artifact",
+            }
+        )
     )
 
 

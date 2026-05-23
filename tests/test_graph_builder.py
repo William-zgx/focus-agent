@@ -885,6 +885,9 @@ def test_turn_tool_policy_classifies_direct_workspace_and_web_requests():
     )
     assert _classify_turn_tool_policy("当前项目里 DOI parser 在哪里？") == "workspace_lookup"
     assert _classify_turn_tool_policy("复现场景，做一下测试。") == "execution"
+    assert _classify_turn_tool_policy("修改当前项目里的 README 文件") == "execution"
+    assert _classify_turn_tool_policy("运行当前项目的测试") == "execution"
+    assert _classify_turn_tool_policy("请修改 src/app.py 里的 bug") == "execution"
 
 
 def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
@@ -1364,10 +1367,7 @@ def test_graph_falls_back_to_tool_results_when_live_web_answer_is_ack(monkeypatc
     assert "保守整理" in final_answer
     assert "今天北京多云" in final_answer
     assert result.value["answer_verification"]["status"] == "verified"
-    assert (
-        result.value["answer_verification"]["repair_action_taken"]
-        == "fallback_to_tool_results"
-    )
+    assert result.value["answer_verification"]["repair_action_taken"] == "fallback_to_tool_results"
 
 
 def test_graph_does_not_retry_live_web_search_when_result_has_no_evidence(monkeypatch):
@@ -1893,6 +1893,16 @@ def test_graph_exposes_mixed_readonly_web_and_workspace_tools_without_write_tool
         """Write an artifact."""
         return f"{title}:{content}"
 
+    @tool
+    def apply_patch(patch: str) -> str:
+        """Apply a workspace patch."""
+        return patch
+
+    @tool
+    def run_workspace_command(command: list[str]) -> str:
+        """Run a workspace command."""
+        return " ".join(command)
+
     graph = build_graph(
         settings=Settings(),
         tool_registry=ToolRegistry(
@@ -1903,6 +1913,8 @@ def test_graph_exposes_mixed_readonly_web_and_workspace_tools_without_write_tool
                 web_fetch,
                 current_utc_time,
                 write_text_artifact,
+                apply_patch,
+                run_workspace_command,
             )
         ),
     )
@@ -1928,6 +1940,8 @@ def test_graph_exposes_mixed_readonly_web_and_workspace_tools_without_write_tool
         "current_utc_time",
     } <= exposed
     assert "write_text_artifact" not in exposed
+    assert "apply_patch" not in exposed
+    assert "run_workspace_command" not in exposed
 
 
 def test_fallback_answer_from_tool_results_preserves_workspace_findings():
@@ -2081,6 +2095,16 @@ def test_tools_for_policy_filters_web_and_write_tools():
         return title + body
 
     @tool
+    def apply_patch(patch: str) -> str:
+        """Apply patch."""
+        return patch
+
+    @tool
+    def run_workspace_command(command: list[str]) -> str:
+        """Run workspace command."""
+        return " ".join(command)
+
+    @tool
     def approval_lookup(name: str) -> str:
         """Lookup that requires approval."""
         return name
@@ -2092,7 +2116,16 @@ def test_tools_for_policy_filters_web_and_write_tools():
         "allowed_roles": ("executor",),
     }
 
-    tools = [list_files, search_code, read_file, web_search, write_text_artifact, approval_lookup]
+    tools = [
+        list_files,
+        search_code,
+        read_file,
+        web_search,
+        write_text_artifact,
+        apply_patch,
+        run_workspace_command,
+        approval_lookup,
+    ]
 
     assert [item.name for item in _tools_for_policy("direct_answer", tools)] == []
     assert [item.name for item in _tools_for_policy("workspace_lookup", tools)] == [
@@ -2112,6 +2145,8 @@ def test_tools_for_policy_filters_web_and_write_tools():
         "search_code",
         "read_file",
         "write_text_artifact",
+        "apply_patch",
+        "run_workspace_command",
         "approval_lookup",
     ]
     route_plan = build_tool_route_plan(
@@ -2128,6 +2163,23 @@ def test_tools_for_policy_filters_web_and_write_tools():
     )
     assert approval_decision.allowed is True
     assert approval_decision.reason == "approval_required"
+    apply_patch_decision = next(item for item in route_plan.decisions if item.name == "apply_patch")
+    assert apply_patch_decision.allowed is True
+    assert apply_patch_decision.reason == "approval_required"
+    command_decision = next(
+        item for item in route_plan.decisions if item.name == "run_workspace_command"
+    )
+    assert command_decision.allowed is True
+    assert command_decision.reason == "approval_required"
+
+    critic_plan = build_tool_route_plan(
+        tool_registry=ToolRegistry(tools=tuple(tools)),
+        role="critic",
+        tool_policy="execution",
+        available_tool_names=[tool.name for tool in tools],
+    )
+    assert "apply_patch" in critic_plan.denied_tools
+    assert "run_workspace_command" in critic_plan.denied_tools
 
 
 def test_graph_does_not_bind_tools_for_direct_answer_turn(monkeypatch):
@@ -3535,6 +3587,124 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
     assert approval_records[-1]["payload"]["risk_level"] == "high"
     assert tool_messages[-1].content == "approved:focus"
     assert resumed.value["messages"][-1].content == "approval handled"
+
+
+def test_graph_tool_executor_requires_approval_before_apply_patch(monkeypatch, tmp_path):
+    call_count = 0
+
+    @tool
+    def apply_patch(patch: str) -> str:
+        """Apply a workspace patch."""
+        nonlocal call_count
+        call_count += 1
+        return patch
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "patch-approval", "name": "apply_patch", "args": {"patch": "diff --git a/a b/a"}}
+        ],
+        final_answer="patch handled",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=(apply_patch,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="修改当前项目里的 README 文件")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        config={"configurable": {"thread_id": "thread-apply-patch-approval"}},
+        context=RequestContext(user_id="user-1", root_thread_id="thread-apply-patch-approval"),
+        version="v2",
+    )
+
+    assert call_count == 0
+    assert result.interrupts
+    interrupt_payload = getattr(result.interrupts[0], "value", None)
+    assert interrupt_payload["kind"] == "tool_approval"
+    assert interrupt_payload["tool_name"] == "apply_patch"
+    assert interrupt_payload["tool_call_id"] == "patch-approval"
+    patch_decision = next(
+        item
+        for item in result.value["tool_route_plan"]["decisions"]
+        if item["name"] == "apply_patch"
+    )
+    assert patch_decision["reason"] == "approval_required"
+
+
+def test_graph_tool_executor_validates_approval_tools_before_interrupt(monkeypatch, tmp_path):
+    call_count = 0
+
+    def reject_large_patch(args):
+        if len(str(args.get("patch") or "")) > 8:
+            raise ValueError("patch exceeds max_patch_bytes")
+
+    @tool
+    def apply_patch(patch: str) -> str:
+        """Apply a workspace patch."""
+        nonlocal call_count
+        call_count += 1
+        return patch
+
+    apply_patch.metadata = {
+        "requires_approval": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+        "allowed_roles": ("executor",),
+        "validator": reject_large_patch,
+    }
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "patch-invalid",
+                "name": "apply_patch",
+                "args": {"patch": "diff --git a/demo.py b/demo.py\n" * 20},
+            }
+        ],
+        final_answer="invalid patch handled",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=(apply_patch,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="修改当前项目里的 README 文件")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        config={"configurable": {"thread_id": "thread-apply-patch-validation"}},
+        context=RequestContext(user_id="user-1", root_thread_id="thread-apply-patch-validation"),
+        version="v2",
+    )
+
+    assert call_count == 0
+    assert result.interrupts == ()
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
+    assert tool_messages
+    assert tool_messages[-1].artifact["runtime"]["parameter_validation_error"] is True
 
 
 def test_graph_tool_executor_async_approval_records_pending_without_interrupt(monkeypatch):

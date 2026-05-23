@@ -158,6 +158,19 @@ def make_tool_executor_node(
                     },
                 )
                 continue
+            validator = getattr(runtime_meta, "validator", None)
+            if validator is not None:
+                try:
+                    validator(tool_args)
+                except Exception as exc:  # noqa: BLE001
+                    messages_by_index[index] = build_tool_error_message(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        args=tool_args,
+                        error=f"Invalid tool parameters for {tool_name}: {exc}",
+                        runtime_info={"parameter_validation_error": True},
+                    )
+                    continue
             execution_input = ToolExecutionInput(
                 index=index,
                 tool_call_id=tool_call_id,

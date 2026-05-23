@@ -349,6 +349,22 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
             allowed_toolsets=("skill",),
         )
 
+    if execution_score and has_strong_workspace_signal and not has_live_web_signal:
+        reason_codes.append("policy_execution")
+        return _exposure(
+            "execution",
+            confidence=_confidence(execution_score + workspace_score, direct_score),
+            reason_codes=tuple(reason_codes),
+            preferred_first_tool=_preferred_first_tool(
+                normalized,
+                policy="execution",
+                symbol_hits=symbol_hits,
+                file_browse_hits=file_browse_hits,
+                web_lookup_hits=web_lookup_hits,
+                fresh_external_hits=fresh_external_hits,
+            ),
+        )
+
     if has_strong_workspace_signal and has_live_web_signal:
         reason_codes.append("mixed_live_web_workspace")
         return _exposure(
