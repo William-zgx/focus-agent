@@ -1,10 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { type PropsWithChildren, Suspense, lazy, useState } from "react";
+import {
+	type PropsWithChildren,
+	Suspense,
+	lazy,
+	useEffect,
+	useState,
+} from "react";
 
 import { queryKeys } from "@/shared/query/query-keys";
 import { FocusAgentProvider } from "@/shared/sdk/focus-agent-provider";
 
 const STABLE_QUERY_STALE_TIME = 5 * 60_000;
+const QUERY_DEVTOOLS_QUERY = "(min-width: 901px)";
 
 const ReactQueryDevtools = import.meta.env.DEV
 	? lazy(() =>
@@ -15,6 +22,11 @@ const ReactQueryDevtools = import.meta.env.DEV
 	: null;
 
 export function AppProviders({ children }: PropsWithChildren) {
+	const [showsQueryDevtools, setShowsQueryDevtools] = useState(() =>
+		typeof window === "undefined"
+			? false
+			: window.matchMedia(QUERY_DEVTOOLS_QUERY).matches,
+	);
 	const [queryClient] = useState(() => {
 		const client = new QueryClient({
 			defaultOptions: {
@@ -40,12 +52,25 @@ export function AppProviders({ children }: PropsWithChildren) {
 		return client;
 	});
 
+	useEffect(() => {
+		if (!ReactQueryDevtools) return;
+		const query = window.matchMedia(QUERY_DEVTOOLS_QUERY);
+		const syncQueryDevtools = () => setShowsQueryDevtools(query.matches);
+
+		syncQueryDevtools();
+		query.addEventListener("change", syncQueryDevtools);
+		return () => query.removeEventListener("change", syncQueryDevtools);
+	}, []);
+
 	return (
 		<QueryClientProvider client={queryClient}>
 			<FocusAgentProvider>{children}</FocusAgentProvider>
-			{ReactQueryDevtools ? (
+			{ReactQueryDevtools && showsQueryDevtools ? (
 				<Suspense fallback={null}>
-					<ReactQueryDevtools initialIsOpen={false} />
+					<ReactQueryDevtools
+						buttonPosition="bottom-left"
+						initialIsOpen={false}
+					/>
 				</Suspense>
 			) : null}
 		</QueryClientProvider>

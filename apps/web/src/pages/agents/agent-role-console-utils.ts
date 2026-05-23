@@ -18,6 +18,10 @@ export function asArray(value: unknown): Array<Record<string, unknown>> {
 	return Array.isArray(value) ? value.map(asRecord) : [];
 }
 
+export function asStringArray(value: unknown): string[] {
+	return Array.isArray(value) ? value.map(String) : [];
+}
+
 export function jsonPreview(value: unknown) {
 	return JSON.stringify(value, null, 2);
 }

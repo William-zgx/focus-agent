@@ -6,7 +6,11 @@ import {
 	RoleTrajectoryList,
 	TrajectoryDetailsList,
 } from "./agent-role-console-sections";
-import { errorMessage, roleLabel } from "./agent-role-console-utils";
+import {
+	asStringArray,
+	errorMessage,
+	roleLabel,
+} from "./agent-role-console-utils";
 
 type CapabilityItem = {
 	name: string;
@@ -307,7 +311,7 @@ export function CapabilityRegistryPanel({
 			<KeyValueList
 				rows={capabilityItems.map((item) => ({
 					label: item.name,
-					note: item.allowed_roles.join(", ") || "no roles",
+					note: asStringArray(item.allowed_roles).join(", ") || "no roles",
 					value: `${item.toolset ?? "core"} / ${item.risk_level}`,
 				}))}
 			/>

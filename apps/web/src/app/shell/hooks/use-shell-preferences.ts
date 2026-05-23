@@ -23,6 +23,15 @@ import type {
 	ThemePreference,
 } from "@/app/shell/shell-ui-context";
 
+const MOBILE_SHELL_QUERY = "(max-width: 900px)";
+
+function isMobileShellViewport() {
+	return (
+		typeof window !== "undefined" &&
+		window.matchMedia(MOBILE_SHELL_QUERY).matches
+	);
+}
+
 export function useShellPreferences() {
 	const [languagePreference, setLanguagePreference] =
 		useState<LanguagePreference>(DEFAULT_LANGUAGE_PREFERENCE);
@@ -32,7 +41,9 @@ export function useShellPreferences() {
 	const [colorPreference, setColorPreference] = useState<ColorPreference>(
 		DEFAULT_COLOR_PREFERENCE,
 	);
-	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+		isMobileShellViewport(),
+	);
 	const [sidebarWidth, setSidebarWidth] = useState(() =>
 		getSidebarDefaultWidth(),
 	);
@@ -47,9 +58,7 @@ export function useShellPreferences() {
 			setLanguagePreference(urlLanguage);
 		}
 		const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-		if (stored === "1" || (stored === null && window.innerWidth <= 900)) {
-			setSidebarCollapsed(true);
-		}
+		setSidebarCollapsed(isMobileShellViewport() || stored === "1");
 		const rawWidth = Number.parseInt(
 			window.localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? "",
 			10,
@@ -87,10 +96,12 @@ export function useShellPreferences() {
 	}, []);
 
 	useEffect(() => {
-		window.localStorage.setItem(
-			SIDEBAR_COLLAPSED_KEY,
-			sidebarCollapsed ? "1" : "0",
-		);
+		if (!isMobileShellViewport()) {
+			window.localStorage.setItem(
+				SIDEBAR_COLLAPSED_KEY,
+				sidebarCollapsed ? "1" : "0",
+			);
+		}
 	}, [sidebarCollapsed]);
 
 	useEffect(() => {
@@ -98,13 +109,27 @@ export function useShellPreferences() {
 	}, [sidebarWidth]);
 
 	useEffect(() => {
+		const media = window.matchMedia(MOBILE_SHELL_QUERY);
+
+		function syncSidebarForViewport() {
+			if (media.matches) {
+				setSidebarCollapsed(true);
+				return;
+			}
+			setSidebarCollapsed(
+				window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1",
+			);
+		}
+
 		function handleResize() {
 			setSidebarWidth((value) => clampSidebarWidth(value));
 		}
 
 		window.addEventListener("resize", handleResize);
+		media.addEventListener("change", syncSidebarForViewport);
 		return () => {
 			window.removeEventListener("resize", handleResize);
+			media.removeEventListener("change", syncSidebarForViewport);
 		};
 	}, []);
 

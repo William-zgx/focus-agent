@@ -1,4 +1,9 @@
-import { type PropsWithChildren, useCallback, useState } from "react";
+import {
+	type PropsWithChildren,
+	useCallback,
+	useEffect,
+	useState,
+} from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { AppShellChatHeader } from "@/app/shell/app-shell-chat-header";
@@ -147,6 +152,13 @@ export function AppShell({ children }: PropsWithChildren) {
 		setSidebarCollapsed((value) => !value);
 	}
 
+	useEffect(() => {
+		if (!pathname) return;
+		if (window.matchMedia("(max-width: 900px)").matches) {
+			setSidebarCollapsed(true);
+		}
+	}, [pathname, setSidebarCollapsed]);
+
 	const selectedLanguageLabel = isChineseUi
 		? selectedLanguage.labelZh
 		: selectedLanguage.labelEn;
@@ -249,8 +261,17 @@ export function AppShell({ children }: PropsWithChildren) {
 				className={`fa-app-shell is-${shellMode}-shell ${shellSidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
 				style={shellStyle}
 			>
+				{shellSidebarCollapsed ? null : (
+					<button
+						aria-label={isChineseUi ? "关闭侧栏" : "Close sidebar"}
+						className="fa-sidebar-scrim"
+						onClick={() => setSidebarCollapsed(true)}
+						type="button"
+					/>
+				)}
 				<aside
 					className={`fa-sidebar-panel ${isWorkspaceShell ? "is-global-shell" : ""}`.trim()}
+					aria-hidden={shellSidebarCollapsed}
 				>
 					<AppShellSidebarBrand
 						colorPreference={colorPreference}

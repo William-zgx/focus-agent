@@ -47,27 +47,29 @@ export function AdminUsersTable({
 							}
 							key={user.user_id}
 						>
-							<td>
+							<td data-label={isChineseUi ? "用户" : "User"}>
 								<div className="fa-admin-identity-cell">
 									<strong>{formatUserLabel(user)}</strong>
 									<span>{user.email || user.user_id}</span>
 								</div>
 							</td>
-							<td>{user.tenant_id || "-"}</td>
-							<td>
+							<td data-label={isChineseUi ? "租户" : "Tenant"}>
+								{user.tenant_id || "-"}
+							</td>
+							<td data-label={isChineseUi ? "状态" : "Status"}>
 								<span className={userStatusClass(user)}>{user.status}</span>
 							</td>
-							<td>
+							<td data-label={isChineseUi ? "角色" : "Roles"}>
 								<div className="fa-admin-chip-row">
 									{user.roles.map((role) => (
 										<span key={role}>{role}</span>
 									))}
 								</div>
 							</td>
-							<td>
+							<td data-label={isChineseUi ? "最近更新" : "Updated"}>
 								{formatAdminDate(user.updated_at ?? user.created_at, locale)}
 							</td>
-							<td>
+							<td data-label={isChineseUi ? "操作" : "Actions"}>
 								<Link
 									className="fa-admin-row-link"
 									params={{ userId: user.user_id }}

@@ -102,55 +102,59 @@ export function TrajectorySampleExplorer({
 				</div>
 			</div>
 
-			{items.map((item) => (
-				<div
-					key={item.id}
-					className={`fa-trajectory-workbench-sample-row ${selectedBatchIdSet.has(item.id) ? "is-batch-selected" : ""}`.trim()}
-				>
-					<label className="fa-trajectory-workbench-batch-checkbox">
-						<input
-							checked={selectedBatchIdSet.has(item.id)}
-							onChange={() => onToggleBatchSelection(item.id)}
-							type="checkbox"
-						/>
-						<span>{isChineseUi ? "批量" : "Batch"}</span>
-					</label>
-					<button
-						className={`fa-trajectory-workbench-sample-card ${selectedTurnId === item.id ? "is-selected" : ""}`.trim()}
-						onClick={() => onSelectTurn(item.id)}
-						type="button"
+			<div className="fa-trajectory-workbench-sample-list">
+				{items.map((item) => (
+					<div
+						key={item.id}
+						className={`fa-trajectory-workbench-sample-row ${selectedBatchIdSet.has(item.id) ? "is-batch-selected" : ""}`.trim()}
 					>
-						<div className="fa-trajectory-workbench-sample-top">
-							<span
-								className={`fa-observability-pill is-${statusTone(item.status)}`}
-							>
-								{item.status}
-							</span>
-							<span>{formatDateTime(item.created_at, locale)}</span>
-						</div>
-						<strong>
-							{compactQuestion(item.user_message || item.task_brief || item.id)}
-						</strong>
-						<p className="fa-trajectory-workbench-sample-summary">
-							{buildTurnSummary(item, isChineseUi)}
-						</p>
-						<div className="fa-trajectory-workbench-sample-anchors">
-							<span>{`Req ${compactId(item.request_id)}`}</span>
-							<span>{`Trace ${compactId(item.trace_id)}`}</span>
-						</div>
-						<div className="fa-trajectory-workbench-sample-anchors">
-							<span>{compactId(item.thread_id)}</span>
-							<span>{item.selected_model || "—"}</span>
-						</div>
-						<div className="fa-trajectory-workbench-sample-metrics">
-							<span>{formatDuration(item.latency_ms)}</span>
-							<span>{`${item.tool_calls} ${isChineseUi ? "工具" : "tools"}`}</span>
-							<span>{`${item.fallback_uses} fallback`}</span>
-						</div>
-					</button>
-				</div>
-			))}
-			{children}
+						<label className="fa-trajectory-workbench-batch-checkbox">
+							<input
+								checked={selectedBatchIdSet.has(item.id)}
+								onChange={() => onToggleBatchSelection(item.id)}
+								type="checkbox"
+							/>
+							<span>{isChineseUi ? "批量" : "Batch"}</span>
+						</label>
+						<button
+							className={`fa-trajectory-workbench-sample-card ${selectedTurnId === item.id ? "is-selected" : ""}`.trim()}
+							onClick={() => onSelectTurn(item.id)}
+							type="button"
+						>
+							<div className="fa-trajectory-workbench-sample-top">
+								<span
+									className={`fa-observability-pill is-${statusTone(item.status)}`}
+								>
+									{item.status}
+								</span>
+								<span>{formatDateTime(item.created_at, locale)}</span>
+							</div>
+							<strong>
+								{compactQuestion(
+									item.user_message || item.task_brief || item.id,
+								)}
+							</strong>
+							<p className="fa-trajectory-workbench-sample-summary">
+								{buildTurnSummary(item, isChineseUi)}
+							</p>
+							<div className="fa-trajectory-workbench-sample-anchors">
+								<span>{`Req ${compactId(item.request_id)}`}</span>
+								<span>{`Trace ${compactId(item.trace_id)}`}</span>
+							</div>
+							<div className="fa-trajectory-workbench-sample-anchors">
+								<span>{compactId(item.thread_id)}</span>
+								<span>{item.selected_model || "—"}</span>
+							</div>
+							<div className="fa-trajectory-workbench-sample-metrics">
+								<span>{formatDuration(item.latency_ms)}</span>
+								<span>{`${item.tool_calls} ${isChineseUi ? "工具" : "tools"}`}</span>
+								<span>{`${item.fallback_uses} fallback`}</span>
+							</div>
+						</button>
+					</div>
+				))}
+				{children}
+			</div>
 		</>
 	);
 }

@@ -185,8 +185,10 @@ export function AdminAuditEventsPage() {
 									}
 									key={event.event_id}
 								>
-									<td>{formatAdminDate(event.created_at, locale)}</td>
-									<td>
+									<td data-label={isChineseUi ? "时间" : "Time"}>
+										{formatAdminDate(event.created_at, locale)}
+									</td>
+									<td data-label={isChineseUi ? "操作者" : "Actor"}>
 										{event.actor_user_id ? (
 											<Link
 												className="fa-admin-row-link"
@@ -199,18 +201,20 @@ export function AdminAuditEventsPage() {
 											"-"
 										)}
 									</td>
-									<td>{event.action}</td>
-									<td>
+									<td data-label={isChineseUi ? "动作" : "Action"}>
+										{event.action}
+									</td>
+									<td data-label={isChineseUi ? "资源" : "Resource"}>
 										<ResourceCell event={event} />
 									</td>
-									<td>
+									<td data-label={isChineseUi ? "决策" : "Decision"}>
 										<span
 											className={`fa-observability-pill is-${decisionTone(event.decision)}`}
 										>
 											{event.decision}
 										</span>
 									</td>
-									<td>
+									<td data-label={isChineseUi ? "操作" : "Action"}>
 										<button
 											className="fa-admin-row-link fa-admin-session-button"
 											type="button"

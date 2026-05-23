@@ -6,7 +6,11 @@ import type {
 } from "@focus-agent/web-sdk";
 
 import { EmptyState, PanelHeader } from "./agent-role-console-sections";
-import { errorMessage } from "./agent-role-console-utils";
+import {
+	asRecord,
+	asStringArray,
+	errorMessage,
+} from "./agent-role-console-utils";
 
 type OperationsPanelsProps = {
 	contextEvidence: FocusAgentContextMemoryEvidence[];
@@ -58,10 +62,14 @@ export function OperationsGovernancePanels({
 								</div>
 								<p>{item.compaction_summary ?? "No compaction summary."}</p>
 								<div className="fa-agent-role-ops-chips">
-									<span>{item.selected_memories.length} memories</span>
-									<span>{item.artifact_refs.length} artifacts</span>
+									<span>
+										{asStringArray(item.selected_memories).length} memories
+									</span>
+									<span>
+										{asStringArray(item.artifact_refs).length} artifacts
+									</span>
 									{item.estimated ? <span>estimated</span> : <span>exact</span>}
-									{item.risk_flags.map((risk) => (
+									{asStringArray(item.risk_flags).map((risk) => (
 										<span key={risk}>{risk}</span>
 									))}
 								</div>
@@ -99,13 +107,18 @@ export function OperationsGovernancePanels({
 							</div>
 							<p>{selection.rationale ?? "No rationale recorded."}</p>
 							<div className="fa-agent-role-ops-chips">
-								{selection.activated_skills.map((skillId) => (
+								{asStringArray(
+									selection.activated_skills ??
+										asRecord(selection).activated_skill_ids,
+								).map((skillId) => (
 									<span key={skillId}>{skillId}</span>
 								))}
 								{selection.user_override ? (
-									<span>{selection.user_override}</span>
+									<span>{String(selection.user_override)}</span>
 								) : null}
-								{selection.feedback ? <span>{selection.feedback}</span> : null}
+								{selection.feedback ? (
+									<span>{String(selection.feedback)}</span>
+								) : null}
 							</div>
 						</article>
 					))}
