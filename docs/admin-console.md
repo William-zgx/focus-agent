@@ -12,6 +12,10 @@ Web 页面：
 - `/app/admin/users/{userId}`：直接打开指定用户详情抽屉。
 - `/app/admin/audit-events`：管理员审计事件列表、筛选和详情抽屉。
 
+真实产品截图（由 `scripts/capture_docs_screenshots.py` 捕获）：
+
+![Admin Console user directory](assets/screenshots/admin-console-users.png)
+
 API：
 
 ```text

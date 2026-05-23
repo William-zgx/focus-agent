@@ -1,0 +1,45 @@
+<svg width="1230" height="460" viewBox="0 0 1230 460" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1230" y2="460" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1230" height="460" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1182" height="412" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Streaming quarantine boundary</text>
+  <rect x="62" y="128" width="210" height="116" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="86" cy="156" r="7" fill="#7A68D8"/>
+<text x="104" y="162" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Model chunks</text>
+<text x="84" y="192" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Tool-bound, repair, reasoning, final</text>
+<text x="84" y="212" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">answer</text>
+<rect x="340" y="128" width="220" height="116" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="364" cy="156" r="7" fill="#E49B23"/>
+<text x="382" y="162" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Visibility gate</text>
+<text x="362" y="192" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">quarantine by default; visible phase</text>
+<text x="362" y="212" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">only</text>
+<rect x="640" y="88" width="220" height="100" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="664" cy="116" r="7" fill="#2CA874"/>
+<text x="682" y="122" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">message.delta</text>
+<text x="662" y="152" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">confirmed visible answer text</text>
+<rect x="640" y="230" width="220" height="100" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="664" cy="258" r="7" fill="#2FB7F5"/>
+<text x="682" y="264" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">tool/task events</text>
+<text x="662" y="294" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">structured processing cards</text>
+<rect x="940" y="128" width="230" height="116" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="964" cy="156" r="7" fill="#B65B76"/>
+<text x="982" y="162" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">SDK reducer + UI</text>
+<text x="962" y="192" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">safeVisibleTextTransition plus</text>
+<text x="962" y="212" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">transcript filtering</text>
+<path d="M272 186 L340 186" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M560 186 L640 138" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M560 186 L640 280" stroke="#2FB7F5" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M860 138 L940 186" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M860 280 L940 186" stroke="#2FB7F5" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<rect x="348" y="286" width="204" height="56" rx="16" fill="#FFF5DE" stroke="#F2D699" stroke-width="1"/>
+<text x="374" y="319" fill="#77521B" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800">DSML / XML / tool prose stays internal</text>
+<path d="M442 244 L442 286" stroke="#E49B23" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 8" marker-end="url(#arrow)" fill="none"/>
+</svg>

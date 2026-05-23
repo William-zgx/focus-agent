@@ -77,36 +77,7 @@ Agent Team 的采纳闭环同时服务后续工作：
 
 ## 3. 总体架构
 
-```text
-User
-  |
-  v
-Main Thread / Orchestrator
-  |
-  +-- Agent Team Mission
-  |     +-- Dynamic Task DAG
-  |     +-- Agent Task Ledger
-  |
-  +-- Branch: Planner Agent
-  |     +-- plan artifact
-  |     +-- acceptance criteria
-  |
-  +-- Branch: Executor / Writer Agent
-  |     +-- implementation or user-facing deliverable
-  |     +-- changed files / artifacts
-  |
-  +-- Branch: Test Agent
-  |     +-- regression cases
-  |     +-- eval cases
-  |
-  +-- Branch: Reviewer Agent
-  |     +-- review findings
-  |     +-- risk report
-  |
-  +-- Branch: Verifier / Integrator Agent
-        +-- verification report
-        +-- final_answer / merge recommendation
-```
+![Agent Team mission DAG](assets/diagrams/agent-team-mission-dag.svg)
 
 复用现有能力：
 

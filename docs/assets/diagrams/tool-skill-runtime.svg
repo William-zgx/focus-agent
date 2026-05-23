@@ -1,0 +1,45 @@
+<svg width="1240" height="480" viewBox="0 0 1240 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1240" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1240" height="480" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1192" height="432" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Skill prompt injection and tool narrowing</text>
+  <rect x="60" y="124" width="210" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="84" cy="152" r="7" fill="#2FB7F5"/>
+<text x="102" y="158" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">User request</text>
+<text x="82" y="188" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">task intent, prefixes, skill hints</text>
+<rect x="330" y="88" width="220" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="354" cy="116" r="7" fill="#7A68D8"/>
+<text x="372" y="122" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Skill roots</text>
+<text x="352" y="152" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">bundled SKILL.md plus local overlays</text>
+<rect x="330" y="250" width="220" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="354" cy="278" r="7" fill="#2CA874"/>
+<text x="372" y="284" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Tool catalog</text>
+<text x="352" y="314" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">workspace, web, artifact, memory,</text>
+<text x="352" y="334" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">productivity</text>
+<rect x="640" y="124" width="230" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="664" cy="152" r="7" fill="#E49B23"/>
+<text x="682" y="158" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">ChatService</text>
+<text x="662" y="188" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">RequestContext, active skills, cleaned</text>
+<text x="662" y="208" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">task</text>
+<rect x="950" y="124" width="230" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="974" cy="152" r="7" fill="#B65B76"/>
+<text x="992" y="158" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Graph runtime</text>
+<text x="972" y="188" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">prompt blocks, tool router, guarded</text>
+<text x="972" y="208" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">execution</text>
+<path d="M270 180 L330 144" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M270 180 L330 306" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M550 144 L640 180" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M550 306 L640 180" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M870 180 L950 180" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<rect x="664" y="300" width="486" height="64" rx="16" fill="#F4F8FC" stroke="#D5E3EF" stroke-width="1"/>
+<text x="690" y="326" fill="#203854" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="850">Runtime invariant</text>
+<text x="690" y="348" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">Skills guide workflow; tools perform scoped side effects.</text>
+</svg>

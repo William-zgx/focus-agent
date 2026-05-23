@@ -1,0 +1,43 @@
+<svg width="1140" height="470" viewBox="0 0 1140 470" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1140" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1140" height="470" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1092" height="422" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Validation ladder</text>
+  <rect x="62" y="112" width="170" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="86" cy="140" r="7" fill="#2FB7F5"/>
+<text x="104" y="146" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Docs/assets</text>
+<text x="84" y="176" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">link check, SVG render</text>
+<rect x="274" y="112" width="170" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="298" cy="140" r="7" fill="#7A68D8"/>
+<text x="316" y="146" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Backend</text>
+<text x="296" y="176" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">ruff, pytest, contracts</text>
+<rect x="486" y="112" width="170" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="510" cy="140" r="7" fill="#2CA874"/>
+<text x="528" y="146" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Web</text>
+<text x="508" y="176" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">lint, format, check, build</text>
+<rect x="698" y="112" width="170" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="722" cy="140" r="7" fill="#E49B23"/>
+<text x="740" y="146" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">SDK</text>
+<text x="720" y="176" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">types, build, transport</text>
+<rect x="910" y="112" width="170" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="934" cy="140" r="7" fill="#B65B76"/>
+<text x="952" y="146" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">High risk</text>
+<text x="932" y="176" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">streaming, auth, memory, branch</text>
+<rect x="536" y="300" width="220" height="96" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="560" cy="328" r="7" fill="#245D9C"/>
+<text x="578" y="334" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Release gate</text>
+<text x="558" y="364" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">CI parity plus evidence reports</text>
+<path d="M232 164 L274 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M444 164 L486 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M656 164 L698 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M868 164 L910 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M995 214 L995 258 L646 258 L646 300" stroke="#245D9C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" fill="none"/>
+</svg>

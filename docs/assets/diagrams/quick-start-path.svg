@@ -1,0 +1,45 @@
+<svg width="1280" height="450" viewBox="0 0 1280 450" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1280" y2="450" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="450" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1232" height="402" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Local startup decision path</text>
+  <rect x="70" y="116" width="180" height="96" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="94" cy="144" r="7" fill="#2FB7F5"/>
+<text x="112" y="150" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Install</text>
+<text x="92" y="180" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">uv, pnpm, setup-local</text>
+<rect x="310" y="116" width="180" height="96" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="334" cy="144" r="7" fill="#7A68D8"/>
+<text x="352" y="150" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Config</text>
+<text x="332" y="180" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">.focus_agent models/tools/env</text>
+<rect x="550" y="116" width="180" height="96" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="574" cy="144" r="7" fill="#E49B23"/>
+<text x="592" y="150" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Start</text>
+<text x="572" y="180" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">make api or make serve-dev</text>
+<rect x="790" y="68" width="190" height="92" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="814" cy="96" r="7" fill="#2CA874"/>
+<text x="832" y="102" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Managed DB</text>
+<text x="812" y="132" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">repo-local PostgreSQL</text>
+<rect x="790" y="214" width="190" height="92" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="814" cy="242" r="7" fill="#245D9C"/>
+<text x="832" y="248" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">External DB</text>
+<text x="812" y="278" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">use DATABASE_URI</text>
+<rect x="1040" y="116" width="180" height="96" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="1064" cy="144" r="7" fill="#B65B76"/>
+<text x="1082" y="150" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Open /app</text>
+<text x="1062" y="180" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">auth, workbench, readyz</text>
+<path d="M250 164 L310 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M490 164 L550 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M730 164 L790 114" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M730 164 L790 260" stroke="#245D9C" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M980 114 L1040 164" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M980 260 L1040 164" stroke="#245D9C" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<text x="550" y="372" fill="#3E536B" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="650" text-anchor="middle">The shortest path is local-first, with database choice made at startup.</text>
+</svg>

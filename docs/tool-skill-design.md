@@ -148,6 +148,8 @@ The parser is intentionally minimal and optimized for bundled skills plus straig
 4. `graph_builder` asks the registry for available-skill and active-skill prompt blocks.
 5. `context_policy` renders those blocks into the final system prompt alongside scene, branch scope, memory, and findings.
 
+![Skill prompt injection and tool narrowing](assets/diagrams/tool-skill-runtime.svg)
+
 ### Built-in skills
 
 Current bundled skills:

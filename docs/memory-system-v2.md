@@ -30,6 +30,8 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 
 ## 2. 架构总览
 
+![Memory v2 lifecycle](assets/diagrams/memory-lifecycle.svg)
+
 ```mermaid
 flowchart TD
     User["User turn"] --> Graph["LangGraph turn"]
@@ -800,6 +802,10 @@ Web surface：
 - candidates list
 - kind/status/visibility/root thread filters
 - forget action
+
+真实产品截图（由 `scripts/capture_docs_screenshots.py` 捕获）：
+
+![Memory Console active records](assets/screenshots/memory-console.png)
 
 重要边界：
 

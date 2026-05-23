@@ -2,19 +2,7 @@
 
 This guide expands on the shortest startup path from the root README.
 
-```mermaid
-flowchart LR
-    Setup["Local setup"] --> Config[".focus_agent config"]
-    Config --> Build["Build web bundle"]
-    Build --> Start["make api / make serve-dev"]
-    Start --> Postgres{"DATABASE_URI set?"}
-    Postgres -- "No" --> Managed["Managed repo-local PostgreSQL"]
-    Postgres -- "Yes" --> External["Use provided database"]
-    Managed --> App["Open /app"]
-    External --> App
-    App --> Ready["Check /readyz"]
-    Ready --> Observe["Open /metrics and observability pages"]
-```
+![Local startup decision path](assets/diagrams/quick-start-path.svg)
 
 ## 1. Local Setup
 

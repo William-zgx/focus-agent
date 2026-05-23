@@ -4,6 +4,8 @@
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
+![Streaming quarantine boundary](assets/diagrams/streaming-boundary.svg)
+
 ## 1. Stream Shape
 
 Focus Agent uses authenticated POST requests that return Server-Sent Events:

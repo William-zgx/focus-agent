@@ -46,6 +46,8 @@ Focus Agent 是一个 Web-first Agent 应用平台骨架。它已经超过单一
 - Observability：request id、readiness、metrics、trajectory、replay、promote、release-health
 - Release evidence：release gate reports、production evidence pack、approval、artifact storage verification
 
+![Focus Agent platform topology](assets/diagrams/architecture-platform-map.svg)
+
 ```mermaid
 flowchart LR
     User["Browser / SDK"] --> API["FastAPI API"]
@@ -72,41 +74,6 @@ flowchart LR
     MemoryTables --> PG
     Tools --> ArtifactStore["ArtifactStore"]
     ArtifactStore --> Artifacts["Filesystem Artifacts"]
-```
-
-```text
-Browser / SDK
-  |
-  | HTTP / SSE
-  v
-FastAPI app
-  |
-  +-- API contracts, auth, middleware, error envelope
-  +-- ChatService
-  |     +-- LangGraph agent graph
-  |     +-- stream event mapping
-  |     +-- trajectory recording
-  +-- BranchService
-  |     +-- fork / archive / activate / merge
-  |     +-- branch role classification
-  |     +-- merge proposal and imported findings
-  +-- Agent governance APIs
-  |     +-- role route / tool route / context / ledger / critic
-  +-- Branch decision APIs
-  |     +-- decision config / list / promote / dismiss
-  +-- Admin APIs
-  |     +-- users / roles / sessions / passwords / audit events
-  +-- Observability APIs
-        +-- overview / trajectory / stats / replay / promote
-
-Persistence
-  |
-  +-- Postgres app tables
-  +-- LangGraph Postgres checkpoint/store
-  +-- Postgres trajectory tables
-  +-- artifact metadata table
-  +-- filesystem artifact bodies
-  +-- local in-memory / SQLite journal / pickle fallback
 ```
 
 ## 3. 代码分层
@@ -414,6 +381,21 @@ bootstrap_turn
   -> maybe_interrupt_for_merge
 ```
 
+```mermaid
+flowchart LR
+    Bootstrap["bootstrap_turn"] --> Retrieve["retrieve_memories"]
+    Retrieve --> Assemble["assemble_context"]
+    Assemble --> Govern["role / tool / model governance"]
+    Govern --> Plan["plan"]
+    Plan --> Loop["agent_loop"]
+    Loop --> Tools["tool_executor"]
+    Tools --> Loop
+    Loop --> Reflect["reflect / summarize_turn"]
+    Reflect --> Extract["extract_memories"]
+    Extract --> Write["write_memories"]
+    Write --> Merge["maybe_interrupt_for_merge"]
+```
+
 关键点：
 
 - `retrieve_memories` 从可读 namespace 检索 durable memory。
@@ -449,6 +431,8 @@ bootstrap_turn
 `src/focus_agent/services/branches.py` 仍作为兼容 shim。聊天里的分支意图
 先进入 Branch Action proposal；用户确认后才 fork、open 或 return。AI 辅助
 的发送前推荐由 [branch-decisions.md](branch-decisions.md) 维护。
+
+![Branch Action lifecycle](assets/diagrams/branch-action-lifecycle.svg)
 
 ```text
 main thread

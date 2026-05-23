@@ -1,0 +1,54 @@
+<svg width="1280" height="520" viewBox="0 0 1280 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1280" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="520" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1232" height="472" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Memory v2 lifecycle</text>
+  <rect x="60" y="120" width="190" height="104" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="84" cy="148" r="7" fill="#2FB7F5"/>
+<text x="102" y="154" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Retrieve</text>
+<text x="82" y="184" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">namespace filters, FTS, optional</text>
+<text x="82" y="204" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">vector</text>
+<rect x="310" y="120" width="190" height="104" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="334" cy="148" r="7" fill="#7A68D8"/>
+<text x="352" y="154" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Assemble</text>
+<text x="332" y="184" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">memory block enters context budget</text>
+<rect x="560" y="120" width="190" height="104" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="584" cy="148" r="7" fill="#2CA874"/>
+<text x="602" y="154" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Agent turn</text>
+<text x="582" y="184" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">tool loop, summary, branch findings</text>
+<rect x="810" y="120" width="190" height="104" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="834" cy="148" r="7" fill="#E49B23"/>
+<text x="852" y="154" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Extract</text>
+<text x="832" y="184" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">conservative write requests</text>
+<rect x="1040" y="120" width="190" height="104" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="1064" cy="148" r="7" fill="#B65B76"/>
+<text x="1082" y="154" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Policy</text>
+<text x="1062" y="184" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">dedupe, scope, visibility, audit</text>
+<path d="M250 172 L310 172" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M500 172 L560 172" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M750 172 L810 172" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M1000 172 L1040 172" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<rect x="210" y="334" width="240" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="234" cy="362" r="7" fill="#245D9C"/>
+<text x="252" y="368" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Canonical store</text>
+<text x="232" y="398" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">focus_memories remains source of truth</text>
+<rect x="520" y="334" width="240" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="544" cy="362" r="7" fill="#2F9FAD"/>
+<text x="562" y="368" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Shadow index</text>
+<text x="542" y="398" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">focus_memory_embeddings is rebuildable</text>
+<rect x="830" y="334" width="240" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="854" cy="362" r="7" fill="#8E6AC8"/>
+<text x="872" y="368" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Governance</text>
+<text x="852" y="398" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">audit events, tombstones, candidates</text>
+<path d="M1135 224 L1135 286 L330 286 L330 334" stroke="#245D9C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M1135 224 L1135 286 L640 334" stroke="#2F9FAD" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M1135 224 L1135 286 L950 334" stroke="#8E6AC8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" fill="none"/>
+</svg>

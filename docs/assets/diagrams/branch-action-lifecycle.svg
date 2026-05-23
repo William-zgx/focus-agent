@@ -1,0 +1,44 @@
+<svg width="1230" height="500" viewBox="0 0 1230 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1230" y2="500" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1230" height="500" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1182" height="452" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Branch Action lifecycle</text>
+  <rect x="70" y="122" width="210" height="108" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="94" cy="150" r="7" fill="#7A68D8"/>
+<text x="112" y="156" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Decision event</text>
+<text x="92" y="186" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">pre-turn recommendation or post-turn</text>
+<text x="92" y="206" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">evidence</text>
+<rect x="350" y="122" width="220" height="108" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="374" cy="150" r="7" fill="#E49B23"/>
+<text x="392" y="156" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Pending action</text>
+<text x="372" y="186" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">BranchActionProposal enters thread</text>
+<text x="372" y="206" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">state</text>
+<rect x="650" y="72" width="210" height="98" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="674" cy="100" r="7" fill="#2CA874"/>
+<text x="692" y="106" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Confirm</text>
+<text x="672" y="136" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">fork, open, or return with navigation</text>
+<rect x="650" y="244" width="210" height="98" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="674" cy="272" r="7" fill="#B65B76"/>
+<text x="692" y="278" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Dismiss</text>
+<text x="672" y="308" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">mark action dismissed; no side effect</text>
+<rect x="950" y="122" width="210" height="108" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="974" cy="150" r="7" fill="#2FB7F5"/>
+<text x="992" y="156" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Refresh surfaces</text>
+<text x="972" y="186" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">thread state, branch tree, route</text>
+<text x="972" y="206" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">caches</text>
+<path d="M280 176 L350 176" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M570 176 L650 121" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M570 176 L650 293" stroke="#B65B76" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M860 121 L950 176" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M860 293 L950 176" stroke="#B65B76" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<rect x="392" y="370" width="486" height="60" rx="16" fill="#FFF7E8" stroke="#F2D699" stroke-width="1"/>
+<text x="420" y="405" fill="#77521B" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="19" font-weight="850">Safety boundary: recommendation never forks silently.</text>
+</svg>

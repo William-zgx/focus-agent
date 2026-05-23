@@ -1,0 +1,50 @@
+<svg width="1280" height="540" viewBox="0 0 1280 540" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6D829E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="softBg" x1="0" y1="0" x2="1280" y2="540" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD"/>
+      <stop offset="1" stop-color="#EDF4F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="540" rx="28" fill="url(#softBg)"/>
+  <rect x="24" y="24" width="1232" height="492" rx="24" fill="#FFFFFF" stroke="#D8E4EF"/>
+  <text x="48" y="72" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="850">Agent Team mission DAG</text>
+  <rect x="70" y="134" width="210" height="116" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="94" cy="162" r="7" fill="#2FB7F5"/>
+<text x="112" y="168" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Mission</text>
+<text x="92" y="198" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Goal, constraints, context evidence</text>
+<rect x="350" y="84" width="210" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="374" cy="112" r="7" fill="#7A68D8"/>
+<text x="392" y="118" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Planner</text>
+<text x="372" y="148" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Task DAG and acceptance criteria</text>
+<rect x="350" y="230" width="210" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="374" cy="258" r="7" fill="#2CA874"/>
+<text x="392" y="264" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Executor</text>
+<text x="372" y="294" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Implementation or deliverable branch</text>
+<rect x="650" y="84" width="210" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="674" cy="112" r="7" fill="#B65B76"/>
+<text x="692" y="118" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Reviewer</text>
+<text x="672" y="148" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Risk report and findings</text>
+<rect x="650" y="230" width="210" height="102" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="674" cy="258" r="7" fill="#E49B23"/>
+<text x="692" y="264" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Verifier</text>
+<text x="672" y="294" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Regression and eval evidence</text>
+<rect x="970" y="134" width="220" height="116" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
+<circle cx="994" cy="162" r="7" fill="#245D9C"/>
+<text x="1012" y="168" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Adoption Review</text>
+<text x="992" y="198" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Merge bundle, selected outputs,</text>
+<text x="992" y="218" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">notes/tasks capture</text>
+<path d="M280 192 L350 136" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M280 192 L350 282" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M560 136 L650 136" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M560 282 L650 282" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M860 136 L970 192" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M860 282 L970 192" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<rect x="458" y="384" width="360" height="74" rx="18" fill="#EEF7F4" stroke="#CDE7DD" stroke-width="1"/>
+<text x="486" y="416" fill="#225B45" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="19" font-weight="850">Agent Task Ledger + Trajectory</text>
+<text x="486" y="440" fill="#4F6B5F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">Every branch leaves evidence before final synthesis.</text>
+<path d="M545 332 L550 384" stroke="#2CA874" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+<path d="M755 332 L725 384" stroke="#E49B23" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
+</svg>

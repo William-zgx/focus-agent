@@ -46,6 +46,8 @@ flowchart TD
     Dismiss --> State
 ```
 
+![Branch Action lifecycle](assets/diagrams/branch-action-lifecycle.svg)
+
 ## 2. Decision Types
 
 Two evaluators share the same persisted event model:

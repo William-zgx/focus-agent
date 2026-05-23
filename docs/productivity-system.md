@@ -164,12 +164,44 @@ Capture 的关键规则：
 
 `SQLite` / `Postgres` 都会在 note/task 写入时保留 `data_json` 的完整对象，并按结构化列保留主过滤字段与索引。
 
+```mermaid
+erDiagram
+    focus_notes ||--o{ focus_tasks : "source_note_id"
+    focus_tasks ||--o{ focus_task_events : "task_id"
+    focus_notes {
+        text note_id PK
+        text user_id
+        text source_kind
+        text source_id
+        jsonb pinned_context
+    }
+    focus_tasks {
+        text task_id PK
+        text user_id
+        text status
+        text source_thread_id
+        text source_note_id FK
+    }
+    focus_task_events {
+        text event_id PK
+        text task_id FK
+        text kind
+        jsonb data_json
+    }
+```
+
 ## 6. Web App / SDK / Tool 接入
 
 - SDK 已提供 `listNotes/listTasks/listTaskEvents/createNote/createTask/updateNote/updateTask/completeTask/archiveTask/captureNote/captureTask`。
 - Web App 的生产力入口：`/app/productivity/notes`、`/app/productivity/tasks`。
 - 任务/笔记详情与来源跳转可通过 `task.source_*`、`note.source_*` 回传到线程页。
 - 工具侧也可直接通过 `notes_create / notes_search / tasks_create / notes_update / tasks_update / tasks_list / productivity_capture` 进行读写。
+
+![Productivity capture and source trace](assets/diagrams/productivity-workflow.svg)
+
+真实产品截图（由 `scripts/capture_docs_screenshots.py` 捕获）：
+
+![Productivity notes workbench](assets/screenshots/productivity-notes.png)
 
 ```mermaid
 flowchart TD
