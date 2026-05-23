@@ -234,12 +234,19 @@
 	padding-bottom: 72px;
 }
 
-.fa-branch-decision-summary-popover:hover .fa-branch-decision-summary-details,
+.fa-branch-decision-summary-popover.is-open .fa-branch-decision-summary-details,
 .fa-branch-decision-summary-popover:has(
 		.fa-branch-decision-summary-trigger:focus-visible
 	)
 	.fa-branch-decision-summary-details {
 	display: block;
+}
+
+@media (hover: hover) {
+	.fa-branch-decision-summary-popover:hover
+		.fa-branch-decision-summary-details {
+		display: block;
+	}
 }
 
 .fa-branch-decision-summary-actions {
@@ -336,6 +343,13 @@
 }
 
 @media (max-width: 720px) {
+	.fa-chat-transcript {
+		--fa-branch-decision-mobile-clearance: calc(
+			96px +
+			env(safe-area-inset-bottom)
+		);
+	}
+
 	.fa-branch-decision-summary-actions {
 		justify-content: flex-start;
 	}
@@ -350,10 +364,14 @@
 		position: fixed;
 		top: auto;
 		right: 12px;
-		bottom: 72px;
+		bottom: var(--fa-branch-decision-mobile-clearance);
 		left: 12px;
 		width: auto;
 		max-height: min(64vh, 420px);
+	}
+
+	.fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history {
+		padding-bottom: var(--fa-branch-decision-mobile-clearance);
 	}
 
 	.fa-branch-decision-drawer-grid {

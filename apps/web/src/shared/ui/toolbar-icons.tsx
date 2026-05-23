@@ -48,6 +48,25 @@ export function BranchPlusIcon(props: ToolbarIconProps) {
 	);
 }
 
+export function NewConversationIcon(props: ToolbarIconProps) {
+	return (
+		<ToolbarIcon {...props}>
+			<path d="M12 5v14" />
+			<path d="M5 12h14" />
+		</ToolbarIcon>
+	);
+}
+
+export function ConversationActionsIcon(props: ToolbarIconProps) {
+	return (
+		<ToolbarIcon {...props}>
+			<circle cx="6.6" cy="12" r="1.25" fill="currentColor" stroke="none" />
+			<circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+			<circle cx="17.4" cy="12" r="1.25" fill="currentColor" stroke="none" />
+		</ToolbarIcon>
+	);
+}
+
 export function ConclusionDraftIcon(props: ToolbarIconProps) {
 	return (
 		<ToolbarIcon {...props}>
@@ -194,6 +213,16 @@ export function ArchiveRestoreIcon(props: ToolbarIconProps) {
 			<path d="M6 10v8.5A1.5 1.5 0 0 0 7.5 20h9a1.5 1.5 0 0 0 1.5-1.5V10" />
 			<path d="M12 17v-5" />
 			<path d="m9.8 14.2 2.2-2.2 2.2 2.2" />
+		</ToolbarIcon>
+	);
+}
+
+export function RenameConversationIcon(props: ToolbarIconProps) {
+	return (
+		<ToolbarIcon {...props}>
+			<path d="M5 19h14" />
+			<path d="M7.2 15.8 15.9 7.1a1.6 1.6 0 0 1 2.3 2.3l-8.7 8.7-3.2.9.9-3.2Z" />
+			<path d="m14.6 8.4 2.3 2.3" />
 		</ToolbarIcon>
 	);
 }

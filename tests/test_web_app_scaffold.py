@@ -123,7 +123,9 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "function resolveShellMode" in app_shell_text
     assert "function SidebarToggleIcon" in app_shell_text
     assert 'new URLSearchParams(window.location.search).get("lang")' in app_shell_text
-    assert "stored === null && window.innerWidth <= 900" in app_shell_text
+    assert 'const MOBILE_SHELL_QUERY = "(max-width: 900px)"' in app_shell_text
+    assert "window.matchMedia(MOBILE_SHELL_QUERY).matches" in app_shell_text
+    assert 'setSidebarCollapsed(isMobileShellViewport() || stored === "1")' in app_shell_text
     assert 'state.location.pathname.includes("/agent-team")' not in app_shell_text
     assert 'state.location.pathname.includes("/admin/")' not in app_shell_text
     assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
@@ -465,7 +467,9 @@ def test_conversation_rename_uses_inline_form_not_browser_prompt():
     assert "const conversation = await createConversation();" in conversation_toolbar_text
     assert "window.prompt" not in conversation_toolbar_text
     assert "window.prompt" not in branch_tree_text
-    assert "onDoubleClick={handleConversationDoubleClick}" in conversation_toolbar_text
+    assert "fa-conversation-rename-button" in conversation_toolbar_text
+    assert "RenameConversationIcon" in conversation_toolbar_text
+    assert "onClick={onRenameActiveConversation}" in conversation_toolbar_text
     assert 'className="fa-inline-rename-form is-conversation"' in conversation_toolbar_text
     assert 'className="fa-inline-rename-form is-branch-title"' in branch_tree_text
     assert "onDoubleClick={() => onStartRename(detailNode)}" in branch_tree_text

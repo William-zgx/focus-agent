@@ -1987,7 +1987,8 @@ test("branch decision summary stays compact while hover details keep diagnostics
   assert.equal(compactCss.includes('.fa-branch-decision-summary-trigger[data-handoff="true"]'), true);
   assert.equal(compactCss.includes("overflow: hidden;"), true);
   assert.equal(compactCss.includes(".fa-branch-decision-summary-details {"), true);
-  assert.equal(compactCss.includes(".fa-branch-decision-summary-popover.is-open"), false);
+  assert.equal(compactCss.includes(".fa-branch-decision-summary-popover.is-open"), true);
+  assert.equal(compactCss.includes("@media (hover: hover)"), true);
   assert.equal(
     compactCss.includes(".fa-branch-decision-summary-trigger:focus-visible"),
     true,
@@ -2034,8 +2035,17 @@ test("chat header keeps conversation tools left and compacts branch actions by a
     path.join(repoRoot, "apps/web/src/features/thread/use-thread-header-compact.ts"),
     "utf8",
   );
+  const overridesCss = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/styles/modules/overrides.css"),
+    "utf8",
+  );
+  const conversationToolbarSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/conversations/conversation-toolbar-view.tsx"),
+    "utf8",
+  );
   const compactHeader = compactSource(`${headerCss}\n${compactHeaderCss}`);
   const compactHook = compactSource(compactHookSource);
+  const compactOverrides = compactSource(overridesCss);
 
   assert.equal(
     compactHeader.includes(
@@ -2060,6 +2070,30 @@ test("chat header keeps conversation tools left and compacts branch actions by a
   );
   assert.equal(
     compactHook.includes("Math.min(actions.clientWidth, host.clientWidth)"),
+    true,
+  );
+  assert.equal(conversationToolbarSource.includes("fa-conversation-jump-icon"), true);
+  assert.equal(
+    conversationToolbarSource.includes("ICON_CONVERSATION_SWITCHER_QUERY"),
+    true,
+  );
+  assert.equal(
+    conversationToolbarSource.includes("fa-conversation-switcher-icon"),
+    true,
+  );
+  assert.equal(
+    conversationToolbarSource.includes(
+      "ChatBubbleIcon style={ICON_CONVERSATION_SWITCHER_STYLES.svg}",
+    ),
+    true,
+  );
+  assert.equal(compactOverrides.includes("@media (max-width: 520px)"), false);
+  assert.equal(
+    conversationToolbarSource.includes('gridTemplateColumns: "34px"'),
+    true,
+  );
+  assert.equal(
+    conversationToolbarSource.includes('textIndent: "100%"'),
     true,
   );
 });
