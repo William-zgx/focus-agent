@@ -801,7 +801,7 @@
 	}
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
 	.fa-chat-header-top {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
@@ -927,7 +927,8 @@
 		min-height: 34px;
 		border-radius: 11px;
 	}
-
+}
+@media (max-width: 1100px) {
 	.fa-composer-shell.fa-composer-input-shell,
 	.fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
 		grid-template-columns: minmax(0, 1fr) max-content;
@@ -1070,11 +1071,9 @@
 		height: 32px;
 		min-height: 32px;
 	}
-
 	.fa-chat-header-actions {
-		max-width: clamp(70px, 24vw, 96px);
+		max-width: 148px;
 	}
-
 	.fa-chat-header-actions [data-compact-button="true"],
 	.fa-chat-header-actions .fa-focus-branches-button {
 		width: 32px;

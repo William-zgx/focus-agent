@@ -1,5 +1,4 @@
 /* Conversation transcript and message surfaces. */
-
 .fa-chat-history {
 	padding: 18px 20px 0;
 	background:
@@ -48,6 +47,7 @@
 .fa-message-role {
 	width: fit-content;
 	padding: 0;
+	border: 0;
 	border-radius: 0;
 	background: transparent;
 	color: var(--fa-text-muted);
@@ -59,7 +59,7 @@
 
 .fa-message-role.is-user,
 .fa-message-meta.is-user {
-	color: var(--fa-accent-text-muted);
+	background: transparent;
 }
 
 .fa-message-role.is-system,
