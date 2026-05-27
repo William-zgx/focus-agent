@@ -471,15 +471,27 @@ def test_memory_retriever_extracts_matched_terms_for_chinese_query_without_space
 
 
 class RepositorySearchFake:
-    def __init__(self, hits_by_namespace):
+    def __init__(self, hits_by_namespace, records_by_namespace=None):
         self.hits_by_namespace = {
             tuple(namespace): list(hits) for namespace, hits in hits_by_namespace.items()
         }
+        self.records_by_namespace = {
+            tuple(namespace): list(records)
+            for namespace, records in (records_by_namespace or {}).items()
+        }
         self.calls = []
+        self.list_calls = []
 
     def search(self, *, namespace, query, limit):
         self.calls.append((tuple(namespace), query, limit))
         return self.hits_by_namespace.get(tuple(namespace), [])[:limit]
+
+    def list_records(self, query):
+        self.list_calls.append(query)
+        namespace = tuple(query.namespace or ())
+        return self.records_by_namespace.get(namespace, [])[
+            query.offset : query.offset + query.limit
+        ]
 
 
 class RepositoryVectorSearchFake(RepositorySearchFake):
@@ -594,6 +606,39 @@ def test_memory_retriever_uses_repository_hits_and_marks_postgres_source():
     assert repo.calls[0][0] == namespace
     assert bundle.hits[0].record.memory_id == "repo-mem-1"
     assert "owner" in bundle.hits[0].matched_terms
+
+
+def test_memory_retriever_falls_back_to_recent_user_preferences_for_natural_questions():
+    profile_namespace = ("user", "user-1", "profile")
+    marker = "QA_BROWSER_MEMORY_20260527_1805"
+    record = MemoryRecord(
+        memory_id="pref-marker",
+        kind=MemoryKind.USER_PREFERENCE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=profile_namespace,
+        content=f"Remember this long term preference {marker} I prefer concise Chinese QA summaries",
+        summary=f"Remember this long term preference {marker} I prefer concise Chinese QA summaries",
+        user_id="user-1",
+        importance=0.8,
+    )
+    repo = RepositorySearchFake(
+        {profile_namespace: []},
+        records_by_namespace={profile_namespace: [record]},
+    )
+    retriever = MemoryRetriever(store=StoreShouldNotBeUsed(), repository=repo)
+    context = RequestContext(user_id="user-1", root_thread_id="root-2")
+
+    bundle = retriever.retrieve_for_turn(
+        context=context,
+        state={},
+        query="What browser QA memory marker did I ask you to remember earlier?",
+        prompt_mode=PromptMode.EXPLORE,
+    )
+
+    assert [hit.record.memory_id for hit in bundle.hits] == ["pref-marker"]
+    assert bundle.hits[0].rationale == "recent_user_profile"
+    assert repo.list_calls[0].namespace == profile_namespace
 
 
 def test_memory_retriever_does_not_call_pgvector_without_embedding_provider():

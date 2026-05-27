@@ -209,7 +209,9 @@ def _looks_like_user_profile(text: str) -> bool:
 
 
 def _looks_like_user_preference(text: str) -> bool:
-    if _looks_like_task_request(text):
+    lowered = text.casefold()
+    has_explicit_memory_instruction = _has_explicit_memory_instruction(lowered)
+    if _looks_like_task_request(text) and not has_explicit_memory_instruction:
         return False
     return any(
         phrase in text
@@ -227,6 +229,21 @@ def _looks_like_user_preference(text: str) -> bool:
             "尽量简洁",
             "尽量详细",
         )
+    ) or any(
+        phrase in lowered
+        for phrase in (
+            "i prefer",
+            "my preference",
+            "please keep",
+            "keep answers",
+            "keep replies",
+            "from now on",
+            "always answer",
+            "always reply",
+            "call me",
+        )
+    ) or (
+        has_explicit_memory_instruction and _is_sticky_response_preference(text)
     )
 
 
@@ -267,11 +284,65 @@ def _looks_like_task_request(text: str) -> bool:
                 "列出",
                 "解释",
                 "我在做",
+                "summarize",
+                "explain",
+                "implement",
+                "fix ",
+                "review ",
+                "list ",
+                "what ",
+                "how ",
             )
         )
         or "?" in text
         or "？" in text
         or lowered.endswith("吗")
+    )
+
+
+def _is_sticky_response_preference(text: str) -> bool:
+    lowered = text.casefold()
+    return any(
+        phrase in text
+        for phrase in (
+            "用中文",
+            "用英文",
+            "中文回答",
+            "英文回答",
+            "回答语言",
+            "语气",
+            "表情",
+            "简洁",
+            "详细",
+            "格式",
+        )
+    ) or any(
+        phrase in lowered
+        for phrase in (
+            "language",
+            "tone",
+            "emoji",
+            "concise",
+            "brief",
+            "detailed",
+            "markdown",
+            "bullet",
+            "format",
+        )
+    )
+
+
+def _has_explicit_memory_instruction(lowered: str) -> bool:
+    return any(
+        phrase in lowered
+        for phrase in (
+            "remember this",
+            "remember that",
+            "please remember",
+            "save this preference",
+            "store this preference",
+            "long term preference",
+        )
     )
 
 

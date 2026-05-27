@@ -55,6 +55,39 @@ def test_extracts_only_standalone_user_preferences():
     assert MemoryKind.USER_PREFERENCE not in _kinds(task_result)
 
 
+def test_extracts_explicit_english_user_preference():
+    extractor = MemoryExtractor()
+
+    result = extractor.extract_from_turn(
+        context=_context(),
+        state={
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "Remember this long term preference "
+                        "QA_BROWSER_MEMORY_20260527_1718 "
+                        "I prefer concise Chinese QA summaries"
+                    )
+                )
+            ]
+        },
+    )
+
+    assert _kinds(result) == [MemoryKind.USER_PREFERENCE]
+    assert result.records[0].content.endswith("I prefer concise Chinese QA summaries")
+
+
+def test_does_not_extract_one_off_english_concise_task_as_preference():
+    extractor = MemoryExtractor()
+
+    result = extractor.extract_from_turn(
+        context=_context(),
+        state={"messages": [HumanMessage(content="Please summarize this PR concisely.")]},
+    )
+
+    assert MemoryKind.USER_PREFERENCE not in _kinds(result)
+
+
 def test_does_not_promote_pinned_facts_into_user_memory():
     extractor = MemoryExtractor()
 

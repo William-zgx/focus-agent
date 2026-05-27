@@ -17,6 +17,7 @@ from .models import (
 )
 from .policy import MemoryPolicy
 from .scorer import score_memory_hit
+from ..repositories.memory_repository import MemoryListQuery
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +64,14 @@ class MemoryRetriever:
         vector_hits: list[MemorySearchHit] = []
         vector_statuses: list[str] = []
         for namespace in namespaces:
-            hits.extend(
-                self._search_namespace(namespace, effective_query, limit=self.default_limit)
+            namespace_hits = self._search_namespace(
+                namespace, effective_query, limit=self.default_limit
             )
+            if not namespace_hits and _is_user_profile_namespace(namespace):
+                namespace_hits = self._recent_user_profile_hits(
+                    namespace, effective_query, limit=self.default_limit
+                )
+            hits.extend(namespace_hits)
             if self._should_search_vectors():
                 namespace_vector_hits, namespace_vector_status = self._search_vector_namespace(
                     namespace,
@@ -177,6 +183,32 @@ class MemoryRetriever:
             )
         return hits
 
+    def _recent_user_profile_hits(
+        self, namespace: tuple[str, ...], query: str, limit: int
+    ) -> list[MemorySearchHit]:
+        if self.repository is None:
+            return []
+        list_records = getattr(self.repository, "list_records", None)
+        if not callable(list_records):
+            return []
+        records = list_records(
+            MemoryListQuery(namespace=namespace, status="active", limit=limit)
+        )
+        hits: list[MemorySearchHit] = []
+        for record in records:
+            if record.kind.value not in {"user_preference", "user_profile"}:
+                continue
+            hits.append(
+                MemorySearchHit(
+                    record=record,
+                    score=0.0,
+                    matched_terms=_matched_terms(query, record),
+                    namespace=record.namespace or namespace,
+                    rationale="recent_user_profile",
+                )
+            )
+        return hits
+
     def _should_search_vectors(self) -> bool:
         if self.repository is None:
             return False
@@ -269,6 +301,10 @@ def _repository_vector_search(repository):
         if callable(search_vectors):
             return search_vectors
     return None
+
+
+def _is_user_profile_namespace(namespace: tuple[str, ...]) -> bool:
+    return len(namespace) == 3 and namespace[0] == "user" and namespace[2] == "profile"
 
 
 def _vector_search_accepts_query(search_vectors) -> bool:
