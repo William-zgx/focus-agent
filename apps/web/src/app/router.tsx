@@ -9,13 +9,12 @@ import {
 	useSearch,
 	useRouterState,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { Suspense, type ReactNode, lazy, useEffect, useMemo } from "react";
 
 import { ShellUiProvider, useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
-import { AgentTeamWorkbenchPage } from "@/pages/agent-team/team-workbench-page";
 import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
 import { AdminConfigPage } from "@/pages/admin/admin-config-page";
 import { AdminUserDetailPage } from "@/pages/admin/admin-user-detail-page";
@@ -25,11 +24,11 @@ import { AccountSecurityPage } from "@/pages/account/security-page";
 import { AccountSessionsPage } from "@/pages/account/sessions-page";
 import { LoginPage } from "@/pages/auth/login-page";
 import { MemoryConsolePage } from "@/pages/memory/memory-console-page";
-import { ProductivityPage } from "@/pages/productivity/productivity-page";
 import { RegisterPage } from "@/pages/auth/register-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
 import { normalizeAuthReturnTo } from "@/pages/auth/return-to";
+import { appEnv } from "@/shared/config/env";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { EmptyState, Surface, Toast } from "@/shared/ui/primitives";
 
@@ -211,6 +210,20 @@ function protect(component: ReactNode) {
 	};
 }
 
+function lazyRoute(component: ReactNode) {
+	return (
+		<Suspense
+			fallback={
+				<div className="fa-route-state">
+					<RouteStateCard>Loading...</RouteStateCard>
+				</div>
+			}
+		>
+			{component}
+		</Suspense>
+	);
+}
+
 function AuthIndexRedirect() {
 	const navigate = useNavigate();
 	const search = useSearch({ strict: false });
@@ -287,30 +300,6 @@ const agentMemoryRoute = createRoute({
 	component: protect(<MemoryConsolePage />),
 });
 
-const agentTeamRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/agent-team",
-	component: protect(<AgentTeamWorkbenchPage />),
-});
-
-const agentTeamSessionRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/agent-team/$sessionId",
-	component: protect(<AgentTeamWorkbenchPage />),
-});
-
-const productivityNotesRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/productivity/notes",
-	component: protect(<ProductivityPage mode="notes" />),
-});
-
-const productivityTasksRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/productivity/tasks",
-	component: protect(<ProductivityPage mode="tasks" />),
-});
-
 const adminUsersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/admin/users",
@@ -371,19 +360,71 @@ const accountSessionsRoute = createRoute({
 	component: protect(<AccountSessionsPage />),
 });
 
+const observabilityRoutes = appEnv.features.observability
+	? [trajectoryRoute, observabilityOverviewRoute]
+	: [];
+
+const agentGovernanceRoutes = appEnv.features.agentGovernance
+	? [agentRoleConsoleRoute, agentGovernanceConsoleRoute]
+	: [];
+
+const agentMemoryRoutes = appEnv.features.agentMemory ? [agentMemoryRoute] : [];
+
+const agentTeamRoutes =
+	import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "false" ||
+	!appEnv.features.agentTeam
+		? []
+		: (() => {
+				const LazyAgentTeamWorkbenchPage = lazy(() =>
+					import("@/pages/agent-team/team-workbench-page").then((module) => ({
+						default: module.AgentTeamWorkbenchPage,
+					})),
+				);
+				const agentTeamRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/agent-team",
+					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+				});
+				const agentTeamSessionRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/agent-team/$sessionId",
+					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+				});
+				return [agentTeamRoute, agentTeamSessionRoute];
+			})();
+
+const productivityRoutes =
+	import.meta.env.VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY === "false" ||
+	!appEnv.features.productivity
+		? []
+		: (() => {
+				const LazyProductivityPage = lazy(() =>
+					import("@/pages/productivity/productivity-page").then((module) => ({
+						default: module.ProductivityPage,
+					})),
+				);
+				const productivityNotesRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/productivity/notes",
+					component: protect(lazyRoute(<LazyProductivityPage mode="notes" />)),
+				});
+				const productivityTasksRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/productivity/tasks",
+					component: protect(lazyRoute(<LazyProductivityPage mode="tasks" />)),
+				});
+				return [productivityNotesRoute, productivityTasksRoute];
+			})();
+
 const routeTree = rootRoute.addChildren([
 	indexRoute,
 	threadRoute,
 	reviewRoute,
-	trajectoryRoute,
-	observabilityOverviewRoute,
-	agentRoleConsoleRoute,
-	agentGovernanceConsoleRoute,
-	agentMemoryRoute,
-	agentTeamRoute,
-	agentTeamSessionRoute,
-	productivityNotesRoute,
-	productivityTasksRoute,
+	...observabilityRoutes,
+	...agentGovernanceRoutes,
+	...agentMemoryRoutes,
+	...agentTeamRoutes,
+	...productivityRoutes,
 	adminUsersRoute,
 	adminUserDetailRoute,
 	adminAuditEventsRoute,
@@ -398,7 +439,7 @@ const routeTree = rootRoute.addChildren([
 
 const router = createRouter({
 	routeTree,
-	basepath: "/app",
+	basepath: appEnv.routerBasePath,
 	context: {
 		isAuthenticated: false,
 	},
@@ -416,9 +457,10 @@ export function AppRouter() {
 	const isChineseBrowser = navigator?.language.toLowerCase().startsWith("zh");
 	const pathname =
 		typeof window !== "undefined" ? window.location.pathname : "";
-	const appPath = pathname.startsWith("/app")
-		? pathname.slice("/app".length) || "/"
-		: pathname;
+	const appPath =
+		appEnv.routerBasePath !== "/" && pathname.startsWith(appEnv.routerBasePath)
+			? pathname.slice(appEnv.routerBasePath.length) || "/"
+			: pathname;
 	const isAuthPath = appPath === "/auth" || appPath.startsWith("/auth/");
 	const fallbackShellUiContext = useMemo(
 		() => ({

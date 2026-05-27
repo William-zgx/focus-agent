@@ -1,5 +1,6 @@
 import { type CSSProperties, useId } from "react";
 
+import { appEnv } from "@/shared/config/env";
 import { FocusAgentBrand } from "@/shared/ui/focus-agent-brand";
 
 function TaskCard({
@@ -71,16 +72,25 @@ export function LoginIntro() {
 		"--fa-login-orange-chip": `url(#${orangeChipId})`,
 		"--fa-login-teal-chip": `url(#${tealChipId})`,
 	} as CSSProperties;
+	const hasWorkspace =
+		appEnv.features.agentTeam ||
+		appEnv.features.agentGovernance ||
+		appEnv.features.agentMemory ||
+		appEnv.features.observability;
+	const introTitle = hasWorkspace
+		? "分支优先的 Agent 工作台"
+		: "对话与管理优先的 Focus Agent";
+	const introDescription = hasWorkspace
+		? "让长任务在对话、任务分工和证据复盘之间保持清晰推进。"
+		: "在手机端继续长上下文对话、分支探索与系统管理。";
 
 	return (
 		<section className="fa-auth-login-intro">
 			<div className="fa-auth-login-brand">
 				<FocusAgentBrand />
 			</div>
-			<h1>分支优先的 Agent 工作台</h1>
-			<p className="fa-auth-description">
-				让长任务在对话、任务分工和证据复盘之间保持清晰推进。
-			</p>
+			<h1>{introTitle}</h1>
+			<p className="fa-auth-description">{introDescription}</p>
 			<div className="fa-auth-login-visual" aria-hidden="true">
 				<svg
 					className="fa-auth-login-illustration"

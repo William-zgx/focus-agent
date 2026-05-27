@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
+import { ApiBaseUrlPanel } from "./api-base-url-panel";
 import {
 	appAuthPath,
 	appReturnToPath,
@@ -11,7 +12,16 @@ import {
 
 export function RegisterPage() {
 	const search = useSearch({ strict: false });
-	const { authError, principal, ready, registerWithPassword } = useFocusAgent();
+	const {
+		authError,
+		apiBaseUrl,
+		apiBaseUrlReady,
+		apiBaseUrlRequired,
+		principal,
+		ready,
+		registerWithPassword,
+		setApiBaseUrl,
+	} = useFocusAgent();
 	const returnTo = useMemo(
 		() => normalizeAuthReturnTo((search as { return_to?: unknown }).return_to),
 		[search],
@@ -25,6 +35,7 @@ export function RegisterPage() {
 	const [submitting, setSubmitting] = useState(false);
 	const canSubmit = Boolean(
 		ready &&
+			apiBaseUrlReady &&
 			username.trim() &&
 			password &&
 			password === confirmPassword &&
@@ -39,7 +50,13 @@ export function RegisterPage() {
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setLocalError(null);
-		if (!ready || submitting || !username.trim() || !password) {
+		if (
+			!ready ||
+			!apiBaseUrlReady ||
+			submitting ||
+			!username.trim() ||
+			!password
+		) {
 			return;
 		}
 		if (password !== confirmPassword) {
@@ -111,6 +128,14 @@ export function RegisterPage() {
 					</div>
 				) : null}
 
+				{apiBaseUrlRequired ? (
+					<ApiBaseUrlPanel
+						apiBaseUrl={apiBaseUrl}
+						apiBaseUrlRequired={apiBaseUrlRequired}
+						onSave={setApiBaseUrl}
+					/>
+				) : null}
+
 				<form className="fa-auth-form" onSubmit={handleSubmit}>
 					<label>
 						用户名
@@ -153,7 +178,11 @@ export function RegisterPage() {
 						disabled={!canSubmit}
 						type="submit"
 					>
-						{!ready ? "准备中..." : submitting ? "创建中..." : "创建账号"}
+						{!ready || !apiBaseUrlReady
+							? "准备中..."
+							: submitting
+								? "创建中..."
+								: "创建账号"}
 					</button>
 				</form>
 

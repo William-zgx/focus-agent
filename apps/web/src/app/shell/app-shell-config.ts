@@ -3,6 +3,7 @@ import type {
 	LanguagePreference,
 	ThemePreference,
 } from "@/app/shell/shell-ui-context";
+import { appEnv } from "@/shared/config/env";
 
 export const SIDEBAR_COLLAPSED_KEY = "fa:sidebar-collapsed";
 export const SIDEBAR_WIDTH_KEY = "fa:sidebar-width";
@@ -55,6 +56,7 @@ export type AgentTeamNavTarget = {
 export type ShellMode = "admin" | "agent-workbench" | "chat";
 
 export function isProductivityPath(pathname: string) {
+	if (!appEnv.features.productivity) return false;
 	return (
 		pathname === "/productivity/notes" ||
 		pathname === "/productivity/tasks" ||
@@ -63,16 +65,27 @@ export function isProductivityPath(pathname: string) {
 }
 
 export function isAgentWorkbenchPath(pathname: string) {
-	return (
-		pathname === "/agent-team" ||
-		pathname.startsWith("/agent-team/") ||
-		pathname === "/observability/overview" ||
-		pathname === "/observability/trajectory" ||
-		pathname === "/agent/governance" ||
-		pathname === "/agent/memory" ||
-		pathname === "/agent/roles" ||
-		isProductivityPath(pathname)
-	);
+	if (isProductivityPath(pathname)) return true;
+	if (
+		appEnv.features.agentTeam &&
+		(pathname === "/agent-team" || pathname.startsWith("/agent-team/"))
+	) {
+		return true;
+	}
+	if (
+		appEnv.features.observability &&
+		(pathname === "/observability/overview" ||
+			pathname === "/observability/trajectory")
+	) {
+		return true;
+	}
+	if (
+		appEnv.features.agentGovernance &&
+		(pathname === "/agent/governance" || pathname === "/agent/roles")
+	) {
+		return true;
+	}
+	return appEnv.features.agentMemory && pathname === "/agent/memory";
 }
 
 export function isAdminPath(pathname: string) {

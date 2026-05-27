@@ -1,5 +1,17 @@
+import { appEnv } from "@/shared/config/env";
+
 const AUTH_ROUTE_PATTERN = /^\/auth(?:$|[/?#])/;
 const APP_ROUTE_PATTERN = /^\/app(?:$|[/?#])/;
+
+function appBasePrefix() {
+	return appEnv.routerBasePath === "/" ? "" : appEnv.routerBasePath;
+}
+
+function joinAppPath(path: string) {
+	const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+	const joinedPath = `${appBasePrefix()}${normalizedPath}`;
+	return joinedPath || "/";
+}
 
 export function normalizeAuthReturnTo(value: unknown): string {
 	if (
@@ -20,7 +32,7 @@ export function normalizeAuthReturnTo(value: unknown): string {
 
 export function appReturnToPath(returnTo: string): string {
 	const normalizedReturnTo = normalizeAuthReturnTo(returnTo);
-	return `/app${normalizedReturnTo.startsWith("/") ? normalizedReturnTo : `/${normalizedReturnTo}`}`;
+	return joinAppPath(normalizedReturnTo);
 }
 
 export function appAuthPath(
@@ -31,5 +43,5 @@ export function appAuthPath(
 	const query = new URLSearchParams({
 		return_to: normalizedReturnTo,
 	}).toString();
-	return `/app/auth${path}${query ? `?${query}` : ""}`;
+	return `${joinAppPath(`/auth${path}`)}${query ? `?${query}` : ""}`;
 }

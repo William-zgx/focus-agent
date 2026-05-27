@@ -4,6 +4,7 @@ import {
 	isProductivityPath,
 	resolveShellMode,
 } from "@/app/shell/app-shell-config";
+import { appEnv } from "@/shared/config/env";
 
 export function useShellRouteState() {
 	const routeState = useRouterState({
@@ -34,8 +35,9 @@ export function useShellRouteState() {
 	const isChatRoute =
 		routeState.pathname === "/" || routeState.pathname.startsWith("/c/");
 	const isAgentTeamRoute =
-		routeState.pathname === "/agent-team" ||
-		routeState.pathname.startsWith("/agent-team/");
+		appEnv.features.agentTeam &&
+		(routeState.pathname === "/agent-team" ||
+			routeState.pathname.startsWith("/agent-team/"));
 	const isObservabilityRoute =
 		routeState.pathname === "/observability/overview" ||
 		routeState.pathname === "/observability/trajectory";

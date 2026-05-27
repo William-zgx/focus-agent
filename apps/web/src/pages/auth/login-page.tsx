@@ -5,6 +5,7 @@ import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 import {
 	AccountPortal,
+	ApiBaseUrlPanel,
 	LoginForm,
 	LoginIntro,
 	LoginPageShell,
@@ -19,7 +20,11 @@ export function LoginPage() {
 	const {
 		authError,
 		authHint,
+		apiBaseUrl,
+		apiBaseUrlReady,
+		apiBaseUrlRequired,
 		isAdmin,
+		setApiBaseUrl,
 		authenticateWithDemoUser,
 		authenticateWithPassword,
 		authenticateWithToken,
@@ -52,7 +57,15 @@ export function LoginPage() {
 
 	async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		if (!ready || !username.trim() || !password || submitting) return;
+		if (
+			!ready ||
+			!apiBaseUrlReady ||
+			!username.trim() ||
+			!password ||
+			submitting
+		) {
+			return;
+		}
 		setSubmitting("password");
 		try {
 			await finish(
@@ -65,7 +78,7 @@ export function LoginPage() {
 
 	async function handleTokenSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		if (!ready || !token.trim() || submitting) return;
+		if (!ready || !apiBaseUrlReady || !token.trim() || submitting) return;
 		setSubmitting("token");
 		try {
 			await finish(await authenticateWithToken(token));
@@ -75,7 +88,7 @@ export function LoginPage() {
 	}
 
 	async function handleDemoLogin() {
-		if (!ready || submitting) return;
+		if (!ready || !apiBaseUrlReady || submitting) return;
 		setSubmitting("demo");
 		try {
 			await finish(await authenticateWithDemoUser());
@@ -105,8 +118,15 @@ export function LoginPage() {
 	return (
 		<LoginPageShell motionVariant="login">
 			<div className="fa-auth-login-access">
+				{apiBaseUrlRequired ? (
+					<ApiBaseUrlPanel
+						apiBaseUrl={apiBaseUrl}
+						apiBaseUrlRequired={apiBaseUrlRequired}
+						onSave={setApiBaseUrl}
+					/>
+				) : null}
 				<LoginForm
-					authReady={ready}
+					authReady={ready && apiBaseUrlReady}
 					authError={authError ?? null}
 					effectiveReturnTo={effectiveReturnTo}
 					onDemoLogin={handleDemoLogin}
@@ -119,7 +139,7 @@ export function LoginPage() {
 					username={username}
 				/>
 				<TokenLoginPanel
-					authReady={ready}
+					authReady={ready && apiBaseUrlReady}
 					clearStoredToken={clearStoredToken}
 					onTokenSubmit={handleTokenSubmit}
 					setShowToken={setShowToken}

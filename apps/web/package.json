@@ -20,6 +20,7 @@
     "visual:baseline": "node ./scripts/visual-baseline.mjs",
     "smoke:observability": "node ./scripts/observability-smoke.mjs",
     "smoke:productivity": "node ./scripts/productivity-smoke.mjs",
+    "smoke:android-local-runtime": "node ./scripts/android-local-runtime-smoke.mjs",
     "smoke:agent-team-adoption": "node ./scripts/agent-team-adoption-smoke.mjs",
     "preview": "vite preview"
   },

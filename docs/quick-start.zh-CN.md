@@ -187,13 +187,38 @@ WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app
 
 Web App 默认把 `VITE_FOCUS_AGENT_API_BASE_URL` 解析为 `window.location.origin`。只有当 Vite 页面需要调用另一个 API origin 时才显式设置。
 
-## 8. 一键本地模式
+## 8. Android App
+
+Android App 是一层 Capacitor 原生壳，包住 React 构建产物。移动构建使用 `/` 作为应用内路由 base，并设置 Android web target：保留对话与系统管理功能，排除 Agent Team 和 Productivity 路由。
+
+该 target 需要：
+
+- Node.js 22+，用于 Capacitor 8
+- JDK 21，用于 Android Gradle 构建
+- Android Studio / Android SDK；本地运行还需要模拟器或已连接设备
+
+构建并同步原生项目：
+
+```bash
+pnpm android:web:build
+pnpm android:sync
+```
+
+构建 debug APK：
+
+```bash
+pnpm android:apk:debug
+```
+
+Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连接 Focus Agent HTTP 后端地址；对话、分支、账号与管理数据会保存在 App WebView 本地存储中。模型请求会直接发往管理栏配置中心里设置的 OpenAI-compatible 供应商，并使用保存在 App 本机数据里的 API Key。需要打开 Android Studio 时运行 `pnpm android:open`；需要同步并运行到设备/模拟器时运行 `pnpm android:run`。
+
+## 9. 一键本地模式
 
 - `make serve` / `make serve-dev`：启动前端 Vite dev server 和带热重载的后端 API
 - `make serve-prod`：先构建静态前端，再以非 reload 模式启动后端
 - `make dev`：只启动后端，并启用 `API_RELOAD=1`
 
-## 9. 本地鉴权
+## 10. 本地鉴权
 
 内置 `/app` 会把未登录用户引导到 `/app/auth/login`，并通过 `return_to` 保留原本要访问的受保护页面。本地开发最快的浏览器路径是：
 
@@ -229,7 +254,7 @@ Admin Console 本地检查入口：
 - 状态、角色、会话撤销和密码重置动作都需要填写 reason，并写入审计事件。
 - Bearer token scope 不能单独授予 admin 权限；必须有持久化用户角色支持。
 
-## 10. 浏览器 Smoke 测试
+## 11. 浏览器 Smoke 测试
 
 `make ui-smoke` 默认使用 `scripts/ui_smoke_test.py` 中配置的 app URL，通常对应 Vite dev server。当你想验证后端托管的静态 bundle，或本地调试时临时关闭鉴权，可以显式启动 API 并传入页面地址：
 
@@ -245,7 +270,7 @@ uv run python scripts/ui_smoke_test.py \
 
 如果使用 Vite dev server，请保留 `http://127.0.0.1:5173/app/` 末尾的斜杠；`http://127.0.0.1:5173/app` 在 dev server 下可能有不同处理。Smoke 脚本会用临时 Chrome profile，避免本地 localStorage、扩展和个人 profile 中的登录态影响结果。如果手动浏览器打开空白登录页而 smoke 通过，请先清理 `127.0.0.1` 站点数据或使用干净 profile，再判断是否是 UI 回归。
 
-## 11. 下一步文档
+## 12. 下一步文档
 
 - [Memory System v2](memory-system-v2.md)
 - [分支决策与推荐](branch-decisions.md)

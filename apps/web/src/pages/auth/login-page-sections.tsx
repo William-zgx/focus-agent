@@ -1,4 +1,5 @@
 export { AccountPortal } from "./account-portal";
+export { ApiBaseUrlPanel } from "./api-base-url-panel";
 export { LoginPageShell } from "./auth-motion-background";
 export { LoginForm } from "./login-form";
 export { LoginIntro } from "./login-intro";

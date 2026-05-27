@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
+import { appEnv } from "@/shared/config/env";
+
 import {
 	ACCOUNT_ACTIONS,
 	ADMIN_SHORTCUTS,
@@ -100,6 +102,24 @@ export function AccountPortal({
 	returnTo: string;
 }) {
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
+	const enabledModules = ["主对话"];
+	if (appEnv.features.agentTeam) {
+		enabledModules.push("Agent Team");
+	}
+	if (appEnv.features.agentGovernance) {
+		enabledModules.push("治理");
+	}
+	if (appEnv.features.observability) {
+		enabledModules.push("复盘诊断");
+	}
+	if (appEnv.features.agentMemory) {
+		enabledModules.push("记忆");
+	}
+	if (appEnv.features.productivity) {
+		enabledModules.push("效率清单");
+	}
+	enabledModules.push("授权的系统管理模块");
+	const portalDescription = `快速进入${enabledModules.join("、")}。`;
 
 	async function handleLogout() {
 		if (isLoggingOut) return;
@@ -116,10 +136,7 @@ export function AccountPortal({
 		<section className="fa-auth-login-intro">
 			<p className="fa-auth-login-chip">Focus Agent · 已登录</p>
 			<h1>继续你的 AI 工作台</h1>
-			<p className="fa-auth-description">
-				快速进入主对话、Agent
-				Team、治理、复盘诊断、效率清单与授权的系统管理模块。
-			</p>
+			<p className="fa-auth-description">{portalDescription}</p>
 			<div className="fa-auth-feature-list">
 				<strong>身份与权限已激活</strong>
 				<p>当前账号的角色权限会决定可访问的工作区和管理入口。</p>

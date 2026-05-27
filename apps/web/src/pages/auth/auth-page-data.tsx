@@ -6,8 +6,18 @@ import {
 	ProductivityIcon,
 	TokenUsageIcon,
 } from "@/shared/ui/toolbar-icons";
+import { appEnv } from "@/shared/config/env";
 
-export const LOGIN_DESTINATIONS = [
+function isEnabledDestination(path: string) {
+	if (path.startsWith("/agent-team")) return appEnv.features.agentTeam;
+	if (path.startsWith("/agent/memory")) return appEnv.features.agentMemory;
+	if (path.startsWith("/agent/")) return appEnv.features.agentGovernance;
+	if (path.startsWith("/observability/")) return appEnv.features.observability;
+	if (path.startsWith("/productivity/")) return appEnv.features.productivity;
+	return true;
+}
+
+const LOGIN_DESTINATIONS_BASE = [
 	{
 		description: "继续长上下文对话、分支探索与结论回填。",
 		kicker: "Chat",
@@ -52,7 +62,11 @@ export const LOGIN_DESTINATIONS = [
 	},
 ] as const;
 
-export const LOGIN_CAPABILITIES = [
+export const LOGIN_DESTINATIONS = LOGIN_DESTINATIONS_BASE.filter((item) =>
+	isEnabledDestination(item.to),
+);
+
+const LOGIN_CAPABILITIES_BASE = [
 	{
 		label: "会话",
 		value: "上下文 / 分支 / 结论",
@@ -71,6 +85,13 @@ export const LOGIN_CAPABILITIES = [
 	},
 ] as const;
 
+export const LOGIN_CAPABILITIES = LOGIN_CAPABILITIES_BASE.filter((item) => {
+	if (item.label === "协作") return appEnv.features.agentTeam;
+	if (item.label === "诊断") return appEnv.features.observability;
+	if (item.label === "治理") return appEnv.features.agentGovernance;
+	return true;
+});
+
 export const ACCOUNT_ACTIONS = [
 	{
 		description: "管理头像、显示名等资料",
@@ -85,7 +106,7 @@ export const ACCOUNT_ACTIONS = [
 	},
 ] as const;
 
-export const QUICK_START_ACTIONS = [
+const QUICK_START_ACTIONS_BASE = [
 	{ description: "继续长上下文、分支探索与结论回填", label: "主对话", to: "/" },
 	{
 		description: "拆分复杂任务，跟踪并发执行与合并交接",
@@ -108,6 +129,10 @@ export const QUICK_START_ACTIONS = [
 		to: "/productivity/tasks",
 	},
 ] as const;
+
+export const QUICK_START_ACTIONS = QUICK_START_ACTIONS_BASE.filter((item) =>
+	isEnabledDestination(item.to),
+);
 
 export const ADMIN_SHORTCUTS = [
 	{

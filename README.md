@@ -60,6 +60,7 @@ Requirements:
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - Node.js 20+ if you want to build the web frontend and SDK
+- Node.js 22+, JDK 21, and Android Studio / Android SDK if you want to build the Android app
 
 ```bash
 uv venv
@@ -97,6 +98,18 @@ Then open:
 - `http://127.0.0.1:8000/metrics`
 
 For the full local startup flow, managed repo-local PostgreSQL behavior, Vite dev mode, and local auth examples, see [docs/quick-start.md](docs/quick-start.md). The built-in auth page supports username/password, Demo login, and Bearer Token login; account switching is logout followed by another login method.
+
+## Android App
+
+The Android target packages the React app with Capacitor. It keeps Chat, Admin, Focus Score branch routing, recommended Branch Actions, merge review, local governance/memory/observability routes, and Android-local web search tool calls, uses `/` as the in-app route base, and disables only the Agent Team / Productivity workbenches for the mobile build. Android uses the SDK local transport for an in-app Focus Agent runtime instead of connecting to a Focus Agent HTTP backend; model calls go directly to the user-configured OpenAI-compatible provider API key stored in native secure storage. The Web target still uses the default `/v1` and `/v2` backend transport.
+
+```bash
+pnpm android:web:build
+pnpm android:sync
+pnpm android:apk:debug
+```
+
+Use `pnpm android:open` to inspect the native project in Android Studio, or `pnpm android:run` to sync and run on a connected device/emulator.
 
 ## Container Deployment
 

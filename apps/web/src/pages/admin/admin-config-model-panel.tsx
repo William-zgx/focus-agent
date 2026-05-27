@@ -27,6 +27,7 @@ export function ModelConfigPanel({
 	onReset,
 	onSubmit,
 	pending,
+	showLocalSecrets,
 	source,
 }: {
 	choiceOptions: string[];
@@ -42,6 +43,7 @@ export function ModelConfigPanel({
 	onReset: () => void;
 	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	pending: boolean;
+	showLocalSecrets: boolean;
 	source?: { exists: boolean; path: string; writable: boolean };
 }) {
 	return (
@@ -242,6 +244,32 @@ export function ModelConfigPanel({
 										}
 									/>
 								</AdminField>
+								{showLocalSecrets ? (
+									<AdminField
+										label={isChineseUi ? "本机 API Key" : "Local API key"}
+									>
+										<input
+											autoComplete="off"
+											disabled={disabled}
+											placeholder={
+												provider.apiKeyConfigured
+													? isChineseUi
+														? "留空则保留当前 Key"
+														: "Leave blank to keep current key"
+													: isChineseUi
+														? "保存在本机 App 数据中"
+														: "Stored in local app data"
+											}
+											type="password"
+											value={provider.apiKeyDefault}
+											onChange={(event) =>
+												onProviderChange(index, {
+													apiKeyDefault: event.target.value,
+												})
+											}
+										/>
+									</AdminField>
+								) : null}
 								<AdminField label="Base URL default">
 									<input
 										disabled={disabled}

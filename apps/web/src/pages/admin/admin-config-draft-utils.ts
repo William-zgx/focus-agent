@@ -22,6 +22,7 @@ export type ModelProviderDraft = {
 	baseUrlDefault: string;
 	baseUrlConfigured: boolean;
 	apiKeyEnv: string;
+	apiKeyDefault: string;
 	apiKeyConfigured: boolean;
 };
 
@@ -197,7 +198,7 @@ const TOOL_CONFIG_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 	},
 	web_search: {
 		label: "网页搜索",
-		description: "搜索实时网页，优先使用 Tavily，失败时使用 DuckDuckGo。",
+		description: "搜索实时网页，失败时自动使用可用的搜索兜底。",
 	},
 	write_text_artifact: {
 		label: "写入文本 Artifact",
@@ -520,6 +521,7 @@ function providerToDraft(
 		baseUrlDefault: textValue(provider.base_url_default),
 		baseUrlConfigured: provider.base_url_configured,
 		apiKeyEnv: textValue(provider.api_key_env),
+		apiKeyDefault: "",
 		apiKeyConfigured: provider.api_key_configured,
 	};
 }
@@ -618,6 +620,7 @@ export function emptyModelProviderDraft(): ModelProviderDraft {
 		baseUrlDefault: "",
 		baseUrlConfigured: false,
 		apiKeyEnv: "",
+		apiKeyDefault: "",
 		apiKeyConfigured: false,
 	};
 }

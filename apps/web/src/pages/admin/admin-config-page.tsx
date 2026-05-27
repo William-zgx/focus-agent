@@ -16,6 +16,7 @@ import {
 	useUpdateAdminPolicyConfig,
 	useUpdateAdminToolConfig,
 } from "@/features/admin-config/use-admin-config";
+import { appEnv } from "@/shared/config/env";
 
 import { AdminConsoleLayout, AdminErrorMessage } from "./admin-page-chrome";
 import {
@@ -206,7 +207,7 @@ export function AdminConfigPage() {
 								: "Provider ID is required.",
 						);
 					}
-					return {
+					const requestProvider: FocusAgentUpdateAdminModelProviderConfig = {
 						id,
 						label: nullableText(provider.label),
 						backend_provider: nullableText(provider.backendProvider),
@@ -217,6 +218,10 @@ export function AdminConfigPage() {
 						base_url_default: nullableText(provider.baseUrlDefault),
 						api_key_env: nullableText(provider.apiKeyEnv),
 					};
+					if (appEnv.useLocalRuntime && provider.apiKeyDefault.trim()) {
+						requestProvider.api_key_default = provider.apiKeyDefault.trim();
+					}
+					return requestProvider;
 				});
 			const models: FocusAgentUpdateAdminModelConfigEntry[] =
 				modelDraft.models.map((model) => {
@@ -420,6 +425,7 @@ export function AdminConfigPage() {
 						onReset={() => setModelDraft(buildModelDraft(config))}
 						onSubmit={(event) => void handleModelSubmit(event)}
 						pending={pendingSection === "models"}
+						showLocalSecrets={appEnv.useLocalRuntime}
 						source={config?.models.source}
 					/>
 				) : null}

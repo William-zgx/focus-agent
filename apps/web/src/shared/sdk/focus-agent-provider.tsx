@@ -17,7 +17,12 @@ import {
 	useState,
 } from "react";
 
-import { appEnv } from "@/shared/config/env";
+import {
+	appEnv,
+	normalizeApiBaseUrl,
+	persistApiBaseUrl,
+} from "@/shared/config/env";
+import { createLocalFocusAgentFetch } from "@/android-local-runtime/local-focus-agent-runtime";
 
 const TOKEN_STORAGE_KEY = "focus-agent-token";
 
@@ -26,8 +31,12 @@ interface FocusAgentContextValue {
 	principal: FocusAgentPrincipalResponse | null;
 	isAdmin: boolean;
 	ready: boolean;
+	apiBaseUrl: string;
+	apiBaseUrlReady: boolean;
+	apiBaseUrlRequired: boolean;
 	authError: string | null;
 	authHint: "demo_token_disabled" | "manual_token" | null;
+	setApiBaseUrl: (value: string) => boolean;
 	authenticateWithDemoUser: () => Promise<boolean>;
 	authenticateWithPassword: (
 		request: FocusAgentLoginRequest,
@@ -80,12 +89,19 @@ function authErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function FocusAgentProvider({ children }: PropsWithChildren) {
+	const [apiBaseUrl, setApiBaseUrlState] = useState(appEnv.apiBaseUrl);
+	const apiBaseUrlReady = !appEnv.apiBaseUrlRequired || Boolean(apiBaseUrl);
+	const localRuntimeFetch = useMemo(
+		() => (appEnv.useLocalRuntime ? createLocalFocusAgentFetch() : undefined),
+		[],
+	);
 	const client = useMemo(
 		() =>
 			new FocusAgentClient({
-				baseUrl: appEnv.apiBaseUrl,
+				baseUrl: apiBaseUrl || window.location.origin,
+				fetchImpl: localRuntimeFetch,
 			}),
-		[],
+		[apiBaseUrl, localRuntimeFetch],
 	);
 	const [principal, setPrincipal] =
 		useState<FocusAgentPrincipalResponse | null>(null);
@@ -134,6 +150,25 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 			return null;
 		}
 	}, []);
+
+	const setApiBaseUrl = useCallback(
+		(value: string): boolean => {
+			if (appEnv.useLocalRuntime) return true;
+			const normalizedValue = normalizeApiBaseUrl(value);
+			if (!normalizedValue) return false;
+			persistApiBaseUrl(normalizedValue);
+			if (normalizedValue === apiBaseUrl) return true;
+			authAttemptRef.current += 1;
+			persistToken(null);
+			setPrincipal(null);
+			setAuthError(null);
+			setAuthHint("manual_token");
+			setReady(false);
+			setApiBaseUrlState(normalizedValue);
+			return true;
+		},
+		[apiBaseUrl, persistToken],
+	);
 
 	const resolvePrincipalFromAuthResponse = useCallback(
 		async (
@@ -192,6 +227,17 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	useEffect(() => {
 		let cancelled = false;
 		const authAttemptId = ++authAttemptRef.current;
+
+		if (!apiBaseUrlReady) {
+			persistToken(null);
+			setPrincipal(null);
+			setAuthError(null);
+			setAuthHint("manual_token");
+			setReady(true);
+			return () => {
+				cancelled = true;
+			};
+		}
 
 		function shouldApplyBootstrapResult() {
 			return !cancelled && authAttemptRef.current === authAttemptId;
@@ -258,9 +304,19 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 		return () => {
 			cancelled = true;
 		};
-	}, [client, persistToken, readStoredToken, resolvePrincipalFromAuthResponse]);
+	}, [
+		apiBaseUrlReady,
+		client,
+		persistToken,
+		readStoredToken,
+		resolvePrincipalFromAuthResponse,
+	]);
 
 	async function authenticateWithToken(token: string): Promise<boolean> {
+		if (!apiBaseUrlReady) {
+			setAuthError("Set the Focus Agent server URL before signing in.");
+			return false;
+		}
 		const authAttemptId = ++authAttemptRef.current;
 		const nextToken = token.trim();
 		if (!nextToken) {
@@ -292,6 +348,10 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	async function authenticateWithPassword(
 		request: FocusAgentLoginRequest,
 	): Promise<boolean> {
+		if (!apiBaseUrlReady) {
+			setAuthError("Set the Focus Agent server URL before signing in.");
+			return false;
+		}
 		const authAttemptId = ++authAttemptRef.current;
 		try {
 			const response = await client.login(request);
@@ -311,6 +371,10 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	async function registerWithPassword(
 		request: FocusAgentRegisterRequest,
 	): Promise<boolean> {
+		if (!apiBaseUrlReady) {
+			setAuthError("Set the Focus Agent server URL before signing in.");
+			return false;
+		}
 		const authAttemptId = ++authAttemptRef.current;
 		try {
 			const response = await client.register(request);
@@ -328,6 +392,10 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	}
 
 	async function authenticateWithDemoUser(): Promise<boolean> {
+		if (!apiBaseUrlReady) {
+			setAuthError("Set the Focus Agent server URL before signing in.");
+			return false;
+		}
 		const authAttemptId = ++authAttemptRef.current;
 		try {
 			const token = await client.createDemoToken({
@@ -390,8 +458,12 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 				principal,
 				isAdmin,
 				ready,
+				apiBaseUrl,
+				apiBaseUrlReady,
+				apiBaseUrlRequired: appEnv.apiBaseUrlRequired,
 				authError,
 				authHint,
+				setApiBaseUrl,
 				authenticateWithDemoUser,
 				authenticateWithPassword,
 				authenticateWithToken,

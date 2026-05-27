@@ -60,6 +60,7 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - 如果要构建 Web 前端和 SDK，需要 Node.js 20+
+- 如果要构建 Android App，需要 Node.js 22+、JDK 21，以及 Android Studio / Android SDK
 
 ```bash
 uv venv
@@ -97,6 +98,18 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 - `http://127.0.0.1:8000/metrics`
 
 更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。内置登录页支持用户名密码、Demo 登录和 Bearer Token 登录；账号切换就是先退出再选择另一种登录方式。
+
+## Android App
+
+Android target 使用 Capacitor 打包 React App。移动端保留对话、系统管理、Focus Score 分支路由、系统推荐 Branch Action、merge review、本地治理/记忆/观测路由和 Android 本地网页搜索工具调用能力，应用内路由挂在 `/`，并在移动构建中只关闭 Agent Team / Productivity 工作台。Android 构建通过 SDK 本地 transport 使用 App 内 Focus Agent runtime，不连接 Focus Agent HTTP 后端；模型请求会直接发往用户在 App 内配置的 OpenAI-compatible 供应商 API Key，Key 通过原生安全存储保存。Web 构建仍默认连接 `/v1` 与 `/v2` 后端。
+
+```bash
+pnpm android:web:build
+pnpm android:sync
+pnpm android:apk:debug
+```
+
+需要在 Android Studio 中检查原生项目时运行 `pnpm android:open`；需要同步并安装到已连接设备或模拟器时运行 `pnpm android:run`。
 
 ## 容器化部署
 

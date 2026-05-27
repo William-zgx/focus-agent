@@ -458,8 +458,13 @@
 
 	.fa-auth-form input,
 	.fa-auth-form textarea,
+	.fa-auth-api-input-row input,
 	.fa-auth-button {
 		font-size: 0.86rem;
+	}
+
+	.fa-auth-api-input-row {
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.fa-auth-actions,

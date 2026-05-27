@@ -6,6 +6,7 @@ import {
 	ChatBubbleIcon,
 	ProductivityIcon,
 } from "@/shared/ui/toolbar-icons";
+import { appEnv } from "@/shared/config/env";
 import { tooltipProps } from "@/shared/ui/tooltip";
 
 type AppShellGlobalNavigationProps = {
@@ -57,17 +58,19 @@ export function AppShellGlobalNavigation({
 					<span>{chatNavLabel}</span>
 				</Link>
 			)}
-			<Link
-				aria-label={productivityNavLabel}
-				className={`fa-sidebar-nav-link ${isProductivityRoute ? "is-active" : ""}`.trim()}
-				{...tooltipProps(productivityNavLabel)}
-				to="/productivity/tasks"
-			>
-				<span className="fa-sidebar-nav-icon" aria-hidden="true">
-					<ProductivityIcon />
-				</span>
-				<span>{productivityNavLabel}</span>
-			</Link>
+			{appEnv.features.productivity ? (
+				<Link
+					aria-label={productivityNavLabel}
+					className={`fa-sidebar-nav-link ${isProductivityRoute ? "is-active" : ""}`.trim()}
+					{...tooltipProps(productivityNavLabel)}
+					to="/productivity/tasks"
+				>
+					<span className="fa-sidebar-nav-icon" aria-hidden="true">
+						<ProductivityIcon />
+					</span>
+					<span>{productivityNavLabel}</span>
+				</Link>
+			) : null}
 			<Link
 				aria-label={adminNavLabel}
 				className="fa-sidebar-nav-link"

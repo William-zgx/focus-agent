@@ -75,10 +75,11 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'to: "/auth/login"' in router_text
     assert "AuthGate" in router_text
     assert "AppShell" in router_text
-    assert 'basepath: "/app"' in router_text
+    assert "basepath: appEnv.routerBasePath" in router_text
 
     vite_text = (web_root / "vite.config.ts").read_text()
-    assert 'base: "/app/"' in vite_text
+    assert 'process.env.VITE_FOCUS_AGENT_APP_BASE || "/app/"' in vite_text
+    assert "base: appBase" in vite_text
     assert 'process.env.API_PORT || "8000"' in vite_text
     assert '"/v1": apiTarget' in vite_text
     assert '"/v2": apiTarget' in vite_text

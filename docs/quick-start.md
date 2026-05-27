@@ -220,13 +220,38 @@ In that mode:
 The Web app defaults `VITE_FOCUS_AGENT_API_BASE_URL` to `window.location.origin`.
 Set it only when the Vite page should call a different API origin.
 
-## 8. One-Command Local Modes
+## 9. Android App
+
+The Android app is a Capacitor shell around the React build. It uses `/` as the in-app route base and sets the Android web target so Chat and Admin remain available while Agent Team and Productivity routes are excluded from the mobile surface.
+
+Requirements for this target:
+
+- Node.js 22+ for Capacitor 8
+- JDK 21 for the Android Gradle build
+- Android Studio / Android SDK with an emulator or connected device when running locally
+
+Build and sync the native project:
+
+```bash
+pnpm android:web:build
+pnpm android:sync
+```
+
+Build a debug APK:
+
+```bash
+pnpm android:apk:debug
+```
+
+The Android target uses the in-app Focus Agent local runtime, so it does not require a Focus Agent HTTP backend URL. Chat, branch, account, and admin data are stored in the app WebView's local storage. Model requests go directly to the OpenAI-compatible provider configured in Admin -> Config Center, using the API key saved inside the app. Use `pnpm android:open` for Android Studio, or `pnpm android:run` to sync and run on a device/emulator.
+
+## 10. One-Command Local Modes
 
 - `make serve` / `make serve-dev`: frontend Vite dev server + backend API with reload
 - `make serve-prod`: build the static frontend bundle first, then start only the backend without reload
 - `make dev`: backend only with `API_RELOAD=1`
 
-## 9. Local Auth
+## 11. Local Auth
 
 The built-in app routes unauthenticated users to `/app/auth/login` and preserves the protected target in `return_to`. In local development, the fastest browser path is:
 
@@ -262,7 +287,7 @@ Admin Console local checks:
 - Admin status, role, session revoke, and password reset actions require a reason and write audit events.
 - Bearer token scopes alone do not grant admin access; the persisted user role must allow it.
 
-## 10. Browser Smoke Testing
+## 12. Browser Smoke Testing
 
 The default `make ui-smoke` target expects the app URL from `scripts/ui_smoke_test.py`, which is usually the Vite dev URL. When you want to test the backend-served static bundle or disable auth for local debugging, start the API explicitly and pass the app URL:
 
@@ -278,7 +303,7 @@ Use a real, tool-using prompt when changing streaming, transport validation, or 
 
 For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`; `http://127.0.0.1:5173/app` may be handled differently by the dev server. The smoke script launches Chrome with a temporary user data directory, which avoids stale localStorage, extensions, and personal-profile auth state. If a manual browser opens a blank login page while the smoke script passes, retry with a clean profile or clear site data for `127.0.0.1` before treating it as an app regression.
 
-## 11. Next Docs
+## 13. Next Docs
 
 - [Memory System v2](memory-system-v2.md)
 - [Branch Decisions](branch-decisions.md)

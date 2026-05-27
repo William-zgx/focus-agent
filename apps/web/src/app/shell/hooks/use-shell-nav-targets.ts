@@ -5,6 +5,7 @@ import type {
 	ChatNavTarget,
 } from "@/app/shell/app-shell-config";
 import type { ShellRouteState } from "@/app/shell/hooks/use-shell-route-state";
+import { appEnv } from "@/shared/config/env";
 
 type AgentWorkbenchModule =
 	| "diagnostics"
@@ -78,7 +79,9 @@ export function useShellNavTargets({
 					? "diagnostics"
 					: isProductivityRoute
 						? "productivity"
-						: "team";
+						: appEnv.features.agentTeam
+							? "team"
+							: "diagnostics";
 	const chatNavTarget =
 		conversationId && threadId ? { conversationId, threadId } : lastChatTarget;
 	const agentTeamRootThreadId =

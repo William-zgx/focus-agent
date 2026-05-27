@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
 
+import { appEnv } from "@/shared/config/env";
+
 type AppShellWorkspaceSidebarProps = {
 	activeAgentWorkbenchModule:
 		| "diagnostics"
@@ -49,59 +51,69 @@ export function AppShellWorkspaceSidebar({
 			>
 				{isAgentWorkbenchShell ? (
 					<>
-						<Link
-							className={`fa-workspace-sidebar-item ${
-								activeAgentWorkbenchModule === "team" ? "is-active" : ""
-							}`.trim()}
-							search={
-								agentTeamRootThreadId
-									? { root_thread_id: agentTeamRootThreadId }
-									: undefined
-							}
-							to="/agent-team"
-						>
-							<span>{isChineseUi ? "协作" : "Team"}</span>
-							<strong>
-								{isChineseUi ? "并发任务与会话" : "Tasks and sessions"}
-							</strong>
-						</Link>
-						<Link
-							className={`fa-workspace-sidebar-item ${
-								activeAgentWorkbenchModule === "diagnostics" ? "is-active" : ""
-							}`.trim()}
-							to="/observability/overview"
-						>
-							<span>{isChineseUi ? "诊断" : "Diagnostics"}</span>
-							<strong>
-								{isChineseUi ? "Trajectory 健康与复盘" : "Health and review"}
-							</strong>
-						</Link>
-						<Link
-							className={`fa-workspace-sidebar-item ${
-								activeAgentWorkbenchModule === "governance" ? "is-active" : ""
-							}`.trim()}
-							to="/agent/governance"
-						>
-							<span>{isChineseUi ? "治理" : "Governance"}</span>
-							<strong>
-								{isChineseUi
-									? "记忆 / 工具 / 路由"
-									: "Memory / tools / routing"}
-							</strong>
-						</Link>
-						<Link
-							className={`fa-workspace-sidebar-item ${
-								activeAgentWorkbenchModule === "memory" ? "is-active" : ""
-							}`.trim()}
-							to="/agent/memory"
-						>
-							<span>{isChineseUi ? "记忆" : "Memory"}</span>
-							<strong>
-								{isChineseUi
-									? "记录、候选与审计"
-									: "Records, candidates, audit"}
-							</strong>
-						</Link>
+						{appEnv.features.agentTeam ? (
+							<Link
+								className={`fa-workspace-sidebar-item ${
+									activeAgentWorkbenchModule === "team" ? "is-active" : ""
+								}`.trim()}
+								search={
+									agentTeamRootThreadId
+										? { root_thread_id: agentTeamRootThreadId }
+										: undefined
+								}
+								to="/agent-team"
+							>
+								<span>{isChineseUi ? "协作" : "Team"}</span>
+								<strong>
+									{isChineseUi ? "并发任务与会话" : "Tasks and sessions"}
+								</strong>
+							</Link>
+						) : null}
+						{appEnv.features.observability ? (
+							<Link
+								className={`fa-workspace-sidebar-item ${
+									activeAgentWorkbenchModule === "diagnostics"
+										? "is-active"
+										: ""
+								}`.trim()}
+								to="/observability/overview"
+							>
+								<span>{isChineseUi ? "诊断" : "Diagnostics"}</span>
+								<strong>
+									{isChineseUi ? "Trajectory 健康与复盘" : "Health and review"}
+								</strong>
+							</Link>
+						) : null}
+						{appEnv.features.agentGovernance ? (
+							<Link
+								className={`fa-workspace-sidebar-item ${
+									activeAgentWorkbenchModule === "governance" ? "is-active" : ""
+								}`.trim()}
+								to="/agent/governance"
+							>
+								<span>{isChineseUi ? "治理" : "Governance"}</span>
+								<strong>
+									{isChineseUi
+										? "记忆 / 工具 / 路由"
+										: "Memory / tools / routing"}
+								</strong>
+							</Link>
+						) : null}
+						{appEnv.features.agentMemory ? (
+							<Link
+								className={`fa-workspace-sidebar-item ${
+									activeAgentWorkbenchModule === "memory" ? "is-active" : ""
+								}`.trim()}
+								to="/agent/memory"
+							>
+								<span>{isChineseUi ? "记忆" : "Memory"}</span>
+								<strong>
+									{isChineseUi
+										? "记录、候选与审计"
+										: "Records, candidates, audit"}
+								</strong>
+							</Link>
+						) : null}
 					</>
 				) : (
 					<>
