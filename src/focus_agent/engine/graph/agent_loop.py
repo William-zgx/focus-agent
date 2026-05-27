@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -76,6 +77,8 @@ from .policy import (
     build_tool_intent_plan,
 )
 
+_HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
+
 
 def _with_stream_phase(model: Any, phase: str) -> Any:
     if not has_repo_method(model, "with_config"):
@@ -86,6 +89,16 @@ def _with_stream_phase(model: Any, phase: str) -> Any:
             "tags": [f"stream_phase:{phase}"],
         }
     )
+
+
+def _web_fetch_args(preferred_args: dict[str, Any] | None, fallback_text: str) -> dict[str, Any]:
+    args = dict(preferred_args or {})
+    if str(args.get("url") or "").strip():
+        return args
+    match = _HTTP_URL_RE.search(str(fallback_text or ""))
+    if not match:
+        return args
+    return {"url": match.group(0).rstrip(".,!?;:，。！？；：")}
 
 
 def _model_for_stream_phase(
@@ -148,7 +161,11 @@ def make_agent_loop_node(
         tool_policy = tool_intent_plan.policy
         temporal_anchor_required = _tool_intent_plan_requires_temporal_anchor(tool_intent_plan)
         current_utc_time_result = _latest_tool_result_content(state_messages, "current_utc_time")
-        if tool_policy == "live_web_research" and current_utc_time_result:
+        if (
+            tool_policy == "live_web_research"
+            and tool_intent_plan.preferred_first_tool == "web_search"
+            and current_utc_time_result
+        ):
             anchored_args = _temporal_live_web_search_args(
                 tool_intent_plan.preferred_first_args,
                 fallback_query=tool_intent_text,
@@ -202,6 +219,7 @@ def make_agent_loop_node(
             policy=tool_policy,
             temporal_anchor_required=temporal_anchor_required,
             available_tool_names=known_names,
+            preferred_first_tool=tool_intent_plan.preferred_first_tool,
         )
         quarantined_model_for = _model_for_stream_phase(model_for, STREAM_VISIBILITY_QUARANTINE)
         quarantined_model_with_tools_for = _model_with_tools_for_stream_phase(
@@ -280,6 +298,25 @@ def make_agent_loop_node(
                         "id": f"current-utc-time-{state.get('llm_calls', 0) + 1}",
                         "name": "current_utc_time",
                         "args": {},
+                    }
+                ],
+            )
+        elif (
+            tool_policy == "live_web_research"
+            and tool_intent_plan.preferred_first_tool == "web_fetch"
+            and _has_tool_named(available_tools, "web_fetch")
+            and not _latest_turn_has_tool_result(state_messages, "web_fetch")
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"live-web-fetch-{state.get('llm_calls', 0) + 1}",
+                        "name": "web_fetch",
+                        "args": _web_fetch_args(
+                            tool_intent_plan.preferred_first_args,
+                            tool_intent_text,
+                        ),
                     }
                 ],
             )
@@ -638,7 +675,6 @@ def make_agent_loop_node(
         return updates
 
     return agent_loop
-
 
 
 __all__ = ["make_agent_loop_node"]

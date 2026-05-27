@@ -54,6 +54,27 @@ def test_prepare_resume_payload_uses_langgraph_command_resume():
     }
 
 
+def test_branch_recommendation_timeout_uses_configured_value():
+    assert (
+        harness_runs._branch_recommendation_timeout_seconds(
+            SimpleNamespace(agent_branch_recommendation_timeout_seconds=12)
+        )
+        == 12.0
+    )
+    assert (
+        harness_runs._branch_recommendation_timeout_seconds(
+            SimpleNamespace(agent_branch_recommendation_timeout_seconds=120)
+        )
+        == 60.0
+    )
+    assert (
+        harness_runs._branch_recommendation_timeout_seconds(
+            SimpleNamespace(agent_branch_recommendation_timeout_seconds="bad")
+        )
+        == harness_runs._BRANCH_RECOMMENDATION_TIMEOUT_SECONDS
+    )
+
+
 def test_prepare_run_payload_keeps_explicit_message_when_input_has_messages():
     class _Selection:
         stripped_message = "carried question"

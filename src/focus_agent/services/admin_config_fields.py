@@ -203,6 +203,13 @@ _POLICY_FIELD_SPECS: tuple[ConfigFieldSpec, ...] = (
         "Minimum confidence for branch recommendations.",
     ),
     ConfigFieldSpec(
+        "agent_branch_recommendation_timeout_seconds",
+        "AGENT_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS",
+        "Recommendation timeout",
+        "float",
+        "Maximum seconds to wait for a pre-turn branch recommendation before continuing.",
+    ),
+    ConfigFieldSpec(
         "agent_context_engineering_v2_enabled",
         "AGENT_CONTEXT_ENGINEERING_V2_ENABLED",
         "Context engineering v2",

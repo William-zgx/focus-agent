@@ -59,6 +59,7 @@ logger = logging.getLogger("focus_agent.api.harness_runs")
 
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
+_BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS = 60.0
 
 
 def _prepare_run_payload(
@@ -275,7 +276,31 @@ def _handle_branch_recommendation_for_run(
     return result if isinstance(result, dict) else None
 
 
-async def _handle_branch_recommendation_for_run_async(**kwargs: Any) -> dict[str, Any] | None:
+def _branch_recommendation_timeout_seconds(settings: Any) -> float:
+    raw_timeout = getattr(
+        settings,
+        "agent_branch_recommendation_timeout_seconds",
+        _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS,
+    )
+    try:
+        timeout = float(raw_timeout)
+    except (TypeError, ValueError):
+        return _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS
+    if timeout <= 0:
+        return _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS
+    return min(timeout, _BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS)
+
+
+async def _handle_branch_recommendation_for_run_async(
+    *,
+    timeout_seconds: float | None = None,
+    **kwargs: Any,
+) -> dict[str, Any] | None:
+    timeout = (
+        _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS
+        if timeout_seconds is None
+        else max(0.001, float(timeout_seconds))
+    )
     try:
         return await asyncio.wait_for(
             call_in_daemon_thread(
@@ -283,12 +308,12 @@ async def _handle_branch_recommendation_for_run_async(**kwargs: Any) -> dict[str
                 wait_on_cancel=False,
                 **kwargs,
             ),
-            timeout=_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except TimeoutError:
         logger.warning(
             "pre-turn branch recommendation timed out after %.1fs",
-            _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS,
+            timeout,
         )
         return None
 
@@ -733,6 +758,7 @@ __all__ = [
     "_tool_result_is_error",
     "_authorize_run_access",
     "_branch_action_intent_for_run",
+    "_branch_recommendation_timeout_seconds",
     "_call_chat_hook",
     "_capture_run_rollback_target",
     "_close_run_stream",

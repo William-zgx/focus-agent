@@ -89,6 +89,8 @@ _BRANCH_ACTION_GUARD_NOTE = (
     "or branch API result. Ask for confirmation or describe the pending action instead."
 )
 
+_HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
+
 
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
 
@@ -218,6 +220,9 @@ def _turn_tool_exposure_from_intent_plan(intent_plan: ToolIntentPlan) -> TurnToo
 def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
     if tool_name == "web_search":
         return {"query": text}
+    if tool_name == "web_fetch":
+        url = _first_http_url(text)
+        return {"url": url} if url else {}
     if tool_name == "search_code":
         return {"query": _workspace_search_query(text)}
     if tool_name == "skills_search":
@@ -264,9 +269,7 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     fresh_external_hits = _matched_markers(normalized, _FRESH_EXTERNAL_INTENT_MARKERS)
     web_lookup_hits = _matched_markers(normalized, _WEB_LOOKUP_ACTION_MARKERS)
     if not web_lookup_hits:
-        live_hits, fresh_external_hits = _filter_bare_current_hits(
-            live_hits, fresh_external_hits
-        )
+        live_hits, fresh_external_hits = _filter_bare_current_hits(live_hits, fresh_external_hits)
     contextual_current_hits = set(_contextual_current_hits(normalized))
     if contextual_current_hits:
         live_hits = tuple(hit for hit in live_hits if hit not in contextual_current_hits)
@@ -509,6 +512,8 @@ def _preferred_first_tool(
     web_lookup_hits: tuple[str, ...],
     fresh_external_hits: tuple[str, ...],
 ) -> str | None:
+    if policy in {"live_web_research", "execution"} and _should_prefer_web_fetch(text):
+        return "web_fetch"
     if policy == "workspace_lookup":
         if file_browse_hits and not symbol_hits:
             return "list_files"
@@ -529,6 +534,37 @@ def _preferred_first_tool(
         if wants_web_first and not wants_workspace_first:
             return "web_search"
     return None
+
+
+def _should_prefer_web_fetch(text: str) -> bool:
+    if not _first_http_url(text):
+        return False
+    return _contains_any(
+        text,
+        (
+            "fetch",
+            "open",
+            "read",
+            "打开",
+            "读取",
+            "抓取",
+            "获取",
+            "看一下",
+            "查看",
+            "网页",
+            "页面",
+            "标题",
+            "summary",
+            "summarize",
+        ),
+    )
+
+
+def _first_http_url(text: str) -> str:
+    match = _HTTP_URL_RE.search(str(text or ""))
+    if not match:
+        return ""
+    return match.group(0).rstrip(".,!?;:，。！？；：")
 
 
 def _tools_for_policy(

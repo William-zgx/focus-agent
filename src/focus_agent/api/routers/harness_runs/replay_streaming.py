@@ -38,6 +38,7 @@ from ...route_utils.branch_handoff_decisions import (
 )
 from .replay_helpers import (
     _branch_action_intent_for_run,
+    _branch_recommendation_timeout_seconds,
     _canonical_custom_event,
     _capture_run_rollback_target,
     _close_run_stream,
@@ -276,6 +277,7 @@ async def _produce_run_stream(
                 user_id=user_id,
                 message=turn_message,
                 request_id=request_id,
+                timeout_seconds=_branch_recommendation_timeout_seconds(runtime.settings),
             )
             if branch_recommendation_result is not None:
                 latest_context, latest_branch_meta, final_values = _context_for_turn(

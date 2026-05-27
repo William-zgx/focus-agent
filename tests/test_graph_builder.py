@@ -1063,6 +1063,17 @@ def test_tool_intent_plan_marks_temporal_anchor_requirement_for_live_web():
     assert plan.temporal_anchor_required is True
 
 
+def test_tool_intent_plan_prefers_web_fetch_for_explicit_url_requests():
+    plan = build_tool_intent_plan(
+        "Fetch https://example.com/ and tell me the page title and one sentence summary"
+    )
+
+    assert plan.policy == "live_web_research"
+    assert plan.preferred_first_tool == "web_fetch"
+    assert plan.preferred_first_args == {"url": "https://example.com/"}
+    assert plan.allowed_toolsets == ["web"]
+
+
 def test_tool_intent_plan_marks_chinese_relative_temporal_anchors():
     prompts = [
         "帮我查一下今天北京天气",
@@ -1290,10 +1301,9 @@ def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
     ]
     assert [call["name"] for call in tool_calls[:2]] == ["current_utc_time", "web_search"]
     anchored_query = tool_calls[1]["args"]["query"]
-    assert "原始查询：帮我查一下今天北京天气" in anchored_query
-    assert "当前UTC时间：2026-05-14T00:00:00Z" in anchored_query
-    assert "绝对日期(今天/UTC)：2026-05-14" in anchored_query
-    assert "地点/范围：北京" in anchored_query
+    assert anchored_query == "2026-05-14 北京 天气"
+    assert "原始查询" not in anchored_query
+    assert "当前UTC时间" not in anchored_query
     assert calls == [
         "current_utc_time",
         f"web_search:{anchored_query}",
@@ -1302,6 +1312,264 @@ def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
     assert result.value["tool_intent_plan"]["preferred_first_args"]["query"] == anchored_query
     assert result.value["plan_meta"]["tool_intent_plan"]["temporal_anchor_required"] is True
     assert result.value["plan_meta"]["execution_contract"]["status"] == "satisfied"
+
+
+def test_graph_rewrites_temporal_news_query_before_live_web_search(monkeypatch):
+    web_calls = []
+
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        return "2026-05-27T14:59:23Z"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return (
+            '{"answer":"5月27日，王毅主持联合国安理会高级别会议。",'
+            '"results":[{"title":"部领导活动_中华人民共和国外交部",'
+            '"url":"https://www.mfa.gov.cn/wjdt_674879/wjbxw_674885",'
+            '"content":"王毅主持联合国安理会高级别会议（2026-05-27）。"}]}'
+        )
+
+    _patch_static_chat_model(monkeypatch, content="5月27日，王毅主持联合国安理会高级别会议。")
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="今天有什么国家大事发生吗？")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-temporal-news-rewrite"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
+    search_query = tool_calls[1]["args"]["query"]
+    assert search_query == "2026-05-27 中国 国家大事 重大新闻"
+    assert "今天有什么国家大事发生吗" not in search_query
+    assert "原始查询" not in search_query
+    assert web_calls == [search_query]
+
+
+def test_graph_rewrites_english_temporal_weather_query_with_location(monkeypatch):
+    web_calls = []
+
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        return "2026-05-27T15:30:00Z"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return json.dumps(
+            {
+                "query": query,
+                "answer": "Beijing will be partly cloudy with a high of 28°C.",
+                "results": [
+                    {
+                        "title": "Beijing weather",
+                        "url": "https://weather.example/beijing",
+                        "content": "Beijing will be partly cloudy with a high of 28°C.",
+                    }
+                ],
+            }
+        )
+
+    _patch_static_chat_model(
+        monkeypatch,
+        content="Beijing will be partly cloudy with a high of 28°C.",
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="beijing weather today please summarize the result")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-english-weather-rewrite"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
+    search_query = tool_calls[1]["args"]["query"]
+    assert search_query == "2026-05-27 beijing weather"
+    assert web_calls == [search_query]
+
+
+def test_graph_forces_web_fetch_for_explicit_url_requests(monkeypatch):
+    calls = []
+
+    @tool
+    def web_fetch(url: str) -> str:
+        """Fetch a web page."""
+        calls.append(url)
+        return json.dumps(
+            {
+                "url": url,
+                "final_url": url,
+                "title": "Example Domain",
+                "content": "Example Domain This domain is for use in documentation examples.",
+            }
+        )
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            if any(isinstance(message, ToolMessage) for message in prompt_messages):
+                return AIMessage(content="Title: Example Domain")
+            return AIMessage(content="I do not have a fetch tool.")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_fetch,)))
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "Fetch https://example.com/ and tell me the page title "
+                        "and one sentence summary"
+                    )
+                )
+            ],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-web-fetch-url"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
+    assert tool_calls[0]["name"] == "web_fetch"
+    assert tool_calls[0]["args"] == {"url": "https://example.com/"}
+    assert calls == ["https://example.com/"]
+    assert result.value["plan_meta"]["execution_contract"]["required_tools"] == ["web_fetch"]
+    assert result.value["plan_meta"]["execution_contract"]["status"] == "satisfied"
+    assert "Example Domain" in result.value["messages"][-1].content
+
+
+def test_graph_keeps_web_fetch_url_when_prior_time_tool_result_exists(monkeypatch):
+    calls = []
+
+    @tool
+    def web_fetch(url: str) -> str:
+        """Fetch a web page."""
+        calls.append(url)
+        return json.dumps(
+            {
+                "url": url,
+                "final_url": url,
+                "title": "Example Domain",
+                "content": "Example Domain This domain is for use in documentation examples.",
+            }
+        )
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            if any(isinstance(message, ToolMessage) for message in prompt_messages):
+                return AIMessage(content="Title: Example Domain")
+            return AIMessage(content="I do not have a fetch tool.")
+
+    class FakeModel:
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_fetch,)))
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(content="今天北京天气怎么样？"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "current_utc_time",
+                            "args": {},
+                            "id": "time-call-1",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content='{"utc":"2026-05-27T00:00:00Z"}',
+                    name="current_utc_time",
+                    tool_call_id="time-call-1",
+                ),
+                HumanMessage(
+                    content=(
+                        "Fetch https://example.com/ and tell me the page title "
+                        "and one sentence summary"
+                    )
+                ),
+            ],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-web-fetch-after-time"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
+    assert tool_calls[-1]["name"] == "web_fetch"
+    assert tool_calls[-1]["args"] == {"url": "https://example.com/"}
+    assert calls == ["https://example.com/"]
+    assert result.value["plan_meta"]["tool_intent_plan"]["preferred_first_args"] == {
+        "url": "https://example.com/"
+    }
 
 
 def test_graph_repairs_once_then_fails_credibly_for_stale_live_web_evidence(monkeypatch):
@@ -1420,9 +1688,64 @@ def test_graph_falls_back_to_tool_results_when_live_web_answer_is_ack(monkeypatc
 
     final_answer = result.value["messages"][-1].content
     assert final_answer != "OK"
-    assert "保守整理" in final_answer
+    assert "保守整理" not in final_answer
+    assert "Evidence [" not in final_answer
+    assert "根据搜索结果" in final_answer
     assert "今天北京多云" in final_answer
     assert result.value["answer_verification"]["status"] == "verified"
+    assert result.value["answer_verification"]["repair_action_taken"] == "fallback_to_tool_results"
+
+
+def test_graph_falls_back_when_live_web_answer_denies_available_search_evidence(monkeypatch):
+    @tool
+    def current_utc_time() -> str:
+        """Return current UTC time."""
+        return "2026-05-27T14:59:23Z"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return json.dumps(
+            {
+                "query": query,
+                "answer": "5月27日，王毅主持联合国安理会高级别会议。",
+                "results": [
+                    {
+                        "title": "部领导活动_中华人民共和国外交部",
+                        "url": "https://www.mfa.gov.cn/wjdt_674879/wjbxw_674885",
+                        "content": "王毅主持联合国安理会“维护联合国宪章宗旨和原则，加强以联合国为核心的国际体系”高级别会议（2026-05-27）。",
+                        "published_at": "2026-05-27",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    _patch_static_chat_model(
+        monkeypatch,
+        content=("搜索结果未能提取到今日（5 月 27 日）具体新闻内容，因此无法列出确切的国家大事。"),
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="今天有什么国家大事发生吗？")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-live-web-denial"),
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+    assert "搜索结果未能提取" not in final_answer
+    assert "保守整理" not in final_answer
+    assert "Evidence [" not in final_answer
+    assert "根据搜索结果" in final_answer
+    assert "王毅主持联合国安理会" in final_answer
     assert result.value["answer_verification"]["repair_action_taken"] == "fallback_to_tool_results"
 
 
@@ -2564,7 +2887,9 @@ def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
         ]
     )
 
-    assert "工具 web_search(query=比亚迪 A股 上周 股价 波动)" in answer
+    assert "根据搜索结果" in answer
+    assert "工具 web_search" not in answer
+    assert "Evidence [" not in answer
     assert "比亚迪A股上周先涨后跌" in answer
     assert "BYD share price" in answer
 
@@ -2608,6 +2933,42 @@ def test_fallback_answer_from_tool_results_excludes_unrelated_same_turn_web_sear
     assert "Beijing weather" in answer
     assert "NBA finals" not in answer
     assert "Basketball schedule" not in answer
+
+
+def test_fallback_answer_from_tool_results_formats_weather_as_final_answer():
+    answer = _fallback_answer_from_tool_results(
+        [
+            HumanMessage(content="今天北京天气怎么样？"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "weather-search",
+                        "name": "web_search",
+                        "args": {"query": "2026-05-27 北京 天气"},
+                    }
+                ],
+            ),
+            ToolMessage(
+                content=(
+                    '{"query":"2026-05-27 北京 天气","answer":"Beijing will be partly cloudy.",'
+                    '"results":[{"title":"2026年5月27日天气预报 - 密云区人民政府",'
+                    '"url":"https://www.bjmy.gov.cn/sy/tqyb/202605/t20260527_543010.html",'
+                    '"content":"5月27日07时发布天气预报：今天白天：晴转多云，北转南风3级，'
+                    "阵风5级，最高气温28℃；今天夜间：多云转晴，南转北风2-3级，"
+                    '最低气温18℃。"}]}'
+                ),
+                tool_call_id="weather-search",
+            ),
+        ]
+    )
+
+    assert answer.startswith("根据搜索结果，今天白天：晴转多云")
+    assert "最高气温28℃" in answer
+    assert "最低气温18℃" in answer
+    assert "来源：" in answer
+    assert "Evidence [" not in answer
+    assert "保守整理" not in answer
 
 
 def test_fallback_answer_from_tool_results_uses_latest_turn_and_compacted_refs():
@@ -2698,7 +3059,8 @@ def test_graph_falls_back_to_web_tool_results_when_final_answer_model_fails(monk
 
     final_answer = result.value["messages"][-1].content
     assert "格式化失败" not in final_answer
-    assert "保守整理" in final_answer
+    assert "保守整理" not in final_answer
+    assert "根据搜索结果" in final_answer
     assert "比亚迪A股上周先涨后跌" in final_answer
     assert "BYD share price" in final_answer
 

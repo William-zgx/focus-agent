@@ -16,6 +16,7 @@ def build_execution_contract(
     policy: str,
     temporal_anchor_required: bool = False,
     available_tool_names: Sequence[str] = (),
+    preferred_first_tool: str | None = None,
     required_evidence: bool | None = None,
 ) -> dict[str, Any]:
     """Build a small per-turn execution contract from the current tool policy."""
@@ -36,7 +37,9 @@ def build_execution_contract(
     available = {str(name) for name in available_tool_names if str(name)}
     if temporal_anchor_required and "current_utc_time" in available:
         required_tools.append("current_utc_time")
-    if "web_search" in available:
+    if preferred_first_tool == "web_fetch" and "web_fetch" in available:
+        required_tools.append("web_fetch")
+    elif "web_search" in available:
         required_tools.append("web_search")
     return {
         "policy": normalized_policy,
@@ -133,6 +136,13 @@ def verify_answer_against_evidence(
             ],
             repair_action="fallback_to_tool_results",
         )
+    if evidence_ledger and _denies_available_live_evidence(stripped_answer):
+        return _verification(
+            "unsupported",
+            required_tools_satisfied=True,
+            unsupported_claims=["live_web_research answer denies available search evidence"],
+            repair_action="fallback_to_tool_results",
+        )
     contradiction = _detect_simple_event_contradiction(stripped_answer, evidence_ledger)
     if contradiction:
         return _verification(
@@ -222,7 +232,9 @@ def _stale_evidence_reason(
 
 def _fresh_evidence_min_date(query: str, observed_at: date) -> date:
     lowered = query.lower()
-    if _contains_temporal_marker(lowered, ("近一周", "最近一周", "过去一周", "last 7 days", "past week")):
+    if _contains_temporal_marker(
+        lowered, ("近一周", "最近一周", "过去一周", "last 7 days", "past week")
+    ):
         return observed_at - timedelta(days=6)
     if re.search(r"(?<![a-z0-9_])recent(?:ly)?(?![a-z0-9_])", lowered):
         return observed_at - timedelta(days=6)
@@ -355,6 +367,38 @@ def _is_low_information_live_answer(answer: str) -> bool:
         "是",
         "是的",
     }
+
+
+def _denies_available_live_evidence(answer: str) -> bool:
+    normalized = _normalize_text(answer)
+    compact = re.sub(r"[\s,，.。!！?？;；:：、]+", "", str(answer or "").strip()).lower()
+    chinese_markers = (
+        "搜索结果未能提取",
+        "检索结果未能提取",
+        "搜索结果未返回",
+        "检索结果未返回",
+        "搜索结果没有提供",
+        "检索结果没有提供",
+        "未能提取到",
+        "无法列出确切",
+        "无法列出具体",
+        "无法给出确切",
+        "无法给出具体",
+        "没有具体新闻内容",
+        "没有具体内容",
+        "证据不足以支撑",
+    )
+    if any(marker in compact for marker in chinese_markers):
+        return True
+    english_patterns = (
+        r"\b(search|web|retrieval|results?|evidence)\b.{0,80}\b("
+        r"could not|couldn't|did not|didn't|failed to|unable to|no|not enough"
+        r")\b.{0,80}\b(extract|provide|find|list|confirm|support|content|details?)\b",
+        r"\b(unable to|cannot|can't|could not|couldn't)\b.{0,80}\b("
+        r"list|provide|confirm|extract"
+        r")\b.{0,80}\b(news|events?|details?|content)\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in english_patterns)
 
 
 def _contains_negative_visit_claim(text: str) -> bool:

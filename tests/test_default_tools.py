@@ -64,12 +64,15 @@ def _http_text_response(
     body: str,
     *,
     content_type: str = "text/plain; charset=utf-8",
+    headers: dict[str, str] | None = None,
     status_code: int = 200,
 ) -> httpx.Response:
+    response_headers = {"content-type": content_type}
+    response_headers.update(headers or {})
     return httpx.Response(
         status_code,
         text=body,
-        headers={"content-type": content_type},
+        headers=response_headers,
         request=httpx.Request(method, url),
     )
 
@@ -1002,6 +1005,66 @@ def test_web_fetch_domain_policy_allows_matching_allowlist(monkeypatch):
 
     assert payload["final_url"] == "https://guide.docs.example/article"
     assert payload["content"] == "Allowed article"
+
+
+def test_web_fetch_follows_redirects_and_rechecks_policy(monkeypatch):
+    seen_urls: list[str] = []
+
+    def fake_get(url, *, headers=None, timeout=0):
+        del headers, timeout
+        seen_urls.append(url)
+        if url == "https://iana.org/":
+            return _http_text_response(
+                "GET",
+                url,
+                "",
+                headers={"location": "https://www.iana.org/"},
+                status_code=301,
+            )
+        assert url == "https://www.iana.org/"
+        return _http_text_response(
+            "GET",
+            url,
+            "<html><head><title>IANA</title></head><body>Root zone coordination.</body></html>",
+            content_type="text/html; charset=utf-8",
+        )
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(get=fake_get),
+    )
+
+    payload = json.loads(_tool_map(Settings())["web_fetch"].invoke({"url": "https://iana.org/"}))
+
+    assert seen_urls == ["https://iana.org/", "https://www.iana.org/"]
+    assert payload["final_url"] == "https://www.iana.org/"
+    assert payload["title"] == "IANA"
+    assert "Root zone coordination." in payload["content"]
+
+
+def test_web_fetch_blocks_redirects_to_disallowed_hosts(monkeypatch):
+    seen_urls: list[str] = []
+
+    def fake_get(url, *, headers=None, timeout=0):
+        del headers, timeout
+        seen_urls.append(url)
+        return _http_text_response(
+            "GET",
+            url,
+            "",
+            headers={"location": "http://127.0.0.1:8000/private"},
+            status_code=302,
+        )
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(get=fake_get),
+    )
+
+    with pytest.raises(ValueError, match="redirect blocked.*blocked_host"):
+        _tool_map(Settings())["web_fetch"].invoke({"url": "https://example.com/start"})
+
+    assert seen_urls == ["https://example.com/start"]
 
 
 def test_memory_tools_save_search_and_forget(tmp_path):

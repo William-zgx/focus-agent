@@ -21,6 +21,9 @@ from .web_helpers import (
     _WebSearchProviderError,
 )
 
+_WEB_FETCH_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_WEB_FETCH_MAX_REDIRECTS = 5
+
 
 def build_web_tools(
     *,
@@ -126,11 +129,40 @@ def build_web_tools(
         *,
         max_bytes: int,
     ) -> tuple[bytes, str, Any, str]:
-        response = _http().get(
-            url,
-            headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
-            timeout=30,
-        )
+        current_url = url
+        response = None
+        for _ in range(_WEB_FETCH_MAX_REDIRECTS + 1):
+            response = _http().get(
+                current_url,
+                headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
+                timeout=30,
+            )
+            if int(response.status_code) not in _WEB_FETCH_REDIRECT_STATUSES:
+                break
+            location = (
+                response.headers.get("location") if hasattr(response.headers, "get") else None
+            )
+            if not location:
+                break
+            next_url = urllib_parse_module.urljoin(str(response.url), str(location))
+            parsed_next = urllib_parse_module.urlparse(next_url)
+            if parsed_next.scheme not in {"http", "https"}:
+                raise ValueError("Only http and https redirect URLs are supported.")
+            policy_violation = _web_fetch_policy_violation(
+                parsed_next.hostname,
+                blocked_domains=blocked_fetch_domains,
+                allowed_domains=allowed_fetch_domains,
+            )
+            if policy_violation is not None:
+                raise ValueError(
+                    "Web fetch redirect blocked by access policy "
+                    f"({policy_violation['category']}): {policy_violation['message']}"
+                )
+            current_url = urllib_parse_module.urlunparse(parsed_next)
+        else:
+            raise ValueError(f"Web fetch exceeded {_WEB_FETCH_MAX_REDIRECTS} redirects.")
+        if response is None:
+            raise ValueError("Web fetch failed before issuing a request.")
         response.raise_for_status()
         raw = response.content[:max_bytes]
         return raw, str(response.url), response.headers, response.encoding or "utf-8"

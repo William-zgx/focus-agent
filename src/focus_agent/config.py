@@ -224,6 +224,7 @@ class Settings:
     agent_branch_recommendation_min_confidence: float = 0.72
     agent_branch_recommendation_semantic_enabled: bool = False
     agent_branch_recommendation_semantic_model: str | None = None
+    agent_branch_recommendation_timeout_seconds: float = 15.0
     agent_memory_backend: str = "postgres"
     agent_memory_read_source: str = "postgres"
     agent_memory_extractor_mode: str = "heuristic"
