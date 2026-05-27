@@ -837,6 +837,63 @@ def test_branch_recommendation_blocks_when_pending_action_exists() -> None:
     assert [action.action_id for action in actions] == [pending.action_id]
 
 
+def test_branch_recommendation_replaces_stale_pending_sibling_action() -> None:
+    pending = build_branch_action_proposal(
+        kind=BranchActionKind.FORK_SIBLING_BRANCH,
+        root_thread_id="root-1",
+        source_thread_id="thread-1",
+        target_parent_thread_id="root-1",
+        suggested_branch_name="Thailand",
+        reason="Existing pending action.",
+        handoff_message="我想去泰国旅游，你帮我做一个方案",
+    )
+    service, graph, repository = _recommendation_service(
+        values={
+            "messages": [
+                HumanMessage(content="这个韩国旅游攻略：请补充一个5天预算表。"),
+            ],
+            "branch_meta": {
+                "branch_id": "branch-1",
+                "root_thread_id": "root-1",
+                "parent_thread_id": "root-1",
+                "return_thread_id": "root-1",
+                "branch_name": "Korea Travel",
+                "branch_depth": 1,
+            },
+            "branch_actions": [pending.model_dump(mode="json")],
+        }
+    )
+    _attach_semantic_classifier(
+        service,
+        _FakeSemanticClassifier(
+            result=_semantic_topic_shift_result(
+                confidence=0.93,
+                recommended_action=BranchDecisionAction.FORK_SIBLING_BRANCH,
+            ),
+        ),
+    )
+
+    service.recommend_for_message(
+        thread_id="thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message="今天A股大盘的表现如何？",
+        request_id="req-rec-replace-pending",
+    )
+
+    event = repository.list_branch_decision_events(source_thread_id="thread-1")[0]
+    actions = normalize_branch_actions(graph.values.get("branch_actions"))
+    assert event.status == BranchDecisionStatus.PROMOTED
+    assert event.promoted_action_id
+    assert [action.status for action in actions] == [
+        BranchActionStatus.DISMISSED,
+        BranchActionStatus.PENDING,
+    ]
+    assert actions[0].action_id == pending.action_id
+    assert actions[1].handoff_message == "今天A股大盘的表现如何？"
+    assert event.metadata["replaced_pending_branch_action_id"] == pending.action_id
+
+
 def test_branch_recommendation_blocks_when_child_depth_limit_would_be_exceeded() -> None:
     service, graph, repository = _recommendation_service(
         values={

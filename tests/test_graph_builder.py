@@ -440,6 +440,62 @@ def test_messages_for_model_filters_copied_branch_control_context():
     ]
 
 
+def test_messages_for_model_drops_branch_recent_history_cut_before_tool_call_user():
+    state = {
+        "branch_meta": {
+            "branch_id": "branch-new",
+            "root_thread_id": "root-1",
+            "parent_thread_id": "root-1",
+            "branch_fork_message_count": 3,
+        },
+        "recent_messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "workspace-search-1",
+                        "name": "search_code",
+                        "args": {"query": "FINAL_CURRENT_OK_9B21"},
+                    }
+                ],
+            ),
+            ToolMessage(content='{"results":[]}', tool_call_id="workspace-search-1"),
+            AIMessage(content="FINAL_CURRENT_OK_9B21"),
+            HumanMessage(content="我想去韩国旅游，帮我做一个攻略。"),
+            AIMessage(content="韩国攻略可以先按首尔和周边规划。"),
+            HumanMessage(content="我想去韩国旅游，帮我做一个攻略"),
+        ],
+        "messages": [
+            HumanMessage(content="RUNTIME FINAL CURRENT answer exactly FINAL_CURRENT_OK_9B21"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "workspace-search-1",
+                        "name": "search_code",
+                        "args": {"query": "FINAL_CURRENT_OK_9B21"},
+                    }
+                ],
+            ),
+            ToolMessage(content='{"results":[]}', tool_call_id="workspace-search-1"),
+            AIMessage(content="FINAL_CURRENT_OK_9B21"),
+            HumanMessage(content="我想去韩国旅游，帮我做一个攻略。"),
+            AIMessage(content="韩国攻略可以先按首尔和周边规划。"),
+            HumanMessage(content="我想去韩国旅游，帮我做一个攻略"),
+        ],
+    }
+
+    messages = _messages_for_model(state)
+
+    assert [message.content for message in messages] == [
+        "我想去韩国旅游，帮我做一个攻略。",
+        "韩国攻略可以先按首尔和周边规划。",
+        "我想去韩国旅游，帮我做一个攻略",
+    ]
+    assert not isinstance(messages[0], AIMessage)
+    assert not any(isinstance(message, ToolMessage) for message in messages)
+
+
 def test_messages_for_model_keeps_only_latest_unanswered_human_turn():
     state = {
         "recent_messages": [

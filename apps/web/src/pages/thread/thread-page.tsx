@@ -1,5 +1,5 @@
 import { useRouterState } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FocusAgentToolApprovalInterrupt } from "@focus-agent/web-sdk";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
@@ -8,7 +8,10 @@ import {
 	usePreviewThreadContext,
 } from "@/features/thread/use-thread-context";
 import { useThreadState } from "@/features/thread/use-thread-state";
-import { useThreadStream } from "@/features/thread-stream/use-thread-stream";
+import {
+	type SendMessageOverrides,
+	useThreadStream,
+} from "@/features/thread-stream/use-thread-stream";
 
 import { ThreadPageContent } from "./thread-page-content";
 import { useThreadTranscriptViewModel } from "./thread-transcript-view-model";
@@ -31,6 +34,7 @@ export function ThreadPage() {
 	const { data, isLoading, error } = useThreadState(threadId);
 	const { isChineseUi } = useShellUi();
 	const isMergedReadOnlyThread = data?.branch_meta?.branch_status === "merged";
+	const composerSelectionOverridesRef = useRef<SendMessageOverrides>({});
 	const {
 		editDraft,
 		previewContextUsage,
@@ -58,6 +62,30 @@ export function ThreadPage() {
 	const previewThreadContext = usePreviewThreadContext(threadId);
 	const compactThreadContext = useCompactThreadContext(threadId);
 	const previewThreadContextMutate = previewThreadContext.mutate;
+	useEffect(() => {
+		if (!threadId) {
+			composerSelectionOverridesRef.current = {};
+			return;
+		}
+		composerSelectionOverridesRef.current = {};
+	}, [threadId]);
+	useEffect(() => {
+		if (!data?.selected_model && !data?.selected_thinking_mode) {
+			return;
+		}
+		composerSelectionOverridesRef.current = {
+			model: data?.selected_model || undefined,
+			...(data?.selected_thinking_mode
+				? { thinkingMode: data.selected_thinking_mode }
+				: {}),
+		};
+	}, [data?.selected_model, data?.selected_thinking_mode]);
+	const handleComposerSelectionChange = useCallback(
+		(overrides: SendMessageOverrides) => {
+			composerSelectionOverridesRef.current = overrides;
+		},
+		[],
+	);
 	const {
 		branchActions,
 		hasTranscriptContent,
@@ -80,10 +108,18 @@ export function ThreadPage() {
 		executeBranchAction,
 	} = useThreadBranchActions(threadId, {
 		onContinueCurrentBranch: ({ threadId: targetThreadId, message }) => {
-			return runCarriedMessageInThread(targetThreadId, message);
+			return runCarriedMessageInThread(
+				targetThreadId,
+				message,
+				composerSelectionOverridesRef.current,
+			);
 		},
 		onRunHandoff: ({ threadId: targetThreadId, message }) => {
-			return runCarriedMessageInThread(targetThreadId, message);
+			return runCarriedMessageInThread(
+				targetThreadId,
+				message,
+				composerSelectionOverridesRef.current,
+			);
 		},
 	});
 	const { followAndScrollToBottom, stickToBottom } = useThreadAutoFollow({
@@ -124,6 +160,9 @@ export function ThreadPage() {
 	): Promise<{ ok: boolean }> {
 		if (isMergedReadOnlyThread) {
 			return { ok: false };
+		}
+		if (overrides) {
+			composerSelectionOverridesRef.current = overrides;
 		}
 		followAndScrollToBottom();
 		return sendMessage(message, overrides);
@@ -191,6 +230,7 @@ export function ThreadPage() {
 			messages={transcriptMessages}
 			onClearEditDraft={() => setEditDraft(null)}
 			onCompactContext={handleCompactContext}
+			onComposerSelectionChange={handleComposerSelectionChange}
 			onDecideToolApproval={(interrupt, approved) =>
 				void handleDecideToolApproval(interrupt, approved)
 			}

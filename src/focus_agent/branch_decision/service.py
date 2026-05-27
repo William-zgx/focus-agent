@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from hashlib import sha256
 from typing import Any
 
@@ -21,6 +22,7 @@ from focus_agent.core.repo_call import has_repo_method
 from focus_agent.services.branch_actions import (
     branch_handoff_message_from_text,
     infer_suggested_branch_name,
+    latest_pending_branch_action,
     target_parent_thread_id,
 )
 
@@ -631,6 +633,9 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
             BranchDecisionAction.FORK_CHILD_BRANCH,
             BranchDecisionAction.FORK_SIBLING_BRANCH,
         }:
+            handoff_message = branch_handoff_message_from_text(message) or str(
+                message or ""
+            ).strip()
             requested_kind = _branch_action_kind_for_decision(action)
             resolved_kind, target_parent = target_parent_thread_id(
                 source_thread_id=thread_id,
@@ -642,10 +647,32 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
                 message,
                 list(values.get("messages", []) or []),
             )
+            pending_action = latest_pending_branch_action(values.get("branch_actions"))
+            if pending_action is not None and self._can_replace_pending_branch_action(
+                action=action,
+                pending_action=pending_action,
+                handoff_message=handoff_message,
+            ):
+                semantic_diagnostic = _semantic_topic_relation_diagnostic(signals)
+                semantic_confidence = float(
+                    semantic_diagnostic.get("semantic_confidence") or 0.0
+                )
+                best = replace(
+                    best,
+                    score=max(best.score, semantic_confidence),
+                    rationale=f"{best.rationale}, replacing stale pending branch action.",
+                )
+        else:
+            handoff_message = branch_handoff_message_from_text(message) or str(
+                message or ""
+            ).strip()
         recommendation_target = _recommendation_target_for_decision(action)
         status, gate_reason = self._gate_recommendation_status(
             config=config,
-            values=values,
+            values={
+                **values,
+                "_branch_decision_handoff_message": handoff_message,
+            },
             branch_meta=branch_meta,
             action=action,
             score=best.score,

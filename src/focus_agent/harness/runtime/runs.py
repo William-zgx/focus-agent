@@ -395,6 +395,40 @@ class RunManager:
         logger.info("Harness run %s cancelled (action=%s)", run_id, action)
         return True
 
+    async def cancel_thread(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None = None,
+        action: RunCancelAction = "interrupt",
+        wait: bool = False,
+    ) -> list[str]:
+        async with self._lock:
+            records = [
+                record
+                for record in self._runs.values()
+                if record.thread_id == thread_id
+                and record.inflight
+                and (user_id is None or record.user_id == user_id)
+            ]
+            for record in records:
+                self._cancel_record(record, action=action)
+        for record in records:
+            await self._persist_status(record)
+            await self._publish_lifecycle(record, "run.interrupt", {"action": record.abort_action})
+        if action == "rollback":
+            await self._rollback_records(records)
+        if wait or action == "rollback":
+            await self._settle_records(records)
+        if records:
+            logger.info(
+                "Harness thread %s cancelled %s active run(s) (action=%s)",
+                thread_id,
+                len(records),
+                action,
+            )
+        return [record.run_id for record in records]
+
     async def cleanup(self, run_id: str, *, delay: float = 300.0) -> None:
         if delay > 0:
             await asyncio.sleep(delay)

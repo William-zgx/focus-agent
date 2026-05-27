@@ -35,6 +35,7 @@ import type {
 	FocusAgentStreamOptions,
 	FocusAgentStreamReconnectOptions,
 } from "./client/endpoint.js";
+import { isTerminalEvent } from "./guards.js";
 import type { FocusAgentEvent } from "./types.js";
 
 export interface FocusAgentClientOptions {
@@ -161,6 +162,9 @@ export class FocusAgentClient {
 					if (event.event === "server_shutdown") {
 						shouldReconnect = true;
 						break;
+					}
+					if (isTerminalEvent(event)) {
+						return;
 					}
 				}
 				if (options.signal?.aborted) return;

@@ -44,6 +44,10 @@ interface ThreadPageContentProps {
 	onEditMessage: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction: (action: FocusAgentBranchActionProposal) => void;
 	onPreviewContextUsage: (draftMessage: string) => void;
+	onComposerSelectionChange?: (overrides: {
+		model?: string;
+		thinkingMode?: string;
+	}) => void;
 	onSendMessage: (
 		message: string,
 		overrides?: {
@@ -93,6 +97,7 @@ export function ThreadPageContent({
 	onEditMessage,
 	onExecuteBranchAction,
 	onPreviewContextUsage,
+	onComposerSelectionChange,
 	onSendMessage,
 	onStopStreaming,
 	previewContextError = "",
@@ -195,6 +200,7 @@ export function ThreadPageContent({
 						isCompactingContext={isCompactingContext}
 						onCompactContext={onCompactContext}
 						onPreviewContextUsage={onPreviewContextUsage}
+						onSelectionChange={onComposerSelectionChange}
 						selectedModel={selectedModel}
 						selectedThinkingMode={selectedThinkingMode}
 					/>

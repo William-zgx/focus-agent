@@ -1051,9 +1051,9 @@ test("SDK stream preserves canonical v2 events without legacy alias rewriting", 
 });
 
 test("SDK streaming exposes only v2 harness endpoints for chat streams", () => {
-  const streamingSource = readFileSync(
-    path.join(repoRoot, "frontend-sdk/src/client/streaming.ts"),
-    "utf8",
+	const streamingSource = readFileSync(
+		path.join(repoRoot, "frontend-sdk/src/client/streaming.ts"),
+		"utf8",
   );
 
   assert.equal(streamingSource.includes("return streamHarnessRun.call("), true);
@@ -1065,12 +1065,28 @@ test("SDK streaming exposes only v2 harness endpoints for chat streams", () => {
   );
   assert.equal(streamingSource.includes("async function streamLegacyTurn"), false);
   assert.equal(streamingSource.includes("/v1/chat/turns/stream"), false);
-  assert.equal(streamingSource.includes("async function streamLegacyResume"), false);
-  assert.equal(streamingSource.includes("/v1/chat/resume/stream"), false);
+	assert.equal(streamingSource.includes("async function streamLegacyResume"), false);
+	assert.equal(streamingSource.includes("/v1/chat/resume/stream"), false);
+});
+
+test("SDK stream stops waiting after terminal v2 run events", () => {
+	const clientSource = readFileSync(
+		path.join(repoRoot, "frontend-sdk/src/client.ts"),
+		"utf8",
+	);
+	const compactClientSource = compactSource(clientSource);
+
+	assert.equal(clientSource.includes('import { isTerminalEvent } from "./guards.js";'), true);
+	assert.equal(
+		compactClientSource.includes(
+			'if (event.event === "server_shutdown") { shouldReconnect = true; break; } if (isTerminalEvent(event)) { return; }',
+		),
+		true,
+	);
 });
 
 test("stream reducer consumes v2 harness run events without visible_text dependencies", () => {
-  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+	const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
 
   let state = reduceStreamEvent(createInitialStreamState(), {
     event: "run.status",
@@ -1367,6 +1383,12 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(
     compactSource(streamHookSource).includes(
       'client .cancelHarnessRun(runId, { action: "interrupt" })',
+    ),
+    false,
+  );
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      'client .cancelThreadHarnessRuns(options.threadId, { action: "interrupt" })',
     ),
     true,
   );
@@ -1832,7 +1854,22 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
 
   assert.equal(compactBranchAction.includes("result.branch_action.handoff_message"), true);
   assert.equal(compactBranchAction.includes("options.onRunHandoff?.("), true);
-  assert.match(threadPageSource, /runCarriedMessageInThread\(targetThreadId, message\)/);
+  assert.equal(
+    compactBranchAction.includes(
+      "const handoffRun = handoffMessage && navigation.thread_id !== sourceThreadId ? options.onRunHandoff?.(",
+    ),
+    true,
+  );
+  assert.equal(
+    compactBranchAction.includes(
+      "threadId: navigation.thread_id, message: handoffMessage, }) : undefined; await navigate",
+    ),
+    true,
+  );
+  assert.equal(threadPageSource.includes("composerSelectionOverridesRef"), true);
+  assert.equal(threadPageSource.includes("if (!data?.selected_model && !data?.selected_thinking_mode)"), true);
+  assert.match(threadPageSource, /runCarriedMessageInThread\(\s*targetThreadId,\s*message,\s*composerSelectionOverridesRef\.current,\s*\)/);
+  assert.equal(threadPageSource.includes("onComposerSelectionChange={handleComposerSelectionChange}"), true);
   assert.equal(compactStream.includes("client.streamHarnessRun( requestThreadId,"), true);
   assert.equal(compactStream.includes("message: cleanMessage"), true);
   assert.equal(compactStream.includes("input: { messages: [] }"), false);

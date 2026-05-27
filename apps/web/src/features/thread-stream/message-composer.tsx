@@ -23,7 +23,10 @@ import {
 	normalizeThinkingMode,
 } from "./message-composer-helpers";
 import { MessageComposerModelSelector } from "./message-composer-model-selector";
-import { submitComposerMessage } from "./message-composer-submit";
+import {
+	composerSendOverrides,
+	submitComposerMessage,
+} from "./message-composer-submit";
 
 export {
 	contextUsagePercent,
@@ -46,6 +49,10 @@ interface MessageComposerProps {
 			thinkingMode?: string;
 		},
 	) => Promise<{ ok: boolean }>;
+	onSelectionChange?: (overrides: {
+		model?: string;
+		thinkingMode?: string;
+	}) => void;
 	onStopStreaming: () => void;
 	selectedModel?: string;
 	selectedThinkingMode?: string;
@@ -74,6 +81,7 @@ export function MessageComposer({
 	isCompactingContext = false,
 	onCompactContext,
 	onPreviewContextUsage,
+	onSelectionChange,
 }: MessageComposerProps) {
 	const { data } = useModels();
 	const { isChineseUi } = useShellUi();
@@ -112,6 +120,16 @@ export function MessageComposer({
 			effectiveThinkingModeForModel(activeModel, current),
 		);
 	}, [activeModel]);
+
+	useEffect(() => {
+		onSelectionChange?.(
+			composerSendOverrides({
+				activeModel,
+				activeThinkingMode,
+				modelId,
+			}),
+		);
+	}, [activeModel, activeThinkingMode, modelId, onSelectionChange]);
 
 	async function submitMessage() {
 		await submitComposerMessage({

@@ -10,6 +10,7 @@ from typing import Any
 from langchain.messages import HumanMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
+from ...core.async_threads import call_in_daemon_thread as _call_in_daemon_thread
 from ...core.branching import BranchMeta
 from ...core.repo_call import has_repo_method
 from ...observability.tracing import TraceCorrelation
@@ -20,6 +21,7 @@ from .threads import record_turn_trajectory_best_effort
 logger = logging.getLogger("focus_agent.chat")
 
 _STREAM_END = object()
+_STREAM_SHUTDOWN_TIMEOUT_SECONDS = 2.0
 
 
 async def stream_graph_chunks(
@@ -77,7 +79,7 @@ async def stream_graph_chunks_via_sync_stream(
     async for chunk in _consume_graph_stream(
         stream_iter=stream_iter,
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
-        next_chunk=lambda: asyncio.to_thread(next, stream_iter, _STREAM_END),
+        next_chunk=lambda: _call_in_daemon_thread(next, stream_iter, _STREAM_END),
         close_method="close",
     ):
         yield chunk
@@ -99,17 +101,22 @@ async def _consume_graph_stream(
                 if not done:
                     yield None
                     continue
-            chunk = await task
+            chunk = await asyncio.shield(task)
             if chunk is _STREAM_END:
                 break
             task = asyncio.create_task(next_chunk())
             yield chunk
     finally:
+        next_task_settled = True
         if task is not None and not task.done():
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
-        await _close_stream_iter(stream_iter=stream_iter, close_method=close_method)
+            next_task_settled = await _cancel_task_with_timeout(
+                task,
+                label="graph stream next chunk",
+            )
+        if next_task_settled:
+            await _close_stream_iter(stream_iter=stream_iter, close_method=close_method)
+        else:
+            logger.warning("Skipping graph stream close because next chunk is still executing")
 
 
 async def _next_graph_chunk(stream_iter: Any) -> Any:
@@ -122,10 +129,62 @@ async def _next_graph_chunk(stream_iter: Any) -> Any:
 async def _close_stream_iter(*, stream_iter: Any, close_method: str) -> None:
     if not has_repo_method(stream_iter, close_method):
         return
+    close = getattr(stream_iter, close_method)
+    if close_method == "aclose":
+        with suppress(Exception):  # noqa: BLE001
+            result = close()
+            if hasattr(result, "__await__"):
+                await _await_with_timeout(
+                    result,
+                    label="async graph stream close",
+                )
+        return
     with suppress(Exception):  # noqa: BLE001
-        result = getattr(stream_iter, close_method)()
-        if close_method == "aclose" and hasattr(result, "__await__"):
-            await result
+        await _await_with_timeout(
+            _call_in_daemon_thread(close),
+            label="sync graph stream close",
+        )
+
+
+def _consume_task_result(task: asyncio.Task[Any]) -> None:
+    with suppress(asyncio.CancelledError, Exception):  # noqa: BLE001
+        task.result()
+
+
+async def _cancel_task_with_timeout(task: asyncio.Task[Any], *, label: str) -> bool:
+    task.cancel()
+    done, _ = await asyncio.wait(
+        {task},
+        timeout=_STREAM_SHUTDOWN_TIMEOUT_SECONDS,
+    )
+    if task in done:
+        _consume_task_result(task)
+        return True
+    task.add_done_callback(_consume_task_result)
+    logger.warning(
+        "Timed out waiting for %s cancellation after %.1fs",
+        label,
+        _STREAM_SHUTDOWN_TIMEOUT_SECONDS,
+    )
+    return False
+
+
+async def _await_with_timeout(awaitable: Any, *, label: str) -> Any:
+    task = asyncio.ensure_future(awaitable)
+    done, _ = await asyncio.wait(
+        {task},
+        timeout=_STREAM_SHUTDOWN_TIMEOUT_SECONDS,
+    )
+    if task in done:
+        return await task
+    task.cancel()
+    task.add_done_callback(_consume_task_result)
+    logger.warning(
+        "Timed out waiting for %s after %.1fs",
+        label,
+        _STREAM_SHUTDOWN_TIMEOUT_SECONDS,
+    )
+    return None
 
 
 def checkpointer_lacks_async_support(checkpointer: Any) -> bool:

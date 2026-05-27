@@ -135,10 +135,12 @@ export function buildTranscriptItems(
 			detail: detail ?? undefined,
 		};
 		if (existingIndex >= 0) {
+			const existingStep = activity.steps[existingIndex];
 			activity.steps[existingIndex] = {
-				...activity.steps[existingIndex],
+				...existingStep,
 				...step,
-				id: activity.steps[existingIndex].id,
+				id: existingStep.id,
+				label: toolName || existingStep.label || step.label,
 			};
 			return;
 		}
@@ -192,12 +194,23 @@ export function buildTranscriptItems(
 			if (!pendingToolActivity.summaryText) {
 				pendingToolActivity.summaryText = summarizeToolResult(content);
 			}
+			const matchedStep = pendingToolActivity.steps.find(
+				(step) =>
+					step.id === toolCallId ||
+					(Boolean(toolName) &&
+						step.kind === "tool" &&
+						step.label === toolName &&
+						step.status !== "completed"),
+			);
 			const detail = formatToolDetailContent(content);
 			let detailEntry: ToolDetailEntry | null = null;
 			if (detail.content) {
 				detailEntry = {
 					id: `${pendingToolActivity.id}-detail-${pendingToolActivity.details.length}`,
-					label: toolName || `tool-${pendingToolActivity.details.length + 1}`,
+					label:
+						toolName ||
+						matchedStep?.label ||
+						`tool-${pendingToolActivity.details.length + 1}`,
 					content: detail.content,
 					language: detail.language,
 				};

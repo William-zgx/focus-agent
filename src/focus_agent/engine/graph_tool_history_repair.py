@@ -65,6 +65,15 @@ def _collapse_unanswered_trailing_humans(messages: list[Any]) -> list[Any]:
     return [*messages[:tail_start], messages[-1]]
 
 
+def _drop_leading_messages_before_first_human(messages: list[Any]) -> list[Any]:
+    for index, message in enumerate(messages):
+        if isinstance(message, HumanMessage):
+            if index == 0:
+                return messages
+            return messages[index:]
+    return messages
+
+
 def _messages_for_model(state: AgentState) -> list[Any]:
     raw_recent_messages = list(state.get("recent_messages") or [])
     messages = branch_visible_messages(list(state.get("messages", []) or []), values=state)
@@ -80,6 +89,7 @@ def _messages_for_model(state: AgentState) -> list[Any]:
         selected = _collapse_unanswered_trailing_humans(
             [*recent_messages, *messages[trailing_tool_span_start:]]
         )
+    selected = _drop_leading_messages_before_first_human(selected)
     return [_sanitize_assistant_tool_call_message(message) for message in selected]
 
 

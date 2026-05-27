@@ -12,6 +12,7 @@ import type {
   FocusAgentHarnessRunCancelRequest,
   FocusAgentHarnessRunRequest,
   FocusAgentHarnessRunResponse,
+  FocusAgentThreadHarnessRunsCancelResponse,
   FocusAgentStreamHandlers,
   FocusAgentStreamState,
   FocusAgentTurnRequest,
@@ -102,6 +103,22 @@ async function cancelHarnessRun(
   );
 }
 
+async function cancelThreadHarnessRuns(
+  this: FocusAgentEndpointContext,
+  threadId: string,
+  request: FocusAgentHarnessRunCancelRequest = {},
+): Promise<FocusAgentThreadHarnessRunsCancelResponse> {
+  return this.requestJson<FocusAgentThreadHarnessRunsCancelResponse>(
+    `/v2/threads/${encodeURIComponent(threadId)}/runs/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
 async function collectStream(
   this: FocusAgentEndpointContext,
   stream: AsyncIterable<FocusAgentEvent>,
@@ -145,6 +162,7 @@ export interface StreamingEndpoints {
   streamHarnessRun: OmitThisParameter<typeof streamHarnessRun>;
   streamHarnessRunEvents: OmitThisParameter<typeof streamHarnessRunEvents>;
   cancelHarnessRun: OmitThisParameter<typeof cancelHarnessRun>;
+  cancelThreadHarnessRuns: OmitThisParameter<typeof cancelThreadHarnessRuns>;
   collectStream: OmitThisParameter<typeof collectStream>;
 }
 
@@ -154,6 +172,7 @@ const streamingEndpoints: FocusAgentEndpointMethodMap<StreamingEndpoints> = {
   streamHarnessRun,
   streamHarnessRunEvents,
   cancelHarnessRun,
+  cancelThreadHarnessRuns,
   collectStream,
 };
 

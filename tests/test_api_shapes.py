@@ -901,6 +901,7 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject" in route_paths
     assert "/v2/threads/{thread_id:path}/runs" in route_paths
+    assert "/v2/threads/{thread_id:path}/runs/cancel" in route_paths
     assert "/v2/threads/{thread_id:path}/runs/stream" in route_paths
     assert "/v2/threads/{thread_id:path}/runs/resume/stream" in route_paths
     assert "/v2/runs/{run_id}" in route_paths

@@ -212,6 +212,13 @@ export function useThreadBranchActions(
 					await queryClient.invalidateQueries({
 						queryKey: queryKeys.thread(navigation.thread_id),
 					});
+					const handoffRun =
+						handoffMessage && navigation.thread_id !== sourceThreadId
+							? options.onRunHandoff?.({
+									threadId: navigation.thread_id,
+									message: handoffMessage,
+								})
+							: undefined;
 					await navigate({
 						to: "/c/$conversationId/t/$threadId",
 						params: {
@@ -219,12 +226,7 @@ export function useThreadBranchActions(
 							threadId: navigation.thread_id,
 						},
 					});
-					if (handoffMessage && navigation.thread_id !== sourceThreadId) {
-						void options.onRunHandoff?.({
-							threadId: navigation.thread_id,
-							message: handoffMessage,
-						});
-					}
+					void handoffRun;
 				}
 			} catch (error) {
 				if (

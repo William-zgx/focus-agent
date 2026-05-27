@@ -65,6 +65,33 @@ def test_run_manager_interrupt_marks_inflight_run_and_creates_next():
     asyncio.run(scenario())
 
 
+def test_run_manager_cancel_thread_interrupts_all_inflight_runs_for_user():
+    async def scenario():
+        manager = RunManager()
+        first = await manager.create_or_reject(
+            "thread-1",
+            "focus-agent",
+            user_id="user-1",
+        )
+        await manager.set_status(first.run_id, RunStatus.RUNNING)
+        other_user = await manager.create_or_reject(
+            "thread-1",
+            "focus-agent",
+            user_id="user-2",
+        )
+        await manager.set_status(other_user.run_id, RunStatus.RUNNING)
+
+        cancelled = await manager.cancel_thread("thread-1", user_id="user-1")
+
+        assert cancelled == [first.run_id]
+        assert first.abort_event.is_set()
+        assert first.status is RunStatus.INTERRUPTED
+        assert not other_user.abort_event.is_set()
+        assert other_user.status is RunStatus.RUNNING
+
+    asyncio.run(scenario())
+
+
 def test_run_manager_interrupt_waits_for_cancelled_task_cleanup():
     async def scenario():
         manager = RunManager()

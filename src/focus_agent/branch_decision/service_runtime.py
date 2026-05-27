@@ -6,7 +6,12 @@ import logging
 from importlib import import_module
 from typing import Any
 
-from focus_agent.core.branching import BranchMeta, BranchStatus, ThreadResolution
+from focus_agent.core.branching import (
+    BranchActionStatus,
+    BranchMeta,
+    BranchStatus,
+    ThreadResolution,
+)
 from focus_agent.core.governance import (
     BranchDecisionAction,
     BranchDecisionConfig,
@@ -34,6 +39,10 @@ from .service_helpers import (
 )
 
 logger = logging.getLogger("focus_agent.branch_decision")
+
+
+def _normalized_handoff_text(value: str | None) -> str:
+    return " ".join(str(value or "").split()).casefold()
 
 
 class BranchDecisionServiceRuntimeMixin:
@@ -157,15 +166,18 @@ class BranchDecisionServiceRuntimeMixin:
             BranchStatus.CLOSED,
         }:
             return BranchDecisionStatus.BLOCKED, "closed_branch"
-        if (
-            action
-            in {
-                BranchDecisionAction.FORK_CHILD_BRANCH,
-                BranchDecisionAction.FORK_SIBLING_BRANCH,
-            }
-            and latest_pending_branch_action(values.get("branch_actions")) is not None
-        ):
-            return BranchDecisionStatus.BLOCKED, "pending_branch_action"
+        pending_action = latest_pending_branch_action(values.get("branch_actions"))
+        if action in {
+            BranchDecisionAction.FORK_CHILD_BRANCH,
+            BranchDecisionAction.FORK_SIBLING_BRANCH,
+        } and pending_action is not None:
+            handoff_message = str(values.get("_branch_decision_handoff_message") or "").strip()
+            if not self._can_replace_pending_branch_action(
+                action=action,
+                pending_action=pending_action,
+                handoff_message=handoff_message,
+            ):
+                return BranchDecisionStatus.BLOCKED, "pending_branch_action"
         if score < max(config.min_confidence, threshold):
             return BranchDecisionStatus.SKIPPED, "below_threshold"
         if action == BranchDecisionAction.CONTINUE_CURRENT:
@@ -179,6 +191,19 @@ class BranchDecisionServiceRuntimeMixin:
         if config.mode == BranchDecisionMode.SHADOW:
             return BranchDecisionStatus.SHADOWED, "shadow_mode"
         return BranchDecisionStatus.SUGGESTED, "eligible"
+
+    def _can_replace_pending_branch_action(
+        self,
+        *,
+        action: BranchDecisionAction,
+        pending_action: Any,
+        handoff_message: str,
+    ) -> bool:
+        if action != BranchDecisionAction.FORK_SIBLING_BRANCH:
+            return False
+        pending_handoff = _normalized_handoff_text(getattr(pending_action, "handoff_message", None))
+        next_handoff = _normalized_handoff_text(handoff_message)
+        return bool(next_handoff and pending_handoff and pending_handoff != next_handoff)
 
     def _child_depth_exceeded(self, branch_meta: BranchMeta | None) -> bool:
         try:
@@ -208,12 +233,39 @@ class BranchDecisionServiceRuntimeMixin:
     ) -> BranchDecisionEvent:
         values = self._safe_get_values(event.source_thread_id)
         actions = normalize_branch_actions(values.get("branch_actions"))
-        if latest_pending_branch_action(actions) is not None:
+        pending_action = latest_pending_branch_action(actions)
+        event_handoff = str(event.metadata.get("handoff_message") or "").strip()
+        replacement_audit: dict[str, Any] | None = None
+        if pending_action is not None and not self._can_replace_pending_branch_action(
+            action=event.action,
+            pending_action=pending_action,
+            handoff_message=event_handoff,
+        ):
             return self._update_event(
                 event,
                 status=BranchDecisionStatus.BLOCKED,
                 error="A pending branch action already exists.",
                 metadata={**event.metadata, "reason": "pending_branch_action"},
+            )
+        if pending_action is not None:
+            actions = [
+                action.model_copy(
+                    update={
+                        "status": BranchActionStatus.DISMISSED,
+                        "dismissed_at": _now_iso(),
+                    }
+                )
+                if action.action_id == pending_action.action_id
+                else action
+                for action in actions
+            ]
+            replacement_audit = branch_action_audit_event(
+                user_id=user_id,
+                thread_id=event.source_thread_id,
+                action=pending_action,
+                decision="dismissed",
+                reason="replaced_by_new_branch_recommendation",
+                request_id=request_id or event.request_id,
             )
         branch_meta = self._branch_meta_from_values(values)
         requested_kind = _branch_action_kind_for_decision(event.action)
@@ -259,13 +311,17 @@ class BranchDecisionServiceRuntimeMixin:
         current_audit = [
             item for item in list(values.get("branch_action_audit") or []) if isinstance(item, dict)
         ]
+        next_audit = [*current_audit]
+        if replacement_audit is not None:
+            next_audit.append(replacement_audit)
+        next_audit.append(audit)
         if not has_repo_method(self.graph, "update_state"):
             raise RuntimeError("Conversation graph does not support branch action state updates.")
         self.graph.update_state(
             {"configurable": {"thread_id": event.source_thread_id}},
             {
                 "branch_actions": serialize_branch_actions([*actions, action]),
-                "branch_action_audit": [*current_audit, audit],
+                "branch_action_audit": next_audit,
             },
             as_node="bootstrap_turn",
         )
@@ -276,6 +332,11 @@ class BranchDecisionServiceRuntimeMixin:
             executed_at=_now_iso(),
             metadata={
                 **event.metadata,
+                "branch_action": action.model_dump(mode="json"),
+                "branch_action_audit": audit,
+                "replaced_pending_branch_action_id": pending_action.action_id
+                if pending_action is not None
+                else None,
                 "promoted_to_pending_branch_action": True,
                 "requested_branch_action_kind": requested_kind.value,
                 "branch_action_kind": kind.value,

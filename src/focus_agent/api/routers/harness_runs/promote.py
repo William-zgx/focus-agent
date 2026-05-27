@@ -40,3 +40,30 @@ async def cancel_harness_run(
         run_id=run_id,
         fallback_record={"run_id": run_id},
     )
+
+
+@router.post("/threads/{thread_id:path}/runs/cancel")
+async def cancel_thread_harness_runs(
+    thread_id: str,
+    payload: HarnessRunCancelRequest,
+    runtime: AppRuntime = Depends(get_app_runtime),
+    chat: ChatService = Depends(get_chat_service),
+    principal: Principal = Depends(get_current_principal),
+) -> dict[str, object]:
+    chat._preflight_thread_access(
+        thread_id=thread_id,
+        user_id=principal.user_id,
+        explicit_skill_hints=(),
+        require_writable=False,
+    )
+    action = "rollback" if payload.action == "rollback" else "interrupt"
+    cancelled_run_ids = await runtime.run_manager.cancel_thread(
+        thread_id,
+        user_id=principal.user_id,
+        action=action,
+    )
+    return {
+        "thread_id": thread_id,
+        "cancelled_run_ids": cancelled_run_ids,
+        "cancelled_count": len(cancelled_run_ids),
+    }

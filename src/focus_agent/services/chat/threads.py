@@ -135,7 +135,7 @@ def serialize_message(message: Any) -> dict[str, Any]:
         content = message_content_to_text(raw_content)
         if is_ai_message_type(message_type):
             content = "" if tool_calls else confirmed_visible_ai_text(raw_content)
-        return {
+        payload = {
             "type": message_type,
             "content": content,
             "tool_calls": json_safe(tool_calls),
@@ -143,12 +143,16 @@ def serialize_message(message: Any) -> dict[str, Any]:
             "id": message.get("id"),
             "usage_metadata": json_safe(message.get("usage_metadata")),
         }
+        if is_tool_message_type(message_type):
+            payload["tool_call_id"] = message.get("tool_call_id")
+            payload["status"] = message.get("status")
+        return payload
 
     tool_calls = getattr(message, "tool_calls", None)
     content = message_content_to_text(getattr(message, "content", ""))
     if is_ai_message_type(message_type):
         content = "" if tool_calls else confirmed_visible_ai_text(getattr(message, "content", ""))
-    return {
+    payload = {
         "type": message_type,
         "content": content,
         "tool_calls": tool_calls,
@@ -156,6 +160,10 @@ def serialize_message(message: Any) -> dict[str, Any]:
         "id": getattr(message, "id", None),
         "usage_metadata": json_safe(message_token_usage(message)),
     }
+    if is_tool_message_type(message_type):
+        payload["tool_call_id"] = getattr(message, "tool_call_id", None)
+        payload["status"] = getattr(message, "status", None)
+    return payload
 
 
 def _thread_state_visible_message(message: Any) -> dict[str, Any] | None:

@@ -45,6 +45,12 @@ export interface FocusAgentHarnessRunResponse {
   thread_state?: Record<string, unknown> | null;
 }
 
+export interface FocusAgentThreadHarnessRunsCancelResponse {
+  thread_id: string;
+  cancelled_run_ids: string[];
+  cancelled_count: number;
+}
+
 export interface FocusAgentHarnessRunCancelRequest {
   action?: "interrupt" | "rollback";
 }

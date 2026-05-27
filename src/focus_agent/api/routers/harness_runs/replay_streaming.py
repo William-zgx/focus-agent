@@ -43,7 +43,7 @@ from .replay_helpers import (
     _close_run_stream,
     _context_for_turn,
     _create_run_record,
-    _handle_branch_recommendation_for_run,
+    _handle_branch_recommendation_for_run_async,
     _is_branch_handoff_auto_run,
     _is_tool_result_fallback_visible_delta,
     _message_text_from_graph_payload,
@@ -66,6 +66,10 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
+
+
+def _is_cancel_cleanup_exception(exc: BaseException) -> bool:
+    return isinstance(exc, ValueError) and "generator already executing" in str(exc)
 
 
 @router.post("/threads/{thread_id:path}/runs/stream")
@@ -266,7 +270,7 @@ async def _produce_run_stream(
         await publish("run.status", phase="running")
         turn_message = str(message or _message_text_from_graph_payload(payload))
         if turn_message and not skip_branch_recommendation:
-            branch_recommendation_result = _handle_branch_recommendation_for_run(
+            branch_recommendation_result = await _handle_branch_recommendation_for_run_async(
                 chat=chat,
                 thread_id=thread_id,
                 user_id=user_id,
@@ -520,6 +524,18 @@ async def _produce_run_stream(
         if record is None or not record.abort_event.is_set():
             await publish("run.failed", error="CancelledError", message="Run was cancelled.")
     except Exception as exc:  # noqa: BLE001
+        record = runtime.run_manager.get(run_id)
+        if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):
+            await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
+            mark_branch_handoff_decision_outcome(
+                runtime=runtime,
+                decision=handoff_decision,
+                run_status=RunStatus.INTERRUPTED.value,
+                run_id=run_id,
+                message=message or _message_text_from_graph_payload(payload),
+                error=str(exc),
+            )
+            return
         mark_branch_handoff_decision_outcome(
             runtime=runtime,
             decision=handoff_decision,
@@ -645,6 +661,10 @@ async def _produce_branch_action_run_stream(
         if record is None or not record.abort_event.is_set():
             await publish("run.failed", error="CancelledError", message="Run was cancelled.")
     except Exception as exc:  # noqa: BLE001
+        record = runtime.run_manager.get(run_id)
+        if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):
+            await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
+            return
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
         _record_harness_turn_and_schedule(
             chat=chat,

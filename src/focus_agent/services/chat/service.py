@@ -20,7 +20,12 @@ from ...observability.tracing import (
 )
 from ...observability.trajectory import utc_now
 from ...skills.models import SkillSelection
-from ..branch_actions import latest_pending_branch_action, proposal_message
+from ..branch_actions import (
+    latest_pending_branch_action,
+    normalize_branch_actions,
+    proposal_message,
+    serialize_branch_actions,
+)
 from ..chat_turn_errors import ConcurrentTurnError  # noqa: F401 - compatibility re-export
 from ..coordination import (
     BackgroundJobSpec,
@@ -578,17 +583,46 @@ class ChatService(
             return None
         values = self._safe_get_values(thread_id)
         action = latest_pending_branch_action(values.get("branch_actions"))
+        needs_branch_action_rewrite = False
         if action is None or action.action_id != promoted_action_id:
-            return None
+            metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+            action_payload = metadata.get("branch_action") if isinstance(metadata, dict) else None
+            actions_from_decision = normalize_branch_actions([action_payload])
+            action = actions_from_decision[0] if actions_from_decision else None
+            if action is None or action.action_id != promoted_action_id:
+                return None
+            needs_branch_action_rewrite = True
         assistant_text = proposal_message(
             action,
             is_chinese=self._is_chinese_text(message),
         )
         if not has_repo_method(self.runtime.graph, "update_state"):
             return None
+        update_values: dict[str, Any] = {
+            "messages": [HumanMessage(content=message), AIMessage(content=assistant_text)]
+        }
+        existing_actions = normalize_branch_actions(values.get("branch_actions"))
+        if not any(existing.action_id == action.action_id for existing in existing_actions):
+            needs_branch_action_rewrite = True
+            existing_actions = [*existing_actions, action]
+        if needs_branch_action_rewrite:
+            update_values["branch_actions"] = serialize_branch_actions(existing_actions)
+            metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+            audit = metadata.get("branch_action_audit") if isinstance(metadata, dict) else None
+            current_audit = [
+                item
+                for item in list(values.get("branch_action_audit") or [])
+                if isinstance(item, dict)
+            ]
+            if isinstance(audit, dict) and not any(
+                item.get("action_id") == audit.get("action_id")
+                and item.get("decision") == audit.get("decision")
+                for item in current_audit
+            ):
+                update_values["branch_action_audit"] = [*current_audit, audit]
         self.runtime.graph.update_state(
             {"configurable": {"thread_id": thread_id}},
-            {"messages": [HumanMessage(content=message), AIMessage(content=assistant_text)]},
+            update_values,
             as_node="bootstrap_turn",
         )
         latest_context, latest_branch_meta, _ = self._context_for_thread(

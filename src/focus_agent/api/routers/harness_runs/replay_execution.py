@@ -22,7 +22,7 @@ from .replay_helpers import (
     _capture_run_rollback_target,
     _context_for_turn,
     _create_run_record,
-    _handle_branch_recommendation_for_run,
+    _handle_branch_recommendation_for_run_async,
     _harness_run_response,
     _is_branch_handoff_auto_run,
     _prepare_run_payload,
@@ -218,7 +218,7 @@ async def _execute_harness_run(
     )
     try:
         if not skip_branch_recommendation:
-            branch_recommendation_result = _handle_branch_recommendation_for_run(
+            branch_recommendation_result = await _handle_branch_recommendation_for_run_async(
                 chat=chat,
                 thread_id=thread_id,
                 user_id=user_id,

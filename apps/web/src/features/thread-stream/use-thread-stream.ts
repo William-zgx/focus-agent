@@ -395,12 +395,9 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 	}
 
 	function stopStreaming() {
-		const runId = activeRunIdsRef.current.get(options.threadId);
-		if (runId) {
-			void client
-				.cancelHarnessRun(runId, { action: "interrupt" })
-				.catch(() => undefined);
-		}
+		void client
+			.cancelThreadHarnessRuns(options.threadId, { action: "interrupt" })
+			.catch(() => undefined);
 		requestRegistry.stopStreamRequest(options.threadId);
 		activeRunIdsRef.current.delete(options.threadId);
 		const cleanup = resolveStreamRequestCleanup(false, true);

@@ -171,6 +171,19 @@ class BranchRecommendationGraph(BranchActionGraph):
         return {}
 
 
+class StaleBranchRecommendationGraph(BranchRecommendationGraph):
+    def update_state(self, _config, values, as_node=None):
+        self.updates.append((values, as_node))
+        if "messages" in values:
+            self.values["messages"] = list(self.values.get("messages", [])) + list(
+                values["messages"]
+            )
+        if "branch_actions" in values and "messages" in values:
+            self.values["branch_actions"] = values["branch_actions"]
+        if "branch_action_audit" in values and "messages" in values:
+            self.values["branch_action_audit"] = values["branch_action_audit"]
+
+
 class MultiThreadBranchActionGraph:
     def __init__(self, values_by_thread: dict[str, dict[str, object]] | None = None):
         self.values_by_thread = values_by_thread or {}
@@ -359,7 +372,9 @@ def test_send_message_creates_pending_branch_action_without_forking(tmp_path: Pa
     assert payload["branch_actions"][0]["kind"] == "fork_sibling_branch"
     assert payload["branch_actions"][0]["status"] == "pending"
     assert payload["branch_actions"][0]["target_parent_thread_id"] == "root-1"
-    assert payload["branch_actions"][0]["handoff_message"] == "你觉得华英农业下周会是什么样的走势呀？"
+    assert (
+        payload["branch_actions"][0]["handoff_message"] == "你觉得华英农业下周会是什么样的走势呀？"
+    )
     assert "华英农业" in payload["branch_actions"][0]["suggested_branch_name"]
     assert "已创建" not in payload["assistant_message"]
     assert graph.updates[-1][1] == "bootstrap_turn"
@@ -436,6 +451,43 @@ def test_send_message_pre_turn_recommendation_creates_child_card_without_invoke(
         == "fork_child_branch"
     )
     assert "确认项" in payload["assistant_message"]
+
+
+def test_send_message_pre_turn_recommendation_survives_stale_checkpoint_read(
+    tmp_path: Path,
+):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="suggest",
+    )
+    graph = StaleBranchRecommendationGraph(
+        {"messages": [HumanMessage(content="我们在规划包车东线时间段分配。")]}
+    )
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="深入细化一下下午东线每个时间段的安排。",
+    )
+
+    assert graph.invoke_calls == 0
+    assert payload["branch_actions"][0]["source"] == "branch_decision"
+    assert payload["branch_actions"][0]["status"] == "pending"
+    assert graph.values["branch_actions"][0]["action_id"] == payload["branch_actions"][0][
+        "action_id"
+    ]
+    assert "确认项" in payload["assistant_message"]
+    assert "branch_actions" in graph.updates[-1][0]
+    assert "messages" in graph.updates[-1][0]
 
 
 def test_send_message_pre_turn_recommendation_uses_thread_turn_lock(tmp_path: Path):
@@ -819,9 +871,7 @@ def test_branch_thread_state_hides_copied_branch_creation_turn():
             "branch_actions": [executed.model_dump(mode="json")],
         }
     )
-    chat = ChatService(
-        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
-    )
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace()))
 
     payload = chat._response_payload(
         thread_id="child-new",
@@ -895,9 +945,7 @@ def test_branch_thread_state_hides_copied_recommendation_handoff_after_auto_run(
             ],
         }
     )
-    chat = ChatService(
-        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
-    )
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace()))
 
     payload = chat._response_payload(
         thread_id="child-new",
@@ -963,9 +1011,7 @@ def test_branch_thread_state_hides_copied_terminal_handoff_after_auto_run():
             ],
         }
     )
-    chat = ChatService(
-        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
-    )
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace()))
 
     payload = chat._response_payload(
         thread_id="child-new",
@@ -1021,9 +1067,7 @@ def test_branch_thread_state_hides_local_duplicate_handoff_before_answer():
             "branch_actions": [],
         }
     )
-    chat = ChatService(
-        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
-    )
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace()))
 
     payload = chat._response_payload(
         thread_id="child-new",
@@ -1074,9 +1118,7 @@ def test_branch_thread_state_does_not_drop_messages_when_fork_count_is_stale():
             ],
         }
     )
-    chat = ChatService(
-        ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace())
-    )
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=graph, repo=SimpleNamespace()))
 
     payload = chat._response_payload(
         thread_id="child-new",
@@ -2547,6 +2589,7 @@ def test_thread_state_messages_hide_draft_answer_before_later_tool_activity():
     assert [message["type"] for message in payload] == ["human", "ai", "tool"]
     assert payload[1]["content"] == ""
     assert payload[1]["tool_calls"][0]["name"] == "search_code"
+    assert payload[2]["tool_call_id"] == "call-1"
 
 
 def test_thread_state_messages_hide_english_process_narration():

@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from langchain.messages import HumanMessage
 from langgraph.types import Command
 
+from focus_agent.core.async_threads import call_in_daemon_thread
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.harness.runtime import (
@@ -57,6 +58,7 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest, HarnessRunRe
 logger = logging.getLogger("focus_agent.api.harness_runs")
 
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
+_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
 
 
 def _prepare_run_payload(
@@ -271,6 +273,24 @@ def _handle_branch_recommendation_for_run(
         logger.warning("pre-turn branch recommendation failed", exc_info=True)
         return None
     return result if isinstance(result, dict) else None
+
+
+async def _handle_branch_recommendation_for_run_async(**kwargs: Any) -> dict[str, Any] | None:
+    try:
+        return await asyncio.wait_for(
+            call_in_daemon_thread(
+                _handle_branch_recommendation_for_run,
+                wait_on_cancel=False,
+                **kwargs,
+            ),
+            timeout=_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "pre-turn branch recommendation timed out after %.1fs",
+            _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS,
+        )
+        return None
 
 
 async def _run_branch_action_turn_to_completion(
@@ -719,6 +739,7 @@ __all__ = [
     "_context_for_turn",
     "_create_run_record",
     "_handle_branch_recommendation_for_run",
+    "_handle_branch_recommendation_for_run_async",
     "_harness_run_response",
     "_is_branch_handoff_auto_run",
     "_load_authorized_run_payload",

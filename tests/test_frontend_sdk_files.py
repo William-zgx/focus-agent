@@ -122,7 +122,9 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert "/v2/runs/${encodeURIComponent(runId)}/stream" in client_text
     assert "/v1/chat/" not in client_text
     assert "cancelHarnessRun" in client_text
+    assert "cancelThreadHarnessRuns" in client_text
     assert "/v2/runs/${encodeURIComponent(runId)}/cancel" in client_text
+    assert "/v2/threads/${encodeURIComponent(threadId)}/runs/cancel" in client_text
     assert "forkBranch" in client_text
     assert "executeBranchAction" in client_text
     assert "dismissBranchAction" in client_text
