@@ -132,8 +132,142 @@ const ts = require("../node_modules/typescript");
 const appRoot = resolve(import.meta.dirname, "..");
 const repoRoot = resolve(appRoot, "..", "..");
 const smokeBuildDir = resolve(appRoot, ".android-local-runtime-smoke");
+const androidLocalRuntimeModules = [
+	{
+		outputName: "constants.mjs",
+		sourcePath: "src/android-local-runtime/constants.ts",
+		specifier: "./constants",
+	},
+	{
+		outputName: "types.mjs",
+		sourcePath: "src/android-local-runtime/types.ts",
+		specifier: "./types",
+	},
+	{
+		outputName: "helpers.mjs",
+		sourcePath: "src/android-local-runtime/helpers.ts",
+		specifier: "./helpers",
+	},
+	{
+		outputName: "local-v1-runtime.mjs",
+		sourcePath: "src/android-local-runtime/local-v1-runtime.ts",
+		specifier: "./local-v1-runtime",
+	},
+	{
+		outputName: "local-text.mjs",
+		sourcePath: "src/android-local-runtime/local-text.ts",
+		specifier: "./local-text",
+	},
+	{
+		outputName: "model-provider.mjs",
+		sourcePath: "src/android-local-runtime/model-provider.ts",
+		specifier: "./model-provider",
+	},
+	{
+		outputName: "skills.mjs",
+		sourcePath: "src/android-local-runtime/skills.ts",
+		specifier: "./skills",
+	},
+	{
+		outputName: "sse.mjs",
+		sourcePath: "src/android-local-runtime/sse.ts",
+		specifier: "./sse",
+	},
+	{
+		outputName: "state.mjs",
+		sourcePath: "src/android-local-runtime/state.ts",
+		specifier: "./state",
+	},
+	{
+		outputName: "web-fetch.mjs",
+		sourcePath: "src/android-local-runtime/web-fetch.ts",
+		specifier: "./web-fetch",
+	},
+	{
+		outputName: "web-planning.mjs",
+		sourcePath: "src/android-local-runtime/web-planning.ts",
+		specifier: "./web-planning",
+	},
+	{
+		outputName: "web-search.mjs",
+		sourcePath: "src/android-local-runtime/web-search.ts",
+		specifier: "./web-search",
+	},
+	{
+		outputName: "agent-runtime.mjs",
+		sourcePath: "src/android-local-runtime/agent-runtime.ts",
+		specifier: "./agent-runtime",
+	},
+	{
+		outputName: "memory-observability-runtime.mjs",
+		sourcePath: "src/android-local-runtime/memory-observability-runtime.ts",
+		specifier: "./memory-observability-runtime",
+	},
+	{
+		outputName: "model-runtime.mjs",
+		sourcePath: "src/android-local-runtime/model-runtime.ts",
+		specifier: "./model-runtime",
+	},
+	{
+		outputName: "local-tool-planning.mjs",
+		sourcePath: "src/android-local-runtime/local-tool-planning.ts",
+		specifier: "./local-tool-planning",
+	},
+	{
+		outputName: "workspace-runtime.mjs",
+		sourcePath: "src/android-local-runtime/workspace-runtime.ts",
+		specifier: "./workspace-runtime",
+	},
+	{
+		outputName: "local-tool-execution.mjs",
+		sourcePath: "src/android-local-runtime/local-tool-execution.ts",
+		specifier: "./local-tool-execution",
+	},
+	{
+		outputName: "auth-conversation-runtime.mjs",
+		sourcePath: "src/android-local-runtime/auth-conversation-runtime.ts",
+		specifier: "./auth-conversation-runtime",
+	},
+	{
+		outputName: "thread-branch-routes.mjs",
+		sourcePath: "src/android-local-runtime/thread-branch-routes.ts",
+		specifier: "./thread-branch-routes",
+	},
+	{
+		outputName: "branch-logic.mjs",
+		sourcePath: "src/android-local-runtime/branch-logic.ts",
+		specifier: "./branch-logic",
+	},
+	{
+		outputName: "admin-runtime.mjs",
+		sourcePath: "src/android-local-runtime/admin-runtime.ts",
+		specifier: "./admin-runtime",
+	},
+	{
+		outputName: "stream-runtime.mjs",
+		sourcePath: "src/android-local-runtime/stream-runtime.ts",
+		specifier: "./stream-runtime",
+	},
+];
+const androidLocalRuntimeImportOutputs = new Map(
+	androidLocalRuntimeModules.map(({ outputName, specifier }) => [
+		specifier,
+		outputName,
+	]),
+);
 
-async function loadTsModule(sourcePath, outputName) {
+function rewriteTranspiledLocalImports(outputText, importOutputs) {
+	if (!importOutputs?.size) return outputText;
+	return outputText.replace(
+		/from\s+(["'])(\.\/[^"']+)\1/g,
+		(match, quote, specifier) => {
+			const outputName = importOutputs.get(specifier);
+			return outputName ? `from ${quote}./${outputName}${quote}` : match;
+		},
+	);
+}
+
+async function loadTsModule(sourcePath, outputName, options = {}) {
 	const rawSource = await readFile(sourcePath, "utf8");
 	const source = rawSource.replace(/\bimport\.meta\.env\./g, "process.env.");
 	const result = ts.transpileModule(source, {
@@ -162,7 +296,12 @@ async function loadTsModule(sourcePath, outputName) {
 	}
 	await mkdir(smokeBuildDir, { recursive: true });
 	const outputPath = resolve(smokeBuildDir, outputName);
-	await writeFile(outputPath, result.outputText);
+	const outputText = rewriteTranspiledLocalImports(
+		result.outputText,
+		options.importOutputs,
+	);
+	await writeFile(outputPath, outputText);
+	if (options.importModule === false) return null;
 	return import(`${pathToFileURL(outputPath).href}?t=${Date.now()}`);
 }
 
@@ -208,6 +347,472 @@ async function collectSse(response) {
 		});
 }
 
+function assertRecord(value, label) {
+	assert.ok(
+		value && typeof value === "object" && !Array.isArray(value),
+		`${label} should be an object`,
+	);
+	return value;
+}
+
+function assertArray(value, label) {
+	assert.ok(Array.isArray(value), `${label} should be an array`);
+	return value;
+}
+
+function assertBoolean(value, label) {
+	assert.equal(typeof value, "boolean", `${label} should be a boolean`);
+}
+
+function assertString(value, label) {
+	assert.equal(typeof value, "string", `${label} should be a string`);
+}
+
+function assertNonEmptyString(value, label) {
+	assertString(value, label);
+	assert.ok(value.trim(), `${label} should not be empty`);
+}
+
+function assertNullableString(value, label) {
+	assert.ok(
+		value === null || value === undefined || typeof value === "string",
+		`${label} should be a nullable string`,
+	);
+}
+
+function assertConfigSourceContract(source, label) {
+	const sourceRecord = assertRecord(source, label);
+	assertNonEmptyString(sourceRecord.path, `${label}.path`);
+	assertBoolean(sourceRecord.exists, `${label}.exists`);
+	assertBoolean(sourceRecord.writable, `${label}.writable`);
+}
+
+function assertAdminConfigContract(config) {
+	const configRecord = assertRecord(config, "admin config");
+	const models = assertRecord(configRecord.models, "admin config models");
+	assertConfigSourceContract(models.source, "admin config models source");
+	assertNonEmptyString(models.default_model, "admin config default model");
+	assertNullableString(models.helper_model, "admin config helper model");
+	assertArray(models.model_choices, "admin config model choices").forEach(
+		(choice, index) =>
+			assertNonEmptyString(choice, `admin config model choice ${index}`),
+	);
+	assertBoolean(models.requires_restart, "admin config models requires_restart");
+	assertArray(models.providers, "admin config model providers").forEach(
+		(provider, index) => {
+			const providerRecord = assertRecord(
+				provider,
+				`admin config model provider ${index}`,
+			);
+			assertNonEmptyString(providerRecord.id, `model provider ${index}.id`);
+			assertNullableString(providerRecord.label, `model provider ${index}.label`);
+			assertNullableString(
+				providerRecord.backend_provider,
+				`model provider ${index}.backend_provider`,
+			);
+			assertArray(providerRecord.aliases, `model provider ${index}.aliases`).forEach(
+				(alias, aliasIndex) =>
+					assertNonEmptyString(
+						alias,
+						`model provider ${index}.aliases[${aliasIndex}]`,
+					),
+			);
+			assertNullableString(
+				providerRecord.logo_slug,
+				`model provider ${index}.logo_slug`,
+			);
+			assertNullableString(
+				providerRecord.logo_letter,
+				`model provider ${index}.logo_letter`,
+			);
+			assertNullableString(
+				providerRecord.base_url_env,
+				`model provider ${index}.base_url_env`,
+			);
+			assertNullableString(
+				providerRecord.base_url_default,
+				`model provider ${index}.base_url_default`,
+			);
+			assertBoolean(
+				providerRecord.base_url_configured,
+				`model provider ${index}.base_url_configured`,
+			);
+			assertNullableString(
+				providerRecord.api_key_env,
+				`model provider ${index}.api_key_env`,
+			);
+			assertBoolean(
+				providerRecord.api_key_configured,
+				`model provider ${index}.api_key_configured`,
+			);
+			assert.equal(
+				Object.hasOwn(providerRecord, "api_key_default"),
+				false,
+				"admin config responses must not expose local provider secrets",
+			);
+		},
+	);
+	assertArray(models.models, "admin config model entries").forEach(
+		(model, index) => {
+			const modelRecord = assertRecord(model, `admin config model entry ${index}`);
+			assertNonEmptyString(modelRecord.id, `model entry ${index}.id`);
+			assertNullableString(modelRecord.label, `model entry ${index}.label`);
+			assertBoolean(
+				modelRecord.supports_thinking,
+				`model entry ${index}.supports_thinking`,
+			);
+			assertBoolean(
+				modelRecord.default_thinking_enabled,
+				`model entry ${index}.default_thinking_enabled`,
+			);
+			assertRecord(modelRecord.request_kwargs, `model entry ${index}.request_kwargs`);
+			assertRecord(
+				modelRecord.thinking_enabled_request_kwargs,
+				`model entry ${index}.thinking_enabled_request_kwargs`,
+			);
+			assertRecord(
+				modelRecord.thinking_disabled_request_kwargs,
+				`model entry ${index}.thinking_disabled_request_kwargs`,
+			);
+			assertNullableString(
+				modelRecord.thinking_disabled_model_name,
+				`model entry ${index}.thinking_disabled_model_name`,
+			);
+			assertNullableString(
+				modelRecord.reasoning_effort,
+				`model entry ${index}.reasoning_effort`,
+			);
+			assert.ok(
+				modelRecord.no_temperature === null ||
+					typeof modelRecord.no_temperature === "boolean",
+				`model entry ${index}.no_temperature should be a nullable boolean`,
+			);
+			assertNullableString(
+				modelRecord.thinking_enable_extra_body_type,
+				`model entry ${index}.thinking_enable_extra_body_type`,
+			);
+			assertNullableString(
+				modelRecord.thinking_disable_extra_body_type,
+				`model entry ${index}.thinking_disable_extra_body_type`,
+			);
+			assertNullableString(
+				modelRecord.thinking_disable_switch_model,
+				`model entry ${index}.thinking_disable_switch_model`,
+			);
+		},
+	);
+
+	const tools = assertRecord(configRecord.tools, "admin config tools");
+	assertConfigSourceContract(tools.source, "admin config tools source");
+	assertBoolean(tools.requires_restart, "admin config tools requires_restart");
+	assertArray(tools.providers, "admin config tool providers").forEach(
+		(provider, index) => {
+			const providerRecord = assertRecord(
+				provider,
+				`admin config tool provider ${index}`,
+			);
+			assertNonEmptyString(providerRecord.id, `tool provider ${index}.id`);
+			assertBoolean(providerRecord.enabled, `tool provider ${index}.enabled`);
+			assert.ok(
+				providerRecord.order === null ||
+					providerRecord.order === undefined ||
+					Number.isFinite(providerRecord.order),
+				`tool provider ${index}.order should be nullable number`,
+			);
+			assertRecord(providerRecord.metadata, `tool provider ${index}.metadata`);
+			assertArray(providerRecord.overrides, `tool provider ${index}.overrides`);
+		},
+	);
+	assertArray(tools.tools, "admin config tool entries").forEach((tool, index) => {
+		const toolRecord = assertRecord(tool, `admin config tool ${index}`);
+		assertNonEmptyString(toolRecord.name, `tool ${index}.name`);
+		assertNonEmptyString(toolRecord.label, `tool ${index}.label`);
+		assertString(toolRecord.description, `tool ${index}.description`);
+		assertBoolean(toolRecord.enabled, `tool ${index}.enabled`);
+		assertRecord(toolRecord.settings, `tool ${index}.settings`);
+		const metadata = assertRecord(toolRecord.metadata, `tool ${index}.metadata`);
+		assertNonEmptyString(metadata.runtime, `tool ${index}.metadata.runtime`);
+		assertNonEmptyString(metadata.toolset, `tool ${index}.metadata.toolset`);
+		assertBoolean(
+			metadata.requires_workspace,
+			`tool ${index}.metadata.requires_workspace`,
+		);
+		assertBoolean(
+			metadata.requires_workspace_write,
+			`tool ${index}.metadata.requires_workspace_write`,
+		);
+		assertBoolean(metadata.side_effect, `tool ${index}.metadata.side_effect`);
+	});
+
+	const policies = assertRecord(configRecord.policies, "admin config policies");
+	assertConfigSourceContract(policies.source, "admin config policies source");
+	assertBoolean(policies.requires_restart, "admin config policies requires_restart");
+	assertArray(policies.items, "admin config policy items").forEach(
+		(policy, index) => {
+			const policyRecord = assertRecord(policy, `admin config policy ${index}`);
+			assertNonEmptyString(policyRecord.key, `policy ${index}.key`);
+			assertNullableString(policyRecord.env_key, `policy ${index}.env_key`);
+			assertNonEmptyString(policyRecord.label, `policy ${index}.label`);
+			assertNonEmptyString(
+				policyRecord.value_type,
+				`policy ${index}.value_type`,
+			);
+			assertNonEmptyString(policyRecord.source, `policy ${index}.source`);
+			assertBoolean(policyRecord.editable, `policy ${index}.editable`);
+			assertBoolean(policyRecord.sensitive, `policy ${index}.sensitive`);
+			assertBoolean(
+				policyRecord.requires_restart,
+				`policy ${index}.requires_restart`,
+			);
+			assertArray(policyRecord.options, `policy ${index}.options`);
+		},
+	);
+
+	const system = assertRecord(configRecord.system, "admin config system");
+	assertConfigSourceContract(system.source, "admin config system source");
+	assertArray(system.items, "admin config system items").forEach((item, index) => {
+		const itemRecord = assertRecord(item, `admin config system item ${index}`);
+		assertNonEmptyString(itemRecord.key, `system item ${index}.key`);
+		assertNonEmptyString(itemRecord.label, `system item ${index}.label`);
+		assertNonEmptyString(
+			itemRecord.value_type,
+			`system item ${index}.value_type`,
+		);
+		assertNonEmptyString(itemRecord.source, `system item ${index}.source`);
+		assertBoolean(itemRecord.editable, `system item ${index}.editable`);
+		assertBoolean(itemRecord.sensitive, `system item ${index}.sensitive`);
+		assertBoolean(
+			itemRecord.requires_restart,
+			`system item ${index}.requires_restart`,
+		);
+		assertArray(itemRecord.options, `system item ${index}.options`);
+	});
+	assertNullableString(configRecord.updated_at, "admin config updated_at");
+	assertNullableString(configRecord.updated_by, "admin config updated_by");
+	assertNullableString(configRecord.message, "admin config message");
+}
+
+function assertModelsResponseContract(modelList, adminConfig) {
+	const modelListRecord = assertRecord(modelList, "model list");
+	assertNonEmptyString(modelListRecord.default_model, "model list default_model");
+	const models = assertArray(modelListRecord.models, "model list models");
+	assert.ok(models.length > 0, "model list should include at least one model");
+	for (const [index, model] of models.entries()) {
+		const modelRecord = assertRecord(model, `model list item ${index}`);
+		assertNonEmptyString(modelRecord.id, `model list item ${index}.id`);
+		assertNonEmptyString(modelRecord.provider, `model list item ${index}.provider`);
+		assertNonEmptyString(
+			modelRecord.provider_label,
+			`model list item ${index}.provider_label`,
+		);
+		assertNullableString(
+			modelRecord.provider_logo_slug,
+			`model list item ${index}.provider_logo_slug`,
+		);
+		assertNullableString(
+			modelRecord.provider_logo_letter,
+			`model list item ${index}.provider_logo_letter`,
+		);
+		assertNonEmptyString(modelRecord.name, `model list item ${index}.name`);
+		assertNonEmptyString(modelRecord.label, `model list item ${index}.label`);
+		assertBoolean(modelRecord.is_default, `model list item ${index}.is_default`);
+		assertBoolean(
+			modelRecord.supports_thinking,
+			`model list item ${index}.supports_thinking`,
+		);
+		assertBoolean(
+			modelRecord.default_thinking_enabled,
+			`model list item ${index}.default_thinking_enabled`,
+		);
+	}
+	assert.ok(
+		models.some(
+			(model) =>
+				model.id === modelListRecord.default_model && model.is_default === true,
+		),
+		"model list should mark the default model",
+	);
+	if (adminConfig) {
+		assert.equal(modelListRecord.default_model, adminConfig.models.default_model);
+		for (const model of adminConfig.models.models) {
+			assert.ok(
+				models.some((item) => item.id === model.id),
+				`model list should expose admin model ${model.id}`,
+			);
+		}
+	}
+}
+
+function assertLocalRuntimeExposeContract(runtime) {
+	const adminConfig = runtime.adminConfigResponse();
+	assertAdminConfigContract(adminConfig);
+	assertModelsResponseContract(runtime.modelsResponse(), adminConfig);
+	assert.equal(runtime.localToolEnabled("web_search"), true);
+	assert.equal(runtime.localToolEnabled("productivity_capture"), false);
+	const webSearchTool = runtime.localTool("web_search");
+	assert.equal(webSearchTool.name, "web_search");
+	assert.equal(webSearchTool.settings.provider, "duckduckgo");
+	assert.ok(
+		runtime.localEnabledTools().some((tool) => tool.name === "web_fetch"),
+		"localEnabledTools should expose enabled app-local tools",
+	);
+	assert.ok(
+		runtime.localCapabilities().some((tool) => tool.name === "web_search"),
+		"localCapabilities should expose app-local tool behavior",
+	);
+	assert.equal(runtime.localRolePolicy().enabled, true);
+	assert.equal(
+		runtime.localRoleDecision("Plan an Android local task.").model_id,
+		adminConfig.models.default_model,
+	);
+	assert.ok(
+		runtime
+			.localSelectedSkills("Need Android web search")
+			.some((skill) => skill.skill_id === "local-web-tools"),
+	);
+	assert.equal(
+		runtime.localContextEvidenceRecord({ message: "Android context" }).metadata
+			.runtime,
+		"android-local",
+	);
+	const resolvedDefaultProvider = runtime.providerConfigForModel(
+		adminConfig.models.default_model,
+	);
+	assert.equal(resolvedDefaultProvider.model, adminConfig.models.default_model);
+	assert.equal(
+		resolvedDefaultProvider.provider.id,
+		adminConfig.models.providers[0].id,
+	);
+	assert.equal(runtime.modelProvider(adminConfig.models.default_model), null);
+	assert.equal(
+		runtime.modelProviderLabel(adminConfig.models.default_model),
+		adminConfig.models.providers[0].label,
+	);
+	const [thread] = Object.values(runtime.state.threads);
+	assert.ok(
+		runtime
+			.localAppToolPlan(thread, "请列出产物列表并搜索技能 web tools")
+			.some((tool) => tool.name === "artifact_list"),
+		"localAppToolPlan should produce executable local tool plans",
+	);
+}
+
+function assertLocalStreamContract(events, expectedThreadId) {
+	assert.ok(Array.isArray(events), "stream events should be an array");
+	assert.ok(events.length > 0, "stream should emit events");
+	const terminal = events.at(-1);
+	assert.equal(
+		terminal.event,
+		"run.completed",
+		`stream should end with run.completed, got ${terminal.event}`,
+	);
+	const metadata = events.find((event) => event.event === "run.metadata");
+	assert.ok(metadata, "stream should emit run.metadata");
+	assertNonEmptyString(metadata.data.run_id, "stream run_id");
+	assert.equal(metadata.data.thread_id, expectedThreadId);
+	const runId = metadata.data.run_id;
+	for (const [index, event] of events.entries()) {
+		const data = assertRecord(event.data, `stream event ${index}.data`);
+		if ("run_id" in data) {
+			assert.equal(data.run_id, runId, `stream event ${index}.run_id`);
+		}
+		if ("thread_id" in data) {
+			assert.equal(
+				data.thread_id,
+				expectedThreadId,
+				`stream event ${index}.thread_id`,
+			);
+		}
+		if (event.event === "tool.call.delta") {
+			assertNonEmptyString(data.id, `tool.call.delta ${index}.id`);
+			assertNonEmptyString(data.name, `tool.call.delta ${index}.name`);
+			assertNonEmptyString(
+				data.tool_call_id,
+				`tool.call.delta ${index}.tool_call_id`,
+			);
+			assertString(data.args_delta, `tool.call.delta ${index}.args_delta`);
+			assertRecord(data.raw, `tool.call.delta ${index}.raw`);
+		}
+		if (
+			event.event === "tool.requested" ||
+			event.event === "tool.result" ||
+			event.event === "tool.error"
+		) {
+			assertNonEmptyString(data.tool_name, `tool event ${index}.tool_name`);
+			assertNonEmptyString(data.tool_call_id, `tool event ${index}.tool_call_id`);
+		}
+	}
+	assert.ok(
+		events.some(
+			(event) =>
+				event.event === "run.status" && event.data.phase === "running",
+		),
+		"stream should emit a running status",
+	);
+	assert.ok(
+		events.some(
+			(event) =>
+				event.event === "reasoning.delta" &&
+				typeof event.data.delta === "string",
+		),
+		"stream should emit reasoning text",
+	);
+	const messageCompleted = events.find(
+		(event) => event.event === "message.completed",
+	);
+	assert.ok(messageCompleted, "stream should emit message.completed");
+	assertNonEmptyString(
+		messageCompleted.data.content,
+		"message.completed content",
+	);
+	assertNonEmptyString(
+		messageCompleted.data.source,
+		"message.completed source",
+	);
+	const terminalData = assertRecord(terminal.data, "run.completed data");
+	assert.equal(terminalData.status, "completed");
+	const threadState = assertRecord(
+		terminalData.thread_state,
+		"run.completed thread_state",
+	);
+	assert.equal(threadState.thread_id, expectedThreadId);
+	assert.equal(threadState.assistant_message, messageCompleted.data.content);
+	assert.equal(threadState.trace?.last_run_id, runId);
+	const messages = assertArray(threadState.messages, "thread_state messages");
+	assert.ok(messages.length >= 2, "thread_state should include user and assistant messages");
+	assert.ok(
+		messages.some(
+			(message) =>
+				message.type === "ai" &&
+				message.content === messageCompleted.data.content,
+		),
+		"thread_state should include the completed assistant message",
+	);
+	for (const [index, message] of messages.entries()) {
+		const messageRecord = assertRecord(message, `thread_state message ${index}`);
+		assertNonEmptyString(messageRecord.id, `thread_state message ${index}.id`);
+		assertNonEmptyString(messageRecord.type, `thread_state message ${index}.type`);
+		assertNonEmptyString(
+			messageRecord.created_at,
+			`thread_state message ${index}.created_at`,
+		);
+	}
+}
+
+function assertSdkStreamStateContract(state, events, expectedThreadId) {
+	const streamState = assertRecord(state, "SDK stream state");
+	assert.equal(streamState.isClosed, true);
+	assertNonEmptyString(streamState.visibleText, "SDK stream visibleText");
+	const completed = events.find((event) => event.event === "message.completed");
+	assert.equal(streamState.visibleText, completed.data.content);
+	const latestTurnState = assertRecord(
+		streamState.latestTurnState,
+		"SDK stream latestTurnState",
+	);
+	assert.equal(latestTurnState.thread_id, expectedThreadId);
+	assert.equal(latestTurnState.assistant_message, streamState.visibleText);
+}
+
 try {
 	const { appEnv } = await loadTsModule(
 		resolve(appRoot, "src/shared/config/env.ts"),
@@ -220,10 +825,20 @@ try {
 	assert.equal(appEnv.features.observability, true);
 	assert.equal(appEnv.features.productivity, false);
 
-	const { createLocalFocusAgentFetch } = await loadTsModule(
+	for (const { outputName, sourcePath } of androidLocalRuntimeModules) {
+		await loadTsModule(resolve(appRoot, sourcePath), outputName, {
+			importModule: false,
+			importOutputs: androidLocalRuntimeImportOutputs,
+		});
+	}
+	const { LocalFocusAgentRuntime, createLocalFocusAgentFetch } = await loadTsModule(
 		resolve(appRoot, "src/android-local-runtime/local-focus-agent-runtime.ts"),
 		"local-focus-agent-runtime.mjs",
+		{ importOutputs: androidLocalRuntimeImportOutputs },
 	);
+	const directRuntime = new LocalFocusAgentRuntime();
+	await directRuntime.ensureSecrets();
+	assertLocalRuntimeExposeContract(directRuntime);
 	const focusFetch = createLocalFocusAgentFetch();
 	const { FocusAgentClient } = await import(
 		pathToFileURL(resolve(repoRoot, "frontend-sdk/dist/index.js")).href
@@ -252,6 +867,7 @@ try {
 	const adminConfig = await expectJson(
 		await focusFetch("http://focus-agent.local/v1/admin/config"),
 	);
+	assertAdminConfigContract(adminConfig);
 	const adminToolNames = adminConfig.tools.tools.map((tool) => tool.name);
 	assert.ok(adminToolNames.includes("write_text_artifact"));
 	assert.ok(adminToolNames.includes("artifact_list"));
@@ -275,14 +891,15 @@ try {
 	const modelList = await expectJson(
 		await focusFetch("http://focus-agent.local/v1/models"),
 	);
+	assertModelsResponseContract(modelList, adminConfig);
 	assert.ok(
 		modelList.models.some((model) => model.id === adminConfig.models.default_model),
 		"Android local runtime should expose configured models through the Web SDK model endpoint",
 	);
+	const sdkModelList = await sdkClient.listModels();
+	assertModelsResponseContract(sdkModelList, adminConfig);
 	assert.ok(
-		(await sdkClient.listModels()).models.some(
-			(model) => model.id === adminConfig.models.default_model,
-		),
+		sdkModelList.models.some((model) => model.id === adminConfig.models.default_model),
 		"Web SDK model listing should work against Android local runtime",
 	);
 	assert.equal((await sdkClient.getPrincipal()).user.user_id, "android-local-admin");
@@ -344,7 +961,8 @@ try {
 	);
 	assert.ok(await sdkClient.resetUserPassword(sdkUser.user_id, {}));
 	assert.ok((await sdkClient.listAuditEvents({ limit: 5 })).items);
-	assert.ok(await sdkClient.getAdminConfig());
+	const sdkAdminConfig = await sdkClient.getAdminConfig();
+	assertAdminConfigContract(sdkAdminConfig);
 	assert.ok(
 		await sdkClient.updateAdminModelConfig({
 			default_model: adminConfig.models.default_model,
@@ -537,6 +1155,29 @@ try {
 			.thread_id,
 		sdkConversation.root_thread_id,
 	);
+	const sdkFallbackEvents = [];
+	const sdkFallbackState = await sdkClient.collectStream(
+		await sdkClient.streamTurn({
+			thread_id: sdkConversation.root_thread_id,
+			message: "请用一句话介绍 Android 本地运行时。",
+		}),
+		{ onEvent: (event) => sdkFallbackEvents.push(event) },
+	);
+	assertLocalStreamContract(sdkFallbackEvents, sdkConversation.root_thread_id);
+	assertSdkStreamStateContract(
+		sdkFallbackState,
+		sdkFallbackEvents,
+		sdkConversation.root_thread_id,
+	);
+	assert.ok(
+		sdkFallbackState.visibleText.includes("还没有配置模型 API Key"),
+		"Android local runtime should provide a stable assistant fallback without API keys",
+	);
+	assert.equal(
+		providerRequests.length,
+		0,
+		"assistant fallback should not call a configured provider before a local API key exists",
+	);
 	assert.equal(
 		(await sdkClient.getBranchTree(sdkConversation.root_thread_id)).root.thread_id,
 		sdkConversation.root_thread_id,
@@ -585,8 +1226,24 @@ try {
 		thread_id: sdkConversation.root_thread_id,
 		message: "请列出产物列表，验证 Android SDK stream。",
 	});
-	const sdkStreamState = await sdkClient.collectStream(sdkStream);
+	const sdkStreamEvents = [];
+	const sdkStreamState = await sdkClient.collectStream(sdkStream, {
+		onEvent: (event) => sdkStreamEvents.push(event),
+	});
 	assert.equal(sdkStreamState.isClosed, true);
+	assertLocalStreamContract(sdkStreamEvents, sdkConversation.root_thread_id);
+	assert.equal(
+		sdkStreamState.latestTurnState?.thread_id,
+		sdkConversation.root_thread_id,
+	);
+	assert.ok(
+		sdkStreamState.toolEvents.some(
+			(event) =>
+				event.event === "tool.result" &&
+				event.data.tool_name === "artifact_list",
+		),
+		"SDK collectStream should reduce Android local tool events",
+	);
 	const sdkHarnessStream = await sdkClient.streamHarnessRun(
 		sdkConversation.root_thread_id,
 		{ message: "Android SDK streamHarnessRun smoke." },
@@ -819,6 +1476,11 @@ try {
 			method: "PATCH",
 		}),
 	);
+	assertAdminConfigContract(multiProviderConfig);
+	assertModelsResponseContract(
+		await expectJson(await focusFetch("http://focus-agent.local/v1/models")),
+		multiProviderConfig,
+	);
 	assert.equal(
 		multiProviderConfig.models.providers.find(
 			(provider) => provider.id === "moonshot",
@@ -864,6 +1526,7 @@ try {
 			method: "PATCH",
 		}),
 	);
+	assertAdminConfigContract(readdedProviderConfig);
 	assert.equal(
 		readdedProviderConfig.models.providers.find(
 			(provider) => provider.id === "moonshot",
@@ -900,6 +1563,7 @@ try {
 			method: "PATCH",
 		}),
 	);
+	assertAdminConfigContract(policyConfig);
 	assert.equal(
 		policyConfig.policies.items.find(
 			(item) => item.key === "android_local_runtime_smoke",
@@ -1492,6 +2156,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(searchEvents, threadId);
 	assert.ok(
 		searchEvents.some(
 			(event) =>
@@ -1586,6 +2251,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(fetchEvents, threadId);
 	assert.ok(
 		fetchEvents.some(
 			(event) =>
@@ -1609,6 +2275,7 @@ try {
 			jsonBody({ resume: { run_id: "android-resume" } }),
 		),
 	);
+	assertLocalStreamContract(resumeEvents, threadId);
 	assert.ok(
 		resumeEvents.some((event) => event.event === "run.completed"),
 		"streamResume should complete against the Android local runtime",
@@ -1643,6 +2310,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(localWriteEvents, threadId);
 	assert.ok(
 		localWriteEvents.some(
 			(event) =>
@@ -1671,6 +2339,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(localReadEvents, threadId);
 	assert.ok(
 		localReadEvents.some(
 			(event) =>
@@ -1716,6 +2385,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(skillWriteEvents, threadId);
 	assert.ok(
 		skillWriteEvents.some(
 			(event) =>
@@ -1744,6 +2414,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(workspaceReadEvents, threadId);
 	assert.ok(
 		workspaceReadEvents.some(
 			(event) =>
@@ -1810,6 +2481,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(workspaceWriteEvents, threadId);
 	assert.ok(
 		workspaceWriteEvents.some(
 			(event) =>
@@ -1866,6 +2538,7 @@ try {
 			method: "PATCH",
 		}),
 	);
+	assertAdminConfigContract(disabledToolConfig);
 	assert.equal(
 		disabledToolConfig.tools.tools.find((tool) => tool.name === "web_search")
 			?.enabled,
@@ -1900,6 +2573,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(disabledSearchEvents, threadId);
 	assert.equal(
 		disabledSearchEvents.some(
 			(event) =>
@@ -1926,6 +2600,7 @@ try {
 			}),
 		),
 	);
+	assertLocalStreamContract(branchEvents, branchThreadId);
 	const completed = branchEvents.find(
 		(event) => event.event === "run.completed",
 	);

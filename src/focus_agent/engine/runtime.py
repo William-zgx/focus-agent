@@ -75,6 +75,13 @@ from .runtime_persistence import (
 from .runtime_persistence import (
     _sqlite_run_journal_cls as _sqlite_run_journal_cls,
 )
+from .runtime_types import (
+    RuntimeMemoryComponents,
+    RuntimeMemoryEmbeddingSetup,
+    RuntimePersistence,
+    RuntimeRegistries,
+    RuntimeServices,
+)
 
 logger = logging.getLogger("focus_agent.runtime")
 
@@ -92,56 +99,6 @@ def build_graph(*args: object, **kwargs: object) -> object:
     from .graph_builder import build_graph as graph_builder
 
     return graph_builder(*args, **kwargs)
-
-
-@dataclass(slots=True)
-class RuntimePersistence:
-    checkpointer: object
-    store: object
-    repo: BranchRepository
-    user_repository: UserRepository
-    memory_repository: object | None
-    productivity_repository: ProductivityRepository
-    trajectory_recorder: object | None
-    artifact_metadata_repository: object | None
-    run_journal: object
-    postgres_connection_provider: PostgresConnectionProvider | None = None
-    pool: PostgresConnectionProvider | None = None
-
-
-@dataclass(slots=True)
-class RuntimeMemoryComponents:
-    memory_policy: MemoryPolicy
-    memory_retriever: MemoryRetriever
-    memory_writer: MemoryWriter
-    memory_extractor: MemoryExtractor
-    memory_repository: object | None
-    memory_embedding_service: MemoryEmbeddingService | None
-    memory_embedding_provider: object | None
-    memory_embedding_backend_error: str | None = None
-
-
-@dataclass(slots=True)
-class RuntimeMemoryEmbeddingSetup:
-    provider: object | None
-    backend_error: str | None
-    dimensions: int
-    memory_embeddings_enabled: bool
-
-
-@dataclass(slots=True)
-class RuntimeRegistries:
-    skill_registry: SkillRegistry
-    tool_registry: ToolRegistry
-
-
-@dataclass(slots=True)
-class RuntimeServices:
-    branch_service: BranchService
-    agent_team_service: AgentTeamService
-    branch_decision_service: BranchDecisionService
-    user_service: UserService
-    productivity_service: ProductivityService
 
 
 @dataclass(slots=True)

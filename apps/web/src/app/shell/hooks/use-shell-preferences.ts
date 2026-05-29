@@ -26,10 +26,7 @@ import type {
 const MOBILE_SHELL_QUERY = "(max-width: 900px)";
 
 function isMobileShellViewport() {
-	return (
-		typeof window !== "undefined" &&
-		window.matchMedia(MOBILE_SHELL_QUERY).matches
-	);
+	return globalThis.window?.matchMedia(MOBILE_SHELL_QUERY).matches ?? false;
 }
 
 export function useShellPreferences() {

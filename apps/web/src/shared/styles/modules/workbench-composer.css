@@ -1,5 +1,5 @@
 /* Workbench composer integration. */
-.fa-chat-main-body .fa-composer-panel {
+:where(.fa-chat-main-body) .fa-composer-panel {
 	width: 100%;
 	align-self: end;
 	border-radius: 24px;
@@ -10,23 +10,18 @@
 	gap: 8px;
 }
 
-.fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
+:where(.fa-chat-main-body) .fa-composer-shell.fa-composer-input-shell {
 	gap: 8px;
 	padding: 10px 12px;
 	border-radius: 18px;
 }
 
-.fa-chat-main-body .fa-composer-footer-row {
+:where(.fa-chat-main-body) .fa-composer-footer-row {
 	align-items: center;
 	justify-content: flex-end;
 	gap: 6px;
 	min-height: 34px;
 	flex-wrap: nowrap;
-}
-
-.fa-chat-main-body .fa-composer-model-shell {
-	min-width: 210px;
-	max-width: 340px;
 }
 
 :root[data-theme="light"] .fa-chat-main-body .fa-composer-panel {
@@ -350,6 +345,11 @@
 	width: auto;
 	flex: 0 0 auto;
 	justify-content: flex-end;
+}
+
+.fa-chat-main-body .fa-composer-model-shell {
+	min-width: 210px;
+	max-width: 340px;
 }
 
 @media (max-width: 900px) {

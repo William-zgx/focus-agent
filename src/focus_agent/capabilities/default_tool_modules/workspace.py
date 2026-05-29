@@ -14,6 +14,14 @@ from typing import Any
 from langchain.tools import tool
 
 from .common import _coerce_relative_posix, _read_text_file, _require_non_empty_text_arg
+from .workspace_command import (
+    allowed_command_names,
+    normalize_command,
+    resolve_command_executable,
+    validate_command_paths,
+    workspace_command_allowed,
+    workspace_command_env,
+)
 
 _SKIP_DIR_NAMES = {
     ".git",
@@ -65,75 +73,6 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
     ".yaml": "YAML",
     ".yml": "YAML",
 }
-_FORBIDDEN_COMMAND_TOKENS = {
-    "add",
-    "create",
-    "dlx",
-    "exec",
-    "install",
-    "remove",
-    "run-script",
-    "shell",
-    "uninstall",
-}
-_SENSITIVE_ENV_NAME_MARKERS = (
-    "API_KEY",
-    "AUTH",
-    "COOKIE",
-    "CREDENTIAL",
-    "JWT",
-    "KEY",
-    "PASSWORD",
-    "PRIVATE",
-    "SECRET",
-    "SESSION",
-    "TOKEN",
-)
-_SAFE_VERSION_FLAGS = {"--version", "-V", "-v"}
-_PACKAGE_SCRIPT_COMMANDS = {
-    "a11y:baseline",
-    "build",
-    "check",
-    "lint",
-    "style:check",
-    "test",
-    "validate:transport",
-}
-_MAKE_TARGETS = {
-    "architecture-report",
-    "check",
-    "ci",
-    "ci-test",
-    "contract-check",
-    "format-check",
-    "frontend-check",
-    "frontend-check-full",
-    "lint",
-    "lint-strict",
-    "openapi-export",
-    "production-smoke",
-    "sdk-build",
-    "sdk-check",
-    "sdk-openapi-types-check",
-    "sdk-validate-transport",
-    "test",
-    "test-chat-service",
-    "test-graph-builder",
-    "test-thread-stream-frontend-regressions",
-    "ui-smoke",
-    "ui-smoke-agent-team-adoption",
-    "ui-smoke-observability",
-    "ui-smoke-productivity",
-    "web-build",
-    "web-check",
-    "web-format-check",
-    "web-format-check-full",
-    "web-lint",
-    "web-lint-full",
-}
-_UV_RUN_COMMANDS = {"mypy", "pytest", "ruff"}
-_DIRECT_COMMANDS = {"mypy", "pytest", "ruff"}
-_LANGUAGE_TEST_COMMANDS = {"cargo": "test", "go": "test"}
 _UNSUPPORTED_PATCH_FILE_MODES = {"120000", "160000"}
 
 
@@ -286,143 +225,6 @@ def _run_git_apply(*, workspace_root: Path, patch: str, check: bool) -> str:
     return completed.stdout.strip()
 
 
-def _normalize_command(command: list[str]) -> list[str]:
-    if not isinstance(command, list) or not command:
-        raise ValueError("command must be a non-empty list of arguments.")
-    normalized = [str(item) for item in command]
-    if any(not item.strip() for item in normalized):
-        raise ValueError("command arguments must not be empty.")
-    return normalized
-
-
-def _allowed_command_names(raw: object) -> set[str]:
-    if isinstance(raw, str):
-        return {item.strip() for item in raw.split(",") if item.strip()}
-    if isinstance(raw, (list, tuple, set)):
-        return {str(item).strip() for item in raw if str(item).strip()}
-    return set()
-
-
-def _command_base(command: list[str]) -> str:
-    return Path(command[0]).name
-
-
-def _has_forbidden_command_token(command: list[str]) -> bool:
-    return any(token.strip().lower() in _FORBIDDEN_COMMAND_TOKENS for token in command[1:])
-
-
-def _package_command_allowed(command: list[str], *, base: str) -> bool:
-    if _has_forbidden_command_token(command):
-        return False
-    if "run" in command:
-        index = command.index("run")
-        return len(command) > index + 1 and command[index + 1] in _PACKAGE_SCRIPT_COMMANDS
-    return any(token in _PACKAGE_SCRIPT_COMMANDS for token in command[1:])
-
-
-def _make_command_allowed(command: list[str]) -> bool:
-    if len(command) < 2:
-        return False
-    if any(token.startswith("-") for token in command[1:]):
-        return False
-    return all(token in _MAKE_TARGETS for token in command[1:])
-
-
-def _uv_command_allowed(command: list[str]) -> bool:
-    if len(command) < 3 or command[1] != "run":
-        return False
-    if _has_forbidden_command_token(command):
-        return False
-    uv_command = Path(command[2]).name
-    if uv_command == "ruff":
-        return _ruff_command_allowed([uv_command, *command[3:]])
-    return uv_command in _UV_RUN_COMMANDS
-
-
-def _ruff_command_allowed(command: list[str]) -> bool:
-    if len(command) == 2 and command[1] in _SAFE_VERSION_FLAGS:
-        return True
-    if len(command) < 2:
-        return False
-    subcommand = command[1]
-    args = command[2:]
-    if subcommand == "check":
-        return not any(arg in {"--fix", "--fix-only", "--unsafe-fixes"} for arg in args)
-    if subcommand == "format":
-        return "--check" in args
-    return False
-
-
-def _workspace_command_allowed(command: list[str], allowed_commands: set[str]) -> bool:
-    base = _command_base(command)
-    if base not in allowed_commands:
-        return False
-    if base == "ruff":
-        return _ruff_command_allowed(command)
-    if base in _DIRECT_COMMANDS:
-        return True
-    if base == "uv":
-        return _uv_command_allowed(command)
-    if base in {"npm", "pnpm"}:
-        return _package_command_allowed(command, base=base)
-    if base == "make":
-        return _make_command_allowed(command)
-    if base in _LANGUAGE_TEST_COMMANDS:
-        return len(command) >= 2 and command[1] == _LANGUAGE_TEST_COMMANDS[base]
-    return False
-
-
-def _command_arg_path_candidate(argument: str) -> str | None:
-    value = argument.strip()
-    if not value:
-        return None
-    if value.startswith("-"):
-        if "=" not in value:
-            return None
-        value = value.split("=", 1)[1].strip()
-    if "::" in value:
-        value = value.split("::", 1)[0]
-    if (
-        value in {".", ".."}
-        or value.startswith(("/", "./", "../", "~"))
-        or "/" in value
-        or "\\" in value
-    ):
-        return value
-    return None
-
-
-def _validate_command_paths(command: list[str], *, workspace_root: Path) -> None:
-    for argument in command[1:]:
-        path = _command_arg_path_candidate(argument)
-        if path is None:
-            continue
-        _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
-
-
-def _resolve_command_executable(command: list[str], *, workspace_root: Path) -> list[str]:
-    executable = command[0]
-    if "/" not in executable and "\\" not in executable:
-        return command
-    resolved = _resolve_workspace_path(raw_path=executable, workspace_root=workspace_root)
-    if not resolved.exists():
-        raise FileNotFoundError(executable)
-    if not resolved.is_file():
-        raise IsADirectoryError(executable)
-    return [str(resolved), *command[1:]]
-
-
-def _workspace_command_env() -> dict[str, str]:
-    env: dict[str, str] = {}
-    for key, value in os.environ.items():
-        normalized_key = key.upper()
-        if any(marker in normalized_key for marker in _SENSITIVE_ENV_NAME_MARKERS):
-            continue
-        env[key] = value
-    env["FOCUS_AGENT_WORKSPACE_COMMAND"] = "1"
-    return env
-
-
 def build_workspace_tools(
     *,
     workspace_root: Path,
@@ -445,7 +247,10 @@ def build_workspace_tools(
         _require_non_empty_text_arg(args, "patch")
 
     def _validate_run_workspace_command_args(args: dict[str, Any]) -> None:
-        _normalize_command(args.get("command"))
+        normalize_command(args.get("command"))
+
+    def _resolve_workspace_command_path(raw_path: str) -> Path:
+        return _resolve_workspace_path(raw_path=raw_path, workspace_root=workspace_root)
 
     @tool
     def list_files(path: str = ".", pattern: str = "**/*", max_results: int | None = None) -> str:
@@ -748,7 +553,7 @@ def build_workspace_tools(
     ) -> str:
         """Run an allowlisted workspace command without a shell."""
         tool_name = "run_workspace_command"
-        normalized_command = _normalize_command(command)
+        normalized_command = normalize_command(command)
         emit_tool_event(tool_name=tool_name, stage="start", command=normalized_command, cwd=cwd)
         try:
             working_dir = _resolve_workspace_path(raw_path=cwd, workspace_root=workspace_root)
@@ -756,17 +561,19 @@ def build_workspace_tools(
                 raise FileNotFoundError(cwd)
             if not working_dir.is_dir():
                 raise NotADirectoryError(cwd)
-            allowed_commands = _allowed_command_names(
+            allowed_commands = allowed_command_names(
                 tool_catalog.run_workspace_command.allowed_commands
             )
-            if not _workspace_command_allowed(normalized_command, allowed_commands):
+            if not workspace_command_allowed(normalized_command, allowed_commands):
                 raise ValueError(
                     "command is not allowlisted; pass argv for a supported test, lint, "
                     "build, or check command."
                 )
-            _validate_command_paths(normalized_command, workspace_root=workspace_root)
-            resolved_command = _resolve_command_executable(
-                normalized_command, workspace_root=workspace_root
+            validate_command_paths(
+                normalized_command, resolve_path=_resolve_workspace_command_path
+            )
+            resolved_command = resolve_command_executable(
+                normalized_command, resolve_path=_resolve_workspace_command_path
             )
             requested_timeout = (
                 tool_catalog.run_workspace_command.default_timeout_seconds
@@ -791,7 +598,7 @@ def build_workspace_tools(
                 completed = subprocess.run(
                     resolved_command,
                     cwd=working_dir,
-                    env=_workspace_command_env(),
+                    env=workspace_command_env(),
                     capture_output=True,
                     text=True,
                     encoding="utf-8",

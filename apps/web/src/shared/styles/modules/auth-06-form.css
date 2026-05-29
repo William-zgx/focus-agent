@@ -1,0 +1,175 @@
+.fa-auth-login-form {
+	display: grid;
+	align-content: start;
+	gap: 12px;
+	padding: 20px;
+	border: none;
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0)),
+		linear-gradient(160deg, rgba(37, 99, 235, 0.045), transparent 46%),
+		color-mix(in srgb, var(--fa-panel-1) 92%, rgb(255, 255, 255) 8%);
+	box-shadow: 0 10px 22px rgba(24, 35, 55, 0.055);
+	min-width: 0;
+}
+
+.fa-auth-login-form-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.fa-auth-description {
+	color: var(--fa-text-muted);
+	font-size: 0.84rem;
+	line-height: 1.45;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.fa-auth-header p,
+.fa-auth-header h1,
+.fa-account-header p,
+.fa-account-header h1 {
+	margin: 0;
+}
+
+.fa-auth-header p,
+.fa-account-header p {
+	color: var(--fa-accent-text-muted);
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.fa-auth-header h1,
+.fa-account-header h1 {
+	color: var(--fa-text);
+	font-size: 1.32rem;
+}
+
+.fa-auth-login-form .fa-auth-header h1 {
+	font-size: 1.26rem;
+	line-height: 1.16;
+}
+
+.fa-auth-form {
+	display: grid;
+	gap: 13px;
+	min-width: 0;
+}
+
+.fa-auth-form label,
+.fa-auth-form .fa-auth-field {
+	display: grid;
+	gap: 6px;
+	color: var(--fa-text-muted);
+	font-size: 0.82rem;
+	font-weight: 700;
+}
+
+.fa-auth-form .fa-auth-field > label {
+	display: block;
+}
+
+.fa-auth-form input,
+.fa-auth-form textarea {
+	width: 100%;
+	min-width: 0;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 86%, transparent);
+	color: var(--fa-text);
+	padding: 11px 12px;
+	line-height: 1.45;
+}
+
+.fa-auth-form textarea {
+	resize: vertical;
+}
+
+.fa-auth-form input:focus-visible,
+.fa-auth-form textarea:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
+	outline-offset: 2px;
+}
+
+.fa-auth-login-panel .fa-auth-form input,
+.fa-auth-login-panel .fa-auth-form textarea {
+	border-color: color-mix(in srgb, var(--fa-accent) 9%, var(--fa-border) 91%);
+	background: color-mix(in srgb, var(--fa-panel-1) 94%, rgb(255, 255, 255) 6%);
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.72),
+		0 1px 0 rgba(24, 35, 55, 0.025);
+	transition:
+		border-color 0.16s ease,
+		box-shadow 0.16s ease,
+		background 0.16s ease;
+}
+
+.fa-auth-login-panel .fa-auth-form input:focus-visible,
+.fa-auth-login-panel .fa-auth-form textarea:focus-visible {
+	border-color: color-mix(in srgb, var(--fa-accent) 62%, transparent);
+	outline: 2px solid color-mix(in srgb, var(--fa-accent) 42%, transparent);
+	outline-offset: 1px;
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.74),
+		0 0 0 4px color-mix(in srgb, var(--fa-accent) 18%, transparent);
+}
+
+.fa-auth-actions,
+.fa-auth-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.fa-auth-row {
+	justify-content: space-between;
+	min-width: 0;
+}
+
+.fa-auth-row a,
+.fa-auth-advanced > button {
+	color: color-mix(
+		in srgb,
+		var(--fa-accent-text-strong) 62%,
+		var(--fa-text-muted) 38%
+	);
+	font-size: 0.86rem;
+	font-weight: 600;
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.fa-auth-row button,
+.fa-auth-advanced > button {
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+}
+
+.fa-auth-login-panel .fa-auth-row a,
+.fa-auth-login-panel .fa-auth-row button {
+	color: color-mix(
+		in srgb,
+		var(--fa-accent-text-strong) 34%,
+		var(--fa-text-muted) 66%
+	);
+}
+
+.fa-auth-login-panel .fa-auth-secondary-link {
+	color: color-mix(
+		in srgb,
+		var(--fa-accent-text-strong) 30%,
+		var(--fa-text-muted) 70%
+	);
+}
+
+.fa-auth-login-panel .fa-auth-row button:hover,
+.fa-auth-login-panel .fa-auth-row a:hover {
+	color: color-mix(in srgb, var(--fa-accent) 76%, var(--fa-text) 24%);
+}

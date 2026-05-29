@@ -72,6 +72,19 @@ export function errorMessage(error: unknown, fallback: string) {
 	return error instanceof Error ? error.message : fallback;
 }
 
+export function isUnsupportedLocalRuntimeError(error: unknown) {
+	return (
+		error instanceof Error &&
+		/^Unsupported local runtime (API route|endpoint)\.$/.test(error.message)
+	);
+}
+
+export function localRuntimeAgentTeamUnavailableMessage(isChineseUi: boolean) {
+	return isChineseUi
+		? "当前 Android 本地运行时暂不支持 Agent Team。请连接后端或关闭 Agent Team 入口。"
+		: "Agent Team is not available in the Android local runtime. Connect a backend or disable the Agent Team entry.";
+}
+
 export function titleFromGoal(goal: string) {
 	const normalized = goal.trim().replace(/\s+/g, " ");
 	return normalized.length > 34

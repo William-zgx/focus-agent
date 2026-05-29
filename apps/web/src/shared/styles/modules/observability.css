@@ -394,7 +394,7 @@
 	align-items: stretch;
 }
 
-.fa-observability-detail-side.is-inspector .fa-chat-toolbar-button {
+:where(.fa-observability-detail-side.is-inspector) .fa-chat-toolbar-button {
 	justify-content: center;
 }
 

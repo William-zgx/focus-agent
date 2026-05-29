@@ -57,7 +57,7 @@
 	box-shadow: 0 8px 18px rgba(4, 10, 22, 0.16);
 }
 
-.fa-chat-logo-toggle .fa-brand-mark svg {
+:where(.fa-chat-logo-toggle .fa-brand-mark) svg {
 	width: 23px;
 	height: 23px;
 }

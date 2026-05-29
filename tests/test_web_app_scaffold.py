@@ -1,3 +1,5 @@
+import json
+import re
 from pathlib import Path
 
 
@@ -18,11 +20,41 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
+def _script_budget(script_text: str) -> dict[str, int]:
+    budget: dict[str, int] = {}
+    for key in ["maxCssBytes", "maxJsBytes", "maxCssAssetBytes", "maxJsAssetBytes"]:
+        match = re.search(rf"\b{key}:\s*([0-9_]+)", script_text)
+        assert match, f"missing readable bundle budget field {key}"
+        budget[key] = int(match.group(1).replace("_", ""))
+    return budget
+
+
 def _shell_text(web_root: Path) -> str:
     shell_root = web_root / "src" / "app" / "shell"
     paths = sorted(shell_root.glob("*.tsx")) + sorted((shell_root / "hooks").glob("*.ts"))
     paths.append(shell_root / "app-shell-config.ts")
     return _join_text(*paths)
+
+
+def test_web_bundle_budget_check_is_wired_and_readable():
+    root = Path(__file__).resolve().parents[1]
+    web_root = root / "apps" / "web"
+    script_path = web_root / "scripts" / "bundle-budget.mjs"
+
+    assert script_path.exists(), f"missing {script_path}"
+
+    web_package = json.loads((web_root / "package.json").read_text())
+    assert web_package["scripts"]["bundle:check"] == "node ./scripts/bundle-budget.mjs"
+
+    script_text = script_path.read_text()
+    budget = _script_budget(script_text)
+    assert "export const defaultBudget" in script_text
+    assert "dist/assets" in script_text
+    assert "Missing web build assets" in script_text
+    assert "pnpm --filter @focus-agent/web-app build" in script_text
+    assert "--print-budget" in script_text
+    assert budget["maxCssBytes"] >= budget["maxCssAssetBytes"] > 0
+    assert budget["maxJsBytes"] >= budget["maxJsAssetBytes"] > 0
 
 
 def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
@@ -125,7 +157,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "function SidebarToggleIcon" in app_shell_text
     assert 'new URLSearchParams(window.location.search).get("lang")' in app_shell_text
     assert 'const MOBILE_SHELL_QUERY = "(max-width: 900px)"' in app_shell_text
-    assert "window.matchMedia(MOBILE_SHELL_QUERY).matches" in app_shell_text
+    assert "globalThis.window?.matchMedia(MOBILE_SHELL_QUERY).matches" in app_shell_text
     assert 'setSidebarCollapsed(isMobileShellViewport() || stored === "1")' in app_shell_text
     assert 'state.location.pathname.includes("/agent-team")' not in app_shell_text
     assert 'state.location.pathname.includes("/admin/")' not in app_shell_text

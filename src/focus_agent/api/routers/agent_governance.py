@@ -25,6 +25,7 @@ from ..contracts import (
     AgentDelegationPlanResponse,
     AgentDelegationPolicyResponse,
     AgentDelegationRunListResponse,
+    AgentFeedbackTrendResponse,
     AgentMemoryCuratorDecisionListResponse,
     AgentMemoryCuratorEvaluateRequest,
     AgentMemoryCuratorEvaluateResponse,
@@ -97,6 +98,7 @@ from ..route_utils.agent_governance import (
 from ..route_utils.agent_governance_operations import (
     _agent_context_evidence_list_response,
     _agent_context_explain_response,
+    _agent_feedback_trend_response,
     _agent_skill_catalog_response,
     _agent_skill_preference_response,
     _agent_skill_selection_events_response,
@@ -207,6 +209,14 @@ def record_agent_skill_selection_feedback(
         selection_id=selection_id,
         payload=payload,
     )
+
+
+@router.get("/v1/agent/feedback/trend", response_model=AgentFeedbackTrendResponse)
+def get_agent_feedback_trend(
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> AgentFeedbackTrendResponse:
+    return _agent_feedback_trend_response(runtime=runtime, principal=principal)
 
 
 @router.get("/v1/agent/skills/catalog", response_model=AgentSkillCatalogResponse)

@@ -111,7 +111,7 @@
 :root[data-theme="light"] .fa-chat-panel,
 :root[data-theme="light"] .fa-header-card,
 :root[data-theme="light"] .fa-tree-card,
-:root[data-theme="light"] .fa-chat-transcript,
+:where(:root[data-theme="light"]) .fa-chat-transcript,
 :root[data-theme="light"] .fa-composer-panel,
 :root[data-theme="light"] .fa-focus-modal-card,
 :root[data-theme="light"] .fa-route-state-card,
@@ -130,7 +130,7 @@
 		);
 }
 
-:root[data-theme="light"] .fa-chat-transcript {
+:where(:root[data-theme="light"]) .fa-chat-transcript {
 	background:
 		linear-gradient(
 			180deg,
@@ -144,7 +144,7 @@
 		);
 }
 
-:root[data-theme="light"] .fa-chat-history {
+:where(:root[data-theme="light"]) .fa-chat-history {
 	background:
 		radial-gradient(
 			circle at top right,

@@ -40,16 +40,18 @@ def _compact(text: str) -> str:
 
 def test_create_page_exposes_cockpit_collaboration_modes():
     create_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-create.tsx")
+    options_text = _read(AGENT_TEAM_ROOT / "agent-team-create-options.ts")
+    create_contract_text = create_text + "\n" + options_text
     styles_text = _read_agent_team_styles()
 
     for text in ["快一点", "稳一点", "细一点", "COLLABORATION_MODES", "selectedCollaboration"]:
-        assert text in create_text
-    assert 'granularity: "coarse"' in create_text
-    assert 'granularity: "balanced"' in create_text
-    assert 'granularity: "detailed"' in create_text
-    assert 'focus: "implementation"' in create_text
-    assert 'focus: "verification"' in create_text
-    assert 'focus: "auto"' in create_text
+        assert text in create_contract_text
+    assert 'granularity: "coarse"' in create_contract_text
+    assert 'granularity: "balanced"' in create_contract_text
+    assert 'granularity: "detailed"' in create_contract_text
+    assert 'focus: "implementation"' in create_contract_text
+    assert 'focus: "verification"' in create_contract_text
+    assert 'focus: "auto"' in create_contract_text
     assert "max_tasks: selectedCollaboration.maxTasks" in create_text
     assert "fa-agent-team-collab-grid" in styles_text
     assert "fa-agent-team-collab-card" in styles_text
@@ -71,6 +73,8 @@ def test_workbench_uses_agent_team_cockpit_and_merge_decision_hook():
     assert "action?: AgentTeamMergeDecisionAction" in types_text
     assert 'next_action: "merge"' in workbench_text
     assert "accepted_tasks: tasks.map" in workbench_text
+    assert "branchDecisionThreadIdFromSessionData" in workbench_text
+    assert 'startsWith("agent-team-standalone-") ? "" : rootThreadId' in workbench_text
     assert "PreMergeCheckPanel" not in workbench_text
     assert "TaskLanesPanel" not in workbench_text
 

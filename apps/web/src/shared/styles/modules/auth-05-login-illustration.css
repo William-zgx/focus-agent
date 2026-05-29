@@ -1,0 +1,220 @@
+.fa-auth-login-intro {
+	display: grid;
+	align-content: start;
+	gap: 10px;
+	max-width: 440px;
+	padding: clamp(16px, 2.2vw, 22px);
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0)),
+		linear-gradient(145deg, rgba(20, 184, 166, 0.045), transparent 54%);
+	position: relative;
+	min-width: 0;
+	min-height: 100%;
+}
+
+.fa-auth-login-intro::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 2px;
+	height: 1px;
+	width: 84px;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--fa-accent) 32%, transparent),
+		transparent
+	);
+	opacity: 0.66;
+}
+
+:where(.fa-auth-login-intro) > .fa-auth-login-brand,
+:where(.fa-auth-login-intro) > h1,
+:where(.fa-auth-login-intro) > .fa-auth-description {
+	padding-left: 2px;
+}
+
+.fa-auth-login-brand {
+	display: flex;
+	align-items: center;
+	width: fit-content;
+	margin-top: 0;
+}
+
+.fa-auth-login-brand .fa-brand-mark {
+	width: 38px;
+	height: 38px;
+	border-color: color-mix(in srgb, var(--fa-accent) 18%, transparent);
+	border-radius: 8px;
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fa-panel-1) 92%, white 8%),
+		color-mix(in srgb, var(--fa-panel-3) 80%, white 20%)
+	);
+	box-shadow:
+		0 10px 22px rgba(37, 99, 235, 0.12),
+		inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.fa-auth-login-brand .fa-brand-mark svg {
+	width: 28px;
+	height: 28px;
+}
+
+.fa-auth-login-brand .fa-brand-title {
+	color: var(--fa-text);
+	font-size: 1rem;
+	letter-spacing: 0;
+}
+
+.fa-auth-login-intro h1 {
+	margin: 0;
+	max-width: 360px;
+	font-size: 1.3rem;
+	font-weight: 700;
+	line-height: 1.24;
+	color: color-mix(in srgb, var(--fa-text) 90%, var(--fa-text-muted) 10%);
+}
+
+.fa-auth-login-visual {
+	margin: 8px -18px -4px -22px;
+	overflow: visible;
+}
+
+.fa-auth-login-illustration {
+	display: block;
+	width: 100%;
+	height: auto;
+	aspect-ratio: 16 / 6.4;
+	overflow: visible;
+}
+
+.fa-auth-login-illustration-lines path,
+.fa-auth-login-illustration-dashes path {
+	fill: none;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.fa-auth-login-illustration-lines path {
+	stroke: var(--fa-login-line-cool);
+	stroke-width: 4;
+}
+
+.fa-auth-login-illustration-lines path:first-child,
+.fa-auth-login-illustration-lines path:last-child {
+	stroke: var(--fa-login-line-warm);
+}
+
+.fa-auth-login-illustration-dashes path {
+	stroke: color-mix(in srgb, var(--fa-accent) 40%, transparent);
+	stroke-dasharray: 5 8;
+	stroke-width: 2;
+}
+
+.fa-auth-login-orbit {
+	fill: color-mix(in srgb, var(--fa-panel-1) 60%, transparent);
+	stroke: color-mix(in srgb, var(--fa-accent) 26%, transparent);
+	stroke-width: 1.5;
+}
+
+.fa-auth-login-orbit.is-inner {
+	fill: color-mix(in srgb, var(--fa-panel-1) 86%, transparent);
+}
+
+.fa-auth-login-node {
+	fill: color-mix(in srgb, var(--fa-panel-1) 94%, white 6%);
+	stroke: color-mix(in srgb, var(--fa-accent) 18%, transparent);
+	stroke-width: 1.5;
+	filter: drop-shadow(0 8px 16px rgba(37, 99, 235, 0.12));
+}
+
+.fa-auth-login-node.is-start,
+.fa-auth-login-node-dot {
+	fill: var(--fa-login-blue-chip);
+	stroke: none;
+}
+
+.fa-auth-login-node-dot.is-warm {
+	fill: var(--fa-login-orange-chip);
+}
+
+.fa-auth-login-card rect:first-child {
+	fill: var(--fa-login-card);
+	stroke: color-mix(in srgb, var(--fa-text-muted) 18%, transparent);
+	stroke-width: 1;
+}
+
+.fa-auth-login-card rect:not(:first-child) {
+	fill: color-mix(in srgb, var(--fa-text-muted) 40%, transparent);
+}
+
+.fa-auth-login-card .fa-auth-login-chip.is-blue {
+	fill: var(--fa-login-blue-chip);
+}
+
+.fa-auth-login-card .fa-auth-login-chip.is-teal {
+	fill: var(--fa-login-teal-chip);
+}
+
+.fa-auth-login-card .fa-auth-login-chip.is-warm {
+	fill: var(--fa-login-orange-chip);
+}
+
+.fa-auth-login-card .fa-auth-login-line {
+	fill: color-mix(in srgb, var(--fa-text-muted) 40%, transparent);
+}
+
+.fa-auth-login-card .fa-auth-login-line.is-strong {
+	fill: var(--fa-login-line-cool);
+}
+
+.fa-auth-login-card circle {
+	fill: color-mix(in srgb, var(--fa-text-muted) 45%, transparent);
+}
+
+.fa-auth-login-card.is-top rect:nth-of-type(3),
+.fa-auth-login-card.is-bottom rect:nth-of-type(3) {
+	fill: var(--fa-login-line-cool);
+}
+
+.fa-auth-login-card.is-final rect:first-child {
+	fill: color-mix(in srgb, #fff7ed 72%, white 28%);
+	stroke: color-mix(in srgb, #fb923c 34%, transparent);
+}
+
+.fa-auth-login-card.is-final rect:not(:first-child) {
+	fill: color-mix(in srgb, #f97316 38%, var(--fa-text-muted) 20%);
+}
+
+.fa-auth-login-card.is-final .fa-auth-login-chip.is-warm {
+	fill: var(--fa-login-orange-chip);
+}
+
+.fa-auth-login-card.is-final .fa-auth-login-line {
+	fill: color-mix(in srgb, #f97316 34%, var(--fa-text-muted) 30%);
+}
+
+.fa-auth-login-status circle {
+	fill: color-mix(in srgb, var(--fa-panel-1) 94%, white 6%);
+	stroke: color-mix(in srgb, var(--fa-accent) 16%, transparent);
+	stroke-width: 1.5;
+}
+
+.fa-auth-login-status path {
+	fill: none;
+	stroke: #2f80ed;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 4;
+}
+
+.fa-auth-login-status path:first-of-type {
+	stroke: #22c7bd;
+}
+
+.fa-auth-login-sparkles path {
+	fill: #fb923c;
+	opacity: 0.78;
+}

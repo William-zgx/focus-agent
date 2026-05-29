@@ -63,6 +63,15 @@ class SkillOperationsRepository(Protocol):
 class FeedbackRepository(Protocol):
     def save_feedback_event(self, event: FeedbackEvent) -> str: ...
 
+    def list_feedback_events(
+        self,
+        *,
+        user_id: str | None = None,
+        source_kind: str | None = None,
+        sentiment: str | None = None,
+        limit: int = 50,
+    ) -> list[FeedbackEvent]: ...
+
 
 class BranchDecisionRepository(Protocol):
     def save_branch_decision_event(self, event: BranchDecisionEvent) -> str: ...
@@ -209,6 +218,25 @@ class InMemoryGovernanceRepository:
         with self._lock:
             self._feedback_events[event.event_id] = event
         return event.event_id
+
+    def list_feedback_events(
+        self,
+        *,
+        user_id: str | None = None,
+        source_kind: str | None = None,
+        sentiment: str | None = None,
+        limit: int = 50,
+    ) -> list[FeedbackEvent]:
+        with self._lock:
+            items = list(self._feedback_events.values())
+        if user_id is not None:
+            items = [item for item in items if item.user_id in {None, user_id}]
+        if source_kind is not None:
+            items = [item for item in items if item.source_kind == source_kind]
+        if sentiment is not None:
+            items = [item for item in items if item.sentiment == sentiment]
+        items.sort(key=lambda item: (item.created_at, item.event_id), reverse=True)
+        return items[: max(0, limit)]
 
     def save_branch_decision_event(self, event: BranchDecisionEvent) -> str:
         with self._lock:

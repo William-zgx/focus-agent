@@ -1,0 +1,137 @@
+.fa-modal-backdrop {
+	position: fixed;
+	inset: 0;
+	border: 0;
+	background: rgba(4, 10, 22, 0.56);
+	backdrop-filter: blur(8px);
+	z-index: 40;
+}
+
+.fa-focus-modal {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	z-index: 41;
+}
+
+.fa-focus-modal-card {
+	width: min(720px, calc(100vw - 32px));
+	max-height: calc(100vh - 48px);
+	overflow: auto;
+	display: grid;
+	gap: 16px;
+	padding: 18px;
+	border-radius: 24px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background:
+		linear-gradient(180deg, rgba(28, 28, 38, 0.98), rgba(16, 16, 24, 0.96)),
+		radial-gradient(
+			circle at top right,
+			rgba(129, 140, 248, 0.14),
+			transparent 44%
+		);
+	box-shadow: 0 28px 80px rgba(4, 10, 22, 0.34);
+}
+
+.fa-focus-modal-card.is-wide {
+	width: min(980px, calc(100vw - 32px));
+}
+
+.fa-focus-modal-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.fa-focus-modal-copy {
+	display: grid;
+	gap: 6px;
+}
+
+.fa-focus-modal-copy h3 {
+	margin: 0;
+	color: var(--fa-text);
+	font-size: 18px;
+	letter-spacing: -0.02em;
+}
+
+.fa-focus-modal-copy p {
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.fa-focus-modal-close {
+	width: 36px;
+	height: 36px;
+	min-width: 36px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: linear-gradient(
+		180deg,
+		rgba(37, 37, 48, 0.98),
+		rgba(18, 18, 24, 0.98)
+	);
+	color: var(--fa-text);
+}
+
+.fa-focus-modal-form {
+	display: grid;
+	gap: 12px;
+}
+
+.fa-focus-modal-field {
+	display: grid;
+	gap: 8px;
+}
+
+.fa-focus-modal-field span {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-focus-modal-field input,
+.fa-focus-modal-field textarea,
+.fa-focus-modal-field select {
+	width: 100%;
+	border-radius: 18px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgba(13, 13, 18, 0.88);
+	color: var(--fa-text);
+	padding: 12px 14px;
+	outline: none;
+}
+
+.fa-focus-modal-note {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.6;
+}
+
+.fa-focus-modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.fa-focus-modal-actions button {
+	min-height: 40px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: linear-gradient(
+		180deg,
+		rgba(37, 37, 48, 0.98),
+		rgba(18, 18, 24, 0.98)
+	);
+	color: var(--fa-text);
+}

@@ -41,6 +41,11 @@ _BRANCH_DECISION_EVENT_COLUMNS = """
     data_json, created_at, updated_at, executed_at
 """
 
+_FEEDBACK_EVENT_COLUMNS = """
+    event_id, user_id, source_kind, source_id, sentiment,
+    category, data_json, created_at
+"""
+
 
 class PostgresGovernanceRepository:
     def __init__(self, database_uri: str):
@@ -135,6 +140,18 @@ class PostgresGovernanceRepository:
         payload["updated_at"] = cls._iso_datetime(row.get("updated_at"))
         payload["executed_at"] = cls._iso_datetime(row.get("executed_at"))
         return BranchDecisionEvent.model_validate(payload)
+
+    @classmethod
+    def _feedback_event_from_row(cls, row: dict[str, object]) -> FeedbackEvent:
+        payload = cls._decode_payload(row["data_json"])
+        payload["event_id"] = row.get("event_id")
+        payload["user_id"] = row.get("user_id")
+        payload["source_kind"] = row.get("source_kind")
+        payload["source_id"] = row.get("source_id")
+        payload["sentiment"] = row.get("sentiment")
+        payload["category"] = row.get("category")
+        payload["created_at"] = cls._iso_datetime(row.get("created_at"))
+        return FeedbackEvent.model_validate(payload)
 
     @staticmethod
     def _decode_jsonish(value: object, default: object) -> object:
@@ -454,6 +471,41 @@ class PostgresGovernanceRepository:
                     },
                 )
         return event.event_id
+
+    def list_feedback_events(
+        self,
+        *,
+        user_id: str | None = None,
+        source_kind: str | None = None,
+        sentiment: str | None = None,
+        limit: int = 50,
+    ) -> list[FeedbackEvent]:
+        clauses: list[str] = []
+        params: dict[str, object] = {"limit": max(0, limit)}
+        if user_id is not None:
+            clauses.append("(user_id IS NULL OR user_id = %(user_id)s)")
+            params["user_id"] = user_id
+        if source_kind is not None:
+            clauses.append("source_kind = %(source_kind)s")
+            params["source_kind"] = source_kind
+        if sentiment is not None:
+            clauses.append("sentiment = %(sentiment)s")
+            params["sentiment"] = sentiment
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT {_FEEDBACK_EVENT_COLUMNS}
+                    FROM focus_feedback_events
+                    {where}
+                    ORDER BY created_at DESC, event_id DESC
+                    LIMIT %(limit)s
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
+        return [self._feedback_event_from_row(row) for row in rows]
 
     def _branch_decision_id_for_idempotency(self, idempotency_key: str) -> str | None:
         with self._connect() as conn:

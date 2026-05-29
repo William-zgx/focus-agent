@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import focus_agent.memory.embedding as embedding_mod
+import focus_agent.memory.embedding_providers as embedding_providers_mod
 from focus_agent.api.route_utils.readiness import _build_runtime_readiness
 from focus_agent.config import Settings
 from focus_agent.config_parts.agent import load_agent_config
@@ -211,7 +211,7 @@ def test_auto_embedding_provider_prefers_available_ollama_embeddinggemma(monkeyp
         }
 
     monkeypatch.setattr(
-        embedding_mod,
+        embedding_providers_mod,
         "shared_sync_http_client",
         lambda: _FakeEmbeddingHttpClient(handler),
     )
@@ -254,7 +254,7 @@ def test_auto_embedding_provider_reports_ollama_install_hint_when_no_backend_ava
         return {"models": [{"name": "llama3.2:latest"}]}
 
     monkeypatch.setattr(
-        embedding_mod,
+        embedding_providers_mod,
         "shared_sync_http_client",
         lambda: _FakeEmbeddingHttpClient(handler),
     )
@@ -280,7 +280,7 @@ def test_auto_embedding_provider_does_not_inherit_chat_credentials_as_cloud_fall
         return {"models": []}
 
     monkeypatch.setattr(
-        embedding_mod,
+        embedding_providers_mod,
         "shared_sync_http_client",
         lambda: _FakeEmbeddingHttpClient(handler),
     )
@@ -308,7 +308,7 @@ def test_auto_embedding_provider_uses_explicit_openai_compatible_fallback(
         return {"models": []}
 
     monkeypatch.setattr(
-        embedding_mod,
+        embedding_providers_mod,
         "shared_sync_http_client",
         lambda: _FakeEmbeddingHttpClient(handler),
     )
@@ -330,7 +330,7 @@ def test_explicit_openai_compatible_backend_does_not_probe_ollama(monkeypatch) -
     def fail_http_client():
         raise AssertionError("explicit openai_compatible backend should not probe Ollama")
 
-    monkeypatch.setattr(embedding_mod, "shared_sync_http_client", fail_http_client)
+    monkeypatch.setattr(embedding_providers_mod, "shared_sync_http_client", fail_http_client)
 
     provider = create_memory_embedding_provider(
         Settings(

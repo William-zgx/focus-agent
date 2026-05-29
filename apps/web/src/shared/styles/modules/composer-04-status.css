@@ -1,0 +1,205 @@
+.fa-composer-model-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex: 1 1 auto;
+	order: 1;
+}
+
+.fa-composer-model-shell {
+	min-width: 220px;
+	max-width: 340px;
+	flex: 1 1 auto;
+}
+
+.fa-composer-select {
+	min-height: 34px;
+	padding: 8px 34px 8px 12px;
+	border-radius: 999px;
+	font-size: 12px;
+	background:
+		linear-gradient(180deg, rgba(37, 37, 48, 0.96), rgba(18, 18, 24, 0.96)),
+		radial-gradient(
+			circle at top right,
+			rgba(129, 140, 248, 0.08),
+			transparent 44%
+		);
+}
+
+.fa-thinking-toggle {
+	min-height: 34px;
+	padding: 0 12px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 700;
+}
+
+.fa-thinking-toggle.is-active {
+	border-color: rgba(129, 140, 248, 0.34);
+	background:
+		linear-gradient(180deg, rgba(99, 102, 241, 0.18), rgba(37, 37, 48, 0.92)),
+		radial-gradient(
+			circle at top right,
+			rgba(129, 140, 248, 0.14),
+			transparent 48%
+		);
+}
+
+.fa-composer-icon-button {
+	width: 34px;
+	height: 34px;
+	min-width: 34px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		box-shadow 0.18s ease,
+		transform 0.18s ease;
+}
+
+.fa-composer-icon,
+.fa-composer-icon svg,
+.fa-composer-icon * {
+	pointer-events: none;
+}
+
+.fa-composer-icon-button:disabled {
+	opacity: 0.5;
+}
+
+.fa-composer-icon-button.is-clear {
+	background: rgba(37, 37, 48, 0.72);
+	color: color-mix(in srgb, var(--fa-text) 72%, var(--fa-text-muted) 28%);
+}
+
+.fa-composer-icon-button.is-clear:hover:not(:disabled) {
+	background: rgba(50, 50, 64, 0.82);
+	color: var(--fa-text);
+}
+
+.fa-composer-icon-button.is-send {
+	border-color: rgba(129, 140, 248, 0.46);
+	background: linear-gradient(
+		135deg,
+		rgba(99, 102, 241, 0.98),
+		rgba(139, 92, 246, 0.98)
+	);
+	color: white;
+	box-shadow: 0 0 20px rgba(99, 102, 241, 0.36);
+}
+
+.fa-composer-icon-button.is-send:hover:not(:disabled) {
+	transform: translateY(-1px);
+	filter: brightness(1.08);
+}
+
+.fa-composer-icon-button.is-stop {
+	border-color: rgba(244, 114, 182, 0.26);
+	background: linear-gradient(
+		135deg,
+		rgba(226, 83, 111, 0.96),
+		rgba(200, 61, 88, 0.96)
+	);
+	color: white;
+	box-shadow: 0 0 20px rgba(216, 74, 102, 0.34);
+}
+
+.fa-composer-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	color: currentColor;
+}
+
+.fa-composer-icon svg {
+	width: 16px;
+	height: 16px;
+	display: block;
+}
+
+.fa-composer-note {
+	color: var(--fa-text-soft);
+	font-size: 11px;
+	line-height: 1.45;
+}
+
+.fa-thread-layout {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	min-height: 0;
+	gap: 14px;
+	flex: 1 1 auto;
+}
+
+.fa-transcript-panel {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	gap: 14px;
+	min-height: 0;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+}
+
+.fa-thread-review-wrap {
+	display: grid;
+	gap: 10px;
+}
+
+.fa-shell-status-line,
+.fa-shell-status-float {
+	width: fit-content;
+	max-width: min(100%, calc(100% - 32px));
+	padding: 8px 12px;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgba(15, 23, 42, 0.45);
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.4;
+	backdrop-filter: blur(16px);
+}
+
+.fa-shell-status-line {
+	margin-top: 12px;
+}
+
+.fa-shell-status-float {
+	position: absolute;
+	top: 22px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 24;
+	pointer-events: none;
+	box-shadow: 0 14px 28px rgba(3, 8, 20, 0.24);
+}
+
+.fa-shell-status-line.is-success,
+.fa-shell-status-float.is-success {
+	border-color: color-mix(in srgb, var(--fa-success) 24%, var(--fa-border) 76%);
+	color: var(--fa-status-success-text);
+	background: color-mix(in srgb, var(--fa-success) 12%, var(--fa-panel-2) 88%);
+}
+
+.fa-shell-status-line.is-warn,
+.fa-shell-status-float.is-warn {
+	border-color: color-mix(in srgb, var(--fa-warning) 24%, var(--fa-border) 76%);
+	color: var(--fa-status-warning-text);
+	background: color-mix(in srgb, var(--fa-warning) 12%, var(--fa-panel-2) 88%);
+}
+
+.fa-shell-status-line.is-danger,
+.fa-shell-status-float.is-danger {
+	border-color: color-mix(in srgb, var(--fa-danger) 24%, var(--fa-border) 76%);
+	color: var(--fa-status-danger-text);
+	background: color-mix(in srgb, var(--fa-danger) 12%, var(--fa-panel-2) 88%);
+}

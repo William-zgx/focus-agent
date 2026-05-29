@@ -1,0 +1,29 @@
+.fa-account-layout {
+	place-items: start center;
+}
+
+.fa-auth-panel,
+.fa-account-panel {
+	width: min(560px, 100%);
+	display: grid;
+	gap: 16px;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(28, 28, 38, 0.96), rgba(13, 13, 18, 0.92)),
+		radial-gradient(
+			circle at top right,
+			rgba(34, 211, 238, 0.1),
+			transparent 48%
+		);
+	box-shadow: var(--fa-shadow);
+	padding: 22px;
+}
+
+.fa-account-panel {
+	width: min(760px, 100%);
+}
+
+.fa-auth-hub {
+	width: min(840px, 100%);
+}

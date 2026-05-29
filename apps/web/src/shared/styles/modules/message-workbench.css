@@ -21,7 +21,7 @@
 .fa-message-markdown blockquote,
 .fa-message-markdown .fa-message-table-wrap,
 .fa-message-markdown hr,
-.fa-message-markdown .fa-message-code-block {
+:where(.fa-message-markdown) .fa-message-code-block {
 	margin: 0 0 12px;
 }
 

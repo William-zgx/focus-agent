@@ -119,12 +119,16 @@ Every frontend PR should run:
 - `pnpm --filter @focus-agent/web-app check`
 - `pnpm --filter @focus-agent/web-app style:check`
 - Relevant smoke scripts for changed surfaces
+- `make frontend-qa` before handing off a broad frontend/runtime change. This also
+  runs CSS governance, Android local runtime smoke, bundle budget, architecture,
+  and compat inventory reports.
 
 For visual PRs, capture dark and light theme screenshots for the touched route.
 The baseline script is:
 
 - `pnpm --filter @focus-agent/web-app visual:baseline`
 - `pnpm --filter @focus-agent/web-app a11y:baseline`
+- `make frontend-visual-qa FRONTEND_QA_BASE_URL=http://127.0.0.1:5173`
 
 They write screenshots, axe-core reports, and manifests under
 `apps/web/reports/`.

@@ -32,6 +32,7 @@ def test_architecture_report_collects_large_files_and_import_boundary_issues(
         "path": "frontend-sdk/src/client.ts",
     }
     assert {item["path"] for item in report["large_files"]} == {"frontend-sdk/src/client.ts"}
+    assert report["summary"]["near_large_file_count"] == 0
     assert {item["path"] for item in report["import_boundary_issues"]} == {
         "apps/web/src/view.ts",
         "src/focus_agent/service.py",
@@ -61,6 +62,7 @@ def test_architecture_report_cli_is_non_blocking(tmp_path: Path, capsys) -> None
     assert stdout["blocking"] is False
     assert stdout["issue_count"] == 1
     assert stdout["line_count_top10"] == [{"lines": 4, "path": "src/focus_agent/large.py"}]
+    assert stdout["near_large_file_count"] == 0
     assert saved["summary"]["status"] == "issues"
     assert saved["line_count_top10"] == stdout["line_count_top10"]
 
@@ -91,3 +93,29 @@ def test_architecture_report_ignores_generated_files_for_maintenance_size(
 
     assert report["summary"]["large_file_count"] == 0
     assert report["line_count_top10"] == [{"lines": 4, "path": "frontend-sdk/src/client.ts"}]
+
+
+def test_architecture_report_surfaces_near_threshold_files_without_issue(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path / "src/focus_agent/almost_large.py", "\n".join(["x = 1"] * 4))
+    _write(tmp_path / "src/focus_agent/small.py", "\n".join(["x = 1"] * 2))
+
+    report = architecture_report.build_architecture_report(
+        root=tmp_path,
+        scan_paths=["src/focus_agent"],
+        large_file_threshold=5,
+        large_file_warning_ratio=0.8,
+    )
+
+    assert report["summary"]["status"] == "ok"
+    assert report["summary"]["issue_count"] == 0
+    assert report["summary"]["near_large_file_count"] == 1
+    assert report["near_large_files"] == [
+        {
+            "lines": 4,
+            "path": "src/focus_agent/almost_large.py",
+            "threshold": 5,
+            "warning_at": 4,
+        }
+    ]

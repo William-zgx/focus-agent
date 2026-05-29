@@ -94,6 +94,18 @@ class AgentSkillSelectionFeedbackResponse(BaseModel):
     feedback_event_id: str | None = None
 
 
+class AgentFeedbackTrendResponse(BaseModel):
+    negative_feedback_count: int = 0
+    merge_review_apply_success_rate: float | None = None
+    merge_review_conflict_rate: float | None = None
+    skill_low_confidence_rate: float | None = None
+    skill_override_rate: float | None = None
+    context_high_drift_count: int = 0
+    notes_tasks_capture_count: int = 0
+    top_failing_trajectory_samples: list[dict[str, Any]] = Field(default_factory=list)
+    generated_at: str | None = None
+
+
 class AgentSkillPreferenceRequest(BaseModel):
     state: str = "default"
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -453,6 +465,7 @@ __all__ = [
     "AgentSkillSelectionEventListResponse",
     "AgentSkillSelectionFeedbackRequest",
     "AgentSkillSelectionFeedbackResponse",
+    "AgentFeedbackTrendResponse",
     "AgentSkillPreferenceRequest",
     "AgentSkillPreferenceResponse",
     "AgentSkillCatalogItemResponse",

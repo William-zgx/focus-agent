@@ -518,13 +518,17 @@ class RepositoryFailingVectorSearchFake(RepositorySearchFake):
 
 
 class RepositoryPgvectorLikeFake(RepositorySearchFake):
-    def __init__(self, hits_by_namespace):
+    def __init__(self, hits_by_namespace, vector_hits_by_namespace=None):
         super().__init__(hits_by_namespace)
+        self.vector_hits_by_namespace = {
+            tuple(namespace): list(hits)
+            for namespace, hits in (vector_hits_by_namespace or {}).items()
+        }
         self.vector_calls = []
 
     def search_vector(self, *, namespace, embedding, provider_id, model_id, limit):
         self.vector_calls.append((tuple(namespace), embedding, provider_id, model_id, limit))
-        return []
+        return self.vector_hits_by_namespace.get(tuple(namespace), [])[:limit]
 
 
 class FakeEmbeddingProvider:
@@ -532,7 +536,11 @@ class FakeEmbeddingProvider:
     model_id = "fake-embedding-model"
     dimensions = 3
 
+    def __init__(self):
+        self.calls = []
+
     def embed(self, texts):
+        self.calls.append(list(texts))
         return [[0.1, 0.2, 0.3] for _ in texts]
 
 
@@ -716,6 +724,66 @@ def test_memory_retriever_records_embedding_provider_metadata_in_plan():
         "dimensions": 3,
     }
     assert bundle.retrieval_plan["vector_candidate_count"] == 0
+
+
+def test_memory_retriever_reuses_query_embedding_across_namespaces_for_hybrid_and_shadow():
+    main_namespace = ("conversation", "root-1", "main")
+    semantic_namespace = ("conversation", "root-1", "semantic")
+
+    for retrieval_mode in ("hybrid", "fts"):
+        provider = FakeEmbeddingProvider()
+        repo = RepositoryPgvectorLikeFake(
+            {
+                main_namespace: [
+                    _repository_hit(
+                        memory_id="text-mem",
+                        namespace=main_namespace,
+                        content="owner collision text result",
+                        summary="owner collision text result",
+                        score=0.42,
+                    )
+                ]
+            },
+            {
+                semantic_namespace: [
+                    _repository_hit(
+                        memory_id="vector-mem",
+                        namespace=semantic_namespace,
+                        content="owner collision vector result",
+                        summary="owner collision vector result",
+                        score=0.93,
+                    )
+                ]
+            },
+        )
+        retriever = MemoryRetriever(
+            store=StoreShouldNotBeUsed(),
+            repository=repo,
+            retrieval_mode=retrieval_mode,
+            embedding_provider=provider,
+        )
+        context = RequestContext(user_id="user-1", root_thread_id="root-1")
+
+        bundle = retriever.retrieve_for_turn(
+            context=context,
+            state={},
+            query="owner collision",
+            prompt_mode=PromptMode.EXECUTE,
+        )
+
+        assert provider.calls == [["owner collision"]]
+        assert [call[0] for call in repo.vector_calls] == bundle.namespaces
+        assert all(call[1] == [0.1, 0.2, 0.3] for call in repo.vector_calls)
+        assert bundle.retrieval_plan["vector_status"] == "completed"
+        assert bundle.retrieval_plan["vector_fallback_reason"] is None
+
+        memory_ids = [hit.record.memory_id for hit in bundle.hits]
+        if retrieval_mode == "hybrid":
+            assert "vector-mem" in memory_ids
+            assert bundle.retrieval_plan["vector_shadow"] == {}
+        else:
+            assert memory_ids == ["text-mem"]
+            assert bundle.retrieval_plan["vector_shadow"]["memory_ids"] == ["vector-mem"]
 
 
 def test_memory_retriever_normalizes_pgvector_embedding_hits():

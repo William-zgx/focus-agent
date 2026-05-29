@@ -10,6 +10,10 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
+from focus_agent.capabilities.default_tool_modules.workspace_command import (
+    validate_command_paths,
+    workspace_command_allowed,
+)
 from focus_agent.capabilities.default_tools import get_default_tools
 from focus_agent.capabilities.tool_manifest import normalize_tool_metadata
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
@@ -1801,6 +1805,25 @@ def test_run_workspace_command_runs_allowlisted_commands_and_blocks_unsafe_ones(
             {"command": ["./pytest", "--rootdir=/tmp", "--version"]}
         )
     assert not (project / "pwned").exists()
+
+
+def test_run_workspace_command_path_validation_ignores_scoped_package_filters(tmp_path):
+    resolved_paths: list[str] = []
+
+    def resolve_path(raw_path: str) -> Path:
+        resolved_paths.append(raw_path)
+        candidate = (tmp_path / raw_path).resolve()
+        candidate.relative_to(tmp_path.resolve())
+        return candidate
+
+    for command in (
+        ["pnpm", "--filter", "@focus-agent/web-app", "check"],
+        ["pnpm", "--filter=@focus-agent/web-app", "check"],
+    ):
+        assert workspace_command_allowed(command, {"pnpm"})
+        validate_command_paths(command, resolve_path=resolve_path)
+
+    assert resolved_paths == []
 
 
 def test_git_tools_return_status_diff_and_log(tmp_path):

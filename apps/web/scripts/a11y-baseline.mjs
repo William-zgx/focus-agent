@@ -16,6 +16,12 @@ const defaultRoutes = [
 function parseArgs(argv) {
 	const config = {
 		baseUrl: defaultBaseUrl,
+		browser: process.env.AXE_BROWSER ?? "",
+		chromePath: process.env.AXE_CHROME_PATH ?? process.env.CHROME_TEST_PATH ?? "",
+		chromedriverPath:
+			process.env.AXE_CHROMEDRIVER_PATH ??
+			process.env.CHROMEDRIVER_TEST_PATH ??
+			"",
 		failOnViolations: false,
 		loadDelayMs: 1200,
 		outDir: defaultOutputDir,
@@ -36,6 +42,48 @@ function parseArgs(argv) {
 
 		if (arg === "--fail-on-violations") {
 			config.failOnViolations = true;
+			continue;
+		}
+
+		if (arg === "--browser") {
+			config.browser = readValue("--browser", argv[index + 1]);
+			index += 1;
+			continue;
+		}
+
+		if (arg.startsWith("--browser=")) {
+			config.browser = readValue("--browser", arg.slice("--browser=".length));
+			continue;
+		}
+
+		if (arg === "--chrome-path") {
+			config.chromePath = readValue("--chrome-path", argv[index + 1]);
+			index += 1;
+			continue;
+		}
+
+		if (arg.startsWith("--chrome-path=")) {
+			config.chromePath = readValue(
+				"--chrome-path",
+				arg.slice("--chrome-path=".length),
+			);
+			continue;
+		}
+
+		if (arg === "--chromedriver-path") {
+			config.chromedriverPath = readValue(
+				"--chromedriver-path",
+				argv[index + 1],
+			);
+			index += 1;
+			continue;
+		}
+
+		if (arg.startsWith("--chromedriver-path=")) {
+			config.chromedriverPath = readValue(
+				"--chromedriver-path",
+				arg.slice("--chromedriver-path=".length),
+			);
 			continue;
 		}
 
@@ -99,9 +147,12 @@ Captures axe-core baseline reports through @axe-core/cli.
 
 Options:
   --base-url <url>          App base URL. Default: ${defaultBaseUrl}
+  --browser <name>          Browser override for axe. Defaults to axe CLI behavior.
   --out-dir <path>          Output path relative to apps/web. Default: ${defaultOutputDir}
   --routes <routes>         Comma-separated app routes. Default: first-tier routes
   --load-delay-ms <ms>      Wait after page load before axe runs. Default: 1200
+  --chrome-path <path>      Use a specific Chrome binary. Also reads AXE_CHROME_PATH.
+  --chromedriver-path <path> Use a specific ChromeDriver binary. Also reads AXE_CHROMEDRIVER_PATH.
   --fail-on-violations      Exit non-zero when axe finds violations
   -h, --help                Show this help message`);
 }
@@ -149,19 +200,25 @@ function fileNameFor(route) {
 function runAxe({ config, outputDir, route }) {
 	const url = buildUrl(config.baseUrl, route);
 	const outputFile = fileNameFor(route);
-	const args = [
-		"dlx",
-		"@axe-core/cli",
+	const args = ["dlx", "@axe-core/cli"];
+	args.push(
 		url,
-		"--browser",
-		"chrome",
 		"--load-delay",
 		String(config.loadDelayMs),
 		"--save",
 		outputFile,
 		"--dir",
 		outputDir,
-	];
+	);
+	if (config.browser) {
+		args.push("--browser", config.browser);
+	}
+	if (config.chromePath) {
+		args.push("--chrome-path", config.chromePath);
+	}
+	if (config.chromedriverPath) {
+		args.push("--chromedriver-path", config.chromedriverPath);
+	}
 	if (config.failOnViolations) {
 		args.push("--exit");
 	}
@@ -201,7 +258,10 @@ function main() {
 
 	const manifest = {
 		baseUrl: config.baseUrl,
+		browser: config.browser,
 		capturedAt: new Date().toISOString(),
+		chromePath: config.chromePath || null,
+		chromedriverPath: config.chromedriverPath || null,
 		failOnViolations: config.failOnViolations,
 		loadDelayMs: config.loadDelayMs,
 		routes: config.routes,

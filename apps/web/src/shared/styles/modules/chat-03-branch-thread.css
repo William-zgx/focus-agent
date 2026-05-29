@@ -43,7 +43,9 @@
 	padding: 6px 10px;
 }
 
-.fa-chat-main-body .fa-tool-activity-detail-body .fa-message-code-block pre {
+:where(.fa-chat-main-body .fa-tool-activity-detail-body)
+	.fa-message-code-block
+	pre {
 	max-height: 240px;
 	padding: 12px;
 	font-size: 12px;
@@ -138,7 +140,7 @@
 	text-decoration: underline;
 }
 
-.fa-branch-action-card-body .is-danger strong {
+:where(.fa-branch-action-card-body .is-danger) strong {
 	color: var(--fa-danger);
 }
 
@@ -228,6 +230,16 @@
 	background-image: linear-gradient(180deg, var(--fa-panel-2), var(--fa-panel-1));
 	box-shadow: var(--fa-shadow-lg);
 	backdrop-filter: none;
+}
+
+.fa-chat-history {
+	padding: 16px;
+	background:
+		radial-gradient(
+			circle at top right,
+			rgba(99, 102, 241, 0.1),
+			transparent 28%
+		), linear-gradient(180deg, rgba(14, 14, 19, 0.92), rgba(11, 11, 16, 0.98));
 }
 
 .fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history {
@@ -505,16 +517,6 @@
 	font-size: 10px;
 }
 
-.fa-chat-history {
-	padding: 16px;
-	background:
-		radial-gradient(
-			circle at top right,
-			rgba(99, 102, 241, 0.1),
-			transparent 28%
-		), linear-gradient(180deg, rgba(14, 14, 19, 0.92), rgba(11, 11, 16, 0.98));
-}
-
 .fa-chat-history-shell {
 	min-height: 100%;
 	border-radius: 22px;
@@ -689,6 +691,13 @@
 	opacity: 0.56;
 }
 
+.fa-toolbar-text {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .fa-chat-header-actions.is-compact [data-compact-button="true"] {
 	width: 42px;
 	min-width: 42px;
@@ -720,11 +729,4 @@
 	min-width: 42px;
 	justify-content: center;
 	padding: 0;
-}
-
-.fa-toolbar-text {
-	min-width: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }

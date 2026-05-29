@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report compat-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -11,6 +11,10 @@ SDK_DIR ?= frontend-sdk
 PNPM ?= pnpm
 PNPM_INSTALL_FLAGS ?= --frozen-lockfile --registry=https://registry.npmjs.org
 WEB_DIR ?= apps/web
+FRONTEND_QA_BASE_URL ?= http://127.0.0.1:5173
+FRONTEND_QA_ROUTES ?= /,/admin/config,/c/local-thread-0001/t/local-thread-0001
+FRONTEND_QA_SCHEMES ?= dark
+FRONTEND_QA_VIEWPORT ?= 390,844
 DOCKER_COMPOSE ?= docker compose
 
 help:
@@ -40,6 +44,7 @@ help:
 		'  make ci-test           Run pytest without repo-local env bootstrap' \
 		'  make contract-check    Verify API and frontend SDK contract snapshots' \
 		'  make architecture-report Report large files and import boundary signals without gating CI' \
+		'  make compat-report     Report explicit legacy/compatibility inventory signals' \
 		'  make release-gate      Run the full release gate and write reports/release-gate/latest.json' \
 		'  make release-evidence  Generate a production release evidence manifest' \
 		'  make ci-release-gate   Run the CI release gate entrypoint' \
@@ -62,6 +67,8 @@ help:
 		'  make web-format-check-full Check Web Biome format on all app src' \
 		'  make frontend-check    Run frontend SDK and Web checks' \
 		'  make frontend-check-full Run full-scope frontend checks' \
+		'  make frontend-qa       Run full frontend checks, style governance, architecture, and Android runtime smoke' \
+		'  make frontend-visual-qa Run visual and a11y baselines against FRONTEND_QA_BASE_URL' \
 		'  make frontend-build    Build frontend SDK and Web app' \
 		'  make docker-up         Start the Compose service' \
 		'  make docker-rebuild    Rebuild image and recreate the Compose service' \
@@ -159,6 +166,9 @@ sdk-openapi-types-check: node_modules .venv/bin/python
 architecture-report: .venv/bin/python
 	$(PYTHON) scripts/architecture_report.py $(ARCHITECTURE_REPORT_ARGS)
 
+compat-report: .venv/bin/python
+	$(PYTHON) scripts/compat_report.py $(COMPAT_REPORT_ARGS)
+
 release-gate: .venv/bin/python
 	$(PYTHON) scripts/release_gate.py $(RELEASE_GATE_ARGS)
 
@@ -238,6 +248,21 @@ web-format-check-full: node_modules
 frontend-check: sdk-check sdk-validate-transport web-lint web-format-check web-check
 
 frontend-check-full: sdk-check sdk-validate-transport web-lint-full web-format-check-full web-check
+
+frontend-style-check: node_modules
+	$(PNPM) --filter @focus-agent/web-app style:check
+
+frontend-android-runtime-smoke: node_modules
+	$(PNPM) --filter @focus-agent/web-app smoke:android-local-runtime
+
+frontend-bundle-check: web-build
+	$(PNPM) --filter @focus-agent/web-app bundle:check
+
+frontend-qa: frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check architecture-report compat-report
+
+frontend-visual-qa: node_modules
+	$(PNPM) --filter @focus-agent/web-app visual:baseline -- --base-url $(FRONTEND_QA_BASE_URL) --routes $(FRONTEND_QA_ROUTES) --schemes $(FRONTEND_QA_SCHEMES) --viewport $(FRONTEND_QA_VIEWPORT)
+	$(PNPM) --filter @focus-agent/web-app a11y:baseline -- --base-url $(FRONTEND_QA_BASE_URL) --routes $(FRONTEND_QA_ROUTES) --fail-on-violations
 
 frontend-build: sdk-build web-build
 

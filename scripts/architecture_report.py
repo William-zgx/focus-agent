@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ DEFAULT_SCAN_PATHS = (
     "tests/eval",
 )
 DEFAULT_LARGE_FILE_THRESHOLD = 800
+DEFAULT_LARGE_FILE_WARNING_RATIO = 0.95
 DEFAULT_LINE_COUNT_TOP_N = 10
 SCANNED_SUFFIXES = {".css", ".js", ".jsx", ".md", ".mjs", ".py", ".ts", ".tsx"}
 GENERATED_FILE_MARKERS = (
@@ -147,6 +149,32 @@ def collect_large_files(
     return large_files
 
 
+def collect_near_large_files(
+    files: Iterable[Path],
+    *,
+    root: Path,
+    threshold: int,
+    warning_ratio: float,
+) -> list[dict[str, Any]]:
+    warning_at = max(1, math.ceil(threshold * warning_ratio))
+    near_large_files: list[dict[str, Any]] = []
+    for path in files:
+        if _is_generated_file(path):
+            continue
+        lines = _line_count(path)
+        if lines < warning_at or lines > threshold:
+            continue
+        near_large_files.append(
+            {
+                "lines": lines,
+                "path": _relative(path, root=root),
+                "threshold": threshold,
+                "warning_at": warning_at,
+            }
+        )
+    return sorted(near_large_files, key=lambda item: (-item["lines"], item["path"]))
+
+
 def collect_line_count_top(
     files: Iterable[Path],
     *,
@@ -246,10 +274,17 @@ def build_architecture_report(
     root: str | Path = REPO_ROOT,
     scan_paths: Sequence[str | Path] = DEFAULT_SCAN_PATHS,
     large_file_threshold: int = DEFAULT_LARGE_FILE_THRESHOLD,
+    large_file_warning_ratio: float = DEFAULT_LARGE_FILE_WARNING_RATIO,
 ) -> dict[str, Any]:
     root_path = Path(root).resolve()
     files = _iter_files(scan_paths, root=root_path)
     large_files = collect_large_files(files, root=root_path, threshold=large_file_threshold)
+    near_large_files = collect_near_large_files(
+        files,
+        root=root_path,
+        threshold=large_file_threshold,
+        warning_ratio=large_file_warning_ratio,
+    )
     line_count_top10 = collect_line_count_top(files, root=root_path)
     boundary_issues = collect_import_boundary_issues(files, root=root_path)
     issue_count = len(large_files) + len(boundary_issues)
@@ -261,17 +296,20 @@ def build_architecture_report(
         },
         "config": {
             "large_file_threshold": large_file_threshold,
+            "large_file_warning_ratio": large_file_warning_ratio,
             "scan_paths": [str(path) for path in scan_paths],
         },
         "summary": {
             "status": "issues" if issue_count else "ok",
             "issue_count": issue_count,
             "large_file_count": len(large_files),
+            "near_large_file_count": len(near_large_files),
             "import_boundary_issue_count": len(boundary_issues),
             "scanned_file_count": len(files),
             "blocking": False,
         },
         "line_count_top10": line_count_top10,
+        "near_large_files": near_large_files,
         "large_files": large_files,
         "import_boundary_issues": boundary_issues,
     }
@@ -306,6 +344,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_LARGE_FILE_THRESHOLD,
         help="Line count above which a scanned file is reported as large.",
     )
+    parser.add_argument(
+        "--large-file-warning-ratio",
+        type=float,
+        default=DEFAULT_LARGE_FILE_WARNING_RATIO,
+        help="Report files at or above this fraction of --large-file-threshold.",
+    )
     return parser.parse_args(argv)
 
 
@@ -316,6 +360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         root=root,
         scan_paths=args.path or DEFAULT_SCAN_PATHS,
         large_file_threshold=int(args.large_file_threshold),
+        large_file_warning_ratio=float(args.large_file_warning_ratio),
     )
     target = write_architecture_report(args.report_json, report, root=root)
     print(
@@ -324,6 +369,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "blocking": False,
                 "issue_count": report["summary"]["issue_count"],
                 "line_count_top10": report["line_count_top10"],
+                "near_large_file_count": report["summary"]["near_large_file_count"],
+                "near_large_files": report["near_large_files"][:10],
                 "report_json": str(target),
                 "status": report["summary"]["status"],
             },

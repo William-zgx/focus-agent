@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
+from typing import Protocol as Protocol
 
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
-from ...core.branching import BranchActionKind, BranchActionNavigation, BranchMeta
+from ...core.branching import (
+    BranchActionKind as BranchActionKind,
+)
+from ...core.branching import (
+    BranchActionNavigation as BranchActionNavigation,
+)
+from ...core.branching import (
+    BranchMeta,
+)
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...observability.tracing import (
@@ -26,14 +34,18 @@ from ..branch_actions import (
     proposal_message,
     serialize_branch_actions,
 )
-from ..chat_turn_errors import ConcurrentTurnError  # noqa: F401 - compatibility re-export
+from ..chat_turn_errors import ConcurrentTurnError  # noqa: F401
 from ..coordination import (
     BackgroundJobSpec,
-    CoordinationBackend,
     background_job_key,
     create_in_memory_coordination_backend,
 )
 from .branch_actions import ChatBranchActionFacadeMixin
+from .branch_navigation import (  # noqa: F401
+    BranchServiceProtocol,
+    execute_branch_action_navigation,
+)
+from .ports import ChatServicePorts
 from .threads import (
     ChatThreadAccessMixin,
     effective_thinking_mode,
@@ -52,69 +64,6 @@ if TYPE_CHECKING:
     from ..thread_turn_lease import ThreadTurnLeaseManager
 
 logger = logging.getLogger("focus_agent.chat")
-
-
-class BranchServiceProtocol(Protocol):
-    def fork_branch(self, **kwargs: Any) -> Any: ...
-
-
-def execute_branch_action_navigation(
-    *,
-    action: Any,
-    user_id: str,
-    branch_service: BranchServiceProtocol,
-) -> tuple[Any | None, BranchActionNavigation]:
-    branch_record = None
-    if action.kind in {BranchActionKind.FORK_SIBLING_BRANCH, BranchActionKind.FORK_CHILD_BRANCH}:
-        branch_record = branch_service.fork_branch(
-            parent_thread_id=action.target_parent_thread_id,
-            user_id=user_id,
-            branch_name=None,
-            name_source=action.suggested_branch_name,
-            branch_role=action.branch_role,
-        )
-        return branch_record, BranchActionNavigation(
-            root_thread_id=branch_record.root_thread_id,
-            thread_id=branch_record.child_thread_id,
-        )
-    if action.kind in {
-        BranchActionKind.RETURN_PARENT_BRANCH,
-        BranchActionKind.OPEN_EXISTING_BRANCH,
-    }:
-        return None, BranchActionNavigation(
-            root_thread_id=action.root_thread_id,
-            thread_id=action.target_parent_thread_id,
-        )
-    raise ValueError(f"Unsupported branch action kind: {action.kind}")
-
-
-@dataclass(frozen=True)
-class ChatServicePorts:
-    settings: Any
-    graph: Any
-    repo: Any
-    branch_service: Any | None = None
-    branch_decision_service: Any | None = None
-    skill_registry: Any | None = None
-    trajectory_recorder: Any | None = None
-    checkpointer: Any | None = None
-    background_work: Any | None = None
-    coordination_backend: CoordinationBackend | None = None
-
-    @classmethod
-    def from_runtime(cls, runtime: Any) -> ChatServicePorts:
-        return cls(
-            settings=runtime.settings,
-            graph=runtime.graph,
-            repo=runtime.repo,
-            branch_service=getattr(runtime, "branch_service", None),
-            branch_decision_service=getattr(runtime, "branch_decision_service", None),
-            skill_registry=getattr(runtime, "skill_registry", None),
-            trajectory_recorder=getattr(runtime, "trajectory_recorder", None),
-            checkpointer=getattr(runtime, "checkpointer", None),
-            background_work=getattr(runtime, "background_work", None),
-            coordination_backend=getattr(runtime, "coordination_backend", None),
-        )
 
 
 class ChatService(

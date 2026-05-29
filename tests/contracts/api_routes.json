@@ -2097,6 +2097,18 @@
     },
     {
       "method": "GET",
+      "operation_id": "get_agent_feedback_trend_v1_agent_feedback_trend_get",
+      "parameters": [],
+      "path": "/v1/agent/feedback/trend",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentFeedbackTrendResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "list_agent_memory_curator_decisions_v1_agent_memory_curator_decisions_get",
       "parameters": [
         {
@@ -7885,6 +7897,80 @@
               "type": "null"
             }
           ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentFeedbackTrendResponse": {
+      "properties": {
+        "context_high_drift_count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "generated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_review_apply_success_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merge_review_conflict_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "negative_feedback_count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "notes_tasks_capture_count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "skill_low_confidence_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_override_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "top_failing_trajectory_samples": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         }
       },
       "type": "object"

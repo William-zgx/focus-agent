@@ -11,7 +11,7 @@
 	padding: 12px;
 }
 
-.fa-branch-detail-overlay.active-card .fa-branch-node-title {
+:where(.fa-branch-detail-overlay.active-card) .fa-branch-node-title {
 	color: color-mix(
 		in srgb,
 		var(--fa-branch-role-color) 82%,
@@ -127,7 +127,7 @@
 	opacity: 0.72;
 }
 
-.fa-branch-detail-overlay.active-card .fa-branch-node-title {
+:where(.fa-branch-detail-overlay.active-card) .fa-branch-node-title {
 	color: color-mix(
 		in srgb,
 		var(--fa-branch-role-color) 74%,

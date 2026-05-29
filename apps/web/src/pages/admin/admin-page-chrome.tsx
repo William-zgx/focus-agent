@@ -67,7 +67,7 @@ export function AdminConsoleLayout({
 		<AdminAccessGate>
 			<div className="fa-admin-layout">
 				<div className={`fa-admin-console ${drawer ? "has-drawer" : ""}`}>
-					<main className="fa-admin-console-main">
+					<section className="fa-admin-console-main">
 						<AdminPageHeading
 							title={title}
 							summary={summary}
@@ -75,7 +75,7 @@ export function AdminConsoleLayout({
 							toolbar={toolbar}
 						/>
 						{children}
-					</main>
+					</section>
 					{drawer ? (
 						<aside className="fa-admin-console-drawer" aria-label={drawerLabel}>
 							{drawer}

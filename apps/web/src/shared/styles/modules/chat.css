@@ -1,3 +1,5 @@
-@import "./chat-01-shell-messages.css";
-@import "./chat-02-message-activity.css";
+@import "./chat-01-shell-controls.css";
+@import "./chat-01-thread-messages.css";
+@import "./chat-02-message-surface.css";
+@import "./chat-02-tool-activity.css";
 @import "./chat-03-branch-thread.css";

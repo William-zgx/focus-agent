@@ -145,6 +145,9 @@ export function ThreadPageContent({
 
 	return (
 		<div className="fa-thread-layout">
+			<h1 className="sr-only">
+				{isChineseUi ? "Focus Agent 对话" : "Focus Agent conversation"}
+			</h1>
 			<div className="fa-transcript-panel">
 				<section className="fa-chat-transcript">
 					<BranchDecisionSummaryPanel

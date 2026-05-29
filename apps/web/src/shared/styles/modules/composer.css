@@ -1,2 +1,6 @@
-@import "./composer-01-input-modal.css";
+@import "./composer-01-thread-toolbar.css";
+@import "./composer-02-input.css";
+@import "./composer-03-context-meter.css";
+@import "./composer-04-status.css";
+@import "./composer-05-modal.css";
 @import "./composer-02-route-state.css";

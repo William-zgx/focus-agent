@@ -404,44 +404,6 @@
 	background: color-mix(in srgb, var(--fa-panel-1) 36%, transparent);
 }
 
-.fa-sidebar-dock .fa-sidebar-account {
-	min-width: 0;
-	min-height: 30px;
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 6px;
-	padding: 0;
-	border-top: 0;
-	background: transparent;
-}
-
-.fa-sidebar-dock .fa-sidebar-account-copy em {
-	display: none;
-}
-
-.fa-sidebar-dock .fa-sidebar-account-avatar {
-	width: 24px;
-	height: 24px;
-	display: inline-flex;
-	border-radius: 8px;
-	background: color-mix(in srgb, var(--fa-panel-3) 30%, transparent);
-	color: color-mix(in srgb, var(--fa-text-muted) 78%, var(--fa-text) 22%);
-	font-size: 0.68rem;
-}
-
-.fa-sidebar-dock .fa-sidebar-account-copy {
-	min-width: 0;
-	display: inline-flex;
-	align-items: center;
-}
-
-.fa-sidebar-dock .fa-sidebar-account-copy strong {
-	color: color-mix(in srgb, var(--fa-text-muted) 86%, var(--fa-text) 14%);
-	font-size: 0.68rem;
-	font-weight: 760;
-}
-
 .fa-sidebar-account-avatar {
 	width: 26px;
 	height: 26px;
@@ -479,6 +441,44 @@
 	line-height: 1.2;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.fa-sidebar-dock .fa-sidebar-account {
+	min-width: 0;
+	min-height: 30px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	padding: 0;
+	border-top: 0;
+	background: transparent;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-copy em {
+	display: none;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-avatar {
+	width: 24px;
+	height: 24px;
+	display: inline-flex;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-3) 30%, transparent);
+	color: color-mix(in srgb, var(--fa-text-muted) 78%, var(--fa-text) 22%);
+	font-size: 0.68rem;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-copy {
+	min-width: 0;
+	display: inline-flex;
+	align-items: center;
+}
+
+.fa-sidebar-dock .fa-sidebar-account-copy strong {
+	color: color-mix(in srgb, var(--fa-text-muted) 86%, var(--fa-text) 14%);
+	font-size: 0.68rem;
+	font-weight: 760;
 }
 
 .fa-sidebar-account-exit {

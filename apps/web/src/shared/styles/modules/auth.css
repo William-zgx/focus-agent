@@ -1,2 +1,7 @@
-@import "./auth-01-login.css";
+@import "./auth-01-bootstrap.css";
+@import "./auth-02-layout-panel.css";
+@import "./auth-03-login-shell.css";
+@import "./auth-04-api-key-panel.css";
+@import "./auth-05-login-illustration.css";
+@import "./auth-06-form.css";
 @import "./auth-02-account.css";

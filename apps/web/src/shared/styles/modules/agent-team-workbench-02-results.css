@@ -314,19 +314,19 @@
 	);
 }
 
-.fa-agent-team-mission-progress .fa-agent-team-progress-overview {
+:where(.fa-agent-team-mission-progress) .fa-agent-team-progress-overview {
 	grid-column: 2;
 	grid-row: 1;
 }
 
-.fa-agent-team-mission-progress .fa-agent-team-progress-overview > div,
+:where(.fa-agent-team-mission-progress) .fa-agent-team-progress-overview > div,
 .fa-agent-team-guided-layout .fa-agent-team-panel,
 .fa-agent-team-guided-layout .fa-agent-team-task-detail-shell,
 .fa-agent-team-guided-layout .fa-agent-team-advanced-shell {
 	box-shadow: none;
 }
 
-.fa-agent-team-mission-progress .fa-agent-team-progress-overview > div {
+:where(.fa-agent-team-mission-progress) .fa-agent-team-progress-overview > div {
 	padding: 9px 10px;
 	border-radius: 12px;
 	background: color-mix(in srgb, var(--fa-panel-1) 68%, transparent 32%);
@@ -428,7 +428,7 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
-	.fa-agent-team-mission-progress .fa-agent-team-progress-overview {
+	:where(.fa-agent-team-mission-progress) .fa-agent-team-progress-overview {
 		grid-column: 1;
 		grid-row: auto;
 	}

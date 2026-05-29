@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from focus_agent.core.governance import (
@@ -10,6 +13,7 @@ from focus_agent.core.governance import (
 )
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
+from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 from focus_agent.security.tokens import Principal
 
 from ..contracts import (
@@ -17,6 +21,7 @@ from ..contracts import (
     AgentContextEvidenceResponse,
     AgentContextExplainRequest,
     AgentContextExplainResponse,
+    AgentFeedbackTrendResponse,
     AgentSkillCatalogItemResponse,
     AgentSkillCatalogResponse,
     AgentSkillPreferenceRequest,
@@ -36,8 +41,11 @@ from .agent_governance_serializers import (
     _skill_preference_response,
     _skill_selection_event_response,
 )
+from .trajectory import _maybe_get_trajectory_repository
 
 _VALID_SKILL_PREFERENCE_STATES = {"default", "pinned", "disabled"}
+_NEGATIVE_SENTIMENTS = {"bad", "down", "negative", "not_useful", "thumbs_down"}
+_PRODUCTIVITY_CAPTURE_KINDS = {"capture", "note", "notes", "productivity_capture", "task", "tasks"}
 
 
 def _governance_repository(runtime: AppRuntime) -> object:
@@ -221,6 +229,108 @@ def _agent_skill_selection_feedback_response(
     )
 
 
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _safe_ratio(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return numerator / denominator
+
+
+def _string_or_empty(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def _is_negative_feedback(event: object) -> bool:
+    return _string_or_empty(getattr(event, "sentiment", None)) in _NEGATIVE_SENTIMENTS
+
+
+def _is_productivity_capture(event: object) -> bool:
+    metadata = getattr(event, "metadata", None)
+    if not isinstance(metadata, dict):
+        metadata = {}
+    candidates = {
+        _string_or_empty(getattr(event, "source_kind", None)),
+        _string_or_empty(getattr(event, "category", None)),
+        _string_or_empty(metadata.get("target_kind")),
+        _string_or_empty(metadata.get("kind")),
+    }
+    return any(candidate in _PRODUCTIVITY_CAPTURE_KINDS for candidate in candidates)
+
+
+def _is_high_drift(evidence: object) -> bool:
+    drift_report = getattr(evidence, "drift_report", None)
+    if not isinstance(drift_report, dict):
+        return False
+    risk = _string_or_empty(drift_report.get("drift_risk"))
+    if risk in {"critical", "high"}:
+        return True
+    try:
+        return float(drift_report.get("overall_drift") or 0.0) >= 0.35
+    except (TypeError, ValueError):
+        return False
+
+
+def _top_failing_trajectory_samples(runtime: AppRuntime) -> list[dict[str, Any]]:
+    repo = _maybe_get_trajectory_repository(runtime)
+    if repo is None:
+        return []
+    try:
+        rows = repo.list_turns(
+            TrajectoryTurnQuery(status=("failed", "error"), limit=5, newest_first=True)
+        )
+    except Exception:  # noqa: BLE001 - telemetry summaries should not break page load.
+        return []
+    samples: list[dict[str, Any]] = []
+    for row in rows:
+        samples.append(
+            {
+                "turn_id": row.get("id"),
+                "request_id": row.get("request_id"),
+                "trace_id": row.get("trace_id"),
+                "thread_id": row.get("thread_id"),
+                "root_thread_id": row.get("root_thread_id"),
+                "status": row.get("status"),
+                "error": row.get("error"),
+                "started_at": row.get("started_at"),
+            }
+        )
+    return samples
+
+
+def _agent_feedback_trend_response(
+    *,
+    runtime: AppRuntime,
+    principal: Principal,
+) -> AgentFeedbackTrendResponse:
+    repository = _governance_repository(runtime)
+    feedback_events = list(
+        repository.list_feedback_events(user_id=principal.user_id, limit=1000)
+    )
+    skill_events = list(
+        repository.list_skill_selection_events(user_id=principal.user_id, limit=1000)
+    )
+    context_evidence = list(
+        repository.list_context_evidence(user_id=principal.user_id, limit=1000)
+    )
+    low_confidence_count = sum(1 for event in skill_events if event.confidence < 0.5)
+    override_count = sum(1 for event in skill_events if bool(event.user_override))
+
+    return AgentFeedbackTrendResponse(
+        negative_feedback_count=sum(1 for event in feedback_events if _is_negative_feedback(event)),
+        merge_review_apply_success_rate=None,
+        merge_review_conflict_rate=None,
+        skill_low_confidence_rate=_safe_ratio(low_confidence_count, len(skill_events)),
+        skill_override_rate=_safe_ratio(override_count, len(skill_events)),
+        context_high_drift_count=sum(1 for item in context_evidence if _is_high_drift(item)),
+        notes_tasks_capture_count=sum(1 for event in feedback_events if _is_productivity_capture(event)),
+        top_failing_trajectory_samples=_top_failing_trajectory_samples(runtime),
+        generated_at=_now_iso(),
+    )
+
+
 def _agent_skill_catalog_response(
     *,
     runtime: AppRuntime,
@@ -283,6 +393,7 @@ __all__ = [
     "_agent_skill_preference_response",
     "_agent_skill_selection_events_response",
     "_agent_skill_selection_feedback_response",
+    "_agent_feedback_trend_response",
     "_context_evidence_response",
     "_governance_repository",
     "_persist_skill_selection_event",

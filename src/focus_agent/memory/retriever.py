@@ -6,6 +6,7 @@ import re
 
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
+from ..repositories.memory_repository import MemoryListQuery
 from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
     MemoryRecord,
@@ -17,7 +18,6 @@ from .models import (
 )
 from .policy import MemoryPolicy
 from .scorer import score_memory_hit
-from ..repositories.memory_repository import MemoryListQuery
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,15 @@ class MemoryRetriever:
         hits: list[MemorySearchHit] = []
         vector_hits: list[MemorySearchHit] = []
         vector_statuses: list[str] = []
+        vector_enabled = self._should_search_vectors()
+        query_vector: list[float] | None = None
+        query_vector_status: str | None = None
+        if vector_enabled and namespaces and self.embedding_provider is not None:
+            try:
+                query_vector = self.embedding_provider.embed([effective_query])[0]
+            except Exception:
+                logger.warning("memory query embedding failed; falling back to FTS", exc_info=True)
+                query_vector_status = "failed"
         for namespace in namespaces:
             namespace_hits = self._search_namespace(
                 namespace, effective_query, limit=self.default_limit
@@ -72,17 +81,23 @@ class MemoryRetriever:
                     namespace, effective_query, limit=self.default_limit
                 )
             hits.extend(namespace_hits)
-            if self._should_search_vectors():
-                namespace_vector_hits, namespace_vector_status = self._search_vector_namespace(
-                    namespace,
-                    effective_query,
-                    limit=self.default_limit,
-                )
+            if vector_enabled:
+                if query_vector_status == "failed":
+                    namespace_vector_hits, namespace_vector_status = [], "failed"
+                else:
+                    namespace_vector_hits, namespace_vector_status = (
+                        self._search_vector_namespace(
+                            namespace,
+                            effective_query,
+                            limit=self.default_limit,
+                            query_vector=query_vector,
+                        )
+                    )
                 vector_hits.extend(namespace_vector_hits)
                 vector_statuses.append(namespace_vector_status)
         vector_status = _combined_vector_status(
             vector_statuses,
-            enabled=self._should_search_vectors(),
+            enabled=vector_enabled,
             repository_available=self.repository is not None,
         )
         if self.retrieval_mode == "hybrid" and vector_status == "completed":
@@ -120,7 +135,7 @@ class MemoryRetriever:
             vector_candidate_count=len(vector_hits),
             vector_fallback_reason=_vector_fallback_reason(
                 vector_status=vector_status,
-                enabled=self._should_search_vectors(),
+                enabled=vector_enabled,
                 retrieval_mode=self.retrieval_mode,
             ),
             embedding_provider=_embedding_provider_metadata(self.embedding_provider),
@@ -223,13 +238,15 @@ class MemoryRetriever:
         namespace: tuple[str, ...],
         query: str,
         limit: int,
+        query_vector: list[float] | None = None,
     ) -> tuple[list[MemorySearchHit], str]:
         search_vectors = _repository_vector_search(self.repository)
         if search_vectors is None:
             return [], "unsupported"
         try:
             if self.embedding_provider is not None:
-                query_vector = self.embedding_provider.embed([query])[0]
+                if query_vector is None:
+                    query_vector = self.embedding_provider.embed([query])[0]
                 hits = search_vectors(
                     namespace=namespace,
                     embedding=query_vector,

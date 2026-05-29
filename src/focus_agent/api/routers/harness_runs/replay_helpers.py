@@ -7,8 +7,6 @@ from typing import Any
 
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from langchain.messages import HumanMessage
-from langgraph.types import Command
 
 from focus_agent.core.async_threads import call_in_daemon_thread
 from focus_agent.core.repo_call import has_repo_method
@@ -34,7 +32,6 @@ from focus_agent.observability.tracing import build_trace_correlation
 from focus_agent.observability.trajectory import utc_now
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
-from focus_agent.services.branches.actions import branch_handoff_message_from_text
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
 
 from ...route_utils.harness_run_helpers import (
@@ -54,130 +51,23 @@ from ...route_utils.harness_run_helpers import (
 )
 from ...streaming import sse_streaming_response
 from .replay_models import HarnessResumeRequest, HarnessRunRequest, HarnessRunResponse
+from .replay_payloads import (
+    _is_branch_handoff_auto_run,
+    _latest_human_message_matches,
+    _message_from_payload,
+    _message_text_from_graph_payload,
+    _normalized_message_text,
+    _prepare_resume_payload,
+    _prepare_run_payload,
+    _run_input_messages_for_state,
+    _run_message_from_payload,
+)
 
 logger = logging.getLogger("focus_agent.api.harness_runs")
 
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
 _BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS = 60.0
-
-
-def _prepare_run_payload(
-    *,
-    thread_id: str,
-    user_id: str,
-    payload: HarnessRunRequest,
-    chat: ChatService,
-) -> tuple[dict[str, Any], Any, Any, dict[str, Any]]:
-    message = _run_message_from_payload(payload)
-    selection = chat._select_skills_for_message(
-        message=message,
-        explicit_skill_hints=tuple(payload.skill_hints),
-    )
-    context, branch_meta, initial_values = chat._preflight_thread_access(
-        thread_id=thread_id,
-        user_id=user_id,
-        explicit_skill_hints=selection.skill_ids,
-        require_writable=True,
-    )
-    selected_model = payload.model
-    if selected_model is None:
-        selected_model = getattr(getattr(chat, "runtime", None), "settings", None)
-        if selected_model is not None:
-            selected_model = getattr(selected_model, "model", None)
-    input_messages = _run_input_messages_for_state(
-        message=message,
-        payload=payload,
-        initial_values=initial_values,
-    )
-    graph_payload: dict[str, Any] = {
-        "messages": input_messages,
-        "task_brief": selection.stripped_message or message,
-        "active_skill_ids": list(selection.skill_ids),
-        "selected_model": selected_model,
-        "selected_thinking_mode": chat._effective_thinking_mode(
-            model_id=selected_model,
-            thinking_mode=payload.thinking_mode,
-        ),
-    }
-    if payload.input:
-        graph_payload.update(
-            {key: value for key, value in payload.input.items() if key != "messages"}
-        )
-    if selection.prompt_mode is not None:
-        graph_payload["prompt_mode"] = selection.prompt_mode
-    return graph_payload, context, branch_meta, initial_values
-
-
-def _run_input_messages_for_state(
-    *,
-    message: str,
-    payload: HarnessRunRequest,
-    initial_values: dict[str, Any],
-) -> list[HumanMessage]:
-    if _is_branch_handoff_auto_run(payload) and _latest_human_message_matches(
-        initial_values.get("messages"),
-        message,
-    ):
-        return []
-    return [HumanMessage(content=message)]
-
-
-def _latest_human_message_matches(messages: Any, text: str) -> bool:
-    normalized = _normalized_message_text(text)
-    if not normalized:
-        return False
-    for message in reversed(list(messages or [])):
-        if isinstance(message, HumanMessage):
-            return _normalized_message_text(message.content) == normalized
-        if isinstance(message, dict):
-            message_type = str(message.get("type") or message.get("role") or "").lower()
-            if message_type in {"human", "user"}:
-                return _normalized_message_text(message.get("content")) == normalized
-            if message_type in {"ai", "assistant", "tool"}:
-                return False
-            continue
-        message_type = str(
-            getattr(message, "type", message.__class__.__name__.replace("Message", "").lower())
-            or ""
-        ).lower()
-        if message_type == "human":
-            return _normalized_message_text(getattr(message, "content", "")) == normalized
-        if message_type in {"ai", "assistant", "tool"}:
-            return False
-    return False
-
-
-def _normalized_message_text(value: Any) -> str:
-    if isinstance(value, list):
-        text = " ".join(
-            str(item.get("text") or item.get("content") or item)
-            if isinstance(item, dict)
-            else str(item)
-            for item in value
-            if item is not None
-        )
-    elif isinstance(value, dict):
-        text = str(value.get("text") or value.get("content") or "")
-    else:
-        text = str(value or "")
-    return " ".join(text.split())
-
-
-def _prepare_resume_payload(
-    *,
-    thread_id: str,
-    user_id: str,
-    payload: HarnessResumeRequest,
-    chat: ChatService,
-) -> tuple[Command, Any, Any, dict[str, Any]]:
-    context, branch_meta, initial_values = chat._preflight_thread_access(
-        thread_id=thread_id,
-        user_id=user_id,
-        explicit_skill_hints=(),
-        require_writable=True,
-    )
-    return Command(resume=payload.resume), context, branch_meta, initial_values
 
 
 async def _create_run_record(
@@ -475,42 +365,6 @@ def _safe_call_chat_hook(
         return default
 
 
-def _message_from_payload(payload: HarnessRunRequest) -> str:
-    if payload.message is not None:
-        return payload.message
-    if payload.input and payload.input.get("message") is not None:
-        return str(payload.input["message"])
-    raise HTTPException(status_code=400, detail="Harness run requires a message.")
-
-
-def _run_message_from_payload(payload: HarnessRunRequest) -> str:
-    message = _message_from_payload(payload)
-    if not _is_branch_handoff_auto_run(payload):
-        return message
-    return branch_handoff_message_from_text(message) or message
-
-
-def _is_branch_handoff_auto_run(payload: HarnessRunRequest) -> bool:
-    return bool((payload.metadata or {}).get("branch_handoff_auto_run"))
-
-
-def _message_text_from_graph_payload(payload: Any) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    messages = list(payload.get("messages") or [])
-    if not messages:
-        return ""
-    first = messages[0]
-    content = first.get("content") if isinstance(first, dict) else getattr(first, "content", "")
-    if isinstance(content, list):
-        return " ".join(
-            str(item.get("text") or item.get("content") or item)
-            for item in content
-            if item is not None
-        ).strip()
-    return str(content or "").strip()
-
-
 async def _next_run_sequence(
     *,
     runtime: Any,
@@ -768,17 +622,20 @@ __all__ = [
     "_handle_branch_recommendation_for_run_async",
     "_harness_run_response",
     "_is_branch_handoff_auto_run",
+    "_latest_human_message_matches",
     "_load_authorized_run_payload",
     "_load_run_payload",
     "_message_from_payload",
     "_message_text_from_graph_payload",
     "_next_run_sequence",
+    "_normalized_message_text",
     "_prepare_resume_payload",
     "_prepare_run_payload",
     "_publish_run_event",
     "_record_harness_turn_and_schedule",
     "_run_branch_action_turn_to_completion",
     "_run_event_streaming_response",
+    "_run_input_messages_for_state",
     "_run_message_from_payload",
     "_safe_call_chat_hook",
     "_safe_chat_values",

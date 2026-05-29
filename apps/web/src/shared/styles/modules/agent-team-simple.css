@@ -1,2 +1,3 @@
-@import "./agent-team-simple-01-overview.css";
+@import "./agent-team-simple-01-overview-core.css";
+@import "./agent-team-simple-01-overview-refinements.css";
 @import "./agent-team-simple-02-workspace.css";

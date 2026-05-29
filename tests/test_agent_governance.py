@@ -19,6 +19,7 @@ from focus_agent.capabilities.tool_router import (
 )
 from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
+from focus_agent.core.governance import ContextMemoryEvidence, FeedbackEvent, SkillSelectionEvent
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import make_agent_state_record
 from focus_agent.engine.graph_builder import _tools_for_policy, build_graph
@@ -330,6 +331,50 @@ def test_skill_selection_logs_feedback_and_preference() -> None:
     plan_catalog_item = next(item for item in catalog.json()["items"] if item["skill_id"] == "plan")
     assert plan_catalog_item["preference"]["state"] == "pinned"
     assert repository.get_skill_selection_event(selection_id).feedback == "useful"
+
+
+def test_agent_feedback_trend_endpoint_summarizes_governance_signals() -> None:
+    client, repository = _agent_governance_client()
+    repository.save_feedback_event(
+        FeedbackEvent(user_id="anonymous", source_kind="chat", sentiment="negative")
+    )
+    repository.save_feedback_event(
+        FeedbackEvent(
+            user_id="anonymous",
+            source_kind="productivity_capture",
+            sentiment="positive",
+            category="note",
+        )
+    )
+    repository.save_feedback_event(
+        FeedbackEvent(user_id="someone-else", source_kind="chat", sentiment="negative")
+    )
+    repository.save_skill_selection_event(
+        SkillSelectionEvent(
+            user_id="anonymous",
+            activated_skill_ids=["plan"],
+            confidence=0.4,
+            user_override={"removed": ["debug"]},
+        )
+    )
+    repository.save_skill_selection_event(
+        SkillSelectionEvent(user_id="anonymous", activated_skill_ids=["plan"], confidence=0.9)
+    )
+    repository.save_context_evidence(
+        ContextMemoryEvidence(user_id="anonymous", drift_report={"drift_risk": "high"})
+    )
+
+    response = client.get("/v1/agent/feedback/trend")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["negative_feedback_count"] == 1
+    assert payload["notes_tasks_capture_count"] == 1
+    assert payload["context_high_drift_count"] == 1
+    assert payload["skill_low_confidence_rate"] == 0.5
+    assert payload["skill_override_rate"] == 0.5
+    assert payload["top_failing_trajectory_samples"] == []
+    assert payload["generated_at"]
 
 
 def test_skill_selection_event_logging_can_be_disabled() -> None:

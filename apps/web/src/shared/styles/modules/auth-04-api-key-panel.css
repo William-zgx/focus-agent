@@ -1,0 +1,68 @@
+.fa-auth-api-panel {
+	display: grid;
+	gap: 12px;
+	padding: 14px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 14%, var(--fa-border) 86%);
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0)),
+		color-mix(in srgb, var(--fa-panel-2) 90%, transparent);
+	box-shadow: 0 10px 22px rgba(24, 35, 55, 0.06);
+}
+
+.fa-auth-api-panel-heading {
+	display: grid;
+	gap: 3px;
+}
+
+.fa-auth-api-panel-heading strong {
+	color: var(--fa-text);
+	font-size: 0.95rem;
+	line-height: 1.2;
+}
+
+.fa-auth-api-panel-heading span,
+.fa-auth-api-current {
+	color: var(--fa-text-muted);
+	font-size: 0.78rem;
+	line-height: 1.45;
+}
+
+.fa-auth-api-form {
+	display: grid;
+	gap: 7px;
+}
+
+.fa-auth-api-form label {
+	color: var(--fa-text-muted);
+	font-size: 0.78rem;
+	font-weight: 700;
+}
+
+.fa-auth-api-input-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 8px;
+}
+
+.fa-auth-api-input-row input {
+	min-width: 0;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent) 9%, var(--fa-border) 91%);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-1) 94%, rgb(255, 255, 255) 6%);
+	color: var(--fa-text);
+	padding: 10px 12px;
+}
+
+.fa-auth-api-input-row input:focus-visible {
+	border-color: color-mix(in srgb, var(--fa-accent) 62%, transparent);
+	outline: 2px solid color-mix(in srgb, var(--fa-accent) 42%, transparent);
+	outline-offset: 1px;
+}
+
+.fa-auth-api-current {
+	margin: 0;
+	overflow-wrap: anywhere;
+}

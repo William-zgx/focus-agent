@@ -869,6 +869,7 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/agent/roles/policy" in route_paths
     assert "/v1/agent/roles/dry-run" in route_paths
     assert "/v1/agent/roles/decisions" in route_paths
+    assert "/v1/agent/feedback/trend" in route_paths
     assert "/v1/agent/capabilities" in route_paths
     assert "/v1/agent/toolsets" in route_paths
     assert "/v1/agent/tool-router/route" in route_paths

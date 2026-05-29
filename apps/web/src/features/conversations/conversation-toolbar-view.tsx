@@ -72,7 +72,7 @@ const ICON_CONVERSATION_SWITCHER_STYLES: Record<
 };
 
 function mediaQueryMatches(query: string): boolean {
-	return typeof window !== "undefined" && window.matchMedia(query).matches;
+	return globalThis.window?.matchMedia(query).matches ?? false;
 }
 
 interface ConversationToolbarViewProps {

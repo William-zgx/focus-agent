@@ -1,0 +1,476 @@
+@media (max-width: 900px) {
+	.fa-app-shell {
+		width: 100%;
+		min-width: 0;
+		height: 100dvh;
+		min-height: 100dvh;
+		padding: max(8px, env(safe-area-inset-top))
+			max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
+			max(8px, env(safe-area-inset-left));
+		overflow: hidden;
+	}
+
+	.fa-app-shell:not(.is-sidebar-collapsed)::before {
+		content: none;
+	}
+
+	.fa-sidebar-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 24;
+		display: block;
+		border: 0;
+		background: var(--fa-backdrop);
+		cursor: pointer;
+	}
+
+	.fa-app-shell.is-sidebar-collapsed .fa-sidebar-scrim {
+		display: none;
+	}
+
+	.fa-sidebar-panel,
+	.fa-sidebar-panel.is-global-shell {
+		inset: max(8px, env(safe-area-inset-top)) auto
+			max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+		width: min(88vw, 320px);
+		max-width: calc(100vw - 16px);
+		border-radius: 20px;
+		display: grid;
+		transform: translateX(0);
+		opacity: 1;
+		pointer-events: auto;
+		visibility: visible;
+	}
+
+	.fa-app-shell:not(.is-sidebar-collapsed) .fa-sidebar-panel {
+		display: grid;
+		transform: none;
+		opacity: 1;
+		pointer-events: auto;
+		transition: none;
+		visibility: visible;
+	}
+
+	.fa-app-shell.is-sidebar-collapsed .fa-sidebar-panel {
+		transform: translateX(calc(-100% - 24px));
+		opacity: 0;
+		pointer-events: none;
+		visibility: hidden;
+	}
+
+	.fa-sidebar-copy,
+	.fa-sidebar-scroll {
+		padding: 12px;
+	}
+
+	.fa-sidebar-dock {
+		padding: 10px 12px 12px;
+	}
+
+	.fa-chat-panel {
+		min-width: 0;
+		padding: 10px;
+		gap: 10px;
+		border-radius: 20px;
+	}
+
+	.fa-chat-panel.is-workspace-shell {
+		padding-top: 50px;
+	}
+
+	.fa-chat-main-body {
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.fa-header-card {
+		padding: 10px;
+		border-radius: 18px;
+	}
+
+	.fa-chat-header-copy {
+		width: 100%;
+		gap: 6px;
+	}
+
+	.fa-conversation-toolbar {
+		width: 100%;
+	}
+
+	.fa-chat-header-right-actions {
+		justify-content: flex-end;
+	}
+
+	.fa-chat-header-actions {
+		padding-bottom: 2px;
+	}
+
+	.fa-chat-header-right-actions .fa-chat-header-actions {
+		flex-wrap: nowrap;
+	}
+
+	.fa-sidebar-toggle-button,
+	.fa-workspace-sidebar-toggle {
+		min-height: 40px;
+	}
+
+	.fa-chat-toolbar-pill,
+	.fa-chat-toolbar-button {
+		white-space: nowrap;
+	}
+
+	.fa-workspace-sidebar-toggle {
+		top: max(10px, env(safe-area-inset-top));
+		left: max(10px, env(safe-area-inset-left));
+		z-index: 12;
+	}
+
+	.fa-thread-layout,
+	.fa-chat-main-body > .fa-thread-layout,
+	.fa-transcript-panel,
+	.fa-chat-main-body > .fa-thread-layout > .fa-transcript-panel {
+		min-width: 0;
+		min-height: 0;
+		height: 100%;
+	}
+
+	.fa-chat-history {
+		padding: 12px;
+	}
+
+	.fa-conversation-viewport,
+	.fa-chat-transcript,
+	.fa-composer-slot {
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.fa-transcript-panel,
+	.fa-chat-main-body .fa-chat-transcript {
+		border-radius: 18px;
+	}
+
+	.fa-chat-main-body > .fa-thread-layout > .fa-transcript-panel {
+		gap: 10px;
+	}
+
+	.fa-chat-main-body .fa-chat-history {
+		padding: 12px;
+	}
+
+	.fa-composer-card,
+	.fa-composer-shell {
+		min-width: 0;
+		width: 100%;
+	}
+
+	.fa-composer-shell {
+		padding: 9px;
+		border-radius: 18px;
+	}
+
+	.fa-composer-textarea {
+		font-size: 13px;
+	}
+
+	.fa-composer-model-row {
+		justify-self: start;
+	}
+
+	.fa-composer-actions-row {
+		justify-self: auto;
+	}
+
+	.fa-chat-main-body .fa-composer-footer-row > *,
+	.fa-chat-main-body .fa-composer-model-row,
+	.fa-chat-main-body .fa-composer-actions-row {
+		grid-column: auto;
+		justify-self: auto;
+		white-space: nowrap;
+	}
+
+	.fa-composer-inline-actions,
+	.fa-chat-main-body .fa-composer-inline-actions {
+		flex: 0 0 auto;
+	}
+
+	.fa-composer-footer-row,
+	.fa-chat-main-body .fa-composer-footer-row {
+		flex-wrap: nowrap;
+	}
+
+	.fa-chat-main-body .fa-composer-model-row {
+		justify-self: start;
+	}
+
+	.fa-context-meter-popover {
+		right: 0;
+		left: auto;
+		max-width: calc(100vw - 32px);
+	}
+
+	.fa-message-stack,
+	.fa-chat-main-body .fa-message-stack {
+		width: 100%;
+		max-width: 100%;
+	}
+
+	.fa-message-row.is-user .fa-message-stack,
+	.fa-message-row.user .fa-message-stack {
+		width: fit-content;
+		max-width: 100%;
+	}
+
+	.fa-message-bubble,
+	.fa-chat-main-body .fa-message-bubble {
+		padding: 12px 13px;
+		overflow-wrap: anywhere;
+	}
+
+	.fa-message-actions,
+	.fa-chat-main-body .fa-message-actions {
+		opacity: 1;
+		transform: none;
+		pointer-events: auto;
+	}
+
+	.fa-message-code-block pre {
+		max-width: 100%;
+		font-size: 12px;
+	}
+
+	.fa-message-inline-code {
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.fa-message-markdown .fa-message-table-wrap {
+		max-width: 100%;
+	}
+
+	.fa-focus-modal {
+		padding: 12px;
+	}
+
+	.fa-focus-modal-card,
+	.fa-focus-modal-card.is-wide {
+		width: calc(100vw - 24px);
+		max-height: calc(100dvh - 24px);
+		border-radius: 18px;
+	}
+
+	.fa-focus-modal-head,
+	.fa-focus-modal-actions {
+		display: grid;
+		justify-content: stretch;
+	}
+}
+
+@media (max-width: 760px) {
+	.fa-productivity-layout,
+	.fa-agent-team-layout,
+	.fa-observability-layout,
+	.fa-admin-layout {
+		min-width: 0;
+	}
+
+	.fa-chat-main-body.is-agent-workbench-route > .fa-observability-layout,
+	.fa-chat-main-body.is-agent-workbench-route > .fa-trajectory-workbench,
+	.fa-chat-main-body.is-agent-workbench-route > .fa-productivity-layout,
+	.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
+	.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout,
+	.fa-chat-main-body.is-admin-route > .fa-admin-layout {
+		padding-right: 0;
+		scrollbar-gutter: auto;
+	}
+
+	.fa-trajectory-workbench-header,
+	.fa-trajectory-overview-hero,
+	.fa-trajectory-overview-list-item,
+	.fa-trajectory-overview-handoff,
+	.fa-observability-panel-header,
+	.fa-agent-team-cockpit-secondary-bar,
+	.fa-agent-team-tool-approval,
+	.fa-productivity-header,
+	.fa-admin-page-bar {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		align-items: stretch;
+	}
+
+	.fa-trajectory-workbench-header-side,
+	.fa-trajectory-workbench-header-actions,
+	.fa-admin-console-toolbar,
+	.fa-admin-panel-status-actions,
+	.fa-productivity-tabs {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.fa-trajectory-workbench-header-actions,
+	.fa-admin-panel-status-actions,
+	.fa-productivity-tabs {
+		overflow-x: auto;
+		overflow-y: hidden;
+		flex-wrap: nowrap;
+		padding-bottom: 2px;
+	}
+
+	.fa-trajectory-workbench-tab,
+	.fa-observability-preset,
+	.fa-productivity-tab,
+	.fa-productivity-source-filter,
+	.fa-agent-team-cockpit-button {
+		min-height: 40px;
+		white-space: nowrap;
+	}
+
+	.fa-trajectory-overview-runtime,
+	.fa-trajectory-workbench-header-side {
+		min-width: 0;
+		justify-items: stretch;
+		text-align: left;
+	}
+
+	.fa-trajectory-workbench-sample-list {
+		max-height: min(52dvh, 520px);
+		padding-right: 0;
+	}
+
+	.fa-observability-command-bar {
+		overflow-x: auto;
+		overflow-y: hidden;
+		flex-wrap: nowrap;
+	}
+
+	.fa-agent-team-cockpit-grid,
+	.fa-agent-team-simple-main,
+	.fa-productivity-grid.is-notes,
+	.fa-productivity-grid.is-tasks,
+	.fa-agent-team-collab-grid,
+	.fa-agent-team-tool-approval-actions,
+	.fa-productivity-stat-grid,
+	.fa-productivity-detail-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-collab-card {
+		border-radius: 14px;
+	}
+
+	.fa-agent-team-more-menu-panel {
+		right: auto;
+		left: 0;
+		max-width: calc(100vw - 32px);
+	}
+
+	.fa-agent-team-inspector-drawer {
+		width: 100vw;
+		padding: max(12px, env(safe-area-inset-top)) 12px
+			max(12px, env(safe-area-inset-bottom));
+		border-left: 0;
+	}
+
+	.fa-productivity-header p,
+	.fa-trajectory-workbench-heading p,
+	.fa-admin-workspace-heading p {
+		max-width: none;
+	}
+
+	.fa-productivity-note-top,
+	.fa-productivity-draft-meta {
+		display: grid;
+		align-items: stretch;
+	}
+
+	.fa-productivity-note-list,
+	.fa-productivity-task-list {
+		max-height: min(52dvh, 520px);
+		overflow-y: auto;
+	}
+
+	.fa-auth-debug-toggle {
+		opacity: 1;
+		pointer-events: auto;
+		transform: translateY(0);
+	}
+
+	.fa-admin-console,
+	.fa-admin-console.has-drawer {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 10px;
+		overflow: visible;
+	}
+
+	.fa-admin-console-main,
+	.fa-admin-console-drawer {
+		overflow: visible;
+		padding-right: 0;
+	}
+
+	.fa-admin-console.has-drawer .fa-admin-console-drawer {
+		position: fixed;
+		right: max(8px, env(safe-area-inset-right));
+		bottom: max(8px, env(safe-area-inset-bottom));
+		left: max(8px, env(safe-area-inset-left));
+		z-index: 58;
+		max-height: min(78dvh, 640px);
+		overflow-x: hidden;
+		overflow-y: auto;
+		border-radius: 16px;
+		box-shadow: var(--fa-shadow);
+	}
+
+	.fa-admin-table-scroll {
+		overflow: visible;
+	}
+
+	.fa-admin-table {
+		display: block;
+		min-width: 0;
+		width: 100%;
+		border-spacing: 0;
+	}
+
+	.fa-admin-table thead {
+		display: none;
+	}
+
+	.fa-admin-table tbody,
+	.fa-admin-table tr {
+		display: block;
+		width: 100%;
+	}
+
+	.fa-admin-table tr {
+		margin-bottom: 8px;
+		padding: 9px;
+		border: 1px solid var(--fa-border-subtle);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--fa-panel-1) 50%, transparent);
+	}
+
+	.fa-admin-table td,
+	.fa-admin-table td:first-child,
+	.fa-admin-table td:last-child {
+		display: grid;
+		grid-template-columns: minmax(86px, 34%) minmax(0, 1fr);
+		gap: 8px;
+		align-items: start;
+		padding: 6px 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+	}
+
+	.fa-admin-table td::before {
+		content: attr(data-label);
+		color: var(--fa-text-soft);
+		font-size: 0.72rem;
+		font-weight: 760;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+}

@@ -1,0 +1,159 @@
+.fa-auth-bootstrap-card {
+	width: min(560px, 100%);
+}
+
+.fa-auth-bootstrap-copy {
+	margin: 12px 0 0;
+	color: var(--fa-text-muted);
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.fa-auth-bootstrap-form {
+	display: grid;
+	gap: 12px;
+	margin-top: 16px;
+}
+
+.fa-auth-bootstrap-label {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--fa-text-muted);
+}
+
+.fa-auth-bootstrap-input {
+	width: 100%;
+	min-height: 104px;
+	resize: vertical;
+	border-radius: 16px;
+	border: 1px solid var(--fa-border);
+	background: color-mix(in srgb, var(--fa-panel-2) 84%, transparent);
+	padding: 12px 14px;
+	color: var(--fa-text);
+	font: inherit;
+	line-height: 1.5;
+}
+
+.fa-auth-bootstrap-input:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
+	outline-offset: 2px;
+}
+
+.fa-auth-bootstrap-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.fa-auth-bootstrap-button {
+	appearance: none;
+	border: 1px solid var(--fa-border);
+	background: color-mix(in srgb, var(--fa-panel-3) 84%, transparent);
+	color: var(--fa-text);
+	border-radius: 999px;
+	padding: 10px 16px;
+	font: inherit;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition:
+		background 0.16s ease,
+		border-color 0.16s ease,
+		transform 0.16s ease;
+}
+
+.fa-auth-bootstrap-button:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--fa-panel-3) 60%, var(--fa-accent) 10%);
+}
+
+.fa-auth-bootstrap-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.56;
+}
+
+.fa-auth-bootstrap-button:active:not(:disabled) {
+	transform: translateY(1px);
+}
+
+.fa-auth-bootstrap-button.is-primary {
+	border-color: color-mix(in srgb, var(--fa-accent) 40%, transparent);
+	background: color-mix(in srgb, var(--fa-accent) 18%, var(--fa-panel-3) 82%);
+}
+
+.fa-auth-page,
+.fa-account-layout {
+	display: grid;
+	min-height: calc(100vh - 96px);
+	place-items: center;
+	padding: 24px;
+}
+
+.fa-auth-page {
+	min-height: 100vh;
+	position: relative;
+	isolation: isolate;
+	overflow-x: hidden;
+	overflow-y: auto;
+	background:
+		linear-gradient(138deg, rgba(20, 184, 166, 0.08), rgba(20, 184, 166, 0) 32%),
+		linear-gradient(316deg, rgba(217, 119, 6, 0.07), rgba(217, 119, 6, 0) 34%),
+		linear-gradient(40deg, rgba(37, 99, 235, 0.07), rgba(37, 99, 235, 0) 35%),
+		linear-gradient(
+			180deg,
+			rgb(248, 251, 255) 0%,
+			rgb(241, 246, 250) 54%,
+			rgb(247, 249, 252) 100%
+		);
+}
+
+.fa-auth-page::before,
+.fa-auth-page::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+}
+
+.fa-auth-page::before {
+	background:
+		linear-gradient(
+			180deg,
+			rgba(255, 255, 255, 0.64),
+			rgba(255, 255, 255, 0.14)
+		),
+		linear-gradient(
+			90deg,
+			rgba(37, 99, 235, 0.08),
+			rgba(37, 99, 235, 0) 18%,
+			rgba(217, 119, 6, 0.05) 82%,
+			rgba(217, 119, 6, 0)
+		);
+	opacity: 0.44;
+	mask-image: linear-gradient(
+		180deg,
+		transparent,
+		rgb(0, 0, 0) 14%,
+		rgb(0, 0, 0) 86%,
+		transparent
+	);
+}
+
+.fa-auth-page::after {
+	inset: auto 7% 7% 7%;
+	height: 1px;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		rgba(37, 99, 235, 0.16),
+		transparent
+	);
+	opacity: 0.64;
+}
+
+.fa-auth-page > * {
+	position: relative;
+	z-index: 1;
+}

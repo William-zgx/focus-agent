@@ -38,7 +38,7 @@ export function AgentTeamWorkbench({
 	const { isChineseUi } = useShellUi();
 	const sessionQuery = useAgentTeamSession(sessionId);
 	const autonomyEvidence = useThreadBranchDecisions(
-		rootThreadIdFromSessionData(sessionQuery.data),
+		branchDecisionThreadIdFromSessionData(sessionQuery.data),
 	);
 	const planSession = usePlanAgentTeamSession(sessionId);
 	const runSession = useRunAgentTeamSession(sessionId);
@@ -608,4 +608,9 @@ function rootThreadIdFromSessionData(value: unknown) {
 	if (!isRecord(value)) return "";
 	const session = isRecord(value.session) ? value.session : value;
 	return stringFromUnknown(session.root_thread_id);
+}
+
+function branchDecisionThreadIdFromSessionData(value: unknown) {
+	const rootThreadId = rootThreadIdFromSessionData(value);
+	return rootThreadId.startsWith("agent-team-standalone-") ? "" : rootThreadId;
 }

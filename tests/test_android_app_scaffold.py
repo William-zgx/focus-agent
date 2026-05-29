@@ -3,6 +3,11 @@ import re
 from pathlib import Path
 
 
+def _android_local_runtime_text(web_root: Path) -> str:
+    runtime_root = web_root / "src" / "android-local-runtime"
+    return "\n".join(path.read_text() for path in sorted(runtime_root.glob("*.ts")))
+
+
 def test_android_app_scaffold_builds_capacitor_shell():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web"
@@ -12,7 +17,15 @@ def test_android_app_scaffold_builds_capacitor_shell():
         root / "capacitor.config.ts",
         android_root / "app" / "build.gradle",
         android_root / "app" / "src" / "main" / "AndroidManifest.xml",
-        android_root / "app" / "src" / "main" / "java" / "ai" / "focusagent" / "app" / "MainActivity.java",
+        android_root
+        / "app"
+        / "src"
+        / "main"
+        / "java"
+        / "ai"
+        / "focusagent"
+        / "app"
+        / "MainActivity.java",
         android_root / "app" / "src" / "debug" / "AndroidManifest.xml",
         android_root
         / "app"
@@ -21,10 +34,7 @@ def test_android_app_scaffold_builds_capacitor_shell():
         / "res"
         / "xml"
         / "debug_network_security_config.xml",
-        web_root
-        / "src"
-        / "android-local-runtime"
-        / "local-focus-agent-runtime.ts",
+        web_root / "src" / "android-local-runtime" / "local-focus-agent-runtime.ts",
     ]
 
     for path in required:
@@ -32,23 +42,12 @@ def test_android_app_scaffold_builds_capacitor_shell():
 
     package_json = json.loads((root / "package.json").read_text())
     scripts = package_json["scripts"]
-    assert scripts["android:web:build"].startswith(
-        "VITE_FOCUS_AGENT_TARGET=android "
-    )
+    assert scripts["android:web:build"].startswith("VITE_FOCUS_AGENT_TARGET=android ")
     assert "VITE_FOCUS_AGENT_APP_BASE=/" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ROUTER_BASE=/" in scripts["android:web:build"]
-    assert (
-        "VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH=false"
-        in scripts["android:web:build"]
-    )
-    assert (
-        "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=true"
-        not in scripts["android:web:build"]
-    )
-    assert (
-        "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false"
-        in scripts["android:web:build"]
-    )
+    assert "VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH=false" in scripts["android:web:build"]
+    assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=true" not in scripts["android:web:build"]
+    assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in scripts["android:web:build"]
     assert scripts["android:apk:debug"] == (
         "pnpm android:sync && cd android && ./gradlew assembleDebug"
     )
@@ -72,9 +71,7 @@ def test_android_app_scaffold_builds_capacitor_shell():
     assert 'namespace = "ai.focusagent.app"' in android_build
     assert 'applicationId "ai.focusagent.app"' in android_build
 
-    android_manifest = (
-        android_root / "app" / "src" / "main" / "AndroidManifest.xml"
-    ).read_text()
+    android_manifest = (android_root / "app" / "src" / "main" / "AndroidManifest.xml").read_text()
     assert "android.permission.INTERNET" in android_manifest
     assert 'android:allowBackup="false"' in android_manifest
     assert 'android:fullBackupContent="false"' in android_manifest
@@ -106,9 +103,7 @@ def test_android_app_scaffold_builds_capacitor_shell():
     assert "AndroidKeyStore" in secure_storage_plugin
     assert "AES/GCM/NoPadding" in secure_storage_plugin
 
-    debug_manifest = (
-        android_root / "app" / "src" / "debug" / "AndroidManifest.xml"
-    ).read_text()
+    debug_manifest = (android_root / "app" / "src" / "debug" / "AndroidManifest.xml").read_text()
     assert "android:usesCleartextTraffic" in debug_manifest
     assert "debug_network_security_config" in debug_manifest
 
@@ -139,9 +134,7 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "observability" in env_text
     assert "productivity" in env_text
 
-    provider_text = (
-        web_root / "src" / "shared" / "sdk" / "focus-agent-provider.tsx"
-    ).read_text()
+    provider_text = (web_root / "src" / "shared" / "sdk" / "focus-agent-provider.tsx").read_text()
     assert "apiBaseUrlReady" in provider_text
     assert "setApiBaseUrl" in provider_text
     assert "normalizedValue === apiBaseUrl" in provider_text
@@ -151,8 +144,9 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "fetchImpl: localRuntimeFetch" in provider_text
     assert "new FocusAgentClient" in provider_text
 
-    local_runtime_text = (
-        web_root / "src" / "android-local-runtime" / "local-focus-agent-runtime.ts"
+    local_runtime_text = _android_local_runtime_text(web_root)
+    local_runtime_constants_text = (
+        web_root / "src" / "android-local-runtime" / "constants.ts"
     ).read_text()
     assert "createLocalFocusAgentFetch" in local_runtime_text
     assert "CapacitorHttp.post" in local_runtime_text
@@ -166,12 +160,12 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "providerConfigForModel" in local_runtime_text
     assert "providerMatchesModelPrefix" in local_runtime_text
     assert "modelProvider(selectedModel" in local_runtime_text
-    assert "delete this.modelSecrets[providerId]" in local_runtime_text
+    assert "delete ctx.modelSecrets[providerId]" in local_runtime_text
     assert "api_key_default" in local_runtime_text
-    assert 'DEFAULT_PROVIDER_ID = "deepseek"' in local_runtime_text
-    assert 'DEFAULT_PROVIDER_BASE_URL = "https://api.deepseek.com"' in local_runtime_text
-    assert 'DEFAULT_MODEL_ID = "deepseek-v4-pro"' in local_runtime_text
-    assert 'Content-Type": "text/event-stream"' in local_runtime_text
+    assert 'DEFAULT_PROVIDER_ID = "deepseek"' in local_runtime_constants_text
+    assert 'DEFAULT_PROVIDER_BASE_URL = "https://api.deepseek.com"' in local_runtime_constants_text
+    assert 'DEFAULT_MODEL_ID = "deepseek-v4-pro"' in local_runtime_constants_text
+    assert 'Content-Type": "text/event-stream"' in local_runtime_constants_text
     assert "streamRun" in local_runtime_text
     assert 'resource === "branch-decisions"' in local_runtime_text
     assert 'resource === "branch-actions"' in local_runtime_text
@@ -184,9 +178,7 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "apiBaseUrlReady" in login_text
     assert "authReady={ready && apiBaseUrlReady}" in login_text
 
-    admin_config_text = (
-        web_root / "src" / "pages" / "admin" / "admin-config-page.tsx"
-    ).read_text()
+    admin_config_text = (web_root / "src" / "pages" / "admin" / "admin-config-page.tsx").read_text()
     assert "appEnv.useLocalRuntime" in admin_config_text
     assert "api_key_default" in admin_config_text
     assert "showLocalSecrets={appEnv.useLocalRuntime}" in admin_config_text
@@ -198,17 +190,13 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert 'type="password"' in model_panel_text
     assert "本机 API Key" in model_panel_text
 
-    login_intro_text = (
-        web_root / "src" / "pages" / "auth" / "login-intro.tsx"
-    ).read_text()
+    login_intro_text = (web_root / "src" / "pages" / "auth" / "login-intro.tsx").read_text()
     assert "hasWorkspace" in login_intro_text
     assert "appEnv.features.agentGovernance" in login_intro_text
     assert "appEnv.features.observability" in login_intro_text
     assert "对话与管理优先的 Focus Agent" in login_intro_text
 
-    account_portal_text = (
-        web_root / "src" / "pages" / "auth" / "account-portal.tsx"
-    ).read_text()
+    account_portal_text = (web_root / "src" / "pages" / "auth" / "account-portal.tsx").read_text()
     assert "appEnv.features.agentTeam" in account_portal_text
     assert "appEnv.features.agentGovernance" in account_portal_text
     assert "appEnv.features.agentMemory" in account_portal_text
@@ -216,9 +204,7 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "appEnv.features.productivity" in account_portal_text
     assert "enabledModules.push" in account_portal_text
 
-    register_text = (
-        web_root / "src" / "pages" / "auth" / "register-page.tsx"
-    ).read_text()
+    register_text = (web_root / "src" / "pages" / "auth" / "register-page.tsx").read_text()
     assert "ApiBaseUrlPanel" in register_text
     assert "apiBaseUrlReady" in register_text
     assert "!apiBaseUrlReady" in register_text
@@ -236,9 +222,7 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "...productivityRoutes" in router_text
     assert "basepath: appEnv.routerBasePath" in router_text
 
-    shell_config_text = (
-        web_root / "src" / "app" / "shell" / "app-shell-config.ts"
-    ).read_text()
+    shell_config_text = (web_root / "src" / "app" / "shell" / "app-shell-config.ts").read_text()
     assert "if (!appEnv.features.productivity) return false" in shell_config_text
     assert "appEnv.features.agentTeam" in shell_config_text
     assert "appEnv.features.agentGovernance" in shell_config_text
@@ -302,16 +286,14 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     assert 'VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY === "false"' in router_text
     assert "LazyAgentTeamWorkbenchPage" in router_text
     assert "LazyProductivityPage" in router_text
-    assert 'import { AgentTeamWorkbenchPage }' not in router_text
-    assert 'import { ProductivityPage }' not in router_text
+    assert "import { AgentTeamWorkbenchPage }" not in router_text
+    assert "import { ProductivityPage }" not in router_text
     assert "const agentGovernanceRoutes = appEnv.features.agentGovernance" in router_text
     assert "const agentMemoryRoutes = appEnv.features.agentMemory" in router_text
     assert "const observabilityRoutes = appEnv.features.observability" in router_text
     assert "[productivityNotesRoute, productivityTasksRoute]" in router_text
 
-    auth_page_data_text = (
-        web_root / "src" / "pages" / "auth" / "auth-page-data.tsx"
-    ).read_text()
+    auth_page_data_text = (web_root / "src" / "pages" / "auth" / "auth-page-data.tsx").read_text()
     assert (
         'if (path.startsWith("/agent-team")) return appEnv.features.agentTeam'
         in auth_page_data_text
@@ -350,17 +332,13 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web"
 
-    local_runtime_text = (
-        web_root / "src" / "android-local-runtime" / "local-focus-agent-runtime.ts"
-    ).read_text()
-    android_smoke_text = (
-        web_root / "scripts" / "android-local-runtime-smoke.mjs"
-    ).read_text()
+    local_runtime_text = _android_local_runtime_text(web_root)
+    android_smoke_text = (web_root / "scripts" / "android-local-runtime-smoke.mjs").read_text()
     assert "recordLocalBranchDecision" in local_runtime_text
     assert "branch_decision_summary" in local_runtime_text
     assert "semantic_relatedness" in local_runtime_text
     assert "FocusAgentBranchDecisionSummary" in local_runtime_text
-    assert "source: \"branch_decision\"" in local_runtime_text
+    assert 'source: "branch_decision"' in local_runtime_text
     assert "recommendation_user_visible: true" in local_runtime_text
     assert 'event: "tool.requested"' in local_runtime_text
     assert 'event: "tool.result"' in local_runtime_text
@@ -407,12 +385,18 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert 'resource === "memory"' in local_runtime_text
     assert 'resource === "observability"' in local_runtime_text
     assert "Productivity is disabled in the Android local runtime." in local_runtime_text
-    assert 'appEnv.features.agentTeam, false' in android_smoke_text
-    assert 'appEnv.features.agentGovernance, true' in android_smoke_text
-    assert 'appEnv.features.agentMemory, true' in android_smoke_text
-    assert 'appEnv.features.observability, true' in android_smoke_text
-    assert 'appEnv.features.productivity, false' in android_smoke_text
+    assert "appEnv.features.agentTeam, false" in android_smoke_text
+    assert "appEnv.features.agentGovernance, true" in android_smoke_text
+    assert "appEnv.features.agentMemory, true" in android_smoke_text
+    assert "appEnv.features.observability, true" in android_smoke_text
+    assert "appEnv.features.productivity, false" in android_smoke_text
     assert "FocusAgentClient" in android_smoke_text
+    assert "LocalFocusAgentRuntime" in android_smoke_text
+    assert "assertAdminConfigContract" in android_smoke_text
+    assert "assertModelsResponseContract" in android_smoke_text
+    assert "assertLocalRuntimeExposeContract" in android_smoke_text
+    assert "assertLocalStreamContract" in android_smoke_text
+    assert "assertSdkStreamStateContract" in android_smoke_text
     assert "sdkClient.getPrincipal()" in android_smoke_text
     assert "sdkClient.listAgentCapabilities()" in android_smoke_text
     assert "sdkClient.updateAdminModelConfig" in android_smoke_text
@@ -428,6 +412,11 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert "sdkClient.cancelHarnessRun" in android_smoke_text
     assert "sdkClient.streamTurn" in android_smoke_text
     assert "sdkClient.collectStream" in android_smoke_text
+    assert 'sdkFallbackState.visibleText.includes("还没有配置模型 API Key")' in android_smoke_text
+    assert "providerRequests.length" in android_smoke_text
+    assert 'terminal.event,\n\t\t"run.completed"' in android_smoke_text
+    assert "threadState.assistant_message" in android_smoke_text
+    assert "messageRecord.id" in android_smoke_text
     assert "/v1/agent/capabilities" in android_smoke_text
     assert 'adminToolNames.includes("write_text_artifact")' in android_smoke_text
     assert 'adminToolNames.includes("memory_search")' in android_smoke_text
@@ -463,7 +452,7 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert 'searchRequest?.data.args?.query.includes("请联网查一下")' in android_smoke_text
     assert 'event.data.output?.source === "duckduckgo_html"' in android_smoke_text
     assert '"https://duckduckgo.com/html/"' in android_smoke_text
-    assert 'roleDryRun.plan.decisions[0].model_id' in android_smoke_text
+    assert "roleDryRun.plan.decisions[0].model_id" in android_smoke_text
     assert 'skill.skill_id === "android-local-runtime"' in android_smoke_text
     assert 'skillSelection.skill_ids.includes("local-web-tools")' in android_smoke_text
     assert "contextPreview.decision.budget.prompt_chars" in android_smoke_text
@@ -474,8 +463,6 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert 'completed?.data.branch_decision?.status, "promoted"' in android_smoke_text
     assert 'executed.branch_action.status, "executed"' in android_smoke_text
 
-    provider_text = (
-        web_root / "src" / "shared" / "sdk" / "focus-agent-provider.tsx"
-    ).read_text()
+    provider_text = (web_root / "src" / "shared" / "sdk" / "focus-agent-provider.tsx").read_text()
     assert "@/android-local-runtime/local-focus-agent-runtime" in provider_text
     assert "createLocalFocusAgentFetch()" in provider_text

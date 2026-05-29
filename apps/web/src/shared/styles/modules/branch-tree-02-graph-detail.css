@@ -292,7 +292,7 @@
 	opacity: 1;
 }
 
-.fa-branch-detail-overlay .fa-branch-node-detail {
+:where(.fa-branch-detail-overlay) .fa-branch-node-detail {
 	pointer-events: auto;
 }
 
@@ -371,7 +371,7 @@
 	font-weight: 700;
 }
 
-.fa-inline-rename-form.is-branch-title .fa-branch-inline-action {
+:where(.fa-inline-rename-form.is-branch-title) .fa-branch-inline-action {
 	flex: 0 0 auto;
 	padding: 4px 8px;
 	font-size: 10px;

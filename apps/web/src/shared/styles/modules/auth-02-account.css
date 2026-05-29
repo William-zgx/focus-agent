@@ -1,4 +1,57 @@
-.fa-auth-login-panel .fa-auth-button {
+.fa-auth-feature-list {
+	display: grid;
+	gap: 6px;
+	margin-top: 6px;
+	padding: 12px 14px;
+	border: 1px dashed
+		color-mix(in srgb, var(--fa-border-subtle) 64%, transparent);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-2) 86%, transparent);
+}
+
+.fa-auth-feature-list strong {
+	color: var(--fa-text);
+	font-size: 0.88rem;
+	letter-spacing: 0;
+}
+
+.fa-auth-feature-list p {
+	color: var(--fa-text-muted);
+	margin: 0;
+	font-size: 0.8rem;
+}
+
+.fa-auth-button {
+	appearance: none;
+	min-height: 40px;
+	min-width: 0;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-panel-3) 84%, transparent);
+	color: var(--fa-text);
+	padding: 9px 14px;
+	font: inherit;
+	font-size: 0.9rem;
+	font-weight: 700;
+	line-height: 1.25;
+	cursor: pointer;
+	transition:
+		background 0.16s ease,
+		border-color 0.16s ease,
+		transform 0.16s ease,
+		box-shadow 0.16s ease;
+}
+
+.fa-auth-button.is-primary {
+	border-color: color-mix(in srgb, var(--fa-accent-cyan) 40%, transparent);
+	background: linear-gradient(
+		135deg,
+		rgba(34, 211, 238, 0.26),
+		rgba(251, 113, 133, 0.18)
+	);
+}
+
+:where(.fa-auth-login-panel) .fa-auth-button {
 	border-color: color-mix(in srgb, var(--fa-accent) 20%, var(--fa-border) 80%);
 	background: linear-gradient(
 		180deg,
@@ -9,13 +62,13 @@
 	box-shadow: 0 6px 12px rgba(37, 99, 235, 0.06);
 }
 
-.fa-auth-login-panel .fa-auth-button:hover:not(:disabled) {
+:where(.fa-auth-login-panel) .fa-auth-button:hover:not(:disabled) {
 	border-color: color-mix(in srgb, var(--fa-accent) 34%, transparent);
 	background: color-mix(in srgb, var(--fa-panel-3) 74%, var(--fa-accent) 10%);
 	transform: translateY(-1px);
 }
 
-.fa-auth-login-panel .fa-auth-button.is-primary {
+:where(.fa-auth-login-panel) .fa-auth-button.is-primary {
 	border-color: color-mix(in srgb, var(--fa-accent) 32%, transparent);
 	background: linear-gradient(
 		135deg,
@@ -27,8 +80,8 @@
 	box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
 }
 
-.fa-auth-login-panel .fa-auth-form .fa-auth-password-field,
-.fa-auth-login-panel .fa-auth-form .fa-auth-password-row {
+:where(.fa-auth-login-panel .fa-auth-form) .fa-auth-password-field,
+:where(.fa-auth-login-panel .fa-auth-form) .fa-auth-password-row {
 	min-width: 0;
 }
 
@@ -95,7 +148,7 @@
 	outline-offset: 2px;
 }
 
-.fa-auth-login-panel .fa-auth-button.is-primary:hover:not(:disabled) {
+:where(.fa-auth-login-panel) .fa-auth-button.is-primary:hover:not(:disabled) {
 	border-color: color-mix(in srgb, var(--fa-accent) 48%, transparent);
 	background: linear-gradient(
 		135deg,

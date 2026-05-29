@@ -1,6 +1,6 @@
-import { Link } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useId, useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useConversations } from "@/features/conversations/use-conversations";
@@ -10,193 +10,24 @@ import { tooltipProps } from "@/shared/ui/tooltip";
 
 import {
 	errorMessage,
-	statusLabel,
+	isUnsupportedLocalRuntimeError,
+	localRuntimeAgentTeamUnavailableMessage,
 	titleFromGoal,
 } from "./agent-team-workbench-utils";
+import { HelpText, WorkflowGuide } from "./agent-team-workbench-shared";
+import { AgentTeamCreateDagPreview } from "./agent-team-create-dag-preview";
+import { RecentSessionsPanel } from "./agent-team-create-recent-sessions";
 import {
-	EmptyList,
-	HelpText,
-	WorkflowGuide,
-} from "./agent-team-workbench-shared";
-import {
-	useAgentTeamSessions,
-	useCreateAgentTeamSession,
-} from "./use-agent-team";
+	COLLABORATION_MODES,
+	MISSION_PRESETS,
+} from "./agent-team-create-options";
+import { useCreateAgentTeamSession } from "./use-agent-team";
 import type { AgentTeamActionResponse, AgentTeamClientContract } from "./types";
 
-type MissionPreset = {
-	id: string;
-	title: string;
-	titleEn: string;
-	description: string;
-	descriptionEn: string;
-	goal: string;
-	goalEn: string;
-};
-
-type MissionCollaborationMode = {
-	id: string;
-	title: string;
-	titleEn: string;
-	description: string;
-	descriptionEn: string;
-	granularity: "coarse" | "balanced" | "detailed";
-	focus: "implementation" | "verification" | "auto";
-	maxTasks: number;
-};
-
-const MISSION_PRESETS: MissionPreset[] = [
-	{
-		id: "ship",
-		title: "做功能",
-		titleEn: "Build feature",
-		description: "描述目标，自动拆成交付 DAG。",
-		descriptionEn: "Describe the goal; Agent Team compiles the delivery DAG.",
-		goal: "想达成什么：\n最终需要什么结果：\n已有上下文、约束或风险：",
-		goalEn:
-			"What to achieve:\nFinal result needed:\nKnown context, constraints, or risks:",
-	},
-	{
-		id: "diagnose",
-		title: "查问题",
-		titleEn: "Find issue",
-		description: "说明现象，自动安排定位与验证。",
-		descriptionEn:
-			"Describe the symptom; Agent Team plans investigation and verification.",
-		goal: "现象：\n已知线索：\n希望得到的结论：",
-		goalEn: "Symptom:\nKnown clues:\nDecision needed:",
-	},
-	{
-		id: "review",
-		title: "看改动",
-		titleEn: "Review changes",
-		description: "给出对象，自动拆风险和证据检查。",
-		descriptionEn:
-			"Provide the target; Agent Team splits risk and evidence checks.",
-		goal: "审查对象：\n重点风险：\n希望输出：",
-		goalEn: "Review target:\nKey risks:\nExpected output:",
-	},
-	{
-		id: "research",
-		title: "做调研",
-		titleEn: "Research",
-		description: "提出问题，自动拆比较与建议。",
-		descriptionEn:
-			"Ask the question; Agent Team splits comparison and recommendation work.",
-		goal: "要决策的问题：\n约束条件：\n需要比较或验证的方向：",
-		goalEn:
-			"Decision to make:\nConstraints:\nOptions or assumptions to compare:",
-	},
-];
-
-const COLLABORATION_MODES: MissionCollaborationMode[] = [
-	{
-		id: "fast",
-		title: "快一点",
-		titleEn: "Fast",
-		description: "少拆任务，尽快给结果。",
-		descriptionEn:
-			"Fewer agents, optimized for implementation and quick closure.",
-		granularity: "coarse",
-		focus: "implementation",
-		maxTasks: 4,
-	},
-	{
-		id: "balanced",
-		title: "稳一点",
-		titleEn: "Balanced",
-		description: "兼顾执行和检查。",
-		descriptionEn: "Balanced implementation and verification for most changes.",
-		granularity: "balanced",
-		focus: "verification",
-		maxTasks: 6,
-	},
-	{
-		id: "detailed",
-		title: "细一点",
-		titleEn: "Detailed",
-		description: "拆得更细，检查更多。",
-		descriptionEn: "More agents with finer-grained split and acceptance.",
-		granularity: "detailed",
-		focus: "auto",
-		maxTasks: 8,
-	},
-];
-
-function RecentSessionsPanel({ rootThreadId }: { rootThreadId: string }) {
-	const { isChineseUi } = useShellUi();
-	const recentSessions = useAgentTeamSessions({
-		limit: 5,
-		root_thread_id: rootThreadId.trim() || undefined,
-	});
-	const sessions = recentSessions.data?.items ?? [];
-
-	return (
-		<section className="fa-agent-team-panel fa-agent-team-recent-panel">
-			<div className="fa-agent-team-panel-header">
-				<div>
-					<span>{isChineseUi ? "最近" : "Recent"}</span>
-					<strong>{isChineseUi ? "最近 Mission" : "Recent missions"}</strong>
-				</div>
-			</div>
-			{recentSessions.isLoading ? (
-				<EmptyList>
-					{isChineseUi
-						? "正在加载最近 Mission..."
-						: "Loading recent missions..."}
-				</EmptyList>
-			) : recentSessions.error ? (
-				<div className="fa-inline-notice is-danger">
-					{errorMessage(
-						recentSessions.error,
-						isChineseUi
-							? "最近 Mission 加载失败。"
-							: "Failed to load recent missions.",
-					)}
-				</div>
-			) : sessions.length ? (
-				<div className="fa-agent-team-recent-list">
-					{sessions.map((session) => (
-						<Link
-							className="fa-agent-team-recent-item"
-							key={session.session_id}
-							params={{ sessionId: session.session_id }}
-							to="/agent-team/$sessionId"
-							{...tooltipProps(session.goal)}
-						>
-							<span>{statusLabel(session.status, isChineseUi)}</span>
-							<strong>
-								{session.title
-									? titleFromGoal(session.title)
-									: session.session_id}
-							</strong>
-						</Link>
-					))}
-				</div>
-			) : (
-				<EmptyList>
-					{rootThreadId.trim()
-						? isChineseUi
-							? "当前来源对话还没有 Mission。"
-							: "No mission exists for this source conversation yet."
-						: isChineseUi
-							? "还没有 Mission。创建后会出现在这里。"
-							: "No mission yet. New missions will appear here."}
-				</EmptyList>
-			)}
-		</section>
-	);
-}
-
 export function CreateSessionPanel() {
-	const dagIdBase = useId().replace(/:/g, "");
-	const dagEdgeGradientId = `${dagIdBase}-edge`;
-	const dagShellGradientId = `${dagIdBase}-shell`;
-	const dagNodeGradientId = `${dagIdBase}-node`;
-	const dagResultGradientId = `${dagIdBase}-result`;
-	const dagGridPatternId = `${dagIdBase}-grid`;
 	const { isChineseUi } = useShellUi();
 	const { client } = useFocusAgent();
+	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const conversationsQuery = useConversations();
 	const createSession = useCreateAgentTeamSession();
@@ -287,7 +118,10 @@ export function CreateSessionPanel() {
 				title: titleFromGoal(nextGoal),
 				...(nextRootThreadId ? { root_thread_id: nextRootThreadId } : {}),
 			};
-			const response = await createSession.mutateAsync(sessionPayload);
+			const response = await createSession
+				.mutateAsync(sessionPayload)
+				.catch(() => null);
+			if (!response) return;
 			const session = "session" in response ? response.session : response;
 			const agentTeam = client as Partial<AgentTeamClientContract>;
 			let plannedResponse: AgentTeamActionResponse | null = null;
@@ -320,12 +154,10 @@ export function CreateSessionPanel() {
 					queryKey: queryKeys.agentTeamSession(session.session_id),
 				});
 			}
-			window.history.pushState(
-				null,
-				"",
-				`/app/agent-team/${encodeURIComponent(session.session_id)}`,
-			);
-			window.dispatchEvent(new PopStateEvent("popstate"));
+			await navigate({
+				params: { sessionId: session.session_id },
+				to: "/agent-team/$sessionId",
+			});
 		} finally {
 			setIsPlanningNewSession(false);
 		}
@@ -350,233 +182,7 @@ export function CreateSessionPanel() {
 							: "Set a goal and optional context; Agent Team plans tasks, dependencies, execution, and result synthesis."}
 					</p>
 				</div>
-				<svg
-					className="fa-agent-team-studio-dag"
-					viewBox="0 0 304 124"
-					aria-hidden="true"
-				>
-					<defs>
-						<linearGradient id={dagShellGradientId} x1="0" x2="1" y1="0" y2="1">
-							<stop offset="0" stopColor="currentColor" stopOpacity="0.12" />
-							<stop offset="0.5" stopColor="currentColor" stopOpacity="0.03" />
-							<stop
-								offset="1"
-								stopColor="var(--fa-success)"
-								stopOpacity="0.1"
-							/>
-						</linearGradient>
-						<linearGradient id={dagEdgeGradientId} x1="0" x2="1" y1="0" y2="0">
-							<stop offset="0" stopColor="currentColor" stopOpacity="0.18" />
-							<stop offset="0.42" stopColor="currentColor" stopOpacity="0.85" />
-							<stop
-								offset="1"
-								stopColor="var(--fa-success)"
-								stopOpacity="0.7"
-							/>
-						</linearGradient>
-						<linearGradient id={dagNodeGradientId} x1="0" x2="0" y1="0" y2="1">
-							<stop
-								offset="0"
-								stopColor="var(--fa-panel-1)"
-								stopOpacity="0.96"
-							/>
-							<stop
-								offset="1"
-								stopColor="var(--fa-panel-2)"
-								stopOpacity="0.88"
-							/>
-						</linearGradient>
-						<linearGradient
-							id={dagResultGradientId}
-							x1="0"
-							x2="1"
-							y1="0"
-							y2="1"
-						>
-							<stop
-								offset="0"
-								stopColor="var(--fa-success)"
-								stopOpacity="0.34"
-							/>
-							<stop offset="1" stopColor="currentColor" stopOpacity="0.16" />
-						</linearGradient>
-						<pattern
-							id={dagGridPatternId}
-							width="18"
-							height="18"
-							patternUnits="userSpaceOnUse"
-						>
-							<path
-								d="M18 0H0V18"
-								fill="none"
-								stroke="color-mix(in srgb, currentColor 16%, transparent)"
-								strokeWidth="0.6"
-							/>
-						</pattern>
-					</defs>
-					<rect
-						className="dag-shell"
-						x="4"
-						y="4"
-						width="296"
-						height="116"
-						rx="26"
-						fill={`url(#${dagShellGradientId})`}
-						stroke="color-mix(in srgb, currentColor 24%, var(--fa-border-subtle))"
-						strokeWidth="1"
-					/>
-					<rect
-						className="dag-grid"
-						x="16"
-						y="14"
-						width="272"
-						height="96"
-						rx="20"
-						fill={`url(#${dagGridPatternId})`}
-						opacity="0.52"
-					/>
-					<path
-						className="dag-thread is-shadow"
-						d="M66 62 C82 62 78 32 94 32 H169"
-					/>
-					<path
-						className="dag-thread is-shadow"
-						d="M66 62 C82 62 78 92 94 92 H169"
-					/>
-					<path
-						className="dag-thread is-shadow"
-						d="M225 32 C242 32 240 62 252 62"
-					/>
-					<path
-						className="dag-thread is-shadow"
-						d="M225 92 C242 92 240 62 252 62"
-					/>
-					<path
-						className="dag-thread is-active"
-						d="M66 62 C82 62 78 32 94 32 H169"
-						stroke={`url(#${dagEdgeGradientId})`}
-						strokeWidth="2.7"
-					/>
-					<path
-						className="dag-thread is-active"
-						d="M66 62 C82 62 78 92 94 92 H169"
-						stroke={`url(#${dagEdgeGradientId})`}
-						strokeWidth="2.7"
-					/>
-					<path
-						className="dag-thread"
-						d="M225 32 C242 32 240 62 252 62"
-						stroke={`url(#${dagEdgeGradientId})`}
-					/>
-					<path
-						className="dag-thread"
-						d="M225 92 C242 92 240 62 252 62"
-						stroke={`url(#${dagEdgeGradientId})`}
-					/>
-					<path
-						className="dag-signal"
-						d="M66 62 C82 62 78 32 94 32 H169 H225 C242 32 240 62 252 62"
-						stroke={`url(#${dagEdgeGradientId})`}
-					/>
-					<circle
-						className="dag-junction"
-						cx="82"
-						cy="62"
-						r="3.5"
-						fill="var(--fa-panel-1)"
-						stroke="color-mix(in srgb, currentColor 54%, var(--fa-border-subtle))"
-						strokeWidth="1.2"
-					/>
-					<circle
-						className="dag-junction"
-						cx="240"
-						cy="62"
-						r="3.5"
-						fill="var(--fa-panel-1)"
-						stroke="color-mix(in srgb, currentColor 54%, var(--fa-border-subtle))"
-						strokeWidth="1.2"
-					/>
-					<g className="dag-node is-goal" transform="translate(16 47)">
-						<rect
-							width="52"
-							height="30"
-							rx="15"
-							fill={`url(#${dagNodeGradientId})`}
-						/>
-						<circle
-							cx="12"
-							cy="15"
-							r="3.2"
-							fill="color-mix(in srgb, currentColor 78%, white 22%)"
-						/>
-						<text x="30" y="19">
-							Goal
-						</text>
-					</g>
-					<g className="dag-node" transform="translate(94 17)">
-						<rect
-							width="58"
-							height="30"
-							rx="15"
-							fill={`url(#${dagNodeGradientId})`}
-						/>
-						<text x="29" y="19">
-							Plan
-						</text>
-					</g>
-					<g className="dag-node" transform="translate(94 77)">
-						<rect
-							width="58"
-							height="30"
-							rx="15"
-							fill={`url(#${dagNodeGradientId})`}
-						/>
-						<text x="29" y="19">
-							Build
-						</text>
-					</g>
-					<g className="dag-node" transform="translate(169 17)">
-						<rect
-							width="58"
-							height="30"
-							rx="15"
-							fill={`url(#${dagNodeGradientId})`}
-						/>
-						<text x="29" y="19">
-							Check
-						</text>
-					</g>
-					<g className="dag-node" transform="translate(169 77)">
-						<rect
-							width="58"
-							height="30"
-							rx="15"
-							fill={`url(#${dagNodeGradientId})`}
-						/>
-						<text x="29" y="19">
-							Merge
-						</text>
-					</g>
-					<g className="dag-node is-result" transform="translate(252 46)">
-						<rect
-							width="42"
-							height="32"
-							rx="16"
-							fill={`url(#${dagResultGradientId})`}
-						/>
-						<path
-							d="M12 17.5l4 4 9-10"
-							fill="none"
-							stroke="color-mix(in srgb, var(--fa-success) 78%, var(--fa-text))"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth="2"
-						/>
-						<text x="24" y="20">
-							Result
-						</text>
-					</g>
-				</svg>
+				<AgentTeamCreateDagPreview />
 			</section>
 
 			<div className="fa-agent-team-studio-grid fa-agent-team-stage">
@@ -735,10 +341,12 @@ export function CreateSessionPanel() {
 
 					{createSession.error ? (
 						<div className="fa-inline-notice is-danger">
-							{errorMessage(
-								createSession.error,
-								isChineseUi ? "创建失败。" : "Failed to create session.",
-							)}
+							{isUnsupportedLocalRuntimeError(createSession.error)
+								? localRuntimeAgentTeamUnavailableMessage(isChineseUi)
+								: errorMessage(
+										createSession.error,
+										isChineseUi ? "创建失败。" : "Failed to create session.",
+									)}
 						</div>
 					) : null}
 					{planError ? (
