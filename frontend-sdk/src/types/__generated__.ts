@@ -1030,6 +1030,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/feedback/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Feedback Trend */
+        get: operations["get_agent_feedback_trend_v1_agent_feedback_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agent/memory/curator/decisions": {
         parameters: {
             query?: never;
@@ -2513,6 +2530,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/threads/{thread_id}/runs/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Thread Harness Runs */
+        post: operations["cancel_thread_harness_runs_v2_threads__thread_id__runs_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/threads/{thread_id}/runs/resume/stream": {
         parameters: {
             query?: never;
@@ -3342,6 +3376,38 @@ export interface components {
             trajectory_available: boolean;
             /** Trajectory Error */
             trajectory_error?: string | null;
+        };
+        /** AgentFeedbackTrendResponse */
+        AgentFeedbackTrendResponse: {
+            /**
+             * Context High Drift Count
+             * @default 0
+             */
+            context_high_drift_count: number;
+            /** Generated At */
+            generated_at?: string | null;
+            /** Merge Review Apply Success Rate */
+            merge_review_apply_success_rate?: number | null;
+            /** Merge Review Conflict Rate */
+            merge_review_conflict_rate?: number | null;
+            /**
+             * Negative Feedback Count
+             * @default 0
+             */
+            negative_feedback_count: number;
+            /**
+             * Notes Tasks Capture Count
+             * @default 0
+             */
+            notes_tasks_capture_count: number;
+            /** Skill Low Confidence Rate */
+            skill_low_confidence_rate?: number | null;
+            /** Skill Override Rate */
+            skill_override_rate?: number | null;
+            /** Top Failing Trajectory Samples */
+            top_failing_trajectory_samples?: {
+                [key: string]: unknown;
+            }[];
         };
         /** AgentMemoryCuratorDecisionListResponse */
         AgentMemoryCuratorDecisionListResponse: {
@@ -9890,6 +9956,26 @@ export interface operations {
             };
         };
     };
+    get_agent_feedback_trend_v1_agent_feedback_trend_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentFeedbackTrendResponse"];
+                };
+            };
+        };
+    };
     list_agent_memory_curator_decisions_v1_agent_memory_curator_decisions_get: {
         parameters: {
             query?: {
@@ -12792,6 +12878,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HarnessRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_thread_harness_runs_v2_threads__thread_id__runs_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HarnessRunCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

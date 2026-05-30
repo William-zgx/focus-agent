@@ -1896,6 +1896,90 @@
         "title": "AgentDelegationRunListResponse",
         "type": "object"
       },
+      "AgentFeedbackTrendResponse": {
+        "properties": {
+          "context_high_drift_count": {
+            "default": 0,
+            "title": "Context High Drift Count",
+            "type": "integer"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "merge_review_apply_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Review Apply Success Rate"
+          },
+          "merge_review_conflict_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Review Conflict Rate"
+          },
+          "negative_feedback_count": {
+            "default": 0,
+            "title": "Negative Feedback Count",
+            "type": "integer"
+          },
+          "notes_tasks_capture_count": {
+            "default": 0,
+            "title": "Notes Tasks Capture Count",
+            "type": "integer"
+          },
+          "skill_low_confidence_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Low Confidence Rate"
+          },
+          "skill_override_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Override Rate"
+          },
+          "top_failing_trajectory_samples": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Top Failing Trajectory Samples",
+            "type": "array"
+          }
+        },
+        "title": "AgentFeedbackTrendResponse",
+        "type": "object"
+      },
       "AgentMemoryCuratorDecisionListResponse": {
         "properties": {
           "count": {
@@ -17700,6 +17784,29 @@
         "summary": "List Agent Delegation Runs"
       }
     },
+    "/v1/agent/feedback/trend": {
+      "get": {
+        "operationId": "get_agent_feedback_trend_v1_agent_feedback_trend_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentFeedbackTrendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Feedback Trend"
+      }
+    },
     "/v1/agent/memory/curator/decisions": {
       "get": {
         "operationId": "list_agent_memory_curator_decisions_v1_agent_memory_curator_decisions_get",
@@ -23190,6 +23297,65 @@
           }
         ],
         "summary": "Create Harness Run",
+        "tags": [
+          "harness-runs"
+        ]
+      }
+    },
+    "/v2/threads/{thread_id}/runs/cancel": {
+      "post": {
+        "operationId": "cancel_thread_harness_runs_v2_threads__thread_id__runs_cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HarnessRunCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Thread Harness Runs V2 Threads  Thread Id  Runs Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Thread Harness Runs",
         "tags": [
           "harness-runs"
         ]
