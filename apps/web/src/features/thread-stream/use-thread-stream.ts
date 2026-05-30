@@ -246,7 +246,8 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 				pendingStreamState = nextState;
 				scheduleStreamStateFlush();
 			}
-			sendSucceeded = !nextState.failed && !controller.signal.aborted;
+			sendSucceeded =
+				nextState.isClosed && !nextState.failed && !controller.signal.aborted;
 		} catch (error) {
 			if (isAbortError(error, controller)) {
 				sendSucceeded = false;

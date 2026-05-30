@@ -1,7 +1,14 @@
 export function normalizeMessageType(type: unknown) {
-	return String(type || "")
+	const normalized = String(type || "")
 		.trim()
 		.toLowerCase();
+	if (normalized === "assistant") {
+		return "ai";
+	}
+	if (normalized === "user") {
+		return "human";
+	}
+	return normalized;
 }
 
 export function normalizeText(value: unknown) {

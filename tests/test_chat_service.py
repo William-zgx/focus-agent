@@ -23,7 +23,10 @@ from focus_agent.core.request_context import RequestContext
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.services.branch_actions import (
+    branch_handoff_message_from_text,
     build_branch_action_proposal,
+    infer_suggested_branch_name,
+    is_branch_action_dismissal,
     is_branch_action_request,
     mark_branch_action_executed,
 )
@@ -33,6 +36,7 @@ from focus_agent.services.chat import (
     ConcurrentTurnError,
     ThreadStateUnavailableError,
 )
+from focus_agent.services.chat.branch_actions import branch_action_intent
 from focus_agent.services.coordination import (
     CoordinationBackend,
     InMemoryBackgroundJobDeduperBackend,
@@ -1154,6 +1158,34 @@ def test_branch_action_intent_requires_branch_context():
     assert is_branch_action_request("Create a sibling branch for this idea.")
     assert not is_branch_action_request("帮我切换一下模型。")
     assert not is_branch_action_request("切换到深度思考模式。")
+
+
+def test_branch_action_dismissal_does_not_match_no_inside_words():
+    pending = build_branch_action_proposal(
+        kind=BranchActionKind.FORK_CHILD_BRANCH,
+        root_thread_id="root-1",
+        source_thread_id="thread-1",
+        target_parent_thread_id="thread-1",
+        suggested_branch_name="Candidate",
+        reason="User requested a branch switch from chat.",
+    )
+    message = "QA_STEP_4_NORMAL_REPLY: 请直接回答。不要创建分支。"
+
+    assert not is_branch_action_dismissal(message)
+    assert not is_branch_action_request(message)
+    assert branch_action_intent(
+        values={"branch_actions": [pending.model_dump(mode="json")]},
+        message=message,
+    ) is None
+    assert is_branch_action_dismissal("no")
+    assert is_branch_action_dismissal("No, thanks")
+
+
+def test_branch_handoff_strips_title_clause_from_current_thread_continuation():
+    message = "请创建一个子分支，标题叫 Negated Pending QA，用于单独探索浏览器测试。"
+
+    assert infer_suggested_branch_name(message, []) == "Negated Pending QA"
+    assert branch_handoff_message_from_text(message) == "探索浏览器测试"
 
 
 def test_branch_action_execute_uses_thread_turn_lock(tmp_path: Path):

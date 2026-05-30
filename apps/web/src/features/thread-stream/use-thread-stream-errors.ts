@@ -23,7 +23,7 @@ export function resolveStreamRequestCleanup(
 		return {
 			clearActiveThread: true,
 			clearPendingUserMessage: true,
-			clearStreamState: false,
+			clearStreamState: true,
 		};
 	}
 	return {

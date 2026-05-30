@@ -54,6 +54,27 @@ _REQUEST_ACTION_MARKERS = (
     "open",
 )
 _REQUEST_BRANCH_MARKERS = ("分支", "branch", "同级", "平级", "子分支", "下级", "父分支", "parent")
+_NEGATED_REQUEST_MARKERS = (
+    "不要创建分支",
+    "不要新建分支",
+    "不要开分支",
+    "不要切换分支",
+    "不要切分支",
+    "不用创建分支",
+    "不用新建分支",
+    "不用开分支",
+    "别创建分支",
+    "别新建分支",
+    "别开分支",
+    "别切换分支",
+    "别切分支",
+)
+_NEGATED_REQUEST_RE = re.compile(
+    r"\b(?:do\s+not|don't|dont|no\s+need\s+to|without)\b[^.?!\n]{0,80}"
+    r"\b(?:create|open|switch(?:\s+to)?)\b[^.?!\n]{0,80}\bbranch\b"
+    r"|\bno\s+branch\b",
+    flags=re.IGNORECASE,
+)
 _SIBLING_MARKERS = ("同级", "平级", "sibling")
 _CHILD_MARKERS = ("子分支", "下级", "child")
 _BRANCH_HANDOFF_PATTERNS = (
@@ -72,6 +93,15 @@ _HANDOFF_LEADING_FILLER_RE = re.compile(
 )
 _HANDOFF_NESTED_TOPIC_RE = re.compile(
     r"^(?:看|研究|探索)?(?:一下)?(?:另一个|另外一个|新的)?问题[，,。；;：:\s]*(?P<task>.+)$"
+)
+_HANDOFF_TITLE_CLAUSE_RE = re.compile(
+    r"^(?:标题|名字|名称|分支名)(?:叫|为|是|[:：])?\s*"
+    r"[^，,。；;！？!?]+[，,。；;：:\s]+(?P<task>.+)$",
+    flags=re.IGNORECASE,
+)
+_BRANCH_NAME_LABEL_RE = re.compile(
+    r"(?:标题|名字|名称|分支名)(?:叫|为|是|[:：])\s*(?P<name>[^，,。；;！？!?\n]+)",
+    flags=re.IGNORECASE,
 )
 
 
@@ -111,9 +141,19 @@ def is_branch_action_confirmation(message: str) -> bool:
 
 def is_branch_action_dismissal(message: str) -> bool:
     normalized = _compact(message)
-    return bool(normalized) and (
-        normalized in _DISMISS_MARKERS or any(marker in normalized for marker in _DISMISS_MARKERS)
-    )
+    if not normalized:
+        return False
+    if normalized in _DISMISS_MARKERS:
+        return True
+    raw = str(message or "").strip().lower()
+    for marker in _DISMISS_MARKERS:
+        if marker.isascii():
+            if re.search(rf"(?<![a-z0-9_]){re.escape(marker)}(?![a-z0-9_])", raw):
+                return True
+            continue
+        if marker in normalized:
+            return True
+    return False
 
 
 def is_branch_action_request(message: str) -> bool:
@@ -121,6 +161,10 @@ def is_branch_action_request(message: str) -> bool:
     if not normalized:
         return False
     if is_branch_action_confirmation(normalized) or is_branch_action_dismissal(normalized):
+        return False
+    if any(marker in normalized for marker in _NEGATED_REQUEST_MARKERS):
+        return False
+    if _NEGATED_REQUEST_RE.search(str(message or "")):
         return False
     has_branch_marker = any(marker in normalized for marker in _REQUEST_BRANCH_MARKERS)
     has_action_marker = any(marker in normalized for marker in _REQUEST_ACTION_MARKERS)
@@ -174,6 +218,9 @@ def branch_handoff_message_from_text(message: str | None) -> str | None:
 def _clean_handoff_message(value: str | None) -> str | None:
     task = str(value or "").strip(" ：:，,。；;")
     for _ in range(3):
+        title_clause = _HANDOFF_TITLE_CLAUSE_RE.search(task)
+        if title_clause:
+            task = title_clause.group("task").strip(" ：:，,。；;")
         next_task = _HANDOFF_LEADING_FILLER_RE.sub("", task).strip(" ：:，,。；;")
         nested_topic = _HANDOFF_NESTED_TOPIC_RE.search(next_task)
         if nested_topic:
@@ -335,6 +382,11 @@ def _compact(message: str) -> str:
 
 def _extract_branch_name(message: str) -> str | None:
     text = str(message or "").strip()
+    labeled_name = _BRANCH_NAME_LABEL_RE.search(text)
+    if labeled_name:
+        name = _clean_name(labeled_name.group("name"))
+        if name:
+            return name
     patterns = [
         r"切换到(?P<name>[^，。！？\n]+)",
         r"创建(?:一个)?(?P<name>[^，。！？\n]+?)分支",

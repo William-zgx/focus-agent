@@ -322,6 +322,14 @@ test("request cleanup clears the optimistic user message after failed sends", ()
     }),
   );
   assert.equal(
+    JSON.stringify(resolveStreamRequestCleanup(false, true)),
+    JSON.stringify({
+      clearActiveThread: true,
+      clearPendingUserMessage: true,
+      clearStreamState: true,
+    }),
+  );
+  assert.equal(
     resolveThinkingModeForRequest({ thinkingMode: "" }, "disabled"),
     "",
   );
@@ -1050,6 +1058,44 @@ test("SDK stream preserves canonical v2 events without legacy alias rewriting", 
   );
 });
 
+test("SDK stream deduplicates replayed SSE ids while preserving unkeyed deltas", async () => {
+  const { canonicalizeStreamEvents } = loadModule("frontend-sdk/src/client/stream.ts");
+  async function* rawEvents() {
+    yield {
+      id: "event-1",
+      event: "message.delta",
+      data: { delta: "hello", channel: "message" },
+    };
+    yield {
+      id: "event-1",
+      event: "message.delta",
+      data: { delta: "hello", channel: "message" },
+    };
+    yield {
+      event: "message.delta",
+      data: { delta: "!", channel: "message" },
+    };
+    yield {
+      event: "message.delta",
+      data: { delta: "!", channel: "message" },
+    };
+  }
+
+  const events = [];
+  for await (const event of canonicalizeStreamEvents(rawEvents())) {
+    events.push(event);
+  }
+
+  assert.deepEqual(
+    events.map((event) => [event.id ?? "", event.event, event.data.delta]),
+    [
+      ["event-1", "message.delta", "hello"],
+      ["", "message.delta", "!"],
+      ["", "message.delta", "!"],
+    ],
+  );
+});
+
 test("SDK streaming exposes only v2 harness endpoints for chat streams", () => {
 	const streamingSource = readFileSync(
 		path.join(repoRoot, "frontend-sdk/src/client/streaming.ts"),
@@ -1401,6 +1447,12 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(streamHookSource.includes("resolveStreamRequestCleanup(false, true)"), true);
   assert.equal(
     compactSource(streamHookSource).includes(
+      "sendSucceeded = nextState.isClosed && !nextState.failed && !controller.signal.aborted;",
+    ),
+    true,
+  );
+  assert.equal(
+    compactSource(streamHookSource).includes(
       "requestRegistry.stopStreamRequest(options.threadId); activeRunIdsRef.current.delete(options.threadId);",
     ),
     true,
@@ -1417,6 +1469,12 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(
     compactSource(streamCacheSource).includes(
       "void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) }); return;",
+    ),
+    true,
+  );
+  assert.equal(
+    compactSource(streamCacheSource).includes(
+      "if (threadState.thread_id !== threadId) { void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadState.thread_id), }); void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) }); return; }",
     ),
     true,
   );
@@ -1498,6 +1556,27 @@ test("message transcript fallback does not duplicate a visible assistant reply",
   const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
   assert.equal(assistantItems.length, 1);
   assert.equal(assistantItems[0].content, "Persisted answer.");
+});
+
+test("message transcript normalizes chat role aliases before fallback checks", () => {
+  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+  const items = buildTranscriptItems(
+    [
+      { id: "user-1", type: "user", content: "Analyze this." },
+      { id: "assistant-1", type: "assistant", content: "Persisted answer." },
+    ],
+    "Different assistant_message fallback.",
+  );
+
+  const messageItems = items.filter((item) => item.kind === "message");
+  assert.equal(
+    JSON.stringify(messageItems.map((item) => [item.type, item.content])),
+    JSON.stringify([
+      ["human", "Analyze this."],
+      ["ai", "Persisted answer."],
+    ]),
+  );
 });
 
 test("message transcript fallback remains available before assistant persistence", () => {
