@@ -79,6 +79,13 @@ make sdk-build
 make sdk-validate-transport
 ```
 
+If your change affects backend routes, Pydantic response models, or generated SDK types, also run and commit the generated artifacts:
+
+```bash
+make contract-check
+make sdk-openapi-types-check
+```
+
 If your change affects the Web App, validate it as well:
 
 ```bash
@@ -86,6 +93,12 @@ make web-lint
 make web-format-check
 make web-check
 make web-build
+```
+
+For broad frontend/runtime work, use the maintained bundle:
+
+```bash
+make frontend-qa
 ```
 
 If your change affects streaming events, tool protocol filtering, or stream reducers, run the focused stream regression set:
@@ -143,7 +156,7 @@ Good pull requests usually include:
 - tests or an explanation of why tests were not added
 - documentation updates when user-facing behavior changed
 
-If your PR changes streaming events, auth behavior, repository shape, or public SDK types, please call that out explicitly in the description.
+If your PR changes streaming events, auth behavior, repository shape, generated OpenAPI/SDK types, or public SDK types, please call that out explicitly in the description.
 If it changes trajectory records, replay/promotion behavior, or the observability console, call that out as API/SDK impact too.
 
 ## Commit Scope

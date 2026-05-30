@@ -19,10 +19,17 @@ make web-dev
 make web-check
 make web-build
 make frontend-check
+make frontend-check-full
+make frontend-style-check
+make frontend-bundle-check
+make frontend-qa
+make frontend-visual-qa
 make frontend-build
 make sdk-check
 make sdk-build
 make sdk-openapi-types-check
+make architecture-report
+make compat-report
 make format
 make format-check
 make ci-test
@@ -62,7 +69,7 @@ Recommended validation ladder:
 make ci
 ```
 
-`make ci` runs Python lint, CI-style pytest, API/SDK contract snapshots, frontend SDK check/build/transport validation, Web lint/format-check/check/build, and the Node stream frontend regression suite. For Python formatting-only review, run:
+`make ci` runs Python lint, CI-style pytest, API/SDK contract snapshots, frontend SDK check/build/transport validation, Web lint/format-check/check/build, and the Node stream frontend regression suite. GitHub CI additionally runs the generated OpenAPI / SDK type drift guard, so API route/model changes must include `make sdk-openapi-types-check` even if `make ci` passes locally. For Python formatting-only review, run:
 
 ```bash
 make format-check
@@ -87,6 +94,13 @@ intentional, update snapshots with `uv run python scripts/check_contracts.py
 Run it whenever FastAPI routes, Pydantic response models, or generated SDK
 types change.
 
+Generated artifacts are tracked source. When `make sdk-openapi-types-check`
+prints a diff, commit the regenerated `docs/api/openapi.json` and
+`frontend-sdk/src/types/__generated__.ts`; when `make contract-check` reports
+SDK/API drift, update the relevant `tests/contracts/*.json` snapshot with
+`uv run python scripts/check_contracts.py --update` and review the snapshot
+diff before committing.
+
 3. If the frontend SDK implementation changed, especially `src/client.ts`, `src/client/`, `src/types.ts`, `src/types/`, `src/transport.ts`, `src/parser.ts`, `src/reducers.ts`, `src/toolProtocol.ts`, `src/guards.ts`, or transport validation files:
 
 ```bash
@@ -106,7 +120,19 @@ make web-check
 make web-build
 ```
 
-The Web lint/format scripts are intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-check` and `make web-build` remain the full app type/build gates.
+The package-level `web-lint` / `web-format-check` scripts remain intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-lint-full` and `make web-format-check-full` cover all `apps/web/src`. `make web-check` and `make web-build` remain the full app type/build gates.
+
+For broad frontend/runtime refactors, run the maintained frontend quality bundle:
+
+```bash
+make frontend-qa
+```
+
+It combines full frontend checks, style governance (`no !important`, no hard-coded hex colors outside owned places, CSS LOC budgets), Android local runtime smoke, bundle budget, architecture report, and compatibility inventory. For visual or a11y changes against a running app, add:
+
+```bash
+make frontend-visual-qa FRONTEND_QA_BASE_URL=http://127.0.0.1:5173
+```
 
 5. If stream visibility, tool protocol filtering, frontend stream reducers, processing cards, or the live-web execution contract changed:
 

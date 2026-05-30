@@ -45,6 +45,9 @@ Open:
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/agent/roles`
+- `http://127.0.0.1:8000/app/agent/governance`
+- `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
@@ -245,6 +248,12 @@ pnpm android:apk:debug
 
 The Android target uses the in-app Focus Agent local runtime, so it does not require a Focus Agent HTTP backend URL. Chat, branch, account, and admin data are stored in the app WebView's local storage. Model requests go directly to the OpenAI-compatible provider configured in Admin -> Config Center, using the API key saved inside the app. Use `pnpm android:open` for Android Studio, or `pnpm android:run` to sync and run on a device/emulator.
 
+Run the Android local runtime smoke when SDK endpoints, local transport, stream parsing, model-provider config, or Android-only routes change:
+
+```bash
+make frontend-android-runtime-smoke
+```
+
 ## 10. One-Command Local Modes
 
 - `make serve` / `make serve-dev`: frontend Vite dev server + backend API with reload
@@ -307,9 +316,11 @@ For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`
 
 - [Memory System v2](memory-system-v2.md)
 - [Branch Decisions](branch-decisions.md)
+- [Agent Governance](agent-role-routing.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)
+- [Android App](android.md)
 - [Development Guide](development.md)
 - [Docker Deployment](docker-deployment.md)
 - [Architecture](architecture.md)

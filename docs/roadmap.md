@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-05-18
+更新时间：2026-05-30
 
 这份文档只回答两个问题：
 
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-05-18，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-05-30，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
 - `frontend-sdk` 已覆盖 conversation、thread resolution、branch tree、branch action、merge review、Agent Team、Admin、productivity、agent governance、observability 等核心 typed client 能力
@@ -35,9 +35,11 @@ flowchart LR
 - 当前上下文窗口已经独立于累计 `token_usage`：发送栏展示 `context_usage`，支持草稿预览、手动压缩、发送前自动压缩和回合后后台压缩，默认预算为 128k
 - Agent Team Mission Runner 已从 legacy dispatch 升级为目标驱动的动态 Mission DAG：支持 standalone session、可选来源对话、模型优先规划、fallback contract defaults、task retry/cancel、执行证据汇总、Cockpit UI 和 `final_answer` synthesis
 - Agent Team Adoption / Governance Suite 已进入建设期：多 worktree 结果采纳、Notes/Tasks capture、Context/Memory evidence、Skill selection events、multi-agent coordination、Postgres-backed rate limit、branch decision events 和 feedback regression 统一进入 schema v17 与 nightly 证据链
+- Agent Governance 反馈趋势已接入：`GET /v1/agent/feedback/trend` 和 SDK `getAgentFeedbackTrend()` 会聚合负反馈、merge review 成功/冲突、skill 低置信/override、context drift、Notes/Tasks capture 与失败 trajectory 样本，供 Web governance console 和 Android local runtime smoke 使用
 - Admin Console 已落地：`/app/admin/users` 管理用户、状态、角色、会话和密码，`/app/admin/audit-events` 浏览管理员审计事件；admin 权限来自持久化用户角色，不来自 token scope
 - 第一轮工程化加固已落地：CORS、限流、请求 ID、统一错误信封、前端 bundle 分割
 - 本机启动链已统一到 `make api` / `make dev` / `make serve-dev` / `make serve-prod`，在 `DATABASE_URI` 未显式设置时会自动管理 repo-local PostgreSQL
+- Android target 已具备 App 内本地 Focus Agent runtime，`apps/web/src/android-local-runtime/` 已按 auth/conversation、thread/branch、agent governance、memory/observability、admin、model provider、stream、web search 和 workspace/tool execution 拆分，并由 `make frontend-android-runtime-smoke` 守护
 - Docker 部署已分层：`compose.yaml` 用于本地 Docker 联调（`focus-agent + postgres`），`compose.prod.yaml` 用于生产/预发模板（外部 PostgreSQL）
 - Agent 主路径已具备评测框架、Plan-Act-Reflect、记忆读写闭环、上下文预算与 Context Engineering v2、live-web 时间锚定/证据校验/一次修复边界、工具运行时并行/缓存/降级/参数校验/取消超时/side-effect 串行策略、role/memory/tool/delegation/task-ledger 治理、Postgres trajectory 写入、request/trace correlation、release evidence / release-health 门禁，以及按职责拆分的 Web observability overview / trajectory workbench
 - 模型 provider 路径已收口到 TOML catalog：包内默认数据在 `src/focus_agent/defaults/models.toml`，本地/容器部署通过 `.focus_agent/models.toml` 或 `/data/models.toml` 覆盖，`/v1/models` 向 Web/SDK 暴露 provider label、logo metadata 和 thinking capability；MiMo V2.5 Pro 已作为内置 OpenAI-compatible provider/model 支持
@@ -115,6 +117,8 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - Memory / Context regression dashboard：candidate / reviewed / promoted / golden trend、promotion history、污染告警、compaction semantic quality / drift
 - Ownership Audit Dashboard：allow / deny 聚合、deny reason、resource/action/principal 维度统计、deny trend export
 - SDK / E2E drift guard：frontend SDK barrel exports 与 Web App `@focus-agent/web-sdk` import surface contract snapshot
+- OpenAPI / generated SDK types drift guard：GitHub CI 会重新生成 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts`；API route 或 response model 改动必须提交生成物并保持 `make sdk-openapi-types-check` 绿色
+- 前端质量门禁已扩展为 `make frontend-qa`：full Web/SDK checks、style governance、Android local runtime smoke、bundle budget、architecture report 和 compatibility inventory 合并为宽口径前端验证链
 - 运维闭环首轮已落地：GitHub Actions release gate、nightly regression workflow、production smoke、Postgres ops report、OTel smoke report、Agent governance quality report
 - 多 Agent 工程治理已落地：非开发环境安全 fail-fast、API router 拆分、default tools 按域拆分、发布门禁固化、`AgentState` 分域 helper、`BranchService` facade 内部解耦
 - 平台边界瘦身首轮已落地：README/architecture 定位改为平台化应用骨架，Agent Team view-model 拆成纯 selector helper，harness run 非流式生命周期 helper 化，release report I/O 样板收敛到 `scripts/_report_io.py`
@@ -124,7 +128,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - Postgres 运维链：迁移验证与 ops report 已能阻断 release-health，backup / restore / restore verification / retention cleanup drill 已加入发布证据链，并让 production workflow 禁止用 dry-run ops report 替代真实证据；下一步绑定 RPO/RTO 和长期保留平台
 - observability 治理体验：告警报告和 OTel smoke report 已能阻断发布，synthetic span export / collector health / trace query round-trip 已加入发布证据链，并让 production workflow 禁止用 dry-run OTel report 替代真实证据；下一步接真实告警系统和长时浏览器回归
 - Auth / Access Model：生产安全启动基线已强制检查 `AUTH_ENABLED`、JWT secret/key set、JWT issuer、token TTL、demo token 与 rate limit；JWT 已支持 `kid`、active key set 和 rotation overlap，配置 key set 时 current `kid` 必须匹配 active key，`tenant_id` / `scope` 仍不能绕过 ownership；[auth-access.md](auth-access.md) 已收口登录、注册、账号自助和 token/session 边界，Admin Console 已把持久化用户角色、最后 active admin 保护、reasoned admin actions 和 audit events 纳入默认治理面
-- 文档与 contract 对齐：README、SDK、Web UI 文案、部署说明、CI artifact/approval 示例
+- 文档与 contract 对齐：README、SDK、Web UI 文案、部署说明、CI artifact/approval 示例、OpenAPI/generated SDK artifacts 和 frontend QA 口径
 - eval 数据集扩充与 nightly 回归报表覆盖面
 - branch / branch decision / merge / memory 之间的语义一致性
 

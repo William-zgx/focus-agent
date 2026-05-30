@@ -25,6 +25,7 @@ This SDK packages those concerns into a small, typed client layer.
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
 - Branch decision config/list/promote/dismiss helpers for AI-assisted branch recommendations
+- Agent governance helpers for skill selection, preference feedback, feedback trend summaries, role/tool/model routing, context, task ledger, critic, and review queue surfaces
 - Productivity request helpers for notes/tasks/capture, including task lifecycle actions and event list
 - Trajectory observability helpers for overview/list/detail/stats/replay/promote plus batch promote-preview and replay-compare flows
 - Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
@@ -71,6 +72,12 @@ When API routes or backend Pydantic contract models change, regenerate and check
 make sdk-generate-types
 make sdk-openapi-types-check
 ```
+
+The generated files are part of the repository contract. Commit
+`docs/api/openapi.json` and `frontend-sdk/src/types/__generated__.ts` whenever
+this check produces a diff; if the public SDK barrel or Web SDK imports changed,
+also update `tests/contracts/frontend_sdk.json` through
+`uv run python scripts/check_contracts.py --update`.
 
 Requirements:
 
@@ -135,7 +142,7 @@ flowchart LR
 - `listMySessions()` and `revokeSession()` - inspect or revoke the current user's sessions
 - `listUsers()`, `createUser()`, `getUser()`, `updateUser()`, `updateUserStatus()`, `updateUserRoles()`, `listUserSessions()`, `revokeUserSession()`, `resetUserPassword()`, and `listAuditEvents()` - administer users, sessions, passwords, and audit events
 - `listModels()` - fetch the current model catalog
-- `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, and `listAgentRoleDecisions()` - inspect role routing policy, preview orchestrator decisions, and review persisted role_route_plan records
+- `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, `listAgentRoleDecisions()`, `selectAgentSkills()`, `listAgentSkillSelections()`, `sendAgentSkillSelectionFeedback()`, `getAgentSkillCatalog()`, `updateAgentSkillPreference()`, and `getAgentFeedbackTrend()` - inspect role routing policy, preview orchestrator decisions, review persisted role_route_plan records, manage skill selection evidence, and read governance feedback trend summaries
 - `listAgentCapabilities()`, `routeAgentTools()`, `listAgentToolRouteDecisions()`, `getAgentMemoryCuratorPolicy()`, `evaluateAgentMemoryCurator()`, and `listAgentMemoryCuratorDecisions()` - inspect governance capabilities, tool routing, and memory curator decisions
 - `getAgentDelegationPolicy()`, `planAgentDelegation()`, `listAgentDelegationRuns()`, `getAgentModelRouterPolicy()`, `routeAgentModel()`, `listAgentModelRouterDecisions()`, `listAgentSelfRepairFailures()`, `previewAgentSelfRepairPromotion()`, `listAgentReviewQueue()`, `approveAgentReviewQueueItem()`, and `rejectAgentReviewQueueItem()` - inspect delegated role runs, model routing, failure candidates, and human-review queue items
 - `getAgentContextPolicy()`, `previewAgentContext()`, `listAgentContextDecisions()`, and `listAgentContextArtifacts()` - inspect Context Engineering v2 budget decisions, compression previews, and artifact refs
@@ -159,6 +166,7 @@ flowchart LR
 - `batchPromoteTrajectoryTurnsPreview()` and `batchReplayCompareTrajectoryTurns()` - run non-writing batch promotion previews and replay comparisons for selected trajectory turns
 - `streamTurn()` - stream a new chat turn
 - `streamResume()` - continue from an interrupt or resume payload
+- `streamHarnessRun()`, `streamHarnessRunEvents()`, `cancelHarnessRun()`, and `cancelThreadHarnessRuns()` - work with harness run streams and cancel either one run or the active runs for a thread
 - `collectStream()` - iterate a stream and accumulate a final derived state
 - `setToken()` - update the bearer token in memory
 

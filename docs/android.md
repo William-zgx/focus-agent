@@ -1,5 +1,7 @@
 # Android App
 
+Updated: 2026-05-30
+
 The Android shell is a Capacitor wrapper around the existing Web app. Web builds
 keep the normal `/app` base path and all Web modules enabled. Android-only
 behavior is selected by `pnpm android:web:build`, which sets
@@ -36,6 +38,27 @@ The Web target is unchanged and continues to use the SDK default HTTP transport
 for `/v1` and `/v2` backend routes. Android local data is persisted in the app
 WebView's local storage.
 
+## Runtime Module Map
+
+The Android local runtime lives in `apps/web/src/android-local-runtime/`.
+`local-focus-agent-runtime.ts` is the public facade consumed by
+`shared/sdk/focus-agent-provider.tsx`; feature behavior is split into narrow
+modules so Web transport code and Android-only local behavior stay separated.
+
+| Module | Responsibility |
+| --- | --- |
+| `local-v1-runtime.ts` | Local route dispatcher for `/v1` and `/v2` compatible endpoints |
+| `auth-conversation-runtime.ts` | Login, demo tokens, sessions, users, conversations, and thread state |
+| `thread-branch-routes.ts` / `branch-logic.ts` | Branch tree, branch actions, merge review, thread resolution, and branch decisions |
+| `agent-runtime.ts` | Governance policies, skill catalog/selection, delegation/model-router/task-ledger compatibility data, and feedback trend route |
+| `memory-observability-runtime.ts` | Local memory, context, trajectory, overview, replay, and promote compatibility routes |
+| `admin-runtime.ts` | Admin config, users, audit events, roles, status, sessions, and password reset |
+| `model-provider.ts` / `model-runtime.ts` | Provider metadata, secure API key lookup, and direct OpenAI-compatible model calls |
+| `stream-runtime.ts` / `sse.ts` | POST-based stream events, local tool events, branch recommendation short-circuiting, and SSE framing |
+| `web-search.ts` / `web-planning.ts` / `web-fetch.ts` | Android-local web search planning and fetch helpers |
+| `workspace-runtime.ts` / `local-tool-execution.ts` / `local-tool-planning.ts` | Local tool planning and guarded workspace/tool execution compatibility |
+| `state.ts`, `types.ts`, `helpers.ts`, `constants.ts` | Local storage schema, shared types, response helpers, and storage keys |
+
 ## Included Modules
 
 The Android target keeps the mobile surfaces focused on local conversation and
@@ -48,3 +71,22 @@ administration while preserving the non-Agent-Team runtime surfaces:
 
 The Android target disables only the Agent Team workbench and productivity routes
 via feature flags. The Web target continues to include them by default.
+
+## Verification
+
+Run the local runtime smoke after changing SDK endpoint wiring, stream reducer
+behavior, Android routes, model-provider storage, local web search, or the module
+facade:
+
+```bash
+make frontend-android-runtime-smoke
+```
+
+For broader Web/Android refactors, prefer:
+
+```bash
+make frontend-qa
+```
+
+That bundle adds full Web/SDK checks, style governance, bundle budget,
+architecture report, and compatibility inventory around the Android smoke.

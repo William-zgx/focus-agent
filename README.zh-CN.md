@@ -36,7 +36,7 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 - 提供基于 owner 的生产力工作台（笔记 + 任务），并保留来源追踪（`/app/productivity/notes`、`/app/productivity/tasks`）
 - 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
-- 带有访问控制、管理员控制台、记忆链路和类型完备的前端 SDK
+- 带有访问控制、管理员控制台、记忆链路、治理反馈趋势和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
 - 提供仓库读写、git、网页、artifact、memory 和 productivity 工具，并对 workspace 命令执行做保护
 
@@ -87,6 +87,9 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/agent/roles`
+- `http://127.0.0.1:8000/app/agent/governance`
+- `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/productivity/notes`
@@ -127,10 +130,16 @@ docker compose up --build
 
 ## 开发与验证
 
-使用 `make help` 查看当前维护的本地命令。覆盖面最广的本地 CI parity 检查是：
+使用 `make help` 查看当前维护的本地命令。覆盖面最广的本地检查是：
 
 ```bash
 make ci
+```
+
+GitHub CI 还会检查 OpenAPI schema 与 generated SDK types 是否漂移。如果改动了后端路由或 Pydantic response model，请运行并提交生成物：
+
+```bash
+make sdk-openapi-types-check
 ```
 
 按改动范围收敛的验证路径见 [docs/development.zh-CN.md](docs/development.zh-CN.md)。常用的局部检查包括：
@@ -141,6 +150,7 @@ make contract-check
 pnpm sdk:check
 pnpm web:check
 pnpm web:build
+make frontend-qa
 ```
 
 如果改动影响用户可见行为、stream 事件、鉴权、存储或 SDK 类型，请在同一个 PR 中补齐相关测试和文档。
@@ -157,12 +167,14 @@ Bug、功能请求和文档改进请优先使用 GitHub issue templates。安全
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
 - [架构说明与模块导航](docs/architecture.md)
+- [Android App](docs/android.md)
 - [Auth / Access](docs/auth-access.md)
 - [Agent Team Workbench](docs/agent-team-workbench.md)
 - [生产力工作台](docs/productivity-system.md)
 - [管理员控制台](docs/admin-console.md)
 - [分支决策与推荐](docs/branch-decisions.md)
 - [流式事件契约](docs/streaming-contract.md)
+- [前端视觉系统](docs/frontend-visual-system.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)
 - [当前上下文窗口](docs/context-window.md)

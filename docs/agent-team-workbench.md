@@ -1,6 +1,6 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-05-14
+更新时间：2026-05-30
 
 本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主，需要采纳代码变更时再进入选择性应用流程。
 
@@ -433,15 +433,15 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
 2. 通过 `/plan` 基于目标生成动态任务 DAG；`replace_existing=true` 可重拆未运行任务。
 3. 模型规划不可用时自动降级到保守 fallback，并在 UI 中提示。
 4. 通过 `/run` 或 task-level `/run` 按依赖推进 ready tasks。
-5. task 可记录 output、artifact、changed files、verification summary、risk notes 和 execution metadata。
-6. UI 默认展示 Cockpit、Mission header、执行图、紧凑任务进度、选中任务摘要、阻塞引导、outputs 和 Agent Team 最终答案。
-7. 生成带 `final_answer`、`final_answer_status`、warnings、source output ids 和缺失证据风险提示的 merge bundle。
-8. 用户记录 accepted / rejected tasks 的 merge decision。
-9. Legacy `/dispatch` 继续兼容旧客户端，但不再是 Web 主流程。
+5. 真实执行任务可创建 per-task git worktree，并在 task/output 中记录 `workspace_path`、`workspace_branch`、changed files、diff summary、test evidence 和 workspace status。
+6. task 可记录 output、artifact、changed files、verification summary、risk notes 和 execution metadata。
+7. UI 默认展示 Cockpit、Mission header、执行图、紧凑任务进度、选中任务摘要、阻塞引导、outputs 和 Agent Team 最终答案。
+8. 生成带 `final_answer`、`final_answer_status`、warnings、source output ids 和缺失证据风险提示的 merge bundle。
+9. 用户记录 accepted / rejected tasks 的 merge decision。
+10. Legacy `/dispatch` 继续兼容旧客户端，但不再是 Web 主流程。
 
 当前仍不支持：
 
-- 自动 git worktree 隔离。
 - 自动冲突解决。
 - 自动提交代码。
 - Agent 无限递归 spawn。

@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-05-24
+更新时间：2026-05-30
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -15,6 +15,17 @@ POST /v2/threads/{thread_id}/runs/stream
 POST /v2/threads/{thread_id}/runs/resume/stream
 POST /v2/runs/{run_id}/stream
 ```
+
+Cancellation is JSON, not SSE:
+
+```text
+POST /v2/runs/{run_id}/cancel
+POST /v2/threads/{thread_id}/runs/cancel
+```
+
+The thread-level cancel endpoint is for UI/client cleanup when the caller only
+has the active thread context. It cancels active runs for that thread and is
+exposed as `FocusAgentClient.cancelThreadHarnessRuns()`.
 
 The public event names are stable. Do not introduce a new public event for internal stream visibility state.
 

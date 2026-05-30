@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-18
+更新时间：2026-05-30
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
@@ -14,6 +14,8 @@
 - Memory：[memory-system-v2.md](memory-system-v2.md)
 - Productivity：[productivity-system.md](productivity-system.md)
 - Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
+- Android App：[android.md](android.md)
+- Frontend Visual System：[frontend-visual-system.md](frontend-visual-system.md)
 - Docker / Compose：[docker-deployment.md](docker-deployment.md)
 - Observability 操作手册：[observability-runbook.md](observability-runbook.md)
 
@@ -218,11 +220,11 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Auth | `POST /v1/auth/demo-token`、register / login / refresh / logout / change-password / sessions、`GET /v1/auth/me` | 本地 demo token、用户名密码登录、refresh session、账号自助和当前 principal |
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
-| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events|snapshot|trajectory` | V2 harness run、流式 run、resume、查询、事件回放、snapshot、trajectory 与取消 |
+| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/threads/{thread_id}/runs/cancel`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events|snapshot|trajectory` | V2 harness run、流式 run、resume、按 thread 或 run 取消、事件回放、snapshot、trajectory |
 | Threads | `GET /v1/threads/{thread_id}`、`GET /v1/threads/{thread_id}/resolution`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、root/child 线程引用解析、当前上下文窗口预览和非破坏式压缩 |
 | Branches | fork、archive、activate、rename、proposal、merge、tree、branch action execute/dismiss | 分支生命周期、root/child-aware branch tree 和用户确认的分支动作 |
 | Branch Decisions | `GET /v1/branch-decisions/config`、`GET /v1/threads/{thread_id}/branch-decisions`、decision promote / dismiss | post-turn 决策记录和 pre-turn recommendation 证据 |
-| Agent | `/v1/agent/*` | governance preview、policy、records 和 evaluate APIs |
+| Agent | `/v1/agent/*`、`GET /v1/agent/feedback/trend` | governance preview、policy、records、evaluate APIs 和反馈趋势聚合 |
 | Agent Team | `/v1/agent-team/*` | Mission session、DAG planning/run、task lifecycle、outputs、merge bundle 和 merge decision |
 | Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
 | Productivity | `GET/POST /v1/notes`、`GET/PATCH /v1/notes/{note_id}`、`GET/POST /v1/tasks`、`GET/PATCH /v1/tasks/{task_id}`、`POST /v1/tasks/{task_id}/complete`、`POST /v1/tasks/{task_id}/archive`、`GET /v1/tasks/{task_id}/events`、`POST /v1/productivity/capture/note`、`POST /v1/productivity/capture/task` | owner-scoped notes/tasks workbench，包含 capture 与事件追踪 |
@@ -645,7 +647,15 @@ flowchart LR
 
 Admin Web 使用独立的 `pages/admin/` 路由和 admin CSS module。`/app/admin/users/{userId}` 通过详情抽屉承载 Profile、Access、Security 和 Audit tabs；`/app/admin/audit-events` 通过 URL query 同步 actor/resource/decision 过滤和选中事件。普通聊天 header 不暴露 admin 导航。
 
-Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。实时处理过程卡以 SDK reducer 派生的 `processingSteps` 为 canonical 输入；`toolCalls`、`toolEvents` 和 `reasoningText` 保留为 raw/debug/backcompat state。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、agent-team、observability、trajectory、workbench 等模块归档。Web app 目前有局部 Biome 门禁，范围集中在 `src/entities/messages` 与 trajectory observability scope，完整类型与构建仍通过 `make web-check` / `make web-build` 验证。
+Message transcript 渲染保持分层：`apps/web/src/entities/messages/message-list.tsx` 负责 React 展示与交互，`message-transcript.ts` 保持兼容 re-export，transcript item 构建、internal content filtering、tool activity summary/detail、normalization 和类型拆在 `message-transcript-*` 模块。实时处理过程卡以 SDK reducer 派生的 `processingSteps` 为 canonical 输入；`toolCalls`、`toolEvents` 和 `reasoningText` 保留为 raw/debug/backcompat state。Thread streaming hooks 按 request registry、cache、errors、navigation 和 entry state 拆分在 `apps/web/src/features/thread-stream/`。
+
+CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 shell、chat、composer、auth、admin、agent-team、observability、trajectory、productivity、workbench 和 responsive override 模块归档。大块样式已经拆到 `*-01-*`、`*-02-*` 等窄文件，例如 chat shell/messages/tool activity、composer toolbar/input/context meter、auth bootstrap/login/form、admin workspace panels/table、Agent Team mission/create/results。Web app 的维护门禁分三层：
+
+- 局部快速门禁：`make web-lint` / `make web-format-check`，范围是 `src/entities` 和 `src/features/trajectory-observability`。
+- 全量源码门禁：`make web-lint-full` / `make web-format-check-full` / `make web-check` / `make web-build`。
+- 产品级前端门禁：`make frontend-qa`，额外覆盖 style governance、Android local runtime smoke、bundle budget、architecture report 和 compatibility inventory。
+
+Android target 的本地 runtime 位于 `apps/web/src/android-local-runtime/`。`local-focus-agent-runtime.ts` 是 facade；auth/conversation、thread/branch、admin、agent governance、memory/observability、model provider、stream SSE、web search 和 workspace runtime 已拆成独立模块。Android 使用 SDK local transport 和 App 内数据，不连接 Focus Agent HTTP 后端；Web target 仍默认使用 `/v1` / `/v2` HTTP transport。
 
 ## 16. 安全边界
 
@@ -728,13 +738,13 @@ Python formatting：
 make format-check
 ```
 
-完整本地 CI parity：
+完整本地检查：
 
 ```bash
 make ci
 ```
 
-`make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。CI pytest 通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免 repo-local secrets 影响结果。
+`make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。CI pytest 通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免 repo-local secrets 影响结果。GitHub CI 还会额外执行 `make sdk-openapi-types-check`，因此 API route、Pydantic response model 或 generated SDK types 改动必须提交 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts` 的生成结果。
 
 影响生产力工作台：
 
@@ -769,6 +779,7 @@ make web-lint
 make web-format-check
 make web-check
 make web-build
+make frontend-qa
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-agent-team-adoption
@@ -862,6 +873,8 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Web message transcript facade：`apps/web/src/entities/messages/message-transcript.ts`
 - Web message transcript modules：`apps/web/src/entities/messages/message-transcript-*.ts`
 - Web thread streaming hooks：`apps/web/src/features/thread-stream/`
+- Android local runtime：`apps/web/src/android-local-runtime/`
+- Frontend style / bundle / visual QA：`apps/web/scripts/check-no-important.mjs`、`apps/web/scripts/check-no-hex.mjs`、`apps/web/scripts/css-loc-budget.mjs`、`apps/web/scripts/bundle-budget.mjs`、`apps/web/scripts/visual-baseline.mjs`、`apps/web/scripts/a11y-baseline.mjs`
 - Productivity web pages/routes：`apps/web/src/pages/productivity/productivity-page.tsx`、`apps/web/src/app/router.tsx`
 - Productivity shell 与导航：`apps/web/src/app/shell/app-shell-config.ts`、`apps/web/src/app/shell/app-shell-global-navigation.tsx`
 - Productivity source-level smoke：`apps/web/scripts/productivity-smoke.mjs`

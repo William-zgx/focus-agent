@@ -534,7 +534,7 @@ def validation_ladder() -> str:
                 220,
                 96,
                 "Release gate",
-                "CI parity plus evidence reports",
+                "Local gates plus evidence reports",
                 accent="#245D9C",
             ),
             line(232, 164, 274, 164),

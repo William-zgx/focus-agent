@@ -36,6 +36,12 @@ Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配
 
 如果只是给某个部署新增 OpenAI-compatible chat 模型，请在 `.focus_agent/models.toml` 里增加 provider/model 元数据，并只把密钥和 endpoint 放到 `.focus_agent/local.env`。只有当模型需要成为所有新环境的内置默认支持时，才修改 `src/focus_agent/defaults/models.toml`。
 
+如果 `AUTH_ENABLED=true`，启动前请替换示例 `AUTH_JWT_SECRET`。API 会拒绝长度小于 32 字符、或包含 `change`、`example`、`replace` 等占位文本的显式 JWT secret，即使是本地运行也一样。可用下面命令生成本地 secret：
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
 ## 2. 启动 API
 
 ```bash
@@ -48,6 +54,9 @@ make api
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/agent/roles`
+- `http://127.0.0.1:8000/app/agent/governance`
+- `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/observability/overview`
@@ -212,6 +221,12 @@ pnpm android:apk:debug
 
 Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连接 Focus Agent HTTP 后端地址；对话、分支、账号与管理数据会保存在 App WebView 本地存储中。模型请求会直接发往管理栏配置中心里设置的 OpenAI-compatible 供应商，并使用保存在 App 本机数据里的 API Key。需要打开 Android Studio 时运行 `pnpm android:open`；需要同步并运行到设备/模拟器时运行 `pnpm android:run`。
 
+如果改动 SDK endpoint、本地 transport、stream parsing、模型配置或 Android-only 路由，请跑 Android 本地 runtime smoke：
+
+```bash
+make frontend-android-runtime-smoke
+```
+
 ## 9. 一键本地模式
 
 - `make serve` / `make serve-dev`：启动前端 Vite dev server 和带热重载的后端 API
@@ -274,9 +289,11 @@ uv run python scripts/ui_smoke_test.py \
 
 - [Memory System v2](memory-system-v2.md)
 - [分支决策与推荐](branch-decisions.md)
+- [Agent Governance](agent-role-routing.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)
+- [Android App](android.md)
 - [开发指南](development.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
 - [架构说明](architecture.md)

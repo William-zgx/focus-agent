@@ -34,7 +34,7 @@
 <rect x="536" y="300" width="220" height="96" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
 <circle cx="560" cy="328" r="7" fill="#245D9C"/>
 <text x="578" y="334" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Release gate</text>
-<text x="558" y="364" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">CI parity plus evidence reports</text>
+<text x="558" y="364" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Local gates plus evidence reports</text>
 <path d="M232 164 L274 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
 <path d="M444 164 L486 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>
 <path d="M656 164 L698 164" stroke="#7D91AA" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>

@@ -40,10 +40,17 @@ make web-dev
 make web-check
 make web-build
 make frontend-check
+make frontend-check-full
+make frontend-style-check
+make frontend-bundle-check
+make frontend-qa
+make frontend-visual-qa
 make frontend-build
 make sdk-check
 make sdk-build
 make sdk-openapi-types-check
+make architecture-report
+make compat-report
 make format
 make format-check
 make ci-test
@@ -83,7 +90,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 make ci
 ```
 
-`make ci` 会运行 Python lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。只检查 Python 格式时可跑：
+`make ci` 会运行 Python lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。GitHub CI 还会额外跑 generated OpenAPI / SDK types drift guard，所以 API route 或 response model 改动即使本地 `make ci` 通过，也必须包含 `make sdk-openapi-types-check`。只检查 Python 格式时可跑：
 
 ```bash
 make format-check
@@ -100,6 +107,8 @@ uv run pytest tests/test_contract_checks.py
 `make contract-check` 会比较 FastAPI route snapshot、frontend SDK public surface、SDK package barrel exports，以及 Web App 在 `apps/web/src` 下对 `@focus-agent/web-sdk` 的 imports。如果 route 或 SDK/E2E contract 漂移是预期行为，请用 `uv run python scripts/check_contracts.py --update` 更新 snapshot，并在 review 中包含 snapshot diff。
 
 `make sdk-openapi-types-check` 会重新生成 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts`，并在任一文件发生 drift 时失败。只要 FastAPI 路由、Pydantic response model 或 generated SDK 类型变化，都应运行这个检查。
+
+这些生成物是受版本控制的源码。当 `make sdk-openapi-types-check` 打印 diff 时，要提交重新生成的 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts`；当 `make contract-check` 报 SDK/API drift 时，用 `uv run python scripts/check_contracts.py --update` 更新对应 `tests/contracts/*.json` snapshot，并先 review snapshot diff 再提交。
 
 3. 如果改动影响 frontend SDK 实现，尤其是 `src/client.ts`、`src/client/`、`src/types.ts`、`src/types/`、`src/transport.ts`、`src/parser.ts`、`src/reducers.ts`、`src/toolProtocol.ts`、`src/guards.ts` 或 transport validation 文件：
 
@@ -120,7 +129,19 @@ make web-check
 make web-build
 ```
 
-Web lint/format 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
+包级 `web-lint` / `web-format-check` 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-lint-full` 和 `make web-format-check-full` 覆盖完整 `apps/web/src`。`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
+
+如果是较大的前端或 runtime 重构，请跑维护中的前端质量组合：
+
+```bash
+make frontend-qa
+```
+
+它会组合 full frontend checks、style governance（禁止新增 `!important`、硬编码十六进制颜色、CSS LOC 超预算）、Android local runtime smoke、bundle budget、architecture report 和 compatibility inventory。视觉或 a11y 改动还应在运行中的应用上补：
+
+```bash
+make frontend-visual-qa FRONTEND_QA_BASE_URL=http://127.0.0.1:5173
+```
 
 5. 如果改动影响 stream 可见性、工具协议过滤、frontend stream reducer、处理过程卡或 live-web execution contract：
 

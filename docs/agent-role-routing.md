@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-05-18
+Updated: 2026-05-30
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -14,7 +14,7 @@ The layer answers five questions:
 - Which tools should that role be allowed to see?
 - Which model should that role use?
 - Which artifacts are accepted, rejected, retried, or waiting for review?
-- Which evidence should be recorded for trajectory, eval, and Web inspection?
+- Which evidence should be recorded for trajectory, eval, feedback trend analysis, and Web inspection?
 
 ```mermaid
 flowchart TD
@@ -275,7 +275,20 @@ The autonomy surface is intentionally report-first before it is action-first. Wh
 - risk-aware workflow policy: denied high-risk workspace tools are represented as `tool_denied` failure records and `agent_review_queue` items.
 - model routing report: high-risk tool usage can produce a Model Router observe-mode rationale while keeping `effective_model` equal to the selected model.
 
-Observe mode must not execute high-risk actions by itself. It records skill, branch, model, and review evidence for the governance console so a human or later enforcement flag can make the execution decision explicitly. For branch recommendations, even `suggest` mode still routes side effects through an explicit Branch Action confirmation.
+Observe mode must not execute high-risk actions by itself. It records skill, branch, model, review, and feedback evidence for the governance console so a human or later enforcement flag can make the execution decision explicitly. For branch recommendations, even `suggest` mode still routes side effects through an explicit Branch Action confirmation.
+
+### Feedback Trend API
+
+`GET /v1/agent/feedback/trend` is the lightweight governance health summary used by the Web governance console and Android local runtime smoke. It aggregates existing governance repository records rather than introducing a new workflow:
+
+- negative skill-selection feedback count
+- merge review apply success rate and conflict rate
+- skill low-confidence and override rates
+- high context-drift count
+- Notes / Tasks capture count from adoption flows
+- top failing trajectory samples for follow-up review
+
+The response model is `AgentFeedbackTrendResponse`, exposed through `FocusAgentClient.getAgentFeedbackTrend()` and tracked by the OpenAPI generated SDK types. When this endpoint or its response fields change, run both `make contract-check` and `make sdk-openapi-types-check`.
 
 ## 10. Ownership Audit Dashboard
 
@@ -358,6 +371,7 @@ Governance records are copied into trajectory `plan_meta` so they can be inspect
 
 - API trajectory detail
 - `/app/agent/governance`
+- `/v1/agent/feedback/trend`
 - observability trajectory workbench
 - eval trajectory judges
 - replay and promote workflows

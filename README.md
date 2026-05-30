@@ -36,7 +36,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
 - Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
-- Access control, Admin Console, memory pipeline, and typed frontend SDK
+- Access control, Admin Console, memory pipeline, governance feedback trends, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
 - Built-in repo read/edit, git, web, artifact, memory, and productivity tools with guarded workspace command execution
 
@@ -87,6 +87,9 @@ Then open:
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
+- `http://127.0.0.1:8000/app/agent/roles`
+- `http://127.0.0.1:8000/app/agent/governance`
+- `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
 - `http://127.0.0.1:8000/app/productivity/notes`
@@ -127,10 +130,16 @@ For production or staging, use `compose.prod.yaml` with an external Postgres con
 
 ## Development and Validation
 
-Use `make help` to list the maintained local commands. The broad local CI parity check is:
+Use `make help` to list the maintained local commands. The broad local check is:
 
 ```bash
 make ci
+```
+
+GitHub CI also checks generated OpenAPI and SDK type drift. If backend routes or Pydantic response models changed, run and commit:
+
+```bash
+make sdk-openapi-types-check
 ```
 
 For focused changes, use the narrower gates documented in [docs/development.md](docs/development.md). Common examples are:
@@ -141,6 +150,7 @@ make contract-check
 pnpm sdk:check
 pnpm web:check
 pnpm web:build
+make frontend-qa
 ```
 
 If your change affects user-facing behavior, streaming events, auth, storage, or SDK types, include the relevant tests and update documentation in the same pull request.
@@ -157,12 +167,14 @@ Please use the GitHub issue templates for bugs, feature requests, and documentat
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
 - [Architecture and module map](docs/architecture.md)
+- [Android App](docs/android.md)
 - [Auth / Access](docs/auth-access.md)
 - [Agent Team Workbench](docs/agent-team-workbench.md)
 - [Productivity System](docs/productivity-system.md)
 - [Admin Console](docs/admin-console.md)
 - [Branch Decisions](docs/branch-decisions.md)
 - [Streaming Contract](docs/streaming-contract.md)
+- [Frontend Visual System](docs/frontend-visual-system.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)
 - [Current Context Window](docs/context-window.md)
