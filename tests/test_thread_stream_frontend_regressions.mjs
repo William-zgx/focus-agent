@@ -96,8 +96,8 @@ function loadFunctions(relativePath, functionNames) {
 }
 
 function loadModule(relativePath) {
-  const sourceText = readFileSync(path.join(repoRoot, relativePath), "utf8");
-  const transpiled = ts.transpileModule(sourceText, {
+	const sourceText = readFileSync(path.join(repoRoot, relativePath), "utf8");
+	const transpiled = ts.transpileModule(sourceText, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022,
@@ -109,8 +109,46 @@ function loadModule(relativePath) {
     module: { exports: moduleExports },
     TextDecoder,
   };
+	vm.runInNewContext(transpiled, context);
+	return context.module.exports;
+}
+
+function loadThreadBusyRetryModule() {
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/thread/retry-thread-busy-conflict.ts"),
+    "utf8",
+  );
+  const transpiled = ts.transpileModule(sourceText, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  class FocusAgentRequestError extends Error {
+    constructor(message, { status = 500, data = null } = {}) {
+      super(message);
+      this.name = "FocusAgentRequestError";
+      this.status = status;
+      this.data = data;
+    }
+  }
+  const moduleExports = {};
+  const context = {
+    exports: moduleExports,
+    module: { exports: moduleExports },
+    require(moduleName) {
+      if (moduleName === "@focus-agent/web-sdk") {
+        return { FocusAgentRequestError };
+      }
+      throw new Error(`Unexpected module import: ${moduleName}`);
+    },
+    setTimeout(callback) {
+      callback();
+      return 0;
+    },
+  };
   vm.runInNewContext(transpiled, context);
-  return context.module.exports;
+  return { ...context.module.exports, FocusAgentRequestError };
 }
 
 function loadSdkStreamFunctions() {
@@ -1953,6 +1991,66 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
   assert.equal(compactStream.includes("message: cleanMessage"), true);
   assert.equal(compactStream.includes("input: { messages: [] }"), false);
   assert.equal(compactStream.includes("branch_handoff_auto_run: true"), true);
+});
+
+test("thread busy retry helper waits through transient previous-turn conflicts", async () => {
+  const { retryThreadBusyConflict, FocusAgentRequestError } = loadThreadBusyRetryModule();
+  let attempts = 0;
+  const result = await retryThreadBusyConflict(async () => {
+    attempts += 1;
+    if (attempts < 3) {
+      throw new FocusAgentRequestError("still processing previous turn", {
+        status: 409,
+        data: { message: "still processing the previous turn" },
+      });
+    }
+    return "ready";
+  });
+
+  assert.equal(result, "ready");
+  assert.equal(attempts, 3);
+});
+
+test("thread busy retry helper does not retry unrelated errors", async () => {
+  const { retryThreadBusyConflict } = loadThreadBusyRetryModule();
+  let attempts = 0;
+
+  await assert.rejects(
+    retryThreadBusyConflict(async () => {
+      attempts += 1;
+      throw new Error("network down");
+    }),
+    /network down/,
+  );
+
+  assert.equal(attempts, 1);
+});
+
+test("thread busy retry helper cancels when caller scope is stale", async () => {
+  const {
+    retryThreadBusyConflict,
+    ThreadBranchActionRetryCancelled,
+    FocusAgentRequestError,
+  } = loadThreadBusyRetryModule();
+  let attempts = 0;
+  let shouldContinue = true;
+
+  await assert.rejects(
+    retryThreadBusyConflict(
+      async () => {
+        attempts += 1;
+        shouldContinue = false;
+        throw new FocusAgentRequestError("still processing previous turn", {
+          status: 409,
+          data: { message: "still processing the previous turn" },
+        });
+      },
+      () => shouldContinue,
+    ),
+    ThreadBranchActionRetryCancelled,
+  );
+
+  assert.equal(attempts, 1);
 });
 
 test("branch graph node hover AI decision shows only the key conclusion", () => {

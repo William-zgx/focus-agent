@@ -17,10 +17,15 @@ def execute_branch_action_navigation(
 ) -> tuple[Any | None, BranchActionNavigation]:
     branch_record = None
     if action.kind in {BranchActionKind.FORK_SIBLING_BRANCH, BranchActionKind.FORK_CHILD_BRANCH}:
+        explicit_branch_name = (
+            action.suggested_branch_name
+            if getattr(action, "suggested_branch_name_source", None) == "explicit"
+            else None
+        )
         branch_record = branch_service.fork_branch(
             parent_thread_id=action.target_parent_thread_id,
             user_id=user_id,
-            branch_name=None,
+            branch_name=explicit_branch_name,
             name_source=action.suggested_branch_name,
             branch_role=action.branch_role,
         )

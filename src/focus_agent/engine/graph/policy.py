@@ -42,6 +42,7 @@ from .policy_markers import (
     _contextual_current_hits,
     _matched_markers,
     _skill_discovery_hits,
+    _skill_discovery_preferred_tool,
     _skill_discovery_should_prefer_search,
 )
 from .policy_temporal import (
@@ -90,6 +91,17 @@ _BRANCH_ACTION_GUARD_NOTE = (
 )
 
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
+_SKILL_ID_RE = r"[A-Za-z0-9][A-Za-z0-9_.:/-]*"
+_SKILL_TOOL_NAMES = frozenset(
+    {
+        "skills_search",
+        "skill_view",
+        "skills_list",
+        "skill_install",
+        "skills_refresh_index",
+        "skill_sources",
+    }
+)
 
 
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
@@ -143,17 +155,24 @@ def build_tool_intent_plan(
     source = "deterministic"
 
     no_tool = "explicit_no_tool" in exposure.reason_codes
+    explicit_skill_tool_request = set(exposure.allowed_toolsets) == {"skill"} or (
+        exposure.preferred_first_tool in _SKILL_TOOL_NAMES
+    )
     skill_ids = {
         str(skill_id).strip().lower() for skill_id in active_skill_ids if str(skill_id).strip()
     }
-    if not no_tool and "plan" in skill_ids:
+    if not no_tool and not explicit_skill_tool_request and "plan" in skill_ids:
         exposure = _exposure(
             "direct_answer",
             confidence=0.95,
             reason_codes=(*exposure.reason_codes, "skill_plan_direct_answer"),
         )
         source = "skill:plan"
-    elif not no_tool and ("review" in skill_ids or "security-review" in skill_ids):
+    elif (
+        not no_tool
+        and not explicit_skill_tool_request
+        and ("review" in skill_ids or "security-review" in skill_ids)
+    ):
         exposure = _exposure(
             "workspace_lookup",
             confidence=max(exposure.confidence, 0.9),
@@ -161,7 +180,11 @@ def build_tool_intent_plan(
             preferred_first_tool=exposure.preferred_first_tool,
         )
         source = "skill:review"
-    elif not no_tool and ("research" in skill_ids or "web-research" in skill_ids):
+    elif (
+        not no_tool
+        and not explicit_skill_tool_request
+        and ("research" in skill_ids or "web-research" in skill_ids)
+    ):
         exposure = _exposure(
             "live_web_research",
             confidence=max(exposure.confidence, 0.9),
@@ -171,6 +194,7 @@ def build_tool_intent_plan(
         source = "skill:research"
     elif (
         not no_tool
+        and not explicit_skill_tool_request
         and skill_ids
         and not skill_ids <= {"eco"}
         and exposure.policy == "direct_answer"
@@ -227,7 +251,43 @@ def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
         return {"query": _workspace_search_query(text)}
     if tool_name == "skills_search":
         return {"query": text}
+    if tool_name == "skill_view":
+        skill_name = _skill_view_name_from_text(text)
+        return {"name": skill_name} if skill_name else {}
     return {}
+
+
+def _skill_view_name_from_text(text: str) -> str:
+    normalized = " ".join(str(text or "").strip().split())
+    if not normalized:
+        return ""
+    patterns = (
+        rf"(?i)(?<![a-z0-9_])skill_view(?![a-z0-9_])\s*"
+        rf"(?:查看|打开|读取|加载|view|inspect|open|read|name|名称|for|of|:|：)?\s*"
+        rf"`?(?P<name>{_SKILL_ID_RE})`?",
+        rf"(?:查看|打开|读取|加载)\s+`?(?P<name>{_SKILL_ID_RE})`?\s*(?:这个)?(?:skill|技能)",
+    )
+    ignored = {
+        "查看",
+        "打开",
+        "读取",
+        "加载",
+        "view",
+        "inspect",
+        "open",
+        "read",
+        "name",
+        "for",
+        "of",
+    }
+    for pattern in patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        name = str(match.group("name") or "").strip("`.,!?;:，。！？；：")
+        if name and name.lower() not in ignored:
+            return name
+    return ""
 
 
 def _tool_intent_plan_requires_temporal_anchor(intent_plan: ToolIntentPlan) -> bool:
@@ -337,8 +397,11 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     if skill_discovery_hits:
         reason_codes.append("skill_discovery_signal")
 
+    preferred_skill_tool = _skill_discovery_preferred_tool(normalized)
     if skill_discovery_hits and (
-        not execution_score or _skill_discovery_should_prefer_search(normalized)
+        not execution_score
+        or preferred_skill_tool
+        or _skill_discovery_should_prefer_search(normalized)
     ):
         reason_codes.append("policy_workspace_lookup")
         return _exposure(
@@ -348,7 +411,7 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
                 _confidence(len(skill_discovery_hits) * 3, max(workspace_score, live_web_score)),
             ),
             reason_codes=tuple(reason_codes),
-            preferred_first_tool="skills_search",
+            preferred_first_tool=preferred_skill_tool or "skills_search",
             allowed_toolsets=("skill",),
         )
 

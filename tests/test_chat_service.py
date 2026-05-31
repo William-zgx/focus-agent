@@ -713,6 +713,38 @@ def test_branch_action_execution_keeps_auto_name_pending_for_first_turn_refresh(
     assert "华英农业" in branch_service.fork_calls[-1]["name_source"]
 
 
+def test_branch_action_execution_uses_explicit_branch_title(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    graph = BranchActionGraph({"messages": [HumanMessage(content="根线程里的基础上下文。")]})
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="请创建一个子分支，标题叫 Confirm Branch QA，用于研究分支确认跳转。",
+    )
+    action = graph.values["branch_actions"][0]
+
+    assert action["suggested_branch_name"] == "Confirm Branch QA"
+    assert action["suggested_branch_name_source"] == "explicit"
+
+    chat.execute_branch_action(
+        thread_id="root-1",
+        action_id=action["action_id"],
+        user_id="owner-1",
+    )
+
+    assert branch_service.fork_calls[-1]["branch_name"] == "Confirm Branch QA"
+    assert branch_service.fork_calls[-1]["name_source"] == "Confirm Branch QA"
+
+
 def test_branch_action_execution_carries_source_question_to_sibling_branch(tmp_path: Path):
     repo = _repo_with_child_branch(tmp_path)
     graph = MultiThreadBranchActionGraph(
@@ -1186,6 +1218,45 @@ def test_branch_handoff_strips_title_clause_from_current_thread_continuation():
 
     assert infer_suggested_branch_name(message, []) == "Negated Pending QA"
     assert branch_handoff_message_from_text(message) == "探索浏览器测试"
+
+
+def test_branch_handoff_strips_english_title_clause_from_current_thread_continuation():
+    message = (
+        "Create a child branch titled Browser Branch QA to separately explore "
+        "browser testing. Do not answer yet; show a confirmable branch action."
+    )
+
+    assert infer_suggested_branch_name(message, []) == "Browser Branch QA"
+    assert branch_handoff_message_from_text(message) == "separately explore browser testing"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_name", "expected_handoff"),
+    [
+        (
+            "Create a child branch titled Research and QA to compare options.",
+            "Research and QA",
+            "compare options",
+        ),
+        (
+            "Create a child branch titled API to REST migration to evaluate plan.",
+            "API to REST migration",
+            "evaluate plan",
+        ),
+        (
+            "Create a child branch called Plan for Mobile QA to review risk.",
+            "Plan for Mobile QA",
+            "review risk",
+        ),
+    ],
+)
+def test_branch_handoff_preserves_english_title_connectors(
+    message: str,
+    expected_name: str,
+    expected_handoff: str,
+):
+    assert infer_suggested_branch_name(message, []) == expected_name
+    assert branch_handoff_message_from_text(message) == expected_handoff
 
 
 def test_branch_action_execute_uses_thread_turn_lock(tmp_path: Path):

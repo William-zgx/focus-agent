@@ -966,6 +966,26 @@ def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
 
 def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     plan = build_tool_intent_plan("帮我查一下项目里有没有 release readiness 相关 skill")
+    explicit_chain = build_tool_intent_plan(
+        "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
+        "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。"
+    )
+    explicit_view = build_tool_intent_plan(
+        "请调用 skill_view 查看 build-web-apps:frontend-testing-debugging"
+    )
+    english_explicit_view = build_tool_intent_plan(
+        "Please call skill_view for systematic-debugging"
+    )
+    active_research_chain = build_tool_intent_plan(
+        "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
+        "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。",
+        active_skill_ids=["research"],
+    )
+    active_review_chain = build_tool_intent_plan(
+        "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
+        "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。",
+        active_skill_ids=["review"],
+    )
     code_lookup = build_tool_intent_plan("当前项目里 web_search 工具在哪里？")
     capability_lookup = build_tool_intent_plan("查一下有没有 release readiness 相关能力")
     workflow_lookup = build_tool_intent_plan("我想做一次发布前检查，有没有现成流程可以用？")
@@ -980,6 +1000,27 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     }
     assert plan.allowed_toolsets == ["skill"]
     assert "skill_discovery_signal" in plan.reason_codes
+    assert explicit_chain.policy == "workspace_lookup"
+    assert explicit_chain.preferred_first_tool == "skills_search"
+    assert explicit_chain.allowed_toolsets == ["skill"]
+    assert "skill" not in explicit_chain.denied_toolsets
+    assert explicit_view.policy == "workspace_lookup"
+    assert explicit_view.preferred_first_tool == "skill_view"
+    assert explicit_view.preferred_first_args == {
+        "name": "build-web-apps:frontend-testing-debugging"
+    }
+    assert explicit_view.allowed_toolsets == ["skill"]
+    assert english_explicit_view.policy == "workspace_lookup"
+    assert english_explicit_view.preferred_first_tool == "skill_view"
+    assert english_explicit_view.preferred_first_args == {
+        "name": "systematic-debugging"
+    }
+    assert english_explicit_view.allowed_toolsets == ["skill"]
+    for active_chain in (active_research_chain, active_review_chain):
+        assert active_chain.policy == "workspace_lookup"
+        assert active_chain.preferred_first_tool == "skills_search"
+        assert active_chain.allowed_toolsets == ["skill"]
+        assert "skill" not in active_chain.denied_toolsets
     for skill_lookup in (capability_lookup, workflow_lookup):
         assert skill_lookup.policy == "workspace_lookup"
         assert skill_lookup.preferred_first_tool == "skills_search"
@@ -2088,6 +2129,103 @@ def test_graph_routes_skill_discovery_requests_to_skills_search(monkeypatch):
     assert skill_queries == ["帮我查一下项目里有没有 release readiness 相关 skill"]
     assert search_calls == 0
     assert result.value["tool_intent_plan"]["preferred_first_tool"] == "skills_search"
+    assert result.value["tool_route_plan"]["role"] == "skill_scout"
+
+
+def test_graph_routes_explicit_skill_tool_chain_to_skill_tools(monkeypatch):
+    captured = {"bound_tools": []}
+    skill_queries = []
+    viewed_skills = []
+    search_calls = 0
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="已查看前端测试调试 Skill，并总结完毕。")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def skills_search(query: str) -> str:
+        """Search installed skills."""
+        skill_queries.append(query)
+        return '{"results":[{"skill_id":"build-web-apps:frontend-testing-debugging"}]}'
+
+    @tool
+    def skill_view(name: str) -> str:
+        """View an installed skill."""
+        viewed_skills.append(name)
+        return '{"skill_id":"build-web-apps:frontend-testing-debugging"}'
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        nonlocal search_calls
+        search_calls += 1
+        return query
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(skills_search, skill_view, search_code)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "请严格调用 skills_search 搜索 frontend testing skill，然后调用 "
+                        "skill_view 查看 build-web-apps:frontend-testing-debugging。"
+                        "最后用中文两句话总结。不要创建分支。"
+                    )
+                )
+            ],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-tool-chain"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in getattr(message, "tool_calls", None) or ()
+    ]
+    assert [call["name"] for call in tool_calls] == ["skills_search", "skill_view"]
+    assert tool_calls[0]["args"] == {
+        "query": (
+            "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
+            "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。"
+        )
+    }
+    assert tool_calls[1]["args"] == {"name": "build-web-apps:frontend-testing-debugging"}
+    assert skill_queries == [
+        (
+            "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
+            "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。"
+        )
+    ]
+    assert viewed_skills == ["build-web-apps:frontend-testing-debugging"]
+    assert search_calls == 0
+    assert captured["bound_tools"] == []
+    assert result.value["messages"][-1].content == "已查看前端测试调试 Skill，并总结完毕。"
     assert result.value["tool_route_plan"]["role"] == "skill_scout"
 
 

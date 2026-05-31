@@ -4,9 +4,14 @@ import type {
 	FocusAgentBranchRecord,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { queryKeys } from "@/shared/query/query-keys";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
+import {
+	ThreadBranchActionRetryCancelled,
+	retryThreadBusyConflict,
+} from "@/shared/thread/retry-thread-busy-conflict";
 
 interface BranchScope {
 	rootThreadId: string;
@@ -16,6 +21,17 @@ interface BranchScope {
 export function useBranchActions(scope: BranchScope) {
 	const { client } = useFocusAgent();
 	const queryClient = useQueryClient();
+	const mountedRef = useRef(true);
+	const scopeRef = useRef(scope);
+
+	scopeRef.current = scope;
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+		};
+	}, []);
 
 	async function invalidate(threadId = scope.threadId) {
 		const tasks = [
@@ -76,7 +92,21 @@ export function useBranchActions(scope: BranchScope) {
 	}
 
 	async function prepareMergeProposal(threadId: string) {
-		const proposal = await client.prepareMergeProposal(threadId);
+		const requestScope = {
+			rootThreadId: scopeRef.current.rootThreadId,
+			threadId: scopeRef.current.threadId,
+		};
+		const shouldContinue = () =>
+			mountedRef.current &&
+			scopeRef.current.rootThreadId === requestScope.rootThreadId &&
+			scopeRef.current.threadId === requestScope.threadId;
+		const proposal = await retryThreadBusyConflict(
+			() => client.prepareMergeProposal(threadId),
+			shouldContinue,
+		);
+		if (!shouldContinue()) {
+			throw new ThreadBranchActionRetryCancelled();
+		}
 		await invalidate(threadId);
 		return proposal;
 	}

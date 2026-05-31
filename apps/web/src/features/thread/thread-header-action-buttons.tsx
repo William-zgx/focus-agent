@@ -125,7 +125,6 @@ export function ThreadHeaderActionButtons({
 				{isRenamingCurrentBranch ? (
 					<div
 						className="fa-chat-toolbar-pill fa-focus-branches-button is-renaming"
-						data-compact-button="true"
 						data-full-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
 					>
 						<span className="fa-toolbar-icon" aria-hidden="true">

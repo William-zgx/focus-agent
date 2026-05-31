@@ -19,6 +19,7 @@ from focus_agent.engine.graph_builder import (
     _parse_reflection_json,
     _should_plan,
 )
+from focus_agent.engine.graph_plan_nodes import _read_only_skill_tool_request_satisfied
 
 from .runner import run_case
 from .schema import EvalCase
@@ -131,6 +132,50 @@ def test_format_plan_block_renders_markers():
     )
     block = _format_plan_block(plan, current_step_id="s2")
     assert "✓" in block and "➤" in block and "[s2]" in block
+
+
+def test_reflect_skips_replan_when_read_only_skill_tools_are_satisfied():
+    state = {
+        "task_brief": (
+            "Please call skills_search for systematic debugging skill, then call "
+            "skill_view for systematic-debugging."
+        ),
+        "plan_meta": {
+            "tool_intent_plan": {
+                "policy": "workspace_lookup",
+                "allowed_toolsets": ["skill"],
+            }
+        },
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "skills_search",
+                        "args": {"query": "systematic debugging"},
+                        "id": "skills-search-1",
+                    }
+                ],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "skill_view",
+                        "args": {"name": "systematic-debugging"},
+                        "id": "skill-view-1",
+                    }
+                ],
+            ),
+            AIMessage(content="systematic-debugging summary"),
+        ],
+    }
+
+    assert _read_only_skill_tool_request_satisfied(
+        state,
+        trajectory_tools=["skills_search", "skill_view"],
+        last_ai="systematic-debugging summary",
+    )
 
 
 # ---- e2e with scripted model ----------------------------------------------

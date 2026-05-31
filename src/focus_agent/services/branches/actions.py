@@ -68,10 +68,37 @@ _NEGATED_REQUEST_MARKERS = (
     "别开分支",
     "别切换分支",
     "别切分支",
+    "do not create branch",
+    "do not create a branch",
+    "do not create any branch",
+    "do not open branch",
+    "do not open a branch",
+    "do not switch branch",
+    "do not switch to a branch",
+    "don't create branch",
+    "don't create a branch",
+    "don't open branch",
+    "don't open a branch",
+    "don't switch branch",
+    "don't switch to a branch",
+    "dont create branch",
+    "dont create a branch",
+    "dont open branch",
+    "dont open a branch",
+    "dont switch branch",
+    "dont switch to a branch",
+    "without creating branch",
+    "without creating a branch",
+    "without making branch",
+    "without making a branch",
+    "no branch",
+    "no branch please",
 )
 _NEGATED_REQUEST_RE = re.compile(
-    r"\b(?:do\s+not|don't|dont|no\s+need\s+to|without)\b[^.?!\n]{0,80}"
+    r"\b(?:do\s+not|don't|dont|no\s+need\s+to)\b[^.?!\n]{0,80}"
     r"\b(?:create|open|switch(?:\s+to)?)\b[^.?!\n]{0,80}\bbranch\b"
+    r"|\bwithout\b[^.?!\n]{0,80}\b(?:creating|making|opening|switching(?:\s+to)?)\b"
+    r"[^.?!\n]{0,80}\bbranch\b"
     r"|\bno\s+branch\b",
     flags=re.IGNORECASE,
 )
@@ -99,9 +126,50 @@ _HANDOFF_TITLE_CLAUSE_RE = re.compile(
     r"[^，,。；;！？!?]+[，,。；;：:\s]+(?P<task>.+)$",
     flags=re.IGNORECASE,
 )
+_HANDOFF_TRAILING_CONTROL_RE = re.compile(
+    r"(?:[.?!;]\s*)?(?:do\s+not|don't|dont)\s+answer\b.*$"
+    r"|(?:[.?!;]\s*)?(?:show|create|generate)\s+(?:a\s+)?"
+    r"(?:confirmable\s+)?branch\s+action\b.*$",
+    flags=re.IGNORECASE,
+)
 _BRANCH_NAME_LABEL_RE = re.compile(
     r"(?:标题|名字|名称|分支名)(?:叫|为|是|[:：])\s*(?P<name>[^，,。；;！？!?\n]+)",
     flags=re.IGNORECASE,
+)
+_ENGLISH_BRANCH_TITLE_PREFIX_RE = re.compile(
+    r"\b(?:(?:branch\s+)?(?:title|name)(?:d)?(?:\s+as)?|titled|named|called|"
+    r"with\s+(?:the\s+)?(?:title|name))\s+(?P<body>[^.?!;\n]+)",
+    flags=re.IGNORECASE,
+)
+_ENGLISH_TITLE_TASK_SPLIT_RE = re.compile(
+    r"\s+(?:to|for|about|on)\s+",
+    flags=re.IGNORECASE,
+)
+_ENGLISH_TASK_VERBS = (
+    "analyze",
+    "analyse",
+    "build",
+    "check",
+    "compare",
+    "debug",
+    "design",
+    "draft",
+    "evaluate",
+    "explore",
+    "fix",
+    "implement",
+    "inspect",
+    "investigate",
+    "look",
+    "plan",
+    "research",
+    "review",
+    "study",
+    "summarise",
+    "summarize",
+    "test",
+    "validate",
+    "work",
 )
 
 
@@ -162,13 +230,20 @@ def is_branch_action_request(message: str) -> bool:
         return False
     if is_branch_action_confirmation(normalized) or is_branch_action_dismissal(normalized):
         return False
-    if any(marker in normalized for marker in _NEGATED_REQUEST_MARKERS):
-        return False
-    if _NEGATED_REQUEST_RE.search(str(message or "")):
+    if has_negated_branch_action_request(message):
         return False
     has_branch_marker = any(marker in normalized for marker in _REQUEST_BRANCH_MARKERS)
     has_action_marker = any(marker in normalized for marker in _REQUEST_ACTION_MARKERS)
     return has_branch_marker and has_action_marker
+
+
+def has_negated_branch_action_request(message: str) -> bool:
+    normalized = _compact(message)
+    if not normalized:
+        return False
+    if any(_compact(marker) in normalized for marker in _NEGATED_REQUEST_MARKERS):
+        return True
+    return bool(_NEGATED_REQUEST_RE.search(str(message or "")))
 
 
 def requested_branch_action_kind(message: str, branch_meta: BranchMeta | None) -> BranchActionKind:
@@ -221,6 +296,10 @@ def _clean_handoff_message(value: str | None) -> str | None:
         title_clause = _HANDOFF_TITLE_CLAUSE_RE.search(task)
         if title_clause:
             task = title_clause.group("task").strip(" ：:，,。；;")
+        english_title_clause = _english_title_clause_parts(task, anchored=True)
+        if english_title_clause and english_title_clause[1]:
+            task = english_title_clause[1].strip(" ：:，,。；;")
+        task = _HANDOFF_TRAILING_CONTROL_RE.sub("", task).strip(" ：:，,。；;")
         next_task = _HANDOFF_LEADING_FILLER_RE.sub("", task).strip(" ：:，,。；;")
         nested_topic = _HANDOFF_NESTED_TOPIC_RE.search(next_task)
         if nested_topic:
@@ -269,6 +348,7 @@ def build_branch_action_proposal(
     suggested_branch_name: str | None,
     branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
     reason: str,
+    suggested_branch_name_source: str | None = None,
     handoff_message: str | None = None,
 ) -> BranchActionProposal:
     return BranchActionProposal(
@@ -279,6 +359,7 @@ def build_branch_action_proposal(
         source_thread_id=source_thread_id,
         target_parent_thread_id=target_parent_thread_id,
         suggested_branch_name=suggested_branch_name,
+        suggested_branch_name_source=suggested_branch_name_source,
         branch_role=branch_role,
         reason=reason,
         handoff_message=branch_handoff_message_from_text(handoff_message),
@@ -382,11 +463,9 @@ def _compact(message: str) -> str:
 
 def _extract_branch_name(message: str) -> str | None:
     text = str(message or "").strip()
-    labeled_name = _BRANCH_NAME_LABEL_RE.search(text)
-    if labeled_name:
-        name = _clean_name(labeled_name.group("name"))
-        if name:
-            return name
+    explicit_name = explicit_branch_name_from_text(text)
+    if explicit_name:
+        return explicit_name
     patterns = [
         r"切换到(?P<name>[^，。！？\n]+)",
         r"创建(?:一个)?(?P<name>[^，。！？\n]+?)分支",
@@ -400,6 +479,51 @@ def _extract_branch_name(message: str) -> str | None:
         if name:
             return name
     return _extract_topic_name(text)
+
+
+def explicit_branch_name_from_text(message: str) -> str | None:
+    text = str(message or "")
+    labeled_name = _BRANCH_NAME_LABEL_RE.search(text)
+    if labeled_name:
+        return _clean_name(labeled_name.group("name"))
+    english_title = _english_title_clause_parts(text, anchored=False)
+    if english_title:
+        return _clean_name(english_title[0])
+    return None
+
+
+def _english_title_clause_parts(text: str, *, anchored: bool) -> tuple[str, str | None] | None:
+    body_match = _ENGLISH_BRANCH_TITLE_PREFIX_RE.match(text) if anchored else _ENGLISH_BRANCH_TITLE_PREFIX_RE.search(text)
+    if not body_match:
+        return None
+    body = str(body_match.group("body") or "").strip(" ：:,")
+    if not body:
+        return None
+    best_split: tuple[str, str] | None = None
+    for split_match in _ENGLISH_TITLE_TASK_SPLIT_RE.finditer(body):
+        task = body[split_match.end() :].strip()
+        if not _looks_like_english_handoff_task(task):
+            continue
+        title = body[: split_match.start()].strip()
+        if title:
+            best_split = (title, task)
+    if best_split is not None:
+        return best_split
+    return (body, None)
+
+
+def _looks_like_english_handoff_task(task: str) -> bool:
+    normalized = re.sub(
+        r"^(?:separately|independently|carefully|briefly|deeply|then|please)\s+",
+        "",
+        str(task or "").strip().lower(),
+    )
+    if not normalized:
+        return False
+    return any(
+        re.match(rf"{re.escape(verb)}(?:\b|\s)", normalized)
+        for verb in _ENGLISH_TASK_VERBS
+    )
 
 
 def _extract_topic_name(text: str) -> str | None:
@@ -431,10 +555,12 @@ __all__ = [
     "is_branch_action_confirmation",
     "is_branch_action_dismissal",
     "is_branch_action_request",
+    "has_negated_branch_action_request",
     "requested_branch_action_kind",
     "target_parent_thread_id",
     "branch_handoff_message_from_text",
     "infer_suggested_branch_name",
+    "explicit_branch_name_from_text",
     "build_branch_action_proposal",
     "replace_branch_action",
     "mark_branch_action_executed",

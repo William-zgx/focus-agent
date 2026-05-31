@@ -501,11 +501,14 @@
 .fa-inline-rename-form.is-header-branch.is-inline {
 	flex: 1 1 250px;
 	min-width: 220px;
-	max-width: min(360px, 38vw);
+	max-width: min(360px, max(220px, 38vw));
 }
 
 .fa-focus-branches-button.is-renaming {
 	cursor: default;
+	justify-content: flex-start;
+	min-width: min(360px, calc(100vw - 96px));
+	max-width: min(420px, calc(100vw - 96px));
 }
 
 .fa-current-branch-prefix {

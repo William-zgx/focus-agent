@@ -554,9 +554,19 @@ _SKILL_DISCOVERY_ACTION_MARKERS = (
 _SKILL_DISCOVERY_SEARCH_ACTION_MARKERS = tuple(
     marker for marker in _SKILL_DISCOVERY_ACTION_MARKERS if marker not in {"调用", "use"}
 )
-_CODE_OR_FILE_REFERENCE_RE = re.compile(
+_SKILL_DISCOVERY_TOOL_MARKERS = (
+    "skills_search",
+    "skills_list",
+    "skill_view",
+    "skill_install",
+    "skills_refresh_index",
+    "skill_sources",
+)
+_CODE_FILE_REFERENCE_RE = re.compile(
     r"(?i)(?:^|[\s`])(?:[\w.-]+/)+[\w.-]+\.(?:py|ts|tsx|js|jsx|md|toml|json|yaml|yml)\b"
-    r"|\b[a-z][a-z0-9]+_[a-z0-9_]+\b"
+)
+_CODE_OR_FILE_REFERENCE_RE = re.compile(
+    _CODE_FILE_REFERENCE_RE.pattern + r"|\b[a-z][a-z0-9]+_[a-z0-9_]+\b"
 )
 _EN_CONTEXTUAL_CURRENT_RE = re.compile(
     r"(?i)\bcurrent\s+"
@@ -625,11 +635,16 @@ def _academic_web_lookup_hits(text: str) -> tuple[str, ...]:
 
 
 def _skill_discovery_hits(text: str) -> tuple[str, ...]:
+    tool_hits = _matched_markers(text, _SKILL_DISCOVERY_TOOL_MARKERS)
     phrase_hits = _matched_markers(text, _SKILL_DISCOVERY_PHRASE_MARKERS)
     subject_hits = _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS)
     action_hits = _matched_markers(text, _SKILL_DISCOVERY_ACTION_MARKERS)
-    if not phrase_hits and _CODE_OR_FILE_REFERENCE_RE.search(text):
+    if not phrase_hits and _CODE_FILE_REFERENCE_RE.search(text):
         return ()
+    if not phrase_hits and not tool_hits and _CODE_OR_FILE_REFERENCE_RE.search(text):
+        return ()
+    if tool_hits:
+        return tuple(dict.fromkeys((*tool_hits, *phrase_hits, *subject_hits, *action_hits)))
     if phrase_hits:
         return tuple(dict.fromkeys((*phrase_hits, *subject_hits, *action_hits)))
     if subject_hits and action_hits:
@@ -637,7 +652,28 @@ def _skill_discovery_hits(text: str) -> tuple[str, ...]:
     return ()
 
 
+def _skill_discovery_preferred_tool(text: str) -> str | None:
+    tool_hits = _matched_markers(text, _SKILL_DISCOVERY_TOOL_MARKERS)
+    if "skills_search" in tool_hits:
+        return "skills_search"
+    for tool_name in (
+        "skill_view",
+        "skills_list",
+        "skill_sources",
+        "skills_refresh_index",
+        "skill_install",
+    ):
+        if tool_name in tool_hits:
+            return tool_name
+    if _skill_discovery_should_prefer_search(text):
+        return "skills_search"
+    return None
+
+
 def _skill_discovery_should_prefer_search(text: str) -> bool:
+    tool_hits = _matched_markers(text, _SKILL_DISCOVERY_TOOL_MARKERS)
+    if "skills_search" in tool_hits:
+        return True
     phrase_hits = _matched_markers(text, _SKILL_DISCOVERY_PHRASE_MARKERS)
     subject_hits = _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS)
     search_action_hits = _matched_markers(text, _SKILL_DISCOVERY_SEARCH_ACTION_MARKERS)

@@ -5,7 +5,10 @@ from typing import Any
 
 from focus_agent.core.branching import BranchMeta, BranchStatus
 from focus_agent.core.governance import BranchDecisionAction, BranchDecisionSignal
-from focus_agent.services.branch_actions import latest_pending_branch_action
+from focus_agent.services.branch_actions import (
+    has_negated_branch_action_request,
+    latest_pending_branch_action,
+)
 
 _SPLIT_HINTS = (
     "branch",
@@ -318,6 +321,8 @@ def _recommendation_explicit_target(
 ) -> BranchDecisionAction:
     if not normalized_message:
         return BranchDecisionAction.CONTINUE_CURRENT
+    if has_negated_branch_action_request(normalized_message):
+        return BranchDecisionAction.CONTINUE_CURRENT
     if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CONTINUE_HINTS):
         return BranchDecisionAction.CONTINUE_CURRENT
     if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CHILD_HINTS):
@@ -334,6 +339,8 @@ def _recommendation_explicit_target(
 def _recommendation_explicit_source(normalized_message: str) -> str:
     if not normalized_message:
         return "none"
+    if has_negated_branch_action_request(normalized_message):
+        return "continue_hint"
     if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CONTINUE_HINTS):
         return "continue_hint"
     if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CHILD_HINTS):
@@ -346,6 +353,8 @@ def _recommendation_explicit_source(normalized_message: str) -> str:
 
 
 def _has_recommend_fork_hint(normalized_message: str) -> bool:
+    if has_negated_branch_action_request(normalized_message):
+        return False
     if any(_compact(marker) in normalized_message for marker in _RECOMMEND_FORK_HINTS):
         return True
     if "分支" not in normalized_message:

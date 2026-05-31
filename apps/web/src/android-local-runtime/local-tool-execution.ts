@@ -265,10 +265,11 @@ export function executeLocalAppTool(
 		message = `${results.length} local skills matched.`;
 	} else if (name === "skill_view") {
 		const requested = stringValue(args.name) || stringValue(args.skill_id);
-		const skill =
-			ANDROID_LOCAL_SKILLS.find(
-				(item) => item.skill_id === requested || item.name === requested,
-			) ?? ANDROID_LOCAL_SKILLS[0];
+		const skill = requested
+			? ANDROID_LOCAL_SKILLS.find(
+					(item) => item.skill_id === requested || item.name === requested,
+				)
+			: ANDROID_LOCAL_SKILLS[0];
 		output = skill
 			? {
 					success: true,
@@ -279,10 +280,14 @@ export function executeLocalAppTool(
 		message = skill ? skill.name : "Skill not found.";
 	} else if (name === "skill_install") {
 		const requested = stringValue(args.skill_id) || stringValue(args.name);
-		const skill =
-			ANDROID_LOCAL_SKILLS.find(
-				(item) => item.skill_id === requested || item.name === requested,
-			) ?? ANDROID_LOCAL_SKILLS[0];
+		const skill = requested
+			? ANDROID_LOCAL_SKILLS.find(
+					(item) => item.skill_id === requested || item.name === requested,
+				)
+			: ANDROID_LOCAL_SKILLS[0];
+		if (skill && !thread.active_skill_ids.includes(skill.skill_id)) {
+			thread.active_skill_ids = [...thread.active_skill_ids, skill.skill_id];
+		}
 		output = skill
 			? {
 					success: true,

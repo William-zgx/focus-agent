@@ -333,6 +333,9 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     web_root = root / "apps" / "web"
 
     local_runtime_text = _android_local_runtime_text(web_root)
+    local_tool_execution_text = (
+        web_root / "src" / "android-local-runtime" / "local-tool-execution.ts"
+    ).read_text()
     android_smoke_text = (web_root / "scripts" / "android-local-runtime-smoke.mjs").read_text()
     assert "recordLocalBranchDecision" in local_runtime_text
     assert "branch_decision_summary" in local_runtime_text
@@ -373,6 +376,11 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert "memory_search" in local_runtime_text
     assert "conversation_summary" in local_runtime_text
     assert "skills_search" in local_runtime_text
+    assert (
+        "thread.active_skill_ids = [...thread.active_skill_ids, skill.skill_id]"
+        in local_tool_execution_text
+    )
+    assert ") ?? ANDROID_LOCAL_SKILLS[0]" not in local_tool_execution_text
     assert "web_fetch" in local_runtime_text
     assert "web_search" in local_runtime_text
     assert "current_utc_time" in local_runtime_text

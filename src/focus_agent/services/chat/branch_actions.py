@@ -13,6 +13,7 @@ from ..branch_actions import (
     build_branch_action_proposal,
     dismissal_message,
     execution_message,
+    explicit_branch_name_from_text,
     infer_suggested_branch_name,
     is_branch_action_confirmation,
     is_branch_action_dismissal,
@@ -204,12 +205,23 @@ def build_branch_action_proposal_result(
         for action in previous_actions
     ]
     recent_messages = list(values.get("messages", []) or [])
+    explicit_branch_name = explicit_branch_name_from_text(message)
+    suggested_branch_name = explicit_branch_name or infer_suggested_branch_name(
+        message, recent_messages
+    )
     action = build_branch_action_proposal(
         kind=kind,
         root_thread_id=context.root_thread_id,
         source_thread_id=thread_id,
         target_parent_thread_id=target_parent,
-        suggested_branch_name=infer_suggested_branch_name(message, recent_messages),
+        suggested_branch_name=suggested_branch_name,
+        suggested_branch_name_source=(
+            "explicit"
+            if explicit_branch_name
+            else "inferred"
+            if suggested_branch_name
+            else None
+        ),
         reason="User requested a branch switch from chat.",
         handoff_message=_branch_handoff_text_from_message(message)
         or _latest_branch_handoff_text(recent_messages),

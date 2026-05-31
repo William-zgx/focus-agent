@@ -305,7 +305,9 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"
     ).read_text()
     assert "let sendSucceeded = false;" in stream_hook_text
-    assert "sendSucceeded = !nextState.failed && !controller.signal.aborted;" in stream_hook_text
+    assert "nextState.isClosed && !nextState.failed && !controller.signal.aborted" in _compact(
+        stream_hook_text
+    )
     stream_errors_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream-errors.ts"
     ).read_text()
@@ -377,6 +379,11 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
         web_root / "features" / "merge-review" / "merge-review-sections.tsx",
         web_root / "features" / "merge-review" / "merge-review-utils.ts",
     )
+    thread_retry_text = _join_text(
+        web_root / "shared" / "thread" / "retry-thread-busy-conflict.ts",
+        web_root / "features" / "branch-tree" / "use-branch-actions.ts",
+        web_root / "pages" / "thread" / "use-thread-branch-actions.ts",
+    )
 
     assert 'branch_meta?.branch_status === "merged"' in thread_page_text
     assert "isReadOnly={isMergedReadOnlyThread}" in thread_page_text
@@ -391,9 +398,10 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "disabled={isStreaming || isReadOnly || !message.trim()}" in composer_text
     assert "disabled={isReadOnly}" in message_list_text
     assert "isReadOnly={isReadOnly || isStreaming}" in message_list_text
-    assert "retryThreadBusyConflict" in thread_page_text
-    assert "THREAD_BUSY_RETRY_ATTEMPTS" in thread_page_text
-    assert "ThreadBranchActionRetryCancelled" in thread_page_text
+    assert "retryThreadBusyConflict" in thread_retry_text
+    assert "THREAD_BUSY_RETRY_ATTEMPTS" in thread_retry_text
+    assert "ThreadBranchActionRetryCancelled" in thread_retry_text
+    assert "client.prepareMergeProposal(threadId)" in thread_retry_text
     assert "branchActionRequestEpochRef" in thread_page_text
     assert "isCurrentBranchActionRequest" in thread_page_text
     assert "}, [threadId]);" in thread_page_text
@@ -520,6 +528,98 @@ def test_thread_header_allows_double_click_current_branch_rename():
     assert "onRenameCurrentBranch();" in thread_header_text
     assert 'className="fa-inline-rename-form is-header-branch is-inline"' in thread_header_text
     assert "await renameBranch(threadId, nextName);" in thread_header_text
+
+
+def test_chat_header_rename_modes_are_mutually_exclusive():
+    root = Path(__file__).resolve().parents[1]
+    web_root = root / "apps" / "web"
+    app_shell_text = (
+        web_root / "src" / "app" / "shell" / "app-shell-chat-header.tsx"
+    ).read_text()
+    conversation_toolbar_text = (
+        web_root / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
+    ).read_text()
+    thread_header_actions_text = (
+        web_root / "src" / "features" / "thread" / "thread-header-actions.tsx"
+    ).read_text()
+    thread_header_buttons_text = (
+        web_root / "src" / "features" / "thread" / "thread-header-action-buttons.tsx"
+    ).read_text()
+    styles_text = _web_styles(web_root)
+    responsive_styles_text = (
+        web_root / "src" / "shared" / "styles" / "overrides-responsive.css"
+    ).read_text()
+    compact_shell_text = _compact(app_shell_text)
+    compact_conversation_text = _compact(conversation_toolbar_text)
+    compact_thread_text = _compact(thread_header_actions_text)
+
+    assert 'export type HeaderRenameScope = "conversation" | "branch" | null;' in app_shell_text
+    assert "export type HeaderRenameScopeSetter = Dispatch<" in app_shell_text
+    assert "useState<HeaderRenameScope>(null)" in app_shell_text
+    assert (
+        "<ConversationToolbar activeRenameScope={activeRenameScope} "
+        "onRenameScopeChange={setActiveRenameScope} />"
+        in compact_shell_text
+    )
+    assert (
+        "<ThreadHeaderActions activeRenameScope={activeRenameScope} "
+        "onRenameScopeChange={setActiveRenameScope} "
+        "onRequestOpenSidebar={onOpenSidebar} />"
+        in compact_shell_text
+    )
+    assert 'onRenameScopeChange?.("conversation");' in conversation_toolbar_text
+    assert "const visibleRenameTarget = canShowConversationRename ? renameTarget : null;" in conversation_toolbar_text
+    assert "renameTarget={visibleRenameTarget}" in conversation_toolbar_text
+    assert 'currentScope === "conversation" ? null : currentScope' in conversation_toolbar_text
+    assert 'activeRenameScope !== undefined && activeRenameScope !== "conversation"' in compact_conversation_text
+    assert "setRenameTarget(null);" in conversation_toolbar_text
+    assert "setRenameDraft(\"\");" in conversation_toolbar_text
+    assert 'onRenameScopeChange?.("branch");' in thread_header_actions_text
+    assert "const isBranchRenameVisible =" in thread_header_actions_text
+    assert "isRenamingCurrentBranch={isBranchRenameVisible}" in thread_header_actions_text
+    assert 'currentScope === "branch" ? null : currentScope' in thread_header_actions_text
+    assert 'activeRenameScope !== undefined && activeRenameScope !== "branch"' in compact_thread_text
+    assert "setIsRenamingCurrentBranch(false);" in thread_header_actions_text
+    assert "setRenameBranchDraft(\"\");" in thread_header_actions_text
+    assert "onCancelRenameCurrentBranch={cancelRenameCurrentBranch}" in thread_header_actions_text
+    assert (
+        'className="fa-chat-toolbar-pill fa-focus-branches-button is-renaming"'
+        in thread_header_buttons_text
+    )
+    assert (
+        'className="fa-chat-toolbar-pill fa-focus-branches-button is-renaming" '
+        'data-compact-button="true"'
+        not in _compact(thread_header_buttons_text)
+    )
+    assert ".fa-focus-branches-button:not(.is-renaming)" in styles_text
+    assert (
+        ".fa-chat-header-actions.is-compact .fa-focus-branches-button:not(.is-renaming)"
+        in styles_text
+    )
+    assert "max-width: min(360px, max(220px, 38vw));" in styles_text
+    assert ".fa-chat-header-right-actions:has(.fa-focus-branches-button.is-renaming)" in styles_text
+    assert ".fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming)" in styles_text
+    assert (
+        ".fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming) .fa-new-branch-button"
+        in _compact(styles_text)
+    )
+    assert (
+        ".fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming) .fa-review-button"
+        in _compact(styles_text)
+    )
+    assert (
+        ".fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming) .fa-chat-header-nav"
+        in _compact(styles_text)
+    )
+    assert (
+        ".fa-chat-header-top:has(.fa-focus-branches-button.is-renaming) .fa-conversation-switcher"
+        in _compact(styles_text)
+    )
+    assert (
+        ".fa-chat-header-top:has(.fa-focus-branches-button.is-renaming) .fa-conversation-jump"
+        in _compact(styles_text)
+    )
+    assert "calc(100vw - 48px)" in responsive_styles_text
 
 
 def test_thread_header_new_branch_stays_enabled_during_conclusion_generation():

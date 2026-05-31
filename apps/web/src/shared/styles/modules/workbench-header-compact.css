@@ -45,6 +45,10 @@
 	overflow: hidden;
 }
 
+.fa-chat-header-right-actions:has(.fa-focus-branches-button.is-renaming) {
+	overflow: visible;
+}
+
 .fa-chat-header-primary-actions,
 .fa-chat-header-nav {
 	gap: 8px;
@@ -115,7 +119,7 @@
 .fa-conversation-icon-button,
 .fa-conversation-token-trigger,
 .fa-chat-header-actions.is-compact [data-compact-button="true"],
-.fa-chat-header-actions.is-compact .fa-focus-branches-button {
+.fa-chat-header-actions.is-compact .fa-focus-branches-button:not(.is-renaming) {
 	width: 34px;
 	min-width: 34px;
 	height: 34px;

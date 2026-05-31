@@ -71,6 +71,7 @@ from .agent_loop_helpers import (
     _workspace_lookup_should_start_with_search_compat,
 )
 from .policy import (
+    _skill_view_name_from_text,
     _temporal_live_web_search_args,
     _tool_intent_plan_requires_temporal_anchor,
     _turn_tool_exposure_from_intent_plan,
@@ -78,6 +79,12 @@ from .policy import (
 )
 
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
+_READ_ONLY_SKILL_TOOL_RE = re.compile(
+    r"(?<![a-z0-9_])"
+    r"(skills_search|skill_view|skills_list|skill_sources|skills_refresh_index)"
+    r"(?![a-z0-9_])",
+    re.IGNORECASE,
+)
 
 
 def _with_stream_phase(model: Any, phase: str) -> Any:
@@ -190,6 +197,11 @@ def make_agent_loop_node(
             active_skill_ids=list(state.get("active_skill_ids", []) or ()),
             tool_policy=tool_policy,
         )
+        if tool_policy == "workspace_lookup" and _explicit_skill_tools_satisfied(
+            tool_intent_text,
+            state_messages,
+        ):
+            available_tools = []
         tool_route_plan = None
         if settings.agent_tool_router_enabled:
             router_role = infer_tool_router_role(
@@ -370,6 +382,41 @@ def make_agent_loop_node(
                         "name": "skills_search",
                         "args": tool_intent_plan.preferred_first_args
                         or {"query": tool_intent_text},
+                    }
+                ],
+            )
+        elif (
+            tool_policy == "workspace_lookup"
+            and tool_intent_plan.preferred_first_tool == "skill_view"
+            and _has_tool_named(available_tools, "skill_view")
+            and not _latest_turn_has_tool_result(state_messages, "skill_view")
+            and tool_intent_plan.preferred_first_args.get("name")
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"skill-view-{state.get('llm_calls', 0) + 1}",
+                        "name": "skill_view",
+                        "args": tool_intent_plan.preferred_first_args,
+                    }
+                ],
+            )
+        elif (
+            tool_policy == "workspace_lookup"
+            and "skill_view" in tool_intent_text.lower()
+            and _has_tool_named(available_tools, "skill_view")
+            and _latest_turn_has_tool_result(state_messages, "skills_search")
+            and not _latest_turn_has_tool_result(state_messages, "skill_view")
+            and (skill_view_name := _skill_view_name_from_text(tool_intent_text))
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"skill-view-{state.get('llm_calls', 0) + 1}",
+                        "name": "skill_view",
+                        "args": {"name": skill_view_name},
                     }
                 ],
             )
@@ -675,6 +722,16 @@ def make_agent_loop_node(
         return updates
 
     return agent_loop
+
+
+def _explicit_skill_tools_satisfied(text: str, messages: list[Any]) -> bool:
+    requested = {
+        match.group(1).lower()
+        for match in _READ_ONLY_SKILL_TOOL_RE.finditer(str(text or "").lower())
+    }
+    return bool(requested) and all(
+        _latest_turn_has_tool_result(messages, tool_name) for tool_name in requested
+    )
 
 
 __all__ = ["make_agent_loop_node"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
@@ -34,6 +35,10 @@ _PLAN_TRIGGER_KEYWORDS = (
 )
 _PLAN_SYSTEM_PROMPT_ID = "plan_act_reflect.plan.system"
 _REFLECT_SYSTEM_PROMPT_ID = "plan_act_reflect.reflect.system"
+_READ_ONLY_SKILL_TOOL_RE = re.compile(
+    r"(?<![a-z0-9_])(skills_search|skill_view|skills_list|skill_sources|skills_refresh_index)(?![a-z0-9_])",
+    flags=re.IGNORECASE,
+)
 
 
 def _should_plan(
@@ -160,6 +165,39 @@ def _collect_tool_names_since_latest_human(messages: list[Any]) -> list[str]:
     return names
 
 
+def _read_only_skill_tool_request_satisfied(
+    state: AgentState,
+    *,
+    trajectory_tools: Sequence[str],
+    last_ai: str,
+) -> bool:
+    if not str(last_ai or "").strip():
+        return False
+    task_text = str(state.get("task_brief") or _latest_human_message_text(state.get("messages", [])))
+    requested = {
+        match.group(1).lower()
+        for match in _READ_ONLY_SKILL_TOOL_RE.finditer(task_text.lower())
+    }
+    if not requested:
+        return False
+    observed = {str(name).lower() for name in trajectory_tools if str(name).strip()}
+    if not requested.issubset(observed):
+        return False
+    plan_meta = state.get("plan_meta") or {}
+    tool_plan = state.get("tool_intent_plan") or plan_meta.get("tool_intent_plan") or {}
+    if not isinstance(tool_plan, dict):
+        return False
+    allowed_toolsets = {
+        str(item)
+        for item in list(tool_plan.get("allowed_toolsets") or [])
+        if str(item).strip()
+    }
+    return (
+        str(tool_plan.get("policy") or "") == "workspace_lookup"
+        and "skill" in allowed_toolsets
+    )
+
+
 def make_plan_node(
     *,
     settings: Settings,
@@ -272,6 +310,24 @@ def make_reflect_node(
         trajectory_tools = _collect_tool_names_since_latest_human(
             list(state.get("messages", []) or [])
         )
+        if _read_only_skill_tool_request_satisfied(
+            state,
+            trajectory_tools=trajectory_tools,
+            last_ai=last_ai,
+        ):
+            meta = {
+                **(state.get("plan_meta") or {}),
+                "reflect_calls": int((state.get("plan_meta") or {}).get("reflect_calls", 0)) + 1,
+                "read_only_skill_tools_satisfied": True,
+                "replan_requested": False,
+            }
+            return {
+                "reflection": ReflectionVerdict(
+                    status="done",
+                    reasoning="read-only skill tool request satisfied",
+                ),
+                "plan_meta": meta,
+            }
 
         system = SystemMessage(content=get_registry().render(_REFLECT_SYSTEM_PROMPT_ID))
         plan_summary = _format_plan_block(plan, state.get("current_step_id", ""))

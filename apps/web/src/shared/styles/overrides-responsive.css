@@ -26,6 +26,16 @@
 }
 
 @media (max-width: 480px) {
+	.fa-focus-branches-button.is-renaming {
+		min-width: min(360px, calc(100vw - 48px));
+		max-width: min(420px, calc(100vw - 48px));
+	}
+
+	.fa-inline-rename-form.is-header-branch.is-inline {
+		min-width: min(220px, calc(100vw - 120px));
+		max-width: none;
+	}
+
 	.fa-composer-model-panel {
 		position: fixed;
 		right: max(10px, env(safe-area-inset-right));
@@ -132,6 +142,17 @@
 		scrollbar-width: none;
 	}
 
+	.fa-chat-header-right-actions:has(.fa-focus-branches-button.is-renaming) {
+		width: min(420px, calc(100vw - 96px));
+		max-width: min(420px, calc(100vw - 96px));
+		overflow: visible;
+	}
+
+	.fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming) {
+		max-width: min(420px, calc(100vw - 96px));
+		overflow-x: visible;
+	}
+
 	.fa-chat-header-actions::-webkit-scrollbar {
 		display: none;
 	}
@@ -142,7 +163,7 @@
 	}
 
 	.fa-chat-header-actions [data-compact-button="true"],
-	.fa-chat-header-actions .fa-focus-branches-button {
+	.fa-chat-header-actions .fa-focus-branches-button:not(.is-renaming) {
 		width: 34px;
 		min-width: 34px;
 		height: 34px;
@@ -325,8 +346,14 @@
 		max-width: 148px;
 	}
 
+	.fa-chat-header-right-actions:has(.fa-focus-branches-button.is-renaming),
+	.fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming) {
+		width: min(100%, calc(100vw - 48px));
+		max-width: min(100%, calc(100vw - 48px));
+	}
+
 	.fa-chat-header-actions [data-compact-button="true"],
-	.fa-chat-header-actions .fa-focus-branches-button {
+	.fa-chat-header-actions .fa-focus-branches-button:not(.is-renaming) {
 		width: 32px;
 		min-width: 32px;
 		height: 32px;

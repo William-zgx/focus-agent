@@ -295,6 +295,47 @@ def test_branch_recommendation_explicit_continue_wins_over_semantic_topic_shift(
 
 
 @pytest.mark.parametrize(
+    "message",
+    [
+        (
+            "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
+            "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。"
+        ),
+        (
+            "Please call skills_search for systematic debugging, then call skill_view for "
+            "systematic-debugging. Summarize in Chinese. Do not create a branch."
+        ),
+        (
+            "Please call skills_search for systematic debugging and skill_view for "
+            "systematic-debugging without creating a branch."
+        ),
+        (
+            "Please call skills_search for systematic debugging and skill_view for "
+            "systematic-debugging. No branch please."
+        ),
+    ],
+)
+def test_branch_recommendation_respects_negated_create_branch_request(message: str) -> None:
+    service, graph, repository = _recommendation_service()
+
+    payload = service.recommend_for_message(
+        thread_id="thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message=message,
+        request_id="req-negated-create-branch",
+    )
+
+    event = repository.list_branch_decision_events(source_thread_id="thread-1")[0]
+    assert payload is not None
+    assert payload["action"] == "continue_current"
+    assert event.action == BranchDecisionAction.CONTINUE_CURRENT
+    assert event.status == BranchDecisionStatus.SKIPPED
+    assert event.metadata["reason"] == "continue_current"
+    assert "branch_actions" not in graph.values
+
+
+@pytest.mark.parametrize(
     ("values", "thread_id", "message", "expected_action", "expected_parent"),
     [
         (

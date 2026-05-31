@@ -1,4 +1,10 @@
-import type { FocusEventHandler, MouseEventHandler } from "react";
+import type {
+	Dispatch,
+	FocusEventHandler,
+	MouseEventHandler,
+	SetStateAction,
+} from "react";
+import { useState } from "react";
 
 import { ConversationToolbar } from "@/features/conversations/conversation-toolbar";
 import { ThreadHeaderActions } from "@/features/thread/thread-header-actions";
@@ -27,6 +33,11 @@ type AppShellChatHeaderProps = {
 	tooltipHandlers: ShellTooltipHandlers;
 };
 
+export type HeaderRenameScope = "conversation" | "branch" | null;
+export type HeaderRenameScopeSetter = Dispatch<
+	SetStateAction<HeaderRenameScope>
+>;
+
 export function AppShellChatHeader({
 	onOpenSidebar,
 	onToggleSidebar,
@@ -35,6 +46,9 @@ export function AppShellChatHeader({
 	sidebarToggleLabel,
 	tooltipHandlers,
 }: AppShellChatHeaderProps) {
+	const [activeRenameScope, setActiveRenameScope] =
+		useState<HeaderRenameScope>(null);
+
 	return (
 		<section className="fa-header-card">
 			<div className="fa-chat-header-top">
@@ -49,10 +63,17 @@ export function AppShellChatHeader({
 					>
 						<FocusAgentBrand compact />
 					</button>
-					<ConversationToolbar />
+					<ConversationToolbar
+						activeRenameScope={activeRenameScope}
+						onRenameScopeChange={setActiveRenameScope}
+					/>
 				</div>
 				<div className="fa-chat-header-right-actions">
-					<ThreadHeaderActions onRequestOpenSidebar={onOpenSidebar} />
+					<ThreadHeaderActions
+						activeRenameScope={activeRenameScope}
+						onRenameScopeChange={setActiveRenameScope}
+						onRequestOpenSidebar={onOpenSidebar}
+					/>
 				</div>
 			</div>
 			{shellStatus && shellStatus.display !== "chat-floating" ? (

@@ -713,11 +713,13 @@
 	display: none;
 }
 
-.fa-chat-header-actions.is-compact .fa-focus-branches-button .fa-toolbar-text {
+.fa-chat-header-actions.is-compact
+	.fa-focus-branches-button:not(.is-renaming)
+	.fa-toolbar-text {
 	display: inline;
 }
 
-.fa-chat-header-actions.is-compact .fa-focus-branches-button {
+.fa-chat-header-actions.is-compact .fa-focus-branches-button:not(.is-renaming) {
 	width: auto;
 	min-width: auto;
 	padding: 8px 12px;

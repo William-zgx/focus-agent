@@ -125,6 +125,38 @@
 	width: 100%;
 }
 
+.fa-chat-header-right-actions:has(.fa-focus-branches-button.is-renaming),
+.fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming) {
+	overflow: visible;
+}
+
+.fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming)
+	.fa-new-branch-button,
+.fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming)
+	.fa-review-button,
+.fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming)
+	.fa-chat-header-nav {
+	display: none;
+}
+
+.fa-chat-header-top:has(.fa-focus-branches-button.is-renaming)
+	.fa-conversation-toolbar {
+	overflow: visible;
+}
+
+.fa-chat-header-top:has(.fa-focus-branches-button.is-renaming)
+	.fa-conversation-switcher {
+	display: inline-flex;
+	flex: 0 0 auto;
+	max-width: none;
+	overflow: visible;
+}
+
+.fa-chat-header-top:has(.fa-focus-branches-button.is-renaming)
+	.fa-conversation-jump {
+	display: none;
+}
+
 .fa-chat-header-actions::-webkit-scrollbar-thumb {
 	background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
 }
@@ -157,11 +189,13 @@
 .fa-chat-header-actions.is-compact
 	[data-compact-button="true"]
 	.fa-toolbar-text,
-.fa-chat-header-actions.is-compact .fa-focus-branches-button .fa-toolbar-text {
+.fa-chat-header-actions.is-compact
+	.fa-focus-branches-button:not(.is-renaming)
+	.fa-toolbar-text {
 	display: none;
 }
 
-.fa-chat-header-actions.is-compact .fa-focus-branches-button {
+.fa-chat-header-actions.is-compact .fa-focus-branches-button:not(.is-renaming) {
 	width: 42px;
 	min-width: 42px;
 	padding: 0;

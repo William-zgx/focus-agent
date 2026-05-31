@@ -1,14 +1,26 @@
 import type { FocusAgentConversationSummary } from "@focus-agent/web-sdk";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
+import type {
+	HeaderRenameScope,
+	HeaderRenameScopeSetter,
+} from "@/app/shell/app-shell-chat-header";
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { totalConversationTokens } from "@/features/conversations/conversation-toolbar-helpers";
 import { ConversationToolbarView } from "@/features/conversations/conversation-toolbar-view";
 import { useConversationActions } from "@/features/conversations/use-conversation-actions";
 import { useConversations } from "@/features/conversations/use-conversations";
 
-export function ConversationToolbar() {
+interface ConversationToolbarProps {
+	activeRenameScope?: HeaderRenameScope;
+	onRenameScopeChange?: HeaderRenameScopeSetter;
+}
+
+export function ConversationToolbar({
+	activeRenameScope,
+	onRenameScopeChange,
+}: ConversationToolbarProps = {}) {
 	const navigate = useNavigate();
 	const { conversationId, threadId } = useRouterState({
 		select: (state) => {
@@ -48,6 +60,9 @@ export function ConversationToolbar() {
 	);
 	const activeConversationTotalTokens =
 		totalConversationTokens(activeConversation);
+	const canShowConversationRename =
+		activeRenameScope === undefined || activeRenameScope === "conversation";
+	const visibleRenameTarget = canShowConversationRename ? renameTarget : null;
 
 	async function openConversation(rootThreadId: string) {
 		await navigate({
@@ -93,6 +108,7 @@ export function ConversationToolbar() {
 	function startRenameConversation(
 		conversation: FocusAgentConversationSummary,
 	) {
+		onRenameScopeChange?.("conversation");
 		setRenameTarget(conversation);
 		setRenameDraft(conversation.title);
 	}
@@ -100,11 +116,29 @@ export function ConversationToolbar() {
 	function cancelRenameConversation() {
 		setRenameTarget(null);
 		setRenameDraft("");
+		onRenameScopeChange?.((currentScope) =>
+			currentScope === "conversation" ? null : currentScope,
+		);
 	}
+
+	useEffect(() => {
+		if (
+			renameTarget &&
+			activeRenameScope !== undefined &&
+			activeRenameScope !== "conversation"
+		) {
+			setRenameTarget(null);
+			setRenameDraft("");
+		}
+	}, [activeRenameScope, renameTarget]);
 
 	async function handleRenameConversation(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (!renameTarget) return;
+		if (!canShowConversationRename) {
+			cancelRenameConversation();
+			return;
+		}
 		const title = renameDraft.trim();
 		if (!title || title === renameTarget.title) {
 			cancelRenameConversation();
@@ -217,7 +251,7 @@ export function ConversationToolbar() {
 				void handleSelectConversation(rootThreadId)
 			}
 			renameDraft={renameDraft}
-			renameTarget={renameTarget}
+			renameTarget={visibleRenameTarget}
 		/>
 	);
 }

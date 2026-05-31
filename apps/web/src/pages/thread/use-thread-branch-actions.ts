@@ -1,5 +1,4 @@
 import {
-	FocusAgentRequestError,
 	type FocusAgentBranchActionExecuteResponse,
 	type FocusAgentBranchActionNavigation,
 	type FocusAgentBranchActionProposal,
@@ -11,6 +10,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { queryKeys } from "@/shared/query/query-keys";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
+import {
+	ThreadBranchActionRetryCancelled,
+	retryThreadBusyConflict,
+} from "@/shared/thread/retry-thread-busy-conflict";
 
 function navigationFromBranchActionResult(
 	result: FocusAgentBranchActionExecuteResponse,
@@ -50,59 +53,6 @@ interface BranchActionHandoffRun {
 interface UseThreadBranchActionsOptions {
 	onContinueCurrentBranch?: (input: BranchActionHandoffRun) => Promise<unknown>;
 	onRunHandoff?: (input: BranchActionHandoffRun) => Promise<unknown>;
-}
-
-const THREAD_BUSY_RETRY_ATTEMPTS = 80;
-const THREAD_BUSY_RETRY_DELAY_MS = 500;
-
-class ThreadBranchActionRetryCancelled extends Error {
-	constructor() {
-		super("Branch action request was cancelled.");
-		this.name = "ThreadBranchActionRetryCancelled";
-	}
-}
-
-function isThreadBusyConflict(error: unknown): boolean {
-	if (!(error instanceof FocusAgentRequestError) || error.status !== 409) {
-		return false;
-	}
-	const text = [error.message, JSON.stringify(error.data ?? {})]
-		.join(" ")
-		.toLowerCase();
-	return text.includes("still processing") || text.includes("previous turn");
-}
-
-function delay(ms: number) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function retryThreadBusyConflict<T>(
-	operation: () => Promise<T>,
-	shouldContinue: () => boolean,
-): Promise<T> {
-	let lastError: unknown;
-	for (let attempt = 0; attempt < THREAD_BUSY_RETRY_ATTEMPTS; attempt += 1) {
-		if (!shouldContinue()) {
-			throw new ThreadBranchActionRetryCancelled();
-		}
-		try {
-			const result = await operation();
-			if (!shouldContinue()) {
-				throw new ThreadBranchActionRetryCancelled();
-			}
-			return result;
-		} catch (error) {
-			lastError = error;
-			if (error instanceof ThreadBranchActionRetryCancelled) {
-				throw error;
-			}
-			if (!isThreadBusyConflict(error)) {
-				throw error;
-			}
-			await delay(THREAD_BUSY_RETRY_DELAY_MS);
-		}
-	}
-	throw lastError;
 }
 
 export function useThreadBranchActions(
