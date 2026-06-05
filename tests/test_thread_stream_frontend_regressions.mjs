@@ -1465,10 +1465,20 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(streamHookSource.includes("activeRunIdsRef"), true);
   assert.equal(
+    compactSource(streamHookSource).includes("activeRunIdsRef.current.delete(requestThreadId);"),
+    true,
+  );
+  assert.equal(
     compactSource(streamHookSource).includes(
-      'client .cancelHarnessRun(runId, { action: "interrupt" })',
+      "const activeRunId = activeRunIdsRef.current.get(options.threadId); if (activeRunId)",
     ),
-    false,
+    true,
+  );
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      'client .cancelHarnessRun(activeRunId, { action: "interrupt" })',
+    ),
+    true,
   );
   assert.equal(
     compactSource(streamHookSource).includes(
@@ -2289,6 +2299,13 @@ test("chat header keeps conversation tools left and compacts branch actions by a
     path.join(repoRoot, "apps/web/src/features/thread/use-thread-header-compact.ts"),
     "utf8",
   );
+  const headerButtonsSource = readFileSync(
+    path.join(
+      repoRoot,
+      "apps/web/src/features/thread/thread-header-action-buttons.tsx",
+    ),
+    "utf8",
+  );
   const overridesCss = readFileSync(
     path.join(repoRoot, "apps/web/src/shared/styles/modules/overrides.css"),
     "utf8",
@@ -2326,6 +2343,29 @@ test("chat header keeps conversation tools left and compacts branch actions by a
     compactHook.includes("Math.min(actions.clientWidth, host.clientWidth)"),
     true,
   );
+  assert.equal(
+    compactHeader.includes(
+      ".fa-focus-branches-button:not(.is-renaming) { max-width: clamp(176px, 24vw, 320px); min-width: 0; overflow: hidden;",
+    ),
+    true,
+  );
+  assert.equal(
+    compactHeader.includes(
+      ".fa-focus-branches-button:not(.is-renaming) .fa-toolbar-text { min-width: 0; overflow: hidden; text-overflow: ellipsis;",
+    ),
+    true,
+  );
+  assert.equal(
+    headerButtonsSource.includes('data-allow-label-truncation="true"'),
+    true,
+  );
+  assert.equal(
+    compactHook.includes(
+      'button.dataset.allowLabelTruncation === "true"',
+    ),
+    true,
+  );
+  assert.equal(compactHook.includes("buttonAllowsLabelTruncation(button)"), true);
   assert.equal(conversationToolbarSource.includes("fa-conversation-jump-icon"), true);
   assert.equal(
     conversationToolbarSource.includes("ICON_CONVERSATION_SWITCHER_QUERY"),

@@ -966,6 +966,8 @@ def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
 
 def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     plan = build_tool_intent_plan("帮我查一下项目里有没有 release readiness 相关 skill")
+    install_plan = build_tool_intent_plan("stock-analyzer，想办法安装这个skill。")
+    explicit_install = build_tool_intent_plan("请调用 skill_install stock-analyzer")
     explicit_chain = build_tool_intent_plan(
         "请严格调用 skills_search 搜索 frontend testing skill，然后调用 skill_view 查看 "
         "build-web-apps:frontend-testing-debugging。最后用中文两句话总结。不要创建分支。"
@@ -1000,6 +1002,18 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     }
     assert plan.allowed_toolsets == ["skill"]
     assert "skill_discovery_signal" in plan.reason_codes
+    assert install_plan.policy == "execution"
+    assert install_plan.preferred_first_tool == "skills_search"
+    assert install_plan.preferred_first_args == {
+        "query": "stock-analyzer",
+        "scope": "all",
+    }
+    assert install_plan.allowed_toolsets == ["skill"]
+    assert "skill_install_intent" in install_plan.reason_codes
+    assert explicit_install.policy == "execution"
+    assert explicit_install.preferred_first_tool == "skill_install"
+    assert explicit_install.preferred_first_args == {"skill_id": "stock-analyzer"}
+    assert explicit_install.allowed_toolsets == ["skill"]
     assert explicit_chain.policy == "workspace_lookup"
     assert explicit_chain.preferred_first_tool == "skills_search"
     assert explicit_chain.allowed_toolsets == ["skill"]
@@ -2226,6 +2240,188 @@ def test_graph_routes_explicit_skill_tool_chain_to_skill_tools(monkeypatch):
     assert search_calls == 0
     assert captured["bound_tools"] == []
     assert result.value["messages"][-1].content == "已查看前端测试调试 Skill，并总结完毕。"
+    assert result.value["tool_route_plan"]["role"] == "skill_scout"
+
+
+def test_graph_routes_skill_install_intent_from_search_to_install(monkeypatch):
+    captured = {"bound_tools": []}
+    skill_searches = []
+    skill_installs = []
+    search_calls = 0
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="stock-analyzer 已安装。")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def skills_search(
+        query: str,
+        scope: str = "installed",
+        sources: list[str] | None = None,
+        limit: int | None = None,
+    ) -> str:
+        """Search installed and configured skills."""
+        skill_searches.append(
+            {"query": query, "scope": scope, "sources": sources, "limit": limit}
+        )
+        return (
+            '{"success":true,"query":"stock-analyzer","scope":"all",'
+            '"results":[{"skill_id":"stock-analyzer","source_id":"community",'
+            '"installed":false,"trust_level":"trusted","score":1.0}]}'
+        )
+
+    @tool
+    def skill_install(
+        skill_id: str,
+        source_id: str = "installed",
+        version: str | None = None,
+        mode: str | None = None,
+    ) -> str:
+        """Install a trusted local skill."""
+        skill_installs.append(
+            {"skill_id": skill_id, "source_id": source_id, "version": version, "mode": mode}
+        )
+        return (
+            '{"success":true,"skill_id":"stock-analyzer","source_id":"community",'
+            '"installed":true,"installed_path":".focus_agent/skills/stock-analyzer/SKILL.md"}'
+        )
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        nonlocal search_calls
+        search_calls += 1
+        return query
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(skills_search, skill_install, search_code)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="stock-analyzer，想办法安装这个skill。")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-install"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in getattr(message, "tool_calls", None) or ()
+    ]
+    assert [call["name"] for call in tool_calls] == ["skills_search", "skill_install"]
+    assert tool_calls[0]["args"] == {"query": "stock-analyzer", "scope": "all"}
+    assert tool_calls[1]["args"] == {"skill_id": "stock-analyzer", "source_id": "community"}
+    assert skill_searches == [
+        {"query": "stock-analyzer", "scope": "all", "sources": None, "limit": None}
+    ]
+    assert skill_installs == [
+        {"skill_id": "stock-analyzer", "source_id": "community", "version": None, "mode": None}
+    ]
+    assert search_calls == 0
+    assert result.value["tool_intent_plan"]["policy"] == "execution"
+    assert result.value["tool_route_plan"]["role"] == "skill_scout"
+
+
+def test_graph_does_not_auto_install_ambiguous_skill_search_result(monkeypatch):
+    _patch_static_chat_model(monkeypatch, content="找到多个候选 skill，请选择一个安装。")
+    skill_searches = []
+    skill_installs = []
+    search_calls = 0
+
+    @tool
+    def skills_search(
+        query: str,
+        scope: str = "installed",
+        sources: list[str] | None = None,
+        limit: int | None = None,
+    ) -> str:
+        """Search installed and configured skills."""
+        skill_searches.append(
+            {"query": query, "scope": scope, "sources": sources, "limit": limit}
+        )
+        return (
+            '{"success":true,"query":"股票分析","scope":"all",'
+            '"results":['
+            '{"skill_id":"stock-analyzer","source_id":"community","installed":false},'
+            '{"skill_id":"stock-research","source_id":"community","installed":false}'
+            "]}"
+        )
+
+    @tool
+    def skill_install(
+        skill_id: str,
+        source_id: str = "installed",
+        version: str | None = None,
+        mode: str | None = None,
+    ) -> str:
+        """Install a trusted local skill."""
+        skill_installs.append(
+            {"skill_id": skill_id, "source_id": source_id, "version": version, "mode": mode}
+        )
+        return json.dumps({"success": True, "skill_id": skill_id})
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        nonlocal search_calls
+        search_calls += 1
+        return query
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(skills_search, skill_install, search_code)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="帮我安装股票分析相关skill")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-install"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in getattr(message, "tool_calls", None) or ()
+    ]
+    assert [call["name"] for call in tool_calls] == ["skills_search"]
+    assert tool_calls[0]["args"] == {"query": "帮我安装股票分析相关skill", "scope": "all"}
+    assert skill_searches == [
+        {"query": "帮我安装股票分析相关skill", "scope": "all", "sources": None, "limit": None}
+    ]
+    assert skill_installs == []
+    assert search_calls == 0
+    assert result.value["tool_intent_plan"]["policy"] == "execution"
     assert result.value["tool_route_plan"]["role"] == "skill_scout"
 
 

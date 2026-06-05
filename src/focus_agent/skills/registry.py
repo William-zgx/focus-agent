@@ -226,14 +226,18 @@ class SkillRegistry:
                 source_id=source_id or "installed",
                 error=f"Skill source '{source_id}' not found.",
             )
-        if source.source_type != "local" or not source.location:
+        if source.source_type != "local" or not source.location or not source.trusted:
             return SkillInstallResult(
                 success=False,
                 skill_id=normalized_skill_id,
                 source_id=source.source_id,
                 requires_review=True,
                 error="Only trusted local skill sources can be installed by this runtime.",
-                metadata={"source_type": source.source_type, "mode": mode},
+                metadata={
+                    "source_type": source.source_type,
+                    "trusted": source.trusted,
+                    "mode": mode,
+                },
             )
 
         source_root = Path(source.location).expanduser().resolve()

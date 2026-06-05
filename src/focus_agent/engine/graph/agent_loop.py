@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -71,6 +72,7 @@ from .agent_loop_helpers import (
     _workspace_lookup_should_start_with_search_compat,
 )
 from .policy import (
+    _skill_install_name_from_text,
     _skill_view_name_from_text,
     _temporal_live_web_search_args,
     _tool_intent_plan_requires_temporal_anchor,
@@ -369,7 +371,7 @@ def make_agent_loop_node(
                 ],
             )
         elif (
-            tool_policy == "workspace_lookup"
+            tool_policy in {"workspace_lookup", "execution"}
             and tool_intent_plan.preferred_first_tool == "skills_search"
             and _has_tool_named(available_tools, "skills_search")
             and not _latest_turn_has_tool_result(state_messages, "skills_search")
@@ -382,6 +384,46 @@ def make_agent_loop_node(
                         "name": "skills_search",
                         "args": tool_intent_plan.preferred_first_args
                         or {"query": tool_intent_text},
+                    }
+                ],
+            )
+        elif (
+            tool_policy == "execution"
+            and "skill_install_intent" in tool_intent_plan.reason_codes
+            and _has_tool_named(available_tools, "skill_install")
+            and _latest_turn_has_tool_result(state_messages, "skills_search")
+            and not _latest_turn_has_tool_result(state_messages, "skill_install")
+            and (
+                skill_install_args := _skill_install_args_from_search_result(
+                    tool_intent_text,
+                    state_messages,
+                )
+            )
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"skill-install-{state.get('llm_calls', 0) + 1}",
+                        "name": "skill_install",
+                        "args": skill_install_args,
+                    }
+                ],
+            )
+        elif (
+            tool_policy == "execution"
+            and tool_intent_plan.preferred_first_tool == "skill_install"
+            and _has_tool_named(available_tools, "skill_install")
+            and not _latest_turn_has_tool_result(state_messages, "skill_install")
+            and tool_intent_plan.preferred_first_args.get("skill_id")
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"skill-install-{state.get('llm_calls', 0) + 1}",
+                        "name": "skill_install",
+                        "args": tool_intent_plan.preferred_first_args,
                     }
                 ],
             )
@@ -732,6 +774,51 @@ def _explicit_skill_tools_satisfied(text: str, messages: list[Any]) -> bool:
     return bool(requested) and all(
         _latest_turn_has_tool_result(messages, tool_name) for tool_name in requested
     )
+
+
+def _skill_install_args_from_search_result(
+    text: str,
+    messages: list[Any],
+) -> dict[str, Any] | None:
+    content = _latest_tool_result_content(messages, "skills_search")
+    if not content:
+        return None
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw_results = payload.get("results")
+    if not isinstance(raw_results, list):
+        return None
+    results = [item for item in raw_results if isinstance(item, dict)]
+    if not results:
+        return None
+
+    requested_skill = _skill_install_name_from_text(text).lower()
+    if requested_skill:
+        exact = [
+            item
+            for item in results
+            if str(item.get("skill_id") or "").strip().lower() == requested_skill
+        ]
+        if exact:
+            results = exact
+        else:
+            return None
+    if len(results) != 1:
+        return None
+
+    result = results[0]
+    skill_id = str(result.get("skill_id") or "").strip()
+    if not skill_id:
+        return None
+    args: dict[str, Any] = {"skill_id": skill_id}
+    source_id = str(result.get("source_id") or "").strip()
+    if source_id:
+        args["source_id"] = source_id
+    return args
 
 
 __all__ = ["make_agent_loop_node"]

@@ -10,6 +10,10 @@ function buttonLabelIsTruncated(button: HTMLElement) {
 	return label.scrollWidth > label.clientWidth + 2;
 }
 
+function buttonAllowsLabelTruncation(button: HTMLElement) {
+	return button.dataset.allowLabelTruncation === "true";
+}
+
 function visibleElementWidth(element: Element | null) {
 	if (!(element instanceof HTMLElement) || element.hidden) {
 		return 0;
@@ -73,8 +77,12 @@ export function useThreadHeaderCompact(
 			for (const button of compactButtons) {
 				syncTooltipText(button, button.dataset.defaultTooltip);
 			}
-			const hasTruncatedLabel = compactButtons.some((button) =>
-				buttonLabelIsTruncated(button),
+			const truncatedButtons = new Set(
+				compactButtons.filter((button) => buttonLabelIsTruncated(button)),
+			);
+			const hasTruncatedLabel = compactButtons.some(
+				(button) =>
+					truncatedButtons.has(button) && !buttonAllowsLabelTruncation(button),
 			);
 			const shouldHideLabel =
 				actionGroupsNeedCompact(container) ||
@@ -84,7 +92,10 @@ export function useThreadHeaderCompact(
 			for (const button of compactButtons) {
 				const tooltip =
 					button.dataset.fullLabel || button.getAttribute("aria-label") || "";
-				if (shouldHideLabel && tooltip) {
+				const shouldUseFullLabel =
+					shouldHideLabel ||
+					(buttonAllowsLabelTruncation(button) && truncatedButtons.has(button));
+				if (shouldUseFullLabel && tooltip) {
 					syncTooltipText(button, tooltip);
 				} else if (button.dataset.defaultTooltip || button.title) {
 					syncTooltipText(button, button.dataset.defaultTooltip);

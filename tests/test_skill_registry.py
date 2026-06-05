@@ -447,6 +447,40 @@ def test_skill_registry_searches_sources_and_installs_local_skill_bundle(tmp_pat
     assert (installed_root / "docs" / "template.md").read_text(encoding="utf-8") == "template"
 
 
+def test_skill_registry_rejects_untrusted_local_skill_source(tmp_path):
+    installed_root = tmp_path / "installed"
+    source_root = tmp_path / "source"
+    _write_skill(
+        source_root,
+        name="risky-skill",
+        description="Untrusted local source skill.",
+        body="# Risky\nDo not install without review.",
+    )
+    registry = SkillRegistry(
+        [installed_root],
+        source_definitions=(
+            SkillSourceDefinition(
+                source_id="community",
+                source_type="local",
+                label="Community skills",
+                enabled=True,
+                trusted=False,
+                location=str(source_root),
+            ),
+        ),
+        install_dir=installed_root,
+    )
+
+    installed = json.loads(
+        render_skill_install_json(registry, skill_id="risky-skill", source_id="community")
+    )
+
+    assert installed["success"] is False
+    assert installed["requires_review"] is True
+    assert installed["metadata"]["trusted"] is False
+    assert registry.resolve("risky-skill") is None
+
+
 def test_tool_registry_exposes_skill_discovery_tools(tmp_path):
     _write_skill(
         tmp_path,

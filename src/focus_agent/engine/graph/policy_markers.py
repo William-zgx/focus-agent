@@ -528,6 +528,10 @@ _SKILL_DISCOVERY_PHRASE_MARKERS = (
 
 
 _SKILL_DISCOVERY_ACTION_MARKERS = (
+    "安装",
+    "装一下",
+    "添加",
+    "加入",
     "搜索",
     "查一下",
     "查下",
@@ -544,10 +548,20 @@ _SKILL_DISCOVERY_ACTION_MARKERS = (
     "search",
     "find",
     "discover",
+    "install",
+    "add",
     "list",
     "recommend",
     "use",
     "workflow",
+)
+_SKILL_INSTALL_ACTION_MARKERS = (
+    "安装",
+    "装一下",
+    "添加",
+    "加入",
+    "install",
+    "add",
 )
 
 
@@ -649,6 +663,21 @@ def _skill_discovery_hits(text: str) -> tuple[str, ...]:
         return tuple(dict.fromkeys((*phrase_hits, *subject_hits, *action_hits)))
     if subject_hits and action_hits:
         return tuple(dict.fromkeys((*subject_hits, *action_hits)))
+    return ()
+
+
+def _skill_install_hits(text: str) -> tuple[str, ...]:
+    tool_hits = _matched_markers(text, ("skill_install",))
+    action_hits = _matched_markers(text, _SKILL_INSTALL_ACTION_MARKERS)
+    subject_hits = _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS)
+    if not action_hits and not tool_hits:
+        return ()
+    if _CODE_FILE_REFERENCE_RE.search(text):
+        return ()
+    if tool_hits:
+        return tuple(dict.fromkeys((*tool_hits, *action_hits, *subject_hits)))
+    if action_hits and subject_hits:
+        return tuple(dict.fromkeys((*action_hits, *subject_hits)))
     return ()
 
 

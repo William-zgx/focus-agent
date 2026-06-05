@@ -116,6 +116,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		controller: AbortController;
 		streamFactory: StreamFactory;
 	}): Promise<SendMessageResult> {
+		activeRunIdsRef.current.delete(requestThreadId);
 		setThreadEntries((current) =>
 			patchThreadEntry(current, requestThreadId, {
 				streamState: createInitialStreamState(),
@@ -396,6 +397,12 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 	}
 
 	function stopStreaming() {
+		const activeRunId = activeRunIdsRef.current.get(options.threadId);
+		if (activeRunId) {
+			void client
+				.cancelHarnessRun(activeRunId, { action: "interrupt" })
+				.catch(() => undefined);
+		}
 		void client
 			.cancelThreadHarnessRuns(options.threadId, { action: "interrupt" })
 			.catch(() => undefined);

@@ -176,6 +176,18 @@
 	flex: 0 0 auto;
 }
 
+.fa-focus-branches-button:not(.is-renaming) {
+	max-width: clamp(176px, 24vw, 320px);
+	min-width: 0;
+	overflow: hidden;
+}
+
+.fa-focus-branches-button:not(.is-renaming) .fa-toolbar-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .fa-chat-header-actions.is-compact [data-compact-button="true"] {
 	width: 42px;
 	min-width: 42px;

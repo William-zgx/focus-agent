@@ -170,6 +170,7 @@ export function ThreadHeaderActionButtons({
 				) : (
 					<button
 						className="fa-chat-toolbar-pill fa-focus-branches-button"
+						data-allow-label-truncation="true"
 						data-compact-button="true"
 						data-full-label={`${isChineseUi ? "当前分支" : "current"}: ${currentLabel}`}
 						{...tooltipProps(

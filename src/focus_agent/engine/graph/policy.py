@@ -44,6 +44,7 @@ from .policy_markers import (
     _skill_discovery_hits,
     _skill_discovery_preferred_tool,
     _skill_discovery_should_prefer_search,
+    _skill_install_hits,
 )
 from .policy_temporal import (
     _anchor_relative_time_query as _anchor_relative_time_query,
@@ -250,10 +251,17 @@ def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
     if tool_name == "search_code":
         return {"query": _workspace_search_query(text)}
     if tool_name == "skills_search":
+        if _skill_install_hits(text):
+            skill_name = _skill_install_name_from_text(text)
+            args: dict[str, Any] = {"query": skill_name or text, "scope": "all"}
+            return args
         return {"query": text}
     if tool_name == "skill_view":
         skill_name = _skill_view_name_from_text(text)
         return {"name": skill_name} if skill_name else {}
+    if tool_name == "skill_install":
+        skill_name = _skill_install_name_from_text(text)
+        return {"skill_id": skill_name} if skill_name else {}
     return {}
 
 
@@ -276,6 +284,46 @@ def _skill_view_name_from_text(text: str) -> str:
         "inspect",
         "open",
         "read",
+        "name",
+        "for",
+        "of",
+    }
+    for pattern in patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        name = str(match.group("name") or "").strip("`.,!?;:，。！？；：")
+        if name and name.lower() not in ignored:
+            return name
+    return ""
+
+
+def _skill_install_name_from_text(text: str) -> str:
+    normalized = " ".join(str(text or "").strip().split())
+    if not normalized:
+        return ""
+    patterns = (
+        rf"(?i)(?<![a-z0-9_])skill_install(?![a-z0-9_])\s*"
+        rf"(?:安装|install|add|name|名称|for|of|:|：)?\s*"
+        rf"`?(?P<name>{_SKILL_ID_RE})`?",
+        rf"`?(?P<name>{_SKILL_ID_RE})`?\s*(?:，|,|:|：)?\s*"
+        rf"(?:想办法|帮我|请)?\s*(?:安装|装一下|添加|加入|install|add)\s*"
+        rf"(?:这个|this)?\s*(?:skill|skills|技能)?",
+        rf"(?:安装|装一下|添加|加入|install|add)\s+"
+        rf"`?(?P<name>{_SKILL_ID_RE})`?\s*(?:这个|this)?\s*(?:skill|skills|技能)?",
+    )
+    ignored = {
+        "安装",
+        "装一下",
+        "添加",
+        "加入",
+        "install",
+        "add",
+        "skill",
+        "skills",
+        "技能",
+        "这个",
+        "this",
         "name",
         "for",
         "of",
@@ -342,6 +390,7 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         live_hits = tuple(dict.fromkeys((*live_hits, *academic_lookup_hits)))
         web_lookup_hits = tuple(dict.fromkeys((*web_lookup_hits, *academic_lookup_hits)))
     skill_discovery_hits = _skill_discovery_hits(normalized)
+    skill_install_hits = _skill_install_hits(normalized)
     if _contains_any(normalized, ("引用来源", "引用数据来源", "cite source", "cite sources")):
         symbol_hits = tuple(hit for hit in symbol_hits if hit not in {"引用", "reference"})
     execution_hits = _matched_markers(normalized, _EXECUTION_INTENT_MARKERS)
@@ -396,8 +445,20 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
         reason_codes.append("execution_signal")
     if skill_discovery_hits:
         reason_codes.append("skill_discovery_signal")
+    if skill_install_hits:
+        reason_codes.append("skill_install_intent")
 
     preferred_skill_tool = _skill_discovery_preferred_tool(normalized)
+    if skill_install_hits:
+        explicit_skill_install = "skill_install" in skill_install_hits
+        reason_codes.append("policy_execution")
+        return _exposure(
+            "execution",
+            confidence=max(0.86, _confidence(len(skill_install_hits) * 4, workspace_score)),
+            reason_codes=tuple(reason_codes),
+            preferred_first_tool="skill_install" if explicit_skill_install else "skills_search",
+            allowed_toolsets=("skill",),
+        )
     if skill_discovery_hits and (
         not execution_score
         or preferred_skill_tool
@@ -693,7 +754,11 @@ def _filter_tools_by_exposure(tools: list[Any], exposure: TurnToolExposure) -> l
             continue
         if allowed_toolsets and runtime.toolset not in allowed_toolsets:
             continue
-        if exposure.policy == "execution" and allowed_toolsets:
+        if (
+            exposure.policy == "execution"
+            and allowed_toolsets
+            and allowed_toolsets != {"skill"}
+        ):
             if runtime.side_effect or runtime.requires_workspace_write:
                 continue
         filtered.append(tool)
