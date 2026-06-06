@@ -30,6 +30,56 @@ from focus_agent.skills.registry import (
     render_skills_search_json,
 )
 
+MIGRATED_BUILTIN_SKILL_PREFIX_MESSAGES = {
+    "python-debugpy": "debug-python: inspect failing pytest locals",
+    "node-inspect-debugger": "node-inspect: attach to a TypeScript test",
+    "rest-graphql-debug": "graphql-debug: diagnose HTTP 200 errors",
+    "one-three-one-rule": "one-three-one: compare three architecture options",
+    "spike": "spike: validate whether this prototype can work",
+}
+
+MIGRATED_BUILTIN_SKILL_QUERIES = {
+    "python-debugpy": "debug Python pdb debugpy failing test",
+    "node-inspect-debugger": "node inspect breakpoint TypeScript heap snapshot",
+    "rest-graphql-debug": "GraphQL API auth error request response debug",
+    "one-three-one-rule": "technical decision options recommendation tradeoff",
+    "spike": "feasibility prototype experiment validate approach",
+}
+
+MIGRATED_PROJECT_LOCAL_SKILLS = {
+    "docker-management",
+    "pinggy-tunnel",
+    "fastmcp",
+    "mcporter",
+    "arxiv",
+    "domain-intel",
+    "youtube-content",
+    "ocr-and-documents",
+    "watchers",
+    "code-wiki",
+    "stocks",
+    "excel-author",
+    "pptx-author",
+    "3-statement-model",
+    "dcf-model",
+    "comps-analysis",
+    "lbo-model",
+    "merger-model",
+}
+
+LEGACY_HERMES_MARKERS = (
+    "search_files",
+    "delegate_task",
+    "skill_manage",
+    "terminal()",
+    "web_extract",
+    "/mnt/user-data/uploads",
+    "~/.hermes",
+    ".hermes/plans",
+    "Hermes Agent Integration",
+    "For Hermes:",
+)
+
 
 def _write_skill(
     root,
@@ -109,6 +159,71 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
     assert viewed["when_to_use"] == ["The user wants a plan first"]
     assert viewed["recommended_tools"] == ["list_files", "read_file"]
     assert "Follow the steps carefully." in viewed["content"]
+
+
+def test_migrated_hermes_builtin_skills_list_view_search_and_prefix_activate():
+    registry = SkillRegistry([bundled_skills_dir()])
+    listed = json.loads(render_skills_list_json(registry))
+    listed_by_name = {skill["name"]: skill for skill in listed["skills"]}
+
+    for skill_id, message in MIGRATED_BUILTIN_SKILL_PREFIX_MESSAGES.items():
+        assert skill_id in listed_by_name
+        listed_skill = listed_by_name[skill_id]
+        assert listed_skill["source_id"] == "builtin"
+        assert listed_skill["source_type"] == "builtin"
+        assert listed_skill["triggers"]
+        assert listed_skill["when_to_use"]
+        assert listed_skill["recommended_tools"]
+        assert listed_skill["capability_requirements"]
+        assert listed_skill["prompt_mode"] is not None
+
+        viewed = json.loads(render_skill_view_json(registry, skill_id=skill_id))
+        assert viewed["success"] is True
+        assert viewed["name"] == skill_id
+        assert viewed["source_id"] == "builtin"
+        for marker in LEGACY_HERMES_MARKERS:
+            assert marker not in viewed["content"], (skill_id, marker)
+
+        selected = registry.select_for_message(message)
+        assert selected.selection_source == "prefix"
+        assert selected.skill_ids == (skill_id,)
+
+    for skill_id, query in MIGRATED_BUILTIN_SKILL_QUERIES.items():
+        searched = json.loads(
+            render_skills_search_json(registry, query=query, scope="installed", limit=20)
+        )
+        assert skill_id in {result["skill_id"] for result in searched["results"]}
+
+
+def test_skill_registry_does_not_treat_hermes_nested_metadata_as_focus_metadata(tmp_path):
+    skill_dir = tmp_path / "hermes-style"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: hermes-style",
+                "description: Skill with Hermes-specific nested metadata.",
+                "metadata:",
+                "  hermes:",
+                "    requires_toolsets: [terminal, browser]",
+                "    related_skills: [plan]",
+                "---",
+                "",
+                "# Hermes Style",
+                "",
+                "The migration must not rely on nested Hermes metadata.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = SkillRegistry([tmp_path])
+
+    viewed = json.loads(render_skill_view_json(registry, skill_id="hermes-style"))
+
+    assert viewed["success"] is True
+    assert viewed["recommended_tools"] == []
+    assert viewed["capability_requirements"] == []
 
 
 def test_skill_registry_searches_chinese_task_phrases_without_generic_skill_bias(tmp_path):
@@ -198,6 +313,33 @@ def test_skill_registry_searches_sources_and_installs_trusted_local_skill(tmp_pa
         )
     )
     assert installed_json["success"] is True
+
+
+def test_migrated_project_local_skills_resolve_as_project_local(tmp_path):
+    for skill_id in MIGRATED_PROJECT_LOCAL_SKILLS:
+        _write_skill(
+            tmp_path,
+            name=skill_id,
+            description=f"Migrated project-local skill for {skill_id}.",
+            triggers=f"{skill_id}:",
+            when_to_use=f"Use when {skill_id} project-local workflow is needed",
+            recommended_tools="read_file,write_text_artifact",
+            capability_requirements="project-local dependency",
+            prompt_mode="execute",
+        )
+
+    registry = SkillRegistry([tmp_path])
+
+    for skill_id in MIGRATED_PROJECT_LOCAL_SKILLS:
+        viewed = json.loads(render_skill_view_json(registry, skill_id=skill_id))
+        assert viewed["success"] is True
+        assert viewed["source_id"] == "project"
+        assert viewed["source_type"] == "local"
+        assert viewed["triggers"]
+        assert viewed["when_to_use"]
+        assert viewed["recommended_tools"]
+        assert viewed["capability_requirements"]
+        assert viewed["prompt_mode"] == "execute"
 
 
 def test_skill_registry_supports_stacked_prefix_activation(tmp_path):
@@ -479,6 +621,109 @@ def test_skill_registry_rejects_untrusted_local_skill_source(tmp_path):
     assert installed["requires_review"] is True
     assert installed["metadata"]["trusted"] is False
     assert registry.resolve("risky-skill") is None
+
+
+def test_skill_registry_rejects_unsafe_external_skill_ids_and_hidden_sources(tmp_path):
+    installed_root = tmp_path / "installed"
+    source_root = tmp_path / "source"
+    unsafe_dir = source_root / "unsafe"
+    unsafe_dir.mkdir(parents=True)
+    (unsafe_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: ../escape",
+                "description: Path traversal skill should be ignored.",
+                "---",
+                "",
+                "# Unsafe",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    hidden_dir = source_root / ".hidden" / "hidden-skill"
+    hidden_dir.mkdir(parents=True)
+    (hidden_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: hidden-skill",
+                "description: Hidden source skill should be ignored.",
+                "---",
+                "",
+                "# Hidden",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = SkillRegistry(
+        [installed_root],
+        source_definitions=(
+            SkillSourceDefinition(
+                source_id="vendor",
+                source_type="local",
+                label="Vendor skills",
+                enabled=True,
+                trusted=True,
+                location=str(source_root),
+            ),
+        ),
+        install_dir=installed_root,
+    )
+
+    searched = json.loads(
+        render_skills_search_json(registry, query="skill", scope="all", sources=("vendor",))
+    )
+    unsafe_install = json.loads(
+        render_skill_install_json(registry, skill_id="../escape", source_id="vendor")
+    )
+    slash_install = json.loads(
+        render_skill_install_json(registry, skill_id="nested/skill", source_id="vendor")
+    )
+
+    assert searched["results"] == []
+    assert unsafe_install["success"] is False
+    assert slash_install["success"] is False
+    assert "path separators" in unsafe_install["error"]
+    assert "path separators" in slash_install["error"]
+
+
+def test_skill_registry_requires_trusted_local_sources_for_install(tmp_path):
+    installed_root = tmp_path / "installed"
+    source_root = tmp_path / "source"
+    _write_skill(
+        source_root,
+        name="remote-skill",
+        description="Remote source skill.",
+    )
+
+    for source_type in ("git", "http", "ai-skills"):
+        registry = SkillRegistry(
+            [installed_root],
+            source_definitions=(
+                SkillSourceDefinition(
+                    source_id=source_type,
+                    source_type=source_type,
+                    label=source_type,
+                    enabled=True,
+                    trusted=True,
+                    location=str(source_root),
+                ),
+            ),
+            install_dir=installed_root,
+        )
+
+        installed = json.loads(
+            render_skill_install_json(
+                registry,
+                skill_id="remote-skill",
+                source_id=source_type,
+            )
+        )
+
+        assert installed["success"] is False
+        assert installed["requires_review"] is True
+        assert installed["metadata"]["source_type"] == source_type
 
 
 def test_tool_registry_exposes_skill_discovery_tools(tmp_path):
@@ -947,20 +1192,12 @@ def test_bundled_registry_contains_copied_practical_skills():
 
 def test_bundled_skills_use_project_ready_metadata_and_content():
     registry = SkillRegistry([bundled_skills_dir()])
-    legacy_markers = (
-        "search_files",
-        "delegate_task",
-        "/mnt/user-data/uploads",
-        "~/.hermes",
-        "Hermes Agent Integration",
-        "For Hermes:",
-    )
 
     for skill in registry.all_skills():
         assert skill.triggers, skill.skill_id
         assert skill.when_to_use, skill.skill_id
         assert skill.prompt_mode is not None, skill.skill_id
-        for marker in legacy_markers:
+        for marker in LEGACY_HERMES_MARKERS:
             assert marker not in skill.body, (skill.skill_id, marker)
 
 
@@ -970,10 +1207,20 @@ def test_optional_project_local_skills_use_project_ready_metadata():
         return
 
     registry = SkillRegistry([local_root])
+    found_migrated = {skill.skill_id for skill in registry.all_skills()} & MIGRATED_PROJECT_LOCAL_SKILLS
     for skill in registry.all_skills():
         assert skill.triggers, skill.skill_id
         assert skill.when_to_use, skill.skill_id
         assert skill.prompt_mode is not None, skill.skill_id
+        if skill.skill_id in MIGRATED_PROJECT_LOCAL_SKILLS:
+            assert skill.source_id == "project"
+            assert skill.source_type == "local"
+            assert skill.recommended_tools, skill.skill_id
+            assert skill.capability_requirements, skill.skill_id
+            for marker in LEGACY_HERMES_MARKERS:
+                assert marker not in skill.body, (skill.skill_id, marker)
+    if found_migrated:
+        assert found_migrated == MIGRATED_PROJECT_LOCAL_SKILLS
 
 
 def test_execution_skills_publish_recommended_focus_agent_native_tools():

@@ -28,7 +28,7 @@ from .registry_parsing import (
     _normalize_list,
     _split_frontmatter,
 )
-from .registry_paths import _normalize_skill_id, bundled_skills_dir
+from .registry_paths import _is_safe_skill_id, _normalize_skill_id, bundled_skills_dir
 from .registry_rendering import (
     _install_result_to_dict as _install_result_to_dict,
 )
@@ -207,6 +207,13 @@ class SkillRegistry:
     ) -> SkillInstallResult:
         del version
         normalized_skill_id = _normalize_skill_id(skill_id)
+        if not _is_safe_skill_id(normalized_skill_id):
+            return SkillInstallResult(
+                success=False,
+                skill_id=normalized_skill_id,
+                source_id=source_id or "installed",
+                error="Skill id must be a simple skill name without path separators.",
+            )
         installed = self.resolve(normalized_skill_id)
         if installed is not None:
             return SkillInstallResult(
@@ -592,7 +599,7 @@ class SkillRegistry:
         frontmatter, body = _split_frontmatter(raw_text)
         skill_id = str(frontmatter.get("name") or skill_path.parent.name).strip()
         description = str(frontmatter.get("description") or "").strip()
-        if not skill_id or not description:
+        if not skill_id or not description or not _is_safe_skill_id(skill_id):
             return None
         resolved_source = source or self._source_for_path(skill_path)
         return SkillDefinition(
@@ -707,6 +714,8 @@ class SkillRegistry:
             if not root.exists():
                 continue
             for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
+                if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
+                    continue
                 skill = self._load_skill(skill_path, source=source)
                 if skill is None or self.resolve(skill.skill_id) is not None:
                     continue
@@ -733,6 +742,8 @@ class SkillRegistry:
         source: SkillSourceDefinition,
     ) -> SkillDefinition | None:
         for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
+            if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
+                continue
             skill = self._load_skill(skill_path, source=source)
             if skill is not None and skill.skill_id == skill_id:
                 return skill
