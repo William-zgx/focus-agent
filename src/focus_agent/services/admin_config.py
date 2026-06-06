@@ -567,7 +567,7 @@ def _reload_runtime_skill_registry(runtime: AppRuntime) -> dict[str, Any]:
         return registry.reload_from_settings(runtime.settings)
     registry = SkillRegistry.from_settings(runtime.settings)
     try:
-        setattr(runtime, "skill_registry", registry)
+        runtime.skill_registry = registry
     except Exception:
         pass
     return {
